@@ -56,8 +56,10 @@ max(max_over_time(micro_one_api_billing_async_queue_size[48h]))
 | 生效时间/批准依据 | 仓库证据缺失，保持 `UNKNOWN`，不得由当前配置反推 |
 | SQL/Prometheus 原始结果 | 未归档，旧窗口不得重跑后覆盖原时间 |
 | 供应商证据/复核签名 | 未归档 |
-| 来源字段 | 2026-09-20 样本中 Kimi 完整、glm-5.3 有缺口；F22 修复已于 2026-09-21 上线，但上线后真实样本仍为 `NO_SAMPLE` |
+| 来源字段 | 2026-09-20 样本中 Kimi 完整、glm-5.3 有缺口；F22 修复已于 2026-09-21 上线。同日用户授权的 model 143 映射切换产生一条 `5:k3` 新样本，来源字段完整，见[下一阶段证据](evidence/data-flow-next-stage-2026-09-21.json) |
 | 当前决策 | 维持现有限定范围；不扩大 allowlist，不冲正历史账；扩围须开启新的固定窗口并建立新验收记录 |
+
+新样本的 `canonical_present=1`、`usage_contract_version=1`、`cost_audit_status=priced`，且只有一条 consume 账本和一条账号额度事件。它填补白名单来源的样本空缺，但未独立量出 canonical 与 legacy 收费差异，也没有供应商用量、48 小时指标或复核签名；上面的历史门禁保持未通过。
 
 ## 决策规则
 

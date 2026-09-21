@@ -1,8 +1,9 @@
 {
-  "captured_at_utc": "2026-09-21T08:05:33Z",
-  "environment": "production-readonly",
+  "captured_at_utc": "2026-09-21T14:15:45Z",
+  "environment": "production",
   "stage": "sixth-batch",
   "production_readonly": {
+    "captured_at_utc": "2026-09-21T08:05:33Z",
     "status": "OBSERVED",
     "checks": [
       "docs/runbooks/data-flow-readonly-check.sh",
@@ -42,9 +43,141 @@
     "python_syntax": "PASS",
     "git_diff_check": "PASS"
   },
+  "production_controlled_routing_probe": {
+    "status": "OBSERVED",
+    "window_utc": "2026-09-21T14:05:00Z/2026-09-21T14:13:00Z",
+    "authorization": "User explicitly approved the production Plan-time source switch and permanent subscription fallback for kimi-k3; this was a one-time exception to the standing production-readonly runbook boundary.",
+    "scope": "Only model 143 mapping availability was toggled. Subscription account 5 stayed enabled because it also serves the separate, high-traffic k3 model.",
+    "test_identity": {
+      "user_id": 2,
+      "token_name": "fo-verify-0921",
+      "token_id": 27,
+      "token_revoked": true,
+      "remaining_test_tokens": 0,
+      "temporary_files_removed": true
+    },
+    "source_configuration": {
+      "channel_mapping_id": 124,
+      "channel_id": 1,
+      "channel_upstream_model_id": "Kimi-K3",
+      "subscription_mapping_id": 289,
+      "subscription_account_id": 5,
+      "subscription_upstream_model_id": "k3",
+      "account_priority_before": 1,
+      "account_priority_after": 0,
+      "priority_change": "Compare-and-set SQL update of account 5 while model 143 had no subscription mapping; a full admin account PUT would overwrite its redacted credential. Subsequent mapping updates went through the admin API and routing.changed publication.",
+      "final_channel_mapping_enabled": true,
+      "final_subscription_mapping_enabled": true,
+      "final_subscription_account_status": 1,
+      "final_subscription_account_priority": 0
+    },
+    "samples": [
+      {
+        "scenario": "both_sources_available",
+        "root_sha256_prefix": "e844e407fd3c",
+        "http_status": 200,
+        "usage_total_tokens": 96,
+        "reservation_status": "committed",
+        "attempt_number": 1,
+        "source_kind": "channel",
+        "channel_id": 1,
+        "subscription_account_id": 0,
+        "upstream_model_id": "Kimi-K3",
+        "consume_ledger_rows": 1,
+        "distinct_ledger_dedupe_keys": 1,
+        "ledger_amount_quota": -4,
+        "account_quota_events": 0,
+        "routing_planned_events": 1,
+        "routing_success_outcomes": 1,
+        "admin_attempts": 1
+      },
+      {
+        "scenario": "channel_model_mapping_disabled_subscription_serves",
+        "root_sha256_prefix": "d5801c92a129",
+        "http_status": 200,
+        "usage_total_tokens": 145,
+        "reservation_status": "committed",
+        "attempt_number": 1,
+        "source_kind": "subscription",
+        "channel_id": 5,
+        "channel_id_note": "Subscription projection ID; source_kind and subscription_account_id are the authoritative attribution fields.",
+        "subscription_account_id": 5,
+        "upstream_model_id": "k3",
+        "consume_ledger_rows": 1,
+        "distinct_ledger_dedupe_keys": 1,
+        "ledger_amount_quota": -8,
+        "account_quota_events": 1,
+        "quota_event_cost_usd": 0.0008,
+        "quota_event_charged_usd": 0.0008,
+        "routing_planned_events": 1,
+        "routing_success_outcomes": 1,
+        "admin_attempts": 1,
+        "canonical_present": true,
+        "usage_contract_version": 1,
+        "cost_audit_status": "priced"
+      },
+      {
+        "scenario": "subscription_model_mapping_disabled_channel_serves",
+        "root_sha256_prefix": "fcc08d8e4df0",
+        "http_status": 200,
+        "usage_total_tokens": 96,
+        "reservation_status": "committed",
+        "attempt_number": 1,
+        "source_kind": "channel",
+        "channel_id": 1,
+        "subscription_account_id": 0,
+        "upstream_model_id": "Kimi-K3",
+        "consume_ledger_rows": 1,
+        "distinct_ledger_dedupe_keys": 1,
+        "ledger_amount_quota": -4,
+        "account_quota_events": 0,
+        "routing_planned_events": 1,
+        "routing_success_outcomes": 1,
+        "admin_attempts": 1
+      }
+    ],
+    "billing_canonical_flags": {
+      "usage_mode": "charge",
+      "charge_allowlist": "5:k3",
+      "cache_creation_mode": "charge"
+    },
+    "audit_retention": "log-service retention: 30 days",
+    "image_ids": {
+      "relay-gateway": "sha256:a45f1360bf8508002a3abf192689f1ebab79372893942265468371ca1b4a6a9d",
+      "admin-api": "sha256:5de1882d7e612e54f265f4df7b12d184a587317c0639cbae987acd9e68b5e923",
+      "channel-service": "sha256:ad9ae5cd2f24ec40eece76ddf3b686a2d2fdb405974f9d692ce99e2ee9d0d00b",
+      "billing-service": "sha256:6aeffcc0034a96c4a86e5546768e18aab0435054b166e081fcc49204d4662027",
+      "identity-service": "sha256:8185350b735274ac185f099b2ac304e046c7ebc7d184349a7a1e514051305ef6",
+      "log-service": "sha256:5bbcab8f00c5160834f8eb283d9b52a1e5672e96ab77179605151e7c5cb01f98"
+    },
+    "latest_schema_migrations": {
+      "billing": "106_add_reservation_request_trace",
+      "log": "107_add_log_request_trace",
+      "channel": "100_channel_routing_relation_overrides",
+      "identity": "098_identity_ordered_token_groups"
+    },
+    "service_restarts": 0,
+    "artifact_validation": {
+      "json_syntax": "PASS",
+      "shell_syntax": "PASS",
+      "go_test_scripts_verify": "PASS",
+      "git_diff_check": "PASS"
+    },
+    "query_errors_corrected": [
+      "ERROR 1054 (42S22) at line 6: Unknown column 'enabled' in 'field list'",
+      "ERROR 1054 (42S22) at line 7: Unknown column 'account_id' in 'where clause'"
+    ],
+    "limitations": [
+      "The mappings were disabled before each request. This proves Plan-time candidate switching, not an upstream failure and retry within one request.",
+      "The chat candidate-list retry path locks the initial source namespace; cross-namespace mid-request failover remains BLOCKED by code.",
+      "A Plan-time switch does not increment routing_fallback_total; the existing forced-failure script's counter assertion does not apply.",
+      "The 5:k3 allowlist now has one priced, canonical-present sample, but this does not complete the historical 48-hour gate or independently verify supplier usage and the charged pricing mode.",
+      "The new quota event does not repair 33,442 historical missing events or prove restart recovery."
+    ]
+  },
   "isolated_failure_matrix": {
     "status": "NO_SAMPLE",
     "reason": "No isolated service stack and test credentials are available in this workspace"
   },
-  "conclusion": "Production read-only stage completed with observed results. It does not prove failure recovery; isolated matrix remains pending. Monitor ListChannels errors and historical subscription quota-event gaps remain open findings."
+  "conclusion": "Production read-only stage completed. A separately authorized, model-scoped production probe observed channel-to-subscription and subscription-to-channel Plan-time switching, single consume rows, one new account quota event, and linked F19/F20/F22 records. Mid-request cross-source failover, restart recovery, the remaining isolated failure matrix, historical quota gaps, and external canonical usage evidence remain open."
 }

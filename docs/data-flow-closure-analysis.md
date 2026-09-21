@@ -414,6 +414,8 @@ reconciliationRecordsFromResult/applyReconciliationRecords，以及 service 中 
 
 `docs/runbooks/canonical-usage-48h-acceptance.md` 的七个勾选仍空，且仍称 9 月 4–6 日窗口“尚未结束”。这证明仓库的这份验收记录未收尾/未同步，**不证明没有别处的批准或验收，也不能据此断言生产从未开启 charge**。`BILLING_CACHE_CREATION_MODE` 与 `BILLING_CANONICAL_USAGE_MODE` 是不同开关，不应混写。observe 按 legacy 口径收费并计算 shadow，绝非请求免费；全量 canonical 切换也不是默认正确目标。
 
+2026-09-21 14:08 UTC 的用户授权生产测试首次留下 `subscription_account_id=5 / upstream_model_id=k3` 的新样本：consume 账本仅 1 行，`canonical_present=1`、`usage_contract_version=1`、`cost_audit_status=priced`，且有对应账号额度事件。运行中的 billing 配置仍为 `charge + allowlist=5:k3`。这证明白名单来源已有可回读样本，但单次样本不能代替供应商用量核对或补签既往 48 小时门禁；实际按 canonical 与 legacy 的差异也未由此独立量出。脱敏数据见[下一阶段证据](runbooks/evidence/data-flow-next-stage-2026-09-21.json)。
+
 后续将生效来源、变更时间、批准依据、SQL/指标原始结果与供应商证据索引对齐，修复 F22 的具体 producer 覆盖，再决定是否扩大灰度。不得自动勾选历史门禁、修改计费开关或冲正历史账。本轮只读核对了配置与字段，未重新执行完整 48 小时验收或读取外部供应商账单。
 
 ## 7. 实施顺序与验收
@@ -458,7 +460,7 @@ billing reservation 增加 106 migration，log 增加 107 migration，历史行�
 
 F21 统一渠道缺健康数据为 `unknown`、禁用渠道为 `unavailable`，两处管理页面使用相同含义；管理账本允许字段排序已贯通 admin DTO、billing DTO、biz option 和 data 白名单列映射，排序在数据库分页前执行，列表与 CSV 使用同一口径；成本分析按页面现有总计、模型、渠道、订阅账号及账号额度事件维度导出 CSV；用户订单页改用服务端校验的当前用户角色决定接口，不再受旧 `localStorage.adminToken` 残值影响。
 
-§6.2 的旧 48 小时清单已同步真实状态：旧窗口已结束但缺 SQL/Prometheus 原始输出、供应商证据和签名，保持未通过；记录 2026-09-20 已观察到的限定 `charge + allowlist=5:k3` 和 cache creation 独立 charge，不追认批准、不扩大灰度、不冲正历史账。F22 上线后仍缺真实新样本，保持 `NO_SAMPLE`；下一次扩围须新建固定窗口验收记录。
+§6.2 的旧 48 小时清单已同步真实状态：旧窗口已结束但缺 SQL/Prometheus 原始输出、供应商证据和签名，保持未通过；记录 2026-09-20 已观察到的限定 `charge + allowlist=5:k3` 和 cache creation 独立 charge，不追认批准、不扩大灰度、不冲正历史账。截至本批 05:30 UTC 验收时，F22 上线后仍缺真实新样本，保持 `NO_SAMPLE`；同日稍后的新样本见下文，下一次扩围仍须新建固定窗口验收记录。
 
 本地验收通过选路事件内容/稳定去重键、用户与根请求隔离回读、保留清理与去重重放、跨页数据库排序、健康 unknown/disabled、旧 adminToken 普通用户分流、admin/billing/log/relay 聚焦 Go 回归、`go vet` 和完整 `make verify`（全量 Go 单测、race、架构、迁移治理、Web lint、193 个前端测试与生产构建）。审查同时修复了审计日志混入用户日志/用量统计、WS 复用路由漏计划、健康页判定分叉、成本导出零值/比例/公式注入，以及第四批 SQLite 迁移数量断言未更新的问题。
 
@@ -470,6 +472,10 @@ F21 统一渠道缺健康数据为 `unknown`、禁用渠道为 `unavailable`，�
 
 2026-09-21 已完成阶段 A 生产只读检查。3 次对账完成日志对应 30 条历史记录，管理历史接口返回 `200/success=true/total=30`；告警开关为 `false` 时最近三小时没有 `sent` 日志或新增通知，超过十分钟的 stale reservation 为 0。24 小时窗口观察到 1,199 条 committed、93 条 released、3 条 expired 普通渠道预留；反向消费日志无未关联 committed reservation，重复日志组为 0，订阅窗口缺失扣费为 0。历史上游订阅账号仍有 33,442 条缺额度事件，monitor-worker 的 ListChannels 指标累计 341 次 Unavailable；这些是开放发现，不得写成阶段 B 通过。脱敏输出见 [只读检查证据](runbooks/evidence/data-flow-readonly-2026-09-21.txt) 和 [覆盖检查证据](runbooks/evidence/data-flow-coverage-2026-09-21.json)。阶段 B 隔离故障矩阵仍为 `NO_SAMPLE`。
 
+同日另经用户明确授权，在线上对 `kimi-k3`（model 143）做了一次限定映射的选路验证。先为订阅账号 5 增加 `143 → k3` 映射，并将其优先级设为 0；渠道 1 保持优先级 1。使用近 24 小时无请求的测试用户 2 发出三次小请求：双来源可用时由渠道 1 服务；短暂关闭渠道映射 124 后由订阅账号 5 服务；恢复渠道映射、短暂关闭订阅映射 289 后又由渠道 1 服务，三次均返回 200。每次各有一条 committed reservation、一条 consume 账本、唯一 dedupe key、一次 F19 attempt 和 F20 的 planned/outcome 两条事件；实际上游模型依次为 `Kimi-K3`、`k3`、`Kimi-K3`。订阅请求产生账号 5 的首条额度事件。两条映射均已恢复启用，账号 5 保持启用且优先级 0，专用测试令牌已撤销。账号 5 还独立服务高流量 `k3`，因此反向场景只关闭 model 143 映射，没有禁用整个账号。此测试是用户授权的一次性生产边界例外，不改变[下一阶段 Runbook](runbooks/data-flow-next-stage-acceptance.md)的常规生产限制。详细脱敏结果见[下一阶段证据](runbooks/evidence/data-flow-next-stage-2026-09-21.json)。
+
+上述验证只覆盖请求规划前的候选切换。chat candidate-list 路径的命名空间锁仍阻止请求中途从普通渠道跨到订阅账号；禁用映射后在 Plan 阶段选择另一来源也不会增加 `routing_fallback_total`。真实上游失败、跨来源重试、重启后幂等恢复及其余 F7–F18 故障矩阵仍须隔离验收，不能记为 PASS。
+
 | 阶段 | 范围 | 验收 | 状态 |
 | --- | --- | --- | --- |
 | 第一批 | F13 monitor 实际依赖地址；F1/F6 SaveRun、部分失败状态、差异编码和 DTO | 主动巡检成功且回写可读；一次对账一条历史，七类往返不丢，失败不伪装成功。 | 已部署线上；待 migration/重启及结果回读验收 |
@@ -480,7 +486,7 @@ F21 统一渠道缺健康数据为 `unknown`、禁用渠道为 `unavailable`，�
 | 第三批 | F15/F16/F17 模型统计、配置应用版本、支付补查和退款边界 | 终态失败统计可核对；配置可确认已应用；丢回调可收敛，站内冲正与外部退款分开验收。 | 已部署线上；线上/隔离验收待执行 |
 | 第四批 | F19 根请求/attempt 关联、F22 最终来源标识 | 保留预留幂等语义；多次尝试可追踪，执行来源与账本/日志一致；未知历史不臆造。 | 106/107 与四服务已上线；健康/认证验证通过，真实请求样本及隔离故障矩阵待验收 |
 | 第五批 | F20 选路回读、F21 前端一致性、§6.2 验收记录 | 明确保留/权限、排序范围与导出内容；灰度配置有对应来源级证据，模型健康自动选路另行设计。 | 四服务及前端已上线；健康、认证、真实请求关联、全局排序/CSV 验证通过；故障矩阵和外部证据保持单列 |
-| 第六批 | 生产只读复核；F7–F18 失败恢复；F19/F20/F22 隔离 failover、重启与来源归属 | 生产查询结果可回读；失败任务可恢复且幂等；通知/支付/配置状态真实可见；根请求、尝试、实际来源和账本一致。 | 阶段 A 只读已完成；阶段 B 隔离故障矩阵待执行。生产禁止故障注入，按 [下一阶段验收 Runbook](runbooks/data-flow-next-stage-acceptance.md) 记录 |
+| 第六批 | 生产只读复核；F7–F18 失败恢复；F19/F20/F22 隔离 failover、重启与来源归属 | 生产查询结果可回读；失败任务可恢复且幂等；通知/支付/配置状态真实可见；根请求、尝试、实际来源和账本一致。 | 阶段 A 只读已完成；另经授权观察到 model 143 双向 Plan 候选切换、F7 新额度事件及 F19/F20/F22 关联；请求中途跨来源回退仍受代码限制，阶段 B 隔离故障矩阵待执行。常规生产边界仍按 [下一阶段验收 Runbook](runbooks/data-flow-next-stage-acceptance.md) 执行 |
 
 遵循现有 service DTO 转换、biz 用例、data repo 分层。不要在 service 直接写历史表，也不需要为这些缺陷引入新的通用框架。
 

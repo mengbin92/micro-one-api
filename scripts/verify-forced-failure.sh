@@ -168,7 +168,7 @@ run_scenario() {
 
 DISABLE_CHANNEL_CMD="${DISABLE_CHANNEL_CMD:-curl -fsS -X POST -H \"Authorization: Bearer $ADMIN_TOKEN\" \"$ADMIN_BASE/api/channel/disable/$CHANNEL_ID\" >/dev/null}"
 ENABLE_CHANNEL_CMD="${ENABLE_CHANNEL_CMD:-curl -fsS -X POST -H \"Authorization: Bearer $ADMIN_TOKEN\" \"$ADMIN_BASE/api/channel/enable/$CHANNEL_ID\" >/dev/null}"
-DISABLE_ACCOUNT_CMD="${DISABLE_ACCOUNT_CMD:-curl -fsS -X PUT -H \"Authorization: Bearer $ADMIN_TOKEN\" -H 'Content-Type: application/json' -d '{\"status\":0}' \"$ADMIN_BASE/v1/subscription-accounts/$SUB_ACCOUNT_ID/status\" >/dev/null}"
+DISABLE_ACCOUNT_CMD="${DISABLE_ACCOUNT_CMD:-curl -fsS -X PUT -H \"Authorization: Bearer $ADMIN_TOKEN\" -H 'Content-Type: application/json' -d '{\"status\":2}' \"$ADMIN_BASE/v1/subscription-accounts/$SUB_ACCOUNT_ID/status\" >/dev/null}"
 ENABLE_ACCOUNT_CMD="${ENABLE_ACCOUNT_CMD:-curl -fsS -X PUT -H \"Authorization: Bearer $ADMIN_TOKEN\" -H 'Content-Type: application/json' -d '{\"status\":1}' \"$ADMIN_BASE/v1/subscription-accounts/$SUB_ACCOUNT_ID/status\" >/dev/null}"
 
 preflight
