@@ -363,6 +363,9 @@ verify:
 	@./scripts/check-architecture.sh
 	@echo "== make verify: migration-check =="
 	@make migration-check
+	@echo "== make verify: generated frontend API types =="
+	@make api
+	@cd web && npm run generate:api && git diff --exit-code -- src/types/api.ts
 	@echo "== make verify: frontend (lint/test/build) =="
 	@cd web && npm run lint && npm test -- --run && npm run build
 	@echo "== make verify: all gates passed =="

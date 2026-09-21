@@ -821,6 +821,12 @@ export interface components {
             /** Format: int32 */
             usageContractVersion?: number;
             usageDecisionReason?: string;
+            rootRequestId?: string;
+            /** Format: int32 */
+            attemptNumber?: number;
+            reservationId?: string;
+            sourceKind?: string;
+            upstreamModelId?: string;
         };
         "api.log.v1.IngestLogRequest": {
             level?: string;
@@ -863,6 +869,12 @@ export interface components {
             usageContractVersion?: number;
             canonicalPresent?: boolean;
             usageDecisionReason?: string;
+            rootRequestId?: string;
+            /** Format: int32 */
+            attemptNumber?: number;
+            reservationId?: string;
+            sourceKind?: string;
+            upstreamModelId?: string;
         };
         "api.log.v1.IngestLogResponse": {
             id?: string;
