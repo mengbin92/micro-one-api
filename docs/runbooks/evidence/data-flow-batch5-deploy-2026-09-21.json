@@ -1,0 +1,64 @@
+{
+  "captured_at_utc": "2026-09-21T05:30:08.520571+00:00",
+  "code_commit": "1aa092dd",
+  "rollback_tag": "rollback-20260921-124727",
+  "web_backup": "/opt/web/dist.bak.20260921-125338",
+  "migrations_applied": [],
+  "verification": {
+    "make_verify": "PASS",
+    "frontend_tests": 193,
+    "go_vet": "PASS"
+  },
+  "services": {
+    "log-service": {
+      "running": true,
+      "restarts": 0,
+      "image_id": "sha256:5bbcab8f00c5160834f8eb283d9b52a1e5672e96ab77179605151e7c5cb01f98",
+      "architecture": "amd64",
+      "healthz": 200
+    },
+    "billing-service": {
+      "running": true,
+      "restarts": 0,
+      "image_id": "sha256:6aeffcc0034a96c4a86e5546768e18aab0435054b166e081fcc49204d4662027",
+      "architecture": "amd64",
+      "healthz": 200
+    },
+    "admin-api": {
+      "running": true,
+      "restarts": 0,
+      "image_id": "sha256:5de1882d7e612e54f265f4df7b12d184a587317c0639cbae987acd9e68b5e923",
+      "architecture": "amd64",
+      "healthz": 200
+    },
+    "relay-gateway": {
+      "running": true,
+      "restarts": 0,
+      "image_id": "sha256:a45f1360bf8508002a3abf192689f1ebab79372893942265468371ca1b4a6a9d",
+      "architecture": "amd64",
+      "healthz": 200
+    }
+  },
+  "auth": { "unauthenticated": 401, "missing_root": 400 },
+  "empty_audit": { "status": 200, "success": true },
+  "audit_rows": 290,
+  "real_sample": {
+    "status": 200,
+    "root_hash": "05fbea661b04",
+    "events": 2,
+    "planned": 1,
+    "outcome": 1,
+    "attempts": 1,
+    "statuses": ["committed"],
+    "linked": true,
+    "retention_days": 30
+  },
+  "csv_matches_list": true,
+  "global_amount_sort": true,
+  "web_index_sha256": "4e1beb4db3fc622c0af6484b22eada762e07c44202edc3df2d90f16b1658da92",
+  "web_http_matches_disk": true,
+  "web_matches_local_build": true,
+  "production_fault_injection": "NOT_RUN",
+  "historical_accounting_modified": false,
+  "canonical_flags_modified": false
+}
