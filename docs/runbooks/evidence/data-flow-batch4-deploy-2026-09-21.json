@@ -1,0 +1,69 @@
+{
+  "captured_at_utc": "2026-09-21T03:47:51.162515+00:00",
+  "code_commit": "bb914b12",
+  "backup": "/opt/micro-one-api/backups/pre-f19-20260921-113748.sql.gz",
+  "backup_gzip_verified": true,
+  "rollback_tag": "rollback-f19-20260921",
+  "migration_history_registered_after_schema_verification": {
+    "billing": ["101_add_reconciliation_run_status", "102_create_billing_settlement_tasks"],
+    "log": ["016_add_usage_log_fields"]
+  },
+  "migrations_applied": {
+    "billing": "106_add_reservation_request_trace",
+    "log": "107_add_log_request_trace"
+  },
+  "new_columns_and_indexes_verified": true,
+  "services": {
+    "billing-service": {
+      "image_id": "sha256:7988ddc41f8b49ecaa353bf7740eafe12109e1074843ae9342d673ecfbe55a46",
+      "architecture": "amd64",
+      "matches_local_build": true,
+      "running": true,
+      "restarts": 0,
+      "healthz": 200
+    },
+    "log-service": {
+      "image_id": "sha256:324e13bbe4e35d46d5e43e10a6c6747ca4c2ed6c6a1e156873f364b4e1142feb",
+      "architecture": "amd64",
+      "matches_local_build": true,
+      "running": true,
+      "restarts": 0,
+      "healthz": 200
+    },
+    "relay-gateway": {
+      "image_id": "sha256:c7a0ca377c741930d77822279ee7867e1e045e4e1d847ed49ec10280b1ecdf69",
+      "architecture": "amd64",
+      "matches_local_build": true,
+      "running": true,
+      "restarts": 0,
+      "healthz": 200
+    },
+    "admin-api": {
+      "image_id": "sha256:388b57c8689b153f32e1cc2372e3b26f4ecee42feda8e785b609a530a19c01d4",
+      "architecture": "amd64",
+      "matches_local_build": true,
+      "running": true,
+      "restarts": 0,
+      "healthz": 200
+    }
+  },
+  "attempt_query": {
+    "authenticated_empty_http_status": 200,
+    "success": true,
+    "invalid_query_http_status": 400,
+    "unauthenticated_http_status": 401,
+    "real_sample": false,
+    "total": 0
+  },
+  "unknown_history_reservations": 57318,
+  "traced_reservations": 0,
+  "traced_logs": 0,
+  "cross_table_trace_check": "NO_SAMPLE",
+  "isolated_failover_and_restart_acceptance": "NOT_RUN",
+  "existing_reconciliation_findings": {
+    "channel_difference_count": 3,
+    "ledger_log_count_difference": 2,
+    "ledger_log_quota_difference": 192,
+    "historical_accounting_modified": false
+  }
+}

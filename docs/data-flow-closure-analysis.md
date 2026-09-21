@@ -436,11 +436,15 @@ reconciliationRecordsFromResult/applyReconciliationRecords，以及 service 中 
 
 本批已部署线上服务；线上验收仍待完成。需要执行 config/billing migration 并重启服务，隔离验证失败终态统计、配置消费者实际加载版本、丢回调订单的 paid/closed 收敛、查单失败重试，以及站内冲正与外部支付退款状态分别可读。线上不能用一次 GET 或本地 revision 推断所有实例已应用配置。
 
-### 2026-09-21 下一批实施状态：F19/F22
+### 2026-09-21 第四批实施状态：F19/F22
 
 本批已完成代码和本地回归，覆盖 F19 根请求/attempt 的持久关联与 F22 实际上游来源标识。每次尝试继续使用独立 `request_id` 作为 reservation 幂等键，同时写入稳定的 `root_request_id`、单调 `attempt_number`、`source_kind` 和实际发出的 `upstream_model_id`；失败释放、成功提交、消费日志、gRPC、Responses/WS、普通渠道和订阅账号适配器均沿用这组身份。重放会校验根请求、序号、来源、实际模型及渠道/订阅账号，不能把已冻结的尝试改成另一来源；提交时优先使用 reservation 中冻结的来源，避免异步或过期 payload 覆盖审计字段。
 
-billing reservation 增加 106 migration，log 增加 107 migration，历史行保持空值/零值，不对未知来源臆造回填。billing 提供按 `user_id + root_request_id` 查询尝试的分页 RPC，admin 受保护的 `/api/log/attempts` 代理该查询。上线顺序必须是先执行 billing 106、log 107，再升级 billing/log，最后升级 relay/admin；旧服务产生的历史记录仍按未知处理。当前仅完成本地验证，尚未宣称生产部署或线上验收。
+billing reservation 增加 106 migration，log 增加 107 migration，历史行保持空值/零值，不对未知来源臆造回填。billing 提供按 `user_id + root_request_id` 查询尝试的分页 RPC，admin 受保护的 `/api/log/attempts` 代理该查询。2026-09-21 已按先执行 billing 106、log 107，再升级 billing/log，最后升级 relay/admin 的顺序部署代码提交 `bb914b12`；旧服务产生的历史记录仍按未知处理。
+
+上线前已生成并校验数据库备份 `/opt/micro-one-api/backups/pre-f19-20260921-113748.sql.gz`；四个服务的旧运行镜像均保存为 `docker-compose-<service>:rollback-f19-20260921`。迁移预检发现 billing 101/102、log 016 的登记缺失，核验实际列、默认值、表和索引均存在后补齐登记，随后只执行新增的 106/107。未修改历史账务数据或回填来源身份。
+
+03:47:51 UTC 只读复核：四个 amd64 镜像与本地构建一致，容器均运行、重启次数为 0，`/healthz` 均为 200；管理查询已认证空结果 200、缺参数 400、未认证 401；新增字段和索引均存在。57,318 条历史预留保持未知身份。当前窗口无带根请求的新 reservation/log，跨表一致性和真实根请求查询标为 **NO_SAMPLE**，不以空集的零差异认定通过。脱敏证据见 [第四批部署记录](runbooks/evidence/data-flow-batch4-deploy-2026-09-21.json)。billing 启动仍报告既有的渠道累计差异和 2 条账本/日志差异，不在本批自动改账。
 
 查询示例：管理员凭据调用 `GET /api/log/attempts?user_id=42&root_request_id=<root>&page=1&page_size=100`，结果按尝试序号排序，页大小最大 100。根 ID 可从 log-service 的日志详情或对应 reservation 读取；账本的 `reference_id` 对应返回项的 `reservation_id`，日志同时返回根 ID、attempt ID/序号与 reservation ID。查询只反映已创建预留的尝试及其当前账务状态，准入失败、候选选路原因和保留策略仍属于 F20，不把这些记录当成完整选路审计。
 
@@ -456,7 +460,7 @@ billing reservation 增加 106 migration，log 增加 107 migration，历史行�
 | 第二批 | F2/F12/F14 提醒、通知 wiring 与状态/回执 | 关闭不写 sent；提醒被受理；业务拒绝、扫描/写状态失败可见；保持现有运营开关意图。 | 已部署线上；notify 多实例/平台回执待验收 |
 | 第二批 | F3/F4/F5 时间窗、历史基线、日志补偿与去重/删除边界 | 排除保留期影响，仍检出真缺口；补日志不扣费，不重放上游，旧账号事件不灌入当前窗口。 | 已部署线上；生产只读核对与人工补偿待验收 |
 | 第三批 | F15/F16/F17 模型统计、配置应用版本、支付补查和退款边界 | 终态失败统计可核对；配置可确认已应用；丢回调可收敛，站内冲正与外部退款分开验收。 | 已部署线上；线上/隔离验收待执行 |
-| 下一批 | F19 根请求/attempt 关联、F22 最终来源标识 | 保留预留幂等语义；多次尝试可追踪，执行来源与账本/日志一致；未知历史不臆造。 | 代码完成；migration/部署后待线上验收 |
+| 第四批 | F19 根请求/attempt 关联、F22 最终来源标识 | 保留预留幂等语义；多次尝试可追踪，执行来源与账本/日志一致；未知历史不臆造。 | 106/107 与四服务已上线；健康/认证验证通过，真实请求样本及隔离故障矩阵待验收 |
 | 后续产品与审计 | F20 选路回读、F21 前端一致性、§6.2 验收记录 | 明确保留/权限、排序范围与导出内容；灰度配置有对应来源级证据，模型健康自动选路另行设计。 | 未开始 |
 
 遵循现有 service DTO 转换、biz 用例、data repo 分层。不要在 service 直接写历史表，也不需要为这些缺陷引入新的通用框架。
