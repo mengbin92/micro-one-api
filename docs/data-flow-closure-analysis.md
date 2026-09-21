@@ -464,6 +464,12 @@ F21 统一渠道缺健康数据为 `unknown`、禁用渠道为 `unavailable`，�
 
 代码提交 `1aa092dd` 已推送 develop，并以本地 `linux/amd64` 构建按 log-service、billing-service、admin-api、relay-gateway 顺序上线；宿主机 `/opt/web/dist` 单独更新。本次无需新增 migration，旧镜像回滚标签为 `rollback-20260921-124727`，前端备份为 `/opt/web/dist.bak.20260921-125338`。05:30:08 UTC 只读验收：四容器运行且重启数为 0，健康检查全部 200；未认证/缺参数返回 401/400；290 条选路审计已落库，真实成功样本可同时回读 planned/outcome 与对应 committed attempt；金额跨页升序和 CSV 一致，线上首页与本地产物哈希一致。脱敏记录见 [第五批部署证据](runbooks/evidence/data-flow-batch5-deploy-2026-09-21.json)。本次没有线上故障注入、修改历史账或计费灰度；可控跨来源 failover/重启矩阵和供应商证据仍须单独验收。审计受理后持久化，但 relay 写入失败目前只报告指标/日志，不承诺断网或强杀时完整无损。
 
+### 下一阶段：线上只读与隔离故障矩阵
+
+第五批上线后的下一阶段不再增加业务代码，先完成生产只读复核和隔离故障验收。执行边界、场景矩阵、证据格式见 [数据流闭环下一阶段验收 Runbook](runbooks/data-flow-next-stage-acceptance.md)。生产只读允许验证当前样本、管理回读、保留窗口和镜像状态；Redis pending、结算提交失败、通知平台拒绝、OAuth Store 失败、支付丢回调和跨来源 failover 必须在隔离环境执行。结果文件统一保存到 `docs/runbooks/evidence/data-flow-next-stage-<date>.json`，未执行项保持 `NO_SAMPLE`、`BLOCKED` 或 `UNKNOWN`。
+
+2026-09-21 已完成阶段 A 生产只读检查。3 次对账完成日志对应 30 条历史记录，管理历史接口返回 `200/success=true/total=30`；告警开关为 `false` 时最近三小时没有 `sent` 日志或新增通知，超过十分钟的 stale reservation 为 0。24 小时窗口观察到 1,199 条 committed、93 条 released、3 条 expired 普通渠道预留；反向消费日志无未关联 committed reservation，重复日志组为 0，订阅窗口缺失扣费为 0。历史上游订阅账号仍有 33,442 条缺额度事件，monitor-worker 的 ListChannels 指标累计 341 次 Unavailable；这些是开放发现，不得写成阶段 B 通过。脱敏输出见 [只读检查证据](runbooks/evidence/data-flow-readonly-2026-09-21.txt) 和 [覆盖检查证据](runbooks/evidence/data-flow-coverage-2026-09-21.json)。阶段 B 隔离故障矩阵仍为 `NO_SAMPLE`。
+
 | 阶段 | 范围 | 验收 | 状态 |
 | --- | --- | --- | --- |
 | 第一批 | F13 monitor 实际依赖地址；F1/F6 SaveRun、部分失败状态、差异编码和 DTO | 主动巡检成功且回写可读；一次对账一条历史，七类往返不丢，失败不伪装成功。 | 已部署线上；待 migration/重启及结果回读验收 |
@@ -474,6 +480,7 @@ F21 统一渠道缺健康数据为 `unknown`、禁用渠道为 `unavailable`，�
 | 第三批 | F15/F16/F17 模型统计、配置应用版本、支付补查和退款边界 | 终态失败统计可核对；配置可确认已应用；丢回调可收敛，站内冲正与外部退款分开验收。 | 已部署线上；线上/隔离验收待执行 |
 | 第四批 | F19 根请求/attempt 关联、F22 最终来源标识 | 保留预留幂等语义；多次尝试可追踪，执行来源与账本/日志一致；未知历史不臆造。 | 106/107 与四服务已上线；健康/认证验证通过，真实请求样本及隔离故障矩阵待验收 |
 | 第五批 | F20 选路回读、F21 前端一致性、§6.2 验收记录 | 明确保留/权限、排序范围与导出内容；灰度配置有对应来源级证据，模型健康自动选路另行设计。 | 四服务及前端已上线；健康、认证、真实请求关联、全局排序/CSV 验证通过；故障矩阵和外部证据保持单列 |
+| 第六批 | 生产只读复核；F7–F18 失败恢复；F19/F20/F22 隔离 failover、重启与来源归属 | 生产查询结果可回读；失败任务可恢复且幂等；通知/支付/配置状态真实可见；根请求、尝试、实际来源和账本一致。 | 阶段 A 只读已完成；阶段 B 隔离故障矩阵待执行。生产禁止故障注入，按 [下一阶段验收 Runbook](runbooks/data-flow-next-stage-acceptance.md) 记录 |
 
 遵循现有 service DTO 转换、biz 用例、data repo 分层。不要在 service 直接写历史表，也不需要为这些缺陷引入新的通用框架。
 
