@@ -33,7 +33,11 @@ func readRequestBody(r *http.Request, maxSize int64) ([]byte, error) {
 }
 
 func readRouteRequestBody(r *http.Request) ([]byte, error) {
-	return readRequestBody(r, appmiddleware.RequestBodyLimitForPath(r.URL.Path))
+	body, err := readRequestBody(r, appmiddleware.RequestBodyLimitForPath(r.URL.Path))
+	if err == nil {
+		applyRequestBudget(r, body)
+	}
+	return body, err
 }
 
 func (s *HTTPServer) writeRequestBodyError(w http.ResponseWriter, r *http.Request, err error) {

@@ -44,14 +44,14 @@ func (r *refresher) refresh(ctx context.Context, refreshURL, refreshToken string
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, refreshURL, strings.NewReader(form.Encode()))
 	if err != nil {
-		return nil, fmt.Errorf("%w: build request: %v", ErrRefreshFailed, err)
+		return nil, fmt.Errorf("%w: invalid token endpoint", ErrRefreshFailed)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrRefreshFailed, err)
+		return nil, fmt.Errorf("%w: transport failure", ErrRefreshFailed)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MiB safety cap
@@ -63,13 +63,13 @@ func (r *refresher) refresh(ctx context.Context, refreshURL, refreshToken string
 		// surface invalid_grant as the typed ErrInvalidGrant so the refresh task
 		// stops retrying the account.
 		if isInvalidGrantError(body) {
-			return nil, fmt.Errorf("%w: status=%d body=%s", ErrInvalidGrant, resp.StatusCode, truncateBody(body))
+			return nil, fmt.Errorf("%w: status=%d; reauthorization required", ErrInvalidGrant, resp.StatusCode)
 		}
-		return nil, fmt.Errorf("%w: status=%d body=%s", ErrRefreshFailed, resp.StatusCode, truncateBody(body))
+		return nil, fmt.Errorf("%w: status=%d", ErrRefreshFailed, resp.StatusCode)
 	}
 	var tr tokenRefreshResponse
 	if err := jsonx.Unmarshal(body, &tr); err != nil {
-		return nil, fmt.Errorf("%w: decode: %v", ErrRefreshFailed, err)
+		return nil, fmt.Errorf("%w: malformed token response", ErrRefreshFailed)
 	}
 	if tr.AccessToken == "" {
 		return nil, fmt.Errorf("%w: empty access_token", ErrRefreshFailed)
@@ -115,7 +115,7 @@ func truncateBody(body []byte) string {
 }
 
 // defaultRefreshHTTPClient builds an *http.Client with a sane timeout for token
-// refresh calls. Token endpoints are fast and idempotent; a 30s cap protects
+// refresh calls. Token rotation may consume the refresh token; a 30s cap protects
 // against a stuck upstream.
 func defaultRefreshHTTPClient() *http.Client {
 	return &http.Client{Timeout: 30 * time.Second}

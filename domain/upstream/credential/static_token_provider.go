@@ -18,7 +18,7 @@ import (
 //     vendor-issued Coding Plan key). The stored key is assumed non-expiring,
 //     so the provider neither caches nor refreshes; it reads from the
 //     AccountLookup on every call (the lookup is cheap and goes through the
-//     same gRPC/Redis path the other providers use).
+//     same channel-service RPC path the other providers use).
 //   - Refresh is a no-op: there is no refresh token to exchange. It returns
 //     nil so callers that call Refresh defensively (e.g. after a transient
 //     401) do not mark the account broken for a refresh failure.

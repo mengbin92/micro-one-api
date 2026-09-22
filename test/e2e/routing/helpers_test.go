@@ -23,6 +23,7 @@ import (
 
 type object = map[string]any
 type fixture struct {
+	Reliability        string            `json:"reliability"`
 	UserID             int64             `json:"user_id"`
 	Session            string            `json:"session"`
 	Legacy             string            `json:"legacy"`
@@ -73,7 +74,7 @@ func newSuite(t *testing.T) *suite {
 	// socket that is still restarting after Compose changed its gate.
 	ctx, conn := s.conn("BILLING_GRPC_ENDPOINT")
 	version := int32(2)
-	if phase := os.Getenv("ROUTING_PHASE"); phase == "legacy" || phase == "missing-capability" {
+	if phase := os.Getenv("ROUTING_PHASE"); phase == "legacy" || phase == "stream-reliability" || phase == "missing-capability" {
 		version = 0
 	}
 	require.Eventually(t, func() bool {

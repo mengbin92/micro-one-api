@@ -61,6 +61,11 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	s.handleFunc(srv, "/v1/messages", s.relayOrchestratorMessagesHandler)
 	s.handleFunc(srv, "/v1/models", s.handleModels)
 	s.handlePrefix(srv, "/v1/models/", http.HandlerFunc(s.handleRetrieveModel))
+	// Register last within /v1: exact endpoints and resource prefixes win.
+	unknown := s.wrapRoute(http.HandlerFunc(s.handleUnsupportedOpenAIRoute("unknown_endpoint")))
+	srv.HandlePrefix("/v1/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		unknown.ServeHTTP(w, appmiddleware.WithMetricPath(r, "/v1/unknown"))
+	}))
 	s.handleFunc(srv, "/api/status", s.handleAPIStatus)
 	s.handleFunc(srv, "/api/models", s.handleDashboardModels)
 	s.handleFunc(srv, "/api/group", s.handleGroups)
@@ -75,7 +80,7 @@ func (s *HTTPServer) handleFunc(srv *khttp.Server, pattern string, handler http.
 }
 
 func (s *HTTPServer) wrapRoute(handler http.Handler) http.Handler {
-	var h http.Handler = handler
+	var h http.Handler = s.withRequestBudget(handler)
 	h = appmiddleware.RequestBodyLimitByPath(h)
 	for _, v := range slices.Backward(s.routeMiddleware) {
 		h = v(h)

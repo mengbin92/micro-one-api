@@ -1,0 +1,290 @@
+{
+  "captured_at_utc": "2026-09-22T13:44:32.633621+00:00",
+  "environment": "local disposable Compose projects; real service binaries; local mock upstream only; no production data",
+  "code": {
+    "base_commit": "bbeb3c005e82f01da3acf410b5ea60d8c366b08c",
+    "status": "uncommitted working tree at validation time, per the user instruction then in effect",
+    "acceptance_image": "micro-one-api-routing-e2e:local",
+    "image_manifest_digest": "sha256:97773371bd0c2d6a75d08178e7f099a8a3f8581f18aab96a357937b08a4011eb",
+    "scope_note": "Image exercised Chat streaming matrix. Subsequent Messages nonstream post-forward marker is separately covered by TestMessagesCommitFailureIsNeverReplayable."
+  },
+  "assertions": [
+    "real gateway/channel/identity/billing/log and SQL/Redis",
+    "public model unchanged; each source has a distinct mapped upstream model",
+    "exactly one consume ledger for successful fallback, attributed to final source",
+    "all failed/interrupted attempt reservations released; zero reserved leftovers",
+    "shared nonempty root ID across attempts, exactly one final consume log and two routing selection audit records on fallback",
+    "after partial output exactly one upstream call and one released reservation; zero commit or consume ledger"
+  ],
+  "scenarios": [
+    {
+      "driver": "mysql",
+      "executor": "legacy",
+      "first_source": "channel",
+      "fault": "500",
+      "http_status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 2,
+      "result": "PASS"
+    },
+    {
+      "driver": "mysql",
+      "executor": "legacy",
+      "first_source": "channel",
+      "fault": "refused",
+      "http_status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 1,
+      "result": "PASS"
+    },
+    {
+      "driver": "mysql",
+      "executor": "legacy",
+      "first_source": "channel",
+      "fault": "partial",
+      "http_status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1,
+      "result": "PASS"
+    },
+    {
+      "driver": "mysql",
+      "executor": "legacy",
+      "first_source": "subscription",
+      "fault": "500",
+      "http_status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 2,
+      "result": "PASS"
+    },
+    {
+      "driver": "mysql",
+      "executor": "legacy",
+      "first_source": "subscription",
+      "fault": "refused",
+      "http_status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 1,
+      "result": "PASS"
+    },
+    {
+      "driver": "mysql",
+      "executor": "legacy",
+      "first_source": "subscription",
+      "fault": "partial",
+      "http_status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1,
+      "result": "PASS"
+    },
+    {
+      "driver": "mysql",
+      "executor": "orchestrator",
+      "first_source": "channel",
+      "fault": "500",
+      "http_status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 2,
+      "result": "PASS"
+    },
+    {
+      "driver": "mysql",
+      "executor": "orchestrator",
+      "first_source": "channel",
+      "fault": "refused",
+      "http_status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 1,
+      "result": "PASS"
+    },
+    {
+      "driver": "mysql",
+      "executor": "orchestrator",
+      "first_source": "channel",
+      "fault": "partial",
+      "http_status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1,
+      "result": "PASS"
+    },
+    {
+      "driver": "mysql",
+      "executor": "orchestrator",
+      "first_source": "subscription",
+      "fault": "500",
+      "http_status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 2,
+      "result": "PASS"
+    },
+    {
+      "driver": "mysql",
+      "executor": "orchestrator",
+      "first_source": "subscription",
+      "fault": "refused",
+      "http_status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 1,
+      "result": "PASS"
+    },
+    {
+      "driver": "mysql",
+      "executor": "orchestrator",
+      "first_source": "subscription",
+      "fault": "partial",
+      "http_status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1,
+      "result": "PASS"
+    },
+    {
+      "driver": "sqlite3",
+      "executor": "legacy",
+      "first_source": "channel",
+      "fault": "500",
+      "http_status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 2,
+      "result": "PASS"
+    },
+    {
+      "driver": "sqlite3",
+      "executor": "legacy",
+      "first_source": "channel",
+      "fault": "refused",
+      "http_status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 1,
+      "result": "PASS"
+    },
+    {
+      "driver": "sqlite3",
+      "executor": "legacy",
+      "first_source": "channel",
+      "fault": "partial",
+      "http_status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1,
+      "result": "PASS"
+    },
+    {
+      "driver": "sqlite3",
+      "executor": "legacy",
+      "first_source": "subscription",
+      "fault": "500",
+      "http_status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 2,
+      "result": "PASS"
+    },
+    {
+      "driver": "sqlite3",
+      "executor": "legacy",
+      "first_source": "subscription",
+      "fault": "refused",
+      "http_status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 1,
+      "result": "PASS"
+    },
+    {
+      "driver": "sqlite3",
+      "executor": "legacy",
+      "first_source": "subscription",
+      "fault": "partial",
+      "http_status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1,
+      "result": "PASS"
+    },
+    {
+      "driver": "sqlite3",
+      "executor": "orchestrator",
+      "first_source": "channel",
+      "fault": "500",
+      "http_status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 2,
+      "result": "PASS"
+    },
+    {
+      "driver": "sqlite3",
+      "executor": "orchestrator",
+      "first_source": "channel",
+      "fault": "refused",
+      "http_status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 1,
+      "result": "PASS"
+    },
+    {
+      "driver": "sqlite3",
+      "executor": "orchestrator",
+      "first_source": "channel",
+      "fault": "partial",
+      "http_status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1,
+      "result": "PASS"
+    },
+    {
+      "driver": "sqlite3",
+      "executor": "orchestrator",
+      "first_source": "subscription",
+      "fault": "500",
+      "http_status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 2,
+      "result": "PASS"
+    },
+    {
+      "driver": "sqlite3",
+      "executor": "orchestrator",
+      "first_source": "subscription",
+      "fault": "refused",
+      "http_status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 1,
+      "result": "PASS"
+    },
+    {
+      "driver": "sqlite3",
+      "executor": "orchestrator",
+      "first_source": "subscription",
+      "fault": "partial",
+      "http_status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1,
+      "result": "PASS"
+    }
+  ],
+  "raw_log_sha256": {
+    "mysql": "4fd15c3000f2f4a0832ad5723a55c48eaaedb017edda35700fd97c2ea4625c11",
+    "sqlite3": "70fe0c0616fff2cbc7ad5341ff72d1a251b878c8604e6a592b27a55894595754"
+  },
+  "cleanup": "Both test projects automatically removed their containers, networks and volumes."
+}

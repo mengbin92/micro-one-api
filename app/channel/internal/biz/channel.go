@@ -86,14 +86,15 @@ type Channel struct {
 // It is selected separately from API-key channels but uses the same group,
 // model and priority semantics for routing.
 type SubscriptionAccount struct {
-	ID          int64
-	Name        string
-	Platform    string
-	AccountType string
-	Status      int32
-	Group       string
-	Models      []string
-	Priority    int64 // layering only (higher = preferred tier); NOT a within-tier weight
+	CredentialRevision int64
+	ID                 int64
+	Name               string
+	Platform           string
+	AccountType        string
+	Status             int32
+	Group              string
+	Models             []string
+	Priority           int64 // layering only (higher = preferred tier); NOT a within-tier weight
 	// Weight is the explicit within-tier selection weight for smooth WRR. 0
 	// means "unset"; the selector falls back to Priority-derived or 1 to keep
 	// legacy deployments working. v0.11.0 Phase 3 §3.1: Priority is for
@@ -228,6 +229,7 @@ type ChannelRepo interface {
 	ListOAuthRefreshCandidates(ctx context.Context, within time.Duration) ([]int64, error)
 	CreateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error
 	UpdateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error
+	StoreSubscriptionCredentials(context.Context, *SubscriptionAccount) error
 	DeleteSubscriptionAccount(ctx context.Context, accountID int64) error
 	ChangeSubscriptionAccountStatus(ctx context.Context, accountID int64, status int32) error
 	SetSubscriptionAccountError(ctx context.Context, accountID int64, message string) error

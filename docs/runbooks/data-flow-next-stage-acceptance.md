@@ -6,9 +6,11 @@
 
 同日后续代码修复已在本地通过 Chat Completions 双向失败回退测试，覆盖旧入口 hybrid 路径及 adaptor orchestrator 的流式/非流式请求、凭据解析、最终来源计费和选路审计。修复（`31250763`）已于 2026-09-22 03:22 UTC 部署生产 relay-gateway；此前生产证据中的来源锁结论仍对应采样时版本；线上故障矩阵保持待执行。可复现命令：`go test ./internal/server -run '^TestHTTPChatCrossSource' -count=1`。普通 provider-only 入口仍保留来源限制；流式回退仅发生在开始向客户端输出之前，结算失败不得重放上游。
 
-2026-09-22 晚些时候在本地隔离 compose 栈（MySQL + Redis + 双 mock 上游，无生产数据）完成 F19/F20/F22 非流式跨来源故障矩阵，证据见 [data-flow-failover-isolated-2026-09-22.json](evidence/data-flow-failover-isolated-2026-09-22.json)。上游 500、连接拒绝两个方向四个场景全部通过：planned/outcome、attempt 归属、账本单一归属与 dedupe 零重复均符合。矩阵发现并修复一个真实缺陷：渠道 hostname 无法解析（上游容器/主机消失）时，provider 构建阶段的 DNS 错误不匹配任何可重试模式，请求直接 502 不回退，且健康处置不记录；已在 `internal/biz/retry.go` 将 DNS 解析失败纳入可重试网络错误（SSRF 私网拒绝保持不可重试），修复后该场景通过。该修复已于 2026-09-22 06:54 UTC 随下述三服务更新部署生产。流式跨来源回退仍只有单元回归覆盖，未在隔离栈验证。
+2026-09-22 晚些时候在本地隔离 compose 栈（MySQL + Redis + 双 mock 上游，无生产数据）完成 F19/F20/F22 非流式跨来源故障矩阵，证据见 [data-flow-failover-isolated-2026-09-22.json](evidence/data-flow-failover-isolated-2026-09-22.json)。上游 500、连接拒绝两个方向四个场景全部通过：planned/outcome、attempt 归属、账本单一归属与 dedupe 零重复均符合。矩阵发现并修复一个真实缺陷：渠道 hostname 无法解析（上游容器/主机消失）时，provider 构建阶段的 DNS 错误不匹配任何可重试模式，请求直接 502 不回退，且健康处置不记录；已在 `internal/biz/retry.go` 将 DNS 解析失败纳入可重试网络错误（SSRF 私网拒绝保持不可重试），修复后该场景通过。该修复已于 2026-09-22 06:54 UTC 随下述三服务更新部署生产。当时流式跨来源回退仅有单元覆盖；本次第一批已补齐，见下方更新。
 
 同日在同一隔离栈完成 F7–F18 故障矩阵（证据：[data-flow-fault-matrix-2026-09-22.json](evidence/data-flow-fault-matrix-2026-09-22.json)）：F7/F8 结算崩溃恢复、F10 提交失败终态一致、F11 Redis pending 重领、F12/F14 通知失败、F15 模型统计、F16 配置 revision、F18 OAuth 持久化失败均通过；F9 有限 Key 重放因 MySQL 方言缺陷（`OnConflict(DoNothing)+RowsAffected` 在重复时非零）先失败、修复后通过。矩阵共发现并修复 4 个真实缺陷（DNS 不可重试、F9 重放报错、kimi endpoint 覆盖初始化顺序失效、三处失败只打日志无指标）。F17 支付丢回调收敛需要支付宝沙箱往返，仅验证了查单失败可见性，其余子项保持**待验收**。所有修复（`52762f26`、`5125ac9e`、`8926b5e5`、`04382c4c`、`ad353c0c`、`f92417eb`、`f37aaa4e`）已于 2026-09-22 06:54 UTC 部署生产（relay-gateway / identity-service / channel-service，回滚镜像 `docker-compose-<svc>:rollback-20260922-fm`）；生产未设置 `KIMI_TOKEN_REFRESH_URL`/`KIMI_OAUTH_CLIENT_ID`，该配置变更对生产无行为变化。
+
+2026-09-22 第一批 R1–R4 已完成本地验收并随实现一并提交：[实施记录](first-batch-reliability-2026-09-22.md)、[流式隔离证据](evidence/first-batch-stream-reliability-2026-09-22.json)。MySQL/SQLite × legacy/orchestrator × 两个来源方向 × 500/连接拒绝/出流后断开，共 24 场景通过，真实账本单一归属、预留释放、根请求/attempt 审计均有断言。本批未部署生产；凭证待写入仍不能承诺跨强杀重启无损。
 
 ## 执行边界
 
@@ -38,10 +40,10 @@
 | F15 模型统计 | 成功、最终失败、未注册模型、repo 错误各执行一次 | success/error 分母明确，存储错误不被吞掉，平均值按样本数计算 | 失败不计数、repo 错误伪装为空或重复统计 |
 | F16 配置发布 | 写入新 revision，模拟消费者未刷新/发布失败 | 持久版本可读，实际应用版本边界明确 | 仅凭写成功宣称实例已应用 |
 | F17 支付查单 | 丢回调、查单暂时失败、重复回调、发放失败 | pending 可见并重试，paid/closed 收敛，站内冲正与外部退款分开 | 依赖用户 GET 才收敛或旧订单归属当前订阅 |
-| F18 OAuth Store | refresh 成功后让持久化连续失败并重启进程 | 退避/告警可见；不得继续使用旧 refresh token | 凭据只存在内存且重启后静默丢失 |
+| F18 OAuth Store | refresh 成功后让持久化连续失败，再恢复存储；强杀单列边界 | 待写凭证保留，周期补写成功、指标/规则恢复；强杀丢失时明确重新授权 | 后台清除 dirty、补写覆盖人工授权、旧凭证无效但无重新授权提示 |
 | F19/F20/F22 failover | 普通渠道/订阅账号各执行一次可控失败回退 | 根请求、attempt、来源和实际模型可回读；账本只归属实际服务来源 | 重试改写既有 attempt，或来源字段缺失 |
 
-F19/F20/F22 非流式部分已于 2026-09-22 在本地隔离栈通过（见上方记录与证据文件）；流式变体与 F7–F18 恢复场景仍待执行。
+F19/F20/F22 非流式及本次流式变体均已在本地隔离栈通过。F7–F16/F18 的既有结果见上方记录；F17 支付沙箱、生产故障矩阵及外部通知送达仍待验收，不能被本批结果替代。
 
 可控跨来源场景使用 [post-release-forced-failure-verification.md](post-release-forced-failure-verification.md) 及 `scripts/verify-forced-failure.sh`。脚本退出码为 `0` 才能记录该场景 PASS；前置条件不足记录 `BLOCKED` 并保留 preflight 输出。
 

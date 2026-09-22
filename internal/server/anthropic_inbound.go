@@ -87,6 +87,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 	s.finalizeSelectionFromResult(plan, result, time.Since(retryStartedAt))
 	recordRelayRetryOutcome(r.Context(), result.Fallback, result.Err, result.FallbackReason)
 	if result.Err != nil {
+		setErrorChannel(w, result.Channel)
 		s.writeAnthropicError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")
 	}
 }
@@ -142,7 +143,7 @@ func (s *HTTPServer) writeAnthropicError(w http.ResponseWriter, statusCode int, 
 	w.WriteHeader(statusCode)
 	_ = encodeJSON(w, map[string]any{
 		"type":  "error",
-		"error": map[string]any{"type": anthropicErrorType(statusCode), "message": message},
+		"error": errorIdentity(w, map[string]any{"type": anthropicErrorType(statusCode), "message": message}),
 	})
 }
 

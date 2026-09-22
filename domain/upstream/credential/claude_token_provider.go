@@ -35,7 +35,7 @@ func NewClaudeTokenProvider(lookup AccountLookup) *ClaudeTokenProvider {
 // NewClaudeTokenProviderWithHTTPClient is the testable constructor.
 func NewClaudeTokenProviderWithHTTPClient(lookup AccountLookup, hc *http.Client) *ClaudeTokenProvider {
 	return &ClaudeTokenProvider{
-		baseTokenProvider: newBaseTokenProvider(lookup, hc, ClaudeOAuthClientID, ClaudeTokenRefreshURL),
+		baseTokenProvider: newPlatformTokenProvider(lookup, hc, ClaudeOAuthClientID, ClaudeTokenRefreshURL, "claude"),
 	}
 }
 

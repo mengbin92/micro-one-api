@@ -51,3 +51,16 @@ func init() {
 	prometheus.MustRegister(ModelUsageDropped)
 	prometheus.MustRegister(CredentialPersistFailures)
 }
+
+var CredentialPending = prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "micro_one_api_credential_pending", Help: "Credential rotations awaiting durable persistence"}, []string{"platform"})
+var CredentialPendingAge = prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "micro_one_api_credential_pending_oldest_age_seconds", Help: "Age of oldest unpersisted credential rotation"}, []string{"platform"})
+var CredentialSweepInterval = prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "micro_one_api_credential_sweep_interval_seconds", Help: "Configured credential persistence scan interval"}, []string{"platform"})
+var CredentialPersistResults = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "micro_one_api_credential_persist_results_total", Help: "Credential writes completed or superseded"}, []string{"platform", "result"})
+
+func init() {
+	prometheus.MustRegister(CredentialPending, CredentialPendingAge, CredentialSweepInterval, CredentialPersistResults)
+}
+
+var StreamTerminations = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "micro_one_api_upstream_stream_terminations_total", Help: "Upstream stream interruptions by finite cause"}, []string{"reason"})
+
+func init() { prometheus.MustRegister(StreamTerminations) }

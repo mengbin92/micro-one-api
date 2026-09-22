@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -158,4 +159,47 @@ func TestFallbackStrategyLabel_Default(t *testing.T) {
 	rc2 := NewResilientClient[any](nil, &BreakerConfig{Name: "x", FallbackStrategy: FallbackCache}, time.Second, nil)
 	assert.Equal(t, FallbackCache, rc2.fallbackStrategyLabel())
 	assert.Equal(t, "x", rc2.Name())
+}
+
+func TestServiceBreakerOverridesAndRecovery(t *testing.T) {
+	for _, service := range []string{"identity", "channel", "billing", "log"} {
+		t.Run(service, func(t *testing.T) {
+			prefix := "GRPC_" + strings.ToUpper(service) + "_"
+			t.Setenv(prefix+"BREAKER_MIN_REQUESTS", "2")
+			t.Setenv(prefix+"BREAKER_FAILURE_RATIO", "1")
+			t.Setenv(prefix+"BREAKER_COOLDOWN", "20ms")
+			t.Setenv(prefix+"TIMEOUT", "50ms")
+			cfg, budget, err := ServiceBreakerConfig(service, time.Second)
+			require.NoError(t, err)
+			require.Equal(t, 50*time.Millisecond, budget)
+			require.Equal(t, FallbackReject, cfg.FallbackStrategy)
+			cfg.MaxRequests = 1
+			rc := NewResilientClient(struct{}{}, cfg, budget, TypedRejectFallback[struct{}]())
+			failure := func(context.Context, struct{}) (any, error) { return nil, status.Error(codes.Unavailable, "outage") }
+			for range 2 {
+				_, _ = rc.Execute(context.Background(), failure)
+			}
+			require.Equal(t, gobreaker.StateOpen, rc.State())
+			_, err = rc.Execute(context.Background(), failure)
+			require.ErrorIs(t, err, ErrCircuitBreakerOpen)
+			time.Sleep(30 * time.Millisecond)
+			_, err = rc.Execute(context.Background(), func(context.Context, struct{}) (any, error) { return "recovered", nil })
+			require.NoError(t, err)
+			require.Equal(t, gobreaker.StateClosed, rc.State())
+			for range 4 {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				_, _ = rc.Execute(ctx, func(ctx context.Context, _ struct{}) (any, error) { return nil, ctx.Err() })
+			}
+			require.Equal(t, gobreaker.StateClosed, rc.State(), "caller cancellation must not trip dependency")
+		})
+	}
+}
+func TestServiceBreakerRejectsInvalidOverrides(t *testing.T) {
+	for _, tc := range []struct{ key, value string }{{"BREAKER_MIN_REQUESTS", "0"}, {"BREAKER_FAILURE_RATIO", "NaN"}, {"BREAKER_COOLDOWN", "2h"}, {"TIMEOUT", "0s"}} {
+		t.Run(tc.key, func(t *testing.T) {
+			t.Setenv("GRPC_IDENTITY_"+tc.key, tc.value)
+			require.Error(t, ValidateServiceBreakerEnvironment())
+		})
+	}
 }

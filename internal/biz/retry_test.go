@@ -36,8 +36,8 @@ func TestRetryPolicy_IsRetryable(t *testing.T) {
 		{"retryable error 429", &RetryableError{Status: 429, Err: errors.New("rate limited")}, true},
 		{"retryable error 500", &RetryableError{Status: 500, Err: errors.New("internal")}, true},
 		{"generic method not allowed", &RetryableError{Status: 405, Err: errors.New("method not allowed")}, false},
-		{"responses capability error 405", MarkProtocolCapabilityError(&RetryableError{Status: 405, Err: errors.New("method not allowed")}), true},
-		{"reasoning protocol mismatch 400", &relayprovider.UpstreamHTTPError{StatusCode: 400, Body: []byte("The reasoning_content in the thinking mode must be passed back to the API")}, true},
+		{"responses capability error 405", MarkProtocolCapabilityError(&RetryableError{Status: 405, Err: errors.New("method not allowed")}), false},
+		{"reasoning protocol mismatch 400", &relayprovider.UpstreamHTTPError{StatusCode: 400, Body: []byte("The reasoning_content in the thinking mode must be passed back to the API")}, false},
 		{"non-retryable error 400", &RetryableError{Status: 400, Err: errors.New("bad request")}, false},
 		{"upstream status=502", errors.New("upstream error: status=502, body=bad gateway"), true},
 		{"upstream status=400", errors.New("upstream error: status=400, body=bad request"), false},
@@ -325,7 +325,7 @@ func TestRetryExecutor_Execute_NonRetryableFailsImmediately(t *testing.T) {
 	}
 }
 
-func TestRetryExecutor_MethodNotAllowedFallsBackWithoutPoisoningHealth(t *testing.T) {
+func TestRetryExecutor_MethodNotAllowedStopsWithoutPoisoningHealth(t *testing.T) {
 	selector := &mockChannelSelector{
 		channels: []*Channel{
 			{ID: 1, Name: "responses-unsupported"},
@@ -344,18 +344,15 @@ func TestRetryExecutor_MethodNotAllowedFallsBackWithoutPoisoningHealth(t *testin
 		return nil
 	})
 
-	if result.Err != nil || result.Channel == nil || result.Channel.ID != 2 || !result.Fallback {
-		t.Fatalf("result = %+v, want successful fallback to channel 2", result)
+	if result.Err == nil || result.Channel.ID != 1 || result.Fallback || result.Attempt != 0 {
+		t.Fatalf("capability error executed an alternative: %+v", result)
 	}
-	if result.FallbackReason != "capability_mismatch" {
-		t.Fatalf("fallback reason = %q, want capability_mismatch", result.FallbackReason)
-	}
-	if len(selector.healthEvents) != 2 || !selector.healthEvents[0].success || !selector.healthEvents[1].success {
-		t.Fatalf("health events = %+v, 405 must not record a channel failure", selector.healthEvents)
+	if len(selector.healthEvents) != 1 || !selector.healthEvents[0].success {
+		t.Fatalf("capability error poisoned health: %+v", selector.healthEvents)
 	}
 }
 
-func TestRetryExecutor_ReasoningProtocolMismatchFallsBackWithoutPoisoningHealth(t *testing.T) {
+func TestRetryExecutor_ReasoningProtocolMismatchStopsWithoutPoisoningHealth(t *testing.T) {
 	selector := &mockChannelSelector{
 		channels: []*Channel{
 			{ID: 1, Name: "chat-thinking-incompatible"},
@@ -377,14 +374,11 @@ func TestRetryExecutor_ReasoningProtocolMismatchFallsBackWithoutPoisoningHealth(
 		return nil
 	})
 
-	if result.Err != nil || result.Channel == nil || result.Channel.ID != 2 || !result.Fallback {
-		t.Fatalf("result = %+v, want successful fallback to channel 2", result)
+	if result.Err == nil || result.Channel.ID != 1 || result.Fallback || result.Attempt != 0 {
+		t.Fatalf("capability error executed an alternative: %+v", result)
 	}
-	if result.FallbackReason != "capability_mismatch" {
-		t.Fatalf("fallback reason = %q, want capability_mismatch", result.FallbackReason)
-	}
-	if len(selector.healthEvents) != 2 || !selector.healthEvents[0].success || !selector.healthEvents[1].success {
-		t.Fatalf("health events = %+v, protocol mismatch must not record a channel failure", selector.healthEvents)
+	if len(selector.healthEvents) != 1 || !selector.healthEvents[0].success {
+		t.Fatalf("capability error poisoned health: %+v", selector.healthEvents)
 	}
 }
 

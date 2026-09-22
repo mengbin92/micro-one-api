@@ -111,7 +111,7 @@ func (p *AzureProvider) ChatCompletionsStream(ctx context.Context, req *ChatComp
 		_ = resp.Body.Close()
 		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
-	return readOpenAIStream(resp), nil
+	return readOpenAIStream(resp, ctx), nil
 }
 
 func (p *AzureProvider) Forward(ctx context.Context, req *RawRequest) (*RawResponse, error) {
@@ -151,7 +151,7 @@ func (p *AzureProvider) Forward(ctx context.Context, req *RawRequest) (*RawRespo
 }
 
 func (p *AzureProvider) ForwardStream(ctx context.Context, req *RawRequest) (*RawStreamResponse, error) {
-	return nil, fmt.Errorf("raw stream forwarding is not supported by azure provider")
+	return nil, &CapabilityError{Feature: "raw stream forwarding is not supported by azure provider"}
 }
 
 func (p *AzureProvider) endpoint(deployment, path, rawQuery string) (string, error) {

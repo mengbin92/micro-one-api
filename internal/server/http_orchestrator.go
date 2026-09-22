@@ -73,12 +73,13 @@ func (s *HTTPServer) handleChatCompletionsWithOrchestrator(w http.ResponseWriter
 		Endpoint:    string(EndpointChatCompletions),
 		Body:        body,
 		Headers:     relayExecutorHeaders(r.Header),
-		RequestID:   generateRequestID(),
+		RequestID:   rootRequestID(r),
 		SessionHash: sessionHash,
 		Stream:      req.Stream,
 	})
 	if err != nil {
 		status := http.StatusInternalServerError
+		setErrorSource(w, result.ChannelID, result.SubscriptionAccountID)
 		if result.StatusCode != 0 {
 			status = result.StatusCode
 		}

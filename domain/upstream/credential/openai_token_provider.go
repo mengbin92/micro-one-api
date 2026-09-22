@@ -28,7 +28,7 @@ func NewOpenAITokenProvider(lookup AccountLookup) *OpenAITokenProvider {
 // NewOpenAITokenProviderWithHTTPClient is the testable constructor.
 func NewOpenAITokenProviderWithHTTPClient(lookup AccountLookup, hc *http.Client) *OpenAITokenProvider {
 	return &OpenAITokenProvider{
-		baseTokenProvider: newBaseTokenProvider(lookup, hc, CodexOAuthClientID, CodexTokenRefreshURL),
+		baseTokenProvider: newPlatformTokenProvider(lookup, hc, CodexOAuthClientID, CodexTokenRefreshURL, "codex"),
 	}
 }
 

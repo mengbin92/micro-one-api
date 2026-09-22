@@ -56,12 +56,13 @@ func (s *HTTPServer) handleResponsesWithOrchestrator(w http.ResponseWriter, r *h
 		Endpoint:    string(EndpointResponses),
 		Body:        body,
 		Headers:     relayExecutorHeaders(r.Header),
-		RequestID:   generateRequestID(),
+		RequestID:   rootRequestID(r),
 		SessionHash: extractSessionHashFromRequest(r, body),
 		Stream:      stream,
 	})
 	if err != nil {
 		status := http.StatusInternalServerError
+		setErrorSource(w, result.ChannelID, result.SubscriptionAccountID)
 		if result.StatusCode != 0 {
 			status = result.StatusCode
 		}
@@ -114,12 +115,13 @@ func (s *HTTPServer) handleAnthropicMessagesWithOrchestrator(w http.ResponseWrit
 		Endpoint:    string(EndpointAnthropicMessages),
 		Body:        body,
 		Headers:     relayExecutorHeaders(r.Header),
-		RequestID:   generateRequestID(),
+		RequestID:   rootRequestID(r),
 		SessionHash: extractSessionHashFromRequest(r, body),
 		Stream:      request.Stream,
 	})
 	if err != nil {
 		status := http.StatusInternalServerError
+		setErrorSource(w, result.ChannelID, result.SubscriptionAccountID)
 		if result.StatusCode != 0 {
 			status = result.StatusCode
 		}

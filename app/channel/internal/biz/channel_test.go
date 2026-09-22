@@ -1530,3 +1530,7 @@ func TestChannelUsecase_SelectSubscriptionAccountExcluding_KeepsTierSiblings(t *
 		}
 	}
 }
+
+func (r *mockChannelRepo) StoreSubscriptionCredentials(ctx context.Context, a *SubscriptionAccount) error {
+	return r.UpdateSubscriptionAccount(ctx, a)
+}

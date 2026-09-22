@@ -4,10 +4,10 @@
 //
 // MVP scope (plan §十): a TokenProvider returns a valid access token for an
 // account, refreshing on demand when the cached token is about to expire.
-// Background refresh is provided by RefreshTask. Caching lives in Redis in a
-// full deployment (key token:{platform}:{accountID}); the MVP ships an
-// in-process implementation and a Redis-backed implementation so the server
-// can run with or without Redis.
+// Background refresh and pending persistence are provided by RefreshTask.
+// Credentials are cached in process; multi-replica refresh coordination is
+// not implemented. A forced restart while writes are pending can require
+// reauthorization.
 package credential
 
 import (
@@ -34,6 +34,7 @@ const (
 // It is the in-memory view of the encrypted `credentials` blob stored in the
 // SubscriptionAccount record.
 type AccountCredentials struct {
+	Revision     int64  // durable revision used by Store for compare-and-swap
 	AccountID    string // upstream account id (e.g. chatgpt-account-id)
 	AccessToken  string
 	RefreshToken string
@@ -68,12 +69,18 @@ type AccountLookup interface {
 	// AccountCredentials is a snapshot; mutations (e.g. a refreshed token) are
 	// persisted via Store.
 	Lookup(ctx context.Context, accountID int64) (*AccountCredentials, error)
-	// Store persists updated credentials (new access/refresh token + expiry).
+	// Store conditionally persists credentials at Revision, then updates Revision
+	// on success. Conflicts return ErrCredentialConflict; retries are idempotent.
 	Store(ctx context.Context, accountID int64, creds *AccountCredentials) error
+}
+
+type PendingPersister interface {
+	PersistPending(context.Context, time.Duration) []int64
 }
 
 // Sentinel errors.
 var (
+	ErrCredentialConflict = errors.New("credential: revision conflict; reload authorization")
 	// ErrAccountNotFound is returned when no credentials exist for the account.
 	ErrAccountNotFound = errors.New("credential: account not found")
 	// ErrNoRefreshToken is returned when a refresh is required but the account

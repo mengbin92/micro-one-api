@@ -114,3 +114,10 @@ func TestProviderFactoryDefaultTimeoutMatchesLongResponsesCalls(t *testing.T) {
 		t.Fatalf("default timeout = %v, want 1m", factory.defaultTimeout)
 	}
 }
+
+func TestUnknownProviderRejectedBeforeNetwork(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+	if p, err := NewProviderFactory(time.Second).CreateProvider(999, "https://example.com", "secret"); err == nil || p != nil {
+		t.Fatal("unknown type silently became OpenAI")
+	}
+}

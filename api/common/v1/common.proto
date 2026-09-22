@@ -134,6 +134,7 @@ message ChannelInfo {
 // ========== 订阅账号 ==========
 
 message SubscriptionAccountInfo {
+  int64 credential_revision = 38; // CAS fencing for OAuth writes
   int64 id = 1;
   string name = 2;
   string platform = 3;

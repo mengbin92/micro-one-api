@@ -40,7 +40,11 @@ func newUpstreamTransport(responseHeaderTimeout time.Duration, allowLocal bool) 
 	// directly; operators should enforce egress policy at the network layer.
 	transport.Proxy = nil
 	transport.ResponseHeaderTimeout = responseHeaderTimeout
-	dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+	connectTimeout, err := TimeoutFromEnv("RELAY_CONNECT_TIMEOUT", 30*time.Second, false)
+	if err != nil {
+		panic(err)
+	}
+	dialer := &net.Dialer{Timeout: connectTimeout, KeepAlive: 30 * time.Second}
 	guard := &ssrfSafeDialer{
 		lookupIP:    net.DefaultResolver.LookupIPAddr,
 		dialContext: dialer.DialContext,

@@ -172,12 +172,14 @@ func (s *HTTPServer) handleChannelError(w http.ResponseWriter, err error) {
 }
 
 func (s *HTTPServer) writeError(w http.ResponseWriter, statusCode int, message string) {
+	if statusCode == http.StatusNotImplemented {
+		s.writeNotImplemented(w, "protocol capability unavailable")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_ = encodeJSON(w, map[string]any{
-		"error": map[string]any{
-			"message": message,
-		},
+		"error": errorIdentity(w, map[string]any{"message": message}),
 	})
 }
 

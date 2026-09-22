@@ -49,6 +49,9 @@ func (f relayAdaptorForwarder) Forward(ctx context.Context, plan *relaybiz.Relay
 	if plan == nil || plan.Channel == nil {
 		return nil, fmt.Errorf("adaptor forwarder requires a selected channel")
 	}
+	if err := relayprovider.ValidateEndpoint(plan.Channel.Type, req.Endpoint); err != nil {
+		return nil, err
+	}
 	ad, ok := relayadaptor.GetAdaptor(plan.Channel.Type)
 	if !ok {
 		if f.fallback == nil {
@@ -121,6 +124,9 @@ func (f relayAdaptorForwarder) ForwardStream(ctx context.Context, plan *relaybiz
 	if plan == nil || plan.Channel == nil {
 		return nil, fmt.Errorf("adaptor stream forwarder requires a selected channel")
 	}
+	if err := relayprovider.ValidateEndpoint(plan.Channel.Type, req.Endpoint); err != nil {
+		return nil, err
+	}
 	ad, ok := relayadaptor.GetAdaptor(plan.Channel.Type)
 	if !ok {
 		if f.streamFallback == nil {
@@ -183,7 +189,11 @@ func (f relayAdaptorForwarder) ForwardStream(ctx context.Context, plan *relaybiz
 }
 
 func classifyExecutorCapabilityError(endpoint string, err error) error {
-	if err == nil || relaybiz.UpstreamStatus(err) != http.StatusMethodNotAllowed {
+	if err == nil {
+		return nil
+	}
+	status := relaybiz.UpstreamStatus(err)
+	if status != http.StatusMethodNotAllowed && status != http.StatusNotImplemented && status != http.StatusNotFound {
 		return err
 	}
 	switch endpoint {
@@ -258,14 +268,7 @@ func executorInboundFormat(endpoint string) relayadaptor.Format {
 }
 
 func streamHTTPClient(client *http.Client) *http.Client {
-	if client == nil || client.Timeout == 0 {
-		return client
-	}
-	return &http.Client{
-		Transport:     client.Transport,
-		CheckRedirect: client.CheckRedirect,
-		Jar:           client.Jar,
-	}
+	return relayprovider.StreamHTTPClient(client)
 }
 
 type convertedRelayStream struct {

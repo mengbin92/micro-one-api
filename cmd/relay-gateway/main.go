@@ -16,6 +16,9 @@ func main() {
 
 	applogger.InitializeStartupLogger()
 	defer applogger.Sync()
+	if os.Getenv("PROVIDER_DISABLE_SSRF_CHECK") == "true" {
+		applogger.Log.Warn("upstream SSRF protection is disabled", zap.String("setting", "PROVIDER_DISABLE_SSRF_CHECK"))
+	}
 
 	app, cleanup, err := InitApp(confPath)
 	if err != nil {

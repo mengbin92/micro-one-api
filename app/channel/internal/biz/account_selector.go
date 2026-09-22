@@ -19,7 +19,7 @@ import (
 // a LoadOracle (Redis-backed, injected by channel-service wiring) on every
 // Select to refresh a cross-replica in-flight snapshot per account, so
 // loadFactor de-rates a saturated account across ALL replicas, not just the
-// local one. The local Acquire/Release hooks remain for in-process callers;
+// local one. Acquire/Release also receive relay slot reports over the channel RPC;
 // when neither the oracle nor Acquire is wired, loadFactor is neutral (100)
 // and the selector degrades safely to health + configured-weight weighting.
 // A saturated account is still ultimately caught by its circuit breaker.
@@ -30,6 +30,8 @@ import (
 // See docs/model-management-design.md §12.2.
 
 type accountState struct {
+	consecutiveFailures  int
+	failureThreshold     int
 	accountID            int64
 	weight               int32           // configured weight (priority-derived)
 	maxConcurrent        int32           // configured concurrency cap (from SubscriptionAccount.Concurrency)
@@ -46,9 +48,8 @@ type accountState struct {
 // subscription_account:concurrency:<id>); the channel-service selector, running
 // in a different process, queries it here so loadFactor de-rates a saturated
 // account across all replicas, not just the local one. A nil oracle or a
-// zero/error result falls back to the local atomic inflight (which stays 0 in
-// production when no one calls Acquire), so the selector degrades safely to the
-// health-only weighting that shipped before Phase D.
+// zero/error result falls back to local inflight updated by relay slot reports.
+// Without either source of load feedback, weighting remains health-based.
 type LoadOracle interface {
 	Inflight(ctx context.Context, accountID int64) int32
 	// InflightBatch returns the cross-replica in-flight count for every
@@ -64,14 +65,15 @@ func (noopLoadOracle) Inflight(context.Context, int64) int32                  { 
 func (noopLoadOracle) InflightBatch(context.Context, []int64) map[int64]int32 { return nil }
 
 type SubscriptionAccountSelector struct {
-	mu         sync.Mutex
-	accounts   map[int64]*accountState
-	loadOracle LoadOracle // cross-replica in-flight source; nil = noop (inert)
+	failureThreshold int
+	mu               sync.Mutex
+	accounts         map[int64]*accountState
+	loadOracle       LoadOracle // cross-replica in-flight source; nil = noop (inert)
 }
 
 // NewSubscriptionAccountSelector creates a new selector.
 func NewSubscriptionAccountSelector() *SubscriptionAccountSelector {
-	return &SubscriptionAccountSelector{accounts: make(map[int64]*accountState)}
+	return &SubscriptionAccountSelector{accounts: make(map[int64]*accountState), failureThreshold: selectorFailureThreshold()}
 }
 
 // SetLoadOracle wires the cross-replica in-flight source. Safe to call before
@@ -160,7 +162,7 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 		state.crossReplicaInflight.Store(crossReplica[acct.ID])
 		// channel-H1: skip open accounts; half-open accounts (sentinel) are
 		// eligible and resolved by the first probe outcome.
-		if st := state.breakerState(now); st == circuitOpen {
+		if st := state.breakerState(now); st == circuitOpen || state.circuitOpenUntil == circuitHalfOpenSentinel {
 			continue
 		}
 		effectiveWeight := accountEffectiveWeight(state)
@@ -190,17 +192,8 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 	return nil, ErrSubscriptionAccountNotFound
 }
 
-// Acquire reserves an in-flight slot for an account. Paired with Release.
-//
-// v0.11.0 Phase 3 §3.2: this is an INERT reserved hook — production relay
-// dispatch does not call it, so loadFactor stays neutral (100) and the
-// selector never de-rates on in-flight saturation. It is retained so a future
-// Redis-backed or async best-effort seam can populate it without changing the
-// public API. A non-positive id is a no-op.
-//
-// If Acquire is called for an account the selector has not yet seen via Select,
-// it creates a state with a neutral weight (1); the weight is corrected on the
-// next Select that touches this account.
+// Acquire reserves local load reported by RecordSubscriptionAccountSlot RPC.
+// Redis load remains authoritative when available; this covers its fallback.
 func (s *SubscriptionAccountSelector) Acquire(accountID int64) {
 	if accountID <= 0 {
 		return
@@ -210,9 +203,10 @@ func (s *SubscriptionAccountSelector) Acquire(accountID int64) {
 	state, ok := s.accounts[accountID]
 	if !ok {
 		state = &accountState{
-			accountID:    accountID,
-			weight:       1,
-			recentErrors: NewSlidingCounter(60 * time.Second),
+			accountID:        accountID,
+			failureThreshold: s.failureThreshold,
+			weight:           1,
+			recentErrors:     NewSlidingCounter(60 * time.Second),
 		}
 		s.accounts[accountID] = state
 	}
@@ -256,15 +250,21 @@ func (s *SubscriptionAccountSelector) RecordAccountHealth(accountID int64, succe
 	state, ok := s.accounts[accountID]
 	if !ok {
 		state = &accountState{
-			accountID:    accountID,
-			weight:       1,
-			recentErrors: NewSlidingCounter(60 * time.Second),
+			accountID:        accountID,
+			failureThreshold: s.failureThreshold,
+			weight:           1,
+			recentErrors:     NewSlidingCounter(60 * time.Second),
 		}
 		s.accounts[accountID] = state
 	}
 	// channel-H1: record both totals and errors so Rate() is a true error
 	// ratio; the breaker enforces a min-sample threshold before tripping.
 	state.recentErrors.RecordOutcome(success)
+	if success {
+		state.consecutiveFailures = 0
+	} else {
+		state.consecutiveFailures++
+	}
 	state.recordAccountBreakerOutcome(success)
 	state.updateCircuitBreaker()
 }
@@ -315,10 +315,11 @@ func (s *SubscriptionAccountSelector) updateAccountLocked(acct *SubscriptionAcco
 		return existing
 	}
 	state := &accountState{
-		accountID:     acct.ID,
-		weight:        accountSelectorWeight(acct),
-		maxConcurrent: acct.Concurrency,
-		recentErrors:  NewSlidingCounter(60 * time.Second),
+		accountID:        acct.ID,
+		failureThreshold: s.failureThreshold,
+		weight:           accountSelectorWeight(acct),
+		maxConcurrent:    acct.Concurrency,
+		recentErrors:     NewSlidingCounter(60 * time.Second),
 	}
 	s.accounts[acct.ID] = state
 	return state
@@ -456,10 +457,11 @@ func (st *accountState) updateCircuitBreaker() {
 	case circuitHalfOpen:
 		return // resolved by recordAccountBreakerOutcome
 	case circuitClosed:
-		if st.recentErrors.Total() < circuitBreakerMinRequests {
-			return
+		threshold := st.failureThreshold
+		if threshold <= 0 {
+			threshold = 5
 		}
-		if st.recentErrors.Rate() > circuitBreakerErrorThreshold {
+		if st.consecutiveFailures >= threshold || (st.recentErrors.Total() >= circuitBreakerMinRequests && st.recentErrors.Rate() > circuitBreakerErrorThreshold) {
 			st.circuitOpenUntil = now + int64(circuitBreakerOpenDuration)
 		}
 	}
@@ -487,6 +489,8 @@ func (st *accountState) recordAccountBreakerOutcome(success bool) {
 		return
 	}
 	if success {
+		st.recentErrors = NewSlidingCounter(60 * time.Second)
+		st.consecutiveFailures = 0
 		st.circuitOpenUntil = 0
 	} else {
 		st.circuitOpenUntil = now + int64(circuitBreakerOpenDuration)

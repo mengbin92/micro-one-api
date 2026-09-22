@@ -2,6 +2,7 @@ package main
 
 import (
 	kconfig "github.com/go-kratos/kratos/v3/config"
+	"micro-one-api/app/channel/internal/biz"
 
 	channelcfg "micro-one-api/app/channel/internal/conf"
 	xconfig "micro-one-api/platform/config"
@@ -27,6 +28,9 @@ func (c *Config) Registry() appregistry.Config {
 // It is declared here (not in wire_gen.go) so it is visible under both
 // the wireinject and default build tags.
 func loadConfig(confPath string) (*Config, error) {
+	if _, err := biz.SelectorFailureThresholdFromEnv(); err != nil {
+		return nil, err
+	}
 	source := xconfig.NewEnvFileSource(confPath)
 	kratosCfg := kconfig.New(kconfig.WithSource(source), kconfig.WithResolveActualTypes(true))
 	defer kratosCfg.Close()

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -89,8 +90,18 @@ func NewHTTPMetricsMiddleware(service string) func(http.Handler) http.Handler {
 				rw.status = http.StatusOK
 			}
 			path := normalizePath(r.URL.Path)
+			if label, ok := r.Context().Value(metricPathKey{}).(string); ok {
+				path = label
+			}
 			metrics.HTTPRequestTotal.WithLabelValues(service, r.Method, path, strconv.Itoa(rw.status)).Inc()
 			metrics.HTTPRequestDuration.WithLabelValues(service, r.Method, path).Observe(time.Since(start).Seconds())
 		})
 	}
+}
+
+type metricPathKey struct{}
+
+// WithMetricPath supplies a fixed route label before the metrics middleware.
+func WithMetricPath(r *http.Request, path string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), metricPathKey{}, path))
 }

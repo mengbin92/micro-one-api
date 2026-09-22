@@ -69,20 +69,8 @@ func (a *ClaudeOAuthAdaptor) ConvertRequest(_ *RelayContext, inbound Format, bod
 		// BuildUpstreamRequest).
 		return FormatAnthropicMessages, body, nil
 	case FormatOpenAIResponses:
-		// Responses → Anthropic Messages.
-		var rr apicompat.ResponsesRequest
-		if err := jsonx.Unmarshal(body, &rr); err != nil {
-			return "", nil, fmt.Errorf("claude_oauth: parse responses request: %w", err)
-		}
-		ar, err := apicompat.ResponsesToAnthropicRequest(&rr)
-		if err != nil {
-			return "", nil, fmt.Errorf("claude_oauth: responses→anthropic: %w", err)
-		}
-		out, err := jsonx.Marshal(ar)
-		if err != nil {
-			return "", nil, err
-		}
-		return FormatAnthropicMessages, out, nil
+		return "", nil, &provider.CapabilityError{Feature: "responses protocol substitution"}
+
 	case FormatOpenAIChatCompletions:
 		// ChatCompletions → Responses → Anthropic Messages.
 		var cr apicompat.ChatCompletionsRequest

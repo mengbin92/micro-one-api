@@ -1,8 +1,8 @@
 # 下一阶段计划：可靠性补缺、运行可见性与文章技术债收口
 
-> 制定：2026-09-22；状态：待实施，当前执行入口。
+> 制定：2026-09-22；状态：第一批 R1–R4 已完成本地实施及隔离验收；第二批待实施，仍为当前执行入口。
 >
-> 核对基线：`develop@77e4db45`（[v0.31.0](../releases/release-v0.31.0.md)）。本次完成分支切换、文章盘点和静态代码核对；未修改业务代码、部署或启动新的生产观察。
+> 核对基线：`develop@77e4db45`（[v0.31.0](../releases/release-v0.31.0.md)）。规划时完成分支切换、文章盘点和静态核对；随后第一批已实现并通过本地验收。实现与验收记录随本批一并提交，未部署或启动生产观察。
 >
 > 来源：桌面 `/Users/neo/Desktop/micro-one-api-articles/` 的 04–25 共 22 篇原文、用户补充的四组建议，以及仓库既有验收记录。`wechat/` 是发布副本，不重复记债；目录中没有 01–03 原文，不推测其内容。
 >
@@ -29,9 +29,11 @@
 
 ## 2. 第一批：请求与凭证可靠性（R）
 
-顺序为 R1 → R2 → R3 → R4；每项独立提交和验收。下表所述风险来自静态核对，新增缺陷先用最小回归复现，不以文章断言代替测试结果。
+R1 → R2 → R3 → R4 已完成实现及验收，见[第一批实施记录](../runbooks/first-batch-reliability-2026-09-22.md)。本批实现、回归测试与验收记录一并提交，提交记录见本文件 Git 历史。下表所述风险来自静态核对，新增缺陷先用最小回归复现，不以文章断言代替测试结果。
 
 ### R1 · P0：轮换凭证保留、周期补写和告警
+
+**状态：已完成（2026-09-22，本地/隔离验收，未部署）**。
 
 **入口**：[base_token_provider.go](../../domain/upstream/credential/base_token_provider.go)、[token_cache.go](../../domain/upstream/credential/token_cache.go)、[refresh_task.go](../../domain/upstream/credential/refresh_task.go)、[AccountLookup 契约](../../domain/upstream/credential/token_provider.go)。
 
@@ -55,17 +57,21 @@
 
 ### R2 · P1：低流量熔断与候选完整性
 
+**状态：已完成（2026-09-22，本地/隔离验收，未部署）**。
+
 **入口**：[普通渠道 selector](../../app/channel/internal/biz/selector.go)、[账号 selector](../../app/channel/internal/biz/account_selector.go)、[账号选择循环](../../internal/biz/relay.go)、[重试健康归并](../../internal/biz/retry.go)。
 
 - 两种 selector 都有“60 秒内至少 10 个样本且错误比例 > 50%”的条件；新增连续失败阈值，与比例条件取或。建议首版 `N=5`，显式配置且校验正值；独立于 60 秒样本窗口，在成功后清零。
 - 连击以“同一请求、同一来源的最终健康结果”为单位，同源内部重试不能凑满 N；沿用已有错误分类，客户端取消、本地并发/RPM拒绝、计费提交失败和模型专属错误不能误伤整个来源。
 - 对用户建议的“直接半开”，本计划采用现有状态机的受控恢复：触发后 open 冷却，再 half-open 放行一个探测，失败重新 open、成功清理连击和旧失败窗口。直接放行全部半开请求不能解决低流量故障。需验证多并发探测时确实只有一个名额，不能只看 sentinel/常量。
 - 普通渠道与订阅账号同号继续用 `(kind,id)` 区分，覆盖排除集、健康统计与审计。候选快照保留请求内顺序；所有重选仍须重新验证撤权和可调度性。
-- 清除“固定尝试 8 次，池中第 9 个账号可用却返回无账号”的上限问题：优先消费现有候选/服务端排除能力，受请求预算约束且检测无进展，不简单改成更大的魔数。确认无生产调用后删账号 selector 的空转 Acquire/Release。
+- 清除“固定尝试 8 次，池中第 9 个账号可用却返回无账号”的上限问题：优先消费现有候选/服务端排除能力，受请求预算约束且检测无进展，不简单改成更大的魔数。已核实账号 selector 的 Acquire/Release 由 `RecordSubscriptionAccountSlot` 生产 RPC 调用，保留并修正空转描述。
 
 **验收**：不足 10 个窗口样本、跨窗口累计 N 次连败会隔离；中途一次成功清零；比例熔断仍生效；半开并发仅一个探测；同号来源互不污染；8 个被封账号后仍能命中可用账号；成功探测不被旧失败样本立即再次熔断。
 
 ### R3 · P1：明确能力错误、统一 501、保留受控故障切换
+
+**状态：已完成（2026-09-22，本地/隔离验收，未部署）**。
 
 **入口**：[provider factory](../../domain/upstream/provider/factory.go)、[routes.go](../../internal/server/routes.go)、[retry.go](../../internal/biz/retry.go)、现有兼容性矩阵和路由审计。
 
@@ -78,6 +84,8 @@
 **验收**：未知 `/v1/new_endpoint` 为同形状 501；精确/前缀已知路由仍优先；未知类型和预先可判定的不兼容端点零上游调用，上游才返回的能力错误终止后续替代执行；受控同模型切换有完整 attempt/计费归属；不同模型、无权限来源、已出流、提交失败均不触发替代执行。
 
 ### R4 · P1：SSE 空闲超时与总预算分离
+
+**状态：已完成（2026-09-22，本地/隔离验收，未部署）**。
 
 **入口**：[共享 SSE client](../../domain/upstream/provider/stream_timeout.go)、[adaptor 接入](../../internal/server/http_adaptor.go)、[SSE 转发](../../internal/server/http_raw_helpers.go)、[下游韧性](../../platform/grpc/resilience.go)。
 
@@ -130,7 +138,7 @@ Q1 安全/取消和 Q2 已发布能力验收可以前移到第一批收尾。样
 
 | 原文 / 段落 | 遗留项与本次处理 |
 | --- | --- |
-| `04-subscription-account-pool.md` §4.4、§11 | Redis fail-open 及 N×limit、跨副本选择状态 → D1；降级告警 → O2；封禁原因/恢复倒计时 → O4；固定 8 次选取、空转 Acquire/Release → R2；负载排队 → D2 |
+| `04-subscription-account-pool.md` §4.4、§11 | Redis fail-open 及 N×limit、跨副本选择状态 → D1；降级告警 → O2；封禁原因/恢复倒计时 → O4；固定 8 次选取 → R2；Acquire/Release 已核实为生产 RPC 负载回报，保留；负载排队 → D2 |
 | `05-multi-provider-adapters.md` §8 | provider/adaptor 双轨 → D6；未知类型默认兼容 → R3；手工特殊 IP 表、SSRF 全局绕过警示 → D5（警示前移 R3）；未实现原生类型 → D4；SSE 语义 → R4 |
 | `06-credential-rotation.md` §3.3、§7–8 | Redis 实现缺失/多副本 rotation → D1；冷账号补写、重试时间尺度、错误 Redis 注释、标准日志 → R1；计数器已存在，补告警/恢复信号；新增发现的 dirty 缓存失效路径也在 R1 |
 | `07-raw-relay.md` §6.2、§7 | “无模型健康”已过时，统一记录/成功失败矩阵 → O1；默认 embeddings 模型错误 → R3/O1/D4；未知路由 501 → R3；raw 完整 E2E → Q2；非 embeddings CostBound → D4 |
@@ -168,7 +176,7 @@ Q1 安全/取消和 Q2 已发布能力验收可以前移到第一批收尾。样
 2. **第二批交付 O1–O4，按测量推进 O5**：注册层观察、实际告警送达、冻结额度解释及账号运营闭环。不存在接收端时将送达验收保留待办，不能以规则通过冒充有人收到。
 3. **第三批按需交付 Q1–Q3**：Q1 安全/取消和 Q2 v0.31 未结验收前移；样式和性能以真实基线安排。D1 是扩副本前置门，其他 D 项按表中触发条件立项。
 
-实施时的验证入口（本次规划未重新执行这些业务测试）：
+验证入口如下；第一批实际已执行结果见[验收记录](../runbooks/first-batch-reliability-2026-09-22.md)，全量 verify、integration、补充 race、三方言迁移/CAS、Prometheus 规则及 24 场景流式隔离矩阵均通过：
 
 ```bash
 go test ./domain/upstream/credential ./domain/upstream/provider
@@ -176,8 +184,8 @@ go test ./app/channel/internal/biz ./internal/biz ./internal/server
 go test ./app/billing/internal/biz ./platform/cache ./platform/grpc
 go test -race ./domain/upstream/credential ./app/channel/internal/biz
 make test-integration
-python3 scripts/test-routing-e2e.py --driver=mysql
-python3 scripts/test-routing-e2e.py --driver=sqlite3
+python3 scripts/test-routing-e2e.py --driver=mysql --reliability-only
+python3 scripts/test-routing-e2e.py --driver=sqlite3 --skip-build --reliability-only
 make verify
 ```
 

@@ -335,7 +335,7 @@ func TestVoyageAIProviderRejectsUnsupportedRawPath(t *testing.T) {
 		Path:   "/chat/completions",
 		Body:   []byte(`{"model":"voyage-3"}`),
 	})
-	if err == nil || !strings.Contains(err.Error(), "not supported") {
+	if err == nil || !strings.Contains(err.Error(), "not implemented") {
 		t.Fatalf("error = %v, want not supported", err)
 	}
 }

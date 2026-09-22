@@ -415,6 +415,10 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			if retryResult.Fallback {
 				recordRelayFailover(ctx, "exhausted", retryResult.FallbackReason)
 			}
+			if retryResult.Channel != nil {
+				result.ChannelID = retryResult.Channel.ID
+				result.SubscriptionAccountID = retryResult.Channel.SubscriptionAccountID
+			}
 			result.Error = retryResult.Err
 			result.StatusCode = lastFailureStatus
 			if result.StatusCode == 0 {
@@ -636,6 +640,10 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		recordRelayFailover(ctx, failoverResult, retryResult.FallbackReason)
 	}
 	if retryResult != nil && retryResult.Err != nil {
+		if retryResult.Channel != nil {
+			result.ChannelID = retryResult.Channel.ID
+			result.SubscriptionAccountID = retryResult.Channel.SubscriptionAccountID
+		}
 		result.Error = retryResult.Err
 		result.StatusCode = lastFailureStatus
 		if result.StatusCode == 0 {
@@ -721,6 +729,9 @@ func rewriteRequestModel(body []byte, model string) []byte {
 }
 
 func mapUpstreamOrInternalStatus(err error) int {
+	if relaybiz.IsProtocolCapabilityMismatch(err) {
+		return http.StatusNotImplemented
+	}
 	if upstreamErr, ok := err.(*relayprovider.UpstreamHTTPError); ok {
 		return upstreamErr.StatusCode
 	}

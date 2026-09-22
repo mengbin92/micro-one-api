@@ -179,6 +179,10 @@ func pumpAnthropicToChat(src io.Reader, w *io.PipeWriter, model string) {
 			}
 		}
 	}
+	if !anthState.CompletedSent {
+		writeChatStreamError(w)
+		return
+	}
 	if err := scanner.Err(); err != nil {
 		writeChatStreamError(w)
 		return
@@ -231,6 +235,10 @@ func pumpResponsesToAnthropic(src io.Reader, w *io.PipeWriter) {
 			}
 		}
 	}
+	if !state.MessageStopSent {
+		writeAnthropicStreamError(w)
+		return
+	}
 	if err := scanner.Err(); err != nil {
 		writeAnthropicStreamError(w)
 		return
@@ -273,6 +281,10 @@ func pumpResponsesToChat(src io.Reader, w *io.PipeWriter, model string) {
 				return
 			}
 		}
+	}
+	if !state.Finalized {
+		writeChatStreamError(w)
+		return
 	}
 	if err := scanner.Err(); err != nil {
 		writeChatStreamError(w)

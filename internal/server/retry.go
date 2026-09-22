@@ -142,6 +142,8 @@ func upstreamStatus(err error) int {
 // Used for the writeError path to map upstream errors to proper HTTP responses.
 func mapUpstreamError(statusCode int) int {
 	switch statusCode {
+	case http.StatusNotImplemented:
+		return http.StatusNotImplemented
 	case http.StatusBadRequest:
 		return http.StatusBadRequest
 	case http.StatusUnauthorized, http.StatusForbidden:
@@ -155,8 +157,7 @@ func mapUpstreamError(statusCode int) int {
 		return http.StatusRequestEntityTooLarge
 	case http.StatusUnsupportedMediaType, http.StatusUnprocessableEntity:
 		// Compatible Responses providers use both statuses for deterministic
-		// request-shape rejections. Present them as a client request error after
-		// any safe Responses-to-Chat fallback has been exhausted.
+		// request-shape rejections. Present them as a client request error.
 		return http.StatusBadRequest
 	case http.StatusTooManyRequests:
 		return http.StatusTooManyRequests

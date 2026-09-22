@@ -2,7 +2,9 @@ package credential
 
 import (
 	"context"
-	"log"
+	"errors"
+	"go.uber.org/zap"
+	applogger "micro-one-api/platform/logging"
 	"net/http"
 	"strings"
 	"sync"
@@ -66,18 +68,18 @@ func (b *baseTokenProvider) Invalidate(accountID int64) {
 // resolve either seeds the cache from a still-valid stored token or performs a
 // refresh. force=true always refreshes.
 func (b *baseTokenProvider) resolve(ctx context.Context, accountID int64, force bool) (string, error) {
-	// domain-M1: prefer the in-process full credential cache when the access
-	// token is still valid. A previous refresh may have rotated the refresh
-	// token and failed to persist it (Store error); the persistent Lookup would
-	// then return the stale (now-invalid) refresh token and the account would
-	// brick on the next refresh. The cached creds carry the rotated token.
-	if cached, ok := b.cache.getCreds(accountID); ok && cached.AccessToken != "" && !staleExpiry(cached.ExpiresAt) && !force {
-		b.cache.set(accountID, cached.AccessToken, cached.ExpiresAt)
-		return cached.AccessToken, nil
+	if b.lookup == nil {
+		return "", ErrNotConfigured
 	}
-	creds, err := b.lookup.Lookup(ctx, accountID)
-	if err != nil {
-		return "", err
+	// Pending rotations are authoritative even after access expiry or force refresh.
+	creds, cached := b.cache.getCreds(accountID)
+	_, dirty := b.cache.pending()[accountID]
+	if !cached || !dirty {
+		var err error
+		creds, err = b.lookup.Lookup(ctx, accountID)
+		if err != nil {
+			return "", err
+		}
 	}
 	if creds == nil {
 		return "", ErrAccountNotFound
@@ -87,7 +89,9 @@ func (b *baseTokenProvider) resolve(ctx context.Context, accountID int64, force 
 	// in-process cache was cold (e.g. after a process restart) but the stored
 	// token is still good.
 	if !force && !staleExpiry(creds.ExpiresAt) && creds.AccessToken != "" {
-		b.cache.set(accountID, creds.AccessToken, creds.ExpiresAt)
+		if !dirty {
+			b.cache.setCreds(accountID, creds)
+		}
 		return creds.AccessToken, nil
 	}
 	if creds.RefreshToken == "" {
@@ -110,34 +114,80 @@ func (b *baseTokenProvider) resolve(ctx context.Context, accountID int64, force 
 	if newCreds.RefreshURL == "" {
 		newCreds.RefreshURL = creds.RefreshURL
 	}
-	if storeErr := persistWithRetry(ctx, b.lookup, accountID, newCreds); storeErr != nil {
-		// domain-M1: persistence failed but we hold a fully-valid refreshed
-		// credential set, including the ROTATED refresh token. Cache the whole
-		// set in-process so (a) the current request succeeds with the new access
-		// token and (b) the next resolve reuses the rotated refresh token instead
-		// of the stale one the persistent lookup would return (which would brick
-		// the account once the access token expires). Do NOT return the store
-		// error: a typical caller does `if err != nil { return err }`, which would
-		// fail a request that has a perfectly good token. Report the persist
-		// failure via log/meter only.
-		b.cache.setCreds(accountID, newCreds)
-		logPersistFailure(accountID, b.platform, storeErr)
-		return newCreds.AccessToken, nil
+	newCreds.Revision = creds.Revision
+	b.cache.markDirty(accountID, newCreds)
+	if err := b.persist(ctx, accountID); errors.Is(err, ErrCredentialConflict) {
+		return "", err
 	}
-	b.cache.setCreds(accountID, newCreds)
 	return newCreds.AccessToken, nil
+}
+
+// persist never logs storage error text: driver/RPC errors can contain secrets.
+func (b *baseTokenProvider) persist(ctx context.Context, id int64) error {
+	creds, ok := b.cache.getCreds(id)
+	if !ok {
+		return nil
+	}
+	err := persistWithRetry(ctx, b.lookup, id, creds)
+	switch {
+	case err == nil:
+		b.cache.setCreds(id, creds)
+		metrics.CredentialPersistResults.WithLabelValues(b.platform, "success").Inc()
+	case errors.Is(err, ErrCredentialConflict):
+		b.cache.discard(id)
+		metrics.CredentialPersistResults.WithLabelValues(b.platform, "conflict").Inc()
+		applogger.Log.Warn("credential persistence superseded by a newer authorization", zap.Int64("account_id", id), zap.String("platform", b.platform))
+	default:
+		logPersistFailure(id, b.platform, err)
+	}
+	b.reportPending()
+	return err
+}
+
+func (b *baseTokenProvider) reportPending() {
+	pending := b.cache.pending()
+	var oldest float64
+	for _, since := range pending {
+		oldest = max(oldest, time.Since(since).Seconds())
+	}
+	metrics.CredentialPending.WithLabelValues(b.platform).Set(float64(len(pending)))
+	metrics.CredentialPendingAge.WithLabelValues(b.platform).Set(oldest)
+}
+
+// PersistPending scans all dirty entries, including cold, long-lived tokens.
+// It only writes storage and never calls OAuth.
+func (b *baseTokenProvider) PersistPending(ctx context.Context, interval time.Duration) []int64 {
+	metrics.CredentialSweepInterval.WithLabelValues(b.platform).Set(interval.Seconds())
+	var attempted []int64
+	for id := range b.cache.pending() {
+		attempted = append(attempted, id)
+		if ctx.Err() != nil {
+			break
+		}
+		mu := b.lockFor(id)
+		mu.Lock()
+		if _, dirty := b.cache.pending()[id]; dirty {
+			_ = b.persist(ctx, id)
+		}
+		mu.Unlock()
+	}
+	b.reportPending()
+	return attempted
 }
 
 // persistWithRetry closes the refresh -> durable credential gap for transient
 // channel RPC/database failures. The refreshed credential remains cached when
 // all attempts fail, so request traffic keeps using the valid token while the
-// next refresh retries persistence with the rotated refresh token.
+// background sweep retries Store without refreshing OAuth again.
 func persistWithRetry(ctx context.Context, lookup AccountLookup, accountID int64, creds *AccountCredentials) error {
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
 		if err := lookup.Store(ctx, accountID, creds); err == nil {
 			return nil
 		} else {
+			if errors.Is(err, ErrCredentialConflict) {
+				return err
+			}
 			lastErr = err
 		}
 		if attempt < 2 {
@@ -164,26 +214,18 @@ func (b *baseTokenProvider) lockFor(accountID int64) *sync.Mutex {
 // authentication (domain-M1).
 func logPersistFailure(accountID int64, platform string, err error) {
 	metrics.CredentialPersistFailures.WithLabelValues(platform).Inc()
-	log.Printf("credential: account %d token refreshed but persist failed (will retry on next resolve): %v", accountID, err)
+	applogger.Log.Warn("credential persistence failed; pending periodic write", zap.Int64("account_id", accountID), zap.String("platform", platform))
 }
 
 // platformFromRefreshURL derives a low-cardinality platform label from the
 // token endpoint host (e.g. "kimi.moonshot.cn" -> "kimi").
 func platformFromRefreshURL(refreshURL string) string {
-	host := refreshURL
-	if i := strings.Index(host, "://"); i >= 0 {
-		host = host[i+3:]
+	for _, platform := range []string{"kimi", "claude", "codex"} {
+		if strings.Contains(refreshURL, platform) {
+			return platform
+		}
 	}
-	if i := strings.IndexByte(host, '/'); i >= 0 {
-		host = host[:i]
-	}
-	if i := strings.IndexByte(host, '.'); i > 0 {
-		return host[:i]
-	}
-	if host == "" {
-		return "unknown"
-	}
-	return host
+	return "unknown"
 }
 
 // newBaseTokenProvider builds the shared state for a platform provider.

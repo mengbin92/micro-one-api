@@ -568,6 +568,14 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	ad.Init(rc)
 
 	// Convert the inbound request body to the upstream format.
+	if err := relayprovider.ValidateEndpoint(plan.Channel.Type, string(inbound)); err != nil {
+		result.statusCode = http.StatusNotImplemented
+		result.err = err
+		result.write = func(w http.ResponseWriter) {
+			s.writeError(w, http.StatusNotImplemented, "protocol capability unavailable")
+		}
+		return result
+	}
 	upstreamFmt, upstreamBody, err := ad.ConvertRequest(rc, inbound, ensureRawModel(rawBody, plan.ResolvedModel))
 	if err != nil {
 		result.statusCode = http.StatusBadGateway
@@ -615,19 +623,10 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	if client == nil {
 		client = relayprovider.NewHTTPClient(30 * time.Second)
 	}
-	if isStream && client.Timeout > 0 {
-		// http.Client.Timeout covers the entire exchange including reading the
-		// response body, so a streaming (SSE) completion longer than the
-		// configured upstream timeout would be truncated mid-stream. Reuse the
-		// transport (and thus the connection pool) but drop the overall deadline;
-		// cancellation is governed by the request context and the transport's
-		// dial/response-header timeouts.
-		client = &http.Client{
-			Transport:     client.Transport,
-			CheckRedirect: client.CheckRedirect,
-			Jar:           client.Jar,
-		}
+	if isStream {
+		client = relayprovider.StreamHTTPClient(client)
 	}
+
 	requestID := generateRequestID()
 	channelID := fmt.Sprintf("%d", plan.Channel.ID)
 	var reservation *billingv1.ReserveQuotaResponse
@@ -688,10 +687,20 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		result.statusCode = resp.StatusCode
 		result.body = body
 		result.header = resp.Header.Clone()
-		result.err = fmt.Errorf("upstream returned status %d", resp.StatusCode)
+		result.err = classifyExecutorCapabilityError(formatToEndpoint(inbound), &relayprovider.UpstreamHTTPError{StatusCode: resp.StatusCode})
 		result.retryable = upstreamErr.RetryableAcrossAccounts()
 		result.retryableSameAccount = upstreamErr.RetryableOnSameAccount()
+		if relaybiz.IsProtocolCapabilityMismatch(result.err) {
+			result.retryable = false
+			result.retryableSameAccount = false
+			result.statusCode = http.StatusNotImplemented
+		}
 		result.write = func(w http.ResponseWriter) {
+			setErrorChannel(w, plan.Channel)
+			if relaybiz.IsProtocolCapabilityMismatch(result.err) {
+				s.writeNotImplemented(w, "protocol capability unavailable")
+				return
+			}
 			if upstreamErr.ShouldPassthrough() {
 				metrics.RelayUpstreamPassthroughTotal.WithLabelValues(string(upstreamErr.Kind), fmt.Sprint(resp.StatusCode)).Inc()
 				writeUpstreamPassthrough(w, resp.StatusCode, resp.Header, body)
@@ -734,10 +743,23 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 			w.Header().Set("Cache-Control", "no-cache")
 			w.Header().Set("Connection", "keep-alive")
 			w.WriteHeader(http.StatusOK)
+			terminal := &streamTerminalTracker{endpoint: streamEndpointForPath(formatToEndpoint(inbound))}
+			observed := io.TeeReader(reader, terminal)
+			var copyErr error
 			if flusher, ok := w.(http.Flusher); ok {
-				_, _ = io.Copy(&flushWriter{w: w, flusher: flusher, usageTracker: usageTracker}, reader)
+				_, copyErr = io.Copy(&flushWriter{w: w, flusher: flusher, usageTracker: usageTracker}, observed)
 			} else {
-				_, _ = io.Copy(&streamUsageWriter{w: w, usageTracker: usageTracker}, reader)
+				_, copyErr = io.Copy(&streamUsageWriter{w: w, usageTracker: usageTracker}, observed)
+			}
+			if closer, ok := reader.(io.Closer); ok {
+				_ = closer.Close()
+			}
+			if copyErr != nil || ctx.Err() != nil || !terminal.Success() {
+				setRelayObservationResult(ctx, "stream_error")
+				if accountUsage {
+					_ = s.releaseQuota(ctx, reservation.ReservationId, "incomplete upstream stream")
+				}
+				return
 			}
 			if accountUsage {
 				actualUsage := usageTracker.Usage()

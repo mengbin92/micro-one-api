@@ -89,8 +89,8 @@ func IsPostForwardError(err error) bool {
 }
 
 // ProtocolCapabilityError marks an upstream response as evidence that the
-// selected source cannot serve the requested protocol. Unlike a generic 405,
-// another source may satisfy this request and is therefore eligible for retry.
+// selected source cannot serve the requested protocol. This is terminal even
+// when a custom status policy would otherwise permit a retry.
 type ProtocolCapabilityError struct {
 	Err error
 }
@@ -117,18 +117,12 @@ func (p *RetryPolicy) IsRetryable(err error) bool {
 	if err == nil {
 		return false
 	}
-	if IsPostForwardError(err) {
+	if IsPostForwardError(err) || IsProtocolCapabilityMismatch(err) {
 		return false
 	}
 	var retryable *RetryableError
 	if errors.As(err, &retryable) && retryable.Retryable != nil {
 		return *retryable.Retryable
-	}
-	// Protocol capability mismatches are not malformed client requests. Another
-	// channel may support Responses natively or preserve the required reasoning
-	// history, so they remain retryable even with an older custom status list.
-	if IsProtocolCapabilityMismatch(err) {
-		return true
 	}
 
 	// Prefer typed RetryableError / UpstreamHTTPError values. UpstreamStatus
@@ -162,6 +156,10 @@ func isRetryableNetworkError(err error) bool {
 // upstream protocol limitation rather than invalid client input. Keep the 400
 // match deliberately narrow: other bad requests must still fail immediately.
 func IsProtocolCapabilityMismatch(err error) bool {
+	var capability *relayprovider.CapabilityError
+	if errors.As(err, &capability) {
+		return true
+	}
 	if _, ok := errors.AsType[*ProtocolCapabilityError](err); ok {
 		return true
 	}
@@ -180,7 +178,7 @@ func upstreamAttemptHealthy(err error) bool {
 	if err == nil {
 		return true
 	}
-	if IsPostForwardError(err) {
+	if IsPostForwardError(err) || IsProtocolCapabilityMismatch(err) {
 		return true
 	}
 	// A model-specific outage proves the channel itself is reachable. Keep
@@ -302,6 +300,9 @@ func extractStatus(msg string) int {
 // deliberately last-resort path, since any wording change in an error string
 // would silently break status-based channel failover.
 func UpstreamStatus(err error) int {
+	if IsExplicitCapabilityError(err) {
+		return 501
+	}
 	if err == nil {
 		return 0
 	}
@@ -845,7 +846,7 @@ func modelHealthDisposition(err error) (record, success bool) {
 	if err == nil {
 		return true, true
 	}
-	if IsPostForwardError(err) || isUpstreamPolicyRejection(err) || errors.Is(err, context.Canceled) {
+	if IsPostForwardError(err) || IsProtocolCapabilityMismatch(err) || isUpstreamPolicyRejection(err) || errors.Is(err, context.Canceled) {
 		return false, false
 	}
 	if isUpstreamModelUnavailable(err) {
@@ -868,4 +869,10 @@ func (e *RetryExecutor) RecordAccountHealth(ctx context.Context, accountID int64
 		return
 	}
 	_ = e.selector.RecordSubscriptionAccountHealth(ctx, accountID, success)
+}
+
+func IsExplicitCapabilityError(err error) bool {
+	var capability *relayprovider.CapabilityError
+	var protocol *ProtocolCapabilityError
+	return errors.As(err, &capability) || errors.As(err, &protocol)
 }

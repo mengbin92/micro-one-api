@@ -129,24 +129,25 @@ type abilityModel struct {
 func (abilityModel) TableName() string { return "abilities" }
 
 type subscriptionAccountModel struct {
-	ID           int64   `gorm:"column:id"`
-	Name         string  `gorm:"column:name"`
-	Platform     string  `gorm:"column:platform"`
-	AccountType  string  `gorm:"column:account_type"`
-	Status       int32   `gorm:"column:status"`
-	Group        string  `gorm:"column:group"`
-	Models       string  `gorm:"column:models"`
-	Priority     int64   `gorm:"column:priority"`
-	Weight       int32   `gorm:"column:weight"`
-	BaseURL      *string `gorm:"column:base_url"`
-	AccessToken  *string `gorm:"column:access_token"`
-	RefreshToken *string `gorm:"column:refresh_token"`
-	ExpiresAt    int64   `gorm:"column:expires_at"`
-	AccountID    string  `gorm:"column:account_id"`
-	Fingerprint  *string `gorm:"column:fingerprint"`
-	Metadata     *string `gorm:"column:metadata"`
-	CreatedAt    int64   `gorm:"column:created_at"`
-	UpdatedAt    int64   `gorm:"column:updated_at"`
+	CredentialRevision int64   `gorm:"column:credential_revision"`
+	ID                 int64   `gorm:"column:id"`
+	Name               string  `gorm:"column:name"`
+	Platform           string  `gorm:"column:platform"`
+	AccountType        string  `gorm:"column:account_type"`
+	Status             int32   `gorm:"column:status"`
+	Group              string  `gorm:"column:group"`
+	Models             string  `gorm:"column:models"`
+	Priority           int64   `gorm:"column:priority"`
+	Weight             int32   `gorm:"column:weight"`
+	BaseURL            *string `gorm:"column:base_url"`
+	AccessToken        *string `gorm:"column:access_token"`
+	RefreshToken       *string `gorm:"column:refresh_token"`
+	ExpiresAt          int64   `gorm:"column:expires_at"`
+	AccountID          string  `gorm:"column:account_id"`
+	Fingerprint        *string `gorm:"column:fingerprint"`
+	Metadata           *string `gorm:"column:metadata"`
+	CreatedAt          int64   `gorm:"column:created_at"`
+	UpdatedAt          int64   `gorm:"column:updated_at"`
 
 	LastUsedAt       int64   `gorm:"column:last_used_at"`
 	RateLimitedUntil int64   `gorm:"column:rate_limited_until"`
@@ -538,10 +539,17 @@ func (r *Repository) UpdateSubscriptionAccount(ctx context.Context, account *biz
 	}
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	if _, ok := r.subAccounts[account.ID]; !ok {
+	previous, ok := r.subAccounts[account.ID]
+	if !ok {
 		return biz.ErrSubscriptionAccountNotFound
 	}
-	r.subAccounts[account.ID] = account
+	if previous.CredentialRevision != account.CredentialRevision {
+		return biz.ErrCredentialConflict
+	}
+	cp := *account
+	cp.CredentialRevision++
+	r.subAccounts[account.ID] = &cp
+	account.CredentialRevision = cp.CredentialRevision
 	return nil
 }
 
@@ -1167,12 +1175,13 @@ func (r *Repository) createSubscriptionAccountDB(ctx context.Context, account *b
 }
 
 func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *biz.SubscriptionAccount) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		model, err := r.subscriptionAccountBizToModel(account)
 		if err != nil {
 			return err
 		}
-		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", account.ID).Updates(map[string]any{
+		result := tx.Model(&subscriptionAccountModel{}).Where("id = ? AND credential_revision = ?", account.ID, account.CredentialRevision).Updates(map[string]any{
+			"credential_revision":       gorm.Expr("credential_revision + 1"),
 			"name":                      model.Name,
 			"platform":                  model.Platform,
 			"account_type":              model.AccountType,
@@ -1205,11 +1214,19 @@ func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *b
 			"quota_timezone":            model.QuotaTimezone,
 			"model_mapping":             model.ModelMapping,
 			"updated_at":                model.UpdatedAt,
-		}).Error; err != nil {
-			return err
+		})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return biz.ErrCredentialConflict
 		}
 		return r.syncSubscriptionAccountAbilitiesTx(tx, account)
 	})
+	if err == nil {
+		account.CredentialRevision++
+	}
+	return err
 }
 
 func (r *Repository) deleteSubscriptionAccountDB(ctx context.Context, accountID int64) error {
@@ -2501,6 +2518,7 @@ func (r *Repository) subscriptionAccountModelToBiz(m *subscriptionAccountModel) 
 		AccessToken:            r.decryptKey(derefString(m.AccessToken)),
 		RefreshToken:           r.decryptKey(derefString(m.RefreshToken)),
 		ExpiresAt:              m.ExpiresAt,
+		CredentialRevision:     m.CredentialRevision,
 		AccountID:              m.AccountID,
 		Fingerprint:            derefString(m.Fingerprint),
 		Metadata:               derefString(m.Metadata),
@@ -2555,6 +2573,7 @@ func (r *Repository) subscriptionAccountBizToModel(a *biz.SubscriptionAccount) (
 		AccessToken:            new(accessToken),
 		RefreshToken:           new(refreshToken),
 		ExpiresAt:              a.ExpiresAt,
+		CredentialRevision:     a.CredentialRevision,
 		AccountID:              a.AccountID,
 		Fingerprint:            new(a.Fingerprint),
 		Metadata:               new(a.Metadata),

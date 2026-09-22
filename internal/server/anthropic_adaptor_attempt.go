@@ -49,7 +49,7 @@ func (s *HTTPServer) executeAnthropicChannelAttempt(
 
 	channelAdaptor, ok := adaptor.GetAdaptor(channel.Type)
 	if !ok {
-		return fmt.Errorf("no adaptor registered for channel type %d", channel.Type)
+		return &provider.CapabilityError{Feature: fmt.Sprintf("channel type %d", channel.Type)}
 	}
 	channelAdaptor.Init(relayContext)
 	upstreamFormat, upstreamBody, err := channelAdaptor.ConvertRequest(relayContext, adaptor.FormatAnthropicMessages, originalBody)
@@ -91,6 +91,9 @@ func (s *HTTPServer) executeAnthropicChannelAttempt(
 		}
 	}
 
+	if request.Stream {
+		client = provider.StreamHTTPClient(client)
+	}
 	response, err := client.Do(upstreamRequest) // #nosec G704 -- adaptor URL validated above.
 	if err != nil {
 		_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream error")
@@ -152,7 +155,7 @@ func (s *HTTPServer) writeAnthropicAdaptorResponse(
 	usage := extractRawUsage(rawUpstream, estimatedUsage.TotalTokens)
 	populateAnthropicUsageLog(&logInput, usage, time.Since(startedAt))
 	if err := s.commitQuota(ctx, reservationID, usage.TotalTokens, true, logInput); err != nil {
-		return err
+		return relaybiz.MarkPostForwardError(err)
 	}
 	logUpstreamUsage(logInput)
 	s.ingestUsageLog(ctx, logInput)
@@ -205,19 +208,22 @@ func (s *HTTPServer) writeAnthropicAdaptorStream(
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
+	terminal := &streamTerminalTracker{endpoint: EndpointAnthropicMessages}
+	var output io.Writer = w
 	if flusher, ok := w.(http.Flusher); ok {
-		output := &flushWriter{w: w, flusher: flusher}
-		_, _ = output.Write(firstEvent)
-		_, _ = io.Copy(output, reader)
-	} else {
-		_, _ = w.Write(firstEvent) // #nosec G705 -- SSE bytes are opaque protocol data, not HTML interpolation.
-		_, _ = io.Copy(w, reader)
+		output = &flushWriter{w: w, flusher: flusher}
 	}
+	_, copyErr := io.Copy(output, io.TeeReader(io.MultiReader(bytes.NewReader(firstEvent), reader), terminal))
 	if closer, ok := reader.(io.Closer); ok {
 		_ = closer.Close()
 	}
 	_ = response.Body.Close()
 
+	if copyErr != nil || ctx.Err() != nil || !terminal.Success() {
+		setRelayObservationResult(ctx, "stream_error")
+		_ = s.releaseQuota(ctx, reservationID, "incomplete upstream stream")
+		return nil
+	}
 	usage := upstreamUsage.Usage()
 	populateAnthropicUsageLog(&logInput, usage, time.Since(startedAt))
 	if err := s.commitQuotaAfterResponseObserved(ctx, reservationID, usage.TotalTokens, true, logInput); err != nil {

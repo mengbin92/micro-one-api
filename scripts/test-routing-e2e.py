@@ -3,6 +3,8 @@
 import argparse
 import copy
 import json
+import hashlib
+import hmac
 import os
 from pathlib import Path
 import secrets
@@ -22,6 +24,7 @@ def main():
     parser.add_argument("--image", default="micro-one-api-routing-e2e:local")
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--build-only", action="store_true")
+    parser.add_argument("--reliability-only", action="store_true", help="run legacy setup and the isolated streaming fault matrix")
     parser.add_argument("--keep", action="store_true", help="retain only this test project for diagnosis")
     args = parser.parse_args()
     scratch = Path(tempfile.mkdtemp(prefix="routing-e2e-"))
@@ -167,6 +170,17 @@ def main():
         print("[routing-e2e] production alert rule tests PASS", flush=True)
         run("up", "-d")
         test("legacy")
+        if args.reliability_only:
+            state = json.loads(run("run", "--rm", "-T", "--no-deps", "--entrypoint", "/bin/cat", "test-runner", "/state/state.json").stdout)
+            digest = hmac.new(settings["SERVICE_TOKEN"].encode(), state["reliability"].encode(), hashlib.sha256).hexdigest()
+            for executor in ("legacy", "orchestrator"):
+                gate("relay-gateway", RELAY_ORCHESTRATOR_ENABLED=str(executor == "orchestrator").lower(), RELAY_ORCHESTRATOR_TOKEN_HMAC_SHA256=digest)
+                base["services"]["test-runner"]["environment"]["RELIABILITY_EXECUTOR"] = executor
+                save()
+                run("up", "-d", "--no-deps", "relay-gateway", "relay-peer")
+                test("stream-reliability")
+            print("[routing-e2e] streaming reliability matrix PASS", flush=True)
+            return
         print("[routing-e2e] legacy compatibility PASS; applying fixture backfills", flush=True)
         audit = helper("group-audit", "--driver="+args.driver, "--base-ratios-env=ROUTING_E2E_BASE_RATIOS", "--output=/state/groups.json", check=False)
         if audit.returncode not in (0, 1):

@@ -225,6 +225,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 	recordRelayRetryOutcome(r.Context(), result.Fallback, result.Err, result.FallbackReason)
 
 	if result.Err != nil {
+		setErrorChannel(w, result.Channel)
 		if subscriptionResult != nil && result.Err == subscriptionErr {
 			if subscriptionResult.retryable {
 				metrics.RelaySubscriptionFailoverTotal.WithLabelValues(subscriptionRetryReason(*subscriptionResult), "exhausted").Inc()
@@ -238,7 +239,9 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 
 func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Request, provider relayprovider.Provider, req *relayprovider.ChatCompletionsRequest, reservation *billingv1.ReserveQuotaResponse, logInput usageLogInput) error {
 	startedAt := time.Now()
-	chunkChan, err := provider.ChatCompletionsStream(r.Context(), req)
+	streamCtx, cancelStream := context.WithCancel(r.Context())
+	defer cancelStream()
+	chunkChan, err := provider.ChatCompletionsStream(streamCtx, req)
 	if err != nil {
 		// 流式请求失败，释放预扣配额
 		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream stream error")
@@ -265,10 +268,19 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 	cacheCreation1hTokens := int64(0)
 	estimatedTokens := int64(0)
 	streamError := false
+	terminal := &streamTerminalTracker{endpoint: EndpointChatCompletions}
 	var lastUsage relayprovider.Usage
 	var streamCanonical *relayprovider.CanonicalUsage
 
 	for chunk := range chunkChan {
+		if chunk.Complete {
+			terminal.success = true
+			continue
+		}
+		if chunk.StreamError != nil || r.Context().Err() != nil {
+			streamError = true
+			break
+		}
 		if chunk.Usage.TotalTokens > 0 {
 			lastUsage = chunk.Usage
 			totalTokens = int64(chunk.Usage.TotalTokens)
@@ -293,12 +305,20 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 			continue
 		}
 
-		fmt.Fprintf(w, "data: %s\n\n", string(jsonData))
+		terminal.observeLine("data: " + string(jsonData))
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", string(jsonData)); err != nil {
+			streamError = true
+			break
+		}
 		flusher.Flush()
 	}
 
-	fmt.Fprintf(w, "data: [DONE]\n\n")
-	flusher.Flush()
+	streamError = streamError || r.Context().Err() != nil || !terminal.Success()
+	if !streamError {
+		_, err := fmt.Fprintf(w, "data: [DONE]\n\n")
+		streamError = err != nil
+		flusher.Flush()
+	}
 
 	// 流式请求完成，提交配额
 	if !streamError {
@@ -328,6 +348,7 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 			s.ingestUsageLogAfterResponse(logInput)
 		}
 	} else {
+		setRelayObservationResult(r.Context(), "stream_error")
 		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "stream error")
 	}
 	return nil

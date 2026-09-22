@@ -112,7 +112,7 @@ func (s *HTTPServer) writeResponsesUpstreamError(w http.ResponseWriter, err erro
 			}
 		}
 	}
-	s.writeJSON(w, clientStatus, map[string]any{"error": payload})
+	s.writeJSON(w, clientStatus, map[string]any{"error": errorIdentity(w, payload)})
 }
 
 func sanitizeResponsesErrorField(value string) string {
