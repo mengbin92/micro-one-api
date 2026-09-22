@@ -58,14 +58,15 @@ class MockHandler(BaseHTTPRequestHandler):
             self._respond(404, {"error": "not found"})
 
     def _handle_chat_completions(self):
-        content_length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_length) if content_length > 0 else b""
-
-        try:
-            req = json.loads(body) if body else {}
-        except json.JSONDecodeError:
-            self._respond(400, {"error": "invalid JSON"})
+        req = self._read_json()
+        if req is None:
             return
+        # Fault-injection hook: a prompt containing "mock-slow" delays the
+        # response so tests can stop/restart services mid-flight.
+        messages = req.get("messages", [])
+        prompt_hint = messages[-1].get("content", "") if messages else ""
+        if isinstance(prompt_hint, str) and "mock-slow" in prompt_hint:
+            time.sleep(8)
 
         model = req.get("model", "gpt-3.5-turbo")
         messages = req.get("messages", [])

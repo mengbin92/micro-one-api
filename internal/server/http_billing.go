@@ -249,6 +249,10 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 	if err != nil {
 		recordRelayQuotaOutcome(ctx, "commit_error")
 		setRelayObservationResult(ctx, "quota_error")
+		// Post-forward commit failures must be operator-visible: the upstream
+		// already served the request, the reservation is left to the expiry
+		// sweeper, and without a log line the only trace is the client's 502.
+		applogger.Log.Warn("quota commit RPC failed after upstream served request", zap.String("reservation_id", reservationID), zap.Error(err))
 		return nil, err
 	}
 	if len(details) > 0 {
