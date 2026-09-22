@@ -63,6 +63,8 @@ Chat、Messages、Responses 的旧入口流式结算对齐已有 executor 规则
 - `promtool test rules credential.test.yml routing.test.yml`：通过，包含 firing→恢复；未宣称通知已送达。
 - MySQL/SQLite 流式隔离矩阵：24/24 通过；[结构化证据](evidence/first-batch-stream-reliability-2026-09-22.json)记录镜像摘要、场景与实际调用/结算次数。两栈已自动清理。
 
+推送前补验：`make verify` 不包含 gosec，首次 pre-push 扫描发现三处 G115。熔断样本阈值改为校验 1–1000 后立即转换，避免在闭包内丢失范围信息；流式/非流式重试审计序号复用 `safecast` 饱和转换，防止窄化为负数。本机旧 gosec v2.26.1（Go 1.26 编译）另有 Go 1.27 语法解析错误，已按 `scripts/tool-versions.env` 安装 v2.28.0。修复后 `sh .githooks/pre-push` 全量扫描及 `go test ./platform/grpc ./internal/server ./pkg/safecast` 均通过，未新增规则豁免。
+
 隔离矩阵入口：`python3 scripts/test-routing-e2e.py --driver=mysql --reliability-only`；SQLite 使用 `--driver=sqlite3 --skip-build --reliability-only`。每种数据库运行 legacy/orchestrator × 普通渠道/订阅账号优先 × 500/连接拒绝/输出后断流，共 12 个场景。真实运行 gateway、channel、identity、billing、log 及数据库/Redis；只模拟上游。初始化先等待账号模型的异步投影完成，再设置映射，避免把初始化并发写入当成请求故障。
 
 部署前依次应用 108 迁移、更新 channel-service、再更新 relay-gateway；先只读盘点渠道类型并确认调用方不依赖已禁用的 Responses 协议替换。生产类型盘点、上线、外部告警送达、长时间观察、支付 F17 和多副本 D1 均不在本次本地交付事实内。

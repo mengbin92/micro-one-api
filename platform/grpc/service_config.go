@@ -21,14 +21,14 @@ func ServiceBreakerConfig(service string, timeout time.Duration) (*BreakerConfig
 	prefix := "GRPC_" + strings.ToUpper(service) + "_"
 	cfg := DefaultBreakerConfig(service)
 	cfg.FallbackStrategy = FallbackReject
-	samples := 5
+	samples := uint32(5)
 	ratio := 0.6
 	if raw := os.Getenv(prefix + "BREAKER_MIN_REQUESTS"); raw != "" {
 		value, err := strconv.Atoi(raw)
 		if err != nil || value < 1 || value > 1000 {
 			return nil, 0, fmt.Errorf("%sBREAKER_MIN_REQUESTS must be 1..1000", prefix)
 		}
-		samples = value
+		samples = uint32(value)
 	}
 	if raw := os.Getenv(prefix + "BREAKER_FAILURE_RATIO"); raw != "" {
 		value, err := strconv.ParseFloat(raw, 64)
@@ -51,7 +51,7 @@ func ServiceBreakerConfig(service string, timeout time.Duration) (*BreakerConfig
 		}
 	}
 	cfg.ReadyToTrip = func(counts gobreaker.Counts) bool {
-		return counts.Requests >= uint32(samples) && float64(counts.TotalFailures)/float64(counts.Requests) >= ratio
+		return counts.Requests >= samples && float64(counts.TotalFailures)/float64(counts.Requests) >= ratio
 	}
 	return cfg, timeout, nil
 }
