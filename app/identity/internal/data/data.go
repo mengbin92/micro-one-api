@@ -542,18 +542,28 @@ func (r *Repository) ConsumeTokenQuotaWithDedupe(ctx context.Context, userID, to
 	var remaining int64
 	applied := false
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		claim := &tokenQuotaDedupeModel{ReservationID: reservationID, UserID: userID, TokenID: tokenID, Amount: amount, CreatedAt: time.Now().Unix()}
-		insert := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(claim)
-		if insert.Error != nil {
-			return insert.Error
-		}
-		if insert.RowsAffected == 0 {
-			var existing tokenQuotaDedupeModel
-			if findErr := tx.Where("reservation_id = ? AND user_id = ? AND token_id = ?", reservationID, userID, tokenID).First(&existing).Error; findErr != nil {
-				return findErr
-			}
+		// Read-then-insert: the previous OnConflict-DoNothing + RowsAffected
+		// probe was dialect-dependent — on MySQL a duplicate can report
+		// RowsAffected != 0 (ON DUPLICATE KEY UPDATE / clientFoundRows), which
+		// sent replays down the deduction branch and crashed on a keyless
+		// claim UPDATE (ErrMissingWhereClause). Replay must return the
+		// recorded result, never re-deduct.
+		var existing tokenQuotaDedupeModel
+		findErr := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("reservation_id = ? AND user_id = ? AND token_id = ?", reservationID, userID, tokenID).
+			First(&existing).Error
+		if findErr == nil {
 			remaining = existing.Remaining
 			return nil
+		}
+		if !errors.Is(findErr, gorm.ErrRecordNotFound) {
+			return findErr
+		}
+		claim := &tokenQuotaDedupeModel{ReservationID: reservationID, UserID: userID, TokenID: tokenID, Amount: amount, CreatedAt: time.Now().Unix()}
+		// A concurrent first-time claim hits the unique key and rolls back —
+		// safe: the caller retries and lands on the replay branch above.
+		if err := tx.Create(claim).Error; err != nil {
+			return err
 		}
 		var token tokenModel
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND user_id = ?", tokenID, userID).First(&token).Error; err != nil {
