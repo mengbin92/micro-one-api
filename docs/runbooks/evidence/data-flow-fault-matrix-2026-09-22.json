@@ -2,7 +2,16 @@
   "captured_at_utc": "2026-09-22T06:40:00Z",
   "environment": "local isolated docker-compose (MySQL oneapi, redis, mock upstreams); no production data or traffic",
   "scope": "fault matrix F7-F18 (F17 partial); F19/F20/F22 recorded separately in data-flow-failover-isolated-2026-09-22.json",
-  "code_commits_at_execution": ["52762f26", "fe746176", "5125ac9e", "8926b5e5", "04382c4c", "ad353c0c", "f92417eb", "f37aaa4e"],
+  "code_commits_at_execution": [
+    "52762f26",
+    "fe746176",
+    "5125ac9e",
+    "8926b5e5",
+    "04382c4c",
+    "ad353c0c",
+    "f92417eb",
+    "f37aaa4e"
+  ],
   "scenarios": [
     {
       "id": "F7_F8_settlement_crash_recovery",
@@ -84,7 +93,31 @@
     }
   ],
   "production_deploy_status": {
-    "deployed": "31250763 (cross-source failover)",
-    "pending_deploy": ["52762f26 DNS retryable", "5125ac9e dedupe replay", "8926b5e5 commit-failure log", "04382c4c stream failure metric", "ad353c0c usage drop metric", "f92417eb credential persist metric + kimi override", "f37aaa4e wire ordering"]
+    "deployed": "31250763 (cross-source failover) at 2026-09-22 03:22 UTC; all matrix fixes at 2026-09-22 06:54 UTC",
+    "deployed_commits": [
+      "52762f26",
+      "5125ac9e",
+      "8926b5e5",
+      "04382c4c",
+      "ad353c0c",
+      "f92417eb",
+      "f37aaa4e"
+    ],
+    "services": [
+      "relay-gateway",
+      "identity-service",
+      "channel-service"
+    ],
+    "rollback_images": "docker-compose-<svc>:rollback-20260922-fm",
+    "post_deploy_smoke": "all three Up; relay serving production traffic (kimi-k3, async settlement enqueued); metrics 200; new counters registered (export on first increment); identity/channel logs clean",
+    "read_only_recheck": {
+      "captured_at_utc": "2026-09-22T07:53:58Z",
+      "result": "All three containers running with zero restarts; running image IDs match latest tags; all images linux/amd64; rollback tags present; relay host /metrics HTTP 200 and identity/channel in-container /metrics successful",
+      "running_images": {
+        "relay-gateway": "sha256:a595bc22b348c9cfa9de6deb5c0c692a6ec6fa2973decbc80a476fdb80011d85",
+        "identity-service": "sha256:4e221390861b82cc64958cc5ea2cddbf1b71bc57826d2d86135558a78c678d1f",
+        "channel-service": "sha256:60da01d1f357fbdb7e33ad5d63aa31679c41d884898ca16ed406e90a31b2d521"
+      }
+    }
   }
 }
