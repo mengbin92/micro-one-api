@@ -31,6 +31,7 @@ func (s *ConfigService) GetConfig(ctx context.Context, req *configv1.GetConfigRe
 	}
 	return &configv1.GetConfigResponse{
 		Id:        entry.ID,
+		Revision:  entry.Revision,
 		Namespace: entry.Namespace,
 		Key:       entry.Key,
 		Value:     entry.Value,
@@ -48,6 +49,7 @@ func (s *ConfigService) ListConfigs(ctx context.Context, req *configv1.ListConfi
 	for i, e := range entries {
 		items[i] = &configv1.GetConfigResponse{
 			Id:        e.ID,
+			Revision:  e.Revision,
 			Namespace: e.Namespace,
 			Key:       e.Key,
 			Value:     e.Value,
@@ -62,7 +64,11 @@ func (s *ConfigService) SetConfig(ctx context.Context, req *configv1.SetConfigRe
 	if err := s.uc.SetConfig(ctx, req.Namespace, req.Key, req.Value, req.Comment); err != nil {
 		return nil, err
 	}
-	return &configv1.SetConfigResponse{Success: true}, nil
+	entry, err := s.uc.GetConfig(ctx, req.Namespace, req.Key)
+	if err != nil {
+		return nil, err
+	}
+	return &configv1.SetConfigResponse{Success: true, Revision: entry.Revision}, nil
 }
 
 func (s *ConfigService) DeleteConfig(ctx context.Context, req *configv1.DeleteConfigRequest) (*configv1.DeleteConfigResponse, error) {
@@ -143,7 +149,12 @@ func (s *ConfigService) HandleSetConfig(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	entry, err := s.uc.GetConfig(r.Context(), namespace, key)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "revision": entry.Revision})
 }
 
 func (s *ConfigService) HandleDeleteConfig(w http.ResponseWriter, r *http.Request) {
@@ -204,6 +215,7 @@ func parseTwoSegments(path, prefix string) (string, string) {
 func configEntryToMap(e *biz.ConfigEntry) map[string]any {
 	return map[string]any{
 		"id":         e.ID,
+		"revision":   e.Revision,
 		"namespace":  e.Namespace,
 		"key":        e.Key,
 		"value":      e.Value,

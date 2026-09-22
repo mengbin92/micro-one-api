@@ -209,6 +209,54 @@ func (r *ledgerRepo) ListLedgersWithFilters(ctx context.Context, userID string, 
 	return r.listLedgersInternal(ctx, userID, page, pageSize, ledgerType, startTime, endTime, false)
 }
 
+func (r *ledgerRepo) ListLedgersWithOptions(ctx context.Context, options biz.LedgerListOptions) ([]*biz.Ledger, int64, error) {
+	offset := max(int((options.Page-1)*options.PageSize), 0)
+	query := r.data.db.WithContext(ctx).Model(&ledgerModel{})
+	if options.UserID != "" {
+		query = query.Where("billing_ledgers.user_id = ?", options.UserID)
+	}
+	if options.Type != "" {
+		query = query.Where("billing_ledgers.type = ?", options.Type)
+	}
+	if options.SubscriptionAccountID != 0 {
+		query = query.Where("billing_ledgers.subscription_account_id = ?", options.SubscriptionAccountID)
+	}
+	if !options.StartTime.IsZero() {
+		query = query.Where("billing_ledgers.created_at >= ?", options.StartTime)
+	}
+	if !options.EndTime.IsZero() {
+		query = query.Where("billing_ledgers.created_at <= ?", options.EndTime)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	fetchQuery := query.Select("billing_ledgers.*, users.username AS username").Joins(r.ledgerUserJoin())
+	orderColumn := map[string]string{
+		"id": "billing_ledgers.id", "user_id": "billing_ledgers.user_id",
+		"type": "billing_ledgers.type", "amount": "billing_ledgers.amount",
+		"balance_after": "billing_ledgers.balance_after", "reference_id": "billing_ledgers.reference_id",
+		"created_at": "billing_ledgers.created_at",
+	}[options.OrderBy]
+	if orderColumn == "" {
+		orderColumn = "billing_ledgers.created_at"
+	}
+	direction := "DESC"
+	if strings.EqualFold(options.Order, "asc") {
+		direction = "ASC"
+	}
+	var models []ledgerModel
+	if err := fetchQuery.Order(orderColumn + " " + direction).Order("billing_ledgers.id " + direction).
+		Limit(int(options.PageSize)).Offset(offset).Find(&models).Error; err != nil {
+		return nil, 0, err
+	}
+	ledgers := make([]*biz.Ledger, len(models))
+	for i := range models {
+		ledgers[i] = ledgerFromModel(&models[i])
+	}
+	return ledgers, total, nil
+}
+
 func (r *ledgerRepo) listLedgersInternal(ctx context.Context, userID string, page, pageSize int32, ledgerType string, startTime, endTime time.Time, _ bool) ([]*biz.Ledger, int64, error) {
 	var models []ledgerModel
 	var total int64

@@ -12,9 +12,12 @@ import (
 	"micro-one-api/pkg/jsonx"
 
 	billingv1 "micro-one-api/api/billing/v1"
+	"micro-one-api/domain/requesttrace"
 	relayprovider "micro-one-api/domain/upstream/provider"
+	relayadaptor "micro-one-api/internal/adaptor"
 	relaybiz "micro-one-api/internal/biz"
 	applogger "micro-one-api/platform/logging"
+	"micro-one-api/platform/metrics"
 )
 
 func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
@@ -79,20 +82,6 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Subscription-account channels (Codex/Claude OAuth) are routed through the
-	// hybrid adaptor layer when the feature flag is on. The adaptor owns the
-	// full upstream interaction (protocol conversion, identity mimicry, OAuth
-	// token, stream bridging). API-key channels fall through to the existing
-	// provider-factory path below.
-	if s.hybridAdaptorEnabled && plan.Channel != nil && isSubscriptionChannel(plan.Channel.Type) {
-		// req.Model still holds the client-facing model name at this point (it is
-		// reassigned to the resolved model only further below). Reconstruct the raw
-		// body from the decoded request since the original body was consumed.
-		rawBody, _ := jsonx.Marshal(req)
-		s.handleChatCompletionsViaAdaptor(w, r, plan, req.Model, rawBody, sessionHash)
-		return
-	}
-
 	clientModel := req.Model
 
 	// Use resolved model name for upstream calls
@@ -101,7 +90,46 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 	// Use RetryExecutor for upstream calls with channel fallback
 	retryStartedAt := time.Now()
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
+	if s.hybridAdaptorEnabled {
+		retryExecutor.WithCrossSourceFallback().WithExternalSubscriptionHealth()
+	}
+	var subscriptionResult *subscriptionAdaptorResult
+	var subscriptionErr error
+	var subscriptionChannel *relaybiz.Channel
+	var extraAttempts int32
 	result := retryExecutor.ExecuteWithCandidates(r.Context(), plan, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
+		if subscriptionResult != nil && subscriptionResult.retryable && !relaybiz.SameRoutingSource(subscriptionChannel, ch) {
+			metrics.RelaySubscriptionFailoverTotal.WithLabelValues(subscriptionRetryReason(*subscriptionResult), "switched").Inc()
+		}
+		subscriptionResult = nil
+		subscriptionErr = nil
+		trace := requesttrace.FromContext(ctx)
+		trace.Number += extraAttempts
+		ctx = requesttrace.WithAttempt(ctx, trace)
+		if s.hybridAdaptorEnabled && isSubscriptionChannel(ch.Type) {
+			attemptPlan, err := relayPlanForAttempt(ctx, s.relayUsecase, plan, ch, clientModel)
+			if err != nil {
+				return err
+			}
+			attempt := s.runSubscriptionAttempt(r.WithContext(ctx), attemptPlan, clientModel, originalBody, relayadaptor.FormatOpenAIChatCompletions, sessionHash)
+			extraAttempts += attempt.attemptCount - 1
+			subscriptionResult = &attempt
+			subscriptionChannel = ch
+			if subscriptionAttemptSucceeded(attempt) {
+				attempt.write(w)
+				s.bindSubscriptionSession(ctx, plan.Auth.Group, sessionHash, attemptPlan)
+				return nil
+			}
+			if attempt.retryable && !attempt.concurrencyFull && !attempt.rpmFull && !attempt.sessionWindowFull && !isSubscriptionRateLimitStatus(attempt.statusCode) {
+				s.blockRuntimeAccount(ctx, subscriptionAccountIDFromPlan(attemptPlan), attempt.statusCode, attempt.err)
+			}
+			err = &relaybiz.RetryableError{Status: attempt.statusCode, Err: attempt.err, Retryable: &attempt.retryable}
+			if attempt.upstreamSucceeded {
+				err = relaybiz.MarkPostForwardError(err)
+			}
+			subscriptionErr = err
+			return err
+		}
 		startedAt := time.Now()
 		// Reserve quota
 		requestID := generateRequestID()
@@ -115,7 +143,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		req.Model = currentResolvedModel
 		// P3 #6: derive the billing model name from billing_model_source.
 		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)
-		reservation, reserveErr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimatedTokens, billingModel, fmt.Sprintf("%d", ch.ID), subscriptionAccountIDFromPlan(plan), plan.Auth.RoutingContext)
+		reservation, reserveErr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimatedTokens, billingModel, fmt.Sprintf("%d", ch.ID), ch.SubscriptionAccountID, plan.Auth.RoutingContext)
 		if reserveErr != nil {
 			return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
 		}
@@ -137,13 +165,14 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 				Endpoint:              "/v1/chat/completions",
 				ModelName:             s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
 				ChannelID:             ch.ID,
-				SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
+				SubscriptionAccountID: ch.SubscriptionAccountID,
 				IsStream:              true,
 			}
 			// v0.11.0 review M1: record the source that actually executed the
 			// request, not the original plan, so failover attribution is correct.
 			streamLogInput.applyChannelInputs(ch)
-			return s.handleStreamingResponse(w, r, provider, &req, reservation, streamLogInput)
+			streamLogInput.applyReservation(reservation)
+			return s.handleStreamingResponse(w, r.WithContext(ctx), provider, &req, reservation, streamLogInput)
 		}
 
 		// Non-streaming call
@@ -176,11 +205,12 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		// v0.11.0 review M1: record the source that actually executed the
 		// request, not the original plan, so failover attribution is correct.
 		logInput.applyChannelInputs(ch)
+		logInput.applyReservation(reservation)
 		// §4.3: the envelope comes from the provider-proven canonical buckets
 		// (Anthropic) or the OpenAI field shape — never the channel type.
 		logInput.applyEnvelope(envelopeFromProviderUsage(resp.Usage, resp.Canonical))
 		if err := s.commitQuota(ctx, reservation.ReservationId, actualTokens, true, logInput); err != nil {
-			return err
+			return relaybiz.MarkPostForwardError(err)
 		}
 		logUpstreamUsage(logInput)
 		s.ingestUsageLog(ctx, logInput)
@@ -195,6 +225,13 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 	recordRelayRetryOutcome(r.Context(), result.Fallback, result.Err, result.FallbackReason)
 
 	if result.Err != nil {
+		if subscriptionResult != nil && result.Err == subscriptionErr {
+			if subscriptionResult.retryable {
+				metrics.RelaySubscriptionFailoverTotal.WithLabelValues(subscriptionRetryReason(*subscriptionResult), "exhausted").Inc()
+			}
+			subscriptionResult.write(w)
+			return
+		}
 		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")
 	}
 }

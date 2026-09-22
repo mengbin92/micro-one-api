@@ -1,0 +1,402 @@
+{
+  "captured_at_utc": "2026-09-22T01:36:27.218106+00:00",
+  "environment": "production",
+  "model_equivalence": "User confirmed channel 1 kimi-k3 and Kimi subscription account 5 k3 are the same model offered by different suppliers.",
+  "queries": {
+    "channel": [
+      {
+        "id": 1,
+        "status": 1,
+        "priority": 1,
+        "health_status": "degraded",
+        "circuit_opened_until": 0,
+        "consecutive_failures": 2
+      }
+    ],
+    "account": [
+      {
+        "id": 5,
+        "status": 1,
+        "platform": "kimi",
+        "priority": 0,
+        "account_type": "static_key"
+      }
+    ],
+    "channel_mapping": [
+      {
+        "id": 124,
+        "enabled": 1,
+        "model_id": 143,
+        "channel_id": 1,
+        "upstream_model_id": "Kimi-K3"
+      }
+    ],
+    "subscription_mapping": [
+      {
+        "id": 289,
+        "enabled": 1,
+        "model_id": 143,
+        "group_name": "default",
+        "upstream_model_id": "k3",
+        "subscription_account_id": 5
+      }
+    ],
+    "test_token": [
+      {
+        "id": 28,
+        "models": "kimi-k3",
+        "status": 1,
+        "used_quota": 0,
+        "expired_time": 1790126453,
+        "remain_quota": 4096,
+        "unlimited_quota": 0
+      }
+    ],
+    "test_user_baseline": [
+      {
+        "requests_last_5m": 0,
+        "max_reservation_id": 58901
+      }
+    ],
+    "migration_versions": [
+      {
+        "owner": "billing",
+        "version": "106_add_reservation_request_trace"
+      },
+      {
+        "owner": "log",
+        "version": "107_add_log_request_trace"
+      },
+      {
+        "owner": "channel",
+        "version": "100_channel_routing_relation_overrides"
+      },
+      {
+        "owner": "identity",
+        "version": "098_identity_ordered_token_groups"
+      }
+    ],
+    "separate_supplier_origins": [
+      {
+        "different_base_urls": true
+      }
+    ]
+  },
+  "services": {
+    "relay-gateway": {
+      "running": true,
+      "restart_count": 0,
+      "image_id": "sha256:a45f1360bf8508002a3abf192689f1ebab79372893942265468371ca1b4a6a9d",
+      "started_at": "2026-09-21T04:53:02.652900912Z"
+    },
+    "billing-service": {
+      "running": true,
+      "restart_count": 0,
+      "image_id": "sha256:6aeffcc0034a96c4a86e5546768e18aab0435054b166e081fcc49204d4662027",
+      "started_at": "2026-09-21T04:50:03.387185778Z"
+    },
+    "admin-api": {
+      "running": true,
+      "restart_count": 0,
+      "image_id": "sha256:5de1882d7e612e54f265f4df7b12d184a587317c0639cbae987acd9e68b5e923",
+      "started_at": "2026-09-21T04:51:33.736889034Z"
+    },
+    "channel-service": {
+      "running": true,
+      "restart_count": 0,
+      "image_id": "sha256:ad9ae5cd2f24ec40eece76ddf3b686a2d2fdb405974f9d692ce99e2ee9d0d00b",
+      "started_at": "2026-09-20T09:52:50.386244739Z"
+    },
+    "identity-service": {
+      "running": true,
+      "restart_count": 0,
+      "image_id": "sha256:8185350b735274ac185f099b2ac304e046c7ebc7d184349a7a1e514051305ef6",
+      "started_at": "2026-09-20T03:33:35.709801732Z"
+    },
+    "log-service": {
+      "running": true,
+      "restart_count": 0,
+      "image_id": "sha256:5bbcab8f00c5160834f8eb283d9b52a1e5672e96ab77179605151e7c5cb01f98",
+      "started_at": "2026-09-21T04:48:43.091048405Z"
+    },
+    "monitor-worker": {
+      "running": true,
+      "restart_count": 0,
+      "image_id": "sha256:8a7977b1a1a0e3ade2339197afcbeecb59c17ba2889d7a8c03ff1d107f715d2c",
+      "started_at": "2026-09-22T01:30:22.126310993Z"
+    },
+    "notify-worker": {
+      "running": true,
+      "restart_count": 0,
+      "image_id": "sha256:4e5efdc18c9a43750a1d781631980a3aaab88499261f4e81e0cb8c080aafd70b",
+      "started_at": "2026-09-10T05:02:45.520937973Z"
+    },
+    "config-service": {
+      "running": true,
+      "restart_count": 0,
+      "image_id": "sha256:ad07bd117fea94c552d74681621dbfb1911dcc712ff2ebc5b31b1f27889982c6",
+      "started_at": "2026-09-20T09:52:50.408454315Z"
+    }
+  },
+  "billing_flags": {
+    "BILLING_CANONICAL_USAGE_MODE": "charge",
+    "BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST": "5:k3",
+    "BILLING_CACHE_CREATION_MODE": "charge"
+  },
+  "monitor_flags": {
+    "CHANNEL_GRPC_ENDPOINT": "channel-service:9002",
+    "CHANNEL_HEALTH_CHECK_ENABLED": "false"
+  },
+  "audit_readback": [
+    {
+      "root_sha256_prefix": "fcc08d8e4df0",
+      "source_kind": "channel",
+      "http_status": 200,
+      "success": true,
+      "attempt_total": 1,
+      "event_count": 2,
+      "retention": "log-service retention: 30 days"
+    },
+    {
+      "root_sha256_prefix": "d5801c92a129",
+      "source_kind": "subscription",
+      "http_status": 200,
+      "success": true,
+      "attempt_total": 1,
+      "event_count": 2,
+      "retention": "log-service retention: 30 days"
+    },
+    {
+      "root_sha256_prefix": "e844e407fd3c",
+      "source_kind": "channel",
+      "http_status": 200,
+      "success": true,
+      "attempt_total": 1,
+      "event_count": 2,
+      "retention": "log-service retention: 30 days"
+    },
+    {
+      "root_sha256_prefix": "7c9904bcdd22",
+      "source_kind": "empty_control",
+      "http_status": 200,
+      "success": true,
+      "attempt_total": 0,
+      "event_count": 0,
+      "retention": "log-service retention: 30 days"
+    }
+  ],
+  "credential_file_exists": true,
+  "credential_file_mode": "0o600",
+  "temporary_rpc_binary_removed": true,
+  "scope": "User-authorized production prerequisite preparation for two suppliers of the same canonical model; not authorization or evidence for the full failure matrix.",
+  "local_code_revision": "4413d3678d23161224aac921cc7111c7a99646e4",
+  "component_observations": {
+    "monitor_endpoint_repair": {
+      "captured_at_utc": "2026-09-22T01:16:57.948444+00:00",
+      "before": {
+        "image_id": "sha256:8a7977b1a1a0e3ade2339197afcbeecb59c17ba2889d7a8c03ff1d107f715d2c",
+        "container_id": "8352da607722180c0221dfa36da6e16ffbfa99fe84bfdc69f915c5ae643e0de1",
+        "endpoint": "<unset>",
+        "metrics": [
+          "micro_one_api_dependency_grpc_errors_total{error_code=\"Unavailable\",method=\"/api.channel.v1.ChannelService/ListChannels\",service=\"channel-service\"} 549",
+          "micro_one_api_dependency_grpc_latency_seconds_sum{method=\"/api.channel.v1.ChannelService/ListChannels\",service=\"channel-service\",status=\"Unavailable\"} 0.05613716799999998",
+          "micro_one_api_dependency_grpc_latency_seconds_count{method=\"/api.channel.v1.ChannelService/ListChannels\",service=\"channel-service\",status=\"Unavailable\"} 549",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"error\",le=\"0.05\"} 549",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"error\",le=\"0.1\"} 549",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"error\",le=\"0.25\"} 549",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"error\",le=\"0.5\"} 549",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"error\",le=\"1\"} 549",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"error\",le=\"2.5\"} 549",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"error\",le=\"5\"} 549",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"error\",le=\"10\"} 549",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"error\",le=\"30\"} 549",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"error\",le=\"60\"} 549",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"error\",le=\"+Inf\"} 549",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_sum{status=\"error\"} 0.06218006899999998",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_count{status=\"error\"} 549",
+          "micro_one_api_monitor_channel_health_check_runs_total{status=\"error\"} 549"
+        ]
+      },
+      "backup_path": "/opt/micro-one-api/docker-compose/docker-compose.yml.bak.data-flow-20260922T011658Z",
+      "compose_before_sha256": "ac8ceb9cb6e4fbcf821e36eee7b9050c02c9a25cec917a5bafbbb82b00239b0b",
+      "compose_after_sha256": "4eba98e7775c249e96610e7e7cc89356610617e44672862b50aeec2047d1e4d9",
+      "recreate_exit_code": 0,
+      "status": "PASS",
+      "after": {
+        "image_id": "sha256:8a7977b1a1a0e3ade2339197afcbeecb59c17ba2889d7a8c03ff1d107f715d2c",
+        "container_id": "4cb70f3c7f8effa9dad0a47844332c01615d65b79f723635ba0bc50334a3bcc9",
+        "running": true,
+        "restart_count": 0,
+        "started_at": "2026-09-22T01:16:58.977558038Z",
+        "endpoint": "channel-service:9002",
+        "metrics": [
+          "micro_one_api_dependency_grpc_latency_seconds_sum{method=\"/api.channel.v1.ChannelService/ListChannels\",service=\"channel-service\",status=\"OK\"} 0.021382695",
+          "micro_one_api_dependency_grpc_latency_seconds_count{method=\"/api.channel.v1.ChannelService/ListChannels\",service=\"channel-service\",status=\"OK\"} 1",
+          "micro_one_api_dependency_grpc_latency_seconds_sum{method=\"/api.channel.v1.ChannelService/RecordChannelHealth\",service=\"channel-service\",status=\"OK\"} 0.007564156",
+          "micro_one_api_dependency_grpc_latency_seconds_count{method=\"/api.channel.v1.ChannelService/RecordChannelHealth\",service=\"channel-service\",status=\"OK\"} 1",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"success\",le=\"0.05\"} 0",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"success\",le=\"0.1\"} 0",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"success\",le=\"0.25\"} 0",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"success\",le=\"0.5\"} 0",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"success\",le=\"1\"} 1",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"success\",le=\"2.5\"} 1",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"success\",le=\"5\"} 1",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"success\",le=\"10\"} 1",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"success\",le=\"30\"} 1",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"success\",le=\"60\"} 1",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_bucket{status=\"success\",le=\"+Inf\"} 1",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_sum{status=\"success\"} 0.670664166",
+          "micro_one_api_monitor_channel_health_check_run_duration_seconds_count{status=\"success\"} 1",
+          "micro_one_api_monitor_channel_health_check_runs_total{status=\"success\"} 1",
+          "micro_one_api_monitor_channel_health_probe_duration_seconds_bucket{status=\"error\",le=\"0.05\"} 0",
+          "micro_one_api_monitor_channel_health_probe_duration_seconds_bucket{status=\"error\",le=\"0.1\"} 0",
+          "micro_one_api_monitor_channel_health_probe_duration_seconds_bucket{status=\"error\",le=\"0.25\"} 0",
+          "micro_one_api_monitor_channel_health_probe_duration_seconds_bucket{status=\"error\",le=\"0.5\"} 0",
+          "micro_one_api_monitor_channel_health_probe_duration_seconds_bucket{status=\"error\",le=\"1\"} 1",
+          "micro_one_api_monitor_channel_health_probe_duration_seconds_bucket{status=\"error\",le=\"2.5\"} 1",
+          "micro_one_api_monitor_channel_health_probe_duration_seconds_bucket{status=\"error\",le=\"5\"} 1",
+          "micro_one_api_monitor_channel_health_probe_duration_seconds_bucket{status=\"error\",le=\"10\"} 1",
+          "micro_one_api_monitor_channel_health_probe_duration_seconds_bucket{status=\"error\",le=\"30\"} 1",
+          "micro_one_api_monitor_channel_health_probe_duration_seconds_bucket{status=\"error\",le=\"+Inf\"} 1",
+          "micro_one_api_monitor_channel_health_probe_duration_seconds_sum{status=\"error\"} 0.641659525",
+          "micro_one_api_monitor_channel_health_probe_duration_seconds_count{status=\"error\"} 1",
+          "micro_one_api_monitor_channel_health_probe_total{reason=\"invalid_response\",status=\"error\"} 1"
+        ]
+      },
+      "finished_at_utc": "2026-09-22T01:17:02.180043+00:00"
+    },
+    "upstream_model_list_probe": {
+      "captured_at_utc": "2026-09-22T01:19:27.236616+00:00",
+      "channel_id": 1,
+      "channel_state": {
+        "status": 1,
+        "health_status": "healthy",
+        "circuit_opened_until": 0,
+        "health_consecutive_failures": 0
+      },
+      "base_url_path": "/api/v1",
+      "probes": [
+        {
+          "suffix": "/models",
+          "http_status": 200,
+          "content_type": "text/html",
+          "json_valid": false
+        },
+        {
+          "suffix": "/v1/models",
+          "http_status": 200,
+          "content_type": "text/html",
+          "json_valid": false
+        }
+      ]
+    },
+    "test_identity_preparation": {
+      "captured_at_utc": "2026-09-22T01:20:53.702500+00:00",
+      "environment": "production",
+      "status": "PASS",
+      "token": {
+        "id": 28,
+        "name": "df-preflight-20260922",
+        "models": "kimi-k3",
+        "status": 1,
+        "user_id": 2,
+        "used_quota": 0,
+        "expired_time": 1790126453,
+        "remain_quota": 4096,
+        "unlimited_quota": 0
+      },
+      "auth_snapshot": {
+        "allowed_models": [
+          "kimi-k3"
+        ],
+        "group": "default",
+        "token_enabled": true,
+        "token_id": 28,
+        "user_enabled": true,
+        "user_id": 2
+      },
+      "credential_path": "/root/.local/state/micro-one-api/acceptance-20260922/kimi-k3-token.json",
+      "credential_file_mode": "0o600",
+      "models_http_status": 200,
+      "kimi_k3_visible": true,
+      "listed_model_count": 1,
+      "generation_requests_sent": 0,
+      "wallet_mutations": false,
+      "finite_quota_configuration": "Created via authenticated IdentityService.CreateAccessToken; restricted the newly created, unused token with a compare-and-set update because that RPC does not expose finite quota options. No token validation occurred before the quota update.",
+      "unauthenticated_audit_http_status": 401,
+      "missing_parameters_audit_http_status": 400,
+      "user_baseline": {
+        "requests_last_5m": 0,
+        "max_reservation_id": 58901
+      }
+    },
+    "monitor_probe_hold": {
+      "captured_at_utc": "2026-09-22T01:30:25.328194+00:00",
+      "status": "ACTIVE_PROBE_HELD",
+      "reason": "Channel 1 returns HTML for the models-list endpoint. Avoid turning an unsupported health probe into repeated routing health failures. Dependency RPC and writeback were verified before holding the probe.",
+      "backup_path": "/opt/micro-one-api/docker-compose/docker-compose.yml.bak.probe-hold-20260922T013021Z",
+      "endpoint": "channel-service:9002",
+      "channel_health_check_enabled": "false",
+      "image_id": "sha256:8a7977b1a1a0e3ade2339197afcbeecb59c17ba2889d7a8c03ff1d107f715d2c",
+      "started_at": "2026-09-22T01:30:22.126310993Z",
+      "running": true,
+      "health_http_status": 200,
+      "resume_condition": "Fix or explicitly configure a compatible upstream health probe, then remove the monitor-only CHANNEL_HEALTH_CHECK_ENABLED=false override and verify channel health outcomes."
+    },
+    "probe_health_restoration": {
+      "captured_at_utc": "2026-09-22T01:50:53.642425+00:00",
+      "reason": "Restore only the two invalid-model-list failures introduced by this preparation, against the observed healthy/zero-failure baseline at 01:19:27 UTC. No success event, success timestamp, model-generation request or billing entry was fabricated.",
+      "states": [
+        {
+          "stage": "before",
+          "status": 1,
+          "failures": 2,
+          "last_failure": 1790040420,
+          "last_success": 1790040109,
+          "health_status": "degraded",
+          "matches_probe_error": true,
+          "circuit_opened_until": 0
+        },
+        {
+          "stage": "mutation",
+          "affected_rows": 1
+        },
+        {
+          "stage": "after",
+          "status": 1,
+          "failures": 0,
+          "last_failure": 1790040420,
+          "last_success": 1790040109,
+          "health_status": "healthy",
+          "circuit_opened_until": 0
+        }
+      ],
+      "status": "RESTORED"
+    }
+  },
+  "completed_at_utc": "2026-09-22T01:50:53.642425+00:00",
+  "final_channel_health": {
+    "stage": "after",
+    "status": 1,
+    "failures": 0,
+    "last_failure": 1790040420,
+    "last_success": 1790040109,
+    "health_status": "healthy",
+    "circuit_opened_until": 0
+  },
+  "readiness": {
+    "same_model_two_supplier_configuration": "READY",
+    "restricted_test_identity": "READY_UNTIL_2026-09-23T09:20:53+08:00",
+    "request_audit_readback": "READY",
+    "monitor_dependency_rpc": "VERIFIED",
+    "monitor_active_upstream_probe": "HELD_INCOMPATIBLE_MODELS_ENDPOINT",
+    "mid_request_cross_source_failover": "BLOCKED_BY_CURRENT_EXECUTION_PATH",
+    "failure_matrix": "NOT_EXECUTED",
+    "canonical_charge_expansion": "NOT_AUTHORIZED_OR_PERFORMED"
+  },
+  "raw_baseline_files": [
+    "data-flow-readonly-2026-09-22.txt",
+    "data-flow-coverage-2026-09-22.json"
+  ],
+  "note": "Top-level queries and service snapshot were captured at captured_at_utc; final_channel_health is the later guarded restoration result at completed_at_utc. Component observation timestamps preserve this sequence."
+}

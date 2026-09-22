@@ -351,7 +351,7 @@ func (s *IdentityService) ConsumeTokenQuota(ctx context.Context, req *identityv1
 			Message: "invalid token_id or amount",
 		}, nil
 	}
-	remaining, err := s.uc.ConsumeTokenQuota(ctx, req.UserId, req.TokenId, req.Amount)
+	remaining, err := s.uc.ConsumeTokenQuotaWithDedupe(ctx, req.UserId, req.TokenId, req.Amount, req.ReservationId)
 	if err != nil {
 		applogger.Log.Warn("ConsumeTokenQuota failed", zap.Error(err))
 		return &identityv1.ConsumeTokenQuotaReply{

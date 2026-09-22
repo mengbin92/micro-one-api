@@ -9,6 +9,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/platform/metrics"
 )
 
 const (
@@ -35,6 +36,9 @@ type StreamEventBus struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	wg            sync.WaitGroup
+	claimers      map[string]struct{}
+	processingMu  sync.Mutex
+	processing    map[string]struct{}
 	closed        bool
 	mu            sync.Mutex
 }
@@ -52,6 +56,8 @@ func NewStreamEventBus(redisClient *redis.Client, consumerID string) *StreamEven
 		readTimeout:   5 * time.Second,
 		ctx:           ctx,
 		cancel:        cancel,
+		claimers:      make(map[string]struct{}),
+		processing:    make(map[string]struct{}),
 	}
 }
 
@@ -120,6 +126,37 @@ func (b *StreamEventBus) Subscribe(topic string, handler Handler) {
 	// Start consume loop if not already running for this topic
 	b.wg.Add(1)
 	go b.consumeLoop(topic)
+	if _, exists := b.claimers[topic]; !exists {
+		b.claimers[topic] = struct{}{}
+		b.wg.Add(1)
+		go b.claimLoop(topic)
+	}
+}
+
+const (
+	pendingClaimInterval = 10 * time.Second
+	pendingClaimIdle     = 30 * time.Second
+)
+
+// claimLoop reclaims messages whose consumer died before ACK. The idle
+// threshold is longer than the normal read timeout so a live slow handler is
+// not reclaimed prematurely; handlers must remain idempotent.
+func (b *StreamEventBus) claimLoop(topic string) {
+	defer b.wg.Done()
+	ticker := time.NewTicker(pendingClaimInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-b.ctx.Done():
+			return
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(b.ctx, pendingClaimInterval)
+			if _, err := b.ClaimPending(ctx, topic, pendingClaimIdle); err != nil {
+				fmt.Printf("error reclaiming pending messages from %s: %v\n", topic, err)
+			}
+			cancel()
+		}
+	}
 }
 
 // consumeLoop continuously reads and processes events from a stream.
@@ -168,10 +205,20 @@ func (b *StreamEventBus) consumeLoop(topic string) {
 // processMessage processes a single message from a stream.
 func (b *StreamEventBus) processMessage(topic string, msg *redis.XMessage) {
 	ctx := context.Background()
+	key := topic + ":" + msg.ID
+	b.processingMu.Lock()
+	b.processing[key] = struct{}{}
+	b.processingMu.Unlock()
+	defer func() {
+		b.processingMu.Lock()
+		delete(b.processing, key)
+		b.processingMu.Unlock()
+	}()
 
 	// Extract payload
 	payloadData, ok := msg.Values["payload"].(string)
 	if !ok {
+		metrics.EventStreamFailures.WithLabelValues(topic, "malformed_payload").Inc()
 		fmt.Printf("missing payload in message from %s\n", topic)
 		return
 	}
@@ -179,6 +226,7 @@ func (b *StreamEventBus) processMessage(topic string, msg *redis.XMessage) {
 	// Unmarshal payload
 	var payload Event
 	if err := jsonx.Unmarshal([]byte(payloadData), &payload); err != nil {
+		metrics.EventStreamFailures.WithLabelValues(topic, "malformed_payload").Inc()
 		fmt.Printf("failed to unmarshal payload from %s: %v\n", topic, err)
 		return
 	}
@@ -200,6 +248,7 @@ func (b *StreamEventBus) processMessage(topic string, msg *redis.XMessage) {
 	handlerFailed := false
 	for _, handler := range handlers {
 		if err := handler(ctx, payload); err != nil {
+			metrics.EventStreamFailures.WithLabelValues(topic, "handler_error").Inc()
 			fmt.Printf("handler error for topic %s: %v (message %s left pending for retry)\n", topic, err, msg.ID)
 			handlerFailed = true
 			// Continue processing other handlers so a single slow/buggy handler
@@ -353,6 +402,16 @@ func (b *StreamEventBus) ClaimPending(ctx context.Context, topic string, minIdle
 		}
 
 		for i := range msgs {
+			key := topic + ":" + msgs[i].ID
+			b.processingMu.Lock()
+			inFlight := false
+			if _, ok := b.processing[key]; ok {
+				inFlight = true
+			}
+			b.processingMu.Unlock()
+			if inFlight {
+				continue
+			}
 			b.processMessage(topic, &msgs[i])
 			claimed++
 		}

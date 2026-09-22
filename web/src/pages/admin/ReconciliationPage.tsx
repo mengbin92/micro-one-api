@@ -42,6 +42,24 @@ interface ReconciliationDiscrepancy {
   log_quota?: number;
   count_diff?: number;
   quota_diff?: number;
+  subscription_id?: number;
+  window?: string;
+  window_start?: number;
+  subscription_used_usd?: number;
+  ledger_subscription_cost?: number;
+  subscription_difference?: number;
+  pending_receivable_quota?: number;
+  overdraft_quota?: number;
+  refunded_order_count?: number;
+  refunded_order_money_cents?: number;
+  reversal_ledger_count?: number;
+  reversal_ledger_amount?: number;
+  money_cents_diff?: number;
+  trade_no?: string;
+  group_id?: number;
+  plan_id?: number;
+  money_cents?: number;
+  stuck_since?: number;
 }
 
 interface ReconciliationRun {
@@ -52,6 +70,8 @@ interface ReconciliationRun {
   total_channels: number;
   total_reservations: number;
   discrepancy_count: number;
+  status?: string;
+  error_message?: string;
   discrepancies?: ReconciliationDiscrepancy[];
 }
 
@@ -73,36 +93,54 @@ function formatQuota(value: number) {
 function discrepancyTypeLabel(type?: string) {
   if (type === 'channel_usage') return t("渠道用量");
   if (type === 'ledger_log_consume') return t("双写一致性");
+  if (type === 'subscription_absorption') return t("订阅用量");
+  if (type === 'receivable_mirror') return t("应收余额");
+  if (type === 'refund_reversal') return t("退款冲正");
+  if (type === 'stuck_issuance') return t("发放卡单");
   return t("账户余额");
 }
 
 function discrepancyObject(item: ReconciliationDiscrepancy) {
   if (item.type === 'channel_usage') return t(`渠道 ${item.channel_id ?? '-'}`);
   if (item.type === 'ledger_log_consume') return 'ledger / logs';
+  if (item.type === 'subscription_absorption') return t(`订阅 ${item.subscription_id ?? '-'}`);
+  if (item.type === 'receivable_mirror') return t(`用户 ${item.user_id ?? '-'}`);
+  if (item.type === 'refund_reversal') return item.trade_no ?? t("退款订单");
+  if (item.type === 'stuck_issuance') return item.trade_no ?? t("订单");
   return t(`用户 ${item.user_id ?? '-'}`);
 }
 
 function discrepancyExpected(item: ReconciliationDiscrepancy) {
   if (item.type === 'channel_usage') return formatQuota(item.expected_used_quota ?? 0);
   if (item.type === 'ledger_log_consume') return t(`${formatQuota(item.ledger_count ?? 0)} 条 / ${formatQuota(item.ledger_quota ?? 0)}`);
+  if (item.type === 'subscription_absorption') return formatQuota(item.ledger_subscription_cost ?? 0);
+  if (item.type === 'receivable_mirror') return formatQuota(item.pending_receivable_quota ?? 0);
+  if (item.type === 'refund_reversal') return formatQuota(item.refunded_order_money_cents ?? 0);
   return formatQuota(item.expected_quota ?? 0);
 }
 
 function discrepancyActual(item: ReconciliationDiscrepancy) {
   if (item.type === 'channel_usage') return formatQuota(item.actual_used_quota ?? 0);
   if (item.type === 'ledger_log_consume') return t(`${formatQuota(item.log_count ?? 0)} 条 / ${formatQuota(item.log_quota ?? 0)}`);
+  if (item.type === 'subscription_absorption') return formatQuota(item.subscription_used_usd ?? 0);
+  if (item.type === 'receivable_mirror') return formatQuota(item.overdraft_quota ?? 0);
+  if (item.type === 'refund_reversal') return formatQuota(item.reversal_ledger_amount ?? 0);
   return formatQuota(item.actual_quota ?? 0);
 }
 
 function discrepancyDiff(item: ReconciliationDiscrepancy) {
   if (item.type === 'channel_usage') return formatQuota(item.difference ?? 0);
   if (item.type === 'ledger_log_consume') return t(`${formatQuota(item.count_diff ?? 0)} 条 / ${formatQuota(item.quota_diff ?? 0)}`);
+  if (item.type === 'subscription_absorption') return formatQuota(item.subscription_difference ?? 0);
+  if (item.type === 'refund_reversal') return formatQuota(item.money_cents_diff ?? 0);
   return formatQuota((item.actual_quota ?? 0) - (item.expected_quota ?? 0));
 }
 
 function discrepancyDetail(item: ReconciliationDiscrepancy) {
   if (item.type === 'channel_usage') return t(`成本 ${formatQuota(item.upstream_cost ?? 0)}`);
   if (item.type === 'ledger_log_consume') return t("consume 记录数 / quota");
+  if (item.type === 'subscription_absorption') return t(`${item.window ?? '-'} / ${formatDate(item.window_start ?? 0)}`);
+  if (item.type === 'stuck_issuance') return t(`金额 ${formatQuota(item.money_cents ?? 0)} / ${formatDate(item.stuck_since ?? 0)}`);
   return t(`账目净额 ${formatQuota(item.ledger_net_amount ?? 0)}，冻结金额 ${formatQuota(item.frozen_quota ?? 0)}`);
 }
 

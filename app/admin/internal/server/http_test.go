@@ -364,6 +364,7 @@ type adminHTTPBillingClient struct {
 	ledgerGetEntry     *commonv1.LedgerEntry
 	ledgerGetErr       error
 	ledgerGetLastID    int64
+	attemptsLastReq    *billingv1.ListRequestAttemptsRequest
 }
 
 func (c *adminHTTPBillingClient) TopUpQuota(ctx context.Context, req *billingv1.TopUpQuotaRequest, opts ...grpc.CallOption) (*billingv1.TopUpQuotaResponse, error) {
@@ -442,6 +443,14 @@ func (c *adminHTTPBillingClient) GetLedgerEntry(ctx context.Context, req *billin
 		return nil, c.ledgerGetErr
 	}
 	return &billingv1.GetLedgerEntryResponse{Entry: c.ledgerGetEntry}, nil
+}
+
+func (c *adminHTTPBillingClient) ListRequestAttempts(ctx context.Context, req *billingv1.ListRequestAttemptsRequest, opts ...grpc.CallOption) (*billingv1.ListRequestAttemptsResponse, error) {
+	c.attemptsLastReq = req
+	return &billingv1.ListRequestAttemptsResponse{
+		Items: []*billingv1.RequestAttempt{{RootRequestId: req.GetRootRequestId(), RequestId: "attempt-2", AttemptNumber: 2, ReservationId: "reservation-2", Status: "committed", SourceKind: "channel", UpstreamModelId: "mapped-model"}},
+		Total: 2,
+	}, nil
 }
 
 func (c *adminHTTPBillingClient) AggregateUsage(ctx context.Context, req *billingv1.AggregateUsageRequest, opts ...grpc.CallOption) (*billingv1.AggregateUsageResponse, error) {
@@ -607,6 +616,35 @@ func (s *adminHTTPSystemOptionsStore) Set(ctx context.Context, key, value string
 func newAdminHTTPTestServer(identity identityv1.IdentityServiceClient, channel channelv1.ChannelServiceClient, billing billingv1.BillingServiceClient) http.Handler {
 	adminSvc := service.NewAdminService(billing, identity, channel, nil)
 	return NewHTTPServer(":0", adminSvc, nil)
+}
+
+func TestAdminHTTPRequestAttemptsRequiresAuthAndForwardsPaging(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	billing := &adminHTTPBillingClient{}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, billing)
+
+	unauth := httptest.NewRequest(http.MethodGet, "/api/log/attempts?user_id=42&root_request_id=root-1", nil)
+	unauthRec := httptest.NewRecorder()
+	srv.ServeHTTP(unauthRec, unauth)
+	require.Equal(t, http.StatusUnauthorized, unauthRec.Code)
+
+	bad := httptest.NewRequest(http.MethodGet, "/api/log/attempts?user_id=42", nil)
+	bad.Header.Set("Authorization", "Bearer admin-token")
+	badRec := httptest.NewRecorder()
+	srv.ServeHTTP(badRec, bad)
+	require.Equal(t, http.StatusBadRequest, badRec.Code)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/log/attempts?user_id=42&root_request_id=root-1&page=2&page_size=7", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.NotNil(t, billing.attemptsLastReq)
+	require.Equal(t, "42", billing.attemptsLastReq.GetUserId())
+	require.Equal(t, "root-1", billing.attemptsLastReq.GetRootRequestId())
+	require.EqualValues(t, 2, billing.attemptsLastReq.GetPage())
+	require.EqualValues(t, 7, billing.attemptsLastReq.GetPageSize())
+	require.Contains(t, rec.Body.String(), "attempt-2")
 }
 
 func newAdminHTTPTestServerWithOptions(identity identityv1.IdentityServiceClient, channel channelv1.ChannelServiceClient, billing billingv1.BillingServiceClient, store *adminHTTPSystemOptionsStore) http.Handler {

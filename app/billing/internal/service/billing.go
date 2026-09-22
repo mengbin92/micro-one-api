@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"net/http"
@@ -34,6 +35,7 @@ type BillingService struct {
 	billingv1.UnimplementedBillingServiceServer
 	uc             *biz.BillingUsecase
 	asyncUc        *biz.AsyncBillingUsecase // optional; nil = synchronous path
+	reporter       biz.SettlementSideEffectReporter
 	paymentUc      *biz.PaymentUsecase
 	alipayVerifier biz.PaymentNotifyVerifier
 	// expectedAlipayAppID is the locally-configured Alipay merchant app id.
@@ -93,6 +95,16 @@ func (s *BillingService) SetAsyncBillingUsecase(uc *biz.AsyncBillingUsecase) {
 	s.asyncUc = uc
 }
 
+func (s *BillingService) SetSettlementSideEffectReporter(reporter biz.SettlementSideEffectReporter) {
+	if s == nil {
+		return
+	}
+	s.reporter = reporter
+	if s.asyncUc != nil {
+		s.asyncUc.SetSideEffectReporter(reporter)
+	}
+}
+
 func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.ReserveQuotaRequest) (*billingv1.ReserveQuotaResponse, error) {
 	if req == nil || req.UserId == "" || req.RequestId == "" || req.Model == "" || req.EstimatedTokens < 0 {
 		return nil, biz.ErrRoutingContextInvalid
@@ -100,6 +112,20 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 	if req.CostBound != nil {
 		ctx = routing.WithCostBound(ctx, routing.CostBound{Protocol: req.CostBound.Protocol, InputTokens: req.CostBound.InputTokens, UpstreamModel: req.CostBound.UpstreamModel})
 	}
+	if req.AttemptNumber < 0 || len(req.RootRequestId) > 128 || len(req.UpstreamModelId) > 255 || (req.SourceKind != "" && req.SourceKind != "channel" && req.SourceKind != "subscription") {
+		return nil, biz.ErrRoutingContextInvalid
+	}
+	trace := requesttrace.Attempt{RootRequestID: req.RootRequestId, Number: req.AttemptNumber, SourceKind: req.SourceKind, UpstreamModelID: req.UpstreamModelId}
+	if trace.RootRequestID == "" {
+		trace.RootRequestID = req.RequestId
+	}
+	if len(trace.RootRequestID) > 128 {
+		return nil, biz.ErrRoutingContextInvalid
+	}
+	if trace.Number == 0 {
+		trace.Number = 1
+	}
+	ctx = requesttrace.WithAttempt(ctx, trace)
 	reservation, err := s.uc.ReserveQuota(ctx, req.UserId, req.RequestId, req.EstimatedTokens, req.Model, req.ChannelId, req.SubscriptionAccountId, routingdto.ContextFromProto(req.RoutingContext))
 	if err != nil {
 		if req.RoutingContext != nil || errors.Is(err, biz.ErrRoutingContextConflict) {
@@ -116,6 +142,11 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 	// regardless of float precision; the relay converts back to a
 	// display USD when needed.
 	resp := &billingv1.ReserveQuotaResponse{
+		RootRequestId:      reservation.RootRequestID,
+		AttemptNumber:      reservation.AttemptNumber,
+		RequestId:          reservation.RequestID,
+		SourceKind:         reservation.SourceKind,
+		UpstreamModelId:    reservation.UpstreamModelID,
 		Success:            true,
 		ReservationId:      reservation.ReservationID,
 		ReservedAmount:     reservation.Amount,
@@ -219,14 +250,20 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 				ErrorMessage: "reservation_id is required for async commit on the success path",
 			}, nil
 		}
-		s.asyncUc.Settle(ctx, &biz.SettleTask{
-			RequestID:     req.ReservationId,
-			ReservationID: req.ReservationId,
-			ActualTokens:  req.ActualTokens,
-			Success:       true,
-			Usage:         usage,
-			Timestamp:     time.Now(),
-		})
+		if err := s.asyncUc.Settle(ctx, &biz.SettleTask{
+			RequestID:             req.ReservationId,
+			ReservationID:         req.ReservationId,
+			UserID:                "",
+			Model:                 req.UpstreamModelId,
+			ChannelID:             "",
+			SubscriptionAccountID: req.SubscriptionAccountId,
+			ActualTokens:          req.ActualTokens,
+			Success:               true,
+			Usage:                 usage,
+			Timestamp:             time.Now(),
+		}); err != nil {
+			return &billingv1.CommitQuotaResponse{Success: false, ErrorMessage: fmt.Sprintf("async settlement not accepted: %v", err)}, nil
+		}
 		return &billingv1.CommitQuotaResponse{
 			Success:         true,
 			CommittedAmount: 0, // provisional; authoritative amount written by the worker
@@ -250,6 +287,11 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 			Success:      false,
 			ErrorMessage: err.Error(),
 		}, nil
+	}
+	if s.reporter != nil && req.Success && req.SubscriptionAccountId > 0 && committedAmount > 0 {
+		if reportErr := s.reporter.RecordSubscriptionAccountQuotaUsage(ctx, req.SubscriptionAccountId, req.ReservationId, float64(committedAmount)/float64(biz.AmountScale), time.Now()); reportErr != nil {
+			applogger.Log.Warn("subscription account quota reporting failed", zap.String("reservation_id", req.ReservationId), zap.Error(reportErr))
+		}
 	}
 
 	return &billingv1.CommitQuotaResponse{
@@ -533,15 +575,16 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 		endTime = req.GetEndTime().AsTime()
 	}
 
-	// Use filtered query if type or time range is specified
 	ledgerType := req.GetType()
-	if req.GetSubscriptionAccountId() != 0 {
-		ledgers, total, err = s.uc.ListLedgersBySubscriptionAccount(ctx, req.GetSubscriptionAccountId(), page, pageSize)
-	} else if ledgerType != "" || !startTime.IsZero() || !endTime.IsZero() {
-		ledgers, total, err = s.uc.ListLedgersWithFilters(ctx, req.UserId, page, pageSize, ledgerType, startTime, endTime)
-	} else {
-		ledgers, total, err = s.uc.ListLedgers(ctx, req.UserId, page, pageSize)
+	orderBy, order, orderErr := normalizeLedgerOrder(req.GetOrderBy())
+	if orderErr != nil {
+		return nil, orderErr
 	}
+	ledgers, total, err = s.uc.ListLedgersWithOptions(ctx, biz.LedgerListOptions{
+		UserID: req.UserId, Page: page, PageSize: pageSize, Type: ledgerType,
+		StartTime: startTime, EndTime: endTime, SubscriptionAccountID: req.GetSubscriptionAccountId(),
+		OrderBy: orderBy, Order: order,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -619,6 +662,25 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 		Entries: entries,
 		Total:   total,
 	}, nil
+}
+
+func normalizeLedgerOrder(value string) (string, string, error) {
+	parts := strings.Fields(strings.ToLower(strings.TrimSpace(value)))
+	if len(parts) == 0 {
+		return "created_at", "desc", nil
+	}
+	allowed := map[string]bool{"id": true, "user_id": true, "type": true, "amount": true, "balance_after": true, "reference_id": true, "created_at": true}
+	if len(parts) > 2 || !allowed[parts[0]] {
+		return "", "", status.Error(codes.InvalidArgument, "invalid ledger order_by")
+	}
+	direction := "asc"
+	if len(parts) == 2 {
+		direction = parts[1]
+	}
+	if direction != "asc" && direction != "desc" {
+		return "", "", status.Error(codes.InvalidArgument, "invalid ledger order direction")
+	}
+	return parts[0], direction, nil
 }
 
 func (s *BillingService) GetLedgerEntry(ctx context.Context, req *billingv1.GetLedgerEntryRequest) (*billingv1.GetLedgerEntryResponse, error) {
@@ -1081,12 +1143,13 @@ func (s *BillingService) RefundPaymentOrder(ctx context.Context, req *billingv1.
 		return &billingv1.RefundPaymentOrderResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 	return &billingv1.RefundPaymentOrderResponse{
-		Success:            true,
-		RefundedQuota:      res.RefundedQuota,
-		BalanceAfter:       res.BalanceAfter,
-		SubscriptionId:     res.SubscriptionID,
-		SubscriptionAction: res.SubscriptionAct,
-		LedgerDedupeKey:    res.LedgerDedupeKey,
+		Success:              true,
+		RefundedQuota:        res.RefundedQuota,
+		BalanceAfter:         res.BalanceAfter,
+		SubscriptionId:       res.SubscriptionID,
+		SubscriptionAction:   res.SubscriptionAct,
+		LedgerDedupeKey:      res.LedgerDedupeKey,
+		ExternalRefundStatus: res.ExternalRefundStatus,
 	}, nil
 }
 
@@ -1294,6 +1357,8 @@ func reconciliationRunToProto(run *biz.ReconciliationResult) (*billingv1.Reconci
 		TotalChannels:     totalChannels,
 		TotalReservations: totalReservations,
 		DiscrepancyCount:  discrepancyCount,
+		Status:            run.Status,
+		ErrorMessage:      run.ErrorMessage,
 	}
 	for _, d := range run.AccountInconsistencies {
 		out.Discrepancies = append(out.Discrepancies, &billingv1.ReconciliationDiscrepancy{
@@ -1326,6 +1391,18 @@ func reconciliationRunToProto(run *biz.ReconciliationResult) (*billingv1.Reconci
 			CountDiff:   d.CountDiff,
 			QuotaDiff:   d.QuotaDiff,
 		})
+	}
+	for _, d := range run.SubscriptionInconsistencies {
+		out.Discrepancies = append(out.Discrepancies, &billingv1.ReconciliationDiscrepancy{Type: biz.ReconciliationDiscrepancyTypeSubscription, UserId: fmt.Sprintf("%d", d.UserID), SubscriptionId: d.SubscriptionID, Window: d.Window, WindowStart: d.WindowStart, SubscriptionUsedUsd: d.SubscriptionUsedUSD, LedgerSubscriptionCost: d.LedgerSubscriptionCost, SubscriptionDifference: d.Difference})
+	}
+	for _, d := range run.ReceivableInconsistencies {
+		out.Discrepancies = append(out.Discrepancies, &billingv1.ReconciliationDiscrepancy{Type: biz.ReconciliationDiscrepancyTypeReceivable, UserId: d.UserID, PendingReceivableQuota: d.PendingReceivableQuota, OverdraftQuota: d.OverdraftQuota, Difference: d.Difference})
+	}
+	for _, d := range run.RefundInconsistencies {
+		out.Discrepancies = append(out.Discrepancies, &billingv1.ReconciliationDiscrepancy{Type: biz.ReconciliationDiscrepancyTypeRefund, RefundedOrderCount: d.RefundedOrderCount, RefundedOrderMoneyCents: d.RefundedOrderMoneyCents, ReversalLedgerCount: d.ReversalLedgerCount, ReversalLedgerAmount: d.ReversalLedgerAmount, MoneyCentsDiff: d.MoneyCentsDiff})
+	}
+	for _, d := range run.StuckIssuanceInconsistencies {
+		out.Discrepancies = append(out.Discrepancies, &billingv1.ReconciliationDiscrepancy{Type: biz.ReconciliationDiscrepancyTypeStuckIssuance, TradeNo: d.TradeNo, UserId: d.UserID, GroupId: d.GroupID, PlanId: d.PlanID, MoneyCents: d.MoneyCents, StuckSince: d.StuckSince.Unix()})
 	}
 	return out, nil
 }

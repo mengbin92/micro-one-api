@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	billingv1 "micro-one-api/api/billing/v1"
@@ -163,6 +164,7 @@ type rawBillingClient struct {
 	billingv1.BillingServiceClient
 	commits               int
 	commitRequests        []*billingv1.CommitQuotaRequest
+	reserveRequests       []*billingv1.ReserveQuotaRequest
 	releases              int
 	reserveSuccess        bool
 	reserveMessage        string
@@ -175,15 +177,21 @@ type rawBillingClient struct {
 }
 
 func (c *rawBillingClient) ReserveQuota(ctx context.Context, req *billingv1.ReserveQuotaRequest, opts ...grpc.CallOption) (*billingv1.ReserveQuotaResponse, error) {
+	c.reserveRequests = append(c.reserveRequests, req)
 	success := c.reserveSuccess
 	if !success && c.reserveMessage == "" {
 		success = true
 	}
 	return &billingv1.ReserveQuotaResponse{
-		Success:        success,
-		ErrorMessage:   c.reserveMessage,
-		ReservationId:  "reservation-1",
-		ReservedAmount: req.EstimatedTokens,
+		RootRequestId:   req.RootRequestId,
+		RequestId:       req.RequestId,
+		AttemptNumber:   req.AttemptNumber,
+		SourceKind:      req.SourceKind,
+		UpstreamModelId: req.UpstreamModelId,
+		Success:         success,
+		ErrorMessage:    c.reserveMessage,
+		ReservationId:   fmt.Sprintf("reservation-%d", len(c.reserveRequests)),
+		ReservedAmount:  req.EstimatedTokens,
 	}, nil
 }
 

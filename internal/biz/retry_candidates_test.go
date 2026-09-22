@@ -66,19 +66,56 @@ func TestRoutingCandidateListExcludeAdvances(t *testing.T) {
 // recordingFallbackSelector captures the exclusion set passed to the unified
 // fallback so tests can assert request-scoped failures are forwarded.
 type recordingFallbackSelector struct {
-	channel  *Channel
-	excluded map[RoutingSourceIdentity]bool
-	calls    int
+	channel       *Channel
+	excluded      map[RoutingSourceIdentity]bool
+	calls         int
+	clientModel   string
+	resolvedModel string
 }
 
-func (r *recordingFallbackSelector) SelectFallbackRoutingSource(_ context.Context, _, _, _ string, excluded map[RoutingSourceIdentity]bool) (*Channel, error) {
+func (r *recordingFallbackSelector) SelectFallbackRoutingSource(_ context.Context, _, clientModel, resolvedModel string, excluded map[RoutingSourceIdentity]bool) (*Channel, error) {
 	r.calls++
+	r.clientModel, r.resolvedModel = clientModel, resolvedModel
 	r.excluded = make(map[RoutingSourceIdentity]bool, len(excluded))
 	maps.Copy(r.excluded, excluded)
 	if r.channel == nil {
 		return nil, errors.New("no fallback routing source")
 	}
 	return r.channel, nil
+}
+
+func TestRetryExecutor_CrossSourceCandidatesAndFallback(t *testing.T) {
+	channel := RoutingCandidate{Identity: RoutingSourceIdentity{Kind: UpstreamRouteChannel, ID: 5}, Channel: &Channel{ID: 5, Key: "channel-key"}}
+	account := RoutingCandidate{Identity: RoutingSourceIdentity{Kind: UpstreamRouteSubscription, ID: 5}, Channel: &Channel{ID: 5, SubscriptionAccountID: 5}}
+	fallback := &recordingFallbackSelector{channel: &Channel{ID: 9}}
+	plan := &RelayPlan{
+		Auth: &AuthSnapshot{Group: "default"}, Channel: channel.Channel,
+		ClientModel: "public-alias", GlobalModel: "canonical-model",
+		Candidates: newRoutingCandidateList("default", "public-alias", "canonical-model", channel, account),
+	}
+	executor := NewRetryExecutor(fastRetryPolicy(3), &mockChannelSelector{}).WithFallbackSelector(fallback).WithCrossSourceFallback()
+	var sources []RoutingSourceIdentity
+	result := executor.ExecuteWithCandidates(context.Background(), plan, 0, func(_ context.Context, ch *Channel) error {
+		sources = append(sources, RoutingSourceIdentityForChannel(ch))
+		if ch.ID == 9 {
+			return nil
+		}
+		return &RetryableError{Status: 502, Err: errors.New("controlled failure")}
+	})
+	require.NoError(t, result.Err)
+	assert.Equal(t, []RoutingSourceIdentity{channel.Identity, account.Identity, {Kind: UpstreamRouteChannel, ID: 9}}, sources)
+	assert.Equal(t, map[RoutingSourceIdentity]bool{channel.Identity: true, account.Identity: true}, fallback.excluded)
+	assert.Equal(t, "public-alias", fallback.clientModel)
+	assert.Equal(t, "canonical-model", fallback.resolvedModel)
+	assert.Equal(t, "upstream_5xx", result.FallbackReason)
+}
+
+func TestRetryPolicy_AdaptorDecisionAndPostForwardFailure(t *testing.T) {
+	policy := fastRetryPolicy(2)
+	err := &RetryableError{Status: 529, Err: errors.New("overloaded"), Retryable: new(true)}
+	assert.True(t, policy.IsRetryable(err))
+	assert.False(t, policy.IsRetryable(MarkPostForwardError(err)))
+	assert.False(t, policy.IsRetryable(&RetryableError{Status: 502, Err: errors.New("local conversion failure"), Retryable: new(false)}))
 }
 
 func TestRetryExecutor_ExecuteWithCandidates_WalksPrecomputedList(t *testing.T) {

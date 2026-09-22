@@ -32,6 +32,8 @@ billing:
     batch_size: ${BILLING_ASYNC_BATCH_SIZE:-100}
     batch_interval: ${BILLING_ASYNC_BATCH_INTERVAL:-1s}
 clients:
+  channel:
+    endpoint: ${CHANNEL_GRPC_ENDPOINT:-channel-service:9002}
   notify:
     endpoint: ${NOTIFY_GRPC_ENDPOINT:-}
     notify_type: ${RECON_ALERT_NOTIFY_TYPE:-event}

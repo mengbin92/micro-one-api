@@ -26,6 +26,10 @@ type reservationModel struct {
 	ReservationID             string   `gorm:"uniqueIndex;column:reservation_id"`
 	UserID                    string   `gorm:"index;column:user_id"`
 	RequestID                 string   `gorm:"index;column:request_id"`
+	RootRequestID             string   `gorm:"column:root_request_id;index"`
+	AttemptNumber             int32    `gorm:"column:attempt_number"`
+	SourceKind                string   `gorm:"column:source_kind"`
+	UpstreamModelID           string   `gorm:"column:upstream_model_id"`
 	Amount                    int64    `gorm:"column:amount"`
 	Status                    string   `gorm:"column:status"`
 	Model                     *string  `gorm:"column:model"`

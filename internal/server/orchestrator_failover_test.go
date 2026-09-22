@@ -47,6 +47,8 @@ func (orchestratorFailoverChannelClient) RecordSubscriptionAccountHealth(context
 type orchestratorFailoverLifecycleHooks struct {
 	reservedIDs           []int64
 	requestIDs            []string
+	roots                 []string
+	attempts              []int32
 	reservationsByRequest map[string]*Reservation
 	released              []string
 	committed             []string
@@ -77,6 +79,8 @@ func (f *orchestratorFailoverStreamForwarder) ForwardStream(_ context.Context, p
 func (h *orchestratorFailoverLifecycleHooks) ReserveQuota(_ context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, _ relaybiz.UsageEnvelope) (*Reservation, error) {
 	h.reservedIDs = append(h.reservedIDs, plan.Channel.ID)
 	h.requestIDs = append(h.requestIDs, req.RequestID)
+	h.roots = append(h.roots, req.RootRequestID)
+	h.attempts = append(h.attempts, req.AttemptNumber)
 	if h.reservationsByRequest == nil {
 		h.reservationsByRequest = make(map[string]*Reservation)
 	}
@@ -173,6 +177,9 @@ func TestRelayOrchestratorFailoverReleasesFailedCandidateAndCommitsOnce(t *testi
 	}
 	if len(hooks.requestIDs) != 2 || hooks.requestIDs[0] != "request-failover" || hooks.requestIDs[1] == "" || hooks.requestIDs[1] == hooks.requestIDs[0] {
 		t.Fatalf("request IDs = %v, want original then a distinct retry ID", hooks.requestIDs)
+	}
+	if !reflect.DeepEqual(hooks.roots, []string{"request-failover", "request-failover"}) || !reflect.DeepEqual(hooks.attempts, []int32{1, 2}) {
+		t.Fatalf("attempt linkage lost after release failure: roots=%v attempts=%v", hooks.roots, hooks.attempts)
 	}
 }
 

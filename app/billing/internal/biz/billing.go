@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 
 	billingdomain "micro-one-api/domain/billing"
+	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	applogger "micro-one-api/platform/logging"
@@ -330,7 +331,7 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 			return nil, fmt.Errorf("find by request id: %w", err)
 		}
 		if existing != nil && existing.UserID == userID {
-			if err := validateReservationReplay(existing, model, routingContext); err != nil {
+			if err := validateAttemptReplay(ctx, existing, model, channelID, subscriptionAccountID, routingContext); err != nil {
 				return nil, err
 			}
 			if !existing.IsReserved() && existing.Status != ReservationStatusCommitted {
@@ -414,7 +415,7 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 				return nil, fmt.Errorf("find by request id in tx: %w", err)
 			}
 			if existing != nil {
-				if err := validateReservationReplay(existing, model, routingContext); err != nil {
+				if err := validateAttemptReplay(ctx, existing, model, channelID, subscriptionAccountID, routingContext); err != nil {
 					return nil, err
 				}
 				if !existing.IsReserved() && existing.Status != ReservationStatusCommitted {
@@ -430,6 +431,10 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 		now := uc.Now()
 		expiredAt := now.Add(5 * time.Minute)
 		reservation := &Reservation{
+			RootRequestID:         requesttrace.FromContext(ctx).RootRequestID,
+			AttemptNumber:         requesttrace.FromContext(ctx).Number,
+			SourceKind:            requesttrace.FromContext(ctx).SourceKind,
+			UpstreamModelID:       requesttrace.FromContext(ctx).UpstreamModelID,
 			RequestSnapshot:       snapshot,
 			ReservationID:         reservationID,
 			UserID:                userID,
@@ -551,7 +556,7 @@ func (uc *BillingUsecase) reserveQuotaDualTrack(
 				if snapshot != nil {
 					rc = snapshot.Routing
 				}
-				if err := validateReservationReplay(existing, model, rc); err != nil {
+				if err := validateAttemptReplay(ctx, existing, model, channelID, subscriptionAccountID, rc); err != nil {
 					return err
 				}
 				if !existing.IsReserved() && existing.Status != ReservationStatusCommitted {
@@ -662,6 +667,10 @@ func (uc *BillingUsecase) reserveQuotaDualTrack(
 		nowTime := uc.Now()
 		expiredAt := nowTime.Add(5 * time.Minute)
 		r := &Reservation{
+			RootRequestID:                  requesttrace.FromContext(ctx).RootRequestID,
+			AttemptNumber:                  requesttrace.FromContext(ctx).Number,
+			SourceKind:                     requesttrace.FromContext(ctx).SourceKind,
+			UpstreamModelID:                requesttrace.FromContext(ctx).UpstreamModelID,
 			RequestSnapshot:                snapshot,
 			ReservationID:                  reservationID,
 			UserID:                         userID,
@@ -895,6 +904,7 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 		}
 		return 0, 0, errors.Join(ErrReservationCommitted, ErrReservationReleased)
 	}
+	usage = usageForReservation(usage, reservation)
 
 	account, err := uc.accountRepo.GetAccountSnapshot(ctx, reservation.UserID)
 	if err != nil {
@@ -1091,6 +1101,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 			return fmt.Errorf("get account in tx: %w", err)
 		}
 		usage.SubscriptionAccountID = resolveSubscriptionAccountID(usage.SubscriptionAccountID, reservation.SubscriptionAccountID)
+		usage = usageForReservation(usage, reservation)
 		actualCost, costBreakdown, usageAudit, err := uc.reservationCostWithPricing(ctx, pricing, reservation, account.Group, actualTokens, usage)
 		if err != nil {
 			return err
@@ -2933,6 +2944,16 @@ func (uc *BillingUsecase) ListLedgersWithFilters(ctx context.Context, userID str
 // ListLedgers delegates to the ledger repo.
 func (uc *BillingUsecase) ListLedgers(ctx context.Context, userID string, page, pageSize int32) ([]*Ledger, int64, error) {
 	return uc.ledgerRepo.ListLedgers(ctx, userID, page, pageSize)
+}
+
+func (uc *BillingUsecase) ListLedgersWithOptions(ctx context.Context, options LedgerListOptions) ([]*Ledger, int64, error) {
+	if repo, ok := uc.ledgerRepo.(OrderedLedgerRepo); ok {
+		return repo.ListLedgersWithOptions(ctx, options)
+	}
+	if options.SubscriptionAccountID != 0 {
+		return uc.ledgerRepo.ListLedgersBySubscriptionAccount(ctx, options.SubscriptionAccountID, options.Page, options.PageSize)
+	}
+	return uc.ledgerRepo.ListLedgersWithFilters(ctx, options.UserID, options.Page, options.PageSize, options.Type, options.StartTime, options.EndTime)
 }
 
 // GetLedgerByID returns a single ledger entry by its primary key.

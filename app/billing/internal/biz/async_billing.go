@@ -27,6 +27,7 @@ type AsyncBillingUsecase struct {
 	workerWg     sync.WaitGroup
 	workerCtx    context.Context
 	workerCancel context.CancelFunc
+	taskMu       sync.RWMutex
 	// closed is set by Close() before workerCancel fires. Once true, Settle
 	// stops enqueuing onto settleQueue (the worker is draining / has exited)
 	// and falls back to the synchronous commit pipeline so no settlement is
@@ -34,6 +35,8 @@ type AsyncBillingUsecase struct {
 	// path, many goroutines) reads it lock-free.
 	closed         atomic.Bool
 	quotaLuaScript *string // Cached Lua script
+	taskStore      SettlementTaskStore
+	reporter       SettlementSideEffectReporter
 }
 
 // QuotaCache provides fast local quota checking.
@@ -80,6 +83,18 @@ type SettleTask struct {
 	Usage     LedgerUsage
 	Cost      int64
 	Timestamp time.Time
+}
+
+// SettlementTaskStore is the durable recovery boundary for async settlement.
+type SettlementTaskStore interface {
+	SaveTask(context.Context, *SettleTask) error
+	ListPending(context.Context, int) ([]*SettleTask, error)
+	MarkCompleted(context.Context, string) error
+	MarkFailed(context.Context, string, string, time.Time) error
+}
+
+type SettlementSideEffectReporter interface {
+	RecordSubscriptionAccountQuotaUsage(context.Context, int64, string, float64, time.Time) error
 }
 
 // BatchLedgerWriter batches ledger writes for efficiency. Entries are flushed
@@ -154,6 +169,33 @@ func (uc *AsyncBillingUsecase) SetLedgerRepo(repo LedgerRepo) {
 		return
 	}
 	uc.batchWriter.SetLedgerRepo(repo)
+}
+
+// SetTaskStore installs durable settlement recovery. The recovery worker
+// periodically claims pending and stale processing tasks, including tasks left
+// by a previous process.
+func (uc *AsyncBillingUsecase) SetTaskStore(store SettlementTaskStore) {
+	if uc == nil {
+		return
+	}
+	uc.taskMu.Lock()
+	uc.taskStore = store
+	uc.taskMu.Unlock()
+	if store == nil {
+		return
+	}
+}
+
+func (uc *AsyncBillingUsecase) getTaskStore() SettlementTaskStore {
+	uc.taskMu.RLock()
+	defer uc.taskMu.RUnlock()
+	return uc.taskStore
+}
+
+func (uc *AsyncBillingUsecase) SetSideEffectReporter(reporter SettlementSideEffectReporter) {
+	if uc != nil {
+		uc.reporter = reporter
+	}
 }
 
 // NewQuotaCache creates a new quota cache.
@@ -318,9 +360,19 @@ func (uc *AsyncBillingUsecase) getCheckAndDeductScript() *string {
 // reservation lifecycle, wallet settlement, ledger entry and subscription
 // usage write all happen exactly as on the synchronous path; only the gRPC
 // caller is unblocked before the DB work completes.
-func (uc *AsyncBillingUsecase) Settle(ctx context.Context, task *SettleTask) {
+func (uc *AsyncBillingUsecase) Settle(ctx context.Context, task *SettleTask) error {
 	if task == nil {
-		return
+		return fmt.Errorf("settlement task is nil")
+	}
+	if store := uc.getTaskStore(); store != nil {
+		if err := store.SaveTask(context.WithoutCancel(ctx), task); err != nil {
+			metrics.AsyncBillingDroppedFlushes.Inc()
+			applogger.Log.Error("persist async settlement before enqueue", zap.String("reservation_id", task.ReservationID), zap.Error(err))
+			fallbackCtx, cancel := detachedSettleContext(ctx)
+			fallbackErr := uc.settleSync(fallbackCtx, task)
+			cancel()
+			return fallbackErr
+		}
 	}
 	// After Close() the worker has exited (or is about to). Any further
 	// Settle must not rely on the queue: there is no consumer, so an
@@ -334,9 +386,9 @@ func (uc *AsyncBillingUsecase) Settle(ctx context.Context, task *SettleTask) {
 	if uc.closed.Load() {
 		metrics.AsyncBillingFallbackToSync.WithLabelValues().Inc()
 		fallbackCtx, cancel := detachedSettleContext(ctx)
-		uc.settleSync(fallbackCtx, task)
+		fallbackErr := uc.settleSync(fallbackCtx, task)
 		cancel()
-		return
+		return fallbackErr
 	}
 	select {
 	case uc.settleQueue <- task:
@@ -346,9 +398,11 @@ func (uc *AsyncBillingUsecase) Settle(ctx context.Context, task *SettleTask) {
 		// not cancellation (see above).
 		metrics.AsyncBillingFallbackToSync.WithLabelValues().Inc()
 		fallbackCtx, cancel := detachedSettleContext(ctx)
-		uc.settleSync(fallbackCtx, task)
+		fallbackErr := uc.settleSync(fallbackCtx, task)
 		cancel()
+		return fallbackErr
 	}
+	return nil
 }
 
 // detachedSettleContext keeps the caller's context values (trace spans) but
@@ -363,7 +417,7 @@ func detachedSettleContext(ctx context.Context) (context.Context, context.Cancel
 // background worker would produce. It is nil-safe: if no sync use case is
 // configured (e.g. in tests / partial wiring), it records the drop via
 // metrics rather than nil-panic'ing.
-func (uc *AsyncBillingUsecase) settleSync(ctx context.Context, task *SettleTask) {
+func (uc *AsyncBillingUsecase) settleSync(ctx context.Context, task *SettleTask) error {
 	start := time.Now()
 	defer func() {
 		lag := time.Since(task.Timestamp)
@@ -374,9 +428,15 @@ func (uc *AsyncBillingUsecase) settleSync(ctx context.Context, task *SettleTask)
 	if uc.syncUc == nil {
 		metrics.AsyncBillingDroppedFlushes.Inc()
 		applogger.Log.Warn("async settlement skipped (no sync use case)", zap.String("reservation_id", task.ReservationID))
-		return
+		return fmt.Errorf("sync billing usecase is unavailable")
 	}
-	uc.runCommitPipeline(ctx, task)
+	err := uc.runCommitPipeline(ctx, task)
+	if err != nil {
+		if store := uc.getTaskStore(); store != nil {
+			_ = store.MarkFailed(ctx, task.ReservationID, err.Error(), time.Now().Add(time.Minute))
+		}
+	}
+	return err
 }
 
 // runCommitPipeline runs the authoritative CommitQuotaWithUsageAndSplit
@@ -405,7 +465,7 @@ func (uc *AsyncBillingUsecase) settleSync(ctx context.Context, task *SettleTask)
 //	runCommitPipeline is invoked multiple times. The relevant code lives in
 //	BillingUsecase.commitQuotaInternal (see the "Concurrent or retry" branch).
 //	If that CAS guard is ever weakened, this async path becomes unsafe.
-func (uc *AsyncBillingUsecase) runCommitPipeline(ctx context.Context, task *SettleTask) {
+func (uc *AsyncBillingUsecase) runCommitPipeline(ctx context.Context, task *SettleTask) error {
 	// v0.18 P2 C5: observe the async commit duration. The sync entry point
 	// (BillingService.CommitQuota, service layer) observes mode=sync after the
 	// async branch returns early. The Observe is deliberately NOT in
@@ -420,16 +480,33 @@ func (uc *AsyncBillingUsecase) runCommitPipeline(ctx context.Context, task *Sett
 			metrics.BillingCommitDuration.WithLabelValues("async").Observe(time.Since(commitStart).Seconds())
 		}
 	}()
-	if _, _, _, err := uc.syncUc.CommitQuotaWithUsageAndSplit(
+	_, _, result, err := uc.syncUc.CommitQuotaWithUsageAndSplit(
 		ctx,
 		task.ReservationID,
 		task.ActualTokens,
 		task.Success,
 		task.Usage,
-	); err != nil {
+	)
+	if err != nil {
 		metrics.AsyncBillingDroppedFlushes.Inc()
 		applogger.Log.Warn("async settlement error", zap.String("reservation_id", task.ReservationID), zap.Error(err))
+		return err
 	}
+	if task.Success && task.SubscriptionAccountID > 0 && result.CommittedAmount > 0 {
+		if uc.reporter == nil {
+			return fmt.Errorf("subscription account quota reporter is unavailable")
+		}
+		if err := uc.reporter.RecordSubscriptionAccountQuotaUsage(ctx, task.SubscriptionAccountID, task.ReservationID, float64(result.CommittedAmount)/float64(AmountScale), task.Timestamp); err != nil {
+			applogger.Log.Warn("async subscription account quota reporting failed", zap.String("reservation_id", task.ReservationID), zap.Error(err))
+			return err
+		}
+	}
+	if store := uc.getTaskStore(); store != nil {
+		if err := store.MarkCompleted(ctx, task.ReservationID); err != nil {
+			applogger.Log.Error("mark async settlement completed", zap.String("reservation_id", task.ReservationID), zap.Error(err))
+		}
+	}
+	return nil
 }
 
 // startWorkers starts background settlement workers.
@@ -440,9 +517,42 @@ func (uc *AsyncBillingUsecase) startWorkers() {
 		defer uc.workerWg.Done()
 		uc.settlementWorker()
 	}()
+	uc.workerWg.Add(1)
+	go func() {
+		defer uc.workerWg.Done()
+		uc.settlementRecoveryWorker()
+	}()
 
 	// Start batch flusher
 	uc.batchWriter.Start()
+}
+
+func (uc *AsyncBillingUsecase) settlementRecoveryWorker() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-uc.workerCtx.Done():
+			return
+		case <-ticker.C:
+			store := uc.getTaskStore()
+			if store == nil {
+				continue
+			}
+			tasks, err := store.ListPending(context.WithoutCancel(uc.workerCtx), cap(uc.settleQueue))
+			if err != nil {
+				applogger.Log.Error("load pending async settlements", zap.Error(err))
+				continue
+			}
+			for _, task := range tasks {
+				select {
+				case uc.settleQueue <- task:
+				default:
+					_ = store.MarkFailed(context.Background(), task.ReservationID, "settlement queue full", time.Now().Add(time.Second))
+				}
+			}
+		}
+	}
 }
 
 // settlementWorker processes settlement tasks from the queue.
@@ -516,7 +626,11 @@ func (uc *AsyncBillingUsecase) processSettlement(task *SettleTask) {
 	// still has to commit. A bounded detached context also covers the drain.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(uc.workerCtx), 30*time.Second)
 	defer cancel()
-	uc.runCommitPipeline(ctx, task)
+	if err := uc.runCommitPipeline(ctx, task); err != nil {
+		if store := uc.getTaskStore(); store != nil {
+			_ = store.MarkFailed(ctx, task.ReservationID, err.Error(), time.Now().Add(time.Minute))
+		}
+	}
 }
 
 // Close closes the async billing use case and waits for workers to finish.

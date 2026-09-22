@@ -1,0 +1,85 @@
+{
+  "captured_at_utc": "2026-09-22T05:10:00Z",
+  "environment": "local isolated docker-compose (deployments/docker-compose + docker-compose.test.yml + debug override), MySQL oneapi, redis, mock-upstream pair; no production traffic or data",
+  "scope": "F19/F20/F22 isolated cross-source failover matrix (non-streaming chat); streaming paths covered by unit regression only",
+  "code": {
+    "base_commit": "31250763",
+    "fix_commit_working_tree": "internal/biz/retry.go isRetryableNetworkError DNS patterns (see scenario_1b_dns)",
+    "relay_image": "docker-compose-relay-gateway:latest (local build, linux/arm64)"
+  },
+  "fixture": {
+    "model": "dual-fm-test",
+    "channel": {"id": 2, "name": "fm-channel-a", "type": "openai-compatible", "base_url": "http://mock-upstream:9999", "priority": 10},
+    "subscription_account": {"id": 1, "name": "fm-sub-b", "platform": "kimi", "account_type": "static_key", "base_url": "http://mock-upstream-b:9999", "priority": 0},
+    "user_id": 2,
+    "token": "fm-token (models=[dual-fm-test], unlimited quota; token value not recorded)"
+  },
+  "scenarios": [
+    {
+      "id": "1a_500_channel_to_subscription",
+      "trigger": "channel 2 base_url repointed to always-500 mock (mock-fail); subscription healthy",
+      "window_utc": "2026-09-22T05:00:08Z",
+      "result": "PASS",
+      "http_status": 200,
+      "selection_events": "planned=channel:2 -> outcome=subscription:1, fallback_reason=upstream_5xx, elapsed 549ms",
+      "fallback_metric_delta": "micro_one_api_routing_fallback_total{reason=upstream_5xx} +1",
+      "billing": "consume ledger attributed source_kind=subscription, subscription_account_id=1, single row; failed channel reservation released with full refund; no consume on channel 2",
+      "reservation_ids": ["res_1790053208963110002_1790053208 (released)", "res_1790053209483378669_1790053209 (committed)"]
+    },
+    {
+      "id": "2_500_subscription_to_channel",
+      "trigger": "subscription account 1 base_url repointed to always-500 mock, priority raised to plan first; channel healthy",
+      "window_utc": "2026-09-22T05:01:33Z",
+      "result": "PASS",
+      "http_status": 200,
+      "selection_events": "planned=subscription:1 -> outcome=channel:2, fallback_reason=upstream_5xx, elapsed 550ms",
+      "fallback_metric_delta": "micro_one_api_routing_fallback_total{reason=upstream_5xx} +1 (total 2)",
+      "billing": "consume ledger attributed source_kind=channel, channel_id=2, single row; failed subscription reservation released with refund only",
+      "reservation_ids": ["res_1790053273... (released)", "res_..._1790053293 (committed)"]
+    },
+    {
+      "id": "1c_connrefused_channel_to_subscription",
+      "trigger": "channel 2 base_url repointed to a live container with no listener (connection refused)",
+      "window_utc": "2026-09-22T05:04:11Z",
+      "result": "PASS",
+      "http_status": 200,
+      "fallback_metric_delta": "micro_one_api_routing_fallback_total{reason=network} +1",
+      "billing": "single consume attributed to subscription:1"
+    },
+    {
+      "id": "1b_dns_channel_to_subscription",
+      "trigger": "docker stop mock-upstream (hostname unresolvable); channel 2 plans first",
+      "window_utc": "2026-09-22T05:02:24Z (pre-fix FAIL) / 2026-09-22T05:07:37Z (post-fix PASS)",
+      "result": "FAIL_BEFORE_FIX -> PASS_AFTER_FIX",
+      "defect": "provider construction resolves the channel hostname eagerly (validateBaseURL); DNS failure error ('failed to resolve hostname: ... no such host') matched none of the retryable network patterns, so IsRetryable=false and the executor returned 502 after a single attempt. Healthy subscription source never tried. modelHealthDisposition also skipped recording (source stayed healthy/0 in model_health_states).",
+      "fix": "internal/biz/retry.go isRetryableNetworkError: added 'no such host', 'temporary failure in name resolution', 'server misbehaving' patterns; SSRF private-IP rejection remains non-retryable (unit-tested)",
+      "post_fix": "planned=channel:2 -> outcome=subscription:1, fallback_reason=network, elapsed 5575ms; fallback metric network +1 on fresh container; single consume attributed subscription:1"
+    },
+    {
+      "id": "2b_dns_subscription_to_channel",
+      "trigger": "subscription base_url set to nonexistent hostname (mock-ghost), priority raised to plan first; channel healthy",
+      "window_utc": "2026-09-22T05:08:38Z",
+      "result": "PASS",
+      "http_status": 200,
+      "selection_events": "planned=subscription:1 -> outcome=channel:2, fallback_reason=upstream_5xx (adaptor-classified), elapsed 5562ms",
+      "note": "subscription-side DNS failure is classified by the kimi adaptor as retryable 5xx (not 'network'), a label divergence from the channel path",
+      "billing": "consume ledger attributed channel:2, single row; subscription reservation released with refund only"
+    }
+  ],
+  "global_assertions": {
+    "duplicate_ledger_dedupe_keys": 0,
+    "orphan_consume_without_committed_reservation": 0,
+    "failed_attempt_consume_rows": 0
+  },
+  "environment_notes": [
+    "monitor-worker active channel probing disabled (CHANNEL_HEALTH_CHECK_ENABLED=false) and PROVIDER_DISABLE_SSRF_CHECK=true set locally: docker-internal hostnames are private IPs, which the SSRF guard rejects on the monitor path; production upstreams are public and unaffected",
+    "channel health auto-marking observed: failed monitor probes flipped channels to unavailable with circuit_opened_until=0, which SelectableAt treats as permanently unselectable -> plan-stage 'no available channel'; reset manually during fixture setup",
+    "channel-service startup sync auto-creates models registry rows in status=2 (testing); registry path then returns empty abilities (registry denial does not widen to legacy) until models.status=1",
+    "mock-upstream extended in-repo to serve Anthropic /v1/messages (kimi adaptor speaks anthropic_messages)"
+  ],
+  "not_covered_here": [
+    "streaming cross-source failover (unit-tested only: go test ./internal/server -run '^TestHTTPChatCrossSource' -count=1)",
+    "F7-F18 fault matrix (settlement persistence, Redis pending reclaim, notify, payment, OAuth store)",
+    "production execution of any scenario"
+  ]
+}

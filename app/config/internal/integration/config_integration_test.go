@@ -52,7 +52,7 @@ func (r *testConfigRepo) Delete(ctx context.Context, namespace, key string) erro
 
 func setupConfigService(t *testing.T, addr string) (func(), configv1.ConfigServiceClient) {
 	repo := &testConfigRepo{entries: make(map[string]*configbiz.ConfigEntry)}
-	uc := configbiz.NewConfigUsecase(repo, nil)
+	uc := configbiz.NewConfigUsecase(repo)
 	svc := configservice.NewConfigService(uc)
 
 	server := grpc.NewServer()

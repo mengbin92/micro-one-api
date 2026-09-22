@@ -793,9 +793,29 @@ func writeCSV(w http.ResponseWriter, filename string, header []string, rows [][]
 	writer := csv.NewWriter(w)
 	_ = writer.Write(header)
 	for _, row := range rows {
-		_ = writer.Write(row)
+		safeRow := make([]string, len(row))
+		for i, value := range row {
+			safeRow[i] = safeCSVCell(value)
+		}
+		_ = writer.Write(safeRow)
 	}
 	writer.Flush()
+}
+
+func safeCSVCell(value string) string {
+	trimmed := strings.TrimLeft(value, " \t\r\n")
+	if trimmed == "" {
+		return value
+	}
+	switch trimmed[0] {
+	case '=', '+', '@':
+		return "'" + value
+	case '-':
+		if len(trimmed) == 1 || (trimmed[1] != '.' && (trimmed[1] < '0' || trimmed[1] > '9')) {
+			return "'" + value
+		}
+	}
+	return value
 }
 
 func handleAdminAccess(w http.ResponseWriter, r *http.Request) {
@@ -3432,6 +3452,31 @@ func handleOneAPILogByID(w http.ResponseWriter, r *http.Request, svc *service.Ad
 		handleOneAPILogs(w, r, svc)
 		return
 	}
+	if trimmed == "api/log/attempts" {
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, apiResponse(false, "method not allowed", nil))
+			return
+		}
+		q := r.URL.Query()
+		userID, err := strconv.ParseInt(q.Get("user_id"), 10, 64)
+		rootID := strings.TrimSpace(q.Get("root_request_id"))
+		if err != nil || userID <= 0 || rootID == "" || len(rootID) > 128 {
+			writeJSON(w, http.StatusBadRequest, apiResponse(false, "user_id and root_request_id are required", nil))
+			return
+		}
+		page, size := oneAPIPage(r), oneAPIPageSize(r)
+		result, err := svc.ListRequestAttempts(r.Context(), strconv.FormatInt(userID, 10), rootID, int32(page), int32(size))
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, apiResponse(false, "request attempts unavailable", nil))
+			return
+		}
+		writeJSON(w, http.StatusOK, apiResponse(true, "", result))
+		return
+	}
+	if trimmed == "api/log/routing-audit" {
+		handleRoutingAudit(w, r, svc)
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
@@ -3447,6 +3492,66 @@ func handleOneAPILogByID(w http.ResponseWriter, r *http.Request, svc *service.Ad
 		return
 	}
 	handleOneAPIGetLog(w, r, svc, idText)
+}
+
+func handleRoutingAudit(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse(false, "method not allowed", nil))
+		return
+	}
+	q := r.URL.Query()
+	userID, err := strconv.ParseInt(q.Get("user_id"), 10, 64)
+	rootID := strings.TrimSpace(q.Get("root_request_id"))
+	if err != nil || userID <= 0 || rootID == "" || len(rootID) > 128 {
+		writeJSON(w, http.StatusBadRequest, apiResponse(false, "user_id and root_request_id are required", nil))
+		return
+	}
+	page, size := oneAPIPage(r), oneAPIPageSize(r)
+	attempts, err := svc.ListRequestAttempts(r.Context(), strconv.FormatInt(userID, 10), rootID, int32(page), int32(size))
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, apiResponse(false, "request attempts unavailable", nil))
+		return
+	}
+	events, retention, err := listRoutingSelectionEvents(r.Context(), userID, rootID)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, apiResponse(false, "routing audit unavailable", nil))
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{
+		"events":        events,
+		"attempts":      attempts.GetItems(),
+		"attempt_total": attempts.GetTotal(),
+		"retention":     retention,
+	}))
+}
+
+func listRoutingSelectionEvents(ctx context.Context, userID int64, rootID string) ([]map[string]any, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	targetURL, err := logServiceURLFromEnv("/v1/selection-events")
+	if err != nil {
+		return nil, "", err
+	}
+	q := targetURL.Query()
+	q.Set("user_id", strconv.FormatInt(userID, 10))
+	q.Set("root_request_id", rootID)
+	targetURL.RawQuery = q.Encode()
+	resp, err := doLogServiceRequest(ctx, http.MethodGet, targetURL, os.Getenv("SERVICE_TOKEN"))
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, "", fmt.Errorf("log service returned %d", resp.StatusCode)
+	}
+	var payload struct {
+		Items     []map[string]any `json:"items"`
+		Retention string           `json:"retention"`
+	}
+	if err := jsonx.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&payload); err != nil {
+		return nil, "", err
+	}
+	return payload.Items, payload.Retention, nil
 }
 
 func handleOneAPIDeleteLogs(w http.ResponseWriter, r *http.Request) {
@@ -3574,6 +3679,8 @@ func handleOneAPIListLogs(w http.ResponseWriter, r *http.Request, svc *service.A
 		Type:      r.URL.Query().Get("type"),
 		StartTime: getQueryInt64(r, "start_time", 0),
 		EndTime:   getQueryInt64(r, "end_time", 0),
+		Sort:      r.URL.Query().Get("sort"),
+		Order:     r.URL.Query().Get("order"),
 	})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
@@ -3596,6 +3703,8 @@ func handleOneAPIExportLogs(w http.ResponseWriter, r *http.Request, svc *service
 		Type:      r.URL.Query().Get("type"),
 		StartTime: getQueryInt64(r, "start_time", 0),
 		EndTime:   getQueryInt64(r, "end_time", 0),
+		Sort:      r.URL.Query().Get("sort"),
+		Order:     r.URL.Query().Get("order"),
 	})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})

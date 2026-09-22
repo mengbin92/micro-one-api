@@ -335,6 +335,24 @@ func TestLedgerRepo_ListLedgers_Pagination(t *testing.T) {
 	assert.Len(t, ledgers2, 5)
 }
 
+func TestLedgerRepo_ListLedgersWithOptionsSortsBeforePagination(t *testing.T) {
+	db := setupLedgerTestDB(t)
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	now := time.Now()
+	for _, amount := range []int64{30, 10, 40, 20} {
+		require.NoError(t, db.Exec(`INSERT INTO billing_ledgers (user_id, amount, balance_after, type, created_at) VALUES ('1', ?, 0, 'consume', ?)`, amount, now).Error)
+	}
+	repo := NewLedgerRepo(&Data{db: db}).(*ledgerRepo)
+
+	first, total, err := repo.ListLedgersWithOptions(context.Background(), biz.LedgerListOptions{Page: 1, PageSize: 2, OrderBy: "amount", Order: "asc"})
+	require.NoError(t, err)
+	require.Equal(t, int64(4), total)
+	require.Equal(t, []int64{10, 20}, []int64{first[0].Amount, first[1].Amount})
+	second, _, err := repo.ListLedgersWithOptions(context.Background(), biz.LedgerListOptions{Page: 2, PageSize: 2, OrderBy: "amount", Order: "asc"})
+	require.NoError(t, err)
+	require.Equal(t, []int64{30, 40}, []int64{second[0].Amount, second[1].Amount})
+}
+
 func TestLedgerRepo_ListLedgers_Empty(t *testing.T) {
 	db := setupLedgerTestDB(t)
 	defer func() {

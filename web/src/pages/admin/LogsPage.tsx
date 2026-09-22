@@ -23,8 +23,9 @@ import { useAdminTableState } from '@/hooks/useAdminTableState';
 import { buildAdminListParams } from '@/lib/admin-table-query';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { formatAmountUnits } from '@/lib/amount';
-import { sortRows, type SortState } from '@/lib/table-utils';
+import type { SortState } from '@/lib/table-utils';
 import { UsageAuditPanel, UsageSummaryCell, type UsageAuditLog } from '@/components/admin/UsageAuditPanel';
+import { RoutingAuditDialog } from '@/components/admin/RoutingAuditDialog';
 import {
   Table,
   TableBody,
@@ -255,7 +256,7 @@ export function AdminLogsPage() {
 
   const logs = data?.logs ?? EMPTY_LOGS;
   const total = data?.total ?? logs.length;
-  const visibleLogs = useMemo(() => sortRows(logs, sort), [logs, sort]);
+  const visibleLogs = logs;
   const detailRows: DetailRow[] = selectedLog
     ? [
         ['ID', selectedLog.id],
@@ -279,7 +280,8 @@ export function AdminLogsPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-semibold">{t('调用日志')}</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <RoutingAuditDialog defaultUserID={userId} />
           <Button
             type="button"
             variant="outline"

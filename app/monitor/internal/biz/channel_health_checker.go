@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	relayprovider "micro-one-api/domain/upstream/provider"
 	"micro-one-api/pkg/jsonx"
+	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
 )
 
@@ -146,7 +148,9 @@ func (c *ChannelHealthChecker) record(ctx context.Context, channelID int64, succ
 	if c == nil || c.client == nil || channelID <= 0 {
 		return
 	}
-	_ = c.client.RecordChannelHealth(ctx, channelID, success, message, responseTime)
+	if err := c.client.RecordChannelHealth(ctx, channelID, success, message, responseTime); err != nil {
+		applogger.Log.Warn("record channel health failed", zap.Int64("channel_id", channelID), zap.Bool("success", success), zap.Error(err))
+	}
 }
 
 func observeHealthProbe(status, reason string, duration time.Duration) {

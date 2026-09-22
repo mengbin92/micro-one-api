@@ -4,6 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"micro-one-api/domain/requesttrace"
 	"os"
 	"strings"
 	"time"
@@ -113,6 +114,13 @@ func (s *HTTPServer) logPostResponseCommitError(err error) {
 }
 
 func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string, estimatedTokens int64, model, channelID string, subscriptionAccountID int64, contexts ...*routing.ResolvedRoutingContext) (*billingv1.ReserveQuotaResponse, error) {
+	trace := requesttrace.FromContext(ctx)
+	if trace.RootRequestID == "" {
+		trace.RootRequestID = requestID
+	}
+	if trace.Number == 0 {
+		trace.Number = 1
+	}
 	var routingContext *routing.ResolvedRoutingContext
 	if len(contexts) > 0 {
 		routingContext = contexts[0]
@@ -139,6 +147,10 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 	// configured source, not necessarily plan.ResolvedModel. The client-
 	// facing name is threaded via the request context separately where needed.
 	req := &billingv1.ReserveQuotaRequest{
+		RootRequestId:         trace.RootRequestID,
+		AttemptNumber:         trace.Number,
+		SourceKind:            trace.SourceKind,
+		UpstreamModelId:       trace.UpstreamModelID,
 		RoutingContext:        routingdto.ContextToProto(routingContext),
 		UserId:                userID,
 		RequestId:             requestID,
@@ -165,6 +177,23 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 			_ = s.releaseQuota(ctx, resp.ReservationId, "billing routing capability mismatch")
 		}
 		return nil, fmt.Errorf("billing routing snapshot mismatch")
+	}
+	// Older billing replicas do not echo attempt metadata during rolling
+	// upgrades. Preserve the submitted identity for detached logs and WS retries.
+	if resp.RootRequestId == "" {
+		resp.RootRequestId = req.RootRequestId
+	}
+	if resp.AttemptNumber == 0 {
+		resp.AttemptNumber = req.AttemptNumber
+	}
+	if resp.RequestId == "" {
+		resp.RequestId = req.RequestId
+	}
+	if resp.SourceKind == "" {
+		resp.SourceKind = req.SourceKind
+	}
+	if resp.UpstreamModelId == "" {
+		resp.UpstreamModelId = req.UpstreamModelId
 	}
 	recordRelayQuotaOutcome(ctx, "reserve_success")
 	return resp, nil
@@ -220,6 +249,10 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 	if err != nil {
 		recordRelayQuotaOutcome(ctx, "commit_error")
 		setRelayObservationResult(ctx, "quota_error")
+		// Post-forward commit failures must be operator-visible: the upstream
+		// already served the request, the reservation is left to the expiry
+		// sweeper, and without a log line the only trace is the client's 502.
+		applogger.Log.Warn("quota commit RPC failed after upstream served request", zap.String("reservation_id", reservationID), zap.Error(err))
 		return nil, err
 	}
 	if len(details) > 0 {
@@ -239,6 +272,13 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 	// has no consume ledger. Do not increment channel/model/token counters for
 	// it; doing so was the source of the persistent channel-vs-ledger drift.
 	if !success {
+		if len(details) > 0 {
+			// A final upstream failure is a completed user-request outcome even
+			// though it has no billable usage. Keep it in model statistics so
+			// error rates have a real denominator; retries that later succeed
+			// only report the final successful outcome here.
+			s.recordModelUsage(ctx, details[0].ModelName, 0, details[0].ElapsedTime, true)
+		}
 		recordRelayQuotaOutcome(ctx, "commit_failure_settlement")
 		return resp, nil
 	}
@@ -258,7 +298,7 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 			s.recordChannelUsageFromDetail(ctx, details[0], actualTokens, reservationID)
 			s.recordModelUsage(ctx, details[0].ModelName, actualTokens, details[0].ElapsedTime, false)
 			// High #5: consume per-key token quota even on the async path.
-			s.consumeTokenQuota(ctx, details[0].UserID, details[0].TokenID, actualTokens)
+			s.consumeTokenQuota(ctx, details[0].UserID, details[0].TokenID, actualTokens, reservationID)
 		}
 		recordRelayQuotaOutcome(ctx, "commit_async")
 		return resp, nil
@@ -279,7 +319,7 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 		s.recordSubscriptionUsage(ctx, detail.UserID, actualTokens)
 		// Enforce per-key quota after billing settles. Persistent identity
 		// failures fail-close this token in the relay until validation recovers.
-		s.consumeTokenQuota(ctx, detail.UserID, detail.TokenID, actualTokens)
+		s.consumeTokenQuota(ctx, detail.UserID, detail.TokenID, actualTokens, reservationID)
 	}
 	recordRelayQuotaOutcome(ctx, "commit_success")
 	return resp, nil
@@ -321,7 +361,7 @@ func (s *HTTPServer) recordSubscriptionSessionWindowUsage(ctx context.Context, d
 // Billing has already committed when this runs, so transient failures are
 // retried. Persistent failure fail-closes the token locally until identity can
 // be checked again instead of allowing unmetered follow-up requests.
-func (s *HTTPServer) consumeTokenQuota(ctx context.Context, userID, tokenID, amount int64) {
+func (s *HTTPServer) consumeTokenQuota(ctx context.Context, userID, tokenID, amount int64, reservationID string) {
 	if s == nil || s.identityClient == nil || tokenID <= 0 || amount <= 0 {
 		return
 	}
@@ -332,7 +372,7 @@ func (s *HTTPServer) consumeTokenQuota(ctx context.Context, userID, tokenID, amo
 	consumed := false
 	for attempt := 0; attempt < 3; attempt++ {
 		resp, err = s.identityClient.ConsumeTokenQuota(tokenCtx, &identityv1.ConsumeTokenQuotaRequest{
-			UserId: userID, TokenId: tokenID, Amount: amount,
+			UserId: userID, TokenId: tokenID, Amount: amount, ReservationId: reservationID,
 		})
 		if err == nil && resp != nil && resp.GetSuccess() {
 			consumed = true

@@ -74,7 +74,7 @@ func newMockRepo(entries ...*ConfigEntry) *mockConfigRepo {
 
 func TestConfigUsecase_GetConfig(t *testing.T) {
 	repo := newMockRepo(&ConfigEntry{Namespace: "default", Key: "theme", Value: "dark"})
-	uc := NewConfigUsecase(repo, nil)
+	uc := NewConfigUsecase(repo)
 
 	t.Run("success", func(t *testing.T) {
 		e, err := uc.GetConfig(context.Background(), "default", "theme")
@@ -103,7 +103,7 @@ func TestConfigUsecase_GetConfig(t *testing.T) {
 
 func TestConfigUsecase_SetConfig(t *testing.T) {
 	repo := newMockRepo()
-	uc := NewConfigUsecase(repo, nil)
+	uc := NewConfigUsecase(repo)
 
 	t.Run("create new", func(t *testing.T) {
 		err := uc.SetConfig(context.Background(), "default", "theme", "dark", "UI theme")
@@ -140,7 +140,7 @@ func TestConfigUsecase_SetConfig(t *testing.T) {
 
 func TestConfigUsecase_DeleteConfig(t *testing.T) {
 	repo := newMockRepo(&ConfigEntry{Namespace: "default", Key: "theme", Value: "dark"})
-	uc := NewConfigUsecase(repo, nil)
+	uc := NewConfigUsecase(repo)
 
 	t.Run("success", func(t *testing.T) {
 		err := uc.DeleteConfig(context.Background(), "default", "theme")
@@ -174,7 +174,7 @@ func TestConfigUsecase_ListConfigs(t *testing.T) {
 		&ConfigEntry{Namespace: "default", Key: "b", Value: "2"},
 		&ConfigEntry{Namespace: "other", Key: "c", Value: "3"},
 	)
-	uc := NewConfigUsecase(repo, nil)
+	uc := NewConfigUsecase(repo)
 
 	t.Run("filters by namespace", func(t *testing.T) {
 		entries, total, err := uc.ListConfigs(context.Background(), "default", 1, 20)

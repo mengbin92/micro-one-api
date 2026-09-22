@@ -23,4 +23,14 @@ describe('summarizeChannelHealth', () => {
     expect(summary.unavailable).toHaveLength(0);
     expect(summary.primary?.name).toBe('slow');
   });
+
+  it('keeps missing health data unknown and treats disabled channels as unavailable', () => {
+    const summary = summarizeChannelHealth([
+      { name: 'unknown', status: 1 },
+      { name: 'disabled', status: 0 },
+    ]);
+
+    expect(summary.unknown.map((channel) => channel.name)).toEqual(['unknown']);
+    expect(summary.unavailable.map((channel) => channel.name)).toEqual(['disabled']);
+  });
 });

@@ -13,6 +13,7 @@ import (
 
 	coderws "github.com/coder/websocket"
 	"go.uber.org/zap"
+	"micro-one-api/domain/requesttrace"
 	"micro-one-api/pkg/jsonx"
 
 	billingv1 "micro-one-api/api/billing/v1"
@@ -107,6 +108,10 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 	//
 	var plan *relaybiz.RelayPlan
 	requestID := generateRequestID()
+	// Keep the WS selection event and every reservation attempt under the same
+	// durable root. Stored/session routes may bypass RelayUsecase.Plan, so the
+	// context remains the fallback correlation source for those paths.
+	ctx = requesttrace.WithAttempt(ctx, requesttrace.Attempt{RootRequestID: requestID})
 	selectionStartedAt := time.Now()
 	previousResponseID := extractOpenAIWSPreviousResponseIDFromRequest(firstMessage)
 	sessionHash := extractOpenAIWSSessionHashFromRequest(r, firstMessage)
@@ -166,6 +171,7 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 	}
 
 	rewrittenFirstMessage := rewriteOpenAIWSModel(firstMessage, clientModel, plan.ResolvedModel)
+	ctx = channelAttemptContext(ctx, requestID, 1, plan.Channel, plan.ResolvedModel)
 
 	// Reservations mirror the HTTP path: estimate tokens from the request body
 	// and commit per terminal turn.
@@ -253,6 +259,15 @@ func (s *HTTPServer) replaceResponsesWSReservation(
 	}
 	resolvedModel := relaybiz.ResolveChannelModel(channel, plan.BaseModel())
 	rewritten := rewriteOpenAIWSModel(firstMessage, clientModel, resolvedModel)
+	rootID := reservation.GetRootRequestId()
+	if rootID == "" {
+		rootID = requestID
+	}
+	number := reservation.GetAttemptNumber() + 1
+	if number < 2 {
+		number = 2
+	}
+	ctx = channelAttemptContext(ctx, rootID, number, channel, resolvedModel)
 	return s.reserveQuota(
 		ctx,
 		fmt.Sprintf("%d", plan.Auth.UserID),
@@ -651,6 +666,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 				IsStream:              true,
 			}
 			logInput.applyChannelInputs(currentChannel)
+			logInput.UpstreamModelID = resolvedModel
 			logInput.applyEnvelope(envelopeFromRawUsage(rawUsage{
 				PromptTokens:          usage.promptTokens,
 				CompletionTokens:      usage.completionTokens,
@@ -667,16 +683,20 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			// long-lived and multi-turn, so reusing one reservation id for every
 			// turn would under-bill (or double-commit) every turn after the first.
 			turnReservationID := reservation.ReservationId
+			logInput.applyReservation(reservation)
 			if v2Turns != nil {
 				turnReservationID = ""
 				if admitted := v2Turns.take(); admitted != nil {
 					turnReservationID = admitted.ReservationId
+					logInput.applyReservation(admitted)
 				}
 			} else if turnCommits > 0 {
 				turnReservationID = ""
 				if s.billingClient != nil {
-					if turnRes, rerr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), turnID, actualTotal, s.BillingModelName(clientModel, resolvedModel, resolvedModel), fmt.Sprintf("%d", currentChannel.ID), routingSubscriptionAccountID(currentChannel), plan.Auth.RoutingContext); rerr == nil && turnRes != nil {
+					turnCtx := channelAttemptContext(ctx, turnID, 1, currentChannel, resolvedModel)
+					if turnRes, rerr := s.reserveQuota(turnCtx, fmt.Sprintf("%d", plan.Auth.UserID), turnID, actualTotal, s.BillingModelName(clientModel, resolvedModel, resolvedModel), fmt.Sprintf("%d", currentChannel.ID), routingSubscriptionAccountID(currentChannel), plan.Auth.RoutingContext); rerr == nil && turnRes != nil {
 						turnReservationID = turnRes.ReservationId
+						logInput.applyReservation(turnRes)
 					} else {
 						applogger.Log.Warn("failed to reserve openai ws turn quota",
 							zap.String("request_id", turnID),

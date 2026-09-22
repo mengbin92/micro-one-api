@@ -70,13 +70,14 @@ type RefundRequest struct {
 
 // RefundResult summarises the reversal.
 type RefundResult struct {
-	OrderID         int64
-	TradeNo         string
-	RefundedQuota   int64
-	BalanceAfter    int64
-	SubscriptionID  int64
-	SubscriptionAct string // revoked / shortened / kept
-	LedgerDedupeKey string
+	OrderID              int64
+	TradeNo              string
+	RefundedQuota        int64
+	BalanceAfter         int64
+	SubscriptionID       int64
+	SubscriptionAct      string // revoked / shortened / kept
+	LedgerDedupeKey      string
+	ExternalRefundStatus string
 }
 
 // RefundRepo is the narrow interface RefundSubscriptionOrder needs from the
@@ -192,13 +193,14 @@ func (uc *RefundUsecase) RefundSubscriptionOrder(ctx context.Context, req Refund
 			return subErr
 		}
 		result = &RefundResult{
-			OrderID:         order.ID,
-			TradeNo:         order.TradeNo,
-			RefundedQuota:   refundQuota,
-			BalanceAfter:    newBalance,
-			SubscriptionID:  subID,
-			SubscriptionAct: subAct,
-			LedgerDedupeKey: dedupeKey,
+			OrderID:              order.ID,
+			TradeNo:              order.TradeNo,
+			RefundedQuota:        refundQuota,
+			BalanceAfter:         newBalance,
+			SubscriptionID:       subID,
+			SubscriptionAct:      subAct,
+			LedgerDedupeKey:      dedupeKey,
+			ExternalRefundStatus: "unsupported",
 		}
 		return nil
 	})
@@ -209,12 +211,13 @@ func (uc *RefundUsecase) RefundSubscriptionOrder(ctx context.Context, req Refund
 		// Idempotent re-entry: order was already refunded. Reconstruct a
 		// minimal result so the caller sees a stable response.
 		return &RefundResult{
-			OrderID: order.ID,
-			TradeNo: order.TradeNo,
+			OrderID:              order.ID,
+			TradeNo:              order.TradeNo,
+			ExternalRefundStatus: "unsupported",
 		}, nil
 	}
 	if result == nil {
-		result = &RefundResult{OrderID: order.ID, TradeNo: order.TradeNo}
+		result = &RefundResult{OrderID: order.ID, TradeNo: order.TradeNo, ExternalRefundStatus: "unsupported"}
 	}
 	return result, nil
 }
@@ -307,13 +310,5 @@ func (uc *RefundUsecase) refundSubscriptionID(ctx context.Context, order *Paymen
 	// Last-resort fallback: the user's current active subscription. This is
 	// only reached by very old orders without any traceability link and is
 	// inherently ambiguous if the user has since purchased a new subscription.
-	userID, err := strconv.ParseInt(order.UserID, 10, 64)
-	if err != nil || userID <= 0 || uc.subscriptions == nil {
-		return 0
-	}
-	sub, err := uc.subscriptions.GetActiveSubscriptionForUser(ctx, userID)
-	if err != nil || sub == nil {
-		return 0
-	}
-	return sub.ID
+	return 0
 }

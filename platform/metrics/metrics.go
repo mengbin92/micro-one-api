@@ -331,6 +331,7 @@ func init() {
 		RoutingFallbackTotal,
 		RoutingSelectionDuration,
 		RoutingStickyHitTotal,
+		RoutingAuditWritesTotal,
 		RelayCodexQuotaUsedPercent,
 		SubscriptionAccountQuotaResetsTotal,
 		SubscriptionAccountQuotaResetScanDuration,

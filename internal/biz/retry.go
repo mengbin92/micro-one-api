@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"math"
+	"micro-one-api/domain/requesttrace"
 	"strings"
 	"time"
 
@@ -42,6 +44,9 @@ func DefaultRetryPolicy() *RetryPolicy {
 type RetryableError struct {
 	Status int
 	Err    error
+	// Retryable overrides the status policy when a protocol adaptor has
+	// classified the failure. Nil preserves the default policy.
+	Retryable *bool
 }
 
 func (e *RetryableError) Error() string {
@@ -115,6 +120,10 @@ func (p *RetryPolicy) IsRetryable(err error) bool {
 	if IsPostForwardError(err) {
 		return false
 	}
+	var retryable *RetryableError
+	if errors.As(err, &retryable) && retryable.Retryable != nil {
+		return *retryable.Retryable
+	}
 	// Protocol capability mismatches are not malformed client requests. Another
 	// channel may support Responses natively or preserve the required reasoning
 	// history, so they remain retryable even with an older custom status list.
@@ -137,7 +146,11 @@ func isRetryableNetworkError(err error) bool {
 		return false
 	}
 	msg := err.Error()
-	for _, pattern := range []string{"connection refused", "timeout", "EOF", "dial tcp"} {
+	// "no such host" / "temporary failure in name resolution" cover DNS
+	// failures surfaced at provider construction (validateBaseURL resolves the
+	// hostname eagerly), which never reach the dialer and so never match the
+	// dial patterns above.
+	for _, pattern := range []string{"connection refused", "timeout", "EOF", "dial tcp", "no such host", "temporary failure in name resolution", "server misbehaving"} {
 		if strings.Contains(msg, pattern) {
 			return true
 		}
@@ -336,8 +349,24 @@ type RetryExecutor struct {
 	// fallback, when wired, is the unified cross-namespace fallback used after
 	// the request-scoped candidate list is exhausted (sub2api #2). It replaces
 	// the coarse excludeFirstPriority tier-skip with per-candidate exclusion.
-	fallback  RoutingFallbackSelector
-	authorize func(context.Context, string, string, string, *Channel) error
+	fallback                   RoutingFallbackSelector
+	authorize                  func(context.Context, string, string, string, *Channel) error
+	crossSourceFallback        bool
+	externalSubscriptionHealth bool
+}
+
+// WithCrossSourceFallback opts in only callers that materialize subscription
+// accounts and resolve their credentials before forwarding each attempt.
+func (e *RetryExecutor) WithCrossSourceFallback() *RetryExecutor {
+	e.crossSourceFallback = true
+	return e
+}
+
+// WithExternalSubscriptionHealth avoids duplicate health samples when an
+// adaptor already records each subscription attempt, including local retries.
+func (e *RetryExecutor) WithExternalSubscriptionHealth() *RetryExecutor {
+	e.externalSubscriptionHealth = true
+	return e
 }
 
 // NewRetryExecutor creates a RetryExecutor with the given policy and channel selector.
@@ -430,7 +459,8 @@ func (e *RetryExecutor) ExecuteWithAccountHealth(
 // first walks the precomputed ordered list with the accumulated exclusion set;
 // only when the list is exhausted does it fall back to the unified
 // cross-namespace selection (or the legacy tier-skip when no fallback selector
-// is wired). accountID health recording matches ExecuteWithAccountHealth.
+// is wired). Health follows the executed subscription identity; accountID is
+// retained for legacy initial-channel plans without an explicit account ID.
 func (e *RetryExecutor) ExecuteWithCandidates(
 	ctx context.Context,
 	plan *RelayPlan,
@@ -439,6 +469,10 @@ func (e *RetryExecutor) ExecuteWithCandidates(
 ) *ExecuteResult {
 	if plan == nil {
 		return &ExecuteResult{Err: fmt.Errorf("relay plan is nil")}
+	}
+	if trace := requesttrace.FromContext(ctx); trace.RootRequestID == "" && plan.SelectionEvent != nil && plan.SelectionEvent.RootRequestID != "" {
+		trace.RootRequestID = plan.SelectionEvent.RootRequestID
+		ctx = requesttrace.WithAttempt(ctx, trace)
 	}
 	group, model := "", plan.BaseModel()
 	if plan.Auth != nil {
@@ -450,8 +484,12 @@ func (e *RetryExecutor) ExecuteWithCandidates(
 			return err
 		}
 		err := fn(ctx, ch)
-		if ch == initialChannel {
-			e.RecordAccountHealth(ctx, accountID, upstreamAttemptHealthy(err))
+		if !e.externalSubscriptionHealth {
+			id := ch.SubscriptionAccountID
+			if id <= 0 && ch == initialChannel {
+				id = accountID
+			}
+			e.RecordAccountHealth(ctx, id, upstreamAttemptHealthy(err))
 		}
 		return err
 	}
@@ -475,6 +513,10 @@ func (e *RetryExecutor) execute(
 	fn func(ctx context.Context, ch *Channel) error,
 ) *ExecuteResult {
 	maxAttempts := e.policy.MaxAttempts
+	trace := requesttrace.FromContext(ctx)
+	if trace.RootRequestID == "" {
+		trace.RootRequestID = uuid.NewString()
+	}
 	if maxAttempts <= 0 {
 		maxAttempts = 1
 	}
@@ -539,7 +581,7 @@ func (e *RetryExecutor) execute(
 				excluded[RoutingSourceIdentityForChannel(lastChannel)] = true
 			}
 			previous := lastChannel
-			ch := e.selectNextForRetry(ctx, group, model, candidates, excluded, initialChannel)
+			ch := e.selectNextForRetry(ctx, group, clientModel, model, candidates, excluded, initialChannel)
 			if ch != nil {
 				if !SameRoutingSource(ch, lastChannel) {
 					flushHealth()
@@ -575,7 +617,13 @@ func (e *RetryExecutor) execute(
 			}
 		}
 		startedAt := time.Now()
-		err := fn(ctx, lastChannel)
+		trace.Number = int32(attempt + 1)
+		trace.SourceKind = UpstreamSourceChannel
+		if lastChannel.SubscriptionAccountID > 0 {
+			trace.SourceKind = UpstreamSourceSubscription
+		}
+		trace.UpstreamModelID = ResolveChannelModel(lastChannel, model)
+		err := fn(requesttrace.WithAttempt(ctx, trace), lastChannel)
 		responseTime := time.Since(startedAt).Milliseconds()
 		if err == nil {
 			queueHealth(lastChannel, nil, responseTime)
@@ -628,26 +676,13 @@ func (e *RetryExecutor) execute(
 // same-source retry, which is NOT a fallback.
 func (e *RetryExecutor) selectNextForRetry(
 	ctx context.Context,
-	group, model string,
+	group, clientModel, model string,
 	candidates *RoutingCandidateList,
 	excluded map[RoutingSourceIdentity]bool,
 	initialChannel *Channel,
 ) *Channel {
-	// HIGH-1 fix: HTTP transport retry closures build the upstream provider
-	// directly from ch.Key (providerFactory.CreateProviderWithConfig). A
-	// subscription-account projection carries an empty Key by design
-	// (credentials are resolved via the adaptor/credential store, which the
-	// HTTP closures do not invoke), so a cross-namespace retry onto a
-	// subscription projection would forward an empty key upstream → 401 that
-	// is NOT retryable, leaking straight to the client. Lock retry to the
-	// INITIAL source namespace: an API-key plan only ever fails over to other
-	// API-key channels, and a subscription plan only to other subscription
-	// accounts. This lock applies only to the candidate-list path
-	// (ExecuteWithCandidates, used by the 4 HTTP handlers); the legacy
-	// ExecuteWithInitialChannel path (candidates == nil) keeps cross-namespace
-	// behaviour for its existing callers and tests. WS/Responses transport is
-	// unaffected — it routes through SelectFallbackRoutingSource directly
-	// (credential-resolving path).
+	// Provider-only callbacks cannot use subscription projections: their Key
+	// is deliberately empty. Only credential-resolving callers may opt out.
 	var initialKind UpstreamRouteKind
 	if candidates != nil {
 		initialKind = UpstreamRouteChannel
@@ -656,9 +691,8 @@ func (e *RetryExecutor) selectNextForRetry(
 		}
 	}
 
-	// 1. Precomputed candidate list (sub2api #2): stable per-request ordering,
-	// no re-selection RPC per retry. Skip cross-namespace candidates so the
-	// namespace lock holds (see HIGH-1 note above).
+	// 1. Walk the request-scoped ordering, preserving the namespace restriction
+	// for callbacks that have not opted into subscription credential resolution.
 	if candidates != nil {
 		for _, c := range candidates.Candidates {
 			if c.Channel == nil {
@@ -671,24 +705,17 @@ func (e *RetryExecutor) selectNextForRetry(
 			if c.Channel.SubscriptionAccountID > 0 {
 				kind = UpstreamRouteSubscription
 			}
-			if kind != initialKind {
+			if !e.crossSourceFallback && kind != initialKind {
 				continue
 			}
 			return c.Channel
 		}
 	}
-	// 2. Fallback selection.
-	//    - Candidate-list path (ExecuteWithCandidates): namespace-scoped.
-	//      API-key initial → channel-only via SelectChannelExcluding (same
-	//      namespace, no subscription projection); subscription initial →
-	//      SelectFallbackRoutingSource (the transports using this path that
-	//      start on a subscription source resolve credentials via the adaptor).
-	//    - Legacy path (ExecuteWithInitialChannel, candidates == nil): keep
-	//      the original cross-namespace tier-skip behaviour so existing
-	//      callers and tests are unaffected.
-	if candidates == nil {
+	// 2. Credential-resolving callbacks can select across namespaces after
+	// exhausting the list. Preserve legacy selection for callers without a list.
+	if candidates == nil || e.crossSourceFallback {
 		if e.fallback != nil {
-			if ch, err := e.fallback.SelectFallbackRoutingSource(ctx, group, model, model, excluded); err == nil && ch != nil {
+			if ch, err := e.fallback.SelectFallbackRoutingSource(ctx, group, clientModel, model, excluded); err == nil && ch != nil {
 				return ch
 			}
 			return nil
@@ -723,7 +750,7 @@ func (e *RetryExecutor) selectNextForRetry(
 	}
 	// Subscription initial: unified fallback (credential-resolving transports).
 	if e.fallback != nil {
-		if ch, err := e.fallback.SelectFallbackRoutingSource(ctx, group, model, model, excluded); err == nil && ch != nil {
+		if ch, err := e.fallback.SelectFallbackRoutingSource(ctx, group, clientModel, model, excluded); err == nil && ch != nil {
 			return ch
 		}
 	}
@@ -783,6 +810,9 @@ func isTimeoutError(err error) bool {
 
 func (e *RetryExecutor) recordHealth(ctx context.Context, modelID, baseModel string, ch *Channel, channelOK, modelRecord, modelOK bool, message string, responseTime int64) {
 	if e.selector == nil || ch == nil {
+		return
+	}
+	if e.externalSubscriptionHealth && ch.SubscriptionAccountID > 0 {
 		return
 	}
 	if ch.ID > 0 && ch.SubscriptionAccountID <= 0 {

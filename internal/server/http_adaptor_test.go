@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"micro-one-api/pkg/jsonx"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -261,7 +262,8 @@ func TestHandleChatCompletionsViaAdaptor_FailoverOnRetryableUpstreamStatus(t *te
 		},
 	}
 	relayUsecase := relaybiz.NewRelayUsecase(adaptorFailoverIdentity{}, selector, nil, nil)
-	httpServer := NewHTTPServer(nil, nil, nil, nil, relayUsecase)
+	billing := &rawBillingClient{}
+	httpServer := NewHTTPServer(nil, nil, billing, nil, relayUsecase)
 	httpServer.SetHybridAdaptorEnabled(true)
 	httpServer.wsPoolCfg.failoverMaxSwitches = 1
 
@@ -269,6 +271,22 @@ func TestHandleChatCompletionsViaAdaptor_FailoverOnRetryableUpstreamStatus(t *te
 	httpServer.SetOAuthHTTPClient(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			authHeaders = append(authHeaders, req.Header.Get("Authorization"))
+			var body struct {
+				Model string `json:"model"`
+			}
+			if err := jsonx.NewDecoder(req.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			expected := "Mapped-First"
+			if len(authHeaders) > 1 {
+				expected = "gpt-5"
+			}
+			if body.Model != expected {
+				t.Errorf("sent model = %q, want %q", body.Model, expected)
+			}
+			if len(billing.reserveRequests) != len(authHeaders) {
+				t.Error("each upstream call must already have a reservation")
+			}
 			if len(authHeaders) == 1 {
 				return newStatusResponse(http.StatusInternalServerError, `{"error":"temporary"}`), nil
 			}
@@ -296,7 +314,7 @@ func TestHandleChatCompletionsViaAdaptor_FailoverOnRetryableUpstreamStatus(t *te
 			AccessToken: "first-token",
 			AccountID:   "first-account",
 		},
-		ResolvedModel: "gpt-5",
+		ResolvedModel: "Mapped-First",
 		GlobalModel:   "gpt-5",
 	}
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`))
@@ -312,6 +330,16 @@ func TestHandleChatCompletionsViaAdaptor_FailoverOnRetryableUpstreamStatus(t *te
 	}
 	if len(authHeaders) != 2 {
 		t.Fatalf("upstream calls = %d, want 2", len(authHeaders))
+	}
+	if len(billing.reserveRequests) != 2 || billing.releases != 1 || len(billing.commitRequests) != 1 {
+		t.Fatalf("reserve/release/commit counts = %d/%d/%d", len(billing.reserveRequests), billing.releases, len(billing.commitRequests))
+	}
+	a, b := billing.reserveRequests[0], billing.reserveRequests[1]
+	if a.RootRequestId == "" || a.RootRequestId != b.RootRequestId || a.RequestId == b.RequestId || a.AttemptNumber != 1 || b.AttemptNumber != 2 {
+		t.Fatalf("invalid failover identities: %v, %v", a, b)
+	}
+	if a.SubscriptionAccountId != 12 || b.SubscriptionAccountId != 13 || b.SourceKind != "subscription" || b.UpstreamModelId != "gpt-5" {
+		t.Fatalf("incorrect attempt sources: %v, %v", a, b)
 	}
 	if authHeaders[0] != "Bearer first-token" || authHeaders[1] != "Bearer second-token" {
 		t.Fatalf("Authorization headers = %v", authHeaders)

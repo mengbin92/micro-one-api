@@ -258,7 +258,7 @@ func TestRefund_RevokePolicyRevokesSubscription(t *testing.T) {
 	}
 }
 
-func TestRefund_RevokePolicyFallsBackToActiveSubscription(t *testing.T) {
+func TestRefund_RevokePolicyRejectsUntraceableLegacyOrder(t *testing.T) {
 	repo := &fakeRefundRepo{order: newRefundOrder("PAY-RF-ACTIVE", true)}
 	reverter := &stubSubscriptionReverter{}
 	uc := NewRefundUsecase(repo, &stubAccountRepo{newBalance: 5000}, &recordingLedgerRepo{}, reverter)
@@ -267,14 +267,11 @@ func TestRefund_RevokePolicyFallsBackToActiveSubscription(t *testing.T) {
 		TradeNo: "PAY-RF-ACTIVE",
 		Policy:  RefundPolicyRevoke,
 	})
-	if err != nil {
-		t.Fatalf("refund: %v", err)
+	if err == nil {
+		t.Fatalf("refund result = %+v, want traceability error", res)
 	}
-	if reverter.revokeCalls != 1 || reverter.lastSubID != 99 {
-		t.Fatalf("reverter = %+v, want active subscription id 99", reverter)
-	}
-	if res.SubscriptionID != 99 {
-		t.Fatalf("subscription_id = %d, want 99", res.SubscriptionID)
+	if reverter.revokeCalls != 0 {
+		t.Fatalf("reverter = %+v, want no mutation", reverter)
 	}
 }
 

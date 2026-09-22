@@ -166,3 +166,38 @@ func TestMemoryRepository_ListPendingAndRecordFailure(t *testing.T) {
 		t.Fatalf("expected last error to be cleared after sent, got %q", got.LastError)
 	}
 }
+
+func TestMemoryRepository_ClaimAndCompleteProcessingLease(t *testing.T) {
+	repo := newMemoryRepository()
+	n := &biz.Notification{
+		Type:      biz.NotifyTypeWebhook,
+		Recipient: "https://example.com",
+		Status:    biz.NotifyStatusPending,
+		CreatedAt: time.Now(),
+	}
+	if err := repo.Create(context.Background(), n); err != nil {
+		t.Fatal(err)
+	}
+
+	claimed, err := repo.ClaimPending(context.Background(), 20, 3)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("ClaimPending() = %d, %v; want one claim", len(claimed), err)
+	}
+	if _, err := repo.ClaimPending(context.Background(), 20, 3); err != nil {
+		t.Fatal(err)
+	} else if got, _ := repo.Get(context.Background(), n.ID); got.Status != biz.NotifyStatusProcessing {
+		t.Fatalf("second claim changed status to %q", got.Status)
+	}
+
+	stale := claimed[0].ProcessingAt.Add(-time.Second)
+	if err := repo.CompleteProcessing(context.Background(), n.ID, stale, biz.NotifyStatusSent, 3, ""); err != biz.ErrNotificationLeaseLost {
+		t.Fatalf("stale completion error = %v, want ErrNotificationLeaseLost", err)
+	}
+	if err := repo.CompleteProcessing(context.Background(), n.ID, claimed[0].ProcessingAt, biz.NotifyStatusSent, 3, ""); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := repo.Get(context.Background(), n.ID)
+	if got.Status != biz.NotifyStatusSent || !got.ProcessingAt.IsZero() {
+		t.Fatalf("completion = status %q processing_at %v", got.Status, got.ProcessingAt)
+	}
+}

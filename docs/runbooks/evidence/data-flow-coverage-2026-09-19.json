@@ -1,0 +1,738 @@
+{
+  "captured_at_utc": "2026-09-19T11:58:17.386053+00:00",
+  "window_utc": {
+    "start_inclusive": "2026-09-18T11:48:17+00:00",
+    "end_exclusive": "2026-09-19T11:48:17+00:00"
+  },
+  "sql": {
+    "reservation_paths_24h": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "status": "committed",
+          "source": "channel",
+          "requests": "438",
+          "grpc_requests": "0"
+        },
+        {
+          "status": "released",
+          "source": "channel",
+          "requests": "7",
+          "grpc_requests": "0"
+        }
+      ]
+    },
+    "subscription_account_writeback_24h": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "committed": "0",
+          "positive_cost": "NULL",
+          "missing_quota_event": "NULL",
+          "positive_cost_missing_event": "NULL"
+        }
+      ]
+    },
+    "subscription_account_history": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "committed": "33442",
+          "positive_cost": "28357",
+          "missing_quota_event": "33442",
+          "first_request": "2026-07-26 08:27:16.763",
+          "last_request": "2026-09-13 01:54:27.871"
+        }
+      ]
+    },
+    "subscription_window_charges_24h": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "positive_accounting_requests": "438",
+          "missing_window_charge": "0",
+          "wrong_subscription": "0",
+          "missing_frozen_rate": "0",
+          "ledger_amount_mismatch": "0"
+        }
+      ]
+    },
+    "reverse_log_ledger_24h": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "consume_logs": "438",
+          "without_committed_reservation": "0"
+        }
+      ]
+    },
+    "duplicate_logs_24h": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "duplicate_request_groups": "0"
+        }
+      ]
+    },
+    "payment_states": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "asset_type": "balance",
+          "status": "paid",
+          "asset_issue_status": "issued",
+          "orders": "1",
+          "first_created": "2026-07-23 02:06:54",
+          "last_created": "2026-07-23 02:06:54"
+        }
+      ]
+    },
+    "receivable_states": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "status": "settled",
+          "records": "2020",
+          "overdue_quota": "2020",
+          "settled_quota": "2020"
+        }
+      ]
+    },
+    "subscription_states": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "status": "active",
+          "subscriptions": "4",
+          "overdue_active_over_1h": "0",
+          "expires_within_24h": "0",
+          "with_contract": "0"
+        },
+        {
+          "status": "revoked",
+          "subscriptions": "1",
+          "overdue_active_over_1h": "0",
+          "expires_within_24h": "0",
+          "with_contract": "1"
+        }
+      ]
+    },
+    "token_quota_modes": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "unlimited_quota": "1",
+          "tokens": "12"
+        }
+      ]
+    },
+    "notification_states": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "type": "wecom",
+          "status": "sent",
+          "notifications": "95",
+          "last_created_epoch": "1789290887",
+          "retried": "0"
+        }
+      ]
+    },
+    "monitor_inventory": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "health_checks": "0",
+          "last_check_epoch": "NULL",
+          "alert_rules": "0",
+          "enabled_rules": "0",
+          "configs": "0"
+        }
+      ]
+    },
+    "model_health": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "source_kind": "channel",
+          "states": "8",
+          "requests": "1796",
+          "last_check_epoch": "1789811081"
+        },
+        {
+          "source_kind": "subscription",
+          "states": "1",
+          "requests": "137",
+          "last_check_epoch": "1789264467"
+        }
+      ]
+    },
+    "model_usage": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "last_date": "2026-09-19",
+          "rows_count": "162",
+          "requests": "54266",
+          "errors": "0"
+        }
+      ]
+    },
+    "account_inventory": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "accounts": "3",
+          "session_limited": "0",
+          "locally_limited": "0",
+          "expired_credentials": "0"
+        }
+      ]
+    },
+    "quota_snapshots": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "snapshots": "3",
+          "last_updated": "2026-09-13 06:09:07",
+          "paused": "0"
+        }
+      ]
+    },
+    "join_key_collations": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "TABLE_NAME": "billing_reservations",
+          "COLUMN_NAME": "reservation_id",
+          "COLLATION_NAME": "utf8mb4_0900_ai_ci"
+        },
+        {
+          "TABLE_NAME": "subscription_window_charges",
+          "COLUMN_NAME": "reservation_id",
+          "COLLATION_NAME": "utf8mb4_unicode_ci"
+        }
+      ]
+    },
+    "auxiliary_counts": {
+      "status": "OBSERVED",
+      "rows": [
+        {
+          "commerce_receipts": "0",
+          "redeem_records": "1",
+          "account_quota_events": "0",
+          "usage_semantic_blocks": "0",
+          "entitlements": "1"
+        }
+      ]
+    }
+  },
+  "containers": {
+    "relay-gateway": {
+      "image_id": "sha256:969aa817dd0f11231c4cd8f4afc7838cc0b898e679de983b1c96d782c8f931b9",
+      "running": true,
+      "started_at": "2026-09-12T14:44:05.884041494Z",
+      "flags": {
+        "LOG_LEVEL": "info",
+        "EVENT_BUS_BACKEND": "<unset>",
+        "BILLING_ASYNC_ENABLED": "true",
+        "LOG_BATCH_ENABLED": "true",
+        "SUBSCRIPTION_ENTITLEMENTS_V2": "true",
+        "BILLING_REQUEST_SNAPSHOT_V2": "<unset>",
+        "RECON_ALERT_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "MONITOR_CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_RESET_ENABLED": "<unset>",
+        "SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED": "<unset>"
+      }
+    },
+    "billing-service": {
+      "image_id": "sha256:ae152bfb3a6d7176b2f8193ca6e44dbf62d665fa464871a4e6d74519c35110d5",
+      "running": true,
+      "started_at": "2026-09-13T01:46:14.182406964Z",
+      "flags": {
+        "LOG_LEVEL": "info",
+        "EVENT_BUS_BACKEND": "<unset>",
+        "BILLING_ASYNC_ENABLED": "true",
+        "LOG_BATCH_ENABLED": "true",
+        "SUBSCRIPTION_ENTITLEMENTS_V2": "true",
+        "BILLING_REQUEST_SNAPSHOT_V2": "true",
+        "RECON_ALERT_ENABLED": "false",
+        "CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "MONITOR_CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_RESET_ENABLED": "<unset>",
+        "SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED": "<unset>"
+      }
+    },
+    "channel-service": {
+      "image_id": "sha256:174a71fd6d5b05171e2b778e79e29d26f3d5895a65152d4c23f02df9447e2692",
+      "running": true,
+      "started_at": "2026-09-12T15:11:05.250722292Z",
+      "flags": {
+        "LOG_LEVEL": "info",
+        "EVENT_BUS_BACKEND": "<unset>",
+        "BILLING_ASYNC_ENABLED": "true",
+        "LOG_BATCH_ENABLED": "true",
+        "SUBSCRIPTION_ENTITLEMENTS_V2": "<unset>",
+        "BILLING_REQUEST_SNAPSHOT_V2": "<unset>",
+        "RECON_ALERT_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "MONITOR_CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_ALERT_ENABLED": "true",
+        "SUBSCRIPTION_QUOTA_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_RESET_ENABLED": "<unset>",
+        "SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED": "<unset>"
+      }
+    },
+    "identity-service": {
+      "image_id": "sha256:36918f812f4c5b9f016c1b713ddba818dd4e65109256ac66f5c72954ef120647",
+      "running": true,
+      "started_at": "2026-09-17T07:36:54.576654349Z",
+      "flags": {
+        "LOG_LEVEL": "info",
+        "EVENT_BUS_BACKEND": "<unset>",
+        "BILLING_ASYNC_ENABLED": "true",
+        "LOG_BATCH_ENABLED": "true",
+        "SUBSCRIPTION_ENTITLEMENTS_V2": "<unset>",
+        "BILLING_REQUEST_SNAPSHOT_V2": "<unset>",
+        "RECON_ALERT_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "MONITOR_CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_RESET_ENABLED": "<unset>",
+        "SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED": "<unset>"
+      }
+    },
+    "admin-api": {
+      "image_id": "sha256:e0b2548cb67767e0f3074cd6784489fd6852a4da589c2a737b3d6d15ba79413e",
+      "running": true,
+      "started_at": "2026-09-15T05:53:49.256507044Z",
+      "flags": {
+        "LOG_LEVEL": "info",
+        "EVENT_BUS_BACKEND": "<unset>",
+        "BILLING_ASYNC_ENABLED": "true",
+        "LOG_BATCH_ENABLED": "true",
+        "SUBSCRIPTION_ENTITLEMENTS_V2": "true",
+        "BILLING_REQUEST_SNAPSHOT_V2": "<unset>",
+        "RECON_ALERT_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "MONITOR_CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_RESET_ENABLED": "<unset>",
+        "SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED": "<unset>"
+      }
+    },
+    "log-service": {
+      "image_id": "sha256:b58d3eb1fac018393b9a53e886312291262173be4bee9eb062a5b776b8d03cb1",
+      "running": true,
+      "started_at": "2026-09-10T08:22:28.899757337Z",
+      "flags": {
+        "LOG_LEVEL": "info",
+        "EVENT_BUS_BACKEND": "<unset>",
+        "BILLING_ASYNC_ENABLED": "true",
+        "LOG_BATCH_ENABLED": "true",
+        "SUBSCRIPTION_ENTITLEMENTS_V2": "<unset>",
+        "BILLING_REQUEST_SNAPSHOT_V2": "<unset>",
+        "RECON_ALERT_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "MONITOR_CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_RESET_ENABLED": "<unset>",
+        "SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED": "<unset>"
+      }
+    },
+    "monitor-worker": {
+      "image_id": "sha256:e9d6d69073626c692c80c7acff701b6be694dc3af41457bbeef9259801507d2b",
+      "running": true,
+      "started_at": "2026-09-02T07:20:30.906167559Z",
+      "flags": {
+        "LOG_LEVEL": "info",
+        "EVENT_BUS_BACKEND": "<unset>",
+        "BILLING_ASYNC_ENABLED": "true",
+        "LOG_BATCH_ENABLED": "true",
+        "SUBSCRIPTION_ENTITLEMENTS_V2": "<unset>",
+        "BILLING_REQUEST_SNAPSHOT_V2": "<unset>",
+        "RECON_ALERT_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "MONITOR_CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_RESET_ENABLED": "<unset>",
+        "SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED": "<unset>"
+      }
+    },
+    "notify-worker": {
+      "image_id": "sha256:4e5efdc18c9a43750a1d781631980a3aaab88499261f4e81e0cb8c080aafd70b",
+      "running": true,
+      "started_at": "2026-09-10T05:02:45.520937973Z",
+      "flags": {
+        "LOG_LEVEL": "info",
+        "EVENT_BUS_BACKEND": "<unset>",
+        "BILLING_ASYNC_ENABLED": "true",
+        "LOG_BATCH_ENABLED": "true",
+        "SUBSCRIPTION_ENTITLEMENTS_V2": "<unset>",
+        "BILLING_REQUEST_SNAPSHOT_V2": "<unset>",
+        "RECON_ALERT_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "MONITOR_CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_RESET_ENABLED": "<unset>",
+        "SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED": "<unset>"
+      }
+    },
+    "config-service": {
+      "image_id": "sha256:42ccce79252962a7a607b153f556efed8b5e78d463014bf2943c89ea9faaaad2",
+      "running": true,
+      "started_at": "2026-09-02T07:20:31.088812951Z",
+      "flags": {
+        "LOG_LEVEL": "info",
+        "EVENT_BUS_BACKEND": "<unset>",
+        "BILLING_ASYNC_ENABLED": "true",
+        "LOG_BATCH_ENABLED": "true",
+        "SUBSCRIPTION_ENTITLEMENTS_V2": "<unset>",
+        "BILLING_REQUEST_SNAPSHOT_V2": "<unset>",
+        "RECON_ALERT_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "MONITOR_CHANNEL_HEALTH_CHECK_ENABLED": "<unset>",
+        "CHANNEL_HEALTH_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_ALERT_ENABLED": "<unset>",
+        "SUBSCRIPTION_QUOTA_RESET_ENABLED": "<unset>",
+        "SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED": "<unset>"
+      }
+    }
+  },
+  "monitor_dependency_config": {
+    "channel_endpoint": "<unset>",
+    "monitor_service_token_present": true,
+    "channel_service_token_present": true,
+    "service_tokens_match": true,
+    "channel_endpoint_template": "endpoint: ${CHANNEL_GRPC_ENDPOINT:-127.0.0.1:9002}"
+  },
+  "log_samples": {
+    "relay-gateway": {
+      "status": "OBSERVED",
+      "sample_lines": 364,
+      "message_counts": {
+        "async settlement error": 0,
+        "failed to record subscription account quota usage": 0,
+        "subscription account quota usage rejected": 0,
+        "consume token quota failed; token temporarily blocked": 0,
+        "failed to record channel usage after retries": 0,
+        "failed to record model usage": 0,
+        "failed to ingest usage log after retries": 0,
+        "batch log writer: flush failed, entries dropped": 0,
+        "model health sample dropped: rpc failed": 0,
+        "model health sample rejected": 0,
+        "reconciliation completed": 0,
+        "reconciliation alert sent": 0
+      }
+    },
+    "billing-service": {
+      "status": "OBSERVED",
+      "sample_lines": 24,
+      "message_counts": {
+        "async settlement error": 0,
+        "failed to record subscription account quota usage": 0,
+        "subscription account quota usage rejected": 0,
+        "consume token quota failed; token temporarily blocked": 0,
+        "failed to record channel usage after retries": 0,
+        "failed to record model usage": 0,
+        "failed to ingest usage log after retries": 0,
+        "batch log writer: flush failed, entries dropped": 0,
+        "model health sample dropped: rpc failed": 0,
+        "model health sample rejected": 0,
+        "reconciliation completed": 3,
+        "reconciliation alert sent": 3
+      }
+    },
+    "log-service": {
+      "status": "OBSERVED",
+      "sample_lines": 0,
+      "message_counts": {
+        "async settlement error": 0,
+        "failed to record subscription account quota usage": 0,
+        "subscription account quota usage rejected": 0,
+        "consume token quota failed; token temporarily blocked": 0,
+        "failed to record channel usage after retries": 0,
+        "failed to record model usage": 0,
+        "failed to ingest usage log after retries": 0,
+        "batch log writer: flush failed, entries dropped": 0,
+        "model health sample dropped: rpc failed": 0,
+        "model health sample rejected": 0,
+        "reconciliation completed": 0,
+        "reconciliation alert sent": 0
+      }
+    }
+  },
+  "metrics": {
+    "status": "success",
+    "samples": [
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_dropped_flushes_total",
+          "instance": "notify-worker:8008",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_missing_reservation_id_total",
+          "instance": "notify-worker:8008",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_dropped_flushes_total",
+          "instance": "identity-service:8001",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_missing_reservation_id_total",
+          "instance": "identity-service:8001",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_dropped_flushes_total",
+          "instance": "config-service:8005",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_missing_reservation_id_total",
+          "instance": "config-service:8005",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_dropped_flushes_total",
+          "instance": "log-service:8006",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_missing_reservation_id_total",
+          "instance": "log-service:8006",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_dropped_flushes_total",
+          "instance": "relay-gateway:8080",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_missing_reservation_id_total",
+          "instance": "relay-gateway:8080",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_dropped_flushes_total",
+          "instance": "admin-api:8000",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_missing_reservation_id_total",
+          "instance": "admin-api:8000",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_dropped_flushes_total",
+          "instance": "channel-service:8002",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_missing_reservation_id_total",
+          "instance": "channel-service:8002",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_dropped_flushes_total",
+          "instance": "billing-service:8004",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_missing_reservation_id_total",
+          "instance": "billing-service:8004",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_dropped_flushes_total",
+          "instance": "monitor-worker:8007",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_missing_reservation_id_total",
+          "instance": "monitor-worker:8007",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_monitor_channel_health_check_runs_total",
+          "instance": "monitor-worker:8007",
+          "job": "micro-one-api",
+          "status": "error"
+        },
+        "value": "4952"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_queue_size",
+          "instance": "billing-service:8004",
+          "job": "micro-one-api"
+        },
+        "value": "0"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_billing_async_settlement_duration_seconds_count",
+          "instance": "billing-service:8004",
+          "job": "micro-one-api",
+          "status": "async"
+        },
+        "value": "1804"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_dependency_grpc_latency_seconds_count",
+          "instance": "monitor-worker:8007",
+          "job": "micro-one-api",
+          "method": "/api.channel.v1.ChannelService/ListChannels",
+          "service": "channel-service",
+          "status": "Unavailable"
+        },
+        "value": "4952"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_dependency_grpc_latency_seconds_count",
+          "instance": "relay-gateway:8080",
+          "job": "micro-one-api",
+          "method": "/api.channel.v1.ChannelService/RecordModelUsage",
+          "service": "channel-service",
+          "status": "OK"
+        },
+        "value": "1913"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_dependency_grpc_latency_seconds_count",
+          "instance": "relay-gateway:8080",
+          "job": "micro-one-api",
+          "method": "/api.identity.v1.IdentityService/ConsumeTokenQuota",
+          "service": "identity-service",
+          "status": "OK"
+        },
+        "value": "1913"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_log_usage_ingest_total",
+          "instance": "relay-gateway:8080",
+          "job": "micro-one-api",
+          "status": "success"
+        },
+        "value": "1913"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_dependency_grpc_latency_seconds_count",
+          "instance": "relay-gateway:8080",
+          "job": "micro-one-api",
+          "method": "/api.channel.v1.ChannelService/RecordChannelHealth",
+          "service": "channel-service",
+          "status": "OK"
+        },
+        "value": "1807"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_dependency_grpc_latency_seconds_count",
+          "instance": "admin-api:8000",
+          "job": "micro-one-api",
+          "method": "/api.channel.v1.ChannelService/ListChannels",
+          "service": "channel-service",
+          "status": "OK"
+        },
+        "value": "35"
+      },
+      {
+        "labels": {
+          "__name__": "micro_one_api_dependency_grpc_latency_seconds_count",
+          "instance": "relay-gateway:8080",
+          "job": "micro-one-api",
+          "method": "/api.channel.v1.ChannelService/RecordChannelHealth",
+          "service": "channel-service",
+          "status": "Canceled"
+        },
+        "value": "16"
+      }
+    ]
+  },
+  "monitor_runs_30m": {
+    "status": "success",
+    "samples": [
+      {
+        "labels": {
+          "instance": "monitor-worker:8007",
+          "job": "micro-one-api",
+          "status": "error"
+        },
+        "value": "6.050420168067227"
+      }
+    ]
+  }
+}

@@ -45,6 +45,9 @@ func TestRetryPolicy_IsRetryable(t *testing.T) {
 		{"timeout", errors.New("context deadline exceeded: timeout"), true},
 		{"EOF", errors.New("unexpected EOF"), true},
 		{"dial tcp", errors.New("dial tcp 10.0.0.1:443: connect: no route to host"), true},
+		{"dns resolution failure at provider construction", errors.New("failed to create provider: invalid base URL: failed to resolve hostname: lookup upstream.example on 127.0.0.11:53: no such host"), true},
+		{"dns temporary failure", errors.New("failed to create provider: invalid base URL: failed to resolve hostname: lookup upstream.example: temporary failure in name resolution"), true},
+		{"ssrf private-ip rejection stays non-retryable", errors.New("failed to create provider: invalid base URL: URL resolves to private/reserved IP: 10.0.0.1"), false},
 		{"post-forward billing transport error", MarkPostForwardError(errors.New("dial tcp: connection refused")), false},
 		{"generic error", errors.New("something else"), false},
 	}

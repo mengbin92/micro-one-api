@@ -1254,23 +1254,41 @@ type ChannelBalanceRefreshResult struct {
 }
 
 type ReconciliationDiscrepancyView struct {
-	Type              string `json:"type,omitempty"`
-	UserID            string `json:"user_id,omitempty"`
-	ExpectedQuota     int64  `json:"expected_quota,omitempty"`
-	ActualQuota       int64  `json:"actual_quota,omitempty"`
-	LedgerNetAmount   int64  `json:"ledger_net_amount,omitempty"`
-	FrozenQuota       int64  `json:"frozen_quota,omitempty"`
-	ChannelID         int64  `json:"channel_id,omitempty"`
-	ExpectedUsedQuota int64  `json:"expected_used_quota,omitempty"`
-	ActualUsedQuota   int64  `json:"actual_used_quota,omitempty"`
-	LedgerQuota       int64  `json:"ledger_quota,omitempty"`
-	UpstreamCost      int64  `json:"upstream_cost,omitempty"`
-	Difference        int64  `json:"difference,omitempty"`
-	LedgerCount       int64  `json:"ledger_count,omitempty"`
-	LogCount          int64  `json:"log_count,omitempty"`
-	LogQuota          int64  `json:"log_quota,omitempty"`
-	CountDiff         int64  `json:"count_diff,omitempty"`
-	QuotaDiff         int64  `json:"quota_diff,omitempty"`
+	Type                    string  `json:"type,omitempty"`
+	UserID                  string  `json:"user_id,omitempty"`
+	ExpectedQuota           int64   `json:"expected_quota,omitempty"`
+	ActualQuota             int64   `json:"actual_quota,omitempty"`
+	LedgerNetAmount         int64   `json:"ledger_net_amount,omitempty"`
+	FrozenQuota             int64   `json:"frozen_quota,omitempty"`
+	ChannelID               int64   `json:"channel_id,omitempty"`
+	ExpectedUsedQuota       int64   `json:"expected_used_quota,omitempty"`
+	ActualUsedQuota         int64   `json:"actual_used_quota,omitempty"`
+	LedgerQuota             int64   `json:"ledger_quota,omitempty"`
+	UpstreamCost            int64   `json:"upstream_cost,omitempty"`
+	Difference              int64   `json:"difference,omitempty"`
+	LedgerCount             int64   `json:"ledger_count,omitempty"`
+	LogCount                int64   `json:"log_count,omitempty"`
+	LogQuota                int64   `json:"log_quota,omitempty"`
+	CountDiff               int64   `json:"count_diff,omitempty"`
+	QuotaDiff               int64   `json:"quota_diff,omitempty"`
+	SubscriptionID          int64   `json:"subscription_id,omitempty"`
+	Window                  string  `json:"window,omitempty"`
+	WindowStart             int64   `json:"window_start,omitempty"`
+	SubscriptionUsedUSD     float64 `json:"subscription_used_usd,omitempty"`
+	LedgerSubscriptionCost  int64   `json:"ledger_subscription_cost,omitempty"`
+	SubscriptionDifference  float64 `json:"subscription_difference,omitempty"`
+	PendingReceivableQuota  int64   `json:"pending_receivable_quota,omitempty"`
+	OverdraftQuota          int64   `json:"overdraft_quota,omitempty"`
+	RefundedOrderCount      int64   `json:"refunded_order_count,omitempty"`
+	RefundedOrderMoneyCents int64   `json:"refunded_order_money_cents,omitempty"`
+	ReversalLedgerCount     int64   `json:"reversal_ledger_count,omitempty"`
+	ReversalLedgerAmount    int64   `json:"reversal_ledger_amount,omitempty"`
+	MoneyCentsDiff          int64   `json:"money_cents_diff,omitempty"`
+	TradeNo                 string  `json:"trade_no,omitempty"`
+	GroupID                 int64   `json:"group_id,omitempty"`
+	PlanID                  int64   `json:"plan_id,omitempty"`
+	MoneyCents              int64   `json:"money_cents,omitempty"`
+	StuckSince              int64   `json:"stuck_since,omitempty"`
 }
 
 type ReconciliationRunView struct {
@@ -1281,6 +1299,8 @@ type ReconciliationRunView struct {
 	TotalChannels     int32                           `json:"total_channels"`
 	TotalReservations int32                           `json:"total_reservations"`
 	DiscrepancyCount  int32                           `json:"discrepancy_count"`
+	Status            string                          `json:"status"`
+	ErrorMessage      string                          `json:"error_message,omitempty"`
 	Discrepancies     []ReconciliationDiscrepancyView `json:"discrepancies,omitempty"`
 }
 
@@ -1471,6 +1491,8 @@ func reconciliationRunFromProto(run *billingv1.ReconciliationRun) *Reconciliatio
 		TotalChannels:     run.GetTotalChannels(),
 		TotalReservations: run.GetTotalReservations(),
 		DiscrepancyCount:  run.GetDiscrepancyCount(),
+		Status:            run.GetStatus(),
+		ErrorMessage:      run.GetErrorMessage(),
 	}
 	for _, d := range run.GetDiscrepancies() {
 		view.Discrepancies = append(view.Discrepancies, ReconciliationDiscrepancyView{
@@ -1491,6 +1513,8 @@ func reconciliationRunFromProto(run *billingv1.ReconciliationRun) *Reconciliatio
 			LogQuota:          d.GetLogQuota(),
 			CountDiff:         d.GetCountDiff(),
 			QuotaDiff:         d.GetQuotaDiff(),
+			SubscriptionID:    d.GetSubscriptionId(), Window: d.GetWindow(), WindowStart: d.GetWindowStart(), SubscriptionUsedUSD: d.GetSubscriptionUsedUsd(), LedgerSubscriptionCost: d.GetLedgerSubscriptionCost(), SubscriptionDifference: d.GetSubscriptionDifference(),
+			PendingReceivableQuota: d.GetPendingReceivableQuota(), OverdraftQuota: d.GetOverdraftQuota(), RefundedOrderCount: d.GetRefundedOrderCount(), RefundedOrderMoneyCents: d.GetRefundedOrderMoneyCents(), ReversalLedgerCount: d.GetReversalLedgerCount(), ReversalLedgerAmount: d.GetReversalLedgerAmount(), MoneyCentsDiff: d.GetMoneyCentsDiff(), TradeNo: d.GetTradeNo(), GroupID: d.GetGroupId(), PlanID: d.GetPlanId(), MoneyCents: d.GetMoneyCents(), StuckSince: d.GetStuckSince(),
 		})
 	}
 	return view
@@ -2082,6 +2106,7 @@ func (s *AdminService) ListLogs(ctx context.Context, req *adminv1.ListLogsReques
 		Page:     page,
 		PageSize: pageSize,
 		Type:     req.Type,
+		OrderBy:  ledgerOrderBy(req.Sort, req.Order),
 	}
 
 	// Pass time range filters to billing service
@@ -2203,6 +2228,7 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 		Page:     page,
 		PageSize: pageSize,
 		Type:     req.Type,
+		OrderBy:  ledgerOrderBy(req.Sort, req.Order),
 	}
 
 	if req.StartTime > 0 {
@@ -2306,6 +2332,24 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 	}
 
 	return entries, billingResp.GetTotal(), nil
+}
+
+func ledgerOrderBy(sortKey, direction string) string {
+	column := map[string]string{
+		"id": "id", "userId": "user_id", "user_id": "user_id", "type": "type",
+		"amount": "amount", "balanceAfter": "balance_after", "balance_after": "balance_after",
+		"referenceId": "reference_id", "reference_id": "reference_id",
+		"createdAt": "created_at", "created_at": "created_at",
+	}[sortKey]
+	if column == "" {
+		return "created_at desc"
+	}
+	if strings.EqualFold(direction, "desc") {
+		direction = "desc"
+	} else {
+		direction = "asc"
+	}
+	return column + " " + direction
 }
 
 // 辅助函数：将 time.Time 转换为 Unix 时间戳

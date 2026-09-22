@@ -3,10 +3,9 @@
 //
 //  1. 账单只落一次 — exactly one consume ledger row per (reference_id,
 //     cost_source) and no duplicate ledger_dedupe_key for the reservation;
-//  2. 归属正确 — the serving-source dimension (channel_id XOR
-//     subscription_account_id) matches -serving-kind and the other dimension
-//     is zero, so credential/usage/cost/bill belong only to the source that
-//     actually served;
+//  2. 归属正确 — source_kind matches -serving-kind and the serving source ID
+//     is present. A subscription projection can also populate channel_id, so
+//     the two ID columns are not mutually exclusive;
 //  3. (optional) the charged quota matches -expect-charged-quota.
 //
 // Usage:
@@ -138,6 +137,7 @@ type ledgerGroup struct {
 	count      int64
 	dedupeKeys []string
 	charged    int64
+	sourceKind string
 	channelID  int64
 	subAcctID  int64
 }
@@ -148,7 +148,7 @@ func verify(db *sql.DB, reservation, servingKind string, expectQuota int64, hasE
 	rows, err := db.Query(
 		"SELECT reference_id, cost_source, COUNT(*), "+
 			"GROUP_CONCAT(ledger_dedupe_key), COALESCE(SUM(ABS(amount)), 0), "+
-			"COALESCE(MAX(channel_id), 0), COALESCE(MAX(subscription_account_id), 0) "+
+			"COALESCE(MAX(source_kind), ''), COALESCE(MAX(channel_id), 0), COALESCE(MAX(subscription_account_id), 0) "+
 			"FROM billing_ledgers WHERE type = 'consume' AND reference_id = ? "+
 			"GROUP BY reference_id, cost_source",
 		reservation,
@@ -164,7 +164,7 @@ func verify(db *sql.DB, reservation, servingKind string, expectQuota int64, hasE
 		var g ledgerGroup
 		var reference string
 		var keys string
-		if err := rows.Scan(&reference, &g.costSource, &g.count, &keys, &g.charged, &g.channelID, &g.subAcctID); err != nil {
+		if err := rows.Scan(&reference, &g.costSource, &g.count, &keys, &g.charged, &g.sourceKind, &g.channelID, &g.subAcctID); err != nil {
 			fail("scan ledgers: %v", err)
 		}
 		_ = reference // constant per query
@@ -180,8 +180,8 @@ func verify(db *sql.DB, reservation, servingKind string, expectQuota int64, hasE
 	totalCharged := int64(0)
 	for _, g := range groups {
 		totalCharged += g.charged
-		fmt.Printf("  cost_source=%-12s rows=%d charged=%d channel_id=%d subscription_account_id=%d\n",
-			g.costSource, g.count, g.charged, g.channelID, g.subAcctID)
+		fmt.Printf("  cost_source=%-12s rows=%d charged=%d source_kind=%s channel_id=%d subscription_account_id=%d\n",
+			g.costSource, g.count, g.charged, g.sourceKind, g.channelID, g.subAcctID)
 		if g.count != 1 {
 			fmt.Printf("  ✗ cost_source %s has %d rows — expected exactly 1 (账单只落一次)\n", g.costSource, g.count)
 			ok = false
@@ -195,32 +195,24 @@ func verify(db *sql.DB, reservation, servingKind string, expectQuota int64, hasE
 		}
 	}
 
-	// Attribution: exactly one dimension participated and it matches
-	// the expected serving source kind.
-	channelRows := 0
-	subRows := 0
+	// source_kind is authoritative. A subscription projection also carries a
+	// channel_id for adapter compatibility, so the ID columns are not XOR.
 	for _, g := range groups {
-		if g.channelID > 0 {
-			channelRows++
-		}
-		if g.subAcctID > 0 {
-			subRows++
-		}
-	}
-	switch servingKind {
-	case "channel":
-		if channelRows == 0 || subRows > 0 {
-			fmt.Printf("  ✗ expected serving source kind=channel (channel rows=%d, subscription rows=%d)\n", channelRows, subRows)
+		if g.sourceKind != servingKind {
+			fmt.Printf("  ✗ expected source_kind=%s, got %q\n", servingKind, g.sourceKind)
 			ok = false
-		} else {
-			fmt.Printf("  ✓ all ledger rows attributed to channel (channel rows=%d, subscription rows=0)\n", channelRows)
 		}
-	case "subscription":
-		if subRows == 0 || channelRows > 0 {
-			fmt.Printf("  ✗ expected serving source kind=subscription (subscription rows=%d, channel rows=%d)\n", subRows, channelRows)
-			ok = false
-		} else {
-			fmt.Printf("  ✓ all ledger rows attributed to subscription account (subscription rows=%d, channel rows=0)\n", subRows)
+		switch servingKind {
+		case "channel":
+			if g.channelID <= 0 || g.subAcctID != 0 {
+				fmt.Printf("  ✗ channel attribution requires channel_id > 0 and subscription_account_id = 0\n")
+				ok = false
+			}
+		case "subscription":
+			if g.subAcctID <= 0 {
+				fmt.Printf("  ✗ subscription attribution requires subscription_account_id > 0\n")
+				ok = false
+			}
 		}
 	}
 

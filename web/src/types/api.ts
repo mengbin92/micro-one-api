@@ -766,6 +766,7 @@ export interface components {
             value?: string;
             comment?: string;
             updatedAt?: string;
+            revision?: string;
         };
         "api.config.v1.ListConfigsResponse": {
             items?: components["schemas"]["api.config.v1.GetConfigResponse"][];
@@ -779,6 +780,7 @@ export interface components {
         };
         "api.config.v1.SetConfigResponse": {
             success?: boolean;
+            revision?: string;
         };
         "api.log.v1.GetLogResponse": {
             id?: string;
@@ -819,6 +821,12 @@ export interface components {
             /** Format: int32 */
             usageContractVersion?: number;
             usageDecisionReason?: string;
+            rootRequestId?: string;
+            /** Format: int32 */
+            attemptNumber?: number;
+            reservationId?: string;
+            sourceKind?: string;
+            upstreamModelId?: string;
         };
         "api.log.v1.IngestLogRequest": {
             level?: string;
@@ -861,6 +869,12 @@ export interface components {
             usageContractVersion?: number;
             canonicalPresent?: boolean;
             usageDecisionReason?: string;
+            rootRequestId?: string;
+            /** Format: int32 */
+            attemptNumber?: number;
+            reservationId?: string;
+            sourceKind?: string;
+            upstreamModelId?: string;
         };
         "api.log.v1.IngestLogResponse": {
             id?: string;

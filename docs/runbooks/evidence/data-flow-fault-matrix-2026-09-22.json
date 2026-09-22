@@ -1,0 +1,123 @@
+{
+  "captured_at_utc": "2026-09-22T06:40:00Z",
+  "environment": "local isolated docker-compose (MySQL oneapi, redis, mock upstreams); no production data or traffic",
+  "scope": "fault matrix F7-F18 (F17 partial); F19/F20/F22 recorded separately in data-flow-failover-isolated-2026-09-22.json",
+  "code_commits_at_execution": [
+    "52762f26",
+    "fe746176",
+    "5125ac9e",
+    "8926b5e5",
+    "04382c4c",
+    "ad353c0c",
+    "f92417eb",
+    "f37aaa4e"
+  ],
+  "scenarios": [
+    {
+      "id": "F7_F8_settlement_crash_recovery",
+      "procedure": "billing stopped; reservation(reserved)+settlement task(pending) seeded directly; billing started; then restarted again",
+      "result": "PASS",
+      "evidence": "recovery worker settled exactly once: reservation committed, one consume ledger (-10), task completed, attempts=0->completed; second restart produced no new ledger and no balance change (CAS idempotency)",
+      "note": "direct DB seeding froze 1000 without prior deduction, so net balance moved +990 (1000 released - 10 charged) — arithmetic consistent with seeded state"
+    },
+    {
+      "id": "F9_limited_key_lost_response_replay",
+      "procedure": "ConsumeTokenQuota(amount=50, reservation_id=R) via gRPC: first call, then two replays with same R, then a new reservation",
+      "result": "FAIL_BEFORE_FIX -> PASS_AFTER_FIX",
+      "defect": "dedupe claim used OnConflict(DoNothing)+RowsAffected; on MySQL a duplicate reports RowsAffected!=0, sending replays into the deduction branch which crashed on a keyless claim UPDATE (ErrMissingWhereClause 'WHERE conditions required'). Rollback prevented double-charging but replay returned an internal error instead of the recorded result",
+      "fix": "5125ac9e read-then-insert under row lock; replay returns recorded remaining=750, no re-deduction; new reservation deducts normally",
+      "post_fix_evidence": "first: remaining 750; replay x2: remaining 750 (success); tokens.remain_quota=750"
+    },
+    {
+      "id": "F10_grpc_commit_failure",
+      "procedure": "mock-slow prompt (8s upstream delay); billing stopped mid-flight; request completed upstream but commit RPC failed",
+      "result": "PASS_WITH_FIX",
+      "evidence": "client 502; no upstream replay (single reservation); reservation stuck reserved -> expired_at forced past -> sweeper released: status expired, refund +1006, zero consume rows, balance restored",
+      "gap_fixed": "post-forward commit RPC failure produced no log at any level; added WARN with reservation_id (8926b5e5)"
+    },
+    {
+      "id": "F11_redis_pending_reclaim",
+      "procedure": "EVENT_BUS_BACKEND=redis-streams on channel-service; message injected and forced into PEL via rogue XREADGROUP while consumer stopped; consumer restarted; then malformed payload injected",
+      "result": "PASS_WITH_FIX",
+      "evidence": "valid pending message reclaimed by claimLoop (idle 30s + tick 10s) after restart, processed idempotently, ACKed (XPENDING 1->0)",
+      "gaps": [
+        "malformed/unmarshallable payload is never ACKed and has no delivery cap or DLQ — poison messages loop through reclaim forever (design decision pending)",
+        "failures were printf-only; added micro_one_api_events_stream_failures_total{topic,reason} (04382c4c), verified incrementing on poison messages; test messages manually XACKed at cleanup"
+      ]
+    },
+    {
+      "id": "F12_F14_notify_failures",
+      "procedure": "webhook notification to always-500 endpoint; webhook notification to 200+{\"errcode\":87005} endpoint",
+      "result": "PASS",
+      "evidence": "both: pending(retry_count 1) -> failed(retry_count 2), last_error recorded ('webhook returned status 500' / 'webhook rejected notification: errcode=87005'), sent_at=0 (never marked sent); no separate 'retry' status — pending+retry_count carries that meaning",
+      "note": "terminal failure at retry_count=2 with default max 3: boundary semantics (attempt count vs retry count) should be documented; lease CAS (ClaimPending/CompleteProcessing) prevents concurrent sends"
+    },
+    {
+      "id": "F15_model_usage_stats",
+      "procedure": "RecordModelUsage gRPC: success sample, error sample, unregistered model",
+      "result": "PASS_WITH_FIX",
+      "evidence": "registered model: request_count=2, error_count=1, avg_latency=75=(100+50)/2 (weighted by sample count); storage errors propagate to caller by design",
+      "gap_fixed": "unregistered model returned success=true with no row written (deliberate best-effort drop, but invisible); added micro_one_api_channel_model_usage_dropped_total{reason=unregistered_model} (ad353c0c)"
+    },
+    {
+      "id": "F16_config_revision",
+      "procedure": "SetConfig twice then GetConfig via config-service gRPC",
+      "result": "PASS",
+      "evidence": "revisions 1 -> 2, write responses return revision, GetConfig reads back persisted revision 2; config-service only promises the persisted version (config.changed has no consumer — documented boundary, not treated as applied-to-runtime)"
+    },
+    {
+      "id": "F17_payment_reconcile",
+      "procedure": "pending alipay order seeded directly; observed payment reconcile job (1min interval)",
+      "result": "PARTIAL",
+      "evidence": "query failure visible: WARN 'payment provider status queries failed' scanned=1 query_failures=1; order stays pending (no false paid/closed)",
+      "blocked_parts": "lost-callback convergence (query->paid), duplicate callback, and issuance failure need an Alipay sandbox round-trip or a mock provider with QueryOrder — not executable against the built-in mock channel (never queried by design). Remains 待验收 for those sub-cases"
+    },
+    {
+      "id": "F18_oauth_store_failure",
+      "procedure": "oauth account (kimi) with expired access token; mock rotating token endpoint (each refresh token valid once); MySQL trigger blocks UPDATE on subscription_accounts; relay restarts to clear token cache",
+      "result": "PASS_WITH_FIXES",
+      "evidence": [
+        "baseline: refresh via mock (refresh_calls 1, rt rotated), new creds persisted encrypted, request 200",
+        "persist blocked: refresh succeeds (calls 2), persist fails after 3 backoff attempts (100/200ms), request still 200 with rotated token, WARN log + micro_one_api_credential_persist_failures_total +1, DB unchanged (stale rt)",
+        "same-process second request: cached rotated creds reused, no new refresh (calls stay 2), 200 — old refresh token NOT reused",
+        "relay restart: refresh task sweeps expired account with stale rotated rt -> invalid_grant, classified non-retryable (stops retrying), WARN logged; request path served by persisted access token"
+      ],
+      "defects_fixed": [
+        "f37aaa4e: KIMI_TOKEN_REFRESH_URL/CLIENT_ID config overrides were applied AFTER NewKimiTokenProvider captured the defaults — overrides silently ignored (init-order bug, prod-affecting)",
+        "f92417eb: persist failure was log-only; added credential_persist_failures_total{platform} metric"
+      ],
+      "notes": [
+        "OAuth account with non-empty access_token is used as-is regardless of expires_at (refresh only when access_token empty) — documented behavior to be aware of",
+        "refresh_task hook error text says 'token refresh failed' when the persist layer actually failed — wording could be clearer (minor)"
+      ]
+    }
+  ],
+  "production_deploy_status": {
+    "deployed": "31250763 (cross-source failover) at 2026-09-22 03:22 UTC; all matrix fixes at 2026-09-22 06:54 UTC",
+    "deployed_commits": [
+      "52762f26",
+      "5125ac9e",
+      "8926b5e5",
+      "04382c4c",
+      "ad353c0c",
+      "f92417eb",
+      "f37aaa4e"
+    ],
+    "services": [
+      "relay-gateway",
+      "identity-service",
+      "channel-service"
+    ],
+    "rollback_images": "docker-compose-<svc>:rollback-20260922-fm",
+    "post_deploy_smoke": "all three Up; relay serving production traffic (kimi-k3, async settlement enqueued); metrics 200; new counters registered (export on first increment); identity/channel logs clean",
+    "read_only_recheck": {
+      "captured_at_utc": "2026-09-22T07:53:58Z",
+      "result": "All three containers running with zero restarts; running image IDs match latest tags; all images linux/amd64; rollback tags present; relay host /metrics HTTP 200 and identity/channel in-container /metrics successful",
+      "running_images": {
+        "relay-gateway": "sha256:a595bc22b348c9cfa9de6deb5c0c692a6ec6fa2973decbc80a476fdb80011d85",
+        "identity-service": "sha256:4e221390861b82cc64958cc5ea2cddbf1b71bc57826d2d86135558a78c678d1f",
+        "channel-service": "sha256:60da01d1f357fbdb7e33ad5d63aa31679c41d884898ca16ed406e90a31b2d521"
+      }
+    }
+  }
+}

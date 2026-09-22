@@ -5,13 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/smtp"
 	"net/url"
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	"micro-one-api/pkg/jsonx"
+	applogger "micro-one-api/platform/logging"
 )
 
 var (
@@ -83,24 +86,7 @@ func (s *MultiSender) sendWebhook(ctx context.Context, n *Notification) error {
 		"content":    n.Content,
 		"created_at": n.CreatedAt.Unix(),
 	}
-	body, err := jsonx.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("webhook returned status %d", resp.StatusCode)
-	}
-	return nil
+	return s.sendJSONWebhook(ctx, endpoint, payload)
 }
 
 func isHTTPURL(raw string) bool {
@@ -198,6 +184,9 @@ func NewDispatcher(uc *NotifyUsecase, sender Sender, interval time.Duration, bat
 
 func (d *Dispatcher) Start(ctx context.Context) func() {
 	runCtx, cancel := context.WithCancel(ctx)
+	if err := d.uc.RecoverProcessing(runCtx); err != nil {
+		applogger.Log.Warn("notification processing recovery failed", zap.Error(err))
+	}
 	go d.loop(runCtx)
 	return cancel
 }
@@ -209,12 +198,12 @@ func (d *Dispatcher) DispatchOnce(ctx context.Context) error {
 	}
 	for _, n := range items {
 		if err := d.sender.Send(ctx, n); err != nil {
-			if markErr := d.uc.RecordFailure(ctx, n.ID, d.maxRetry, err.Error()); markErr != nil {
+			if markErr := d.uc.CompleteProcessing(ctx, n, NotifyStatusFailed, d.maxRetry, err.Error()); markErr != nil {
 				return markErr
 			}
 			continue
 		}
-		if err := d.uc.MarkSent(ctx, n.ID); err != nil {
+		if err := d.uc.CompleteProcessing(ctx, n, NotifyStatusSent, d.maxRetry, ""); err != nil {
 			return err
 		}
 	}
@@ -224,13 +213,17 @@ func (d *Dispatcher) DispatchOnce(ctx context.Context) error {
 func (d *Dispatcher) loop(ctx context.Context) {
 	ticker := time.NewTicker(d.interval)
 	defer ticker.Stop()
-	_ = d.DispatchOnce(ctx)
+	if err := d.DispatchOnce(ctx); err != nil {
+		applogger.Log.Warn("notification dispatch failed", zap.Error(err))
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_ = d.DispatchOnce(ctx)
+			if err := d.DispatchOnce(ctx); err != nil {
+				applogger.Log.Warn("notification dispatch failed", zap.Error(err))
+			}
 		}
 	}
 }
@@ -347,5 +340,41 @@ func (s *MultiSender) sendJSONWebhook(ctx context.Context, endpoint string, payl
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("webhook returned status %d", resp.StatusCode)
 	}
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read webhook response: %w", err)
+	}
+	trimmedBody := bytes.TrimSpace(responseBody)
+	if len(trimmedBody) > 0 {
+		// Slack's webhook endpoint returns the plain-text body "ok" on
+		// success; all other non-empty bodies must follow the JSON contract.
+		if bytes.EqualFold(trimmedBody, []byte("ok")) {
+			return nil
+		}
+		var result map[string]any
+		if err := jsonx.Unmarshal(trimmedBody, &result); err != nil {
+			return fmt.Errorf("invalid webhook response: %w", err)
+		}
+		if rejectedCode(result["errcode"]) {
+			return fmt.Errorf("webhook rejected notification: errcode=%v errmsg=%v", result["errcode"], result["errmsg"])
+		}
+		if rejectedCode(result["code"]) {
+			return fmt.Errorf("webhook rejected notification: code=%v message=%v", result["code"], result["message"])
+		}
+		if success, ok := result["success"].(bool); ok && !success {
+			return fmt.Errorf("webhook rejected notification: success=false")
+		}
+	}
 	return nil
+}
+
+func rejectedCode(value any) bool {
+	switch v := value.(type) {
+	case float64:
+		return v != 0
+	case string:
+		return v != "" && v != "0" && v != "OK" && v != "ok"
+	default:
+		return false
+	}
 }

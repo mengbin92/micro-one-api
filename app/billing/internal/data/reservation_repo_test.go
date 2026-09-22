@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -13,8 +14,12 @@ import (
 	"gorm.io/gorm"
 )
 
-func setupReservationTestDB(t *testing.T) *gorm.DB {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+func setupReservationTestDB(t *testing.T, paths ...string) *gorm.DB {
+	dsn := ":memory:"
+	if len(paths) > 0 {
+		dsn = paths[0]
+	}
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 
 	err = db.Exec(`
@@ -43,6 +48,9 @@ func setupReservationTestDB(t *testing.T) *gorm.DB {
 	`).Error
 	require.NoError(t, err)
 
+	migration, err := os.ReadFile("../../../../migrations/sqlite/106_add_reservation_request_trace.sql")
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(string(migration)).Error)
 	return db
 }
 

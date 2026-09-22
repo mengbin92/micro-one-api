@@ -7,8 +7,9 @@ import (
 )
 
 var (
-	ErrNotificationNotFound = errors.New("notification not found")
-	ErrInvalidNotification  = errors.New("invalid notification")
+	ErrNotificationNotFound  = errors.New("notification not found")
+	ErrInvalidNotification   = errors.New("invalid notification")
+	ErrNotificationLeaseLost = errors.New("notification processing lease lost")
 )
 
 const (
@@ -20,23 +21,25 @@ const (
 	NotifyTypeFeishu   = "feishu"
 	NotifyTypeSlack    = "slack"
 
-	NotifyStatusPending = "pending"
-	NotifyStatusSent    = "sent"
-	NotifyStatusFailed  = "failed"
+	NotifyStatusPending    = "pending"
+	NotifyStatusProcessing = "processing"
+	NotifyStatusSent       = "sent"
+	NotifyStatusFailed     = "failed"
 )
 
 // Notification represents an outgoing notification.
 type Notification struct {
-	ID         int64
-	Type       string // webhook, email, event
-	Recipient  string
-	Subject    string
-	Content    string
-	Status     string // pending, sent, failed
-	RetryCount int
-	LastError  string
-	CreatedAt  time.Time
-	SentAt     time.Time
+	ID           int64
+	Type         string // webhook, email, event
+	Recipient    string
+	Subject      string
+	Content      string
+	Status       string // pending, sent, failed
+	RetryCount   int
+	LastError    string
+	ProcessingAt time.Time
+	CreatedAt    time.Time
+	SentAt       time.Time
 }
 
 // NotifyRepo is the repository interface for notification persistence.
@@ -48,6 +51,22 @@ type NotifyRepo interface {
 	UpdateStatus(ctx context.Context, id int64, status string) error
 	MarkFailed(ctx context.Context, id int64) error
 	RecordFailure(ctx context.Context, id int64, maxRetry int, lastError string) error
+}
+
+// NotificationClaimer is an optional repository capability. Claiming is a
+// compare-and-set transition so two notify workers cannot send the same row at
+// the same time. Repositories that do not implement it retain the old
+// single-worker behavior for tests and in-memory deployments.
+type NotificationClaimer interface {
+	ClaimPending(ctx context.Context, limit int32, maxRetry int) ([]*Notification, error)
+	RecoverProcessing(ctx context.Context) error
+}
+
+// NotificationLeaseCompleter applies the delivery result only while the
+// caller still owns the processing lease. This prevents a worker that resumed
+// after lease expiry from overwriting the result written by a newer worker.
+type NotificationLeaseCompleter interface {
+	CompleteProcessing(ctx context.Context, id int64, processingAt time.Time, status string, maxRetry int, lastError string) error
 }
 
 // NotifyUsecase implements business logic for notify-worker.
@@ -109,7 +128,17 @@ func (uc *NotifyUsecase) ListPending(ctx context.Context, limit int32, maxRetry 
 	if maxRetry < 1 {
 		maxRetry = 3
 	}
+	if claimer, ok := uc.repo.(NotificationClaimer); ok {
+		return claimer.ClaimPending(ctx, limit, maxRetry)
+	}
 	return uc.repo.ListPending(ctx, limit, maxRetry)
+}
+
+func (uc *NotifyUsecase) RecoverProcessing(ctx context.Context) error {
+	if claimer, ok := uc.repo.(NotificationClaimer); ok {
+		return claimer.RecoverProcessing(ctx)
+	}
+	return nil
 }
 
 func (uc *NotifyUsecase) RecordFailure(ctx context.Context, id int64, maxRetry int, lastError string) error {
@@ -117,4 +146,17 @@ func (uc *NotifyUsecase) RecordFailure(ctx context.Context, id int64, maxRetry i
 		maxRetry = 3
 	}
 	return uc.repo.RecordFailure(ctx, id, maxRetry, lastError)
+}
+
+func (uc *NotifyUsecase) CompleteProcessing(ctx context.Context, n *Notification, status string, maxRetry int, lastError string) error {
+	if n == nil {
+		return ErrNotificationNotFound
+	}
+	if completer, ok := uc.repo.(NotificationLeaseCompleter); ok {
+		return completer.CompleteProcessing(ctx, n.ID, n.ProcessingAt, status, maxRetry, lastError)
+	}
+	if status == NotifyStatusSent {
+		return uc.MarkSent(ctx, n.ID)
+	}
+	return uc.RecordFailure(ctx, n.ID, maxRetry, lastError)
 }

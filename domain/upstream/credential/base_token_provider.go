@@ -4,7 +4,11 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
+	"time"
+
+	"micro-one-api/platform/metrics"
 )
 
 // baseTokenProvider holds the shared state and logic common to all platform
@@ -23,6 +27,8 @@ type baseTokenProvider struct {
 
 	// defaultRefreshURL is used when the account's stored RefreshURL is empty.
 	defaultRefreshURL string
+	// platform labels the persist-failure metric (kimi/claude/codex/...).
+	platform string
 }
 
 // GetAccessToken returns a valid access token, refreshing transparently when
@@ -104,7 +110,7 @@ func (b *baseTokenProvider) resolve(ctx context.Context, accountID int64, force 
 	if newCreds.RefreshURL == "" {
 		newCreds.RefreshURL = creds.RefreshURL
 	}
-	if storeErr := b.lookup.Store(ctx, accountID, newCreds); storeErr != nil {
+	if storeErr := persistWithRetry(ctx, b.lookup, accountID, newCreds); storeErr != nil {
 		// domain-M1: persistence failed but we hold a fully-valid refreshed
 		// credential set, including the ROTATED refresh token. Cache the whole
 		// set in-process so (a) the current request succeeds with the new access
@@ -115,11 +121,36 @@ func (b *baseTokenProvider) resolve(ctx context.Context, accountID int64, force 
 		// fail a request that has a perfectly good token. Report the persist
 		// failure via log/meter only.
 		b.cache.setCreds(accountID, newCreds)
-		logPersistFailure(accountID, storeErr)
+		logPersistFailure(accountID, b.platform, storeErr)
 		return newCreds.AccessToken, nil
 	}
 	b.cache.setCreds(accountID, newCreds)
 	return newCreds.AccessToken, nil
+}
+
+// persistWithRetry closes the refresh -> durable credential gap for transient
+// channel RPC/database failures. The refreshed credential remains cached when
+// all attempts fail, so request traffic keeps using the valid token while the
+// next refresh retries persistence with the rotated refresh token.
+func persistWithRetry(ctx context.Context, lookup AccountLookup, accountID int64, creds *AccountCredentials) error {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := lookup.Store(ctx, accountID, creds); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if attempt < 2 {
+			timer := time.NewTimer(time.Duration(attempt+1) * 100 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
+	}
+	return lastErr
 }
 
 func (b *baseTokenProvider) lockFor(accountID int64) *sync.Mutex {
@@ -131,17 +162,48 @@ func (b *baseTokenProvider) lockFor(accountID int64) *sync.Mutex {
 // the request. A refreshed access token is still valid; only its durable store
 // failed. We log so operators can investigate storage health without breaking
 // authentication (domain-M1).
-func logPersistFailure(accountID int64, err error) {
+func logPersistFailure(accountID int64, platform string, err error) {
+	metrics.CredentialPersistFailures.WithLabelValues(platform).Inc()
 	log.Printf("credential: account %d token refreshed but persist failed (will retry on next resolve): %v", accountID, err)
+}
+
+// platformFromRefreshURL derives a low-cardinality platform label from the
+// token endpoint host (e.g. "kimi.moonshot.cn" -> "kimi").
+func platformFromRefreshURL(refreshURL string) string {
+	host := refreshURL
+	if i := strings.Index(host, "://"); i >= 0 {
+		host = host[i+3:]
+	}
+	if i := strings.IndexByte(host, '/'); i >= 0 {
+		host = host[:i]
+	}
+	if i := strings.IndexByte(host, '.'); i > 0 {
+		return host[:i]
+	}
+	if host == "" {
+		return "unknown"
+	}
+	return host
 }
 
 // newBaseTokenProvider builds the shared state for a platform provider.
 func newBaseTokenProvider(lookup AccountLookup, hc *http.Client, clientID, defaultRefreshURL string) baseTokenProvider {
+	return newPlatformTokenProvider(lookup, hc, clientID, defaultRefreshURL, "")
+}
+
+// newPlatformTokenProvider is newBaseTokenProvider plus a platform label for
+// the persist-failure metric; empty falls back to deriving it from the
+// refresh URL host.
+func newPlatformTokenProvider(lookup AccountLookup, hc *http.Client, clientID, defaultRefreshURL, platform string) baseTokenProvider {
 	if hc == nil {
 		hc = defaultRefreshHTTPClient()
 	}
+	if platform == "" {
+		platform = platformFromRefreshURL(defaultRefreshURL)
+	}
 	return baseTokenProvider{
 		lookup:            lookup,
+		platform:          platform,
 		cache:             newTokenCache(),
 		refresher:         &refresher{httpClient: hc, clientID: clientID},
 		defaultRefreshURL: defaultRefreshURL,

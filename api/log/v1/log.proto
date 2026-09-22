@@ -65,6 +65,11 @@ message GetLogResponse {
   string usage_parse_status = 27;     // verified | estimated | ambiguous | legacy
   int32 usage_contract_version = 28;  // 0 = legacy producer
   string usage_decision_reason = 29;  // e.g. cached_exceeds_reported_prompt
+  string root_request_id = 30;
+  int32 attempt_number = 31;
+  string reservation_id = 32;
+  string source_kind = 33;
+  string upstream_model_id = 34;
 }
 
 message ListLogsRequest {
@@ -116,6 +121,11 @@ message IngestLogRequest {
   int32 usage_contract_version = 28;
   bool canonical_present = 29;
   string usage_decision_reason = 30;
+  string root_request_id = 31;
+  int32 attempt_number = 32;
+  string reservation_id = 33;
+  string source_kind = 34;
+  string upstream_model_id = 35;
 }
 
 message IngestLogResponse {

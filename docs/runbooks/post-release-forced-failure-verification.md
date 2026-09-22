@@ -8,8 +8,8 @@
 
 1. **dashboard/metrics 显示正确回退原因**：relay `micro_one_api_routing_fallback_total{reason}`
    增长，routing-ops 视图 `fallback_rate > 0` 且 `partial=false`。
-2. **最终 credential/usage/成本/账单只归属实际服务来源**：账本行只出现在实际服务来源的
-   `channel_id` 或 `subscription_account_id` 维度上，被强制失败的来源无该请求的 consume 行。
+2. **最终 credential/usage/成本/账单只归属实际服务来源**：以账本的 `source_kind` 和对应来源 ID
+   判断归属；订阅投影可能同时填充 `channel_id`，不能用两个 ID 互斥判断。被强制失败的来源无该请求的 consume 行。
 3. **账单只落一次（无重复扣费）**：每个 `(reference_id, cost_source)` 恰好一行 consume
    ledger，`ledger_dedupe_key` 无重复；重试/回退不会重复扣费。
 
@@ -34,6 +34,8 @@ RECONCILE_DSN=<mysql-dsn> \
   单次计费；
 - **场景二**：禁用订阅账号 → 断言普通渠道实际服务、fallback 增长、账本归属 channel、
   单次计费。
+
+**适用边界（2026-09-21 复核）：** 当前 chat 的 candidate-list 重试把初始来源命名空间锁定；普通渠道请求的中途失败不会跨到订阅账号。请求开始前禁用映射或来源，只会改变 Plan 阶段的候选，`micro_one_api_routing_fallback_total` 不因此增长。上面的自动脚本先禁用来源、再要求请求中途回退计数增长，因此不能用于把这类 Plan 切换记为 PASS；Plan 切换应回读 planned/outcome、attempt、预留与账本。生产单次映射级验证及其限制见[下一阶段证据](evidence/data-flow-next-stage-2026-09-21.json)，完整故障矩阵仍须在隔离环境执行。
 
 退出码 `0` 全部通过。`DISABLE_CHANNEL_CMD` / `ENABLE_ACCOUNT_CMD` 等环境变量可覆盖
 禁用/启用命令，适配不同环境的强制失败方式。
@@ -108,7 +110,7 @@ WHERE type='consume' AND reference_id = '<committed_reservation_id>'
 GROUP BY reference_id, cost_source;
 
 -- 归属：只有订阅账号维度 > 0，channel 维度为 0；被禁用的渠道无该 reservation 的 consume 行
-SELECT channel_id, subscription_account_id, model_name, prompt_tokens,
+SELECT source_kind, channel_id, subscription_account_id, model_name, prompt_tokens,
        completion_tokens, cache_read_tokens, cache_creation_5m_tokens,
        cache_creation_1h_tokens, shadow_cost
 FROM billing_ledgers
@@ -118,7 +120,7 @@ WHERE type='consume' AND reference_id = '<committed_reservation_id>';
 期望结果：
 
 - `rows` 每 `cost_source` 为 `1`；`dedupe_keys` 无重复；
-- `subscription_account_id > 0` 且 `channel_id = 0`；
+- `source_kind = 'subscription'` 且 `subscription_account_id > 0`；`channel_id` 可为订阅适配器投影 ID；
 - 被禁用的渠道在该 reservation 上无任何 consume 行（失败尝试的 reservation 状态为
   `released`，只产生 refund，不产生 consume）。
 
@@ -127,7 +129,7 @@ WHERE type='consume' AND reference_id = '<committed_reservation_id>';
 ```bash
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" $ADMIN_BASE/api/channel/enable/<渠道id>
 curl -X PUT -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-  -d '{"status":0}' $ADMIN_BASE/v1/subscription-accounts/<订阅账号id>/status
+  -d '{"status":2}' $ADMIN_BASE/v1/subscription-accounts/<订阅账号id>/status
 sleep 3
 # 再发一次请求（应回退到普通渠道成功），重复步骤 3/4，serving-kind 改为 channel
 ```

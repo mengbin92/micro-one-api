@@ -207,13 +207,13 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 
 	staticTokenProvider := credential.NewStaticTokenProvider(accountLookup)
 
-	kimiTokenProvider := credential.NewKimiTokenProvider(accountLookup)
 	if override := strings.TrimSpace(cfg.Bootstrap.HybridAdaptor.GetKimi().GetTokenRefreshUrl()); override != "" {
 		credential.KimiTokenRefreshURL = override
 	}
 	if override := strings.TrimSpace(cfg.Bootstrap.HybridAdaptor.GetKimi().GetClientId()); override != "" {
 		credential.KimiOAuthClientID = override
 	}
+	kimiTokenProvider := credential.NewKimiTokenProvider(accountLookup)
 
 	tokenFactory := func(platform identity.Platform) credential.TokenProvider {
 		switch platform {
@@ -324,7 +324,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	relayUsecase.SetRoutingSettlementClient(data.NewBillingSettlementAdapter(billingClient))
 	relayUsecase.SetRuntimeBlocker(biz.NewMemoryRuntimeBlocker())
 
-	relayUsecase.SetSelectionRecorder(biz.NewMetricsSelectionRecorder(logger.Current()))
+	relayUsecase.SetSelectionRecorder(service.NewSelectionAuditRecorder(biz.NewMetricsSelectionRecorder(logger.Current()), logClient))
 
 	httpServer := server.NewHTTPServer(identityClient, channelClient, billingClient, providerFactory, relayUsecase, logClient)
 	httpServer.SetTokenQuotaBlocker(identityAdapter)
@@ -420,7 +420,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 
 	srv := newKratosHTTPServer(cfg, httpServer, providerTimeout)
 
-	grpcSvc := service.NewRelayGrpcService(identityClient, channelClient, billingClient, providerFactory, relayUsecase)
+	grpcSvc := service.NewRelayGrpcService(identityClient, channelClient, logClient, billingClient, providerFactory, relayUsecase)
 	var relayGRPCOpts []grpc.ServerOption
 	if cfg.Bootstrap.Mtls.Enabled {
 		mtlsOpts, mtlsErr := grpc2.MTLSServerOptions(cfg.Bootstrap.Mtls.CertFile, cfg.Bootstrap.Mtls.KeyFile, cfg.Bootstrap.Mtls.CaFile)

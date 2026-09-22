@@ -23,6 +23,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { locale, t } from '@/lib/i18n';
+import { userSelfQueryOptions } from '@/lib/account-queries';
+import { isAdminRole } from '@/lib/admin-access';
 
 interface LedgerLog {
   id?: string;
@@ -205,13 +207,14 @@ export function OrdersPage() {
   const [type, setType] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<PaymentOrder | null>(null);
   const pageSize = 20;
-  const adminToken = localStorage.getItem('adminToken');
-  const isAdminView = Boolean(adminToken);
+  const { data: currentUser, isLoading: isUserLoading } = useQuery(userSelfQueryOptions);
+  const isAdminView = isAdminRole(currentUser?.role);
   const queryClient = useQueryClient();
   const queryKey = ['user-orders', page, type, isAdminView];
 
   const { data, isLoading } = useQuery({
     queryKey,
+    enabled: !isUserLoading,
     queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),
@@ -310,7 +313,7 @@ export function OrdersPage() {
         </select>
       </div>
 
-      {isLoading ? (
+      {isLoading || isUserLoading ? (
         <TableSkeleton columns={[t("类型"), t("金额"), t("到账/余额"), t("关联 ID"), t("备注"), t("时间")]} rows={8} />
       ) : rows.length === 0 ? (
         <EmptyState title={t("暂无订单记录")} description={t("充值、兑换或退款后会显示在这里。")} />

@@ -12,14 +12,19 @@ var (
 
 // LogEntry represents a centralized log record.
 type LogEntry struct {
-	ID        int64
-	Level     string // info, warn, error, debug
-	Message   string
-	Source    string // service name or component
-	RequestID string
-	DedupeKey string
-	UserID    int64
-	CreatedAt time.Time
+	ID              int64
+	Level           string // info, warn, error, debug
+	Message         string
+	Source          string // service name or component
+	RequestID       string
+	RootRequestID   string
+	AttemptNumber   int32
+	ReservationID   string
+	SourceKind      string
+	UpstreamModelID string
+	DedupeKey       string
+	UserID          int64
+	CreatedAt       time.Time
 
 	Username              string
 	TokenName             string
@@ -84,6 +89,10 @@ type LogRepo interface {
 	DeleteBefore(ctx context.Context, before time.Time) (int64, error)
 }
 
+type SelectionAuditRepo interface {
+	ListSelectionAudit(ctx context.Context, userID int64, rootRequestID string) ([]*LogEntry, error)
+}
+
 // LogRepoBatch is an optional capability interface a LogRepo may implement to
 // persist many entries in a single round-trip. BatchLogWriter probes for it
 // and falls back to per-entry Create when the repo does not support batch
@@ -136,6 +145,17 @@ func (uc *LogUsecase) ListUserLogs(ctx context.Context, userID int64, page, page
 		pageSize = 50
 	}
 	return uc.repo.ListByUser(ctx, userID, page, pageSize, level, keyword)
+}
+
+func (uc *LogUsecase) ListSelectionAudit(ctx context.Context, userID int64, rootRequestID string) ([]*LogEntry, error) {
+	if userID <= 0 || rootRequestID == "" {
+		return nil, errors.New("user_id and root_request_id are required")
+	}
+	repo, ok := uc.repo.(SelectionAuditRepo)
+	if !ok {
+		return nil, errors.New("selection audit query is unavailable")
+	}
+	return repo.ListSelectionAudit(ctx, userID, rootRequestID)
 }
 
 func (uc *LogUsecase) UserUsageStats(ctx context.Context, userID int64, startTime, endTime time.Time) ([]*UsageStat, error) {

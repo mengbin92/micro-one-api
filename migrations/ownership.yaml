@@ -36,6 +36,7 @@ services:
     - 094_add_identity_routing_facts
     - 095_create_routing_change_outbox
     - 098_identity_ordered_token_groups
+    - 103_create_identity_token_quota_dedupe
 
   channel:
     - 092_create_routing_groups
@@ -121,6 +122,9 @@ services:
     - 096_add_subscription_contracts
     - 097_create_routing_billing_policies
     - 099_billing_user_routing_price_overrides
+    - 101_add_reconciliation_run_status
+    - 102_create_billing_settlement_tasks
+    - 106_add_reservation_request_trace
 
   log:
     # logs table (a subset of 000_create_core_tables on the shared schema,
@@ -132,6 +136,7 @@ services:
     - 037_add_subscription_account_id_to_logs
     - 082_create_log_ingest_dedupe_claims     # durable relay usage-log idempotency gate
     - 086_add_log_usage_semantics             # reported/canonical usage split + parse verdict on logs
+    - 107_add_log_request_trace
 
   admin:
     # system_options (007); the rest is owned elsewhere.
@@ -140,11 +145,13 @@ services:
   config:
     # configs table (a subset of 000_create_core_tables).
     - 000_create_core_tables
+    - 105_add_config_revision
 
   notify:
     # notifications table (a subset of 000_create_core_tables).
     - 000_create_core_tables
     - 033_add_notification_last_error
+    - 104_add_notification_processing_lease
 
   monitor:
     # health_checks + alert_rules (subset of 000_create_core_tables).

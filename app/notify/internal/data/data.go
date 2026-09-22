@@ -21,19 +21,22 @@ type Repository struct {
 }
 
 type notificationModel struct {
-	ID         int64  `gorm:"column:id;primaryKey;autoIncrement"`
-	Type       string `gorm:"column:type;index"`
-	Recipient  string `gorm:"column:recipient"`
-	Subject    string `gorm:"column:subject"`
-	Content    string `gorm:"column:content"`
-	Status     string `gorm:"column:status;index"`
-	RetryCount int    `gorm:"column:retry_count"`
-	LastError  string `gorm:"column:last_error"`
-	CreatedAt  int64  `gorm:"column:created_at;index"`
-	SentAt     int64  `gorm:"column:sent_at"`
+	ID           int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	Type         string `gorm:"column:type;index"`
+	Recipient    string `gorm:"column:recipient"`
+	Subject      string `gorm:"column:subject"`
+	Content      string `gorm:"column:content"`
+	Status       string `gorm:"column:status;index"`
+	RetryCount   int    `gorm:"column:retry_count"`
+	LastError    string `gorm:"column:last_error"`
+	ProcessingAt int64  `gorm:"column:processing_at"`
+	CreatedAt    int64  `gorm:"column:created_at;index"`
+	SentAt       int64  `gorm:"column:sent_at"`
 }
 
 func (notificationModel) TableName() string { return "notifications" }
+
+const processingLease = 10 * time.Minute
 
 func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 	var dbDSN string
@@ -108,6 +111,70 @@ func (r *Repository) ListPending(ctx context.Context, limit int32, maxRetry int)
 	return r.listPendingMemory(limit, maxRetry), nil
 }
 
+// ClaimPending atomically changes pending rows to processing before returning
+// them. A second worker observing the same row gets zero affected rows and
+// therefore cannot send it concurrently.
+func (r *Repository) ClaimPending(ctx context.Context, limit int32, maxRetry int) ([]*biz.Notification, error) {
+	if limit < 1 {
+		limit = 20
+	}
+	if maxRetry < 1 {
+		maxRetry = 3
+	}
+	if r.db == nil {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		items := make([]*biz.Notification, 0, limit)
+		for _, n := range r.mem {
+			if n.Status != biz.NotifyStatusPending || n.RetryCount >= maxRetry || len(items) >= int(limit) {
+				continue
+			}
+			n.Status = biz.NotifyStatusProcessing
+			n.ProcessingAt = time.Now()
+			cloned := *n
+			items = append(items, &cloned)
+		}
+		return items, nil
+	}
+	var candidates []notificationModel
+	if err := r.db.WithContext(ctx).Where("status = ? AND retry_count < ?", biz.NotifyStatusPending, maxRetry).Order("id ASC").Limit(int(limit)).Find(&candidates).Error; err != nil {
+		return nil, err
+	}
+	items := make([]*biz.Notification, 0, len(candidates))
+	for _, m := range candidates {
+		res := r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ? AND status = ?", m.ID, biz.NotifyStatusPending).Updates(map[string]any{"status": biz.NotifyStatusProcessing, "processing_at": time.Now().Unix()})
+		if res.Error != nil {
+			return nil, res.Error
+		}
+		if res.RowsAffected != 1 {
+			continue
+		}
+		m.Status = biz.NotifyStatusProcessing
+		m.ProcessingAt = time.Now().Unix()
+		items = append(items, notificationFromModel(m))
+	}
+	return items, nil
+}
+
+// RecoverProcessing makes rows claimed by a worker that exited before send
+// visible again after restart. External delivery may have succeeded before the
+// crash, so senders must tolerate a bounded duplicate.
+func (r *Repository) RecoverProcessing(ctx context.Context) error {
+	if r.db != nil {
+		cutoff := time.Now().Add(-processingLease).Unix()
+		return r.db.WithContext(ctx).Model(&notificationModel{}).Where("status = ? AND (processing_at = 0 OR processing_at < ?)", biz.NotifyStatusProcessing, cutoff).Updates(map[string]any{"status": biz.NotifyStatusPending, "processing_at": 0}).Error
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, n := range r.mem {
+		if n.Status == biz.NotifyStatusProcessing && (n.ProcessingAt.IsZero() || n.ProcessingAt.Before(time.Now().Add(-processingLease))) {
+			n.Status = biz.NotifyStatusPending
+			n.ProcessingAt = time.Time{}
+		}
+	}
+	return nil
+}
+
 func (r *Repository) UpdateStatus(ctx context.Context, id int64, status string) error {
 	if r.db != nil {
 		return r.updateStatusDB(ctx, id, status)
@@ -158,18 +225,7 @@ func (r *Repository) getDB(ctx context.Context, id int64) (*biz.Notification, er
 		}
 		return nil, err
 	}
-	return &biz.Notification{
-		ID:         m.ID,
-		Type:       m.Type,
-		Recipient:  m.Recipient,
-		Subject:    m.Subject,
-		Content:    m.Content,
-		Status:     m.Status,
-		RetryCount: m.RetryCount,
-		LastError:  m.LastError,
-		CreatedAt:  time.Unix(m.CreatedAt, 0),
-		SentAt:     time.Unix(m.SentAt, 0),
-	}, nil
+	return notificationFromModel(m), nil
 }
 
 func (r *Repository) listDB(ctx context.Context, page, pageSize int32, notifyType, status string) ([]*biz.Notification, int64, error) {
@@ -191,18 +247,7 @@ func (r *Repository) listDB(ctx context.Context, page, pageSize int32, notifyTyp
 	}
 	entries := make([]*biz.Notification, len(models))
 	for i, m := range models {
-		entries[i] = &biz.Notification{
-			ID:         m.ID,
-			Type:       m.Type,
-			Recipient:  m.Recipient,
-			Subject:    m.Subject,
-			Content:    m.Content,
-			Status:     m.Status,
-			RetryCount: m.RetryCount,
-			LastError:  m.LastError,
-			CreatedAt:  time.Unix(m.CreatedAt, 0),
-			SentAt:     time.Unix(m.SentAt, 0),
-		}
+		entries[i] = notificationFromModel(m)
 	}
 	return entries, total, nil
 }
@@ -218,45 +263,95 @@ func (r *Repository) listPendingDB(ctx context.Context, limit int32, maxRetry in
 	}
 	entries := make([]*biz.Notification, len(models))
 	for i, m := range models {
-		entries[i] = &biz.Notification{
-			ID:         m.ID,
-			Type:       m.Type,
-			Recipient:  m.Recipient,
-			Subject:    m.Subject,
-			Content:    m.Content,
-			Status:     m.Status,
-			RetryCount: m.RetryCount,
-			LastError:  m.LastError,
-			CreatedAt:  time.Unix(m.CreatedAt, 0),
-			SentAt:     time.Unix(m.SentAt, 0),
-		}
+		entries[i] = notificationFromModel(m)
 	}
 	return entries, nil
 }
 
 func (r *Repository) updateStatusDB(ctx context.Context, id int64, status string) error {
 	updates := map[string]any{
-		"status": status,
+		"status":        status,
+		"processing_at": 0,
 	}
 	if status == biz.NotifyStatusSent {
 		updates["sent_at"] = time.Now().Unix()
 		updates["last_error"] = ""
+		updates["processing_at"] = 0
 	}
 	return r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ?", id).Updates(updates).Error
 }
 
 func (r *Repository) markFailedDB(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ?", id).Updates(map[string]any{
-		"status": biz.NotifyStatusFailed,
+		"status":        biz.NotifyStatusFailed,
+		"processing_at": 0,
 	}).Error
 }
 
 func (r *Repository) recordFailureDB(ctx context.Context, id int64, maxRetry int, lastError string) error {
 	return r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ?", id).Updates(map[string]any{
-		"status":      gorm.Expr("CASE WHEN retry_count + 1 >= ? THEN ? ELSE status END", maxRetry, biz.NotifyStatusFailed),
-		"retry_count": gorm.Expr("retry_count + ?", 1),
-		"last_error":  lastError,
+		"status":        gorm.Expr("CASE WHEN retry_count + 1 >= ? THEN ? ELSE ? END", maxRetry, biz.NotifyStatusFailed, biz.NotifyStatusPending),
+		"retry_count":   gorm.Expr("retry_count + ?", 1),
+		"last_error":    lastError,
+		"processing_at": 0,
 	}).Error
+}
+
+func (r *Repository) CompleteProcessing(ctx context.Context, id int64, processingAt time.Time, status string, maxRetry int, lastError string) error {
+	if r.db == nil {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		n, ok := r.mem[id]
+		if !ok {
+			return biz.ErrNotificationNotFound
+		}
+		if n.Status != biz.NotifyStatusProcessing || !sameLease(n.ProcessingAt, processingAt) {
+			return biz.ErrNotificationLeaseLost
+		}
+		if status == biz.NotifyStatusSent {
+			n.Status = biz.NotifyStatusSent
+			n.SentAt = time.Now()
+			n.LastError = ""
+		} else {
+			n.RetryCount++
+			if n.RetryCount >= maxRetry {
+				n.Status = biz.NotifyStatusFailed
+			} else {
+				n.Status = biz.NotifyStatusPending
+			}
+			n.LastError = normalizeLastError(lastError)
+		}
+		n.ProcessingAt = time.Time{}
+		return nil
+	}
+	lease := processingAt.Unix()
+	if status == biz.NotifyStatusSent {
+		result := r.db.WithContext(ctx).Model(&notificationModel{}).
+			Where("id = ? AND status = ? AND processing_at = ?", id, biz.NotifyStatusProcessing, lease).
+			Updates(map[string]any{"status": biz.NotifyStatusSent, "processing_at": 0, "sent_at": time.Now().Unix(), "last_error": ""})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return biz.ErrNotificationLeaseLost
+		}
+		return nil
+	}
+	result := r.db.WithContext(ctx).Model(&notificationModel{}).
+		Where("id = ? AND status = ? AND processing_at = ?", id, biz.NotifyStatusProcessing, lease).
+		Updates(map[string]any{
+			"status":        gorm.Expr("CASE WHEN retry_count + 1 >= ? THEN ? ELSE ? END", maxRetry, biz.NotifyStatusFailed, biz.NotifyStatusPending),
+			"retry_count":   gorm.Expr("retry_count + ?", 1),
+			"last_error":    normalizeLastError(lastError),
+			"processing_at": 0,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return biz.ErrNotificationLeaseLost
+	}
+	return nil
 }
 
 // Memory implementations
@@ -329,11 +424,30 @@ func (r *Repository) updateStatusMemory(id int64, status string) error {
 		return biz.ErrNotificationNotFound
 	}
 	n.Status = status
+	if status != biz.NotifyStatusProcessing {
+		n.ProcessingAt = time.Time{}
+	}
 	if status == biz.NotifyStatusSent {
 		n.SentAt = time.Now()
 		n.LastError = ""
 	}
 	return nil
+}
+
+func notificationFromModel(m notificationModel) *biz.Notification {
+	processingAt := time.Time{}
+	if m.ProcessingAt > 0 {
+		processingAt = time.Unix(m.ProcessingAt, 0)
+	}
+	sentAt := time.Time{}
+	if m.SentAt > 0 {
+		sentAt = time.Unix(m.SentAt, 0)
+	}
+	return &biz.Notification{ID: m.ID, Type: m.Type, Recipient: m.Recipient, Subject: m.Subject, Content: m.Content, Status: m.Status, RetryCount: m.RetryCount, LastError: m.LastError, ProcessingAt: processingAt, CreatedAt: time.Unix(m.CreatedAt, 0), SentAt: sentAt}
+}
+
+func sameLease(a, b time.Time) bool {
+	return !a.IsZero() && !b.IsZero() && a.Unix() == b.Unix()
 }
 
 func (r *Repository) markFailedMemory(id int64) error {
@@ -344,6 +458,7 @@ func (r *Repository) markFailedMemory(id int64) error {
 		return biz.ErrNotificationNotFound
 	}
 	n.Status = biz.NotifyStatusFailed
+	n.ProcessingAt = time.Time{}
 	return nil
 }
 
@@ -355,8 +470,11 @@ func (r *Repository) recordFailureMemory(id int64, maxRetry int, lastError strin
 		return biz.ErrNotificationNotFound
 	}
 	n.RetryCount++
+	n.ProcessingAt = time.Time{}
 	if n.RetryCount >= maxRetry {
 		n.Status = biz.NotifyStatusFailed
+	} else {
+		n.Status = biz.NotifyStatusPending
 	}
 	n.LastError = lastError
 	return nil

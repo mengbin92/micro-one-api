@@ -128,6 +128,22 @@ type LedgerRepo interface {
 	SumSubscriptionCostByReservation(ctx context.Context, reservationIDs []string) (int64, error)
 }
 
+type LedgerListOptions struct {
+	UserID                string
+	Page                  int32
+	PageSize              int32
+	Type                  string
+	StartTime             time.Time
+	EndTime               time.Time
+	SubscriptionAccountID int64
+	OrderBy               string
+	Order                 string
+}
+
+type OrderedLedgerRepo interface {
+	ListLedgersWithOptions(ctx context.Context, options LedgerListOptions) ([]*Ledger, int64, error)
+}
+
 type ReceivableRepo interface {
 	// CreateInTx inserts a pending receivable inside the caller's transaction.
 	// Caller is responsible for honouring the reservation_id unique

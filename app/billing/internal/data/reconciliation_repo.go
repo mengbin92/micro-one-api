@@ -145,6 +145,26 @@ func (r *reconciliationRepo) GetLogConsumeSummary(ctx context.Context) (*biz.Con
 	return &summary, nil
 }
 
+func (r *reconciliationRepo) GetLedgerConsumeSummarySince(ctx context.Context, start, end time.Time) (*biz.ConsumeSummary, error) {
+	var summary biz.ConsumeSummary
+	if err := r.data.db.WithContext(ctx).Table("(?) AS consumes", r.data.db.Model(&ledgerModel{}).
+		Select("reference_id, MAX(quota) AS quota").Where("type = ? AND created_at >= ? AND created_at < ?", biz.LedgerTypeConsume, start, end).Group("reference_id")).
+		Select("COUNT(*) AS count, COALESCE(SUM(quota), 0) AS quota").Scan(&summary).Error; err != nil {
+		return nil, err
+	}
+	return &summary, nil
+}
+
+func (r *reconciliationRepo) GetLogConsumeSummarySince(ctx context.Context, start, end time.Time) (*biz.ConsumeSummary, error) {
+	var summary biz.ConsumeSummary
+	if err := r.data.db.WithContext(ctx).Model(&reconciliationLogModel{}).
+		Select("COUNT(*) AS count, COALESCE(SUM(quota), 0) AS quota").
+		Where("level = ? AND created_at >= ? AND created_at < ?", biz.LedgerTypeConsume, start.Unix(), end.Unix()).Scan(&summary).Error; err != nil {
+		return nil, err
+	}
+	return &summary, nil
+}
+
 func (r *reconciliationRepo) ListReservationsByStatus(ctx context.Context, status string) ([]*biz.Reservation, error) {
 	var models []reservationModel
 	if err := r.data.db.WithContext(ctx).

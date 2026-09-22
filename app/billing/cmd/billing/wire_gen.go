@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"micro-one-api/api/channel/v1"
 	"micro-one-api/api/notify/v1"
 	"micro-one-api/app/billing/internal/biz"
 	"micro-one-api/app/billing/internal/data"
@@ -135,6 +136,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 			defaultInt(int(asyncCfg.BatchSize), 100),
 			parseDurationOrDefault(asyncCfg.BatchInterval, 5*time.Second),
 		)
+		asyncBilling.SetTaskStore(d.SettlementTaskStore())
 	}
 
 	reconUc := biz.NewReconciliationUsecase(
@@ -178,12 +180,23 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	reconUc.SetReservationReleaser(uc)
 
 	svc.SetAsyncBillingUsecase(asyncBilling)
+	var channelConn *grpc.ClientConn
+	if cfg.Bootstrap.Clients != nil && cfg.Bootstrap.Clients.Channel != nil && cfg.Bootstrap.Clients.Channel.Endpoint != "" {
+		var err error
+		channelConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Channel.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpc2.NewInsecureTokenAuth(os.Getenv("SERVICE_TOKEN"))))
+		if err != nil {
+			logger.Log.
+				Error("dial channel endpoint", zap.Error(err))
+		} else {
+			svc.SetSettlementSideEffectReporter(service.NewChannelSettlementReporter(channelv1.NewChannelServiceClient(channelConn)))
+		}
+	}
 
 	// Build the optional notify-worker gRPC client. When the endpoint is empty
-	// or alerts are disabled, the job receives a noop notifier so legacy log
-	// behaviour is preserved.
+	// or alerts are disabled, leave the notifier nil so no notification is
+	// created and no downstream "sent" state can be inferred.
 	var notifyConn *grpc.ClientConn
-	var notifier biz.Notifier = biz.NoopNotifier()
+	var notifier biz.Notifier
 	interval := 1 * time.Hour
 	recipients := []string{""}
 	if cfg.Bootstrap.Recon != nil && cfg.Bootstrap.Recon.Enabled {
@@ -241,16 +254,24 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cleanupJob := biz.NewCleanupJob(uc, 1*time.Minute)
-	reconJobOpts := []biz.JobOption{biz.WithNotifier(notifier), biz.WithRecipients(recipients)}
+	reconJobOpts := []biz.JobOption{biz.WithRecipients(recipients)}
+	if notifier != nil {
+		reconJobOpts = append(reconJobOpts, biz.WithNotifier(notifier))
+	}
 	if cfg.Bootstrap.Clients != nil && cfg.Bootstrap.Clients.Notify != nil {
 		reconJobOpts = append(reconJobOpts, biz.WithNotifyType(cfg.Bootstrap.Clients.Notify.NotifyType))
 	}
 	reconJob := biz.NewReconciliationJob(reconUc, interval, reconJobOpts...)
+	paymentReconcileJob := biz.NewPaymentReconcileJob(paymentUc, 1*time.Minute)
 
 	expiryChecker := biz2.NewSubscriptionExpiryChecker(subscriptionRepo)
+	if notifier != nil {
+		expiryChecker.SetNotifier(expiryNotifier{notifier: notifier})
+	}
 	go expiryChecker.Run(ctx)
 	go cleanupJob.Start(ctx)
 	go reconJob.Start(ctx)
+	go paymentReconcileJob.Start(ctx)
 	partitionStop := startPartitionMaintenance(ctx, d.DB(), cfg.Bootstrap.Partition)
 	go func() {
 		sigChan := make(chan os.Signal, 1)
@@ -279,6 +300,9 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		d.Close()
 		if notifyConn != nil {
 			_ = notifyConn.Close()
+		}
+		if channelConn != nil {
+			_ = channelConn.Close()
 		}
 	}
 }

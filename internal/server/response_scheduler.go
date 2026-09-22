@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"micro-one-api/domain/requesttrace"
 	relaybiz "micro-one-api/internal/biz"
 )
 
@@ -140,6 +142,7 @@ func (s *OpenAIWSRoutingScheduler) routeModels(route responseRoute, clientModel 
 
 func (s *OpenAIWSRoutingScheduler) ResolvePlan(ctx context.Context, token, clientModel, previousResponseID, sessionHash string) (*relaybiz.RelayPlan, error) {
 	if plan, ok := s.ResolveStoredRoute(ctx, token, clientModel, previousResponseID); ok {
+		s.recordReusedSelection(ctx, plan, "previous_response")
 		return plan, nil
 	}
 	if relaybiz.RoutingContextV2Enabled() && strings.TrimSpace(previousResponseID) != "" {
@@ -149,6 +152,7 @@ func (s *OpenAIWSRoutingScheduler) ResolvePlan(ctx context.Context, token, clien
 		if s.server.wsSticky != nil && plan.Auth != nil {
 			s.server.wsSticky.RefreshSessionTTL(ctx, routingSessionScope(plan.Auth), sessionHash, s.server.openAIWSStickyTTL())
 		}
+		s.recordReusedSelection(ctx, plan, "session_sticky")
 		return plan, nil
 	}
 	if s == nil || s.server == nil {
@@ -165,6 +169,31 @@ func (s *OpenAIWSRoutingScheduler) ResolvePlan(ctx context.Context, token, clien
 		return nil, err
 	}
 	return plan, nil
+}
+
+func (s *OpenAIWSRoutingScheduler) recordReusedSelection(ctx context.Context, plan *relaybiz.RelayPlan, reason string) {
+	if s == nil || s.server == nil || s.server.relayUsecase == nil || plan == nil || plan.Auth == nil || plan.Channel == nil {
+		return
+	}
+	rootID := requesttrace.FromContext(ctx).RootRequestID
+	if rootID == "" {
+		rootID = generateRequestID()
+	}
+	kind := relaybiz.UpstreamRouteChannel.String()
+	sourceID := plan.Channel.ID
+	if plan.Channel.SubscriptionAccountID > 0 {
+		kind = relaybiz.UpstreamRouteSubscription.String()
+		sourceID = plan.Channel.SubscriptionAccountID
+	}
+	event := relaybiz.SelectionEvent{
+		RequestID: rootID, RootRequestID: rootID, UserID: plan.Auth.UserID,
+		Group: plan.Auth.Group, Model: plan.ClientModel, CandidateKinds: []string{kind},
+		FinalKind: kind, FinalSourceID: sourceID, StickyHit: true,
+		SelectionReason: reason, ProviderFamily: relaybiz.ProviderFamilyForModel(plan.ClientModel),
+		Planned: true, At: time.Now(),
+	}
+	s.server.relayUsecase.GetSelectionRecorder().RecordSelection(ctx, event)
+	plan.SelectionEvent = &event
 }
 
 func (s *OpenAIWSRoutingScheduler) BindSession(ctx context.Context, plan *relaybiz.RelayPlan, sessionHash string) {

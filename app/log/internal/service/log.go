@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,11 +20,18 @@ import (
 // LogService is the transport layer entry for log-service.
 type LogService struct {
 	logv1.UnimplementedLogServiceServer
-	uc *biz.LogUsecase
+	uc            *biz.LogUsecase
+	retentionDays int
 }
 
 func NewLogService(uc *biz.LogUsecase) *LogService {
-	return &LogService{uc: uc}
+	return &LogService{uc: uc, retentionDays: 30}
+}
+
+func (s *LogService) SetRetentionDays(days int) {
+	if s != nil && days > 0 {
+		s.retentionDays = days
+	}
 }
 
 // gRPC interface implementation
@@ -39,6 +47,11 @@ func (s *LogService) GetLog(ctx context.Context, req *logv1.GetLogRequest) (*log
 		Message:                entry.Message,
 		Source:                 entry.Source,
 		RequestId:              entry.RequestID,
+		RootRequestId:          entry.RootRequestID,
+		AttemptNumber:          entry.AttemptNumber,
+		ReservationId:          entry.ReservationID,
+		SourceKind:             entry.SourceKind,
+		UpstreamModelId:        entry.UpstreamModelID,
 		UserId:                 entry.UserID,
 		CreatedAt:              entry.CreatedAt.Unix(),
 		Username:               entry.Username,
@@ -84,6 +97,11 @@ func (s *LogService) IngestLog(ctx context.Context, req *logv1.IngestLogRequest)
 		Message:               applogger.Sanitize(req.Message),
 		Source:                req.Source,
 		RequestID:             req.RequestId,
+		RootRequestID:         req.RootRequestId,
+		AttemptNumber:         req.AttemptNumber,
+		ReservationID:         req.ReservationId,
+		SourceKind:            req.SourceKind,
+		UpstreamModelID:       req.UpstreamModelId,
 		DedupeKey:             req.DedupeKey,
 		UserID:                req.UserId,
 		Username:              req.Username,
@@ -127,6 +145,11 @@ func logEntryToProto(e *biz.LogEntry) *logv1.GetLogResponse {
 		Message:                e.Message,
 		Source:                 e.Source,
 		RequestId:              e.RequestID,
+		RootRequestId:          e.RootRequestID,
+		AttemptNumber:          e.AttemptNumber,
+		ReservationId:          e.ReservationID,
+		SourceKind:             e.SourceKind,
+		UpstreamModelId:        e.UpstreamModelID,
 		UserId:                 e.UserID,
 		CreatedAt:              e.CreatedAt.Unix(),
 		Username:               e.Username,
@@ -269,6 +292,53 @@ func (s *LogService) HandleDeleteLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
 }
 
+func (s *LogService) HandleListSelectionAudit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, err := strconv.ParseInt(r.URL.Query().Get("user_id"), 10, 64)
+	rootID := strings.TrimSpace(r.URL.Query().Get("root_request_id"))
+	if err != nil || userID <= 0 || rootID == "" || len(rootID) > 128 {
+		writeError(w, http.StatusBadRequest, "user_id and root_request_id are required")
+		return
+	}
+	entries, err := s.uc.ListSelectionAudit(r.Context(), userID, rootID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	items := make([]map[string]any, 0, len(entries))
+	for _, entry := range entries {
+		payload := map[string]any{}
+		if err := jsonx.Unmarshal([]byte(entry.Message), &payload); err != nil || payload == nil {
+			payload = map[string]any{}
+			payload["decode_error"] = true
+		}
+		payload["id"] = entry.ID
+		payload["request_id"] = entry.RequestID
+		payload["root_request_id"] = entry.RootRequestID
+		payload["user_id"] = entry.UserID
+		payload["model"] = entry.ModelName
+		payload["source_kind"] = entry.SourceKind
+		payload["source_id"] = selectionSourceID(entry)
+		payload["elapsed_ms"] = entry.ElapsedTime
+		payload["created_at"] = entry.CreatedAt.Unix()
+		items = append(items, payload)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":     items,
+		"retention": fmt.Sprintf("log-service retention: %d days", s.retentionDays),
+	})
+}
+
+func selectionSourceID(entry *biz.LogEntry) int64 {
+	if entry.SubscriptionAccountID > 0 {
+		return entry.SubscriptionAccountID
+	}
+	return entry.ChannelID
+}
+
 func parseUnixQuery(raw string) (time.Time, error) {
 	if raw == "" {
 		return time.Time{}, nil
@@ -355,6 +425,11 @@ func logEntryToMap(e *biz.LogEntry) map[string]any {
 		"message":                  e.Message,
 		"source":                   e.Source,
 		"request_id":               e.RequestID,
+		"root_request_id":          e.RootRequestID,
+		"attempt_number":           e.AttemptNumber,
+		"reservation_id":           e.ReservationID,
+		"source_kind":              e.SourceKind,
+		"upstream_model_id":        e.UpstreamModelID,
 		"user_id":                  e.UserID,
 		"created_at":               e.CreatedAt.Unix(),
 		"username":                 e.Username,

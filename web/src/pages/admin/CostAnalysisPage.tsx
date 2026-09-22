@@ -3,19 +3,17 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   DollarSign,
-  Download,
   TrendingDown,
   TrendingUp,
 } from 'lucide-react';
 import { useMemo } from 'react';
-import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/EmptyState';
 import { MetricCardsSkeleton } from '@/components/LoadingStates';
 import { ChannelCostComparison, CostBreakdownChart } from '@/components/admin/CostCharts';
+import { ExportButton } from '@/components/admin/ExportButton';
 import { amountUnitsToCurrencyUnits, formatUSD } from '@/lib/amount';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/i18n';
@@ -29,6 +27,7 @@ const CHART_COLORS = [
 ];
 
 interface AdminSummary {
+  sections?: Record<string, { available?: boolean }>;
   totals?: {
     users?: number;
     active_users?: number;
@@ -97,6 +96,19 @@ interface AdminSummary {
     ledger_gross_profit?: number;
     ledger_count?: number;
   }>;
+}
+
+interface CostExportRow {
+  dimension: string;
+  name: string;
+  platform: string;
+  revenue_usd: number;
+  upstream_cost_usd: number;
+  gross_profit_usd: number;
+  request_count: number;
+  charged_usd: number | '';
+  raw_usd: number | '';
+  average_rate_multiplier: number | '';
 }
 
 function formatMoney(q: number, digits = 4) {
@@ -172,7 +184,7 @@ export function CostAnalysisPage() {
     const revenue = costAnalysis.revenue_quota ?? 0;
     const upstreamCost = costAnalysis.upstream_cost ?? totals.upstream_cost ?? 0;
     const grossProfit = costAnalysis.gross_profit ?? totals.gross_profit ?? 0;
-    const margin = costAnalysis.gross_margin ?? (revenue > 0 ? ((grossProfit / revenue) * 100) : 0);
+    const margin = (costAnalysis.gross_margin ?? (revenue > 0 ? grossProfit / revenue : 0)) * 100;
 
     return {
       revenue,
@@ -189,6 +201,7 @@ export function CostAnalysisPage() {
       cost: amountUnitsToCurrencyUnits(m.upstream_cost),
       quota: amountUnitsToCurrencyUnits(m.quota),
       profit: amountUnitsToCurrencyUnits(m.gross_profit),
+      count: m.count ?? 0,
     }));
   }, [summary]);
 
@@ -199,6 +212,7 @@ export function CostAnalysisPage() {
       cost: amountUnitsToCurrencyUnits(c.upstream_cost),
       quota: amountUnitsToCurrencyUnits(c.quota),
       profit: amountUnitsToCurrencyUnits(c.gross_profit),
+      count: c.count ?? 0,
     }));
   }, [summary]);
 
@@ -230,6 +244,7 @@ export function CostAnalysisPage() {
       ledgerCost: amountUnitsToCurrencyUnits(item.ledger_upstream_cost),
       ledgerQuota: amountUnitsToCurrencyUnits(item.ledger_quota),
       ledgerCount: item.ledger_count ?? 0,
+      ledgerProfit: amountUnitsToCurrencyUnits(item.ledger_gross_profit),
     }));
   }, [summary]);
 
@@ -253,9 +268,23 @@ export function CostAnalysisPage() {
     }));
   }, [topModels]);
 
-  const handleExport = () => {
-    toast.success(t("成本报表导出功能开发中，敬请期待..."));
-  };
+  const exportRows = useMemo<CostExportRow[]>(() => [
+    {
+      dimension: 'total', name: 'all', platform: '',
+      revenue_usd: amountUnitsToCurrencyUnits(costMetrics.revenue),
+      upstream_cost_usd: amountUnitsToCurrencyUnits(costMetrics.upstreamCost),
+      gross_profit_usd: amountUnitsToCurrencyUnits(costMetrics.grossProfit),
+      request_count: Number(summary?.totals?.request_count ?? 0),
+      charged_usd: '', raw_usd: '', average_rate_multiplier: '',
+    },
+    ...topModels.map((item) => ({ dimension: 'model', name: item.model, platform: '', revenue_usd: item.quota, upstream_cost_usd: item.cost, gross_profit_usd: item.profit, request_count: item.count, charged_usd: '' as const, raw_usd: '' as const, average_rate_multiplier: '' as const })),
+    ...topChannels.map((item) => ({ dimension: 'channel', name: item.name, platform: '', revenue_usd: item.quota, upstream_cost_usd: item.cost, gross_profit_usd: item.profit, request_count: item.count, charged_usd: '' as const, raw_usd: '' as const, average_rate_multiplier: '' as const })),
+    ...topSubscriptionAccounts.map((item) => ({ dimension: 'subscription_account', name: item.name, platform: item.platform, revenue_usd: item.quota, upstream_cost_usd: item.cost, gross_profit_usd: item.profit, request_count: item.count, charged_usd: item.accountEventChargedUsd, raw_usd: '' as const, average_rate_multiplier: item.accountEventRateMultiplier })),
+    ...topSubscriptionAccountQuotaEvents.map((item) => ({ dimension: 'subscription_quota_event', name: item.name, platform: item.platform, revenue_usd: item.ledgerQuota, upstream_cost_usd: item.ledgerCost, gross_profit_usd: item.ledgerProfit, request_count: item.count, charged_usd: item.chargedUsd, raw_usd: item.rawUsd, average_rate_multiplier: item.averageRateMultiplier })),
+  ], [costMetrics, summary, topModels, topChannels, topSubscriptionAccounts, topSubscriptionAccountQuotaEvents]);
+
+  const exportAvailable = Boolean(summary) && ['usage_stats', 'top_models', 'top_channels', 'top_subscription_accounts']
+    .every((section) => summary?.sections?.[section]?.available !== false);
 
   const hasData = costMetrics.revenue > 0 || costMetrics.upstreamCost > 0 || costMetrics.grossProfit > 0 || topSubscriptionAccountQuotaEvents.length > 0;
 
@@ -267,8 +296,18 @@ export function CostAnalysisPage() {
           <p className="mt-2 text-sm text-muted-foreground">{t("全面的成本、收入和利润分析")}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={handleExport}>
-            <Download className="mr-2 size-4" />{t("导出报表")}</Button>
+          <ExportButton
+            filename="cost-analysis.csv"
+            label={t('导出报表')}
+            rows={exportAvailable && !isLoading ? exportRows : []}
+            columns={[
+              { key: 'dimension', label: 'dimension' }, { key: 'name', label: 'name' },
+              { key: 'platform', label: 'platform' }, { key: 'revenue_usd', label: 'revenue_usd' },
+              { key: 'upstream_cost_usd', label: 'upstream_cost_usd' }, { key: 'gross_profit_usd', label: 'gross_profit_usd' },
+              { key: 'request_count', label: 'request_count' }, { key: 'charged_usd', label: 'charged_usd' },
+              { key: 'raw_usd', label: 'raw_usd' }, { key: 'average_rate_multiplier', label: 'average_rate_multiplier' },
+            ]}
+          />
         </div>
       </div>
 

@@ -64,6 +64,15 @@ type ReconciliationRepo interface {
 	ListStuckIssuedOrders(ctx context.Context) ([]*PaymentOrder, error)
 }
 
+// WindowedConsumeSummaryRepo is implemented by storage drivers that can
+// compare only the shared retention window. The fallback methods above remain
+// available for older drivers, but must not be used to compare an unbounded
+// ledger with logs that are routinely deleted.
+type WindowedConsumeSummaryRepo interface {
+	GetLedgerConsumeSummarySince(ctx context.Context, start, end time.Time) (*ConsumeSummary, error)
+	GetLogConsumeSummarySince(ctx context.Context, start, end time.Time) (*ConsumeSummary, error)
+}
+
 // ReconciliationRunStore persists historical reconciliation runs so admins can review them.
 type ReconciliationRunStore interface {
 	SaveRun(ctx context.Context, result *ReconciliationResult) (int64, error)
@@ -87,6 +96,8 @@ type ReconciliationResult struct {
 	TotalChannels                int                          `json:"total_channels"`
 	TotalReservations            int                          `json:"total_reservations"`
 	TotalSubscriptions           int                          `json:"total_subscriptions"`
+	Status                       string                       `json:"status"`
+	ErrorMessage                 string                       `json:"error_message,omitempty"`
 }
 
 const (
@@ -285,12 +296,42 @@ func (uc *ReconciliationUsecase) SetReservationReleaser(r ReservationReleaser) {
 func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result *ReconciliationResult, err error) {
 	startedAt := time.Now()
 	result = &ReconciliationResult{
-		RunAt: time.Now(),
+		RunAt:  time.Now(),
+		Status: "running",
+	}
+	markPartial := func(check string, checkErr error) {
+		if checkErr == nil {
+			return
+		}
+		result.Status = "partial"
+		if result.ErrorMessage == "" {
+			result.ErrorMessage = check + ": " + checkErr.Error()
+		} else {
+			result.ErrorMessage += "; " + check + ": " + checkErr.Error()
+		}
 	}
 	defer func() {
+		if err != nil {
+			result.Status = "failed"
+			result.ErrorMessage = err.Error()
+		} else if result.Status != "partial" {
+			result.Status = "completed"
+		}
+		if uc.runStore != nil {
+			runID, saveErr := uc.runStore.SaveRun(ctx, result)
+			if saveErr != nil && err == nil {
+				err = fmt.Errorf("save reconciliation run: %w", saveErr)
+				result.Status = "failed"
+				result.ErrorMessage = err.Error()
+			} else if saveErr == nil {
+				result.RunID = runID
+			}
+		}
 		status := "success"
 		if err != nil {
 			status = "error"
+		} else if result.Status == "partial" {
+			status = "partial"
 		} else if result.DiscrepancyCount() > 0 {
 			status = "discrepancy"
 		}
@@ -313,7 +354,7 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 	// UpdateFrozenAmount + UpdateBalance sequence is gone.
 	expired, err := uc.reservationRepo.GetExpiredReservations(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("get expired reservations: %w", err)
+		return result, fmt.Errorf("get expired reservations: %w", err)
 	}
 
 	for _, res := range expired {
@@ -360,6 +401,7 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 	for _, account := range accounts {
 		ledgerBalance, found, err := uc.reconRepo.LatestLedgerBalanceAfter(ctx, account.UserID)
 		if err != nil {
+			markPartial("account ledger", err)
 			continue
 		}
 		// An account with no ledger has no persisted opening-balance baseline;
@@ -436,11 +478,23 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 	// Step 4: Log<->ledger consume summary. The legacy
 	// duplicate-write path is still in place, so the existing
 	// tolerance check stays.
-	ledgerSummary, err := uc.reconRepo.GetLedgerConsumeSummary(ctx)
+	windowStart := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	windowEnd := time.Now().UTC()
+	var ledgerSummary *ConsumeSummary
+	var logSummary *ConsumeSummary
+	if windowed, ok := uc.reconRepo.(WindowedConsumeSummaryRepo); ok {
+		ledgerSummary, err = windowed.GetLedgerConsumeSummarySince(ctx, windowStart, windowEnd)
+	} else {
+		ledgerSummary, err = uc.reconRepo.GetLedgerConsumeSummary(ctx)
+	}
 	if err != nil {
 		return result, fmt.Errorf("get ledger consume summary: %w", err)
 	}
-	logSummary, err := uc.reconRepo.GetLogConsumeSummary(ctx)
+	if windowed, ok := uc.reconRepo.(WindowedConsumeSummaryRepo); ok {
+		logSummary, err = windowed.GetLogConsumeSummarySince(ctx, windowStart, windowEnd)
+	} else {
+		logSummary, err = uc.reconRepo.GetLogConsumeSummary(ctx)
+	}
 	if err != nil {
 		return result, fmt.Errorf("get log consume summary: %w", err)
 	}
@@ -489,6 +543,7 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 				ledgerCost, sumErr := uc.reconRepo.SumSubscriptionCostSince(ctx, sub.SubscriptionID, time.Unix(window.start, 0))
 				if sumErr != nil {
 					apploggerError(sumErr, "sum subscription window for reconciliation")
+					markPartial("subscription window", sumErr)
 					continue
 				}
 				expectedUSD := float64(ledgerCost) / float64(AmountScale) * multiplier
@@ -510,6 +565,7 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 		}
 	} else {
 		apploggerError(err, "list active subscriptions for reconciliation")
+		markPartial("active subscriptions", err)
 	}
 
 	// Step 6 (new): receivables mirror consistency. The
@@ -530,7 +586,11 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 					Difference:             totalPending - totalOverdraft,
 				})
 			}
+		} else {
+			markPartial("overdraft balances", err)
 		}
+	} else {
+		markPartial("pending receivables", err)
 	}
 
 	// Step 7 (new): refund/reversal coverage. Every refunded payment order
@@ -558,9 +618,11 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 			}
 		} else {
 			apploggerError(lerr, "sum reversal ledger amounts for reconciliation")
+			markPartial("reversal ledger", lerr)
 		}
 	} else {
 		apploggerError(rerr, "count refunded orders for reconciliation")
+		markPartial("refunded orders", rerr)
 	}
 
 	// Step 8 (new): stuck asset-issuance detection (code-review M1). A paid
@@ -584,6 +646,7 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 		}
 	} else {
 		apploggerError(serr, "list stuck issued orders for reconciliation")
+		markPartial("stuck issuance", serr)
 	}
 
 	return result, nil

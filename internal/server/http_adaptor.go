@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/routing"
 	"net/http"
 	"strings"
@@ -120,11 +121,18 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 	var finalAccountID int64
 	var finalSuccess bool
 
+	rootID := generateRequestID()
+	if plan.SelectionEvent != nil && plan.SelectionEvent.RootRequestID != "" {
+		rootID = plan.SelectionEvent.RootRequestID
+	}
+	attemptNumber := int32(1)
 	for range maxAttempts {
 		if current == nil || current.Channel == nil {
 			break
 		}
-		result := s.runSubscriptionAttempt(r, current, clientModel, rawBody, inbound, sessionHash)
+		attemptCtx := channelAttemptContext(r.Context(), rootID, attemptNumber, current.Channel, current.ResolvedModel)
+		result := s.runSubscriptionAttempt(r.WithContext(attemptCtx), current, clientModel, rawBody, inbound, sessionHash)
+		attemptNumber += result.attemptCount
 		if result.retryable {
 			accountID := subscriptionAccountIDFromPlan(current)
 			if accountID > 0 {
@@ -211,13 +219,17 @@ const (
 // can try a sibling account. Cross-account failover itself is handled by the
 // caller.
 func (s *HTTPServer) runSubscriptionAttempt(r *http.Request, current *relaybiz.RelayPlan, clientModel string, rawBody []byte, inbound relayadaptor.Format, sessionHash string) subscriptionAdaptorResult {
+	trace := requesttrace.FromContext(r.Context())
+	attemptCount := int32(1)
 	result := s.executeAndMeter(r.Context(), current, clientModel, r.Header.Clone(), rawBody, inbound, sessionHash)
 	for tries := 0; result.retryableSameAccount && tries < subscriptionSameAccountMaxRetries; tries++ {
 		metrics.RelaySubscriptionFailoverTotal.WithLabelValues("same_account", "retried").Inc()
 		if !sleepCtx(r.Context(), subscriptionSameAccountRetryDelay) {
 			break // client/context cancelled: stop retrying
 		}
-		result = s.executeAndMeter(r.Context(), current, clientModel, r.Header.Clone(), rawBody, inbound, sessionHash)
+		trace.Number++
+		attemptCount++
+		result = s.executeAndMeter(requesttrace.WithAttempt(r.Context(), trace), current, clientModel, r.Header.Clone(), rawBody, inbound, sessionHash)
 	}
 	if result.retryableSameAccount {
 		// Same-account retries exhausted: escalate to cross-account failover.
@@ -225,6 +237,7 @@ func (s *HTTPServer) runSubscriptionAttempt(r *http.Request, current *relaybiz.R
 		// account for this request without cooling it down.
 		result.retryable = true
 	}
+	result.attemptCount = attemptCount
 	return result
 }
 
@@ -345,8 +358,9 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 }
 
 type subscriptionAdaptorResult struct {
-	statusCode int
-	err        error
+	attemptCount int32
+	statusCode   int
+	err          error
 	// retryable marks a failure that should fail over to a DIFFERENT account
 	// (429/529/5xx/network). The failing account is added to the exclusion set
 	// and cooled down via the runtime blocker.
@@ -554,7 +568,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	ad.Init(rc)
 
 	// Convert the inbound request body to the upstream format.
-	upstreamFmt, upstreamBody, err := ad.ConvertRequest(rc, inbound, rawBody)
+	upstreamFmt, upstreamBody, err := ad.ConvertRequest(rc, inbound, ensureRawModel(rawBody, plan.ResolvedModel))
 	if err != nil {
 		result.statusCode = http.StatusBadGateway
 		result.err = fmt.Errorf("adaptor convert request: %w", err)
@@ -614,9 +628,36 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 			Jar:           client.Jar,
 		}
 	}
+	requestID := generateRequestID()
+	channelID := fmt.Sprintf("%d", plan.Channel.ID)
+	var reservation *billingv1.ReserveQuotaResponse
+	accountUsage := s.billingClient != nil
+	if accountUsage {
+		trace := requesttrace.FromContext(ctx)
+		if trace.RootRequestID == "" {
+			trace.RootRequestID, trace.Number = requestID, 1
+		}
+		trace.SourceKind, trace.UpstreamModelID = upstreamCostKeyInputsFromPlan(plan)
+		ctx = requesttrace.WithAttempt(ctx, trace)
+		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel)
+		var reserveErr error
+		reservation, reserveErr = s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID,
+			estimateRawTokens(rawBody), billingModel, channelID, subscriptionAccountIDFromPlan(plan), plan.Auth.RoutingContext)
+		if reserveErr != nil {
+			result.statusCode = http.StatusPaymentRequired
+			result.err = fmt.Errorf("reserve quota: %w", reserveErr)
+			result.write = func(w http.ResponseWriter) {
+				s.writeError(w, http.StatusPaymentRequired, gatewayErrorMessage(http.StatusPaymentRequired))
+			}
+			return result
+		}
+	}
 	result.upstreamAttempted = true
 	resp, err := client.Do(upstreamReq) // #nosec G704 -- the adaptor URL is validated immediately above.
 	if err != nil {
+		if accountUsage {
+			_ = s.releaseQuota(ctx, reservation.GetReservationId(), "upstream call failed")
+		}
 		result.statusCode = http.StatusBadGateway
 		result.err = fmt.Errorf("upstream call: %w", err)
 		result.retryable = true
@@ -628,6 +669,9 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 
 	result.upstreamSucceeded = resp.StatusCode >= 200 && resp.StatusCode < 300
 	if !result.upstreamSucceeded {
+		if accountUsage {
+			_ = s.releaseQuota(ctx, reservation.GetReservationId(), "upstream rejected request")
+		}
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		_, _ = io.Copy(io.Discard, resp.Body) // drain so the connection can be reused
 		_ = resp.Body.Close()
@@ -656,41 +700,6 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 			s.writeError(w, resp.StatusCode, sanitizeUpstreamError(resp.StatusCode, result.err))
 		}
 		return result
-	}
-
-	// Quota reservation for the subscription call (plan §5 step 8). We reserve
-	// an estimate up front, then commit the real usage after the upstream
-	// responds. Failures release the reservation. This mirrors the
-	// API-key path; it is best-effort so a billing hiccup never blocks a
-	// successful relay, but it ensures subscription accounts are no longer
-	// free/unmetered. When the billing client is not configured (e.g. in tests
-	// or a billing-less deployment) accounting is skipped.
-	requestID := generateRequestID()
-	channelID := fmt.Sprintf("%d", plan.Channel.ID)
-	var reservation *billingv1.ReserveQuotaResponse
-	accountUsage := s.billingClient != nil
-	if accountUsage {
-		var reserveErr error
-		// P3 #6: derive the billing model name from billing_model_source.
-		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel)
-		reservation, reserveErr = s.reserveQuota(
-			ctx,
-			fmt.Sprintf("%d", plan.Auth.UserID),
-			requestID,
-			estimateRawTokens(rawBody),
-			billingModel,
-			channelID,
-			subscriptionAccountIDFromPlan(plan),
-			plan.Auth.RoutingContext,
-		)
-		if reserveErr != nil {
-			result.statusCode = http.StatusPaymentRequired
-			result.err = fmt.Errorf("reserve quota: %w", reserveErr)
-			result.write = func(w http.ResponseWriter) {
-				s.writeError(w, http.StatusPaymentRequired, gatewayErrorMessage(http.StatusPaymentRequired))
-			}
-			return result
-		}
 	}
 
 	if isStream {
@@ -755,6 +764,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 				}
 				// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
 				logInput.applyPlanInputs(plan)
+				logInput.applyReservation(reservation)
 				logInput.applyEnvelope(envelopeFromRawUsage(actualUsage))
 				if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 					s.logPostResponseCommitError(err)
@@ -832,6 +842,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 			}
 			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
 			logInput.applyPlanInputs(plan)
+			logInput.applyReservation(reservation)
 			logInput.applyEnvelope(envelopeFromRawUsage(usage))
 			if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				s.logPostResponseCommitError(err)
@@ -1153,21 +1164,28 @@ func subscriptionAccountIDFromChannel(ch *relaybiz.Channel) int64 {
 	return ch.SubscriptionAccountID
 }
 
-// upstreamCostKeyInputsFromPlan extracts the v0.11.0 Phase 2 §2.2 stable
-// upstream cost-key inputs from a relay plan. A subscription account plan
-// yields ("subscription", account.UpstreamModelID); a regular channel plan
-// yields ("channel", channel.UpstreamModelID). Empty upstream_model_id is
-// common when the channel has no per-mapping override — billing then falls
-// back to the legacy <channel_id>:<public_model_id> key.
+// Freeze the actual outgoing model, including passthrough and per-source mappings.
 func upstreamCostKeyInputsFromPlan(plan *relaybiz.RelayPlan) (sourceKind, upstreamModelID string) {
 	if plan == nil {
 		return "", ""
 	}
 	if plan.Account != nil {
-		return relaybiz.UpstreamSourceSubscription, strings.TrimSpace(plan.Account.UpstreamModelID)
+		model := strings.TrimSpace(plan.ResolvedModel)
+		if model == "" {
+			model = strings.TrimSpace(plan.Account.UpstreamModelID)
+		}
+		return relaybiz.UpstreamSourceSubscription, model
 	}
 	if plan.Channel != nil {
-		return relaybiz.UpstreamSourceChannel, strings.TrimSpace(plan.Channel.UpstreamModelID)
+		model := strings.TrimSpace(plan.ResolvedModel)
+		if model == "" {
+			model = relaybiz.ResolveChannelModel(plan.Channel, plan.BaseModel())
+		}
+		source := relaybiz.UpstreamSourceChannel
+		if plan.Channel.SubscriptionAccountID > 0 {
+			source = relaybiz.UpstreamSourceSubscription
+		}
+		return source, model
 	}
 	return "", ""
 }

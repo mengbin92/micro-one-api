@@ -204,13 +204,16 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	// to the Claude/Codex providers. The client ID + refresh URL are exported
 	// vars on the credential package and are overridable from config because
 	// Kimi's CLI token endpoint is not a stable public API. See roadmap P3.
-	kimiTokenProvider := relaycredential.NewKimiTokenProvider(accountLookup)
+	// The overrides MUST land before NewKimiTokenProvider: the provider captures
+	// both vars at construction time, so assigning them afterwards silently
+	// kept the defaults (found by fault-matrix F18).
 	if override := strings.TrimSpace(cfg.Bootstrap.HybridAdaptor.GetKimi().GetTokenRefreshUrl()); override != "" {
 		relaycredential.KimiTokenRefreshURL = override
 	}
 	if override := strings.TrimSpace(cfg.Bootstrap.HybridAdaptor.GetKimi().GetClientId()); override != "" {
 		relaycredential.KimiOAuthClientID = override
 	}
+	kimiTokenProvider := relaycredential.NewKimiTokenProvider(accountLookup)
 
 	// tokenFactory is a table-driven platform -> TokenProvider dispatch. Adding
 	// a new platform is one case here + (for refreshable platforms) one entry
@@ -331,7 +334,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	// v0.11.0 Phase 3 §3.4/§3.5: wire the metrics+logging selection recorder
 	// so routing selection/fallback/sticky metrics are actually emitted. Without
 	// this the recorder stays noop and the Prometheus counters never increment.
-	relayUsecase.SetSelectionRecorder(relaybiz.NewMetricsSelectionRecorder(applogger.Current()))
+	relayUsecase.SetSelectionRecorder(relayservice.NewSelectionAuditRecorder(relaybiz.NewMetricsSelectionRecorder(applogger.Current()), logClient))
 
 	httpServer := server.NewHTTPServer(identityClient, channelClient, billingClient, providerFactory, relayUsecase, logClient)
 	httpServer.SetTokenQuotaBlocker(identityAdapter)
@@ -441,7 +444,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 
 	srv := newKratosHTTPServer(cfg, httpServer, providerTimeout)
 
-	grpcSvc := relayservice.NewRelayGrpcService(identityClient, channelClient, billingClient, providerFactory, relayUsecase)
+	grpcSvc := relayservice.NewRelayGrpcService(identityClient, channelClient, logClient, billingClient, providerFactory, relayUsecase)
 	var relayGRPCOpts []grpc.ServerOption
 	if cfg.Bootstrap.Mtls.Enabled {
 		mtlsOpts, mtlsErr := appgrpc.MTLSServerOptions(cfg.Bootstrap.Mtls.CertFile, cfg.Bootstrap.Mtls.KeyFile, cfg.Bootstrap.Mtls.CaFile)

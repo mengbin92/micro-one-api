@@ -57,14 +57,14 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 }
 
 func newApp(cfg *Config, repo *data.Repository, uc *biz.LogUsecase, svc *service.LogService, reg registrarResult) (*kratos.App, func()) {
-	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
-	httpSrv := server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc)
-
 	// Parse retention days with fallback to 30.
 	retentionDays := 30
 	if cfg.Bootstrap.LogSvc != nil && cfg.Bootstrap.LogSvc.RetentionDays > 0 {
 		retentionDays = int(cfg.Bootstrap.LogSvc.RetentionDays)
 	}
+	svc.SetRetentionDays(retentionDays)
+	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
+	httpSrv := server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc)
 	cleanupRetention := startLogRetentionCleanup(uc, retentionDays)
 
 	partitionCtx, partitionCancel := context.WithCancel(context.Background())
