@@ -146,7 +146,11 @@ func isRetryableNetworkError(err error) bool {
 		return false
 	}
 	msg := err.Error()
-	for _, pattern := range []string{"connection refused", "timeout", "EOF", "dial tcp"} {
+	// "no such host" / "temporary failure in name resolution" cover DNS
+	// failures surfaced at provider construction (validateBaseURL resolves the
+	// hostname eagerly), which never reach the dialer and so never match the
+	// dial patterns above.
+	for _, pattern := range []string{"connection refused", "timeout", "EOF", "dial tcp", "no such host", "temporary failure in name resolution", "server misbehaving"} {
 		if strings.Contains(msg, pattern) {
 			return true
 		}
