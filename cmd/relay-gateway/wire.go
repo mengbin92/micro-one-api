@@ -204,13 +204,16 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	// to the Claude/Codex providers. The client ID + refresh URL are exported
 	// vars on the credential package and are overridable from config because
 	// Kimi's CLI token endpoint is not a stable public API. See roadmap P3.
-	kimiTokenProvider := relaycredential.NewKimiTokenProvider(accountLookup)
+	// The overrides MUST land before NewKimiTokenProvider: the provider captures
+	// both vars at construction time, so assigning them afterwards silently
+	// kept the defaults (found by fault-matrix F18).
 	if override := strings.TrimSpace(cfg.Bootstrap.HybridAdaptor.GetKimi().GetTokenRefreshUrl()); override != "" {
 		relaycredential.KimiTokenRefreshURL = override
 	}
 	if override := strings.TrimSpace(cfg.Bootstrap.HybridAdaptor.GetKimi().GetClientId()); override != "" {
 		relaycredential.KimiOAuthClientID = override
 	}
+	kimiTokenProvider := relaycredential.NewKimiTokenProvider(accountLookup)
 
 	// tokenFactory is a table-driven platform -> TokenProvider dispatch. Adding
 	// a new platform is one case here + (for refreshable platforms) one entry

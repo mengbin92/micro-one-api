@@ -207,13 +207,13 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 
 	staticTokenProvider := credential.NewStaticTokenProvider(accountLookup)
 
-	kimiTokenProvider := credential.NewKimiTokenProvider(accountLookup)
 	if override := strings.TrimSpace(cfg.Bootstrap.HybridAdaptor.GetKimi().GetTokenRefreshUrl()); override != "" {
 		credential.KimiTokenRefreshURL = override
 	}
 	if override := strings.TrimSpace(cfg.Bootstrap.HybridAdaptor.GetKimi().GetClientId()); override != "" {
 		credential.KimiOAuthClientID = override
 	}
+	kimiTokenProvider := credential.NewKimiTokenProvider(accountLookup)
 
 	tokenFactory := func(platform identity.Platform) credential.TokenProvider {
 		switch platform {
