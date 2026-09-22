@@ -9,6 +9,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/platform/metrics"
 )
 
 const (
@@ -217,6 +218,7 @@ func (b *StreamEventBus) processMessage(topic string, msg *redis.XMessage) {
 	// Extract payload
 	payloadData, ok := msg.Values["payload"].(string)
 	if !ok {
+		metrics.EventStreamFailures.WithLabelValues(topic, "malformed_payload").Inc()
 		fmt.Printf("missing payload in message from %s\n", topic)
 		return
 	}
@@ -224,6 +226,7 @@ func (b *StreamEventBus) processMessage(topic string, msg *redis.XMessage) {
 	// Unmarshal payload
 	var payload Event
 	if err := jsonx.Unmarshal([]byte(payloadData), &payload); err != nil {
+		metrics.EventStreamFailures.WithLabelValues(topic, "malformed_payload").Inc()
 		fmt.Printf("failed to unmarshal payload from %s: %v\n", topic, err)
 		return
 	}
@@ -245,6 +248,7 @@ func (b *StreamEventBus) processMessage(topic string, msg *redis.XMessage) {
 	handlerFailed := false
 	for _, handler := range handlers {
 		if err := handler(ctx, payload); err != nil {
+			metrics.EventStreamFailures.WithLabelValues(topic, "handler_error").Inc()
 			fmt.Printf("handler error for topic %s: %v (message %s left pending for retry)\n", topic, err, msg.ID)
 			handlerFailed = true
 			// Continue processing other handlers so a single slow/buggy handler
