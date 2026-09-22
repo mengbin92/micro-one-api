@@ -2,6 +2,12 @@
 
 本 Runbook 对应 `docs/data-flow-closure-analysis.md` 第 7 章第五批之后的线上与隔离验收。代码已部署不等于故障恢复已证明；每项结果都必须记录执行窗口、镜像摘要、样本范围和证据文件。
 
+2026-09-22 经用户明确授权，已直接在生产完成 model 143 的双供应商配置核对、短期有限额度测试令牌、审计回读和 monitor 依赖准备，见[生产前置准备记录](data-flow-production-preflight-2026-09-22.md)。两供应商服务同一模型，分别使用上游 `Kimi-K3` 与 `k3`；来源和计价身份仍独立。该授权及结果限于前置准备，不代表以下故障矩阵通过；monitor 主动探测因上游模型列表返回 HTML 暂停。
+
+同日后续代码修复已在本地通过 Chat Completions 双向失败回退测试，覆盖旧入口 hybrid 路径及 adaptor orchestrator 的流式/非流式请求、凭据解析、最终来源计费和选路审计。修复（`31250763`）已于 2026-09-22 03:22 UTC 部署生产 relay-gateway；此前生产证据中的来源锁结论仍对应采样时版本；线上故障矩阵保持待执行。可复现命令：`go test ./internal/server -run '^TestHTTPChatCrossSource' -count=1`。普通 provider-only 入口仍保留来源限制；流式回退仅发生在开始向客户端输出之前，结算失败不得重放上游。
+
+2026-09-22 晚些时候在本地隔离 compose 栈（MySQL + Redis + 双 mock 上游，无生产数据）完成 F19/F20/F22 非流式跨来源故障矩阵，证据见 [data-flow-failover-isolated-2026-09-22.json](evidence/data-flow-failover-isolated-2026-09-22.json)。上游 500、连接拒绝两个方向四个场景全部通过：planned/outcome、attempt 归属、账本单一归属与 dedupe 零重复均符合。矩阵发现并修复一个真实缺陷：渠道 hostname 无法解析（上游容器/主机消失）时，provider 构建阶段的 DNS 错误不匹配任何可重试模式，请求直接 502 不回退，且健康处置不记录；已在 `internal/biz/retry.go` 将 DNS 解析失败纳入可重试网络错误（SSRF 私网拒绝保持不可重试），修复后该场景通过。该修复尚未部署生产。流式跨来源回退仍只有单元回归覆盖，未在隔离栈验证。
+
 ## 执行边界
 
 - 生产环境只执行只读检查、健康检查、管理接口回读和固定窗口聚合。
@@ -32,6 +38,8 @@
 | F17 支付查单 | 丢回调、查单暂时失败、重复回调、发放失败 | pending 可见并重试，paid/closed 收敛，站内冲正与外部退款分开 | 依赖用户 GET 才收敛或旧订单归属当前订阅 |
 | F18 OAuth Store | refresh 成功后让持久化连续失败并重启进程 | 退避/告警可见；不得继续使用旧 refresh token | 凭据只存在内存且重启后静默丢失 |
 | F19/F20/F22 failover | 普通渠道/订阅账号各执行一次可控失败回退 | 根请求、attempt、来源和实际模型可回读；账本只归属实际服务来源 | 重试改写既有 attempt，或来源字段缺失 |
+
+F19/F20/F22 非流式部分已于 2026-09-22 在本地隔离栈通过（见上方记录与证据文件）；流式变体与 F7–F18 恢复场景仍待执行。
 
 可控跨来源场景使用 [post-release-forced-failure-verification.md](post-release-forced-failure-verification.md) 及 `scripts/verify-forced-failure.sh`。脚本退出码为 `0` 才能记录该场景 PASS；前置条件不足记录 `BLOCKED` 并保留 preflight 输出。
 
