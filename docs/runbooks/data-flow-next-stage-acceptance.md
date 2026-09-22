@@ -8,6 +8,8 @@
 
 2026-09-22 晚些时候在本地隔离 compose 栈（MySQL + Redis + 双 mock 上游，无生产数据）完成 F19/F20/F22 非流式跨来源故障矩阵，证据见 [data-flow-failover-isolated-2026-09-22.json](evidence/data-flow-failover-isolated-2026-09-22.json)。上游 500、连接拒绝两个方向四个场景全部通过：planned/outcome、attempt 归属、账本单一归属与 dedupe 零重复均符合。矩阵发现并修复一个真实缺陷：渠道 hostname 无法解析（上游容器/主机消失）时，provider 构建阶段的 DNS 错误不匹配任何可重试模式，请求直接 502 不回退，且健康处置不记录；已在 `internal/biz/retry.go` 将 DNS 解析失败纳入可重试网络错误（SSRF 私网拒绝保持不可重试），修复后该场景通过。该修复尚未部署生产。流式跨来源回退仍只有单元回归覆盖，未在隔离栈验证。
 
+同日在同一隔离栈完成 F7–F18 故障矩阵（证据：[data-flow-fault-matrix-2026-09-22.json](evidence/data-flow-fault-matrix-2026-09-22.json)）：F7/F8 结算崩溃恢复、F10 提交失败终态一致、F11 Redis pending 重领、F12/F14 通知失败、F15 模型统计、F16 配置 revision、F18 OAuth 持久化失败均通过；F9 有限 Key 重放因 MySQL 方言缺陷（`OnConflict(DoNothing)+RowsAffected` 在重复时非零）先失败、修复后通过。矩阵共发现并修复 4 个真实缺陷（DNS 不可重试、F9 重放报错、kimi endpoint 覆盖初始化顺序失效、三处失败只打日志无指标）。F17 支付丢回调收敛需要支付宝沙箱往返，仅验证了查单失败可见性，其余子项保持**待验收**。所有修复（`52762f26`、`5125ac9e`、`8926b5e5`、`04382c4c`、`ad353c0c`、`f92417eb`、`f37aaa4e`）均未部署生产。
+
 ## 执行边界
 
 - 生产环境只执行只读检查、健康检查、管理接口回读和固定窗口聚合。
