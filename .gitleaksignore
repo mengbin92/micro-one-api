@@ -8,3 +8,5 @@ ff55afacb81e41cf6210de1d36ec50932f04ed4c:cmd/relay-gateway/config_loader_test.go
 479ef3d95637500000f5d69849ed053ac79a2194:scripts/test-e2e-flow.sh:generic-api-key:105
 # Historical Lite example: deterministic repeated hexadecimal placeholder, never a deployed secret.
 10f94db099f9e2eedac206fa05baeb8f502bc054:deployments/docker-compose/.env.lite.example:generic-api-key:22
+# Historical routing probe evidence: token_name is a display name, not an API credential.
+4413d3678d23161224aac921cc7111c7a99646e4:docs/runbooks/evidence/data-flow-next-stage-2026-09-21.json:generic-api-key:53
