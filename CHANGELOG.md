@@ -7,6 +7,30 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-09-22
+
+v0.31.0 是 v0.30.1 之后的 **MINOR 功能与可靠性版本**：补齐计费持久恢复、有限额度 Key 幂等扣减与对账回读，新增根请求/attempt 追踪、管理台路由审计及普通渠道与订阅账号双向故障切换，并修复通知、Redis 消费、OAuth 持久化失败可见性和管理台数据口径。**API/proto 增量扩展，三方言新增迁移 101–107，升级覆盖九个服务及前端**。支付丢回调恢复与隔离栈流式矩阵仍有验收缺口，详见 [release-v0.31.0.md](docs/releases/release-v0.31.0.md)。
+
+### Added
+
+- billing 持久 settlement task、重试与重启恢复；identity 按 reservation 保存有限额度 Key 扣减结果与幂等键。
+- reservation/log 根请求、尝试序号、来源和实际上游模型字段；管理员请求尝试查询与 planned/outcome 路由审计回读，管理台提供审计入口。
+- pending 支付主动查单、配置持久 revision、通知 processing 租约、成本 CSV 导出，以及 Redis 消费失败、OAuth Store 失败、未注册模型样本丢弃指标。
+- MySQL/PostgreSQL/SQLite 迁移 101–107 及各服务 ownership；脱敏生产核查、隔离故障矩阵与升级验收记录。
+
+### Fixed
+
+- Chat 重试锁定来源导致普通渠道与订阅账号无法双向回退；DNS 解析失败不重试；结算失败后重放上游；切换后的授权、模型映射、SSE usage 与计费归属不一致。
+- MySQL 幂等扣减重放因冲突写入 RowsAffected 差异返回内部错误；异步结算遗漏上游订阅账号用量回写；对账运行未落库、部分失败与差异回读丢失及保留窗口不一致。
+- Redis pending 缺少自动重领，通知关闭仍伪装发送、租约恢复与 webhook 业务拒绝处理不完整；OAuth Store 失败缺少重试和指标，Kimi endpoint 覆盖初始化顺序错误。
+- 模型失败统计与平均延迟口径、监控 channel 依赖地址、账本跨页排序、渠道健康表达、旧 adminToken 干扰订单角色判断及 CSV 公式注入。
+- 前端生成 API 类型漂移、pre-push 安全工具 PATH 和不安全整数转换；精确忽略 Gitleaks 对历史 token 显示名称的误报。
+
+### Changed
+
+- 配置 revision 只代表持久化版本，退款响应区分站内冲正与不支持的外部原路退款；未知历史请求身份不推测回填，历史账务缺口不自动冲正。
+- `make verify` 纳入前端生成 API 类型漂移检查；故障恢复证据分别标明已验证、部分验证与待验收场景。
+
 ## [0.30.1] - 2026-09-17
 
 v0.30.1 是 v0.30.0 之后的 **PATCH 修复版本**：管理台"系统选项"中的注册奖励金额（新用户默认金额 / 邀请人奖励金额 / 被邀请人奖励金额）此前是只写不读的死配置，注册流程从未读取，且前端存在二次换算 Bug（输入 2 显示并存成 0.0002）。本版让 identity 注册时从 `system_options` 解析三项奖励（兼容 legacy `QuotaFor*` 别名）并经 billing `TopUpQuota` 落账本发放，修复金额输入换算，并解决 schema 隔离部署下选项表读不到导致的静默零值。**无 proto 变更、无数据库迁移、无新增必填配置**；未配置选项时行为与 v0.30.0 一致（邀请奖励仍由 `INVITER/INVITEE_BONUS_*` 环境变量兜底）。详见 [release-v0.30.1.md](docs/releases/release-v0.30.1.md)。

@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.30.1 发布公告](./docs/releases/release-v0.30.1.md)（注册奖励接入系统选项并修复金额配置双重换算，无破坏性变更） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.30.1)
+> 📣 **最新发布**：[v0.31.0 发布公告](./docs/releases/release-v0.31.0.md)（计费恢复、请求追踪与跨来源故障切换，新增迁移 101–107） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.31.0)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.31.0
+
+v0.31.0 是 v0.30.1 之后的 **MINOR 功能与可靠性版本**：新增计费持久恢复、有限额度 Key 幂等扣减、根请求/attempt 追踪、管理台路由审计与普通渠道/订阅账号双向故障切换，并修复对账、通知、Redis 消费、OAuth 持久化失败可见性和管理台数据口径。**API/proto 增量扩展，MySQL/PostgreSQL/SQLite 新增迁移 101–107**；先备份并按 schema ownership 核对迁移，再升级九个服务及独立挂载的管理前端。现网已分批部署的环境按实际状态核对，避免重复执行 DDL；支付丢回调恢复与隔离栈流式矩阵仍有验收缺口。详见 [docs/releases/release-v0.31.0.md](./docs/releases/release-v0.31.0.md)。
 
 ### 升级到 v0.30.1
 
