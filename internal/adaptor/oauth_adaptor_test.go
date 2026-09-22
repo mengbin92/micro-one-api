@@ -20,6 +20,55 @@ import (
 // for adaptor tests that don't exercise the refresh path.
 type staticTokenProvider struct{ token string }
 
+func TestSubscriptionChatStreamsPreserveUsage(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		pump func(io.Reader, *io.PipeWriter, string)
+		body string
+	}{
+		{
+			name: "anthropic", pump: pumpAnthropicToChat,
+			body: "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg-1\",\"model\":\"k3\",\"usage\":{\"input_tokens\":4,\"output_tokens\":0}}}\n\n" +
+				"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\n" +
+				"data: {\"type\":\"message_stop\"}\n\n",
+		},
+		{
+			name: "responses", pump: pumpResponsesToChat,
+			body: "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp-1\",\"status\":\"completed\",\"usage\":{\"input_tokens\":4,\"output_tokens\":5,\"total_tokens\":9}}}\n\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reader, writer := io.Pipe()
+			defer reader.Close()
+			go tc.pump(strings.NewReader(tc.body), writer, "client-model")
+			body, err := io.ReadAll(reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			usageChunks := 0
+			for _, line := range strings.Split(string(body), "\n") {
+				data, ok := sseData(line)
+				if !ok {
+					continue
+				}
+				var chunk apicompat.ChatCompletionsChunk
+				if err := jsonx.UnmarshalFromString(data, &chunk); err != nil {
+					t.Fatal(err)
+				}
+				if chunk.Usage != nil {
+					usageChunks++
+					if chunk.Usage.PromptTokens != 4 || chunk.Usage.CompletionTokens != 5 || chunk.Usage.TotalTokens != 9 {
+						t.Fatalf("usage=%+v", chunk.Usage)
+					}
+				}
+			}
+			if usageChunks != 1 || !strings.HasSuffix(string(body), "data: [DONE]\n\n") {
+				t.Fatalf("want one terminal usage chunk and DONE: %s", body)
+			}
+		})
+	}
+}
+
 func (s *staticTokenProvider) GetAccessToken(context.Context, int64) (string, error) {
 	return s.token, nil
 }

@@ -329,7 +329,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		lastFailureStatus := 0
 		attemptNumber := 0
 		executeStreamAttempt := func(attemptCtx context.Context, channel *relaybiz.Channel) error {
-			attemptPlan, planErr := o.relayPlanForAttempt(attemptCtx, plan, channel, req.Model)
+			attemptPlan, planErr := relayPlanForAttempt(attemptCtx, o.relayUsecase, plan, channel, req.Model)
 			if planErr != nil {
 				lastFailureStatus = http.StatusServiceUnavailable
 				return planErr
@@ -404,7 +404,11 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			return nil
 		}
 
-		retryResult := o.relayUsecase.NewRetryExecutor().ExecuteWithCandidates(ctx, plan, subscriptionAccountIDFromPlan(plan), executeStreamAttempt)
+		retryExecutor := o.relayUsecase.NewRetryExecutor()
+		if _, ok := o.streamPort.(relayAdaptorForwarder); ok {
+			retryExecutor.WithCrossSourceFallback()
+		}
+		retryResult := retryExecutor.ExecuteWithCandidates(ctx, plan, subscriptionAccountIDFromPlan(plan), executeStreamAttempt)
 		if retryResult != nil && retryResult.Err != nil {
 			latency := time.Since(startTime)
 			o.finalizeSelectionFromRetryResult(plan, retryResult, latency)
@@ -496,7 +500,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 	lastFailureStatus := 0
 	attemptNumber := 0
 	executeAttempt := func(attemptCtx context.Context, channel *relaybiz.Channel) error {
-		attemptPlan, planErr := o.relayPlanForAttempt(attemptCtx, plan, channel, req.Model)
+		attemptPlan, planErr := relayPlanForAttempt(attemptCtx, o.relayUsecase, plan, channel, req.Model)
 		if planErr != nil {
 			lastFailureStatus = http.StatusServiceUnavailable
 			return planErr
@@ -616,7 +620,11 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		return nil
 	}
 
-	retryResult := o.relayUsecase.NewRetryExecutor().ExecuteWithCandidates(ctx, plan, subscriptionAccountIDFromPlan(plan), executeAttempt)
+	retryExecutor := o.relayUsecase.NewRetryExecutor()
+	if _, ok := o.forwardPort.(relayAdaptorForwarder); ok {
+		retryExecutor.WithCrossSourceFallback()
+	}
+	retryResult := retryExecutor.ExecuteWithCandidates(ctx, plan, subscriptionAccountIDFromPlan(plan), executeAttempt)
 
 	latency := time.Since(startTime)
 	o.finalizeSelectionFromRetryResult(plan, retryResult, latency)
@@ -813,7 +821,7 @@ func relayPlanForChannel(base *relaybiz.RelayPlan, channel *relaybiz.Channel) *r
 	return &plan
 }
 
-func (o *relayOrchestrator) relayPlanForAttempt(ctx context.Context, base *relaybiz.RelayPlan, channel *relaybiz.Channel, clientModel string) (*relaybiz.RelayPlan, error) {
+func relayPlanForAttempt(ctx context.Context, usecase *relaybiz.RelayUsecase, base *relaybiz.RelayPlan, channel *relaybiz.Channel, clientModel string) (*relaybiz.RelayPlan, error) {
 	plan := relayPlanForChannel(base, channel)
 	if plan == nil || channel == nil || channel.SubscriptionAccountID <= 0 {
 		return plan, nil
@@ -821,10 +829,10 @@ func (o *relayOrchestrator) relayPlanForAttempt(ctx context.Context, base *relay
 	if plan.Account != nil && plan.Account.ID == channel.SubscriptionAccountID {
 		return plan, nil
 	}
-	if o == nil || o.relayUsecase == nil || base == nil || base.Auth == nil {
+	if usecase == nil || base == nil || base.Auth == nil {
 		return nil, fmt.Errorf("subscription routing source cannot be materialized")
 	}
-	resolvedChannel, account, err := o.relayUsecase.ResolveSubscriptionRoutingSource(
+	resolvedChannel, account, err := usecase.ResolveSubscriptionRoutingSource(
 		ctx,
 		channel.SubscriptionAccountID,
 		base.Auth.Group,

@@ -155,6 +155,8 @@ func pumpAnthropicToChat(src io.Reader, w *io.PipeWriter, model string) {
 	anthState := apicompat.NewAnthropicEventToResponsesState()
 	chatState := apicompat.NewResponsesEventToChatState()
 	chatState.Model = model
+	// Relay billing reads the converted stream, so preserve upstream usage.
+	chatState.IncludeUsage = true
 	for scanner.Scan() {
 		line := scanner.Text()
 		data, ok := sseData(line)
@@ -251,6 +253,7 @@ func pumpResponsesToChat(src io.Reader, w *io.PipeWriter, model string) {
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	state := apicompat.NewResponsesEventToChatState()
 	state.Model = model
+	state.IncludeUsage = true
 	for scanner.Scan() {
 		line := scanner.Text()
 		data, ok := sseData(line)

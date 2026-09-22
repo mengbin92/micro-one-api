@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -224,9 +225,10 @@ func (f relayAdaptorForwarder) relayContext(ctx context.Context, plan *relaybiz.
 		if err != nil {
 			return nil, nil, fmt.Errorf("resolve subscription account credential: %w", err)
 		}
-		if resolved != nil {
-			meta = resolved
+		if resolved == nil || strings.TrimSpace(resolved.AccessToken) == "" {
+			return nil, nil, fmt.Errorf("resolve subscription account credential: empty access token")
 		}
+		meta = resolved
 	}
 	if meta == nil {
 		return nil, nil, fmt.Errorf("subscription account metadata is unavailable")
