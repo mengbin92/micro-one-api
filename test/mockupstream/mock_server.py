@@ -5,6 +5,12 @@ import json
 import time
 import uuid
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from urllib.parse import parse_qs
+
+# OAuth refresh state for fault-injection tests: a refresh token is valid
+# exactly once (rotation), simulating RFC 6749 refresh-token rotation.
+VALID_REFRESH_TOKENS = {"rt-old"}
+REFRESH_CALLS = 0
 
 
 class MockHandler(BaseHTTPRequestHandler):
@@ -14,8 +20,30 @@ class MockHandler(BaseHTTPRequestHandler):
             self._handle_chat_completions()
         elif path == "/v1/messages":
             self._handle_anthropic_messages()
+        elif "oauth/token" in path:
+            self._handle_oauth_token()
         else:
             self._respond(404, {"error": "not found"})
+
+    def _handle_oauth_token(self):
+        global REFRESH_CALLS
+        REFRESH_CALLS += 1
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length) if content_length > 0 else b""
+        params = parse_qs(body.decode())
+        rt = (params.get("refresh_token") or [""])[0]
+        if rt in VALID_REFRESH_TOKENS:
+            VALID_REFRESH_TOKENS.discard(rt)
+            new_rt = f"rt-{uuid.uuid4().hex[:8]}"
+            VALID_REFRESH_TOKENS.add(new_rt)
+            self._respond(200, {
+                "access_token": f"at-{uuid.uuid4().hex[:12]}",
+                "refresh_token": new_rt,
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            })
+        else:
+            self._respond(400, {"error": "invalid_grant", "error_description": "refresh token rotated or unknown"})
 
     def _read_json(self):
         content_length = int(self.headers.get("Content-Length", 0))
@@ -54,6 +82,8 @@ class MockHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             self._respond(200, {"status": "ok"})
+        elif self.path == "/oauth/state":
+            self._respond(200, {"refresh_calls": REFRESH_CALLS, "valid_refresh_tokens": sorted(VALID_REFRESH_TOKENS)})
         else:
             self._respond(404, {"error": "not found"})
 

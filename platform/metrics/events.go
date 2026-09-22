@@ -31,7 +31,23 @@ var ModelUsageDropped = prometheus.NewCounterVec(
 	[]string{"reason"}, // reason: unregistered_model
 )
 
+// CredentialPersistFailures counts OAuth credential refreshes whose durable
+// store write failed after all retries. The refreshed (possibly rotated)
+// credential survives only in process memory; a process restart then risks
+// bricking the account on the stale stored refresh token, so this must be
+// alertable, not just a log line (fault-matrix F18).
+var CredentialPersistFailures = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "credential",
+		Name:      "persist_failures_total",
+		Help:      "OAuth token refreshes whose persistence failed after retries",
+	},
+	[]string{"platform"},
+)
+
 func init() {
 	prometheus.MustRegister(EventStreamFailures)
 	prometheus.MustRegister(ModelUsageDropped)
+	prometheus.MustRegister(CredentialPersistFailures)
 }

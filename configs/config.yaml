@@ -45,6 +45,11 @@ hybrid_adaptor:
   identity_ttl: 24h
   refresh_interval: 10m
   refresh_lookahead: 24h
+  # kimi OAuth endpoint overrides (empty = Kimi CLI public defaults). The token
+  # endpoint is not a stable public API; override for tests or provider changes.
+  kimi:
+    token_refresh_url: ${KIMI_TOKEN_REFRESH_URL:-}
+    client_id: ${KIMI_OAUTH_CLIENT_ID:-}
   # runtime_block tunes the per-account cool-down applied during
   # subscription-account failover. Empty/omitted fields use the defaults shown.
   runtime_block:
