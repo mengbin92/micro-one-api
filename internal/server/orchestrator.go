@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/pkg/safecast"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -343,7 +344,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 				Headers:       httpHeaderToMap(req.Headers),
 				RequestID:     req.RequestID,
 				RootRequestID: req.RequestID,
-				AttemptNumber: int32(attemptNumber + 1),
+				AttemptNumber: safecast.IntToInt32Saturating(attemptNumber + 1),
 				SessionHash:   req.SessionHash,
 				Stream:        true,
 			}
@@ -514,7 +515,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			Headers:       httpHeaderToMap(req.Headers),
 			RequestID:     req.RequestID,
 			RootRequestID: req.RequestID,
-			AttemptNumber: int32(attemptNumber + 1),
+			AttemptNumber: safecast.IntToInt32Saturating(attemptNumber + 1),
 			SessionHash:   req.SessionHash,
 			Stream:        false,
 		}
