@@ -14,6 +14,29 @@ func TestIntToInt32(t *testing.T) {
 	}
 }
 
+func TestIntToInt32Saturating(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   int
+		want int32
+	}{
+		{"zero", 0, 0},
+		{"first_attempt", 1, 1},
+		{"max", math.MaxInt32, math.MaxInt32},
+		{"overflow", math.MaxInt32 + 1, math.MaxInt32},
+		{"max_int", math.MaxInt, math.MaxInt32},
+		{"min", math.MinInt32, math.MinInt32},
+		{"underflow", math.MinInt32 - 1, math.MinInt32},
+		{"min_int", math.MinInt, math.MinInt32},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IntToInt32Saturating(tc.in); got != tc.want {
+				t.Fatalf("IntToInt32Saturating(%d) = %d, want %d", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestInt64ToInt32(t *testing.T) {
 	if got, err := Int64ToInt32(math.MinInt32); err != nil || got != math.MinInt32 {
 		t.Fatalf("Int64ToInt32(MinInt32) = %d, %v", got, err)
