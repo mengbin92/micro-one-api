@@ -12,9 +12,8 @@ rule_files:
 
 alerting:
   alertmanagers:
-    # No Alertmanager deployed yet; alert rules still compute and are visible
-    # in the Prometheus UI ("Alerts" tab) for ops visibility.
-    []
+    - static_configs:
+        - targets: ["alertmanager:9093"]
 
 scrape_configs:
   # ── micro-one-api services (all expose /metrics on their HTTP port) ──

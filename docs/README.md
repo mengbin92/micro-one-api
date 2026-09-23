@@ -38,7 +38,7 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——本表明确指向且头部标注「当前执行入口」的计划。未定发布版本时使用 `design/next-stage-plan-YYYY-MM-DD.md`，已定版本时使用 `design/vX.Y-roadmap.md`。新阶段立项时：新建计划 → 旧路线图标为「已归档」并指回新入口 → 同步本表、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-当前状态（2026-09-22）：[v0.31.0](./releases/release-v0.31.0.md) 已发布，[v0.30 路线图](./design/v0.30-roadmap.md)已归档。[下一阶段计划](./design/next-stage-plan-2026-09-22.md)第一批 R1–R4 已完成本地实施和隔离验收（未部署），见[实施记录](./runbooks/first-batch-reliability-2026-09-22.md)；下一步 O1–O4，其他运行验收继续保留待办。
+当前状态（2026-09-23）：[v0.32.0](./releases/release-v0.32.0.md) 交付第二批 O1–O4 和 O5 正确性修复，本地实施与隔离验收完成，未部署；[v0.30 路线图](./design/v0.30-roadmap.md)已归档。[下一阶段计划](./design/next-stage-plan-2026-09-22.md)第一批 R1–R4 已纳入 v0.31.1。第二批证据合并在计划第 3 节；生产通知送达、OTel 导出及回源/失效延迟测量仍待验收，下一批为 Q1–Q3。
 
 ---
 
@@ -100,7 +100,7 @@ docs/
 | [v0.23-roadmap.md](./design/v0.23-roadmap.md) | v0.23 路线图：上线观察与 Relay executor 首切片（已归档） |
 | [v0.23-executor-observation.md](./design/v0.23-executor-observation.md) | executor 新旧路径 7 天生产观察与回滚事实源 |
 | [v0.24-web-release-readiness.md](./design/v0.24-web-release-readiness.md) | v0.24 双语 Web、中国法律协议与发布隔离准备清单 |
-| [next-stage-plan-2026-09-22.md](./design/next-stage-plan-2026-09-22.md) | 当前计划：R1–R4 本地验收完成，第二批待实施；22 篇文章技术债逐篇追踪 |
+| [next-stage-plan-2026-09-22.md](./design/next-stage-plan-2026-09-22.md) | 当前计划：R1–R4、O1–O4 及 O5 正确性修复本地验收完成；生产外部验收保留，22 篇文章技术债逐篇追踪 |
 | [v0.30-roadmap.md](./design/v0.30-roadmap.md) | 已归档：分组 v2 配置、真实链路验收与稳定性收口 |
 | [v0.27-roadmap.md](./design/v0.27-roadmap.md) | 已归档：发布完整性、双灰度闭环与轻量产品化 |
 | [web-playground-implementation-plan.md](./design/web-playground-implementation-plan.md) | 用户侧 Web Playground：交互、密钥安全、SSE、Relay CORS、测试与发布方案 |

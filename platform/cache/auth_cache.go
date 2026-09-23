@@ -59,20 +59,6 @@ func (c *AuthCache) Invalidate(ctx context.Context, token string) error {
 	return c.cache.Invalidate(ctx, token)
 }
 
-// InvalidateByUser invalidates tokens for a specific user.
-//
-// Because the token→snapshot keys are hashed from the raw token, there is no
-// cheap reverse index from userID to its token keys. Rather than silently
-// no-op (which would leave stale snapshots in the cache), we clear the L1
-// cache entirely for this prefix and rely on the short L1 TTL (30s) plus the
-// L2 Redis TTL to bound staleness. For large fleets this is coarser than a
-// per-user index, so callers needing precise invalidation should publish a
-// token-scoped event via the event bus instead.
-func (c *AuthCache) InvalidateByUser(ctx context.Context, userID int64) error {
-	c.cache.ClearAll()
-	return nil
-}
-
 // HasData checks if the cache has any data.
 // Used for degradation decision.
 func (c *AuthCache) HasData() bool {

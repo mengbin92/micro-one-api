@@ -1,0 +1,36 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+tests:
+  - name: redis RPM-only degradation fires and recovers
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_relay_account_rpm_fallback_total{instance="relay",reason="redis"}'
+        values: '0 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AccountLimiterRedisDegraded
+        exp_alerts:
+          - exp_labels: {instance: relay, severity: warning}
+            exp_annotations:
+              summary: Account limiters degraded after Redis errors
+              description: 'Restore Redis; local fallback cannot enforce a fleet-wide concurrency or RPM cap.'
+      - eval_time: 7m
+        alertname: AccountLimiterRedisDegraded
+        exp_alerts: []
+  - name: receiver absent is observable and recovery clears
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_notification_delivery_total{instance="notify",result="not_configured"}'
+        values: '0 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: NotificationDeliveryFailing
+        exp_alerts:
+          - exp_labels: {instance: notify, result: not_configured, severity: warning}
+            exp_annotations:
+              summary: Notification delivery is failing
+              description: 'Inspect notify-worker failed records and receiver configuration. Queued alerts are not delivered; use the dashboard while the notification path is unavailable.'
+      - eval_time: 7m
+        alertname: NotificationDeliveryFailing
+        exp_alerts: []

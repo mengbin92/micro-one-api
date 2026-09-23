@@ -250,7 +250,15 @@ func toSubscriptionAccountSummary(account *biz.SubscriptionAccount) *commonv1.Su
 	if account == nil {
 		return nil
 	}
-	info := account.RecoveryInfo(time.Now())
+	now := time.Now()
+	info := account.RecoveryInfo(now)
+	fiveHourUsed, _ := biz.RollAccountQuotaWindow(account.Quota5hUsedUSD, account.Quota5hWindowStart, now.Unix(), 5*time.Hour)
+	dailyUsed, _ := biz.RollAccountQuotaWindow(account.QuotaDailyUsedUSD, account.QuotaDailyWindowStart, now.Unix(), 24*time.Hour)
+	weeklyUsed, _ := biz.RollAccountQuotaWindow(account.QuotaWeeklyUsedUSD, account.QuotaWeeklyWindowStart, now.Unix(), 7*24*time.Hour)
+	if account.UsesFixedQuotaReset() {
+		dailyUsed, _ = account.RollFixedQuotaWindow(account.QuotaDailyUsedUSD, account.QuotaDailyWindowStart, now, "daily")
+		weeklyUsed, _ = account.RollFixedQuotaWindow(account.QuotaWeeklyUsedUSD, account.QuotaWeeklyWindowStart, now, "weekly")
+	}
 	return &commonv1.SubscriptionAccountSummary{
 		Id:                              account.ID,
 		Name:                            account.Name,
@@ -281,13 +289,13 @@ func toSubscriptionAccountSummary(account *biz.SubscriptionAccount) *commonv1.Su
 		QuotaLimitUsd:                   account.QuotaLimitUSD,
 		QuotaUsedUsd:                    account.QuotaUsedUSD,
 		Quota_5HLimitUsd:                account.Quota5hLimitUSD,
-		Quota_5HUsedUsd:                 account.Quota5hUsedUSD,
+		Quota_5HUsedUsd:                 fiveHourUsed,
 		Quota_5HWindowStart:             account.Quota5hWindowStart,
 		QuotaDailyLimitUsd:              account.QuotaDailyLimitUSD,
-		QuotaDailyUsedUsd:               account.QuotaDailyUsedUSD,
+		QuotaDailyUsedUsd:               dailyUsed,
 		QuotaDailyWindowStart:           account.QuotaDailyWindowStart,
 		QuotaWeeklyLimitUsd:             account.QuotaWeeklyLimitUSD,
-		QuotaWeeklyUsedUsd:              account.QuotaWeeklyUsedUSD,
+		QuotaWeeklyUsedUsd:              weeklyUsed,
 		QuotaWeeklyWindowStart:          account.QuotaWeeklyWindowStart,
 		RateMultiplier:                  account.RateMultiplier,
 		RpmLimit:                        account.RPMLimit,
@@ -423,7 +431,10 @@ func (s *ChannelService) GetSubscriptionAccount(ctx context.Context, req *channe
 }
 
 func (s *ChannelService) ListSubscriptionAccounts(ctx context.Context, req *channelv1.ListSubscriptionAccountsRequest) (*channelv1.ListSubscriptionAccountsResponse, error) {
-	accounts, total, err := s.uc.ListSubscriptionAccounts(ctx, req.Page, req.PageSize, req.Keyword, req.Group, req.Status, req.Platform)
+	if req.RecoveryPolicy != "" && req.RecoveryPolicy != biz.RecoveryPolicyManual {
+		return nil, errors.Newf(errors.ReasonInvalidRequest, "invalid recovery policy")
+	}
+	accounts, total, err := s.uc.ListSubscriptionAccounts(ctx, req.Page, req.PageSize, req.Keyword, req.Group, req.Status, req.Platform, req.RecoveryPolicy)
 	if err != nil {
 		mappedErr := errors.MapChannelError(err)
 		return nil, mappedErr

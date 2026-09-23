@@ -9,6 +9,14 @@ function response(body: BodyInit | null, init?: ResponseInit) {
 }
 
 describe('relay playground client', () => {
+  it('reports request and trace identity before an error or interrupted stream', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response('{"error":{"message":"unavailable"}}', {
+      status: 503, headers: { 'Content-Type': 'application/json', 'X-Request-ID': 'root-1', 'X-Trace-ID': 'compat-1', 'X-OTel-Trace-ID': 'otel-1' },
+    }));
+    const identity = vi.fn();
+    await expect(executeChatCompletion({ baseUrl: 'https://relay.test', apiKey: 'sk-test', request: { model: 'm', messages: [], stream: true }, callbacks: { onIdentity: identity } })).rejects.toThrow();
+    expect(identity).toHaveBeenCalledWith({ requestId: 'root-1', traceId: 'compat-1', otelTraceId: 'otel-1' });
+  });
   it('loads, deduplicates, and sorts models with a bearer key', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       response(JSON.stringify({ data: [{ id: 'zeta' }, { id: 'Alpha' }, { id: 'alpha' }] })),

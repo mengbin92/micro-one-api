@@ -15,6 +15,7 @@ import (
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/pkg/wildcard"
 	"micro-one-api/platform/metrics"
+	xtrace "micro-one-api/platform/tracing"
 )
 
 // subscriptionAccountStatusEnabled mirrors channel biz ChannelStatusEnabled: a
@@ -481,6 +482,8 @@ func (uc *RelayUsecase) recordSelection(ctx context.Context, event SelectionEven
 // MEDIUM-4): the duration histogram records Plan-boundary selection time.
 func (uc *RelayUsecase) recordSelectionForPlan(ctx context.Context, event SelectionEvent, planStartedAt time.Time) *SelectionEvent {
 	event.Planned = true
+	event.TraceID = xtrace.ExtractTraceID(ctx)
+	event.OTelTraceID = xtrace.OTelTraceID(ctx)
 	if event.RootRequestID == "" {
 		event.RootRequestID = event.RequestID
 	}
@@ -561,15 +564,16 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	// fails.
 	if ch, acct, ok := uc.trySubscriptionSticky(ctx, authSnapshot.Group, routing.SessionKey(authSnapshot.RoutingContext, req.SessionHash), req.Model, resolvedModel); ok {
 		_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
-			RequestID:      req.RequestID,
-			RootRequestID:  req.RequestID,
-			UserID:         authSnapshot.UserID,
-			Group:          authSnapshot.Group,
-			Model:          req.Model,
-			StickyHit:      true,
-			FinalKind:      UpstreamRouteSubscription.String(),
-			FinalSourceID:  acct.ID,
-			ProviderFamily: ProviderFamilyForModel(req.Model),
+			RequestID:       req.RequestID,
+			RootRequestID:   req.RequestID,
+			UserID:          authSnapshot.UserID,
+			Group:           authSnapshot.Group,
+			Model:           req.Model,
+			StickyHit:       true,
+			FinalKind:       UpstreamRouteSubscription.String(),
+			FinalSourceID:   acct.ID,
+			UpstreamModelID: ResolveChannelModel(ch, resolvedModel),
+			ProviderFamily:  ProviderFamilyForModel(req.Model),
 		}, planStartedAt)
 		_plan := newRelayPlan(authSnapshot, ch, acct, req.Model, resolvedModel)
 		_plan.SelectionEvent = _sel
@@ -600,16 +604,17 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 		}
 		if choice.Kind == UpstreamRouteSubscription {
 			_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
-				RequestID:      req.RequestID,
-				RootRequestID:  req.RequestID,
-				UserID:         authSnapshot.UserID,
-				Group:          authSnapshot.Group,
-				Model:          req.Model,
-				CandidateKinds: []string{"channel", "subscription"},
-				FinalKind:      UpstreamRouteSubscription.String(),
-				FinalSourceID:  subAccount.ID,
-				PriorityTier:   subAccount.Priority,
-				ProviderFamily: ProviderFamilyForModel(req.Model),
+				RequestID:       req.RequestID,
+				RootRequestID:   req.RequestID,
+				UserID:          authSnapshot.UserID,
+				Group:           authSnapshot.Group,
+				Model:           req.Model,
+				CandidateKinds:  []string{"channel", "subscription"},
+				FinalKind:       UpstreamRouteSubscription.String(),
+				FinalSourceID:   subAccount.ID,
+				UpstreamModelID: ResolveChannelModel(subChannel, resolvedModel),
+				PriorityTier:    subAccount.Priority,
+				ProviderFamily:  ProviderFamilyForModel(req.Model),
 			}, planStartedAt)
 			_plan := newRelayPlan(authSnapshot, subChannel, subAccount, req.Model, resolvedModel)
 			_plan.SelectionEvent = _sel
@@ -617,16 +622,17 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			return _plan, nil
 		}
 		_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
-			RequestID:      req.RequestID,
-			RootRequestID:  req.RequestID,
-			UserID:         authSnapshot.UserID,
-			Group:          authSnapshot.Group,
-			Model:          req.Model,
-			CandidateKinds: []string{"channel", "subscription"},
-			FinalKind:      UpstreamRouteChannel.String(),
-			FinalSourceID:  channel.ID,
-			PriorityTier:   channel.Priority,
-			ProviderFamily: ProviderFamilyForModel(req.Model),
+			RequestID:       req.RequestID,
+			RootRequestID:   req.RequestID,
+			UserID:          authSnapshot.UserID,
+			Group:           authSnapshot.Group,
+			Model:           req.Model,
+			CandidateKinds:  []string{"channel", "subscription"},
+			FinalKind:       UpstreamRouteChannel.String(),
+			FinalSourceID:   channel.ID,
+			UpstreamModelID: ResolveChannelModel(channel, resolvedModel),
+			PriorityTier:    channel.Priority,
+			ProviderFamily:  ProviderFamilyForModel(req.Model),
 		}, planStartedAt)
 		_plan := newRelayPlan(authSnapshot, channel, nil, req.Model, resolvedModel)
 		_plan.SelectionEvent = _sel
@@ -634,32 +640,34 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 		return _plan, nil
 	case channel != nil:
 		_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
-			RequestID:      req.RequestID,
-			RootRequestID:  req.RequestID,
-			UserID:         authSnapshot.UserID,
-			Group:          authSnapshot.Group,
-			Model:          req.Model,
-			CandidateKinds: []string{"channel"},
-			FinalKind:      UpstreamRouteChannel.String(),
-			FinalSourceID:  channel.ID,
-			PriorityTier:   channel.Priority,
-			ProviderFamily: ProviderFamilyForModel(req.Model),
+			RequestID:       req.RequestID,
+			RootRequestID:   req.RequestID,
+			UserID:          authSnapshot.UserID,
+			Group:           authSnapshot.Group,
+			Model:           req.Model,
+			CandidateKinds:  []string{"channel"},
+			FinalKind:       UpstreamRouteChannel.String(),
+			FinalSourceID:   channel.ID,
+			UpstreamModelID: ResolveChannelModel(channel, resolvedModel),
+			PriorityTier:    channel.Priority,
+			ProviderFamily:  ProviderFamilyForModel(req.Model),
 		}, planStartedAt)
 		_plan := newRelayPlan(authSnapshot, channel, nil, req.Model, resolvedModel)
 		_plan.SelectionEvent = _sel
 		return _plan, nil
 	case subChannel != nil:
 		_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
-			RequestID:      req.RequestID,
-			RootRequestID:  req.RequestID,
-			UserID:         authSnapshot.UserID,
-			Group:          authSnapshot.Group,
-			Model:          req.Model,
-			CandidateKinds: []string{"subscription"},
-			FinalKind:      UpstreamRouteSubscription.String(),
-			FinalSourceID:  subAccount.ID,
-			PriorityTier:   subAccount.Priority,
-			ProviderFamily: ProviderFamilyForModel(req.Model),
+			RequestID:       req.RequestID,
+			RootRequestID:   req.RequestID,
+			UserID:          authSnapshot.UserID,
+			Group:           authSnapshot.Group,
+			Model:           req.Model,
+			CandidateKinds:  []string{"subscription"},
+			FinalKind:       UpstreamRouteSubscription.String(),
+			FinalSourceID:   subAccount.ID,
+			UpstreamModelID: ResolveChannelModel(subChannel, resolvedModel),
+			PriorityTier:    subAccount.Priority,
+			ProviderFamily:  ProviderFamilyForModel(req.Model),
 		}, planStartedAt)
 		_plan := newRelayPlan(authSnapshot, subChannel, subAccount, req.Model, resolvedModel)
 		_plan.SelectionEvent = _sel

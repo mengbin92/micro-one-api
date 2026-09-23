@@ -42,12 +42,25 @@ func (s *HTTPServer) withRequestBudget(next http.Handler) http.Handler {
 		}
 		w.Header().Set("X-Request-ID", trace.RootRequestID)
 		ctx = requesttrace.WithAttempt(ctx, trace)
+		request := r.WithContext(ctx)
 		defer func() {
+			if observation, ok := request.Context().Value(relayExecutionObservationKey{}).(*relayExecutionObservation); ok {
+				observation.mu.Lock()
+				if observation.result == "" {
+					switch request.Context().Err() {
+					case context.DeadlineExceeded:
+						observation.result = "timeout"
+					case context.Canceled:
+						observation.result = "canceled"
+					}
+				}
+				observation.mu.Unlock()
+			}
 			if state.cancel != nil {
 				state.cancel()
 			}
 		}()
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, request)
 	})
 }
 func applyRequestBudget(r *http.Request, body []byte) {

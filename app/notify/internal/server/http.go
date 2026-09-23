@@ -13,6 +13,7 @@ import (
 // NewHTTPServer wires HTTP transport for notify-worker.
 func NewHTTPServer(addr string, svc *service.NotifyService) *khttp.Server {
 	srv := xhttp.NewServer(khttp.Address(addr))
+	srv.HandleFunc("/v1/alerts/alertmanager", svc.HandleAlertmanager)
 	srv.HandleFunc("/v1/notifications", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

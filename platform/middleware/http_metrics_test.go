@@ -27,11 +27,15 @@ func TestHTTPMetricsMiddleware_statusCapture(t *testing.T) {
 	}{
 		{"explicit writeheader", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTooManyRequests) }, "429"},
 		{"bare write implies 200", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) }, "200"},
-		{"inner middleware rewrites code", func(w http.ResponseWriter, _ *http.Request) {
+		{"first final header wins", func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			w.Header().Set("X-Test", "1")
 			w.WriteHeader(http.StatusBadGateway)
-		}, "502"},
+		}, "200"},
+		{"flush commits success", func(w http.ResponseWriter, _ *http.Request) {
+			w.(http.Flusher).Flush()
+			w.WriteHeader(http.StatusBadGateway)
+		}, "200"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

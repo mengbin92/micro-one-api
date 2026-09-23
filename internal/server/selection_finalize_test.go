@@ -86,7 +86,7 @@ func TestFinalizeSelectionFromResult_UpdatesFinalSourceKind(t *testing.T) {
 	}}
 
 	server.finalizeSelectionFromResult(plan, &relaybiz.ExecuteResult{
-		Channel:  &relaybiz.Channel{ID: 7},
+		Channel:  &relaybiz.Channel{ID: 7, UpstreamModelID: "mapped-model"},
 		Fallback: true,
 	}, time.Millisecond)
 
@@ -94,8 +94,8 @@ func TestFinalizeSelectionFromResult_UpdatesFinalSourceKind(t *testing.T) {
 		t.Fatalf("recorded events = %d, want 1", len(recorder.events))
 	}
 	got := recorder.events[0]
-	if got.FinalKind != relaybiz.UpstreamRouteChannel.String() || got.FinalSourceID != 7 {
-		t.Fatalf("final source = %s:%d, want channel:7", got.FinalKind, got.FinalSourceID)
+	if got.FinalKind != relaybiz.UpstreamRouteChannel.String() || got.FinalSourceID != 7 || got.UpstreamModelID != "mapped-model" {
+		t.Fatalf("final route = %s:%d/%s, want channel:7/mapped-model", got.FinalKind, got.FinalSourceID, got.UpstreamModelID)
 	}
 }
 

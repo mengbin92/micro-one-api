@@ -1,6 +1,6 @@
 # 路由与 outbox 观察、告警及 Redis 故障恢复
 
-> v0.30 P1-1 · 2026-09-15。适用于现有 B–F 路由链路；不改变授权、冻结计价和重试规则。
+> v0.30 P1-1；2026-09-23 补第二批 O2/O5。适用于现有 B–F 路由链路；不改变授权、冻结计价和重试规则。
 
 ## 入口与部署
 
@@ -11,7 +11,53 @@
 
 上线涉及 relay、identity、channel，以及嵌入订阅 outbox 的 admin / billing 服务二进制，并同步规则和看板文件。按[部署说明](../../AGENTS.md#deployment)在本机交叉构建镜像；Prometheus 重新加载配置或重启后检查规则状态。本次交付未部署生产、未修改生产开关、未发布版本。
 
-当前部署没有 Alertmanager：**firing 表示 Prometheus UI / Grafana 中的可见告警，不代表已发送短信、邮件或其他外部通知**。配置外部通知属于后续独立部署操作。
+仓库 Compose 已加入 Alertmanager 并接到 notify-worker；本次未部署生产。**firing、通知入队、外部接收成功是三个不同状态**，只有接收端响应成功并持久化 `sent` 才算完成一次通知投递。
+
+### 通知链路
+
+`Prometheus rules → Alertmanager → notify-worker /v1/alerts/alertmanager → notifications → Dispatcher → NOTIFY_WEBHOOK_URL`。
+
+- [Alertmanager 配置](../../deploy/alertmanager/alertmanager.yml)按 alertname/service/severity 分组，默认等待 30s、组间隔 5m、重复 4h，包含 resolved 通知；只在 backend 网络开放，不映射公网端口。
+- notify-worker 先持久化再返回 202。复用既有 webhook sender、重试和通知状态，外部接收端需接受既有 `{subject, content, ...}` JSON；content 包含告警 labels/annotations/firing/resolved。
+- 未配置 `NOTIFY_WEBHOOK_URL` 时通知记为 failed，`last_error` 明确 not configured；`notification_delivery_total{result="not_configured"}` 计数。配置接收端后对失败记录执行既有重试操作，不能把历史 queued 改称 sent。
+- 新看板 **Delivery, Credentials and Probe Usage**（UID `operations-delivery`）展示真实 sender 尝试、凭证补写年龄、Redis 限流降级、账本重复 claim 与账号探测 tokens/missing usage。通知链路自身不可用时仍可在 Prometheus/Grafana 看到 `NotificationDeliveryFailing`，不要依赖故障中的同一路通知作为唯一判断。
+- 本地验证：规则分别验证触发/恢复；`TestAlertmanagerDeliveryAndRecovery` 通过真实 HTTP 测试接收端验证 firing/resolved 内容及 sent/failed 状态。这是分段隔离验收，未声称跑过生产 Prometheus 到真实收件人的整链路。
+
+部署时同步 Compose、Prometheus/Alertmanager 配置、dashboard、notify/relay/billing/channel/admin 二进制和前端。先在目标环境配置合法接收端；按审批后的部署流程重新创建通知及监控服务。验收保存告警指纹、firing/resolved 时间、通知 ID/状态/last_error 和接收端回执，禁止记录 webhook 密钥。
+
+### 请求与 Trace 关联
+
+Playground 请求检查器展示 `X-Request-ID`、兼容 `X-Trace-ID` 和有效时的 `X-OTel-Trace-ID`；收到响应头即记录，HTTP 错误或后续断流不会丢掉身份。接收 W3C traceparent/tracestate，兼容头不强制改写为 OTel ID。
+
+管理员使用 `/api/log/routing-audit?user_id=<id>&root_request_id=<X-Request-ID>` 联查 selection events 和 attempts；也可单独查询 `/api/log/attempts`。路由审计 JSON 和结构化日志携带 `trace_id`、`otel_trace_id`，由 root_request_id 找到 attempt_id、预留和实际来源。ID 不进入 Prometheus 标签。
+
+Relay 仅在配置 `OTEL_EXPORTER_OTLP_ENDPOINT` 时初始化 OTLP/HTTP exporter，默认采样率 1；未配置时兼容 ID 仍可用于日志关联。当前交付包含 Relay HTTP span 与审计关联，不承诺 downstream gRPC/server 或上游供应商都有 span。部署后需在 collector 中核对实际收到的 trace，启动无报错不等于导出成功。
+
+### 指标用途盘点
+
+| 信号 | 使用位置 | 含义/限制 |
+| --- | --- | --- |
+| HTTP/relay executor 请求终态 | Relay Gateway 既有看板 | 请求结果，不根据响应包装猜 token；注册模式做 path 标签 |
+| credential pending age / persist failures | 新 operations 看板及 CredentialPersistence* 告警 | 凭证补写失败，恢复存储后观察 pending 清空 |
+| routing outbox age/failures | routing-operations 看板及告警 | 事件积压与投递失败，不等于失效消费者完成 |
+| account concurrency/RPM fallback | 新 operations 看板及 AccountLimiterRedisDegraded | Redis 故障使全局限额退化为本地；不能认为多副本仍共享硬上限 |
+| billing dedupe conflicts | 新 operations 看板 | operation/result 有限枚举；重复不直接代表多扣款，需联查账本 |
+| account probe tokens/usage | 新 operations 看板 | 探测独立于用户账单；Codex cached 从 input 拆出，Anthropic cache 桶分别统计；missing 不视为免费，不推算未经定价的美元成本 |
+| dependency gRPC count/latency | service-dependencies / routing-operations | 用 count 的 rate 测 V2 回源 QPS、直方图测 P95，先采基线再讨论恢复缓存 |
+
+## 缓存失效与应急边界
+
+事件由 relay composition 接线到 AuthCache/ChannelCache 的 `InvalidateAll`。命名明确表示整片 L1+L2 失效；没有 user/channel 反向索引。L2 无效 JSON/null/空值按比较删除并回源，正常写入和 TTL 是同一 Redis SET，避免半写留下无过期键。
+
+| 路径/故障 | 已验证边界 | 应急操作 |
+| --- | --- | --- |
+| legacy 鉴权，Redis 持续断开 | 默认 L1 30s 内可能继续命中旧授权，过期后回源并拒绝已撤权 Key；测试将条目时间推进过真实 TTL，不是生产墙钟延迟测量 | 紧急撤权先在权威库生效；必要时暂停入口或按滚动方式清空 relay 进程缓存，确认凭证 pending=0 后再重启 |
+| legacy 事件失败但 Redis 仍可读 | L2 auth 5m、channel 10m 是各缓存默认 TTL，最后一次 L2 命中还可能重新填 L1（auth 30s/channel 60s） | 恢复 outbox/Redis 消费并确认积压清零；需要立即失效时同时处理 L1 与 L2，不能只删 Redis 键 |
+| V2 鉴权 | `CachedIdentityClient` 每次读取 identity，撤权后的下一请求看到拒绝；Redis 不参与该鉴权缓存 | 不临时关闭 V2 或恢复旧缓存来掩盖依赖故障；检查 authority RPC 和数据库，保持 fail-close |
+
+上述边界是代码契约和隔离证据；在途请求、并发回填、事件重投递及部署网络会影响实际传播时间。生产回源成本与故障延迟仍待测量：记录相同负载下 RPC QPS/P95、撤权时间、最后接受/首次拒绝时间、outbox pending 和 Redis 恢复时间。gRPC resilience 已使用配置策略/default `reject`，不把拒绝上报为 `cache`；本次未开启默认关闭的 breaker，也未恢复 V2 缓存。
+
+manual 筛选在数据库先缩小候选，再在 data 层解析 legacy JSON、过滤后分页，以保证三方言和损坏旧 metadata 行行为一致。候选仍需扫描；大规模账号池的索引化筛选按 D3 测量后推进。
 
 ## 指标与解释
 

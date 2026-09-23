@@ -7,6 +7,27 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-09-23
+
+v0.32.0 是 v0.31.1 之后的 **MINOR 功能与可靠性版本**：交付第二批运行观测、告警追踪、订阅冻结额度解释和账号治理，修复原子重置、请求终态与缓存坏值问题。**API/proto 增量扩展，无新增数据库迁移；升级覆盖五个服务、前端和监控配置**。真实通知送达、OTel 导出及生产性能仍待验收，详见 [release-v0.32.0.md](docs/releases/release-v0.32.0.md)。
+
+### Added
+
+- billing 权威订阅用量 RPC，逐窗口/预留倍率展示已结算、冻结、可用额度及无限/超限状态；admin/relay 与前端统一解释。
+- 路由注册强制观测、Relay HTTP span 与请求/审计/Playground ID 关联；Alertmanager 接持久通知队列，补齐送达、去重冲突、限流降级和探测用量看板。
+- 账号恢复策略服务端筛选及手机/桌面恢复原因、等待时间展示，Anthropic/Codex 探测用量独立计数。
+
+### Fixed
+
+- 原子配额重置防止陈旧扫描清除新窗口用量，失败时回滚重置记录并支持重试。
+- HTTP 前置拒绝、内部 deadline、panic、1xx 和重复 WriteHeader 的终态记录与固定路径标签；保留流式/WS writer 能力及单次健康、结算语义。
+- 对账通知遗漏两类差异，错误/断流后请求 ID 丢失，以及 Redis 损坏/null/空值残留和误计命中。
+
+### Changed
+
+- 整片缓存失效明确命名为 InvalidateAll，V2 保持权威回源；文档区分本地验收与生产送达、导出、传播延迟测量。
+- 纠正订阅到期后再次购买为新建记录的文档，补齐窗口、倍率、购买快照及旧字段兼容契约，不改变业务语义。
+
 ## [0.31.1] - 2026-09-23
 
 v0.31.1 是 v0.31.0 之后的 **PATCH 可靠性修复版本**：恢复 Responses→Chat／Anthropic 及默认兼容行为，保留流式中断释放、禁止重放和正确结算，补齐 OAuth 凭证后台补写与版本保护、低流量熔断及请求预算，并同步 main 的安全整数转换修复。**API/proto 增量扩展，三方言新增 channel 迁移 108，主要升级 channel-service 和 relay-gateway**。详见 [release-v0.31.1.md](docs/releases/release-v0.31.1.md)。

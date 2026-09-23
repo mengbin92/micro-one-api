@@ -12,6 +12,7 @@ import (
 	identityv1 "micro-one-api/api/identity/v1"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
+	"micro-one-api/platform/subscriptiondto"
 )
 
 var ErrSubscriptionServiceNotConfigured = errors.New("subscription service not configured")
@@ -519,6 +520,16 @@ func (s *AdminService) ResetSubscriptionQuota(ctx context.Context, id int64, sco
 func (s *AdminService) GetSubscriptionProgress(ctx context.Context, userID int64) (*subscriptionbiz.SubscriptionProgress, error) {
 	if s == nil || s.subscriptionUc == nil {
 		return nil, ErrSubscriptionServiceNotConfigured
+	}
+	if s.billingClient != nil {
+		reply, err := s.billingClient.GetSubscriptionUsage(ctx, &billingv1.GetSubscriptionUsageRequest{UserId: userID})
+		if err != nil {
+			return nil, err
+		}
+		if reply.GetUsage() == nil {
+			return nil, subscriptionbiz.ErrSubscriptionNotFound
+		}
+		return subscriptiondto.ProgressFromProto(reply.Usage)
 	}
 	return s.subscriptionUc.GetProgress(ctx, userID)
 }

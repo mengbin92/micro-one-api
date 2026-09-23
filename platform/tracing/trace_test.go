@@ -7,9 +7,46 @@ import (
 	"regexp"
 	"testing"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMiddlewareLinksCompatibilityIDAndOTel(t *testing.T) {
+	previous, propagator := otel.GetTracerProvider(), otel.GetTextMapPropagator()
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previous)
+		otel.SetTextMapPropagator(propagator)
+		_ = tp.Shutdown(context.Background())
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	req.Header.Set(TraceIDHeader, "client-compatible-id")
+	req.Header.Set("Traceparent", "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01")
+	w := httptest.NewRecorder()
+	Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Request-ID", "root-request")
+		require.Equal(t, "client-compatible-id", ExtractTraceID(r.Context()))
+		require.Equal(t, "0123456789abcdef0123456789abcdef", OTelTraceID(r.Context()))
+	})).ServeHTTP(w, req)
+	require.Equal(t, "client-compatible-id", w.Header().Get(TraceIDHeader))
+	require.Equal(t, "0123456789abcdef0123456789abcdef", w.Header().Get(OTelTraceIDHeader))
+	spans := recorder.Ended()
+	require.Len(t, spans, 1)
+	attrs := map[string]string{}
+	for _, a := range spans[0].Attributes() {
+		attrs[string(a.Key)] = a.Value.AsString()
+	}
+	require.Equal(t, "root-request", attrs["request.root_id"])
+	require.Equal(t, "client-compatible-id", attrs["request.compat_trace_id"])
+}
 
 func TestNormalizeOTLPEndpoint(t *testing.T) {
 	tests := []struct {

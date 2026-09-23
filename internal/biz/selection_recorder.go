@@ -92,10 +92,14 @@ func (r *MetricsSelectionRecorder) RecordSelection(ctx context.Context, event Se
 	if r.log != nil {
 		fields := []zap.Field{
 			zap.String("request_id", event.RequestID),
+			zap.String("root_request_id", event.RootRequestID),
+			zap.String("trace_id", event.TraceID),
+			zap.String("otel_trace_id", event.OTelTraceID),
 			zap.String("group", event.Group),
 			zap.String("model", event.Model),
 			zap.String("source_kind", sourceKind),
 			zap.Int64("source_id", event.FinalSourceID),
+			zap.String("upstream_model_id", event.UpstreamModelID),
 			zap.String("result", result),
 			zap.String("provider_family", event.ProviderFamily),
 			zap.Bool("planned", event.Planned),

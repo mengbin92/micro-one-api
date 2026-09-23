@@ -7,6 +7,12 @@ import { locale, t } from '@/lib/i18n';
 // SubscriptionProgress (GET /api/v1/subscriptions/progress). `limit` is a
 // nullable *float64 on the backend: null means the dimension is unlimited.
 export interface QuotaDimension {
+	settled?: number;
+	frozen?: number | null;
+	available?: number | null;
+	unlimited?: boolean;
+	over_limit?: boolean;
+	window_start?: number;
   used: number;
   limit: number | null;
   remaining: number;
@@ -19,6 +25,9 @@ export interface QuotaDimension {
 // Mirrors subscription.biz.SubscriptionProgress JSON tags. The endpoint returns
 // the single active subscription for a user (or success:false when none).
 export interface SubscriptionProgressData {
+	rate_multiplier?: number;
+	usage_source?: string;
+	observed_at?: number;
   contract?: SubscriptionContract;
   id: number;
   status: string;
@@ -69,11 +78,12 @@ function formatNextRefresh(ts?: number): string | null {
 
 function QuotaBar({ label, dimension }: { label: string; dimension: QuotaDimension | null }) {
   if (!dimension) return null;
-  const unlimited = dimension.limit == null;
-  const ratio = usageRatio(dimension.used, dimension.limit);
+  const unlimited = dimension.unlimited ?? dimension.limit == null;
+  const ratio = usageRatio(dimension.used + (dimension.frozen ?? 0), dimension.limit);
   const refreshLabel = formatNextRefresh(dimension.next_refresh);
 
   return (
+    <div className="space-y-1">
     <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap">
       <span className="w-10 shrink-0 text-xs font-medium text-muted-foreground">{label}</span>
       {unlimited ? (
@@ -97,6 +107,13 @@ function QuotaBar({ label, dimension }: { label: string; dimension: QuotaDimensi
           {refreshLabel}
         </span>
       )}
+    </div>
+    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground sm:pl-13">
+      <span>{t('已结算')} {formatUsd(dimension.settled ?? dimension.used)}</span>
+      <span>{t('冻结')} {dimension.frozen == null ? t('未知') : formatUsd(dimension.frozen)}</span>
+      <span>{t('可用')} {unlimited ? t('无限制') : dimension.available == null ? t('未知') : formatUsd(dimension.available)}</span>
+      {dimension.over_limit && <span className="text-destructive">{t('已超限')}</span>}
+    </div>
     </div>
   );
 }
@@ -144,6 +161,7 @@ export function SubscriptionProgressCard({ progress, title, className }: Subscri
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">{title ?? t(`订阅 #${progress.id}`)}</p>
           <p className="text-xs text-muted-foreground">{t("到期：")}{expiresLabel}</p>
+          {progress.rate_multiplier != null && <p className="text-xs text-muted-foreground">{t('计量倍率')} ×{progress.rate_multiplier}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span

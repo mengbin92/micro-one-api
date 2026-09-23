@@ -339,7 +339,26 @@ function quotaWindows(account: SubscriptionAccountSummary) {
   return [];
 }
 
-function QuotaStatusCell({ account, now }: { account: SubscriptionAccountSummary; now: number }) {
+function AccountRecoveryDetails({ account, now }: { account: SubscriptionAccountSummary; now: number }) {
+  const reason = account.unschedulableReason;
+  const since = account.unschedulableSince;
+  if (!reason || !since || since <= 0) return null;
+  const recoveryAt = account.expectedRecoveryAt ?? 0;
+  const recoveryLabel = account.recoveryPolicy === 'manual'
+    ? t('人工处理')
+    : recoveryAt > now ? `${t('预计恢复：')}${formatResetAfter(recoveryAt - now)}` : t('恢复时间待确认');
+  const waitingHours = Math.floor(Math.max(0, now - since) / 3600);
+  return (
+    <div className="mt-1 flex max-w-56 flex-wrap gap-x-2 gap-y-1 whitespace-normal text-xs font-normal text-amber-800 dark:text-amber-200">
+      <span className="w-full break-words" title={reason}>{reason}</span>
+      <span>{recoveryLabel}</span>
+      <span>{t('已等待')} {waitingHours}h</span>
+      {(account.rateLimitedUntil ?? 0) > 0 && <span>{t('封禁到期：')}{new Date(account.rateLimitedUntil! * 1000).toLocaleString()}</span>}
+    </div>
+  );
+}
+
+function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
   const windows = quotaWindows(account);
   const localRows = localQuotaRows(account);
   const rpmLimit = account.rpmLimit ?? 0;
@@ -413,20 +432,6 @@ function QuotaStatusCell({ account, now }: { account: SubscriptionAccountSummary
         <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">{t("固定周期")}{quotaTimezone}
         </span>
       )}
-      {(() => {
-        const reason = account.unschedulableReason;
-        const since = account.unschedulableSince;
-        if (!reason || !since || since <= 0) return null;
-        const recoveryAt = account.expectedRecoveryAt ?? 0;
-        const recoveryLabel = recoveryAt > 0 ? formatResetAfter(Math.max(0, recoveryAt - now)) : t("未知");
-        return (
-          <div className="flex items-center gap-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-            <span className="truncate max-w-[160px]" title={reason}>{reason}</span>
-            <span className="text-amber-600 dark:text-amber-400">·</span>
-            <span>{recoveryLabel}</span>
-          </div>
-        );
-      })()}
     </div>
   );
 }
@@ -483,7 +488,7 @@ export function AdminSubscriptionAccountsPage() {
     setFilter,
   } = useAdminTableState({
     storageKey: 'subscription-accounts',
-    filters: ['status', 'platform', 'quota'],
+    filters: ['status', 'platform', 'quota', 'recovery_policy'],
   });
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<SubscriptionAccountEditDraft | null>(null);
@@ -514,9 +519,10 @@ export function AdminSubscriptionAccountsPage() {
   const statusFilter = filters.status ?? '';
   const platformFilter = filters.platform ?? '';
   const quotaFilter = filters.quota ?? '';
+  const recoveryFilter = filters.recovery_policy ?? '';
 
   const { data: accounts, isLoading, dataUpdatedAt } = useQuery({
-    queryKey: ['admin-subscription-accounts', page, pageSize, search, statusFilter, platformFilter, sortKey, sortDirection],
+    queryKey: ['admin-subscription-accounts', page, pageSize, search, statusFilter, platformFilter, recoveryFilter, sortKey, sortDirection],
     queryFn: async () => {
       const params = buildAdminListParams({
         page,
@@ -524,7 +530,7 @@ export function AdminSubscriptionAccountsPage() {
         search,
         sortKey,
         sortDirection,
-        filters: { status: statusFilter, platform: platformFilter },
+        filters: { status: statusFilter, platform: platformFilter, recovery_policy: recoveryFilter },
       });
       const res = await adminApiClient.get(`/subscription-accounts?${params}`);
       const payload = res.data as { accounts?: RawSubscriptionAccount[]; total?: number };
@@ -745,7 +751,7 @@ export function AdminSubscriptionAccountsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-semibold">{t("订阅账号管理")}</h2>
         <div className="flex items-center gap-2">
           <OAuthBindDialog onBound={invalidate} />
@@ -764,7 +770,7 @@ export function AdminSubscriptionAccountsPage() {
         onSearchChange={setSearch}
         onClear={clearSearch}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex max-w-full flex-wrap items-center gap-2 [&>select]:max-w-full">
             <select
               aria-label={t("按平台筛选")}
               value={platformFilter}
@@ -798,6 +804,10 @@ export function AdminSubscriptionAccountsPage() {
               <option value="exhausted">{t("本地额度耗尽")}</option>
               <option value="almost">{t("即将耗尽")}</option>
               <option value="no_usage">{t("最近无用量")}</option>
+            </select>
+            <select aria-label={t('按恢复策略筛选')} value={recoveryFilter} onChange={(event) => setFilter('recovery_policy', event.target.value)} className="h-8 rounded-md border bg-background px-2 text-sm">
+              <option value="">{t('全部恢复策略')}</option>
+              <option value="manual">{t('待人工处理')}</option>
             </select>
           </div>
         }
@@ -880,7 +890,10 @@ export function AdminSubscriptionAccountsPage() {
                       />
                     </TableCell>
                     <TableCell className="font-mono text-sm">{account.id}</TableCell>
-                    <TableCell className="font-medium">{account.name}</TableCell>
+                    <TableCell className="font-medium">
+                      {account.name}
+                      <AccountRecoveryDetails account={account} now={nowUnix} />
+                    </TableCell>
                     <TableCell>{platformLabel(account.platform ?? '')}</TableCell>
                     <TableCell>{account.group}</TableCell>
                     <TableCell className="hidden lg:table-cell">{account.priority ?? 0}</TableCell>
@@ -914,7 +927,7 @@ export function AdminSubscriptionAccountsPage() {
                       />
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
-                      <QuotaStatusCell account={account} now={nowUnix} />
+                      <QuotaStatusCell account={account} />
                     </TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button variant="outline" size="sm" onClick={() => openEdit(account)}>

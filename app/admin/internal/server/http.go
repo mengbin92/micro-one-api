@@ -2451,12 +2451,13 @@ func handleSubscriptionAccounts(w http.ResponseWriter, r *http.Request, svc *ser
 	switch r.Method {
 	case http.MethodGet:
 		resp, err := svc.ListSubscriptionAccounts(r.Context(), &adminv1.AdminListSubscriptionAccountsRequest{
-			Page:     getQueryInt32(r, "page", 1),
-			PageSize: getQueryInt32(r, "page_size", 20),
-			Keyword:  r.URL.Query().Get("keyword"),
-			Group:    r.URL.Query().Get("group"),
-			Status:   getQueryInt32(r, "status", 0),
-			Platform: r.URL.Query().Get("platform"),
+			RecoveryPolicy: r.URL.Query().Get("recovery_policy"),
+			Page:           getQueryInt32(r, "page", 1),
+			PageSize:       getQueryInt32(r, "page_size", 20),
+			Keyword:        r.URL.Query().Get("keyword"),
+			Group:          r.URL.Query().Get("group"),
+			Status:         getQueryInt32(r, "status", 0),
+			Platform:       r.URL.Query().Get("platform"),
 		})
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})

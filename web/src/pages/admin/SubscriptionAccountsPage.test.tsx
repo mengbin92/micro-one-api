@@ -53,6 +53,19 @@ const detailAccount = {
 };
 
 describe('AdminSubscriptionAccountsPage', () => {
+  it('filters manual recovery on the server and shows waiting time', async () => {
+    const policies: string[] = [];
+    server.use(http.get('/api/subscription-accounts', ({ request }) => {
+      policies.push(new URL(request.url).searchParams.get('recovery_policy') ?? '');
+      return HttpResponse.json({ accounts: [{ ...baseAccount, status: 2, recoveryPolicy: 'manual', unschedulableReason: 'upstream 401', unschedulableSince: Math.floor(Date.now()/1000)-7200 }], total: 1 });
+    }));
+    renderWithQuery(<MemoryRouter><AdminSubscriptionAccountsPage /></MemoryRouter>);
+    expect(await screen.findByText('upstream 401')).toBeInTheDocument();
+    expect(screen.getByText('人工处理')).toBeInTheDocument();
+    expect(screen.getByText(/已等待 2h/)).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: '按恢复策略筛选' }), 'manual');
+    await waitFor(() => expect(policies).toContain('manual'));
+  });
   it('lists subscription accounts from the /api alias', async () => {
     server.use(
       http.get('/api/subscription-accounts', () =>

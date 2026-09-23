@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"fmt"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	identityv1 "micro-one-api/api/identity/v1"
@@ -13,11 +14,15 @@ type freshRoutingIdentity struct {
 	identityv1.IdentityServiceClient
 	calls    int
 	clientIP string
+	err      error
 }
 
 func (f *freshRoutingIdentity) GetAuthSnapshot(_ context.Context, r *identityv1.GetAuthSnapshotRequest, _ ...grpc.CallOption) (*identityv1.GetAuthSnapshotReply, error) {
 	f.calls++
 	f.clientIP = r.ClientIp
+	if f.err != nil {
+		return nil, f.err
+	}
 	return &identityv1.GetAuthSnapshotReply{UserId: 2, RoutingContextVersion: 2}, nil
 }
 func TestV2AlwaysReadsFreshIdentityFacts(t *testing.T) {
@@ -37,4 +42,8 @@ func TestV2AlwaysReadsFreshIdentityFacts(t *testing.T) {
 	}
 	require.Equal(t, 2, fresh.calls)
 	require.Equal(t, "127.0.0.1", fresh.clientIP)
+	fresh.err = fmt.Errorf("revoked")
+	_, err = client.GetAuthSnapshot(context.Background(), &identityv1.GetAuthSnapshotRequest{Token: "key"})
+	require.ErrorIs(t, err, fresh.err)
+	require.Equal(t, 3, fresh.calls)
 }

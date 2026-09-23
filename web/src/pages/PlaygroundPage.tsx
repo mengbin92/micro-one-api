@@ -33,6 +33,8 @@ interface PlaygroundMessage {
 }
 
 interface InspectorState {
+  traceId?: string;
+  otelTraceId?: string;
   requestId?: string;
   status?: number;
   startedAt?: number;
@@ -299,6 +301,7 @@ export function PlaygroundPage() {
         requestId,
         signal: controller.signal,
         callbacks: {
+          onIdentity: (identity) => isCurrent() && setInspector((current) => ({ ...current, ...identity })),
           onEvent: (event) => isCurrent() && appendRawEvent(event.raw),
           onDelta: appendAssistant,
           onUsage: (usage) => isCurrent() && setInspector((current) => ({ ...current, usage })),
@@ -494,6 +497,8 @@ export function PlaygroundPage() {
               <Metric label={t("输出 Token")} value={formatTokens(inspector.usage?.completion_tokens)} />
             </div>
             {inspector.requestId ? <div className="rounded-xl bg-muted p-3"><p className="text-xs font-semibold text-muted-foreground">{t('请求 ID')}</p><p className="mt-1 break-all font-mono text-xs text-foreground">{inspector.requestId}</p></div> : null}
+            {inspector.traceId ? <div className="bg-muted p-3"><p className="text-xs font-semibold text-muted-foreground">Trace ID</p><p className="mt-1 break-all font-mono text-xs">{inspector.traceId}</p></div> : null}
+            {inspector.otelTraceId ? <div className="bg-muted p-3"><p className="text-xs font-semibold text-muted-foreground">OTel Trace ID</p><p className="mt-1 break-all font-mono text-xs">{inspector.otelTraceId}</p></div> : null}
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => void copyRequest()} disabled={!inspector.requestBody}><Copy className="size-3.5" />{t("复制请求 JSON")}</Button>
               <Button type="button" variant="outline" size="sm" onClick={() => setShowInspector((value) => !value)}><Eye className="size-3.5" />{t("原始事件")}</Button>

@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"bufio"
 	"context"
+	"net"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -47,6 +49,13 @@ type statusRecorder struct {
 }
 
 func (r *statusRecorder) WriteHeader(code int) {
+	if r.status != 0 {
+		return
+	}
+	if code >= 100 && code < 200 && code != http.StatusSwitchingProtocols {
+		r.ResponseWriter.WriteHeader(code)
+		return
+	}
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
 }
@@ -62,9 +71,22 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 
 // Flush preserves SSE/streaming support through the metrics wrapper.
 func (r *statusRecorder) Flush() {
-	if f, ok := r.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
+	_ = r.FlushError()
+}
+
+func (r *statusRecorder) FlushError() error {
+	if r.status == 0 {
+		r.status = http.StatusOK
 	}
+	return http.NewResponseController(r.ResponseWriter).Flush()
+}
+
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	conn, rw, err := http.NewResponseController(r.ResponseWriter).Hijack()
+	if err == nil && r.status == 0 {
+		r.status = http.StatusSwitchingProtocols
+	}
+	return conn, rw, err
 }
 
 // Unwrap lets http.ResponseController reach optional interfaces implemented
@@ -85,16 +107,23 @@ func NewHTTPMetricsMiddleware(service string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			rw := &statusRecorder{ResponseWriter: w}
+			completed := false
+			defer func() {
+				if rw.status == 0 {
+					rw.status = http.StatusOK
+					if !completed {
+						rw.status = http.StatusInternalServerError
+					}
+				}
+				path := normalizePath(r.URL.Path)
+				if label, ok := r.Context().Value(metricPathKey{}).(string); ok {
+					path = label
+				}
+				metrics.HTTPRequestTotal.WithLabelValues(service, r.Method, path, strconv.Itoa(rw.status)).Inc()
+				metrics.HTTPRequestDuration.WithLabelValues(service, r.Method, path).Observe(time.Since(start).Seconds())
+			}()
 			next.ServeHTTP(rw, r)
-			if rw.status == 0 {
-				rw.status = http.StatusOK
-			}
-			path := normalizePath(r.URL.Path)
-			if label, ok := r.Context().Value(metricPathKey{}).(string); ok {
-				path = label
-			}
-			metrics.HTTPRequestTotal.WithLabelValues(service, r.Method, path, strconv.Itoa(rw.status)).Inc()
-			metrics.HTTPRequestDuration.WithLabelValues(service, r.Method, path).Observe(time.Since(start).Seconds())
+			completed = true
 		})
 	}
 }

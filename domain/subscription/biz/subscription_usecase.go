@@ -554,6 +554,17 @@ func (uc *SubscriptionUsecase) GetProgress(ctx context.Context, userID int64) (*
 	}
 	rolled := uc.rollWindows(subscription)
 	now := uc.now().Unix()
+	group, gerr := uc.GetGroupForSubscription(ctx, rolled)
+	if gerr != nil && rolled.Contract != nil {
+		return nil, gerr
+	}
+	return BuildSubscriptionProgress(rolled, group, now), nil
+}
+
+// BuildSubscriptionProgress shares window and contract semantics with billing.
+// Frozen and available stay unknown until billing supplies its reservation sum.
+func BuildSubscriptionProgress(subscription *UserSubscription, group *SubscriptionGroup, now int64) *SubscriptionProgress {
+	rolled := RollUsageWindows(subscription, now)
 	// Surface the group's limits so Remaining is meaningful. Without them every
 	// dimension reported Remaining=0, indistinguishable from "quota exhausted".
 	var dailyLimit, weeklyLimit, monthlyLimit *float64
@@ -561,11 +572,11 @@ func (uc *SubscriptionUsecase) GetProgress(ctx context.Context, userID int64) (*
 	if rolled.Contract != nil {
 		groupName = rolled.SubscriptionName
 	}
-	group, gerr := uc.GetGroupForSubscription(ctx, rolled)
-	if gerr != nil && rolled.Contract != nil {
-		return nil, gerr
-	}
-	if gerr == nil && group != nil {
+	multiplier := 1.0
+	if group != nil {
+		if group.RateMultiplier > 0 {
+			multiplier = group.RateMultiplier
+		}
 		dailyLimit, weeklyLimit, monthlyLimit = group.DailyLimitUSD, group.WeeklyLimitUSD, group.MonthlyLimitUSD
 		if groupName == "" {
 			groupName = group.DisplayName
@@ -574,7 +585,10 @@ func (uc *SubscriptionUsecase) GetProgress(ctx context.Context, userID int64) (*
 			groupName = group.Name
 		}
 	}
-	return &SubscriptionProgress{
+	progress := &SubscriptionProgress{
+		RateMultiplier:   multiplier,
+		UsageSource:      "settled_only",
+		ObservedAt:       now,
 		Contract:         CloneContract(rolled.Contract),
 		ID:               rolled.ID,
 		Status:           rolled.Status,
@@ -589,7 +603,11 @@ func (uc *SubscriptionUsecase) GetProgress(ctx context.Context, userID int64) (*
 		WeeklyUsed:       makeDimension(rolled.WeeklyUsageUSD, weeklyLimit, rolled.WeeklyWindowStart+int64(quotaWeeklyWindow.Seconds())),
 		MonthlyUsed:      makeDimension(rolled.MonthlyUsageUSD, monthlyLimit, rolled.MonthlyWindowStart+int64(quotaMonthlyWindow.Seconds())),
 		RemainingSeconds: maxInt64(0, rolled.ExpiresAt-now),
-	}, nil
+	}
+	progress.DailyUsed.WindowStart = rolled.DailyWindowStart
+	progress.WeeklyUsed.WindowStart = rolled.WeeklyWindowStart
+	progress.MonthlyUsed.WindowStart = rolled.MonthlyWindowStart
+	return progress
 }
 
 func (uc *SubscriptionUsecase) ListByUser(ctx context.Context, userID int64) ([]*UserSubscription, error) {
@@ -689,6 +707,9 @@ func makeDimension(used float64, limit *float64, nextRefresh int64) *QuotaDimens
 		remaining = *limit - used
 	}
 	return &QuotaDimension{
+		Settled:     used,
+		Unlimited:   limit == nil,
+		OverLimit:   limit != nil && used > *limit,
 		Used:        used,
 		Limit:       limit,
 		Remaining:   remaining,
