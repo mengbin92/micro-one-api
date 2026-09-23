@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	relaybiz "micro-one-api/internal/biz"
@@ -64,11 +65,17 @@ func (s *HTTPServer) finalizeSelectionFromResult(plan *relaybiz.RelayPlan, resul
 }
 
 // classifyResultLabel maps an upstream error to the low-cardinality result
-// label used by routing_selection_total. Client-side errors (4xx) are
-// "client_error"; upstream failures (5xx, network, timeout) are "error".
+// label used by routing_selection_total. Cancellation and deadlines retain
+// their own labels; other 4xx errors are "client_error", failures are "error".
 func classifyResultLabel(err error) string {
 	if err == nil {
 		return "success"
+	}
+	if errors.Is(err, context.Canceled) {
+		return "canceled"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout"
 	}
 	status := relaybiz.UpstreamStatus(err)
 	if status >= 400 && status < 500 {

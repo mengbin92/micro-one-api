@@ -220,9 +220,8 @@ func (s *HTTPServer) writeAnthropicAdaptorStream(
 	_ = response.Body.Close()
 
 	if copyErr != nil || ctx.Err() != nil || !terminal.Success() {
-		setRelayObservationResult(ctx, "stream_error")
 		_ = s.releaseQuota(ctx, reservationID, "incomplete upstream stream")
-		return nil
+		return relayStreamInterrupted(ctx, copyErr)
 	}
 	usage := upstreamUsage.Usage()
 	populateAnthropicUsageLog(&logInput, usage, time.Since(startedAt))

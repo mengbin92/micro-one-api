@@ -96,6 +96,8 @@ func TestIncompleteStreamsNeverCommitOrReplay(t *testing.T) {
 				defer upstream.Close()
 				identity, channel, billing := rawIdentityClient{}, rawChannelClient{baseURL: upstream.URL + "/v1", key: "secret"}, &rawBillingClient{}
 				uc := relaybiz.NewRelayUsecase(relaydata.NewIdentityAdapter(identity), relaydata.NewChannelAdapter(channel), nil, &relaybiz.RetryPolicy{MaxAttempts: 3})
+				recorder := &selectionTestRecorder{}
+				uc.SetSelectionRecorder(recorder)
 				s := NewHTTPServer(identity, channel, billing, provider.NewProviderFactory(time.Second), uc)
 				s.SetRelayOrchestratorEnabled(orchestrator)
 				s.SetRelayOrchestratorTokenHMACAllowlist(relayOrchestratorTestHMACKey, []string{relayOrchestratorTestDigest("user-token")})
@@ -107,6 +109,12 @@ func TestIncompleteStreamsNeverCommitOrReplay(t *testing.T) {
 				srv.ServeHTTP(rec, req)
 				if calls != 1 || billing.commits != 0 || billing.releases != 1 {
 					t.Fatalf("calls=%d commits=%d releases=%d body=%s", calls, billing.commits, billing.releases, rec.Body.String())
+				}
+				if strings.Contains(rec.Body.String(), `"error"`) || strings.Contains(rec.Body.String(), "[DONE]") {
+					t.Fatalf("incomplete stream appended a terminal response: %s", rec.Body.String())
+				}
+				if len(recorder.events) != 2 || recorder.events[1].Result != "error" {
+					t.Fatalf("incomplete stream selection events=%+v", recorder.events)
 				}
 			})
 		}

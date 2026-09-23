@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	stderrors "errors"
 	"net/http"
 	"time"
 
@@ -86,6 +87,9 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 
 	s.finalizeSelectionFromResult(plan, result, time.Since(retryStartedAt))
 	recordRelayRetryOutcome(r.Context(), result.Fallback, result.Err, result.FallbackReason)
+	if stderrors.Is(result.Err, errRelayStreamInterrupted) {
+		return
+	}
 	if result.Err != nil {
 		setErrorChannel(w, result.Channel)
 		s.writeAnthropicError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")

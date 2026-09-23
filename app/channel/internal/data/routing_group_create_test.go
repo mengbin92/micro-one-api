@@ -24,6 +24,28 @@ func TestCreateRoutingGroupWithSingleConnection(t *testing.T) {
 	require.Equal(t, "single", detail.Group.Key)
 }
 
+func TestCreateRoutingGroupAfterConcurrentSQLiteWrite(t *testing.T) {
+	db, gdb := routingGroupFixture(t)
+	_, err := db.Exec("PRAGMA journal_mode=WAL")
+	require.NoError(t, err)
+	db.SetMaxOpenConns(2)
+	var writerErr error
+	writes := 0
+	require.NoError(t, gdb.Callback().Create().Before("gorm:create").Register("concurrent_outbox_write", func(tx *gorm.DB) {
+		if tx.Statement.Table != "routing_groups" {
+			return
+		}
+		writes++
+		_, writerErr = db.Exec("INSERT INTO routing_change_outbox (id, owner, kind, aggregate_id, revision, created_at) VALUES ('other:group:1:1', 'other', 'group', 1, 1, 1)")
+	}))
+	uc := biz.NewRoutingGroupUsecase(NewRoutingGroupRepo(&Repository{db: gdb}))
+	detail, err := uc.Create(context.Background(), "concurrent", "Concurrent", "", "restricted")
+	require.NoError(t, writerErr)
+	require.Equal(t, 1, writes)
+	require.NoError(t, err)
+	require.Equal(t, "concurrent", detail.Group.Key)
+}
+
 func TestCreateRoutingGroupPersistsAndRejectsDuplicates(t *testing.T) {
 	_, gdb := routingGroupFixture(t)
 	repo := &routingGroupRepo{data: &Repository{db: gdb}}

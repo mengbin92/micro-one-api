@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.32.0 发布公告](./docs/releases/release-v0.32.0.md)（运行观测、订阅冻结额度解释与账号治理，无新增迁移） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.32.0)
+> 📣 **最新发布**：[v0.32.1 发布公告](./docs/releases/release-v0.32.1.md)（流式取消终态、Playground 安全头与 SQLite 分组修复，无新增迁移） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.32.1)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.32.1
+
+v0.32.1 是 v0.32.0 之后的 **PATCH 可靠性与安全修复版本**：修复流式取消误记成功、管理台安全响应头缺失及 SQLite 并发创建分组锁冲突。**无 API/proto 变更、无新增数据库迁移**；更新 channel-service、admin-api、relay-gateway，无需重新发布前端。admin/relay 修复已分批上线，渠道 9 真实取消确认预留释放、无扣费及 `canceled` 审计；现网按镜像状态核对升级。详见 [docs/releases/release-v0.32.1.md](./docs/releases/release-v0.32.1.md)。
 
 ### 升级到 v0.32.0
 

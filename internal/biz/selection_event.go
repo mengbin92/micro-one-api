@@ -62,7 +62,7 @@ type SelectionEvent struct {
 	// "timeout", "circuit_open", ...).
 	Fallback       bool
 	FallbackReason string
-	// Result is "success" / "error" / "client_error" (low cardinality).
+	// Result is "success" / "error" / "client_error" / "canceled" / "timeout".
 	// Empty at Plan time (before execution); FinalizeSelectionResult fills it.
 	Result string
 	// ProviderFamily is the coarse provider family ("openai", "anthropic",

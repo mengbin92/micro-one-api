@@ -182,7 +182,12 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 	notifyWorkerProxy := newNotifyWorkerProxy()
 	channelHTTPProxy := newChannelHTTPProxy()
 	webAssets := newAdminWebAssets(optionString(options, 1))
-	handlePage := webAssets.handlePage
+	handlePage := appmiddleware.SecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isAdminShellPath(r.URL.Path) {
+			w.Header().Set("Content-Security-Policy", adminWebContentSecurityPolicy(r.Context(), svc))
+		}
+		webAssets.handlePage(w, r)
+	})).ServeHTTP
 	// SPA fallback (review admin-H1): Kratos uses gorilla/mux, whose "/" matches
 	// only the root path — unlike net/http's DefaultServeMux subtree match. The
 	// previous code mirrored all 30+ frontend routes here by hand. Instead, we
@@ -1632,6 +1637,38 @@ func usableWebRoot(webRoot string) (string, error) {
 	return cleanRoot, nil
 }
 
+func isAdminShellPath(path string) bool {
+	path = strings.TrimPrefix(path, "/")
+	return path == "" || path == "index.html" || !strings.Contains(path, ".")
+}
+
+func adminWebContentSecurityPolicy(ctx context.Context, svc *service.AdminService) string {
+	connectSources := "'self'"
+	address := ""
+	if svc != nil {
+		address, _ = svc.GetOneAPIOption(ctx, "ServerAddress")
+	}
+	if strings.TrimSpace(address) == "" {
+		address = os.Getenv("ADMIN_WEB_RELAY_ORIGIN")
+	}
+	if origin := adminWebRelayOrigin(address); origin != "" {
+		connectSources += " " + origin
+	}
+	// Charts and progress bars set inline style attributes; scripts remain self-only.
+	return "default-src 'self'; base-uri 'self'; object-src 'none'; " +
+		"script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+		"img-src 'self' data: https:; font-src 'self' data:; " +
+		"connect-src " + connectSources + "; frame-ancestors 'none';"
+}
+
+func adminWebRelayOrigin(address string) string {
+	parsed, err := url.Parse(strings.TrimSpace(address))
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || parsed.User != nil || strings.ContainsAny(parsed.Host, " \t\r\n;'\"\\") {
+		return ""
+	}
+	return parsed.Scheme + "://" + parsed.Host
+}
+
 func (a adminWebAssets) handlePage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -1646,7 +1683,7 @@ func (a adminWebAssets) handlePage(w http.ResponseWriter, r *http.Request) {
 	// SPA fallback: any path without a file extension serves index.html so
 	// client-side routes (/login, /dashboard, /tokens) load the React shell.
 	path := strings.TrimPrefix(r.URL.Path, "/")
-	if path == "" || path == "index.html" || !strings.Contains(path, ".") {
+	if isAdminShellPath(r.URL.Path) {
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")

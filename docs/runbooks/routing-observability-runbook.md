@@ -1,6 +1,6 @@
 # 路由与 outbox 观察、告警及 Redis 故障恢复
 
-> v0.30 P1-1；2026-09-23 补第二批 O2/O5。适用于现有 B–F 路由链路；不改变授权、冻结计价和重试规则。
+> v0.30 P1-1；2026-09-23 补第二批 O2/O5 与第三批 Q1 取消终态验收。适用于现有 B–F 路由链路；不改变授权和冻结计价规则。
 
 ## 入口与部署
 
@@ -9,9 +9,9 @@
 - 看板：Grafana **Routing and Outbox Operations**，UID `routing-operations`；[JSON](../../deploy/grafana/dashboards/routing-operations.json)随现有 dashboard 目录自动加载。既有路由选择、账务与依赖看板继续使用。
 - 验收：[真实链路入口](../../test/e2e/routing/README.md)，MySQL / SQLite 使用相同规则、阈值与等待时间。
 
-上线涉及 relay、identity、channel，以及嵌入订阅 outbox 的 admin / billing 服务二进制，并同步规则和看板文件。按[部署说明](../../AGENTS.md#deployment)在本机交叉构建镜像；Prometheus 重新加载配置或重启后检查规则状态。本次交付未部署生产、未修改生产开关、未发布版本。
+上线涉及 relay、identity、channel，以及嵌入订阅 outbox 的 admin / billing 服务二进制，并同步规则和看板文件。按[部署说明](../../AGENTS.md#deployment)在本机交叉构建镜像；Prometheus 重新加载配置或重启后检查规则状态。第二批已随 v0.32.0 上线，服务状态核对与仍待生产验收的项目见[当前计划第 3 节](../design/next-stage-plan-2026-09-22.md#3-第二批观测与额度解释o)。
 
-仓库 Compose 已加入 Alertmanager 并接到 notify-worker；本次未部署生产。**firing、通知入队、外部接收成功是三个不同状态**，只有接收端响应成功并持久化 `sent` 才算完成一次通知投递。
+仓库 Compose 已加入 Alertmanager 并接到 notify-worker；生产 firing/resolved 到外部接收端的闭环仍待验收。**firing、通知入队、外部接收成功是三个不同状态**，只有接收端响应成功并持久化 `sent` 才算完成一次通知投递。
 
 ### 通知链路
 
@@ -32,6 +32,17 @@ Playground 请求检查器展示 `X-Request-ID`、兼容 `X-Trace-ID` 和有效�
 管理员使用 `/api/log/routing-audit?user_id=<id>&root_request_id=<X-Request-ID>` 联查 selection events 和 attempts；也可单独查询 `/api/log/attempts`。路由审计 JSON 和结构化日志携带 `trace_id`、`otel_trace_id`，由 root_request_id 找到 attempt_id、预留和实际来源。ID 不进入 Prometheus 标签。
 
 Relay 仅在配置 `OTEL_EXPORTER_OTLP_ENDPOINT` 时初始化 OTLP/HTTP exporter，默认采样率 1；未配置时兼容 ID 仍可用于日志关联。当前交付包含 Relay HTTP span 与审计关联，不承诺 downstream gRPC/server 或上游供应商都有 span。部署后需在 collector 中核对实际收到的 trace，启动无报错不等于导出成功。
+
+### 流式取消验收
+
+普通渠道 Chat/Messages/Responses 和 orchestrator 流式路径在客户端取消后记录 `canceled`，请求预算耗尽记录 `timeout`。已开始的 SSE 响应仍可能保留 HTTP 200；应以最终路由审计及 `micro_one_api_relay_executor_requests_total` 的 `result` 标签判断执行结果。未收到协议正常终态的断流必须释放预留，不能重放上游或追加 JSON 错误响应。
+
+1. 使用短期、限模型、限额度的测试令牌，保存 `X-Request-ID`；收到首个 SSE 事件后、正常终态前取消请求。
+2. 通过 `/api/log/routing-audit` 和 `/api/log/attempts` 按用户及根请求 ID 回读：最终事件 `planned=false`、`result=canceled`，实际来源正确，预留 `released`，取消后无新增尝试。
+3. 核对同一预留的实际费用为 0、无消费账本分录，并检查对应 endpoint/execution_path 的取消指标增量。共享生产流量可能影响计数，逐请求结论以审计和预留记录为准。
+4. 停用测试令牌，移除临时凭证和隧道；保存脱敏请求 ID、预留 ID、镜像及回滚标签。
+
+受控上游可通过请求上下文取消确认 HTTP/1.1 请求或 HTTP/2 流已中止；HTTP/2 底层连接保持连接可用于复用。供应商内部停止推理需要其逐请求回执，不能从 TCP 连接状态推断。渠道 9 的真实 API 取消及本地受控上游验证见[验收证据](./evidence/next-stage-channel9-cancel-2026-09-23.json)。
 
 ### 指标用途盘点
 
