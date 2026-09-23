@@ -7,8 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.32.1] - 2026-09-23
+
+v0.32.1 是 v0.32.0 之后的 **PATCH 可靠性与安全修复版本**：修复流式取消误记成功、管理台安全响应头缺失及 SQLite 并发创建分组锁冲突。**无 API/proto 变更、无新增迁移**；更新 channel-service、admin-api、relay-gateway，无需重新发布前端。渠道 9 已完成真实取消复验，详见 [release-v0.32.1.md](docs/releases/release-v0.32.1.md)。
+
 ### Fixed
 
+- SQLite 创建路由分组依赖唯一键处理重复 key，避免事务内先读后写遭遇并发 WAL 快照锁冲突。
 - admin-api 的 SPA 页面和静态资源补齐安全响应头；页面 CSP 根据配置的 Relay origin 限定连接来源，拒绝非法地址，并兼容现有图表样式。
 - Relay 普通渠道 Chat/Messages/Responses 的流中断不再误记为成功，取消和请求预算超时分别记录为 `canceled` / `timeout`；中断后禁止重试和追加 JSON 错误，Chat 在账务清理前取消上游流。orchestrator 保留中断原因及最终路由来源。
 

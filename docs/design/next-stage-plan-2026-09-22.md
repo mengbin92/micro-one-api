@@ -152,6 +152,8 @@ docker run --rm --entrypoint /bin/promtool -v "$PWD/deploy/prometheus/alerts:/ru
 
 ### 第三批实施与验收记录（2026-09-23）
 
+本节安全头与取消终态修复已纳入 [v0.32.1](../releases/release-v0.32.1.md)，同时包含 SQLite 创建分组锁冲突修复。发布候选 `make verify` 与 `make test-integration` 通过；其余 Q1–Q3 及生产外部验收按下文保留。
+
 Q1 安全头首段基于 `develop@b733af59` 实施。admin-api 的 SPA 页面与资源响应复用现有安全头；文档 CSP 将 `connect-src` 限定为同源及 `ServerAddress` 的 Relay origin，未配置时可由 `ADMIN_WEB_RELAY_ORIGIN` 对齐前端构建回退地址。非法地址不进入策略，脚本保持同源，运行时图表/进度条的样式属性可用。实现及配置说明见 `app/admin/internal/server/http.go` 和 `web/README.md`。
 
 本地证据：`go test ./app/admin/internal/server ./platform/middleware -count=1` 通过，覆盖真实 admin 页面/SPA 回退/静态资源响应头、配置变更与非法地址；`web/` 下 `npm run build` 通过；生产构建经 `node scripts/verify-admin-csp.mjs http://127.0.0.1:4174` 注入同形 CSP 做隔离浏览器验证，跨域模型与请求成功，请求 ID 可见，无 CSP 违规、页面异常或 Key 落入浏览器存储。该浏览器验证使用 mock Relay，不能代表生产反向代理响应头或服务端账务终态。
