@@ -1,0 +1,118 @@
+{
+  "task": "D1",
+  "source_base": "feb9918c",
+  "verified_at_utc": "2026-09-23T12:29:10.611646+00:00",
+  "rollback_tag": "rollback-d1-20260923T122000Z",
+  "backup_directory": "/opt/micro-one-api/backups/d1-20260923T122000Z",
+  "services": {
+    "channel-service": {
+      "image": "sha256:6c3d047c11273e0121adfa6cfc05290d2ddd129f9a3fa72de219428487d17d04",
+      "started_at": "2026-09-23T12:25:48.334669118Z",
+      "health_status": 200,
+      "restart_count": 0
+    },
+    "relay-gateway": {
+      "image": "sha256:ca65253266e94accb31d39cb234bb0523405c2af9cf63adb0e311cd329975f95",
+      "started_at": "2026-09-23T12:26:55.135079622Z",
+      "health_status": 200,
+      "restart_count": 0
+    },
+    "identity-service": {
+      "image": "sha256:1f6d95354be65b25230a2925c230f82b45f0e138c500de1b58db053f331fc8b4",
+      "started_at": "2026-09-23T12:28:06.143340278Z",
+      "health_status": 200,
+      "restart_count": 0
+    }
+  },
+  "coordination_mode": "redis",
+  "relay_credential_metrics": [
+    "micro_one_api_credential_coordination_total{platform=\"claude\",result=\"busy\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"claude\",result=\"canceled\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"claude\",result=\"conflict\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"claude\",result=\"pending\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"claude\",result=\"success\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"claude\",result=\"timeout\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"claude\",result=\"unavailable\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"claude\",result=\"uncertain\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"codex\",result=\"busy\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"codex\",result=\"canceled\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"codex\",result=\"conflict\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"codex\",result=\"pending\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"codex\",result=\"success\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"codex\",result=\"timeout\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"codex\",result=\"unavailable\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"codex\",result=\"uncertain\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"kimi\",result=\"busy\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"kimi\",result=\"canceled\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"kimi\",result=\"conflict\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"kimi\",result=\"pending\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"kimi\",result=\"success\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"kimi\",result=\"timeout\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"kimi\",result=\"unavailable\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"kimi\",result=\"uncertain\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"unknown\",result=\"busy\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"unknown\",result=\"canceled\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"unknown\",result=\"conflict\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"unknown\",result=\"pending\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"unknown\",result=\"success\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"unknown\",result=\"timeout\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"unknown\",result=\"unavailable\"} 0",
+    "micro_one_api_credential_coordination_total{platform=\"unknown\",result=\"uncertain\"} 0",
+    "micro_one_api_credential_pending{platform=\"claude\"} 0",
+    "micro_one_api_credential_pending{platform=\"codex\"} 0",
+    "micro_one_api_credential_pending{platform=\"kimi\"} 0",
+    "micro_one_api_credential_sweep_interval_seconds{platform=\"claude\"} 600",
+    "micro_one_api_credential_sweep_interval_seconds{platform=\"codex\"} 600",
+    "micro_one_api_credential_sweep_interval_seconds{platform=\"kimi\"} 600"
+  ],
+  "identity_login_metrics": [
+    "micro_one_api_identity_login_limiter_degraded_total{operation=\"clear\"} 0",
+    "micro_one_api_identity_login_limiter_degraded_total{operation=\"read\"} 0",
+    "micro_one_api_identity_login_limiter_degraded_total{operation=\"write\"} 0"
+  ],
+  "schema_and_account_state": [
+    "version\tapplied_at",
+    "109_add_credential_refresh_pending\t1790166243",
+    "id\tplatform\taccount_type\tstatus\tcredential_revision\tcredential_refresh_pending",
+    "2\tminimax\tstatic_key\t2\t0\t0",
+    "4\tzhipu\tstatic_key\t2\t0\t0",
+    "5\tkimi\tstatic_key\t1\t0\t0",
+    "oauth_accounts",
+    "0"
+  ],
+  "claim_rpc_validation": {
+    "account_id": 0,
+    "rejected": true,
+    "code": "Aborted",
+    "message": "credential revision conflict; reload authorization"
+  },
+  "static_account_rpc": {
+    "id": "5",
+    "platform": "kimi",
+    "account_type": "static_key"
+  },
+  "alert_rules": [
+    {
+      "name": "CredentialRefreshUncertain",
+      "health": "ok",
+      "state": "inactive"
+    },
+    {
+      "name": "CredentialCoordinationUnavailable",
+      "health": "ok",
+      "state": "inactive"
+    },
+    {
+      "name": "LoginLimiterRedisDegraded",
+      "health": "ok",
+      "state": "inactive"
+    }
+  ],
+  "alerts_sha256": "8325287547c1799f71178d68aaa8491d0f5a0a3932f823c4873c3365d4b9b94e",
+  "prometheus_reload_successful": true,
+  "limits": [
+    "Production remains one relay and one channel instance",
+    "Production contains static-key accounts; real OAuth rotation and multi-process failover remain unverified",
+    "No failure injection, user billing request, or external test notification was performed"
+  ]
+}

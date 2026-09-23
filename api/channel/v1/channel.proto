@@ -37,6 +37,7 @@ service ChannelService {
   rpc ClearTempUnschedulable(ClearTempUnschedulableRequest) returns (ClearTempUnschedulableResponse);
   rpc CreateSubscriptionAccount(CreateSubscriptionAccountRequest) returns (CreateSubscriptionAccountResponse);
   rpc StoreSubscriptionCredentials(StoreSubscriptionCredentialsRequest) returns (StoreSubscriptionCredentialsReply);
+  rpc ClaimSubscriptionCredentialRefresh(ClaimSubscriptionCredentialRefreshRequest) returns (StoreSubscriptionCredentialsReply);
   rpc UpdateSubscriptionAccount(UpdateSubscriptionAccountRequest) returns (UpdateSubscriptionAccountResponse);
   rpc DeleteSubscriptionAccount(DeleteSubscriptionAccountRequest) returns (DeleteSubscriptionAccountResponse);
   rpc ChangeSubscriptionAccountStatus(ChangeSubscriptionAccountStatusRequest) returns (ChangeSubscriptionAccountStatusResponse);
@@ -1333,3 +1334,9 @@ message StoreSubscriptionCredentialsRequest {
  string account_id = 6;
 }
 message StoreSubscriptionCredentialsReply { int64 revision = 1; }
+
+// Claims a single OAuth attempt durably before contacting the token endpoint.
+message ClaimSubscriptionCredentialRefreshRequest {
+  int64 id = 1;
+  int64 expected_revision = 2;
+}

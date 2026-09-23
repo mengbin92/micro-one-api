@@ -8,6 +8,8 @@
 >
 > 用户于 2026-09-23 纠正边界：**恢复既有 Responses→Chat/Anthropic 转换及默认兼容行为；仅对确实无法转换的能力明确报错。保留流式中断、禁止重复执行、正确结算和显式同模型故障切换。**
 
+> **后续执行更新（2026-09-23）**：用户确认按推荐顺序从 D1 推进。本轮完成 D1 的多 Relay OAuth 协调、负载退化告警及部署边界，**已通过本地/隔离验收并于 12:25–12:28 UTC 上线**；实现、文档及部署证据随本次 D1 提交归档。生产保持单 Relay、单 channel，已启用 `redis` 协调；当前没有 OAuth 账号，真实供应商轮换及多副本故障切换仍待验收。D2–D7 按条件保留，前三批仍缺外部证据的验收不因此关闭。
+
 ## 1. 阶段范围和现状纠偏
 
 本阶段优先解决会丢凭证、无法隔离故障、错误与计费归属不清的缺口。文章中的所有遗留项在第 6 节登记去向；“登记”不代表全部纳入本阶段发布。暂不预定发布版本，按验收完成的批次决定 PATCH/MINOR。
@@ -176,13 +178,27 @@ Q1 安全/取消和 Q2 已发布能力验收可以前移到第一批收尾。样
 
 | ID | 明确保留的待办 | 启动条件与最低边界 |
 | --- | --- | --- |
-| D1 多副本凭证/负载 | 凭证共享与跨进程刷新互斥、selector 状态、Redis 故障时并发/RPM退化、登录限流跨副本 | **扩 relay OAuth 副本前必须完成凭证协调**。优先现有 Redis 租约 + 持久层版本 fencing/CAS，含持锁者崩溃、过期锁旧写者、人工重授权；不能仅把 token map 放 Redis 就宣称 rotation 安全。先明确单刷新 owner 和降级策略，不引入新队列；全局限额退化必须告警，`limit/N` 不能在未知副本数下伪装全局保证 |
+| D1 多副本凭证/负载 | **本地/隔离验收完成，已上线（2026-09-23）**。共享凭证回源、刷新互斥与持久化占用、账号/登录限流退化告警；selector 明确为单 channel owner | 生产已应用迁移 109 并启用 `RELAY_CREDENTIAL_COORDINATION=redis`；Redis 租约只做准入，数据库 revision/pending 保护不确定 OAuth 结果。持锁者崩溃、过期锁、迟到写回及重授权已隔离验收；生产无 OAuth 账号，真实轮换/多副本故障切换待验收。多 channel 共享 selector/会话仍未实现；本地限流降级不承诺故障时全局 cap |
 | D2 额度/订阅新产品 | 账号月窗口、用户自然月（现为 30 天）、本地 USD 与上游百分比标定、用户预约/账号排队、部分退款、升级补差/降级续费 | 有明确平台/套餐或退款需求再做。自然月是新增契约，不能静默改变旧订单；部分退款含累计金额、幂等和权益处理；外部原路退款仍属单独支付能力，不把站内冲正当原路退款；不凭百分比推算未经校准的美元额度 |
 | D3 事件/缓存规模治理 | outbox 毒事件隔离与人工重放、积压自适应轮询、精确失效反向索引、预热、V2 版本缓存、全量 sweeper/对账增量化、差异确认/忽略 | 毒事件先故障注入和处置手册，出现队首阻塞再补有界次数/隔离/重放；Redis 不可用不是毒事件，不能跳过丢授权事件。性能项以扫描耗时、回源 QPS、积压和重复告警为触发证据；复用现有存储，暂不上 MQ，不默认自动修账 |
 | D4 模型能力和健康选路 | 未实现的 Hunyuan/Xingchen/Bedrock/Cloudflare/VertexAI/Replicate/Baidu/Xunfei 原生适配；模型级健康影响路由；上游字符串错误/状态码分类；embeddings 默认模型错误；audio/images/moderations 的 CostBound | 默认模型参数和可操作错误先在 O1/R3 检查；新增原生适配按真实接入需求逐家做。模型健康排除需 model-unavailable 与全渠道故障区分、恢复探测/防饥饿及灰度；类型化上游错误优先，文案兼容限制在对应 provider。没有可靠单位/价格/字段校验时不上虚假成本上限 |
 | D5 存储、安全和审计 | 分区启用与保留期、账本归档、手工 SSRF 地址段更新、全局禁用 SSRF 的启动警示、独立审计查询/存储、临时内容排障、localStorage 会话迁 cookie | SSRF 绕过启动告警/配置检查随 R3 做；特殊网段回归随网络栈更新。日志分区先核规模/DDL/readiness；账本不删。内容排障需限时、授权、脱敏、访问审计与清理，不默认保存 prompt。cookie 与 CSRF/身份接口一起设计，不半迁移 |
 | D6 架构收敛 | provider/adaptor 双抽象；executor/legacy、重复 RelayRequest/构造器、WS executor；channel/admin/identity 大文件；Dockerfile/Compose、relay 目录结构 | executor 要先解决性能归因、完成独立可比观察和回滚验收，之后单独删 legacy。大文件随对应聚合变更拆，保留事务和分层边界；不因行数启动整仓重写。小服务的分层转换/文件成本是接受的架构代价，不新增模板工程 |
 | D7 体验和质量扩展 | 安全 Markdown、历史消息编辑/重发、全站字体优化、覆盖率门禁、更多交互时序用例、对账容差参数化 | 先完成 Q1/Q3 基线；Markdown 先明确安全 renderer/sanitizer 与 CSP 兼容再实现。覆盖率优先关键钱/权限/取消分支，不追求全仓任意百分比；容差先保留同源精确比较，只有业务证据支持才配置化，禁止以放宽容差掩盖并发错账 |
+
+### D1 实施与验收记录（2026-09-23）
+
+基线 `develop@feb9918c`，实现及部署证据随本次 D1 提交归档，提交号见本文件 Git 历史。本轮仅启动用户确认的 D1，多副本边界为 Relay；不将条件清单解释为 D2–D7 全部开工。
+
+- 凭证以 channel 持久层为共享权威，每次协调模式的 OAuth 执行都回读；Claude/Codex（含复用 Claude adaptor 的 Kimi）不再被选路快照的 access token 绕过。`setup_token` 和 `static_key` 保留静态语义。该入口缺口由 `TestOAuthAdaptorsHonorAuthoritativeCredentials` 四场景先失败、修复后通过确认；部署前按线上 Kimi `static_key` 盘点补回归，修正其被误送入 OAuth 的分支，适配器/HTTP `-race` 再次通过。
+- Redis 60 秒带 owner token 的租约与条件释放负责刷新准入；调用 OAuth 前先以 CAS 推进 revision 并持久化 `credential_refresh_pending`。租约失效、Redis 丢状态、进程重启均不能清除该标记。刷新结果不明时不重放旧 refresh token；持有完整轮换凭证的进程可周期补写，新授权可清除占用且阻止旧写者覆盖。修改名称等普通资料不能解除占用。
+- 新增无 HTTP 暴露的 `ClaimSubscriptionCredentialRefresh` RPC、DTO/DO/PO 字段及三方言迁移 `109_add_credential_refresh_pending.sql`；冷账号的 pending 状态也纳入扫描。协调模式缺 Redis 或缺后台 sweep 时拒绝启动；默认 `single` 保留已有单实例行为并输出扩容限制。
+- 账号并发/RPM 的 Redis 共享、失败后本地降级、恢复行为沿用已有回归与 `AccountLimiterRedisDegraded`；新增登录共享限流失败计数及告警。未按未知副本数除配额。Kubernetes Relay 示例配置协调模式，channel Deployment/HPA 固定为 1 并使用 Recreate，避免把本地熔断/半开名额误称为集群共享。
+- 隔离证据：双 provider 共用 Redis/存储时只刷新一次，等待者可取消；租约过期后旧 owner 不能删除继任租约；进程状态丢失、OAuth 失败/claim 回包丢失不重放；Store 持续失败、回包丢失及恢复补写；人工重授权及热缓存回读；三方言历史 schema 升级、双写者仅一人 claim、CAS 重放及 stale writer 拒绝。相关包回归和关键包 `-race`、Prometheus 告警触发/恢复、Wire 再生成、分层与迁移治理检查通过。命令及运维流程见[多副本 Runbook](../runbooks/subscription-redis-multi-replica-runbook.md#六d1-本地实施验收2026-09-23)。
+
+线上更新（2026-09-23）：在 `oneapi_channel` 应用迁移 109，重复执行为 no-op，三个现有静态账号 pending 均为 0；本地交叉构建后依次更新 channel、Relay、identity，12:29 UTC 核对三个健康端点及公网 Relay 均为 200，容器 restart_count=0。Relay 协调模式为 `redis`，三平台 sweep 均为 600 秒；新 claim RPC 对 id=0 返回预期 Aborted，无写入。Prometheus 校验 46 条规则并成功重载，新增三条规则均为 health=ok/inactive。未更新前端或扩容实例。镜像、回滚标签、迁移/RPC/指标样本见[脱敏部署证据](../runbooks/evidence/d1-deploy-2026-09-23.json)及[Runbook 部署记录](../runbooks/subscription-redis-multi-replica-runbook.md#七d1-生产更新2026-09-23)。
+
+剩余边界：生产当前只有三个 `static_key` 账号，没有 OAuth 账号；本轮未执行真实供应商轮换、模型扣费请求或多进程故障切换，相关故障验证仍来自受控 OAuth HTTP、miniredis 和独立三方言数据库。进程在 OAuth 返回前或未持久化时死亡，可能仍需新授权；这是明确的人工恢复状态，不是自动接管成功。Redis 故障期间并发/RPM/登录限额只约束本地，恢复时须等待降级期间请求排空。多 channel selector/会话协调、第二批外部告警送达/OTel及第三批尚缺证据项继续保留。
 
 ## 6. 文章逐篇追踪表
 

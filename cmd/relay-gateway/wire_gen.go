@@ -201,6 +201,13 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	identityService := identity.NewIdentityService(identityTTL)
 	adaptor.SetIdentityService(identityService)
 
+	redisAddr := cfg.Bootstrap.Redis.Addr
+	redisPassword := cfg.Bootstrap.Redis.Password
+	if redisAddr == "" {
+		redisAddr = cfg.Bootstrap.OpenaiWs.RedisAddr
+		redisPassword = cfg.Bootstrap.OpenaiWs.RedisPassword
+	}
+	redisClient := xdb.NewRedisClient(redisAddr, redisPassword)
 	accountLookup := data.NewChannelSubscriptionAccountStore(channelClient)
 	claudeTokenProvider := credential.NewClaudeTokenProvider(accountLookup)
 	codexTokenProvider := credential.NewOpenAITokenProvider(accountLookup)
@@ -214,6 +221,9 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		credential.KimiOAuthClientID = override
 	}
 	kimiTokenProvider := credential.NewKimiTokenProvider(accountLookup)
+	if err := configureCredentialCoordination(os.Getenv("RELAY_CREDENTIAL_COORDINATION"), redisClient, cfg.Bootstrap.HybridAdaptor.GetTokenRefreshEnabled(), claudeTokenProvider, codexTokenProvider, kimiTokenProvider); err != nil {
+		return nil, nil, err
+	}
 
 	tokenFactory := func(platform identity.Platform) credential.TokenProvider {
 		switch platform {
@@ -257,13 +267,6 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		refreshTask.Start()
 	}
 
-	redisAddr := cfg.Bootstrap.Redis.Addr
-	redisPassword := cfg.Bootstrap.Redis.Password
-	if redisAddr == "" {
-		redisAddr = cfg.Bootstrap.OpenaiWs.RedisAddr
-		redisPassword = cfg.Bootstrap.OpenaiWs.RedisPassword
-	}
-	redisClient := xdb.NewRedisClient(redisAddr, redisPassword)
 	eventBus := events.NewConfiguredEventBus(redisClient, "relay-gateway")
 	var routingChannelCache *cache.ChannelCache
 	authLoader := cache.NewAuthCacheLoader(identityClient, nil, resilienceTimeout)

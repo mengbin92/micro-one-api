@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"micro-one-api/platform/metrics"
 	"net"
 	"os"
 	"strconv"
@@ -431,6 +432,7 @@ func (uc *IdentityUsecase) checkLoginRateLimit(ctx context.Context, key string) 
 			}
 			return nil
 		}
+		metrics.LoginLimiterDegraded.WithLabelValues("read").Inc()
 	}
 
 	uc.loginMutex.Lock()
@@ -466,6 +468,7 @@ func (uc *IdentityUsecase) recordLoginFailure(ctx context.Context, key string) {
 		if err := uc.distributedLoginLimiter.RecordLoginFailure(ctx, key, loginLockoutTime); err == nil {
 			return
 		}
+		metrics.LoginLimiterDegraded.WithLabelValues("write").Inc()
 	}
 
 	uc.loginMutex.Lock()
@@ -502,7 +505,9 @@ func (uc *IdentityUsecase) clearLoginAttempts(key string) {
 
 func (uc *IdentityUsecase) clearDistributedLoginAttempts(ctx context.Context, keys ...string) {
 	if uc.distributedLoginLimiter != nil {
-		_ = uc.distributedLoginLimiter.ClearLoginFailures(ctx, keys...)
+		if err := uc.distributedLoginLimiter.ClearLoginFailures(ctx, keys...); err != nil {
+			metrics.LoginLimiterDegraded.WithLabelValues("clear").Inc()
+		}
 	}
 }
 

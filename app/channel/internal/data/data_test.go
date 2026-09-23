@@ -202,6 +202,7 @@ func setupChannelTestDB(t *testing.T) *Repository {
 			refresh_token TEXT,
 			expires_at INTEGER DEFAULT 0,
  credential_revision BIGINT NOT NULL DEFAULT 0,
+ credential_refresh_pending BOOLEAN NOT NULL DEFAULT FALSE,
 			account_id TEXT DEFAULT '',
 			fingerprint TEXT,
 			metadata TEXT,

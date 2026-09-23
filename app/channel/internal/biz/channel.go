@@ -86,6 +86,8 @@ type Channel struct {
 // It is selected separately from API-key channels but uses the same group,
 // model and priority semantics for routing.
 type SubscriptionAccount struct {
+	CredentialRefreshPending bool
+
 	CredentialRevision int64
 	ID                 int64
 	Name               string
@@ -230,6 +232,7 @@ type ChannelRepo interface {
 	CreateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error
 	UpdateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error
 	StoreSubscriptionCredentials(context.Context, *SubscriptionAccount) error
+	ClaimSubscriptionCredentialRefresh(context.Context, *SubscriptionAccount) error
 	DeleteSubscriptionAccount(ctx context.Context, accountID int64) error
 	ChangeSubscriptionAccountStatus(ctx context.Context, accountID int64, status int32) error
 	SetSubscriptionAccountError(ctx context.Context, accountID int64, message string) error

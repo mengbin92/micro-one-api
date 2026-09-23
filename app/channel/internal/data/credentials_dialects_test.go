@@ -10,6 +10,7 @@ import (
 	"micro-one-api/app/channel/internal/biz"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -49,6 +50,9 @@ func TestCredentialRevisionMigrationDialects(t *testing.T) {
 			migration, err := os.ReadFile(filepath.Join(root, "108_add_credential_revision.sql"))
 			require.NoError(t, err)
 			require.NoError(t, db.Exec(string(migration)).Error)
+			migration, err = os.ReadFile(filepath.Join(root, "109_add_credential_refresh_pending.sql"))
+			require.NoError(t, err)
+			require.NoError(t, db.Exec(string(migration)).Error)
 			repo := &Repository{db: db, encKey: []byte("01234567890123456789012345678901")}
 			old, err := repo.FindSubscriptionAccountByID(context.Background(), 1)
 			require.NoError(t, err)
@@ -66,6 +70,41 @@ func TestCredentialRevisionMigrationDialects(t *testing.T) {
 			got, err := repo.FindSubscriptionAccountByID(context.Background(), 1)
 			require.NoError(t, err)
 			require.Equal(t, "reauthorized", got.RefreshToken)
+			// Two independent owners compete using the same historical revision.
+			var wg sync.WaitGroup
+			results := make(chan error, 2)
+			for range 2 {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					claim := *got
+					results <- repo.ClaimSubscriptionCredentialRefresh(context.Background(), &claim)
+				}()
+			}
+			wg.Wait()
+			close(results)
+			wins := 0
+			for err := range results {
+				if err == nil {
+					wins++
+				} else {
+					require.ErrorIs(t, err, biz.ErrCredentialConflict)
+				}
+			}
+			require.Equal(t, 1, wins)
+			claimed, err := repo.FindSubscriptionAccountByID(context.Background(), 1)
+			require.NoError(t, err)
+			require.True(t, claimed.CredentialRefreshPending)
+			require.ErrorIs(t, repo.ClaimSubscriptionCredentialRefresh(context.Background(), claimed), biz.ErrCredentialConflict)
+			require.ErrorIs(t, repo.StoreSubscriptionCredentials(context.Background(), got), biz.ErrCredentialConflict)
+			claimed.AccessToken, claimed.RefreshToken = "final-access", "final-refresh"
+			completedReplay := *claimed
+			require.NoError(t, repo.StoreSubscriptionCredentials(context.Background(), claimed))
+			require.NoError(t, repo.StoreSubscriptionCredentials(context.Background(), &completedReplay))
+			final, err := repo.FindSubscriptionAccountByID(context.Background(), 1)
+			require.NoError(t, err)
+			require.False(t, final.CredentialRefreshPending)
+			require.Equal(t, "final-refresh", final.RefreshToken)
 		})
 	}
 }

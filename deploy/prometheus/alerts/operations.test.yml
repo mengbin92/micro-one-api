@@ -2,6 +2,50 @@ rule_files:
   - alerts.yml
 evaluation_interval: 1m
 tests:
+  - name: unresolved OAuth claim fires and absence of further observations ages out
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_credential_coordination_total{instance="relay",platform="claude",result="uncertain"}'
+        values: '0 1+0x35'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: CredentialRefreshUncertain
+        exp_alerts:
+          - exp_labels: {instance: relay, platform: claude, severity: critical}
+            exp_annotations:
+              summary: OAuth rotation has an unresolved durable claim
+              description: 'Check the refresh owner and pending writes. Never clear the claim or replay the stored token; recover owner persistence or reauthorize with a new refresh token.'
+      - eval_time: 32m
+        alertname: CredentialRefreshUncertain
+        exp_alerts: []
+  - name: coordination and login Redis failures fire and recover
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_credential_coordination_total{instance="relay",platform="codex",result="unavailable"}'
+        values: '0 1+0x7'
+      - series: 'micro_one_api_identity_login_limiter_degraded_total{instance="identity",operation="read"}'
+        values: '0 1+0x7'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: CredentialCoordinationUnavailable
+        exp_alerts:
+          - exp_labels: {instance: relay, platform: codex, severity: warning}
+            exp_annotations:
+              summary: Distributed OAuth refresh coordination is unavailable
+              description: 'Restore Redis and channel storage. Refresh fails closed; do not switch multiple replicas to single mode.'
+      - eval_time: 7m
+        alertname: CredentialCoordinationUnavailable
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: LoginLimiterRedisDegraded
+        exp_alerts:
+          - exp_labels: {instance: identity, severity: warning}
+            exp_annotations:
+              summary: Login throttling lost its shared Redis state
+              description: 'Restore Redis; local login counters do not enforce a fleet-wide limit.'
+      - eval_time: 7m
+        alertname: LoginLimiterRedisDegraded
+        exp_alerts: []
   - name: redis RPM-only degradation fires and recovers
     interval: 1m
     input_series:

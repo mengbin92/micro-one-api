@@ -5,9 +5,9 @@
 // MVP scope (plan §十): a TokenProvider returns a valid access token for an
 // account, refreshing on demand when the cached token is about to expire.
 // Background refresh and pending persistence are provided by RefreshTask.
-// Credentials are cached in process; multi-replica refresh coordination is
-// not implemented. A forced restart while writes are pending can require
-// reauthorization.
+// Distributed mode uses Redis admission and a durable refresh claim. A forced
+// restart during OAuth or while writes are pending can require reauthorization;
+// an uncertain rotation is never automatically replayed by another replica.
 package credential
 
 import (
@@ -34,13 +34,14 @@ const (
 // It is the in-memory view of the encrypted `credentials` blob stored in the
 // SubscriptionAccount record.
 type AccountCredentials struct {
-	Revision     int64  // durable revision used by Store for compare-and-swap
-	AccountID    string // upstream account id (e.g. chatgpt-account-id)
-	AccessToken  string
-	RefreshToken string
-	ExpiresAt    time.Time // access-token expiry
-	ClientID     string    // OAuth client_id (for refresh)
-	RefreshURL   string    // token endpoint URL
+	Revision       int64  // durable revision used by Store for compare-and-swap
+	RefreshPending bool   // durable claim; only its owner may complete this rotation
+	AccountID      string // upstream account id (e.g. chatgpt-account-id)
+	AccessToken    string
+	RefreshToken   string
+	ExpiresAt      time.Time // access-token expiry
+	ClientID       string    // OAuth client_id (for refresh)
+	RefreshURL     string    // token endpoint URL
 }
 
 // TokenProvider returns a valid access token for an account, refreshing when
@@ -52,6 +53,12 @@ type TokenProvider interface {
 	GetAccessToken(ctx context.Context, accountID int64) (string, error)
 	// Refresh forces a token refresh for the account regardless of expiry.
 	Refresh(ctx context.Context, accountID int64) error
+}
+
+// AuthoritativeTokenProvider requires OAuth adaptors to bypass tokens carried
+// in selection snapshots and resolve shared credentials for each execution.
+type AuthoritativeTokenProvider interface {
+	RequiresAuthoritativeLookup() bool
 }
 
 // TokenInvalidator is optionally implemented by providers that cache tokens
@@ -78,9 +85,30 @@ type PendingPersister interface {
 	PersistPending(context.Context, time.Duration) []int64
 }
 
+// RefreshClaimer advances Revision and marks a rotation pending atomically.
+// A lost claim response is not replayable: callers must not contact OAuth.
+type RefreshClaimer interface {
+	ClaimRefresh(context.Context, int64, *AccountCredentials) error
+}
+
+// RefreshCoordinator provides short-lived admission only. RefreshClaimer is
+// still required because lease expiry cannot fence an external OAuth server.
+type RefreshCoordinator interface {
+	Acquire(context.Context, int64) (RefreshLease, error)
+}
+
+type RefreshLease interface {
+	Check(context.Context) error
+	Release(context.Context)
+}
+
 // Sentinel errors.
 var (
-	ErrCredentialConflict = errors.New("credential: revision conflict; reload authorization")
+	ErrRefreshBusy                  = errors.New("credential: refresh owned by another replica")
+	ErrRefreshUncertain             = errors.New("credential: rotation pending; wait for owner persistence or reauthorize with a new refresh token")
+	ErrCoordinationUnavailable      = errors.New("credential: refresh coordination unavailable")
+	ErrCredentialPersistencePending = errors.New("credential: rotation awaiting persistence")
+	ErrCredentialConflict           = errors.New("credential: revision conflict; reload authorization")
 	// ErrAccountNotFound is returned when no credentials exist for the account.
 	ErrAccountNotFound = errors.New("credential: account not found")
 	// ErrNoRefreshToken is returned when a refresh is required but the account

@@ -47,6 +47,11 @@ spec:
           privileged: false
           readOnlyRootFilesystem: true
         env:
+        - name: RELAY_CREDENTIAL_COORDINATION
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: RELAY_CREDENTIAL_COORDINATION
         - name: RELAY_ROUTING_CONTEXT_V2
           valueFrom:
             configMapKeyRef:
@@ -202,6 +207,8 @@ data:
   BILLING_REQUEST_SNAPSHOT_V2: "false"
   SUBSCRIPTION_ENTITLEMENTS_V2: "false"
   RELAY_ROUTING_CONTEXT_V2: "false"
+  # Requires migration 109 and D1-capable channel/relay binaries on every pod.
+  RELAY_CREDENTIAL_COORDINATION: "redis"
   RELAY_ROUTING_ORDERED: "false"
   ADMIN_ROUTING_FIXED_KEYS: "false"
   ADMIN_ROUTING_ORDERED_KEYS: "false"

@@ -473,3 +473,8 @@ func (r *channelServiceRepo) ClearRecoveryMarkers(ctx context.Context, accountID
 func (r *channelServiceRepo) StoreSubscriptionCredentials(ctx context.Context, a *biz.SubscriptionAccount) error {
 	return r.UpdateSubscriptionAccount(ctx, a)
 }
+
+func (r *channelServiceRepo) ClaimSubscriptionCredentialRefresh(_ context.Context, a *biz.SubscriptionAccount) error {
+	a.CredentialRevision++
+	return nil
+}

@@ -208,6 +208,11 @@ func (t *RefreshTask) refreshAccount(ctx context.Context, provider TokenProvider
 			return nil
 		}
 		lastErr = err
+		// A peer's in-flight/uncertain rotation is not account ill-health.
+		// Never let a losing sweeper clear or overwrite the owner's status.
+		if errors.Is(err, ErrRefreshBusy) || errors.Is(err, ErrRefreshUncertain) || errors.Is(err, ErrCoordinationUnavailable) || errors.Is(err, ErrCredentialPersistencePending) || errors.Is(err, ErrCredentialConflict) {
+			return err
+		}
 		if isNonRetryableRefreshError(err) {
 			t.handleRefreshFailure(ctx, accountID, err, true)
 			return err

@@ -190,6 +190,13 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	identityService := relayidentity.NewIdentityService(identityTTL)
 	relayadaptor.SetIdentityService(identityService)
 
+	redisAddr := cfg.Bootstrap.Redis.Addr
+	redisPassword := cfg.Bootstrap.Redis.Password
+	if redisAddr == "" {
+		redisAddr = cfg.Bootstrap.OpenaiWs.RedisAddr
+		redisPassword = cfg.Bootstrap.OpenaiWs.RedisPassword
+	}
+	redisClient := xdb.NewRedisClient(redisAddr, redisPassword)
 	accountLookup := relaydata.NewChannelSubscriptionAccountStore(channelClient)
 	claudeTokenProvider := relaycredential.NewClaudeTokenProvider(accountLookup)
 	codexTokenProvider := relaycredential.NewOpenAITokenProvider(accountLookup)
@@ -214,6 +221,9 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		relaycredential.KimiOAuthClientID = override
 	}
 	kimiTokenProvider := relaycredential.NewKimiTokenProvider(accountLookup)
+	if err := configureCredentialCoordination(os.Getenv("RELAY_CREDENTIAL_COORDINATION"), redisClient, cfg.Bootstrap.HybridAdaptor.GetTokenRefreshEnabled(), claudeTokenProvider, codexTokenProvider, kimiTokenProvider); err != nil {
+		return nil, nil, err
+	}
 
 	// tokenFactory is a table-driven platform -> TokenProvider dispatch. Adding
 	// a new platform is one case here + (for refreshable platforms) one entry
@@ -265,13 +275,6 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		refreshTask.Start()
 	}
 
-	redisAddr := cfg.Bootstrap.Redis.Addr
-	redisPassword := cfg.Bootstrap.Redis.Password
-	if redisAddr == "" {
-		redisAddr = cfg.Bootstrap.OpenaiWs.RedisAddr
-		redisPassword = cfg.Bootstrap.OpenaiWs.RedisPassword
-	}
-	redisClient := xdb.NewRedisClient(redisAddr, redisPassword)
 	eventBus := events.NewConfiguredEventBus(redisClient, "relay-gateway")
 	var routingChannelCache *appcache.ChannelCache
 	authLoader := appcache.NewAuthCacheLoader(identityClient, nil, resilienceTimeout)

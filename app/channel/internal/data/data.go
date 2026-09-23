@@ -129,6 +129,8 @@ type abilityModel struct {
 func (abilityModel) TableName() string { return "abilities" }
 
 type subscriptionAccountModel struct {
+	CredentialRefreshPending bool `gorm:"column:credential_refresh_pending"`
+
 	CredentialRevision int64   `gorm:"column:credential_revision"`
 	ID                 int64   `gorm:"column:id"`
 	Name               string  `gorm:"column:name"`
@@ -514,7 +516,7 @@ func (r *Repository) ListOAuthRefreshCandidates(ctx context.Context, within time
 	defer r.lock.RUnlock()
 	ids := make([]int64, 0)
 	for id, account := range r.subAccounts {
-		if account.ExpiresAt > 0 && account.ExpiresAt <= threshold {
+		if account.CredentialRefreshPending || (account.ExpiresAt > 0 && account.ExpiresAt <= threshold) {
 			ids = append(ids, id)
 		}
 	}
@@ -546,10 +548,15 @@ func (r *Repository) UpdateSubscriptionAccount(ctx context.Context, account *biz
 	if previous.CredentialRevision != account.CredentialRevision {
 		return biz.ErrCredentialConflict
 	}
+	if previous.CredentialRefreshPending && previous.RefreshToken == account.RefreshToken {
+		return biz.ErrCredentialConflict
+	}
 	cp := *account
 	cp.CredentialRevision++
+	cp.CredentialRefreshPending = false
 	r.subAccounts[account.ID] = &cp
 	account.CredentialRevision = cp.CredentialRevision
+	account.CredentialRefreshPending = false
 	return nil
 }
 
@@ -1148,7 +1155,7 @@ func (r *Repository) listOAuthRefreshCandidatesDB(ctx context.Context, within ti
 	var rows []subscriptionAccountModel
 	if err := r.db.WithContext(ctx).
 		Select("id").
-		Where("expires_at > 0 AND expires_at <= ?", threshold).
+		Where("credential_refresh_pending = ? OR (expires_at > 0 AND expires_at <= ?)", true, threshold).
 		Order("expires_at ASC").
 		Find(&rows).Error; err != nil {
 		return nil, err
@@ -1175,12 +1182,23 @@ func (r *Repository) createSubscriptionAccountDB(ctx context.Context, account *b
 }
 
 func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *biz.SubscriptionAccount) error {
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	old, err := r.FindSubscriptionAccountByID(ctx, account.ID)
+	if err != nil {
+		return err
+	}
+	// The CAS below protects this read without a SQLite read-to-write upgrade.
+	// Metadata edits must not make a potentially consumed token reusable.
+	if old.CredentialRevision != account.CredentialRevision || (old.CredentialRefreshPending && old.RefreshToken == account.RefreshToken) {
+		return biz.ErrCredentialConflict
+	}
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		model, err := r.subscriptionAccountBizToModel(account)
 		if err != nil {
 			return err
 		}
 		result := tx.Model(&subscriptionAccountModel{}).Where("id = ? AND credential_revision = ?", account.ID, account.CredentialRevision).Updates(map[string]any{
+			"credential_refresh_pending": false,
+
 			"credential_revision":       gorm.Expr("credential_revision + 1"),
 			"name":                      model.Name,
 			"platform":                  model.Platform,
@@ -1225,6 +1243,7 @@ func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *b
 	})
 	if err == nil {
 		account.CredentialRevision++
+		account.CredentialRefreshPending = false
 	}
 	return err
 }
@@ -2505,6 +2524,8 @@ func (r *Repository) subscriptionAccountModelToBiz(m *subscriptionAccountModel) 
 		baseURL = *m.BaseURL
 	}
 	return &biz.SubscriptionAccount{
+		CredentialRefreshPending: m.CredentialRefreshPending,
+
 		ID:                     m.ID,
 		Name:                   m.Name,
 		Platform:               m.Platform,
@@ -2560,6 +2581,8 @@ func (r *Repository) subscriptionAccountBizToModel(a *biz.SubscriptionAccount) (
 		return nil, err
 	}
 	return &subscriptionAccountModel{
+		CredentialRefreshPending: a.CredentialRefreshPending,
+
 		ID:                     a.ID,
 		Name:                   a.Name,
 		Platform:               a.Platform,

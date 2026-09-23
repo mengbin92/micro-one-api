@@ -6,6 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	relaycredential "micro-one-api/domain/upstream/credential"
+
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	relayquota "micro-one-api/internal/quota"
@@ -26,6 +31,31 @@ type subscriptionAccountStoreClient struct {
 	refreshAccounts []int64
 	snapshotReq     *channelv1.RecordAccountQuotaSnapshotRequest
 	updateCalled    bool
+	claimReq        *channelv1.ClaimSubscriptionCredentialRefreshRequest
+	claimReply      *channelv1.StoreSubscriptionCredentialsReply
+	claimErr        error
+}
+
+func (c *subscriptionAccountStoreClient) ClaimSubscriptionCredentialRefresh(_ context.Context, req *channelv1.ClaimSubscriptionCredentialRefreshRequest, _ ...grpc.CallOption) (*channelv1.StoreSubscriptionCredentialsReply, error) {
+	c.claimReq = req
+	return c.claimReply, c.claimErr
+}
+
+func TestCredentialClaimRPCFencesRevision(t *testing.T) {
+	ctx := context.Background()
+	client := &subscriptionAccountStoreClient{claimReply: &channelv1.StoreSubscriptionCredentialsReply{Revision: 8}}
+	store := NewChannelSubscriptionAccountStore(client)
+	creds := &relaycredential.AccountCredentials{Revision: 7}
+	require.NoError(t, store.ClaimRefresh(ctx, 42, creds))
+	require.EqualValues(t, 42, client.claimReq.Id)
+	require.EqualValues(t, 7, client.claimReq.ExpectedRevision)
+	require.EqualValues(t, 8, creds.Revision)
+	require.True(t, creds.RefreshPending)
+	client.claimErr = status.Error(codes.Aborted, "conflict")
+	require.ErrorIs(t, store.ClaimRefresh(ctx, 42, creds), relaycredential.ErrCredentialConflict)
+	client.claimErr, client.claimReply = nil, nil
+	require.ErrorIs(t, store.ClaimRefresh(ctx, 42, creds), relaycredential.ErrCoordinationUnavailable)
+	require.EqualValues(t, 8, creds.Revision)
 }
 
 func (c *subscriptionAccountStoreClient) RecordAccountQuotaSnapshot(_ context.Context, req *channelv1.RecordAccountQuotaSnapshotRequest, _ ...grpc.CallOption) (*channelv1.RecordAccountQuotaSnapshotResponse, error) {

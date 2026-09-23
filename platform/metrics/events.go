@@ -56,9 +56,16 @@ var CredentialPending = prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "micro
 var CredentialPendingAge = prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "micro_one_api_credential_pending_oldest_age_seconds", Help: "Age of oldest unpersisted credential rotation"}, []string{"platform"})
 var CredentialSweepInterval = prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "micro_one_api_credential_sweep_interval_seconds", Help: "Configured credential persistence scan interval"}, []string{"platform"})
 var CredentialPersistResults = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "micro_one_api_credential_persist_results_total", Help: "Credential writes completed or superseded"}, []string{"platform", "result"})
+var CredentialCoordination = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "micro_one_api_credential_coordination_total", Help: "Distributed credential resolution outcomes"}, []string{"platform", "result"})
 
 func init() {
-	prometheus.MustRegister(CredentialPending, CredentialPendingAge, CredentialSweepInterval, CredentialPersistResults)
+	prometheus.MustRegister(CredentialPending, CredentialPendingAge, CredentialSweepInterval, CredentialPersistResults, CredentialCoordination)
+	// Export a baseline before the first failure so increase() can observe it.
+	for _, platform := range []string{"claude", "codex", "kimi", "unknown"} {
+		for _, result := range []string{"success", "canceled", "timeout", "busy", "uncertain", "pending", "conflict", "unavailable"} {
+			CredentialCoordination.WithLabelValues(platform, result)
+		}
+	}
 }
 
 var StreamTerminations = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "micro_one_api_upstream_stream_terminations_total", Help: "Upstream stream interruptions by finite cause"}, []string{"reason"})
