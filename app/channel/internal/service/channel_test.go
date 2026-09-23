@@ -147,7 +147,7 @@ func (r *channelServiceRepo) ClearRecoveryMetadata(ctx context.Context, accountI
 	return nil
 }
 
-func (r *channelServiceRepo) RecordQuotaResetRun(ctx context.Context, run *biz.SubscriptionAccountQuotaResetRun) error {
+func (r *channelServiceRepo) RecordQuotaResetAndReset(ctx context.Context, run *biz.SubscriptionAccountQuotaResetRun) error {
 	return biz.ErrQuotaResetRunDuplicate
 }
 

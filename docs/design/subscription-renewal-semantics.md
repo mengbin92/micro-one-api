@@ -9,17 +9,17 @@
 - `AssignOrExtend` 在检测到用户已有同组 active 订阅时，把新有效期叠加到现有 `expires_at` 之后（`expires_at = active.expires_at + duration`）。
 - 若新订单的 `expires_at` 落在当前 `expires_at` 之前，则按"叠加"语义处理，避免续费反而缩短有效期。
 
-## 2. 已过期订阅的重新激活策略
+## 2. 已过期后的再次购买
 
 已过期但未撤销（`status=expired`，非 `revoked`）的订阅，策略固定为：
 
-**重新激活（reactivate）而非新建。**
+**新建订阅行，旧行保留用于追溯。**（2026-09-23 按实际实现纠正。）
 
-- 续费时若 active 订阅不存在但存在同组 `expired` 订阅，则把该 expired 订阅重新置为 active 并延长 `expires_at`。
-- 这保证同一用户在同一分组始终只有一条订阅记录（active 或可追溯的 expired→active），便于对账和用量追溯。
-- `revoked` 订阅不参与重新激活，需新建。
+- `AssignOrExtend` 只延长当前仍有效的 active 订阅；无有效 active 时进入 `Assign` 新建，获得新的订阅 ID 和窗口。
+- 到期行即使尚未被 expiry checker 标记，也不作为有效续费对象。历史 expired/revoked 行及其订单/预留/窗口账记录保持原身份。
+- 唯一约束保证用户当前 active 唯一，不保证用户历史上只有一行订阅；过期后购买与 active 同组续费应区分。
 
-> 注：当前 `AssignOrExtend` 通过 `GetActiveSubscriptionByUser` 判断；expired→active 的重新激活由 expiry_checker 将过期 active 标记为 expired 后，下一次 `Assign`（无 active 时）新建。两种路径都保证用户唯一 active 订阅。若未来需要严格复用 expired 行，可在 `Assign` 中增加 expired 查找分支。
+购买快照与当前配置的权限/倍率边界见[用量接口契约](./subscription-usage-api.md#窗口倍率与购买快照)。本次未改变续费业务行为。
 
 ## 3. 支付回调幂等
 

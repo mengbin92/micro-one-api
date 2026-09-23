@@ -101,12 +101,12 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 ) {
 	adaptorStartedAt := time.Now()
 	if plan == nil || plan.Channel == nil {
-		s.finalizeSelectionDirect(plan, "error", "", false, 0, time.Since(adaptorStartedAt))
+		s.finalizeSelectionDirect(plan, "error", "", false, nil, time.Since(adaptorStartedAt))
 		s.writeError(w, http.StatusInternalServerError, "no channel selected")
 		return
 	}
 	if plan.Auth == nil {
-		s.finalizeSelectionDirect(plan, "error", "", false, 0, time.Since(adaptorStartedAt))
+		s.finalizeSelectionDirect(plan, "error", "", false, nil, time.Since(adaptorStartedAt))
 		s.writeError(w, http.StatusInternalServerError, "no auth selected")
 		return
 	}
@@ -118,7 +118,6 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 	// Track fallback info for the selection recorder (code review HIGH-2).
 	switched := false
 	var firstFailErr error
-	var finalAccountID int64
 	var finalSuccess bool
 
 	rootID := generateRequestID()
@@ -168,10 +167,7 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 		// switch naturally rebinds to the sibling that succeeded.
 		if subscriptionAttemptSucceeded(result) {
 			finalSuccess = true
-			finalAccountID = subscriptionAccountIDFromPlan(current)
 			s.bindSubscriptionSession(r.Context(), plan.Auth.Group, sessionHash, current)
-		} else {
-			finalAccountID = subscriptionAccountIDFromPlan(current)
 		}
 		result.write(w)
 		// Finalize the selection observation with the execution outcome.
@@ -183,7 +179,7 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 		if switched && firstFailErr != nil {
 			fallbackReason = relaybiz.ClassifyRetryFallbackReason(firstFailErr)
 		}
-		s.finalizeSelectionDirect(plan, resultLabel, fallbackReason, switched, finalAccountID, time.Since(adaptorStartedAt))
+		s.finalizeSelectionDirect(plan, resultLabel, fallbackReason, switched, current.Channel, time.Since(adaptorStartedAt))
 		recordRelayRetryOutcome(r.Context(), switched, result.err, fallbackReason)
 		return
 	}
@@ -193,7 +189,11 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 	if switched && firstFailErr != nil {
 		fallbackReason = relaybiz.ClassifyRetryFallbackReason(firstFailErr)
 	}
-	s.finalizeSelectionDirect(plan, resultLabel, fallbackReason, switched, finalAccountID, time.Since(adaptorStartedAt))
+	var finalChannel *relaybiz.Channel
+	if current != nil {
+		finalChannel = current.Channel
+	}
+	s.finalizeSelectionDirect(plan, resultLabel, fallbackReason, switched, finalChannel, time.Since(adaptorStartedAt))
 	recordRelayRetryOutcome(r.Context(), switched, lastErr, fallbackReason)
 	if lastErr != nil {
 		s.writeError(w, http.StatusBadGateway, fmt.Sprintf("upstream call: %v", lastErr))

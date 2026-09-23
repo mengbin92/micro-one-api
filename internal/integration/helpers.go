@@ -521,7 +521,7 @@ func (m *testChannelRepo) ClearRecoveryMetadata(ctx context.Context, accountID i
 	return channeltestutil.ErrSubscriptionAccountNotFound
 }
 
-func (m *testChannelRepo) RecordQuotaResetRun(ctx context.Context, run *channeltestutil.SubscriptionAccountQuotaResetRun) error {
+func (m *testChannelRepo) RecordQuotaResetAndReset(ctx context.Context, run *channeltestutil.SubscriptionAccountQuotaResetRun) error {
 	return channeltestutil.ErrQuotaResetRunDuplicate
 }
 

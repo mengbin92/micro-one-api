@@ -67,16 +67,10 @@ func DefaultConfig() *Config {
 
 // NewMultiLevelCache creates a new multi-level cache.
 //
-// The eventBus parameter is retained for API compatibility but is intentionally
-// unused: event-driven invalidation was never wired (relay-gateway passes nil
-// and no code path calls AuthCache.Invalidate / ChannelCache.Invalidate*).
-// Cache freshness is therefore bounded EXCLUSIVELY by TTL expiry — the
-// contract callers must respect is: a revoked/invalidated entry remains
-// potentially stale for up to max(L1TTL, L2TTL) after the underlying source of
-// truth changes. For auth snapshots that is ~5min, for channel selection
-// ~10min (see DefaultConfig). If immediate invalidation is later required,
-// wire the eventBus here and have Invalidate subscribe to a cross-service
-// invalidation topic (platform-M2).
+// The eventBus parameter is retained for compatibility. The relay gateway
+// wires routing events to AuthCache/ChannelCache.InvalidateAll at composition
+// time. TTL bounds freshness when event delivery fails; V2 auth bypasses this
+// cache and reads the authority on every request.
 func NewMultiLevelCache[T any](
 	l2Client *redis.Client,
 	_ *events.EventBus,
@@ -130,18 +124,18 @@ func (c *MultiLevelCache[T]) Get(ctx context.Context, key string) (*T, error) {
 	// L2 check
 	if c.l2 != nil {
 		data, err := c.l2.Get(ctx, cacheKey).Bytes()
-		if err == nil && len(data) > 0 {
-			c.metrics.recordL2Hit()
-			metrics.CacheHits.WithLabelValues(c.metrics.cacheName, "l2").Inc()
-
-			// Deserialize
-			var val T
-			if err := c.unmarshal(data, &val); err == nil {
+		if err == nil {
+			var val *T
+			if err := jsonx.Unmarshal(data, &val); err == nil && val != nil {
+				c.metrics.recordL2Hit()
+				metrics.CacheHits.WithLabelValues(c.metrics.cacheName, "l2").Inc()
 				// Populate L1
-				c.populateL1(cacheKey, &val)
+				c.populateL1(cacheKey, val)
 				metrics.CacheLatency.WithLabelValues(c.metrics.cacheName, "get", "l2").Observe(time.Since(start).Seconds())
-				return &val, nil
+				return val, nil
 			}
+			// Do not delete a valid replacement written since the failed decode.
+			_ = c.l2.Eval(ctx, `if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0`, []string{cacheKey}, data).Err()
 		}
 	}
 
@@ -176,10 +170,8 @@ func (c *MultiLevelCache[T]) Set(ctx context.Context, key string, value *T) erro
 	return c.populate(ctx, cacheKey, value)
 }
 
-// Invalidate removes a key from both L1 and L2. NOTE: this is NOT wired to a
-// cross-service event bus (platform-M2); callers must invoke it directly. The
-// only freshness guarantee for entries that are never explicitly invalidated
-// is TTL expiry (see NewMultiLevelCache contract).
+// Invalidate removes a key from both L1 and L2. Cross-service routing events
+// use namespace invalidation because no reverse index is maintained.
 func (c *MultiLevelCache[T]) Invalidate(ctx context.Context, key string) error {
 	cacheKey := c.prefix + key
 
@@ -213,13 +205,8 @@ func (c *MultiLevelCache[T]) populate(ctx context.Context, key string, value *T)
 			return fmt.Errorf("failed to marshal value: %w", err)
 		}
 
-		if err := c.l2.Set(ctx, key, data, redis.KeepTTL).Err(); err != nil {
+		if err := c.l2.Set(ctx, key, data, c.l2TTL).Err(); err != nil {
 			return fmt.Errorf("failed to set in L2: %w", err)
-		}
-
-		// Set expiration
-		if c.l2TTL > 0 {
-			c.l2.Expire(ctx, key, c.l2TTL)
 		}
 	}
 

@@ -993,12 +993,13 @@ func (s *AdminService) UpdateChannel(ctx context.Context, req *adminv1.AdminUpda
 
 func (s *AdminService) ListSubscriptionAccounts(ctx context.Context, req *adminv1.AdminListSubscriptionAccountsRequest) (*adminv1.AdminListSubscriptionAccountsResponse, error) {
 	resp, err := s.channelClient.ListSubscriptionAccounts(ctx, &channelv1.ListSubscriptionAccountsRequest{
-		Page:     req.Page,
-		PageSize: req.PageSize,
-		Keyword:  req.Keyword,
-		Group:    req.Group,
-		Status:   req.Status,
-		Platform: req.Platform,
+		RecoveryPolicy: req.RecoveryPolicy,
+		Page:           req.Page,
+		PageSize:       req.PageSize,
+		Keyword:        req.Keyword,
+		Group:          req.Group,
+		Status:         req.Status,
+		Platform:       req.Platform,
 	})
 	if err != nil {
 		// Surface the channel-service error instead of silently returning an

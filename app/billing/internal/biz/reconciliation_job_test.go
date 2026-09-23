@@ -15,6 +15,29 @@ import (
 
 const floatEpsilon = 0.000001
 
+func TestAlertContentExplainsEveryDiscrepancy(t *testing.T) {
+	tests := []struct {
+		name   string
+		result ReconciliationResult
+		detail string
+	}{
+		{"account", ReconciliationResult{AccountInconsistencies: []AccountInconsistency{{}}}, "Account quota mismatches"},
+		{"channel", ReconciliationResult{ChannelInconsistencies: []ChannelInconsistency{{}}}, "Channel usage mismatches"},
+		{"log", ReconciliationResult{LogInconsistencies: []LogInconsistency{{}}}, "Ledger/log consume drift"},
+		{"subscription", ReconciliationResult{SubscriptionInconsistencies: []SubscriptionInconsistency{{}}}, "Subscription window mismatches"},
+		{"receivable", ReconciliationResult{ReceivableInconsistencies: []ReceivableInconsistency{{}}}, "Receivable mirror mismatches"},
+		{"refund", ReconciliationResult{RefundInconsistencies: []RefundInconsistency{{}}}, "Refund reversal mismatches"},
+		{"issuance", ReconciliationResult{StuckIssuanceInconsistencies: []StuckIssuanceInconsistency{{}}}, "Stuck asset-issuance orders"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			content := buildAlertContent(&tt.result)
+			assert.Contains(t, content, "found 1 discrepancies")
+			assert.Contains(t, content, tt.detail)
+		})
+	}
+}
+
 func assertMetricDelta(t *testing.T, before, after, want float64) {
 	t.Helper()
 	assert.InEpsilon(t, want, after-before, floatEpsilon)

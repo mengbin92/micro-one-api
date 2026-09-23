@@ -498,3 +498,20 @@ groups:
         annotations:
           summary: OAuth credential persistence stalled
           description: 'Pending {{ $labels.platform }} rotation is older than two scans. Restore storage; forced restart may require reauthorization.'
+
+  - name: operations-delivery
+    rules:
+      - alert: AccountLimiterRedisDegraded
+        expr: sum by (instance) (increase(micro_one_api_relay_account_concurrency_fallback_total[5m])) > 0 or sum by (instance) (increase(micro_one_api_relay_account_rpm_fallback_total[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Account limiters degraded after Redis errors
+          description: 'Restore Redis; local fallback cannot enforce a fleet-wide concurrency or RPM cap.'
+      - alert: NotificationDeliveryFailing
+        expr: sum by (instance, result) (increase(micro_one_api_notification_delivery_total{result=~"error|not_configured"}[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Notification delivery is failing
+          description: 'Inspect notify-worker failed records and receiver configuration. Queued alerts are not delivered; use the dashboard while the notification path is unavailable.'

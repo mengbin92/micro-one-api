@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 
 	billingv1 "micro-one-api/api/billing/v1"
@@ -63,6 +64,25 @@ type rawChannelClient struct {
 	healthRequests []*channelv1.RecordChannelHealthRequest
 	denyRoute      bool
 	routeError     error
+}
+
+type rawModelHealthClient struct {
+	rawChannelClient
+	mu       sync.Mutex
+	requests []*channelv1.RecordModelHealthRequest
+}
+
+func (c *rawModelHealthClient) RecordModelHealth(_ context.Context, req *channelv1.RecordModelHealthRequest, _ ...grpc.CallOption) (*channelv1.RecordModelHealthResponse, error) {
+	c.mu.Lock()
+	c.requests = append(c.requests, req)
+	c.mu.Unlock()
+	return &channelv1.RecordModelHealthResponse{Success: true}, nil
+}
+
+func (c *rawModelHealthClient) modelHealthRequests() []*channelv1.RecordModelHealthRequest {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]*channelv1.RecordModelHealthRequest(nil), c.requests...)
 }
 
 func (c rawChannelClient) CheckRoute(_ context.Context, req *channelv1.CheckRouteRequest, _ ...grpc.CallOption) (*channelv1.CheckRouteReply, error) {

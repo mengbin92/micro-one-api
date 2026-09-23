@@ -8,6 +8,7 @@ import "api/common/v1/common.proto";
 option go_package = "micro-one-api/api/billing/v1;billingv1";
 
 service BillingService {
+ rpc GetSubscriptionUsage(GetSubscriptionUsageRequest) returns (GetSubscriptionUsageResponse);
  rpc ExecuteSubscriptionCommerce(SubscriptionCommerceRequest) returns (SubscriptionCommerceReply);
  rpc GetRoutingBillingPolicy(GetRoutingBillingPolicyRequest) returns (RoutingBillingPolicy);
  rpc PublishRoutingBillingPolicy(PublishRoutingBillingPolicyRequest) returns (RoutingBillingPolicy);
@@ -59,6 +60,38 @@ service BillingService {
   rpc AggregateLedgerByDate(AggregateLedgerByDateRequest) returns (AggregateLedgerByDateResponse);
   rpc AggregateUsage(AggregateUsageRequest) returns (AggregateUsageResponse);
 }
+
+message GetSubscriptionUsageRequest { int64 user_id = 1; }
+message SubscriptionUsageDimension {
+  double used = 1;
+  optional double limit = 2;
+  double remaining = 3;
+  int64 next_refresh = 4;
+  double settled = 5;
+  optional double frozen = 6;
+  optional double available = 7;
+  bool unlimited = 8;
+  bool over_limit = 9;
+  int64 window_start = 10;
+}
+message SubscriptionUsage {
+  int64 id = 1;
+  string status = 2;
+  int64 starts_at = 3;
+  int64 expires_at = 4;
+  int64 group_id = 5;
+  string subscription_name = 6;
+  SubscriptionUsageDimension daily_used = 7;
+  SubscriptionUsageDimension weekly_used = 8;
+  SubscriptionUsageDimension monthly_used = 9;
+  int64 remaining_seconds = 10;
+  double rate_multiplier = 11;
+  string usage_source = 12;
+  int64 observed_at = 13;
+  // Versioned purchase contract, using the shared subscription JSON contract.
+  bytes contract_json = 14;
+}
+message GetSubscriptionUsageResponse { SubscriptionUsage usage = 1; }
 
 message GetRoutingCapabilitiesRequest {}
 message GetRoutingCapabilitiesResponse { int32 request_snapshot_version = 1; bool fixed_routing = 2; bool subscription_contracts = 3; bool user_price_overrides = 4; }

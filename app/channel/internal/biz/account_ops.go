@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -76,19 +77,13 @@ type QuotaResetSweeperConfig struct {
 // is written to subscription_account_quota_reset_runs whose (account, scope,
 // window_start) unique key prevents duplicate resets even across replicas.
 type QuotaResetSweeper struct {
-	repo     ChannelRepo
-	now      func() time.Time
-	cfg      QuotaResetSweeperConfig
-	recorder QuotaResetRunRecorder
+	repo    ChannelRepo
+	now     func() time.Time
+	cfg     QuotaResetSweeperConfig
+	applier QuotaResetRunApplier
 }
 
-// QuotaResetRunRecorder durably records a reset run for idempotency and audit.
-// Implementations return ErrQuotaResetRunDuplicate when the (account, scope,
-// window_start) tuple has already been recorded.
-type QuotaResetRunRecorder interface {
-	RecordQuotaResetRun(ctx context.Context, run *SubscriptionAccountQuotaResetRun) error
-}
-
+// QuotaResetRunApplier records the reset run and updates usage atomically.
 type QuotaResetRunApplier interface {
 	RecordQuotaResetAndReset(ctx context.Context, run *SubscriptionAccountQuotaResetRun) error
 }
@@ -124,7 +119,7 @@ type SubscriptionAccountQuotaResetRun struct {
 var ErrQuotaResetRunDuplicate = fmt.Errorf("quota reset run already recorded")
 
 // NewQuotaResetSweeper builds a fixed-strategy quota reset sweeper.
-func NewQuotaResetSweeper(repo ChannelRepo, recorder QuotaResetRunRecorder, cfg QuotaResetSweeperConfig) *QuotaResetSweeper {
+func NewQuotaResetSweeper(repo ChannelRepo, applier QuotaResetRunApplier, cfg QuotaResetSweeperConfig) *QuotaResetSweeper {
 	if cfg.Interval <= 0 {
 		cfg.Interval = 5 * time.Minute
 	}
@@ -134,7 +129,7 @@ func NewQuotaResetSweeper(repo ChannelRepo, recorder QuotaResetRunRecorder, cfg 
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 30 * time.Second
 	}
-	return &QuotaResetSweeper{repo: repo, now: time.Now, cfg: cfg, recorder: recorder}
+	return &QuotaResetSweeper{repo: repo, now: time.Now, cfg: cfg, applier: applier}
 }
 
 // SetNow overrides the clock (tests).
@@ -160,6 +155,11 @@ func (s *QuotaResetSweeper) Run(ctx context.Context) {
 // SweepOnce performs a single scan of fixed-strategy accounts and resets any
 // daily/weekly window that has crossed its natural boundary.
 func (s *QuotaResetSweeper) SweepOnce(ctx context.Context) error {
+	if s.applier == nil {
+		return fmt.Errorf("atomic quota reset applier is required")
+	}
+	ctx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
+	defer cancel()
 	startedAt := time.Now()
 	defer func() {
 		metrics.SubscriptionAccountQuotaResetScanDuration.Observe(time.Since(startedAt).Seconds())
@@ -175,8 +175,12 @@ func (s *QuotaResetSweeper) SweepOnce(ctx context.Context) error {
 			if account == nil || !account.UsesFixedQuotaReset() {
 				continue
 			}
-			s.resetIfCrossedBoundary(ctx, account, now, "daily")
-			s.resetIfCrossedBoundary(ctx, account, now, "weekly")
+			if err := s.resetIfCrossedBoundary(ctx, account, now, "daily"); err != nil {
+				return err
+			}
+			if err := s.resetIfCrossedBoundary(ctx, account, now, "weekly"); err != nil {
+				return err
+			}
 		}
 		if int64(page)*int64(s.cfg.PageSize) >= total {
 			return nil
@@ -186,10 +190,9 @@ func (s *QuotaResetSweeper) SweepOnce(ctx context.Context) error {
 }
 
 // resetIfCrossedBoundary resets a single scope for an account when the stored
-// window_start is older than the current fixed window start. The durable
-// reset-run record is written first; if it already exists (duplicate tick),
-// the reset is skipped — this keeps multiple replicas from double-resetting.
-func (s *QuotaResetSweeper) resetIfCrossedBoundary(ctx context.Context, account *SubscriptionAccount, now time.Time, scope string) {
+// window_start is older than the current fixed window start. The repository
+// atomically records the run and conditionally advances the stored window.
+func (s *QuotaResetSweeper) resetIfCrossedBoundary(ctx context.Context, account *SubscriptionAccount, now time.Time, scope string) error {
 	fixedStart := account.FixedQuotaWindowStart(now, scope)
 	var storedStart int64
 	switch scope {
@@ -198,11 +201,11 @@ func (s *QuotaResetSweeper) resetIfCrossedBoundary(ctx context.Context, account 
 	case "weekly":
 		storedStart = account.QuotaWeeklyWindowStart
 	default:
-		return
+		return nil
 	}
 	// No usage yet, or already aligned to the current fixed window: nothing to do.
 	if storedStart <= 0 || storedStart >= fixedStart {
-		return
+		return nil
 	}
 	run := &SubscriptionAccountQuotaResetRun{
 		AccountID:   account.ID,
@@ -212,30 +215,16 @@ func (s *QuotaResetSweeper) resetIfCrossedBoundary(ctx context.Context, account 
 		Timezone:    account.EffectiveQuotaTimezone(),
 		ResetAt:     now,
 	}
-	if applier, ok := s.recorder.(QuotaResetRunApplier); ok {
-		if err := applier.RecordQuotaResetAndReset(ctx, run); err != nil {
-			if err == ErrQuotaResetRunDuplicate {
-				metrics.SubscriptionAccountQuotaResetsTotal.WithLabelValues(scope, "duplicate").Inc()
-			} else {
-				metrics.SubscriptionAccountQuotaResetsTotal.WithLabelValues(scope, "error").Inc()
-			}
-			return
-		}
-		metrics.SubscriptionAccountQuotaResetsTotal.WithLabelValues(scope, "success").Inc()
-		return
-	}
-	if s.recorder != nil {
-		if err := s.recorder.RecordQuotaResetRun(ctx, run); err != nil {
-			// Already recorded by another replica/tick — skip the write.
+	if err := s.applier.RecordQuotaResetAndReset(ctx, run); err != nil {
+		if errors.Is(err, ErrQuotaResetRunDuplicate) {
 			metrics.SubscriptionAccountQuotaResetsTotal.WithLabelValues(scope, "duplicate").Inc()
-			return
+			return nil
 		}
-	}
-	if err := s.repo.ResetSubscriptionAccountQuota(ctx, account.ID, scope); err != nil {
 		metrics.SubscriptionAccountQuotaResetsTotal.WithLabelValues(scope, "error").Inc()
-		return
+		return err
 	}
 	metrics.SubscriptionAccountQuotaResetsTotal.WithLabelValues(scope, "success").Inc()
+	return nil
 }
 
 // AccountRecoverySweeperConfig configures the automated account-recovery sweep.

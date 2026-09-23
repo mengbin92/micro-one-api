@@ -222,6 +222,7 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 	}
 	if plan.SelectionEvent != nil {
 		if result.Channel != nil {
+			plan.SelectionEvent.UpstreamModelID = relaybiz.ResolveChannelModel(result.Channel, plan.BaseModel())
 			plan.SelectionEvent.FinalSourceID = result.Channel.ID
 			plan.SelectionEvent.FinalKind = relaybiz.UpstreamSourceChannel
 			if result.Channel.SubscriptionAccountID > 0 {

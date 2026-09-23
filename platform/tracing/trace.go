@@ -10,11 +10,13 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type contextKey string
@@ -162,15 +164,38 @@ func ExtractTraceID(ctx context.Context) string {
 // TraceIDHeader is the HTTP header used to propagate trace IDs.
 const TraceIDHeader = "X-Trace-ID"
 
+const OTelTraceIDHeader = "X-OTel-Trace-ID"
+
+func OTelTraceID(ctx context.Context) string {
+	sc := trace.SpanContextFromContext(ctx)
+	if sc.IsValid() {
+		return sc.TraceID().String()
+	}
+	return ""
+}
+
 // Middleware returns an HTTP middleware that extracts or generates a trace ID.
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+		ctx, span := otel.Tracer("micro-one-api/http").Start(ctx, "HTTP "+r.Method, trace.WithSpanKind(trace.SpanKindServer))
+		defer span.End()
 		traceID := r.Header.Get(TraceIDHeader)
+		if len(traceID) > 128 || strings.IndexFunc(traceID, func(c rune) bool { return c < 32 || c == 127 }) >= 0 {
+			traceID = ""
+		}
+		if traceID == "" {
+			traceID = OTelTraceID(ctx)
+		}
 		if traceID == "" {
 			traceID = GenerateTraceID()
 		}
-		ctx := WithTraceID(r.Context(), traceID)
+		ctx = WithTraceID(ctx, traceID)
 		w.Header().Set(TraceIDHeader, traceID)
+		if id := OTelTraceID(ctx); id != "" {
+			w.Header().Set(OTelTraceIDHeader, id)
+		}
 		next.ServeHTTP(w, r.WithContext(ctx))
+		span.SetAttributes(attribute.String("request.id", w.Header().Get("X-Request-ID")), attribute.String("request.root_id", w.Header().Get("X-Request-ID")), attribute.String("request.compat_trace_id", traceID))
 	})
 }

@@ -820,6 +820,9 @@ func (o *relayOrchestrator) finalizeSelectionResult(plan *relaybiz.RelayPlan, re
 		return
 	}
 	recorder := o.relayUsecase.GetSelectionRecorder()
+	if plan.Channel != nil {
+		plan.SelectionEvent.UpstreamModelID = relaybiz.ResolveChannelModel(plan.Channel, plan.BaseModel())
+	}
 	relaybiz.FinalizeSelectionResult(recorder, *plan.SelectionEvent, result, "", false, latency)
 }
 
@@ -878,6 +881,7 @@ func (o *relayOrchestrator) finalizeSelectionFromRetryResult(plan *relaybiz.Rela
 			resultLabel = classifyResultLabel(retryResult.Err)
 		}
 		if retryResult.Channel != nil {
+			plan.SelectionEvent.UpstreamModelID = relaybiz.ResolveChannelModel(retryResult.Channel, plan.BaseModel())
 			plan.SelectionEvent.FinalSourceID = retryResult.Channel.ID
 			if retryResult.Channel.SubscriptionAccountID > 0 {
 				plan.SelectionEvent.FinalKind = relaybiz.UpstreamRouteSubscription.String()

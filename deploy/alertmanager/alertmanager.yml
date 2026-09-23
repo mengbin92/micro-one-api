@@ -1,0 +1,13 @@
+global:
+  resolve_timeout: 5m
+route:
+  receiver: notify-worker
+  group_by: [alertname, service, severity]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+receivers:
+  - name: notify-worker
+    webhook_configs:
+      - url: http://notify-worker:8008/v1/alerts/alertmanager
+        send_resolved: true

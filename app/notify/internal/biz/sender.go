@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 	"micro-one-api/pkg/jsonx"
 	applogger "micro-one-api/platform/logging"
+	"micro-one-api/platform/metrics"
 )
 
 var (
@@ -198,11 +199,17 @@ func (d *Dispatcher) DispatchOnce(ctx context.Context) error {
 	}
 	for _, n := range items {
 		if err := d.sender.Send(ctx, n); err != nil {
+			result := "error"
+			if errors.Is(err, ErrNotificationSenderNotReady) {
+				result = "not_configured"
+			}
+			metrics.NotificationDelivery.WithLabelValues(result).Inc()
 			if markErr := d.uc.CompleteProcessing(ctx, n, NotifyStatusFailed, d.maxRetry, err.Error()); markErr != nil {
 				return markErr
 			}
 			continue
 		}
+		metrics.NotificationDelivery.WithLabelValues("sent").Inc()
 		if err := d.uc.CompleteProcessing(ctx, n, NotifyStatusSent, d.maxRetry, ""); err != nil {
 			return err
 		}

@@ -17,6 +17,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	"time"
 
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/platform/metrics"
 
 	"micro-one-api/app/channel/internal/biz"
 )
@@ -247,9 +249,44 @@ func (s *AnthropicModelProbeService) probeModel(ctx context.Context, account *bi
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		recordProbeUsage(account.Platform, resp.Body)
 		return true, nil
 	}
 	return false, nil
+}
+
+func recordProbeUsage(platform string, body io.Reader) {
+	platform = strings.ToLower(strings.TrimSpace(platform))
+	switch platform {
+	case "claude", "zhipu", "minimax", "kimi", "codex":
+	default:
+		platform = "other"
+	}
+	var response struct {
+		Usage *struct {
+			Input         int64 `json:"input_tokens"`
+			Output        int64 `json:"output_tokens"`
+			CacheRead     int64 `json:"cache_read_input_tokens"`
+			CacheCreation int64 `json:"cache_creation_input_tokens"`
+			InputDetails  struct {
+				Cached int64 `json:"cached_tokens"`
+			} `json:"input_tokens_details"`
+		} `json:"usage"`
+	}
+	if jsonx.NewDecoder(io.LimitReader(body, 1<<20)).Decode(&response) != nil || response.Usage == nil {
+		metrics.AccountProbeUsage.WithLabelValues(platform, "missing").Inc()
+		return
+	}
+	metrics.AccountProbeUsage.WithLabelValues(platform, "reported").Inc()
+	if platform == "codex" {
+		response.Usage.CacheRead = max(0, min(response.Usage.Input, response.Usage.InputDetails.Cached))
+		response.Usage.Input -= response.Usage.CacheRead
+	}
+	for bucket, count := range map[string]int64{"input": response.Usage.Input, "output": response.Usage.Output, "cache_read": response.Usage.CacheRead, "cache_creation": response.Usage.CacheCreation} {
+		if count > 0 {
+			metrics.AccountProbeTokens.WithLabelValues(platform, bucket).Add(float64(count))
+		}
+	}
 }
 
 // fetchModels attempts to fetch the model list dynamically from the upstream's

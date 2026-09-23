@@ -420,6 +420,7 @@ message AdminListSubscriptionAccountsRequest {
   string group = 4;
   int32 status = 5;
   string platform = 6;
+  string recovery_policy = 7;
 }
 
 message AdminListSubscriptionAccountsResponse {

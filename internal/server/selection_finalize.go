@@ -49,6 +49,7 @@ func (s *HTTPServer) finalizeSelectionFromResult(plan *relaybiz.RelayPlan, resul
 		// Update the final source to the channel that actually served the
 		// request (may differ from the Plan-time selection after a switch).
 		if result.Channel != nil && result.Channel.ID > 0 {
+			plan.SelectionEvent.UpstreamModelID = relaybiz.ResolveChannelModel(result.Channel, plan.BaseModel())
 			plan.SelectionEvent.FinalSourceID = result.Channel.ID
 			if result.Channel.SubscriptionAccountID > 0 {
 				plan.SelectionEvent.FinalKind = relaybiz.UpstreamRouteSubscription.String()
@@ -79,7 +80,7 @@ func classifyResultLabel(err error) string {
 // finalizeSelectionDirect finalizes a SelectionEvent without a retry result.
 // Used by the orchestrator path and the subscription adaptor path where the
 // caller knows the outcome directly (not via RetryExecutor).
-func (s *HTTPServer) finalizeSelectionDirect(plan *relaybiz.RelayPlan, resultLabel, fallbackReason string, fallback bool, finalSourceID int64, latency time.Duration) {
+func (s *HTTPServer) finalizeSelectionDirect(plan *relaybiz.RelayPlan, resultLabel, fallbackReason string, fallback bool, finalChannel *relaybiz.Channel, latency time.Duration) {
 	if s == nil || plan == nil || plan.SelectionEvent == nil {
 		return
 	}
@@ -87,8 +88,14 @@ func (s *HTTPServer) finalizeSelectionDirect(plan *relaybiz.RelayPlan, resultLab
 	if recorder == nil {
 		return
 	}
-	if finalSourceID > 0 {
-		plan.SelectionEvent.FinalSourceID = finalSourceID
+	if finalChannel != nil {
+		plan.SelectionEvent.UpstreamModelID = relaybiz.ResolveChannelModel(finalChannel, plan.BaseModel())
+		plan.SelectionEvent.FinalSourceID = finalChannel.ID
+		plan.SelectionEvent.FinalKind = relaybiz.UpstreamRouteChannel.String()
+		if finalChannel.SubscriptionAccountID > 0 {
+			plan.SelectionEvent.FinalSourceID = finalChannel.SubscriptionAccountID
+			plan.SelectionEvent.FinalKind = relaybiz.UpstreamRouteSubscription.String()
+		}
 	}
 	relaybiz.FinalizeSelectionResult(recorder, *plan.SelectionEvent, resultLabel, fallbackReason, fallback, latency)
 }

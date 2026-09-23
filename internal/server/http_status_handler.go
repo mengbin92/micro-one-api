@@ -12,6 +12,7 @@ import (
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"micro-one-api/platform/routingdto"
+	"micro-one-api/platform/subscriptiondto"
 )
 
 func (s *HTTPServer) handleModels(w http.ResponseWriter, r *http.Request) {
@@ -172,7 +173,16 @@ func (s *HTTPServer) handleSubscriptionUsage(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	progress, err := s.subscriptionUsecase.GetProgress(r.Context(), authSnapshot.UserId)
+	var progress *subscriptionbiz.SubscriptionProgress
+	if s.billingClient != nil {
+		var reply *billingv1.GetSubscriptionUsageResponse
+		reply, err = s.billingClient.GetSubscriptionUsage(r.Context(), &billingv1.GetSubscriptionUsageRequest{UserId: authSnapshot.UserId})
+		if err == nil {
+			progress, err = subscriptiondto.ProgressFromProto(reply.GetUsage())
+		}
+	} else {
+		progress, err = s.subscriptionUsecase.GetProgress(r.Context(), authSnapshot.UserId)
+	}
 	if err != nil && !stderrors.Is(err, subscriptionbiz.ErrSubscriptionNotFound) {
 		s.writeError(w, http.StatusBadGateway, "subscription service error")
 		return

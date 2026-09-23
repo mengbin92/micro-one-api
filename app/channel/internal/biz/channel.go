@@ -251,10 +251,7 @@ type ChannelRepo interface {
 	// failure cannot leave the account with half-cleared markers (review L3).
 	// Each flag controls whether that specific marker is cleared.
 	ClearRecoveryMarkers(ctx context.Context, accountID int64, clearTemp, clearError, clearMeta bool) error
-	// RecordQuotaResetRun durably records an automated fixed-strategy quota reset
-	// for idempotency and audit. Implementations return biz.ErrQuotaResetRunDuplicate
-	// when the (account, scope, window_start) tuple already exists.
-	RecordQuotaResetRun(ctx context.Context, run *SubscriptionAccountQuotaResetRun) error
+	QuotaResetRunApplier
 	// StampQuotaAlertMetadata records the last-emitted alert kind and timestamp
 	// on the account metadata blob for alert deduplication.
 	StampQuotaAlertMetadata(ctx context.Context, accountID int64, kind string, alertAt int64) error
@@ -827,7 +824,17 @@ func (uc *ChannelUsecase) GetSubscriptionAccount(ctx context.Context, accountID 
 	return uc.repo.FindSubscriptionAccountByID(ctx, accountID)
 }
 
-func (uc *ChannelUsecase) ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*SubscriptionAccount, int64, error) {
+type SubscriptionAccountRecoveryLister interface {
+	ListSubscriptionAccountsByRecovery(context.Context, int32, int32, string, string, int32, string, string) ([]*SubscriptionAccount, int64, error)
+}
+
+func (uc *ChannelUsecase) ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string, recoveryPolicy ...string) ([]*SubscriptionAccount, int64, error) {
+	if len(recoveryPolicy) > 0 && recoveryPolicy[0] != "" {
+		if repo, ok := uc.repo.(SubscriptionAccountRecoveryLister); ok {
+			return repo.ListSubscriptionAccountsByRecovery(ctx, page, pageSize, keyword, group, status, platform, recoveryPolicy[0])
+		}
+		return nil, 0, fmt.Errorf("recovery filtering is unavailable")
+	}
 	return uc.repo.ListSubscriptionAccounts(ctx, page, pageSize, keyword, group, status, platform)
 }
 
@@ -1190,10 +1197,16 @@ func (a *SubscriptionAccount) EffectiveRateMultiplier() float64 {
 }
 
 func effectiveWindowUsedUSD(used float64, windowStart int64, nowUnix int64, window time.Duration) float64 {
-	if windowStart <= 0 || nowUnix-windowStart >= int64(window.Seconds()) {
-		return 0
-	}
+	used, _ = RollAccountQuotaWindow(used, windowStart, nowUnix, window)
 	return used
+}
+
+// RollAccountQuotaWindow is shared by quota admission and usage writes.
+func RollAccountQuotaWindow(used float64, windowStart int64, nowUnix int64, window time.Duration) (float64, int64) {
+	if windowStart <= 0 || nowUnix-windowStart >= int64(window.Seconds()) {
+		return 0, nowUnix
+	}
+	return used, windowStart
 }
 
 func (a *SubscriptionAccount) EffectiveQuotaResetStrategy() string {
@@ -1244,14 +1257,16 @@ func (a *SubscriptionAccount) FixedQuotaWindowStart(now time.Time, scope string)
 }
 
 func (a *SubscriptionAccount) EffectiveFixedQuotaWindowUsedUSD(used float64, windowStart int64, now time.Time, scope string) float64 {
-	if windowStart <= 0 {
-		return 0
-	}
-	fixedStart := a.FixedQuotaWindowStart(now, scope)
-	if windowStart < fixedStart || windowStart > now.Unix() {
-		return 0
-	}
+	used, _ = a.RollFixedQuotaWindow(used, windowStart, now, scope)
 	return used
+}
+
+func (a *SubscriptionAccount) RollFixedQuotaWindow(used float64, windowStart int64, now time.Time, scope string) (float64, int64) {
+	fixedStart := a.FixedQuotaWindowStart(now, scope)
+	if windowStart <= 0 || windowStart < fixedStart || windowStart > now.Unix() {
+		return 0, fixedStart
+	}
+	return used, fixedStart
 }
 
 func (uc *ChannelUsecase) notifyUnavailable(ctx context.Context, previous, current *Channel, event ChannelHealthEvent) {

@@ -302,7 +302,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 				return authCache.InvalidateAll(ctx)
 			}
 			if routingChannelCache != nil {
-				return routingChannelCache.InvalidateByChannel(ctx, 0)
+				return routingChannelCache.InvalidateAll(ctx)
 			}
 			return nil
 		}))
@@ -409,11 +409,11 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		routeMiddleware = append(routeMiddleware, appaudit.NewMiddleware(appaudit.NewAuditor(true)).Handler)
 	}
 	// v0.19 P3-0: request-level HTTP observability (requests_total by
-	// service/method/path/status + latency histogram). Appended last so it is
-	// the OUTERMOST wrapper: it observes the final status code after
+	// service/method/path/status + latency histogram). The first middleware is
+	// the outermost wrapper, so it observes early rejections from
 	// subscription/idempotency/audit middlewares. /healthz and /metrics are
 	// registered outside the middleware chain and stay uncounted.
-	routeMiddleware = append(routeMiddleware, appmiddleware.NewHTTPMetricsMiddleware("relay-gateway"))
+	routeMiddleware = append([]func(http.Handler) http.Handler{appmiddleware.NewHTTPMetricsMiddleware("relay-gateway")}, routeMiddleware...)
 	httpServer.UseRouteMiddleware(routeMiddleware...)
 
 	{
