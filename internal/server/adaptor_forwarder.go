@@ -15,6 +15,9 @@ import (
 	relaybiz "micro-one-api/internal/biz"
 	"micro-one-api/internal/server/forwarder"
 	"micro-one-api/internal/server/usage"
+	applogger "micro-one-api/platform/logging"
+
+	"go.uber.org/zap"
 )
 
 // relayAdaptorForwarder is the non-stream bridge used by the staged
@@ -70,26 +73,10 @@ func (f relayAdaptorForwarder) Forward(ctx context.Context, plan *relaybiz.Relay
 	if err != nil {
 		return nil, fmt.Errorf("adaptor convert request: %w", err)
 	}
-	upstreamReq, err := ad.BuildUpstreamRequest(ctx, rc, upstreamFormat, upstreamBody)
-	if err != nil {
-		return nil, fmt.Errorf("adaptor build request: %w", err)
-	}
-	if upstreamReq == nil || upstreamReq.URL == nil {
-		return nil, fmt.Errorf("adaptor returned an incomplete upstream request")
-	}
-	if rc.Account == nil {
-		copyRelayExecutorHeaders(upstreamReq.Header, rc.InboundHeader)
-	}
-	if err := relayprovider.ValidateBaseURLForChannel(plan.Channel.Type, upstreamReq.URL.String()); err != nil {
-		return nil, fmt.Errorf("validate upstream URL: %w", err)
-	}
-	if plan.Channel.Type == relayprovider.ChannelTypeOllama {
-		upstreamReq = relayprovider.WithLocalNetworkAccess(upstreamReq)
-	}
 	if client == nil {
 		client = relayprovider.NewHTTPClient(30 * time.Second)
 	}
-	resp, err := client.Do(upstreamReq) // #nosec G704 -- adaptor URL is validated above.
+	upstreamFormat, resp, err := f.sendAdaptorRequest(ctx, rc, ad, client, upstreamFormat, upstreamBody, req.RawQuery)
 	if err != nil {
 		return nil, fmt.Errorf("upstream call: %w", err)
 	}
@@ -105,7 +92,7 @@ func (f relayAdaptorForwarder) Forward(ctx context.Context, plan *relaybiz.Relay
 
 	_, body, err := ad.ConvertResponse(rc, upstreamFormat, resp)
 	if err != nil {
-		return nil, fmt.Errorf("adaptor convert response: %w", err)
+		return nil, relaybiz.MarkPostForwardError(fmt.Errorf("adaptor convert response: %w", err))
 	}
 	env := usage.ExtractEnvelopeFromJSON(body, 0)
 	var parsed *relaybiz.UsageEnvelope
@@ -144,27 +131,11 @@ func (f relayAdaptorForwarder) ForwardStream(ctx context.Context, plan *relaybiz
 	if err != nil {
 		return nil, fmt.Errorf("adaptor convert stream request: %w", err)
 	}
-	upstreamReq, err := ad.BuildUpstreamRequest(ctx, rc, upstreamFormat, upstreamBody)
-	if err != nil {
-		return nil, fmt.Errorf("adaptor build stream request: %w", err)
-	}
-	if upstreamReq == nil || upstreamReq.URL == nil {
-		return nil, fmt.Errorf("adaptor returned an incomplete stream request")
-	}
-	if rc.Account == nil {
-		copyRelayExecutorHeaders(upstreamReq.Header, rc.InboundHeader)
-	}
-	if err := relayprovider.ValidateBaseURLForChannel(plan.Channel.Type, upstreamReq.URL.String()); err != nil {
-		return nil, fmt.Errorf("validate upstream URL: %w", err)
-	}
-	if plan.Channel.Type == relayprovider.ChannelTypeOllama {
-		upstreamReq = relayprovider.WithLocalNetworkAccess(upstreamReq)
-	}
 	if client == nil {
 		client = relayprovider.NewStreamHTTPClient(30 * time.Second)
 	}
 	client = streamHTTPClient(client)
-	resp, err := client.Do(upstreamReq) // #nosec G704 -- adaptor URL is validated above.
+	upstreamFormat, resp, err := f.sendAdaptorRequest(ctx, rc, ad, client, upstreamFormat, upstreamBody, req.RawQuery)
 	if err != nil {
 		return nil, fmt.Errorf("upstream stream call: %w", err)
 	}
@@ -179,13 +150,62 @@ func (f relayAdaptorForwarder) ForwardStream(ctx context.Context, plan *relaybiz
 	_, reader, err := ad.ConvertStreamResponse(rc, upstreamFormat, resp)
 	if err != nil {
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("adaptor convert stream response: %w", err)
+		return nil, relaybiz.MarkPostForwardError(fmt.Errorf("adaptor convert stream response: %w", err))
 	}
 	return &relaybiz.StreamForwardResponse{
 		StatusCode: resp.StatusCode,
 		Headers:    httpHeaderToMap(resp.Header),
 		Stream:     newConvertedRelayStream(reader, resp.Body),
 	}, nil
+}
+
+func (f relayAdaptorForwarder) sendAdaptorRequest(ctx context.Context, rc *relayadaptor.RelayContext, ad relayadaptor.Adaptor, client *http.Client, format relayadaptor.Format, body []byte, rawQuery string) (relayadaptor.Format, *http.Response, error) {
+	for {
+		upstreamReq, err := ad.BuildUpstreamRequest(ctx, rc, format, body)
+		if err != nil {
+			return format, nil, err
+		}
+		if upstreamReq == nil || upstreamReq.URL == nil {
+			return format, nil, fmt.Errorf("adaptor returned an incomplete upstream request")
+		}
+		if format == relayadaptor.FormatOpenAIResponses && rawQuery != "" {
+			if upstreamReq.URL.RawQuery != "" {
+				upstreamReq.URL.RawQuery += "&" + rawQuery
+			} else {
+				upstreamReq.URL.RawQuery = rawQuery
+			}
+		}
+		if rc.Account == nil {
+			copyRelayExecutorHeaders(upstreamReq.Header, rc.InboundHeader)
+		}
+		if err := relayprovider.ValidateBaseURLForChannel(rc.Channel.Type, upstreamReq.URL.String()); err != nil {
+			return format, nil, fmt.Errorf("validate upstream URL: %w", err)
+		}
+		if rc.Channel.Type == relayprovider.ChannelTypeOllama {
+			upstreamReq = relayprovider.WithLocalNetworkAccess(upstreamReq)
+		}
+		resp, err := client.Do(upstreamReq) // #nosec G704 -- adaptor URL is validated above.
+		if err != nil {
+			return format, nil, err
+		}
+		if ad.Name() != "openai_compatible" || format != relayadaptor.FormatOpenAIResponses || !shouldFallbackResponsesToChat("/responses", body, &relayprovider.UpstreamHTTPError{StatusCode: resp.StatusCode}) {
+			return format, resp, nil
+		}
+		if err := relayadaptor.ValidateResponsesConversion(body); err != nil {
+			_ = resp.Body.Close()
+			return format, nil, err
+		}
+		convertedBody, _, err := responsesRequestToChatCompletionsBody(body)
+		if err != nil {
+			return format, resp, nil
+		}
+		// Reuse the context, source and reservation after endpoint rejection.
+		// Changing format makes this a single conversion, never a replay loop.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, relayprovider.MaxUpstreamErrorBody))
+		_ = resp.Body.Close()
+		applogger.Log.Info("responses to chat protocol conversion", zap.Int64("channel_id", rc.Channel.ID), zap.Int("responses_status", resp.StatusCode))
+		format, body = relayadaptor.FormatOpenAIChatCompletions, convertedBody
+	}
 }
 
 func classifyExecutorCapabilityError(endpoint string, err error) error {

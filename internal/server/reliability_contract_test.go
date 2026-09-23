@@ -34,28 +34,29 @@ func TestUnknownV1RouteUses501Contract(t *testing.T) {
 		}
 	}
 }
-func TestResponsesProtocolFallbackDisabled(t *testing.T) {
-	for _, status := range []int{400, 404, 405, 415, 422, 501, 502, 503} {
-		if shouldFallbackResponsesToChat("/responses", []byte(`{"model":"m","input":"ping"}`), &relayprovider.UpstreamHTTPError{StatusCode: status}) {
-			t.Errorf("status %d silently enables Chat substitution", status)
+func TestResponsesProtocolFallbackOnlyForUnsupportedEndpoint(t *testing.T) {
+	for _, status := range []int{200, 400, 401, 403, 404, 405, 415, 422, 429, 500, 501, 502, 503} {
+		want := status == 404 || status == 405 || status == 501
+		if got := shouldFallbackResponsesToChat("/responses", []byte(`{"model":"m","input":"ping"}`), &relayprovider.UpstreamHTTPError{StatusCode: status}); got != want {
+			t.Errorf("status %d conversion=%t, want %t", status, got, want)
 		}
 	}
 }
-func TestResponsesAnthropicMismatchMakesNoUpstreamCall(t *testing.T) {
+func TestResponsesResourceMismatchMakesNoUpstreamCall(t *testing.T) {
 	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 	calls := 0
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(500) }))
 	defer upstream.Close()
 	s := NewHTTPServer(nil, nil, nil, relayprovider.NewProviderFactory(time.Second), nil)
-	_, err := s.forwardResponsesViaAnthropicFallback(context.Background(), &relaybiz.Channel{Type: relayprovider.ChannelTypeAnthropic, BaseURL: upstream.URL}, nil, []byte(`{"model":"m","input":"ping"}`))
+	_, err := s.forwardResponsesRaw(context.Background(), &relaybiz.Channel{Type: relayprovider.ChannelTypeAnthropic, BaseURL: upstream.URL}, "POST", "/responses/compact", "", nil, []byte(`{"model":"m","input":"ping"}`))
 	if err == nil || calls != 0 {
 		t.Fatalf("mismatch: err=%v upstream calls=%d", err, calls)
 	}
 }
 
-// Both execution paths must release their reservation and stop on endpoint
-// capability errors even with another candidate and a permissive retry policy.
-func TestResponsesCapabilityFailureNeverSubstitutesProtocol(t *testing.T) {
+// A source rejecting both native Responses and converted Chat must release
+// once and stop, even with a permissive retry policy.
+func TestResponsesCapabilityFailureAfterConversionNeverReplays(t *testing.T) {
 	for _, orchestrator := range []bool{false, true} {
 		for _, stream := range []bool{false, true} {
 			for _, code := range []int{404, 405, 501} {
@@ -64,8 +65,8 @@ func TestResponsesCapabilityFailureNeverSubstitutesProtocol(t *testing.T) {
 					calls := 0
 					upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						calls++
-						if r.URL.Path != "/v1/responses" {
-							t.Errorf("protocol changed to %s", r.URL.Path)
+						if r.URL.Path != "/v1/responses" && r.URL.Path != "/v1/chat/completions" {
+							t.Errorf("unexpected protocol %s", r.URL.Path)
 						}
 						w.WriteHeader(code)
 					}))
@@ -84,7 +85,7 @@ func TestResponsesCapabilityFailureNeverSubstitutesProtocol(t *testing.T) {
 					if rec.Header().Get("X-Source-Kind") != "channel" || rec.Header().Get("X-Source-ID") == "" || rec.Header().Get("X-Request-ID") == "" {
 						t.Fatalf("missing error identity: %v", rec.Header())
 					}
-					if rec.Code != 501 || calls != 1 || billing.commits != 0 || billing.releases != 1 {
+					if rec.Code != 501 || calls != 2 || billing.commits != 0 || billing.releases != 1 {
 						t.Fatalf("status=%d calls=%d commits=%d releases=%d body=%s", rec.Code, calls, billing.commits, billing.releases, rec.Body.String())
 					}
 				})

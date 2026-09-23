@@ -68,8 +68,13 @@ func (a *OpenAICompatibleAdaptor) GetUpstreamURL(ctx *RelayContext) (string, err
 }
 
 // BuildUpstreamRequest constructs the POST request for /chat/completions.
-func (a *OpenAICompatibleAdaptor) BuildUpstreamRequest(ctx context.Context, rc *RelayContext, _ Format, body []byte) (*http.Request, error) {
-	url, err := a.GetUpstreamURL(rc)
+func (a *OpenAICompatibleAdaptor) BuildUpstreamRequest(ctx context.Context, rc *RelayContext, upstream Format, body []byte) (*http.Request, error) {
+	if rc == nil {
+		return nil, fmt.Errorf("openai_compatible adaptor: channel is required")
+	}
+	upstreamContext := *rc
+	upstreamContext.InboundFormat = upstream
+	url, err := a.GetUpstreamURL(&upstreamContext)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +93,7 @@ func (a *OpenAICompatibleAdaptor) BuildUpstreamRequest(ctx context.Context, rc *
 // provider already returns chat_completions JSON, which is the default
 // outbound format for this adaptor.
 func (a *OpenAICompatibleAdaptor) ConvertResponse(rc *RelayContext, upstream Format, resp *http.Response) (Format, []byte, error) {
-	if rc != nil && rc.InboundFormat == FormatOpenAIResponses {
+	if upstream == FormatOpenAIResponses {
 		body, err := io.ReadAll(io.LimitReader(resp.Body, provider.MaxUpstreamResponseBody))
 		return FormatOpenAIResponses, body, err
 	}
@@ -98,7 +103,7 @@ func (a *OpenAICompatibleAdaptor) ConvertResponse(rc *RelayContext, upstream For
 // ConvertStreamResponse returns the upstream stream reader unchanged. The
 // OpenAI-compatible provider emits chat_completions SSE directly.
 func (a *OpenAICompatibleAdaptor) ConvertStreamResponse(rc *RelayContext, upstream Format, resp *http.Response) (Format, io.Reader, error) {
-	if rc != nil && rc.InboundFormat == FormatOpenAIResponses {
+	if upstream == FormatOpenAIResponses {
 		return FormatOpenAIResponses, resp.Body, nil
 	}
 	return convertChatStream(rc, resp)

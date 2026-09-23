@@ -65,6 +65,7 @@ type FieldShapeSignals struct {
 	HasAnthropicCacheRead     bool // cache_read_input_tokens
 	HasAnthropicCacheCreation bool // cache_creation_input_tokens or cache_creation{...}
 	HasOpenAICachedDetail     bool // *_details.cached_tokens or flat cached_tokens
+	HasOpenAICreationDetail   bool // *_details.cache_creation_* are included in input
 	HasFlatCacheRead          bool // flat cache_read_tokens (provider-flattened)
 	HasPromptTokens           bool // prompt_tokens (OpenAI Chat shape)
 	HasInputTokens            bool // input_tokens (Responses / Anthropic shape)
@@ -77,6 +78,7 @@ func (s *FieldShapeSignals) Merge(other FieldShapeSignals) {
 	s.HasAnthropicCacheRead = s.HasAnthropicCacheRead || other.HasAnthropicCacheRead
 	s.HasAnthropicCacheCreation = s.HasAnthropicCacheCreation || other.HasAnthropicCacheCreation
 	s.HasOpenAICachedDetail = s.HasOpenAICachedDetail || other.HasOpenAICachedDetail
+	s.HasOpenAICreationDetail = s.HasOpenAICreationDetail || other.HasOpenAICreationDetail
 	s.HasFlatCacheRead = s.HasFlatCacheRead || other.HasFlatCacheRead
 	s.HasPromptTokens = s.HasPromptTokens || other.HasPromptTokens
 	s.HasInputTokens = s.HasInputTokens || other.HasInputTokens
@@ -164,7 +166,7 @@ func DecideEnvelope(reported relaybiz.ReportedUsage, s FieldShapeSignals, fallba
 			CacheCreation1hTokens: r.CacheCreation1hTokens,
 			OutputTokens:          r.OutputTokens,
 		}
-	case cacheTotal > 0 && r.CacheReadTokens > r.PromptTokens:
+	case r.CacheReadTokens > r.PromptTokens || (s.HasOpenAICreationDetail && cacheTotal > r.PromptTokens):
 		// cached exceeds the reported prompt/input: subset is impossible and
 		// clamping would hide the conflict. Keep both candidates (§4.2).
 		recordAnomaly(relaybiz.UsageReasonCachedExceedsReportedPrompt)
@@ -177,6 +179,11 @@ func DecideEnvelope(reported relaybiz.ReportedUsage, s FieldShapeSignals, fallba
 		}
 		env.ParseStatus = relaybiz.UsageParseVerified
 		uncached := r.PromptTokens - r.CacheReadTokens
+		if s.HasOpenAICreationDetail {
+			// Converters project all input buckets into the inclusive prompt;
+			// nested creation details must not be charged again as uncached input.
+			uncached -= r.CacheCreation5mTokens + r.CacheCreation1hTokens
+		}
 		if uncached < 0 {
 			uncached = 0
 		}
@@ -329,6 +336,12 @@ func scanCacheShapeSignals(m map[string]any, signals *FieldShapeSignals) {
 		}
 		if _, ok := details["cached_tokens"]; ok {
 			signals.HasOpenAICachedDetail = true
+		}
+		if _, ok := details["cache_creation_5m_tokens"]; ok {
+			signals.HasOpenAICreationDetail = true
+		}
+		if _, ok := details["cache_creation_1h_tokens"]; ok {
+			signals.HasOpenAICreationDetail = true
 		}
 		if _, ok := details["cache_read_tokens"]; ok {
 			signals.HasFlatCacheRead = true

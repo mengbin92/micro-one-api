@@ -54,6 +54,7 @@ func (s *HTTPServer) handleResponsesWithOrchestrator(w http.ResponseWriter, r *h
 		Token:       token,
 		Model:       model,
 		Endpoint:    string(EndpointResponses),
+		RawQuery:    r.URL.RawQuery,
 		Body:        body,
 		Headers:     relayExecutorHeaders(r.Header),
 		RequestID:   rootRequestID(r),
@@ -63,6 +64,9 @@ func (s *HTTPServer) handleResponsesWithOrchestrator(w http.ResponseWriter, r *h
 	if err != nil {
 		status := http.StatusInternalServerError
 		setErrorSource(w, result.ChannelID, result.SubscriptionAccountID)
+		if s.writeCapabilityError(w, err) {
+			return
+		}
 		if result.StatusCode != 0 {
 			status = result.StatusCode
 		}

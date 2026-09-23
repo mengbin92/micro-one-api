@@ -1052,25 +1052,6 @@ func TestChatCompletionResponseToResponsesPreservesTokenDetails(t *testing.T) {
 	}
 }
 
-func TestResponsesFallbackTerminalErrorUsesActualFallbackFailure(t *testing.T) {
-	original := &relayprovider.UpstreamHTTPError{
-		StatusCode: http.StatusMethodNotAllowed,
-		Body:       []byte("responses endpoint unavailable"),
-	}
-	fallback := &relayprovider.UpstreamHTTPError{
-		StatusCode: http.StatusBadRequest,
-		Body:       []byte("reasoning_content must be passed back"),
-	}
-
-	got := responsesFallbackTerminalError(original, fallback)
-	if got != fallback {
-		t.Fatalf("terminal error = %v, want actual chat fallback error %v", got, fallback)
-	}
-	if status := relaybiz.UpstreamStatus(got); status != http.StatusBadRequest {
-		t.Fatalf("terminal status = %d, want 400", status)
-	}
-}
-
 func TestResponsesStreamFallbackPreservesTokenDetails(t *testing.T) {
 	state := newResponsesStreamFallbackState("resp_test", "msg_resp_test")
 	var out strings.Builder

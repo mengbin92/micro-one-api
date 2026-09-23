@@ -30,13 +30,13 @@
 
 ## R3：能力错误和故障切换
 
-未知类型及未实现原生类型返回类型化能力错误；明确的兼容枚举仍有效，type=4 保留原有 OpenAI-compatible 别名。预先可判断的 Responses 不兼容请求零上游调用；OpenAI-compatible Responses 原样发往 `/responses`。上游 Responses 404/405/501 终止执行，不转 Chat、不换 provider；415/422 保留客户端 400 分类。删除 HTTP handler 中失效的协议降级分支，纯转换器仍保留给既有显式适配和单测使用。
+2026-09-23 纠正：恢复既有 Responses→Chat/Anthropic 及默认兼容行为。OpenAI-compatible Responses 优先原生，上游 404/405/501 后在同一来源、预算和预留内转换一次到 Chat；Anthropic 直接转换到 Messages。415/422 保留客户端 400 分类。未知类型及未实现原生类型仍返回类型化能力错误，type=4 保留 OpenAI-compatible 别名。原生支持的状态字段透传；`previous_response_id`、`conversation`、`background=true`、`store=true` 无法转换时单独报明确 501，资源操作保持原生。
 
 `/v1/` 最后注册兜底，返回同形状 OpenAI 501。已注册端点、资源 404、方法错误及 CORS 优先；未知路径请求指标统一为 `/v1/unknown`。错误携带根 request ID 和实际选中来源的 kind/id，未选来源不填造 ID，不暴露 key、账号名称或上游 URL。SSRF 全局关闭时启动日志给出结构化警示。
 
 显式同公开模型故障切换保留，实际映射模型、来源和 reservation 独立归属。能力错误、已出流及账务提交失败均不可触发重放。线上未支持类型盘点保留为部署前置检查，本次未访问或修改生产配置。
 
-证据：`TestResponsesCapabilityFailureNeverSubstitutesProtocol` 覆盖 legacy/orchestrator × stream/nonstream ×404/405/501，均一次上游调用、零提交、一次释放；`TestResponsesAnthropicMismatchMakesNoUpstreamCall`、provider 未知类型测试、`TestUnknownV1RouteMetricsAndIdentityRemainBounded`、`TestMessagesCommitFailureIsNeverReplayable` 及既有跨来源/撤权/提交失败测试通过。
+当前回归：`TestGatewayProtocolConversion` 覆盖 legacy/orchestrator × stream/nonstream 的 Responses→Chat（404/405/501）、Responses→Anthropic、Messages→Chat，断言工具输出及结算分项；`TestConvertedResponsesFailuresNeverReplay` 覆盖断流、提交失败及转换后 400；`TestResponsesNativeAndStateCapabilities` 覆盖原生成功和不可转换状态能力。`TestResponsesCapabilityFailureAfterConversionNeverReplays` 验证端点拒绝后只转换一次，仍失败则零提交、一次释放。未知类型、未知路由、跨来源及撤权回归继续保留。
 
 ## R4：预算、SSE 和下游熔断
 
@@ -67,4 +67,4 @@ Chat、Messages、Responses 的旧入口流式结算对齐已有 executor 规则
 
 隔离矩阵入口：`python3 scripts/test-routing-e2e.py --driver=mysql --reliability-only`；SQLite 使用 `--driver=sqlite3 --skip-build --reliability-only`。每种数据库运行 legacy/orchestrator × 普通渠道/订阅账号优先 × 500/连接拒绝/输出后断流，共 12 个场景。真实运行 gateway、channel、identity、billing、log 及数据库/Redis；只模拟上游。初始化先等待账号模型的异步投影完成，再设置映射，避免把初始化并发写入当成请求故障。
 
-部署前依次应用 108 迁移、更新 channel-service、再更新 relay-gateway；先只读盘点渠道类型并确认调用方不依赖已禁用的 Responses 协议替换。生产类型盘点、上线、外部告警送达、长时间观察、支付 F17 和多副本 D1 均不在本次本地交付事实内。
+第一批部署顺序为 108 迁移、channel-service、relay-gateway；部署前只读盘点渠道类型。2026-09-23 的协议转换纠正只需更新 relay-gateway，无新增迁移。上面的原始验证记录属于 2026-09-22 本地验收；生产部署、外部告警送达和长时间观察需分别留存证据，不能由本地通过推断。

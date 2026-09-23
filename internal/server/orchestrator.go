@@ -54,6 +54,7 @@ type RelayRequest struct {
 	Model string
 	// Endpoint specifies which API endpoint is being called.
 	Endpoint APIEndpoint
+	RawQuery string
 	// Body contains the raw request body.
 	Body io.Reader
 	// IsStream indicates if the client expects a streaming response.
@@ -340,6 +341,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 				Token:         req.Token,
 				Model:         req.Model,
 				Endpoint:      string(req.Endpoint),
+				RawQuery:      req.RawQuery,
 				Body:          attemptBody,
 				Headers:       httpHeaderToMap(req.Headers),
 				RequestID:     req.RequestID,
@@ -515,6 +517,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			Token:         req.Token,
 			Model:         req.Model,
 			Endpoint:      string(req.Endpoint),
+			RawQuery:      req.RawQuery,
 			Body:          attemptBody,
 			Headers:       httpHeaderToMap(req.Headers),
 			RequestID:     req.RequestID,

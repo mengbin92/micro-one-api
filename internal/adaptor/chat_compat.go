@@ -17,8 +17,18 @@ func convertRequestToChat(rc *RelayContext, inbound Format, body []byte) (Format
 	case FormatOpenAIChatCompletions:
 		return FormatOpenAIChatCompletions, body, nil
 	case FormatOpenAIResponses:
-		return "", nil, &provider.CapabilityError{Feature: "responses protocol substitution"}
-
+		if err := ValidateResponsesConversion(body); err != nil {
+			return "", nil, err
+		}
+		var responsesRequest apicompat.ResponsesRequest
+		if err := jsonx.Unmarshal(body, &responsesRequest); err != nil {
+			return "", nil, fmt.Errorf("parse responses request: %w", err)
+		}
+		var err error
+		request, err = apicompat.ResponsesToChatCompletionsRequest(&responsesRequest)
+		if err != nil {
+			return "", nil, fmt.Errorf("responses to chat: %w", err)
+		}
 	case FormatAnthropicMessages:
 		var anthropicRequest apicompat.AnthropicRequest
 		if err := jsonx.Unmarshal(body, &anthropicRequest); err != nil {

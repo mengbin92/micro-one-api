@@ -10,11 +10,11 @@ import (
 	"micro-one-api/pkg/jsonx"
 )
 
-func TestAnthropicAdaptorRejectsResponsesRequest(t *testing.T) {
+func TestAnthropicAdaptorConvertsResponsesRequest(t *testing.T) {
 	adaptor := NewAnthropicAdaptor(nil, nil)
 	format, body, err := adaptor.ConvertRequest(&RelayContext{InboundFormat: FormatOpenAIResponses}, FormatOpenAIResponses, []byte(`{"model":"m","input":"ping"}`))
-	if err == nil || format != "" || body != nil {
-		t.Fatalf("protocol substitution: %s %s %v", format, body, err)
+	if err != nil || format != FormatAnthropicMessages || !strings.Contains(string(body), `"messages"`) {
+		t.Fatalf("protocol conversion: %s %s %v", format, body, err)
 	}
 }
 

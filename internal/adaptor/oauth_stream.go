@@ -119,27 +119,8 @@ func pumpAnthropicToResponses(src io.Reader, w *io.PipeWriter) {
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 		return
 	}
-	// CR 2026-08-05: if the upstream closed before message_start arrived,
-	// FinalizeAnthropicResponsesStream returns nil (CreatedSent=false) and no
-	// terminal event is emitted — the pipe closes silently and the client
-	// reports "stream closed before response.completed". Synthesise a
-	// response.failed so the stream always ends with a terminal event.
-	terminalEvents := apicompat.FinalizeAnthropicResponsesStream(state)
-	if len(terminalEvents) == 0 && !state.CreatedSent {
-		terminalEvents = []apicompat.ResponsesStreamEvent{{
-			Type: "response.failed",
-			Response: &apicompat.ResponsesResponse{
-				Status: "failed",
-				Error:  &apicompat.ResponsesError{Code: "stream_interrupted", Message: "upstream stream closed before any event"},
-			},
-		}}
-	}
-	for _, rse := range terminalEvents {
-		sse, err := apicompat.ResponsesEventToSSE(rse)
-		if err != nil {
-			continue
-		}
-		_, _ = io.WriteString(w, sse)
+	if !state.CompletedSent {
+		writeResponsesStreamError(w)
 	}
 	_, _ = io.WriteString(w, "data: [DONE]\n\n")
 }
@@ -308,7 +289,12 @@ func pumpChatToResponses(src io.Reader, w *io.PipeWriter, model string) {
 	scanner := bufio.NewScanner(src)
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	state := apicompat.NewChatCompletionsToResponsesStreamState(model)
+	sawChunk, sawDone := false, false
 	for scanner.Scan() {
+		if isSSEDone(scanner.Text()) {
+			sawDone = true
+			continue
+		}
 		data, ok := sseData(scanner.Text())
 		if !ok {
 			continue
@@ -324,6 +310,7 @@ func pumpChatToResponses(src io.Reader, w *io.PipeWriter, model string) {
 			_, _ = io.WriteString(w, "data: [DONE]\n\n")
 			return
 		}
+		sawChunk = true
 		for _, event := range apicompat.ChatCompletionsChunkToResponsesEvents(&chunk, state) {
 			sse, err := apicompat.ResponsesEventToSSE(event)
 			if err != nil {
@@ -338,6 +325,14 @@ func pumpChatToResponses(src io.Reader, w *io.PipeWriter, model string) {
 		writeResponsesStreamError(w)
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 		return
+	}
+	if !sawChunk || (state.FinishReason == "" && !sawDone) {
+		writeResponsesStreamError(w)
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+		return
+	}
+	if state.FinishReason == "" {
+		state.FinishReason = "stop"
 	}
 	for _, event := range apicompat.FinalizeChatCompletionsResponsesStream(state) {
 		sse, err := apicompat.ResponsesEventToSSE(event)

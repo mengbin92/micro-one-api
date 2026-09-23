@@ -349,6 +349,12 @@ func scanRawCacheShapeSignals(m map[string]any, signals *usagepkg.FieldShapeSign
 		if _, ok := details["cached_tokens"]; ok {
 			signals.HasOpenAICachedDetail = true
 		}
+		if _, ok := details["cache_creation_5m_tokens"]; ok {
+			signals.HasOpenAICreationDetail = true
+		}
+		if _, ok := details["cache_creation_1h_tokens"]; ok {
+			signals.HasOpenAICreationDetail = true
+		}
 		if _, ok := details["cache_read_tokens"]; ok {
 			signals.HasFlatCacheRead = true
 		}

@@ -183,12 +183,12 @@ func TestExtractEnvelopeFromJSON_NestedUsage(t *testing.T) {
 	if got.ParseStatus != relaybiz.UsageParseVerified || got.Semantics != relaybiz.UsageSemanticsOpenAISubset {
 		t.Fatalf("got status=%q semantics=%q, want verified subset", got.ParseStatus, got.Semantics)
 	}
-	want := relaybiz.CanonicalUsage{UncachedInputTokens: 7, CacheReadTokens: 1, CacheCreation5mTokens: 2, CacheCreation1hTokens: 1, OutputTokens: 2}
+	want := relaybiz.CanonicalUsage{UncachedInputTokens: 4, CacheReadTokens: 1, CacheCreation5mTokens: 2, CacheCreation1hTokens: 1, OutputTokens: 2}
 	if got.Canonical == nil || *got.Canonical != want {
 		t.Fatalf("Canonical = %+v, want %+v", got.Canonical, want)
 	}
-	if got.BillableTotal() != 13 {
-		t.Fatalf("BillableTotal = %d, want 13", got.BillableTotal())
+	if got.BillableTotal() != 10 {
+		t.Fatalf("BillableTotal = %d, want 10", got.BillableTotal())
 	}
 }
 

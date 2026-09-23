@@ -2,70 +2,31 @@ package server
 
 import (
 	"bufio"
-	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 
 	"micro-one-api/pkg/jsonx"
-	applogger "micro-one-api/platform/logging"
 
 	relayprovider "micro-one-api/domain/upstream/provider"
 	"micro-one-api/internal/apicompat"
-	relaybiz "micro-one-api/internal/biz"
 	usagepkg "micro-one-api/internal/server/usage"
-
-	"go.uber.org/zap"
 )
 
-type responsesFallbackResult struct {
-	Response *relayprovider.RawResponse
-	Stream   *relayprovider.RawStreamResponse
-	Usage    rawUsage
-}
-
 func shouldFallbackResponsesToChat(path string, body []byte, err error) bool {
-	// Silent protocol substitution is prohibited.
-	return false
-}
-
-func (s *HTTPServer) forwardResponsesViaChatFallback(ctx context.Context, ch *relaybiz.Channel, header http.Header, body []byte) (*responsesFallbackResult, error) {
-	return nil, &relayprovider.CapabilityError{Feature: "responses protocol substitution"}
-}
-
-func (s *HTTPServer) forwardResponsesViaChatFallbackObserved(ctx context.Context, ch *relaybiz.Channel, header http.Header, body []byte, triggerErr error) (*responsesFallbackResult, error) {
-	result, fallbackErr := s.forwardResponsesViaChatFallback(ctx, ch, header, body)
-	fields := []zap.Field{
-		zap.Int64("channel_id", ch.ID),
-		zap.String("channel", ch.Name),
-		zap.Int("responses_status", relaybiz.UpstreamStatus(triggerErr)),
-		zap.String("responses_error_category", responsesUpstreamErrorCategory(relaybiz.UpstreamStatus(triggerErr))),
+	var upstreamErr *relayprovider.UpstreamHTTPError
+	if path != "/responses" || !errors.As(err, &upstreamErr) {
+		return false
 	}
-	if fallbackErr != nil {
-		fields = append(fields,
-			zap.Int("chat_fallback_status", relaybiz.UpstreamStatus(fallbackErr)),
-			zap.String("chat_fallback_error_category", responsesUpstreamErrorCategory(relaybiz.UpstreamStatus(fallbackErr))),
-		)
-		applogger.Log.Warn("responses to chat fallback failed", fields...)
-		return result, fallbackErr
+	switch upstreamErr.StatusCode {
+	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
+		_, _, conversionErr := responsesRequestToChatCompletionsBody(body)
+		return conversionErr == nil
+	default:
+		return false
 	}
-	status := 0
-	if result != nil && result.Stream != nil {
-		status = result.Stream.StatusCode
-	} else if result != nil && result.Response != nil {
-		status = result.Response.StatusCode
-	}
-	fields = append(fields, zap.Int("chat_fallback_status", status))
-	applogger.Log.Info("responses to chat fallback succeeded", fields...)
-	return result, nil
-}
-
-func responsesFallbackTerminalError(originalErr, fallbackErr error) error {
-	if fallbackErr != nil {
-		return fallbackErr
-	}
-	return originalErr
 }
 
 func responsesRequestToChatCompletionsBody(body []byte) ([]byte, bool, error) {
@@ -696,14 +657,6 @@ func writeResponsesSSE(w io.Writer, event map[string]any) {
 // and converts the Anthropic response/stream back to the Responses format the
 // client (Codex) expects.
 // ---------------------------------------------------------------------------
-
-// forwardResponsesViaAnthropicFallback converts a Responses API request to an
-// Anthropic Messages request, calls the upstream, and converts the response
-// back to Responses format. It mirrors forwardResponsesViaChatFallback but
-// targets Anthropic channels (type=2) whose upstream is /v1/messages.
-func (s *HTTPServer) forwardResponsesViaAnthropicFallback(ctx context.Context, ch *relaybiz.Channel, header http.Header, body []byte) (*responsesFallbackResult, error) {
-	return nil, &relayprovider.CapabilityError{Feature: "responses protocol substitution"}
-}
 
 // responsesRequestToAnthropicBody converts a Responses API request body into
 // an Anthropic Messages request body and reports whether the client requested

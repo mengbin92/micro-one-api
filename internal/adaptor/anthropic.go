@@ -67,8 +67,34 @@ func (a *AnthropicAdaptor) ConvertRequest(rc *RelayContext, inbound Format, body
 		}
 		return FormatAnthropicMessages, out, nil
 	case FormatOpenAIResponses:
-		return "", nil, &provider.CapabilityError{Feature: "responses protocol substitution"}
-
+		if err := ValidateResponsesConversion(body); err != nil {
+			return "", nil, err
+		}
+		var request apicompat.ResponsesRequest
+		if err := jsonx.Unmarshal(body, &request); err != nil {
+			return "", nil, fmt.Errorf("anthropic adaptor: parse responses request: %w", err)
+		}
+		if rc != nil && rc.ResolvedModel != "" {
+			request.Model = rc.ResolvedModel
+		}
+		if strings.TrimSpace(request.Model) == "" {
+			return "", nil, fmt.Errorf("anthropic adaptor: model is required")
+		}
+		converted, err := apicompat.ResponsesToAnthropicRequest(&request)
+		if err != nil {
+			return "", nil, fmt.Errorf("anthropic adaptor: responses to anthropic: %w", err)
+		}
+		// Third-party Messages endpoints support the common API-key subset.
+		converted.Thinking = nil
+		converted.OutputConfig = nil
+		for index := range converted.Tools {
+			converted.Tools[index].Type = ""
+			if len(converted.Tools[index].InputSchema) == 0 || string(converted.Tools[index].InputSchema) == "null" {
+				converted.Tools[index].InputSchema = []byte(`{"type":"object","properties":{}}`)
+			}
+		}
+		out, err := jsonx.Marshal(converted)
+		return FormatAnthropicMessages, out, err
 	default:
 		return "", nil, fmt.Errorf("anthropic adaptor: inbound format %q is not supported", inbound)
 	}

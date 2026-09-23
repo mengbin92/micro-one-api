@@ -213,9 +213,10 @@ func TestClaudeOAuth_ConvertRequest(t *testing.T) {
 		}
 	})
 
-	t.Run("responses rejected", func(t *testing.T) {
-		if _, _, err := ad.ConvertRequest(nil, FormatOpenAIResponses, []byte(`{"model":"m","input":"hi"}`)); err == nil {
-			t.Fatal("implicit protocol substitution")
+	t.Run("responses to anthropic", func(t *testing.T) {
+		format, body, err := ad.ConvertRequest(nil, FormatOpenAIResponses, []byte(`{"model":"m","input":"hi"}`))
+		if err != nil || format != FormatAnthropicMessages || !strings.Contains(string(body), `"messages"`) {
+			t.Fatalf("conversion: %s %s %v", format, body, err)
 		}
 	})
 }

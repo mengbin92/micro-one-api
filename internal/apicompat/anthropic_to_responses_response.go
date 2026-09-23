@@ -120,8 +120,7 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 // buckets into the inclusive OpenAI Responses usage shape via the single
 // pkg/usage projection. Anthropic reports cache creation only as a flat
 // aggregate, so it lands in the 5m bucket (ADR §4.2 default). The details
-// object stays nil when there is no cache-read, keeping the wire output
-// identical to the pre-helper implementation.
+// object stays nil when there are no cache buckets.
 func responsesUsageFromAnthropic(input, output, cacheRead, cacheCreation int) *ResponsesUsage {
 	p := usage.ProjectOpenAI(usage.Buckets{
 		UncachedInputTokens:   int64(input),
@@ -134,9 +133,10 @@ func responsesUsageFromAnthropic(input, output, cacheRead, cacheCreation int) *R
 		OutputTokens: int(p.OutputTokens),
 		TotalTokens:  int(p.TotalTokens),
 	}
-	if p.CachedTokens > 0 {
+	if p.CachedTokens > 0 || p.CacheCreation5mTokens > 0 {
 		out.InputTokensDetails = &ResponsesInputTokensDetails{
-			CachedTokens: int(p.CachedTokens),
+			CachedTokens:          int(p.CachedTokens),
+			CacheCreation5mTokens: int(p.CacheCreation5mTokens),
 		}
 	}
 	return out

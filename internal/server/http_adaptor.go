@@ -578,9 +578,12 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	}
 	upstreamFmt, upstreamBody, err := ad.ConvertRequest(rc, inbound, ensureRawModel(rawBody, plan.ResolvedModel))
 	if err != nil {
-		result.statusCode = http.StatusBadGateway
+		result.statusCode = mapUpstreamError(relaybiz.UpstreamStatus(err))
 		result.err = fmt.Errorf("adaptor convert request: %w", err)
 		result.write = func(w http.ResponseWriter) {
+			if s.writeCapabilityError(w, err) {
+				return
+			}
 			s.writeError(w, http.StatusBadGateway, gatewayErrorMessage(http.StatusBadGateway))
 		}
 		return result

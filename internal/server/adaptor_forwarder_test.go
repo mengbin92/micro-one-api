@@ -14,10 +14,10 @@ import (
 	relaybiz "micro-one-api/internal/biz"
 )
 
-func TestRelayAdaptorForwarderRejectsResponsesForAnthropicAPIKeyChannel(t *testing.T) {
+func TestRelayAdaptorForwarderRejectsResponsesForEmbeddingOnlyChannel(t *testing.T) {
 	factory := relayprovider.NewProviderFactory(time.Second)
 	forwarder := newRelayAdaptorForwarder(factory, nil, nil, nil, nil)
-	plan := &relaybiz.RelayPlan{Channel: &relaybiz.Channel{ID: 9, Type: relayprovider.ChannelTypeAnthropic}, ResolvedModel: "m"}
+	plan := &relaybiz.RelayPlan{Channel: &relaybiz.Channel{ID: 9, Type: relayprovider.ChannelTypeVoyageAI}, ResolvedModel: "m"}
 	req := relaybiz.ExecutorRequest{Endpoint: "responses", Model: "m", Body: []byte(`{"model":"m","input":"ping"}`)}
 	if resp, err := forwarder.Forward(context.Background(), plan, req); err == nil || resp != nil || !relaybiz.IsProtocolCapabilityMismatch(err) {
 		t.Fatalf("Forward = %v, %v", resp, err)
