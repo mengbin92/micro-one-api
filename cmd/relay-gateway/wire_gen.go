@@ -294,7 +294,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 				return authCache.InvalidateAll(ctx)
 			}
 			if routingChannelCache != nil {
-				return routingChannelCache.InvalidateByChannel(ctx, 0)
+				return routingChannelCache.InvalidateAll(ctx)
 			}
 			return nil
 		}))
@@ -394,7 +394,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		routeMiddleware = append(routeMiddleware, audit.NewMiddleware(audit.NewAuditor(true)).Handler)
 	}
 
-	routeMiddleware = append(routeMiddleware, middleware.NewHTTPMetricsMiddleware("relay-gateway"))
+	routeMiddleware = append([]func(http.Handler) http.Handler{middleware.NewHTTPMetricsMiddleware("relay-gateway")}, routeMiddleware...)
 	httpServer.UseRouteMiddleware(routeMiddleware...)
 
 	{

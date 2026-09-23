@@ -2624,18 +2624,13 @@ func applySubscriptionAccountQuotaUsage(account *biz.SubscriptionAccount, costUS
 }
 
 func incrementWindowUsage(used float64, windowStart int64, delta float64, nowUnix int64, window time.Duration) (float64, int64) {
-	if windowStart <= 0 || nowUnix-windowStart >= int64(window.Seconds()) {
-		return delta, nowUnix
-	}
+	used, windowStart = biz.RollAccountQuotaWindow(used, windowStart, nowUnix, window)
 	return used + delta, windowStart
 }
 
 func incrementFixedWindowUsage(account *biz.SubscriptionAccount, used float64, windowStart int64, delta float64, now time.Time, scope string) (float64, int64) {
-	fixedStart := account.FixedQuotaWindowStart(now, scope)
-	if windowStart < fixedStart || windowStart > now.Unix() {
-		return delta, fixedStart
-	}
-	return used + delta, fixedStart
+	used, windowStart = account.RollFixedQuotaWindow(used, windowStart, now, scope)
+	return used + delta, windowStart
 }
 
 func resetSubscriptionAccountQuota(account *biz.SubscriptionAccount, scope string) {
@@ -2954,6 +2949,9 @@ func (r *Repository) RecordQuotaResetAndReset(ctx context.Context, run *biz.Subs
 	if run == nil || run.AccountID <= 0 {
 		return biz.ErrSubscriptionAccountNotFound
 	}
+	if (run.Scope != "daily" && run.Scope != "weekly") || run.WindowStart <= 0 {
+		return fmt.Errorf("invalid quota reset window")
+	}
 	if r.db != nil {
 		return r.recordQuotaResetAndResetDB(ctx, run)
 	}
@@ -2970,7 +2968,13 @@ func (r *Repository) RecordQuotaResetAndReset(ctx context.Context, run *biz.Subs
 	if !ok {
 		return biz.ErrSubscriptionAccountNotFound
 	}
-	resetSubscriptionAccountQuotaToWindow(account, run.Scope, run.WindowStart)
+	stored := account.QuotaDailyWindowStart
+	if run.Scope == "weekly" {
+		stored = account.QuotaWeeklyWindowStart
+	}
+	if stored > 0 && stored < run.WindowStart {
+		resetSubscriptionAccountQuotaToWindow(account, run.Scope, run.WindowStart)
+	}
 	r.resetRuns[key] = true
 	return nil
 }
@@ -3000,6 +3004,17 @@ func (r *Repository) recordQuotaResetRunDB(ctx context.Context, run *biz.Subscri
 
 func (r *Repository) recordQuotaResetAndResetDB(ctx context.Context, run *biz.SubscriptionAccountQuotaResetRun) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var account subscriptionAccountModel
+		query := tx.Where("id = ?", run.AccountID)
+		if tx.Dialector.Name() != "sqlite" {
+			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+		if err := query.First(&account).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return biz.ErrSubscriptionAccountNotFound
+			}
+			return err
+		}
 		model := subscriptionAccountQuotaResetRunModel{
 			SubscriptionAccountID: run.AccountID,
 			Scope:                 run.Scope,
@@ -3017,6 +3032,13 @@ func (r *Repository) recordQuotaResetAndResetDB(ctx context.Context, run *biz.Su
 		}
 		if result.RowsAffected == 0 {
 			return biz.ErrQuotaResetRunDuplicate
+		}
+		stored := account.QuotaDailyWindowStart
+		if run.Scope == "weekly" {
+			stored = account.QuotaWeeklyWindowStart
+		}
+		if stored <= 0 || stored >= run.WindowStart {
+			return nil
 		}
 		updates := subscriptionAccountQuotaResetUpdatesToWindow(run.Scope, run.WindowStart)
 		if updates == nil {

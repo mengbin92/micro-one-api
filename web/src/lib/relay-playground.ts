@@ -73,6 +73,7 @@ export class RelayPlaygroundError extends Error {
 }
 
 export interface ChatCompletionCallbacks {
+  onIdentity?: (identity: { requestId?: string; traceId?: string; otelTraceId?: string }) => void;
   onEvent?: (event: SSEEvent) => void;
   onDelta?: (content: string) => void;
   onReasoning?: (content: string) => void;
@@ -239,8 +240,9 @@ export async function executeChatCompletion(
     return throwNetworkError(error);
   }
 
-  if (!response.ok) return throwResponseError(response, options.requestId);
   const requestId = safeRequestId(response, options.requestId);
+  options.callbacks?.onIdentity?.({ requestId, traceId: response.headers.get('X-Trace-ID') || undefined, otelTraceId: response.headers.get('X-OTel-Trace-ID') || undefined });
+  if (!response.ok) return throwResponseError(response, options.requestId);
   const contentType = response.headers.get('Content-Type') || '';
   const callbacks = options.callbacks;
 

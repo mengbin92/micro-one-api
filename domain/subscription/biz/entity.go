@@ -133,9 +133,15 @@ type SubscriptionPlan struct {
 }
 
 type QuotaDimension struct {
-	Used      float64  `json:"used"`
-	Limit     *float64 `json:"limit"`
-	Remaining float64  `json:"remaining"`
+	Settled     float64  `json:"settled"`
+	Frozen      *float64 `json:"frozen"`
+	Available   *float64 `json:"available"`
+	Unlimited   bool     `json:"unlimited"`
+	OverLimit   bool     `json:"over_limit"`
+	WindowStart int64    `json:"window_start"`
+	Used        float64  `json:"used"`
+	Limit       *float64 `json:"limit"`
+	Remaining   float64  `json:"remaining"`
 	// NextRefresh is the unix timestamp at which this window resets and the
 	// usage counter rolls back to zero. Zero when the window has already
 	// rolled (the next reset is "now") or when the dimension is nil/unused.
@@ -151,6 +157,9 @@ type QuotaCheckResult struct {
 }
 
 type SubscriptionProgress struct {
+	RateMultiplier   float64               `json:"rate_multiplier"`
+	UsageSource      string                `json:"usage_source"`
+	ObservedAt       int64                 `json:"observed_at"`
 	Contract         *SubscriptionContract `json:"contract,omitempty"`
 	ID               int64                 `json:"id"`
 	Status           SubscriptionStatus    `json:"status"`

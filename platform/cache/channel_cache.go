@@ -79,22 +79,9 @@ func (c *ChannelCache) Invalidate(ctx context.Context, group, model string) erro
 	return c.cache.Invalidate(ctx, key)
 }
 
-// InvalidateByGroup invalidates all channels for a specific group.
-func (c *ChannelCache) InvalidateByGroup(ctx context.Context, group string) error {
-	pattern := fmt.Sprintf("%s:*", group)
-	return c.cache.InvalidateByPattern(ctx, pattern)
-}
-
-// InvalidateByChannel invalidates cache entries that might reference a
-// specific channel.
-//
-// The channel cache is keyed by "group:model" and a single key may resolve to
-// a list of candidate channels, so there is no reverse index from channelID
-// to the keys that contain it. We therefore clear the L1 cache entirely
-// (bounded by the short L1 TTL) and invalidate the whole channel prefix in L2
-// via a SCAN. This is safe — channel config changes are infrequent — and
-// avoids the silent no-op the previous TODO represented.
-func (c *ChannelCache) InvalidateByChannel(ctx context.Context, channelID int64) error {
+// InvalidateAll evicts the entire channel namespace from both levels.
+// No channel-to-cache-key reverse index is maintained.
+func (c *ChannelCache) InvalidateAll(ctx context.Context) error {
 	// Clear L1 entirely.
 	c.cache.ClearAll()
 	// Invalidate the entire channel L2 namespace. The pattern "*" matches

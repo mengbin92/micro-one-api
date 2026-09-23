@@ -155,7 +155,7 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 				}
 			}
 		}
-		s.finalizeSelectionDirect(plan, execution.resultLabel, execution.fallbackReason, execution.fallback, finalSourceID, time.Since(selectionStartedAt))
+		s.finalizeSelectionDirect(plan, execution.resultLabel, execution.fallbackReason, execution.fallback, execution.finalChannel, time.Since(selectionStartedAt))
 		if execution.fallback {
 			failoverResult := "switched"
 			if execution.resultLabel != "success" {

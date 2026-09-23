@@ -1693,6 +1693,7 @@ export interface operations {
                 group?: string;
                 status?: number;
                 platform?: string;
+                recoveryPolicy?: string;
             };
             header?: never;
             path?: never;

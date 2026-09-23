@@ -51,6 +51,9 @@ func RelayCORSConfig() *CORSConfig {
 	config := DefaultCORSConfig()
 	config.AllowedMethods = []string{"GET", "POST", "OPTIONS", "PUT", "DELETE", "PATCH"}
 	config.AllowedHeaders = []string{
+		"X-Trace-ID",
+		"Traceparent",
+		"Tracestate",
 		"Authorization",
 		"Content-Type",
 		"X-Request-ID",
@@ -65,6 +68,8 @@ func RelayCORSConfig() *CORSConfig {
 		"OpenAI-Session-Hash",
 	}
 	config.ExposedHeaders = []string{
+		"X-Trace-ID",
+		"X-OTel-Trace-ID",
 		"Content-Length",
 		"Content-Type",
 		"X-Request-ID",

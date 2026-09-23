@@ -32,7 +32,8 @@ describe('SubscriptionsPage', () => {
             status: 'active',
             starts_at: 1700000000,
             expires_at: 1800000000,
-            daily_used: { used: 5, limit: 10, remaining: 5, next_refresh: futureRefresh },
+            daily_used: { used: 5, settled: 5, frozen: 2, available: 3, limit: 10, remaining: 5, next_refresh: futureRefresh },
+            rate_multiplier: 2,
             monthly_used: { used: 20, limit: 100, remaining: 80, next_refresh: futureRefresh },
             weekly_used: { used: 2, limit: null, remaining: 0 },
             remaining_seconds: 86400 * 3,
@@ -51,7 +52,10 @@ describe('SubscriptionsPage', () => {
     expect(screen.getByText('请求频率')).toBeInTheDocument();
     expect(screen.getByText('3 次/分钟')).toBeInTheDocument();
     expect(screen.getByText('$5.00 / $10.00')).toBeInTheDocument();
-    expect(screen.getByText('无限制')).toBeInTheDocument(); // weekly limit null
+    expect(screen.getByText('冻结 $2.00')).toBeInTheDocument();
+    expect(screen.getByText('可用 $3.00')).toBeInTheDocument();
+    expect(screen.getByText('计量倍率 ×2')).toBeInTheDocument();
+    expect(screen.getAllByText('无限制').length).toBeGreaterThan(0); // weekly limit null
     expect(screen.getByText('剩余 3 天')).toBeInTheDocument();
     // next_refresh label should render for daily & monthly dimensions.
     expect(screen.getAllByText(/后刷新/).length).toBeGreaterThan(0);

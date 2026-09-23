@@ -394,6 +394,7 @@ func (s *CodexModelProbeService) probeModel(ctx context.Context, account *biz.Su
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		recordProbeUsage("codex", resp.Body)
 		return true, nil
 	}
 	return false, nil

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"micro-one-api/app/billing/internal/biz"
+	"micro-one-api/platform/metrics"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 
@@ -62,6 +63,7 @@ func (r *ledgerRepo) CreateLedgerInTx(ctx context.Context, tx subscriptionbiz.Tx
 		claim := &ledgerDedupeClaimModel{LedgerDedupeKey: dedupeKey}
 		if err := db.WithContext(ctx).Create(claim).Error; err != nil {
 			if isUniqueConstraintError(err) {
+				metrics.RecordBillingDedupeConflict(ledger.Type)
 				return biz.ErrLedgerDedupeExists
 			}
 			return err

@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.31.1 发布公告](./docs/releases/release-v0.31.1.md)（协议转换恢复、凭证补写与流式可靠性修复，新增迁移 108） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.31.1)
+> 📣 **最新发布**：[v0.32.0 发布公告](./docs/releases/release-v0.32.0.md)（运行观测、订阅冻结额度解释与账号治理，无新增迁移） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.32.0)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.32.0
+
+v0.32.0 是 v0.31.1 之后的 **MINOR 功能与可靠性版本**：新增路由注册观测、告警投递与追踪关联、订阅已结算/冻结/可用额度解释，以及账号恢复筛选和探测用量；修复原子重置与缓存坏值。**API/proto 增量扩展，无新增数据库迁移**；先升级 billing-service、channel-service、notify-worker，再升级 admin-api、relay-gateway，单独发布宿主机挂载的前端并同步监控配置。真实通知送达、OTel 导出及生产性能仍待验收。详见 [docs/releases/release-v0.32.0.md](./docs/releases/release-v0.32.0.md)。
 
 ### 升级到 v0.31.1
 

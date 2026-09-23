@@ -28,6 +28,8 @@ type SelectionEvent struct {
 	// RootRequestID is stable across every upstream attempt for one client
 	// request. UserID scopes the admin audit query.
 	RootRequestID string
+	TraceID       string
+	OTelTraceID   string
 	UserID        int64
 	// Group is the tenancy group (low cardinality, safe for labels).
 	Group string
@@ -43,6 +45,9 @@ type SelectionEvent struct {
 	FinalKind string
 	// FinalSourceID is the selected channel or account id (structured log only).
 	FinalSourceID int64
+	// UpstreamModelID is the model mapping used by the final source. It is
+	// structured-log data only and must never become a Prometheus label.
+	UpstreamModelID string
 	// StickyHit is true when a sticky binding short-circuited selection.
 	StickyHit bool
 	// PriorityTier is the priority value of the winning tier (structured log).

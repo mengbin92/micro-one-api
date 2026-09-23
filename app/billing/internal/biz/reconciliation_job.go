@@ -176,7 +176,7 @@ func (j *ReconciliationJob) dispatchAlerts(ctx context.Context, result *Reconcil
 			errs = append(errs, fmt.Sprintf("%s: %v", recipient, err))
 			continue
 		}
-		applogger.Log.Info("reconciliation alert sent", zap.String("recipient", recipient), zap.Int("discrepancies", result.DiscrepancyCount()))
+		applogger.Log.Info("reconciliation alert queued", zap.String("recipient", recipient), zap.Int("discrepancies", result.DiscrepancyCount()))
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("notify: %s", strings.Join(errs, "; "))
@@ -245,6 +245,18 @@ func buildAlertContent(r *ReconciliationResult) string {
 				inc.StuckSince.UTC().Format(time.RFC3339))
 		}
 		b.WriteString("  Re-trigger CompleteSubscriptionPurchase for each trade_no to repair.\n")
+	}
+	if len(r.ReceivableInconsistencies) > 0 {
+		fmt.Fprintf(&b, "\nReceivable mirror mismatches: %d (showing up to 5):\n", len(r.ReceivableInconsistencies))
+		for _, inc := range r.ReceivableInconsistencies[:min(5, len(r.ReceivableInconsistencies))] {
+			fmt.Fprintf(&b, "  - user=%s pending_quota=%d overdraft_quota=%d difference_quota=%d\n", inc.UserID, inc.PendingReceivableQuota, inc.OverdraftQuota, inc.Difference)
+		}
+	}
+	if len(r.RefundInconsistencies) > 0 {
+		fmt.Fprintf(&b, "\nRefund reversal mismatches: %d (showing up to 5):\n", len(r.RefundInconsistencies))
+		for _, inc := range r.RefundInconsistencies[:min(5, len(r.RefundInconsistencies))] {
+			fmt.Fprintf(&b, "  - refunded_orders=%d refunded_cents=%d reversal_count=%d reversal_cents=%d difference_cents=%d\n", inc.RefundedOrderCount, inc.RefundedOrderMoneyCents, inc.ReversalLedgerCount, inc.ReversalLedgerAmount, inc.MoneyCentsDiff)
+		}
 	}
 	return b.String()
 }

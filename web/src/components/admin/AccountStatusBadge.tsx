@@ -133,14 +133,14 @@ function upstreamQuotaExceeded(info: AccountStatusInfo): boolean {
 
 function formatCountdown(targetUnix: number, nowUnix: number): string {
   const diff = targetUnix - nowUnix;
-  if (diff <= 0) return t("即将恢复");
+  if (diff <= 0) return t("恢复时间待确认");
   const days = Math.floor(diff / DAY_S);
   const hours = Math.floor((diff % DAY_S) / HOUR_S);
   const minutes = Math.floor((diff % HOUR_S) / 60);
-  if (days > 0) return t(`${days}天${hours}h后恢复`);
-  if (hours > 0) return t(`${hours}h${minutes}m后恢复`);
-  if (minutes > 0) return t(`${minutes}m后恢复`);
-  return t("即将恢复");
+  if (days > 0) return t(`预计 ${days}天${hours}h后恢复`);
+  if (hours > 0) return t(`预计 ${hours}h${minutes}m后恢复`);
+  if (minutes > 0) return t(`预计 ${minutes}m后恢复`);
+  return t("恢复时间待确认");
 }
 
 export function deriveAccountStatus(info: AccountStatusInfo, nowUnix: number): StateKind {
@@ -183,7 +183,9 @@ export function AccountStatusBadge({
 
   // Build tooltip for states that have extra context
   let tooltip: string | undefined;
-  if (kind === 'rate_limited' && info.rateLimitedUntil) {
+  if (kind === 'disabled' && info.recoveryPolicy === 'manual') {
+    tooltip = [t('待人工处理'), info.unschedulableReason].filter(Boolean).join(' · ');
+  } else if (kind === 'rate_limited' && info.rateLimitedUntil) {
     tooltip = formatCountdown(info.rateLimitedUntil, nowUnix);
   } else if (kind === 'unschedulable') {
     const parts: string[] = [info.unschedulableReason ?? t("不可调度")];

@@ -96,7 +96,7 @@ func cleanRecipients(input []string) []string {
 // background tasks (quota reset sweeper, account recovery sweeper, quota alert
 // evaluator) when enabled via environment variables. These run in-process in
 // channel-service because they need direct ChannelRepo access (the Repository
-// implements both ChannelRepo and QuotaResetRunRecorder). The alert evaluator
+// implements the atomic quota reset contract in ChannelRepo). The alert evaluator
 // reuses the notify-worker gRPC connection so no new delivery path is created.
 //
 // Returns a cleanup function that cancels the background context and closes

@@ -13,12 +13,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	commonv1 "micro-one-api/api/common/v1"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	subscriptiondata "micro-one-api/domain/subscription/data"
 	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
 	relaydata "micro-one-api/internal/data"
+	"micro-one-api/platform/metrics"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 )
@@ -429,12 +432,13 @@ func TestHTTPServerRawRelayForwardsResponseAndCommitsBilling(t *testing.T) {
 	defer upstream.Close()
 
 	identityClient := rawIdentityClient{}
-	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	channelClient := &rawModelHealthClient{rawChannelClient: rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}}
 	billingClient := &rawBillingClient{}
 	logClient := &rawLogClient{}
+	channelAdapter := relaydata.NewChannelAdapter(channelClient)
 	relayUsecase := relaybiz.NewRelayUsecase(
 		relaydata.NewIdentityAdapter(identityClient),
-		relaydata.NewChannelAdapter(channelClient),
+		channelAdapter,
 		nil,
 		&relaybiz.RetryPolicy{MaxAttempts: 1},
 	)
@@ -454,8 +458,13 @@ func TestHTTPServerRawRelayForwardsResponseAndCommitsBilling(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer user-token")
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
+	executionCounter := metrics.RelayExecutorRequestsTotal.WithLabelValues("/v1/embeddings", relayStreamUnknown, relayExecutionPathRaw, "200", "success")
+	executionBefore := testutil.ToFloat64(executionCounter)
 
 	srv.ServeHTTP(rec, req)
+	if err := channelAdapter.FlushModelHealth(context.Background()); err != nil {
+		t.Fatalf("flush model health: %v", err)
+	}
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
@@ -477,6 +486,13 @@ func TestHTTPServerRawRelayForwardsResponseAndCommitsBilling(t *testing.T) {
 	}
 	if got := logClient.entries[0]; got.ModelName != "text-embedding-ada-002" || got.Quota != 17 || got.ChannelId != 11 {
 		t.Fatalf("usage log mismatch: model=%q quota=%d channel=%d", got.ModelName, got.Quota, got.ChannelId)
+	}
+	if got := testutil.ToFloat64(executionCounter); got != executionBefore+1 {
+		t.Fatalf("raw execution outcomes = %v, want %v", got, executionBefore+1)
+	}
+	health := channelClient.modelHealthRequests()
+	if len(health) != 1 || !health[0].GetSuccess() || health[0].GetSourceKind() != relaybiz.UpstreamSourceChannel || health[0].GetSourceId() != 11 || health[0].GetModelId() != "text-embedding-ada-002" || health[0].GetUpstreamModelId() != "text-embedding-ada-002" {
+		t.Fatalf("raw model health = %+v, want one successful final channel/model sample", health)
 	}
 }
 

@@ -1,8 +1,8 @@
 # 下一阶段计划：可靠性补缺、运行可见性与文章技术债收口
 
-> 制定：2026-09-22；状态：第一批 R1–R4 已完成本地实施及隔离验收；第二批待实施，仍为当前执行入口。
+> **当前执行入口**。制定：2026-09-22；更新：2026-09-23。状态：第一批 R1–R4 已随 v0.31.1 发布；第二批 O1–O4 及 O5 正确性修复已完成本地实施和隔离验收，纳入 [v0.32.0](../releases/release-v0.32.0.md)，未部署。生产通知接收端、OTel 导出及生产回源成本仍待部署后验收。下一批为 Q1–Q3，按条件启动。
 >
-> 核对基线：`develop@77e4db45`（[v0.31.0](../releases/release-v0.31.0.md)）。规划时完成分支切换、文章盘点和静态核对；随后第一批已实现并通过本地验收。实现与验收记录随本批一并提交，未部署或启动生产观察。
+> 初始规划基线：`develop@77e4db45`（[v0.31.0](../releases/release-v0.31.0.md)）；第二批审查基线：`develop@d70e02f2`（已合入 [v0.31.1](../releases/release-v0.31.1.md)）。第一批实现与隔离验收记录已纳入版本；第二批本地证据见第 3 节，不代表生产验收。
 >
 > 来源：桌面 `/Users/neo/Desktop/micro-one-api-articles/` 的 04–25 共 22 篇原文、用户补充的四组建议，以及仓库既有验收记录。`wechat/` 是发布副本，不重复记债；目录中没有 01–03 原文，不推测其内容。
 >
@@ -102,13 +102,45 @@ R1 → R2 → R3 → R4 已完成实现及验收，见[第一批实施记录](..
 
 | ID / 优先级 | 最小范围与依赖 | 可验证的完成条件 |
 | --- | --- | --- |
-| O1 / P1 路由注册强制观测 | 在现有 `handleFunc`/`handlePrefix`/`wrapRoute` 注册缝隙统一请求生命周期观察，声明执行/只读/不支持类别；执行结果携带实际 source/model，复用 retry 与结算记录器。先列 Chat/Messages/Responses/raw/WS 的记录矩阵，删除重复写入后再接包装 | 新执行路由缺少观察声明时测试失败；成功、最终失败、取消、501/405、鉴权失败各有正确请求终态。用量仅对实际执行记录，不给 501/鉴权失败造 token；同源重试健康一次、账务一次，raw 不漏模型健康；`Flusher`/`Hijacker` 等能力不被包装破坏。依赖 R3/R4 |
-| O2 / P1 告警与追踪闭环 | 补 `buildAlertContent` 缺的 receivable_mirror/refund_reversal；关联 X-Request-ID、根请求、X-Trace-ID 与 OTel，保留现有兼容头；盘点有用指标的看板/告警。把 R1 及既有 outbox/Redis 降级信号接到既有通知能力，复核实际外部送达 | 七类差异“仅此一类非零”的通知都解释得清；用户提供的请求 ID 能定位根请求/attempt/trace；告警 firing→实际通知→恢复可回读，未配置通知明确显示未送达。去重冲突指标仅按操作/结果计数，不带用户/请求标签；不把出日志视为通知完成 |
-| O3 / P1 订阅用量可解释 | 从 billing 权威预留/结算语义提供 settled、frozen、available，并明确预留所属窗口和倍率；保留旧 used/remaining，增加 unlimited/over-limit 等明确语义及兼容字段文档；对齐购买快照与当前配置用途，修正文档中 expired 续费“复活”与实际新建的矛盾 | 在途批量请求、跨窗结算、取消释放、nil/0、过期、倍率改变都有 API/UI 一致样例；不能用“总预扣”冒充“订阅部分冻结”；旧客户端可继续解析。影响履行字段的快照新增规则/老订单默认值明确，未知历史不推测回填 |
-| O4 / P1 账号治理与原子重置 | 复用 repo 事务重置实现，移除/禁止生产进入“先写重置记录、后清用量”非原子路径；共用账号固定/滚动窗口计算。运营页补封禁原因/到期、预计恢复标识、manual 待处理筛选及卡住时长，探测成本单列 | 注入重置中途失败后可安全重试，唯一键不永久卡窗口；双副本同时重置一次；读/写/预扣一致；manual 账号可定位，预计时间不显示为承诺；探测使用量不混入用户账单 |
-| O5 / P2 缓存与降级边界 | 清理 L2 反序列化坏值并回源；搜索调用方后删除死精确失效接口、明确整片失效命名；核对事件接线与陈旧注释。V2 鉴权缓存仍绕过，先量回源成本。gRPC 实际 reject 与 `FallbackCache` 指标标签一致化 | 坏值不会持续到 TTL 才停止解析失败；删接口不影响广播；Redis 断开时 legacy 与 V2 的撤权/失效实际延迟分别有证据和应急操作。不得沿用文章 5/10 分钟为所有现网路径结论；不得先恢复 V2 缓存再补版本校验 |
+| O1 / P1 路由注册强制观测 | **已完成（本地验收，未部署）**。注册强制声明执行/只读/不支持类别；请求终态、实际 source/model、raw 健康与重试结算一次性记录统一。审查补齐中间件前置拒绝、1xx、panic、内部预算超时和固定路由标签；证据归入下节 | 新执行路由缺少观察声明时测试失败；成功、最终失败、取消、501/405、鉴权失败各有正确请求终态。用量仅对实际执行记录，不给 501/鉴权失败造 token；同源重试健康一次、账务一次，raw 不漏模型健康；`Flusher`/`Hijacker` 等能力不被包装破坏。依赖 R3/R4 |
+| O2 / P1 告警与追踪闭环 | **实现及本地验收完成，生产送达待验收**。七类对账差异完整；HTTP span/兼容头/路由审计/Playground 关联；Alertmanager 接既有通知队列，新增送达、Redis 降级、去重冲突和探测用量看板 | 七类差异“仅此一类非零”的通知都解释得清；用户提供的请求 ID 能定位根请求/attempt/trace；本地 firing/resolved 通知真实 HTTP 接收并持久化 sent；无接收端为 failed/not_configured。生产验收不得以规则或 queued 日志代替 |
+| O3 / P1 订阅用量可解释 | **已完成（本地验收）**。billing 事务内读取结算及订阅部分冻结，admin/relay 使用同一 RPC；UI 展示 settled/frozen/available；旧 used/remaining 保留，补无限/超限与窗口/倍率契约；修正过期后购买为新建 | 三方言覆盖在途多请求、取消、跨窗结算、nil/0、过期、倍率变化；接口覆盖权威失败不回退，DTO 保留 null/0，浏览器覆盖无限/超限。见[接口契约](./subscription-usage-api.md) |
+| O4 / P1 账号治理与原子重置 | **已完成（本地验收）**。ChannelRepo 强制原子重置，陈旧扫描不得清除新窗口用量；读写共用窗口计算。manual 服务端筛选、原因/等待时长在手机和桌面均可见；Anthropic/Codex 探测 token 单列 | 故障注入后回滚 reset-run 并可重试；三方言双副本仅成功一次；过期扫描不清新用量；无额度配置的 manual 账号也能显示恢复信息；上游不返回 usage 时明确 missing，不推算美元成本 |
+| O5 / P2 缓存与降级边界 | **正确性修复与隔离边界验收完成；生产成本测量保留**。坏值比较后删除、回源；缓存写入与 TTL 原子设置；移除无人调用的失效接口、整片失效改名 InvalidateAll、修正事件接线注释；V2 继续绕过缓存 | 坏值不计命中且回源失败仍清理；legacy Redis 断开后的 L1 30s 边界由时间推进测试验证，V2 撤权下一请求回源拒绝。gRPC 已按实际配置/default reject 标记，未发现硬编码 cache。生产 RPC QPS/P95 与故障延迟按运维手册采样后再决定缓存优化 |
 
 统一包装只负责观测与强制接入，**不承担业务计费或自行解析响应猜 token**。业务终态仍由 biz/执行器/结算路径产出，避免把“忘记记录”变成“记录两次”。
+
+### 第二批审查及验收记录（2026-09-23）
+
+基于 `develop@d70e02f2`，实现提交 `f0d31ecf`，纳入 v0.32.0，未部署。本节合并 O1 验收内容，不单独保留 O1 runbook。
+
+| 审查发现 | 修复与回归证据 |
+| --- | --- |
+| 内部 deadline 被误记普通错误，panic 没有终态，103/重复 WriteHeader 干扰实际状态 | `route_observation_test.go` 覆盖内部预算、panic 继续抛出但记录一次、1xx、可选 writer 接口、CORS；HTTP 指标保持首次最终状态和 Flush/WS 语义 |
+| 通用 HTTP 指标中间件顺序错误，前置拒绝漏记，资源 ID 可能进入 path 标签 | 生产链指标前置；注册模式作为固定 path 标签，执行/只读/不支持分开统计 |
+| 对账告警缺两类详情，追踪 ID 未贯通终态审计 | 七类独立通知测试；W3C 父 span→注册路由→Plan→终态的关联测试，取消后持久化审计仍保留 trace ID；Playground 在错误响应头阶段即可记录 ID |
+| 订阅页面不含订阅部分冻结，跨窗/倍率显示易误导 | billing 行锁下读计数和预留；三方言测试验证逐预留倍率、取消释放及跨窗结算；无活跃订阅/过期/零用量/null/0 回归 |
+| sweeper 非原子接口及陈旧快照可丢新窗口用量；恢复信息被无额度分支和手机隐藏列遮蔽 | 强制原子仓储接口，陈旧窗口保护；SQLite 故障回滚/重试，三方言并发重置；浏览器复现后将恢复信息放到账号名称下方 |
+| L2 损坏/null/空值长期残留且计入命中 | miniredis 回归先失败后通过；比较删除避免误删并发替换，回源失败也不保留坏值 |
+
+已执行：受影响 Go 模块（relay、billing、channel、admin、notify、subscription、cache/tracing/metrics）完整包回归；关键钱/权限/并发包 `go test -race`；Wire/分层检查；MySQL 8.4、PostgreSQL 16、SQLite 的订阅冻结与重置测试；Prometheus 三组规则测试、Alertmanager `amtool check-config`、部署文档检查（四组 Compose 配置、41 个 Kubernetes 资源及 82 个配置引用）、195 份 Markdown 本地链接及 diff 空白检查；前端类型检查/lint、相关 23 个单测、桌面/手机 4 个 Playwright 用例及截图。浏览器 API 使用隔离 fixture，不代表线上数据验收。
+
+主要复现入口：
+
+发布候选另完成 `make all`、完整 `make verify`（含 195 个前端单测与生产构建）、`make test-integration` 和全量 gosec；本地文档链接检查随发布材料增加为 196 份。
+
+```bash
+go test ./internal/... ./app/billing/internal/... ./app/channel/... ./app/admin/internal/... ./app/notify/internal/... ./domain/subscription/... ./platform/cache ./platform/grpc/... ./platform/tracing ./platform/metrics ./platform/subscriptiondto ./platform/middleware
+go test -race ./internal/biz ./internal/server ./platform/cache ./platform/tracing ./app/billing/internal/biz ./app/billing/internal/data ./app/channel/internal/biz ./app/channel/internal/data ./app/notify/internal/server
+./scripts/check-architecture.sh
+# 设置隔离测试 DSN 后运行；测试创建/删除独立临时数据库
+go test ./app/billing/internal/data ./app/channel/internal/data -run 'TestSubscriptionUsageAuthoritativeWindows|TestQuotaResetConcurrentAcrossDialects' -count=1
+docker run --rm --entrypoint /bin/promtool -v "$PWD/deploy/prometheus/alerts:/rules:ro" -w /rules prom/prometheus:v3.6.0 test rules credential.test.yml routing.test.yml operations.test.yml
+# web/ 下：npm test -- src/pages/SubscriptionsPage.test.tsx src/pages/admin/SubscriptionAccountsPage.test.tsx src/lib/relay-playground.test.ts src/pages/PlaygroundPage.test.tsx
+# web/ 下：npx playwright test e2e/operations-usage.spec.ts
+```
+
+部署后待验收：真实通知接收端的 firing/resolved 回执与 sent 记录、OTLP collector 导出、V2 回源 QPS/P95 和真实 Redis 故障传播延迟。未向任何外部接收人发送测试通知。当前 OTel 关联覆盖 Relay HTTP span 和路由审计，不宣称所有下游服务都生成 span。告警桥接、缓存应急操作及指标用途见[运维手册](../runbooks/routing-observability-runbook.md)。上述外部条件按原退出门槛继续登记，不以本地规则通过代替生产验收。
 
 ## 4. 第三批：前端、验证与性能（Q）
 
@@ -150,7 +182,7 @@ Q1 安全/取消和 Q2 已发布能力验收可以前移到第一批收尾。样
 | `13-routing-outbox-eventual-consistency.md` §6、§8 | 积压监控已完成；Redis 故障失效窗口 → O5；实际通知闭环 → O2；固定轮询、毒事件卡批次/死信 → D3；Streams XAUTOCLAIM 已在 v0.31 接入，不等于已有毒事件治理 |
 | `14-migration-and-partitioning.md` §6 | 历史方言覆盖、072 边界、manual DDL、owner 人工登记 → Q2；MySQL-only smoke 旧结论纠正；分区默认关闭 → D5，只在容量和保留政策需要时启用，不把默认关闭本身当 bug |
 | `15-circuit-breaker-timeout-degradation.md` §6 | gRPC resilience 默认关闭的运行验证、不同下游阈值 → R4/Q2；timeout×retry 预算 → R4；fallback 指标与实际 reject 不符 → O5；整片鉴权失效 → O5/D3。此处 5 样本 gRPC breaker 与 R2 的 10 样本来源 selector 是两层，不能混为一项 |
-| `16-reconciliation.md` §7 | 全量扫描、已确认/忽略状态 → D3；七类计数但通知只展示五类，当前仍成立 → O2；容差硬编码 → D7；receivable 精确镜像并发验证 → Q2，先测不放宽比较 |
+| `16-reconciliation.md` §7 | 全量扫描、已确认/忽略状态 → D3；七类计数但通知只展示五类的问题已在 O2 补齐；容差硬编码 → D7；receivable 精确镜像并发验证 → Q2，先测不放宽比较 |
 | `17-observability.md` §9 | X-Trace-ID/OTel 关联、没人使用的指标、去重冲突低基数指标 → O2；独立审计存储/查询与临时内容排障 → D5（v0.31 路由审计不等于管理操作审计）；手工基线 → Q3 |
 | `18-incident-postmortem.md` §6 | 模型健康不参与选路、文案匹配及 413/415/422 分类边界 → D4；统一事故记录、发现耗时与影响范围 → Q2；旧事件无样本就写未知，不编造数字 |
 | `19-web-playground.md` §8 | Markdown → D7；CSP 实际接入/生产头 → Q1；多轮快照核对 → Q1，编辑历史功能 → D7；取消到服务端确认 → R4/Q1/Q2；请求 ID UI 已有 → O2/Q1 关联验证 |

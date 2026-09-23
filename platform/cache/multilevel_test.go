@@ -4,6 +4,10 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
+	identityv1 "micro-one-api/api/identity/v1"
 )
 
 // stringLoader is a simple CacheLoader used to exercise MultiLevelCache logic
@@ -202,3 +206,69 @@ type boomErr struct{}
 func (boomErr) Error() string { return "boom" }
 
 var errBoom = boomErr{}
+
+func TestAuthCache_RedisOutageRevocationBoundary(t *testing.T) {
+	srv := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: srv.Addr(), MaxRetries: -1, DialTimeout: 20 * time.Millisecond})
+	t.Cleanup(func() { _ = client.Close() })
+	revoked := false
+	c, err := NewAuthCache(client, nil, func(context.Context, string) (*identityv1.GetAuthSnapshotReply, error) {
+		if revoked {
+			return nil, errBoom
+		}
+		return &identityv1.GetAuthSnapshotReply{UserId: 1, UserEnabled: true, TokenEnabled: true}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	ctx := context.Background()
+	if _, err := c.Get(ctx, "test-key"); err != nil {
+		t.Fatal(err)
+	}
+	revoked = true
+	srv.Close()
+	if _, err := c.Get(ctx, "test-key"); err != nil {
+		t.Fatalf("legacy L1 should still be stale before expiry: %v", err)
+	}
+	if c.cache.ttl != 30*time.Second {
+		t.Fatalf("legacy L1 boundary changed: %s", c.cache.ttl)
+	}
+	// Advance the cached entry past its production TTL without a 30s sleep.
+	v, ok := c.cache.l1.Get(c.cache.prefix + "test-key")
+	if !ok {
+		t.Fatal("missing primed cache entry")
+	}
+	v.(*entry[identityv1.GetAuthSnapshotReply]).expiresAt = time.Now().Add(-time.Second)
+	if _, err := c.Get(ctx, "test-key"); err == nil {
+		t.Fatal("revoked identity must fail after L1 expiry while Redis is down")
+	}
+}
+
+func TestMultiLevelCache_CorruptL2RemovedEvenWhenSourceFails(t *testing.T) {
+	srv := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: srv.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	ld := &stringLoader{err: errBoom}
+	c := newTestMultiLevel(t, ld.asLoader())
+	c.l2 = client
+	for _, bad := range []string{"{broken", "", "null"} {
+		if err := srv.Set(c.prefix+"k", bad); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.Get(context.Background(), "k"); err == nil {
+			t.Fatal("expected source failure")
+		}
+		if srv.Exists(c.prefix + "k") {
+			t.Fatalf("corrupt L2 value %q survived failed source load", bad)
+		}
+	}
+	if got := c.metrics.l2Hits.Load(); got != 0 {
+		t.Fatalf("corrupt values counted as hits: %d", got)
+	}
+	ld.err, ld.value = nil, "recovered"
+	got, err := c.Get(context.Background(), "k")
+	if err != nil || got == nil || *got != "recovered" {
+		t.Fatalf("recovery: got=%v err=%v", got, err)
+	}
+}

@@ -1,0 +1,18 @@
+{
+  "uid": "operations-delivery",
+  "title": "Delivery, Credentials and Probe Usage",
+  "tags": ["micro-one-api", "operations"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {"id": 1, "title": "Notification delivery attempts", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"refId": "A", "expr": "sum by (result) (increase(micro_one_api_notification_delivery_total[5m]))", "legendFormat": "{{result}}"}]},
+    {"id": 2, "title": "Pending credential age", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}, "targets": [{"refId": "A", "expr": "micro_one_api_credential_pending_oldest_age_seconds", "legendFormat": "{{instance}} {{platform}}"}], "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}},
+    {"id": 3, "title": "Redis limiter degradation", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "targets": [{"refId": "A", "expr": "sum by (instance, reason) (increase(micro_one_api_relay_account_concurrency_fallback_total[5m]))", "legendFormat": "concurrency {{instance}} {{reason}}"}, {"refId": "B", "expr": "sum by (instance, reason) (increase(micro_one_api_relay_account_rpm_fallback_total[5m]))", "legendFormat": "RPM {{instance}} {{reason}}"}]},
+    {"id": 4, "title": "Duplicate billing claims", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}, "targets": [{"refId": "A", "expr": "sum by (operation, result) (increase(micro_one_api_billing_dedupe_conflicts_total[5m]))", "legendFormat": "{{operation}} {{result}}"}]},
+    {"id": 5, "title": "Account probe tokens (outside user billing)", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}, "targets": [{"refId": "A", "expr": "sum by (platform, bucket) (increase(micro_one_api_account_probe_tokens_total[5m]))", "legendFormat": "{{platform}} {{bucket}}"}]},
+    {"id": 6, "title": "Probe usage reporting coverage", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}, "targets": [{"refId": "A", "expr": "sum by (platform, result) (increase(micro_one_api_account_probe_usage_total[5m]))", "legendFormat": "{{platform}} {{result}}"}]}
+  ]
+}

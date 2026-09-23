@@ -15,6 +15,8 @@ import (
 )
 
 type selectionAuditPayload struct {
+	TraceID         string   `json:"trace_id,omitempty"`
+	OTelTraceID     string   `json:"otel_trace_id,omitempty"`
 	CandidateKinds  []string `json:"candidate_kinds,omitempty"`
 	StickyHit       bool     `json:"sticky_hit"`
 	PriorityTier    int64    `json:"priority_tier"`
@@ -55,6 +57,7 @@ func (r *selectionAuditRecorder) RecordSelection(ctx context.Context, event rela
 		return
 	}
 	payload, err := jsonx.Marshal(selectionAuditPayload{
+		TraceID: event.TraceID, OTelTraceID: event.OTelTraceID,
 		CandidateKinds: event.CandidateKinds, StickyHit: event.StickyHit,
 		PriorityTier: event.PriorityTier, SelectionReason: event.SelectionReason,
 		Fallback: event.Fallback, FallbackReason: event.FallbackReason,

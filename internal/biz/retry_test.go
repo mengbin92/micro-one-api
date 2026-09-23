@@ -516,6 +516,7 @@ type trackingSelector struct {
 	trueCalls    int
 	falseCalls   int
 	healthEvents []healthEvent
+	modelHealth  []modelHealthEvent
 }
 
 func newTrackingSelector() *trackingSelector { return &trackingSelector{} }
@@ -540,6 +541,11 @@ func (m *trackingSelector) RecordSubscriptionAccountHealth(_ context.Context, _ 
 
 func (m *trackingSelector) RecordChannelHealth(_ context.Context, channelID int64, success bool, err string, responseTime int64) error {
 	m.healthEvents = append(m.healthEvents, healthEvent{channelID, success, err, responseTime})
+	return nil
+}
+
+func (m *trackingSelector) RecordModelHealth(_ context.Context, sourceKind string, sourceID int64, modelID, upstreamModelID string, success bool, _ string, _ int64) error {
+	m.modelHealth = append(m.modelHealth, modelHealthEvent{sourceKind, sourceID, modelID, upstreamModelID, success})
 	return nil
 }
 
@@ -660,6 +666,9 @@ func TestRetryExecutor_SameSourceRetryNotFallback(t *testing.T) {
 	}
 	if result.FirstErr != nil {
 		t.Fatalf("same-source retry must NOT set FirstErr; got %v", result.FirstErr)
+	}
+	if len(sel.healthEvents) != 1 || len(sel.modelHealth) != 1 {
+		t.Fatalf("same-source retry health = channel:%d model:%d, want one logical outcome each", len(sel.healthEvents), len(sel.modelHealth))
 	}
 }
 
