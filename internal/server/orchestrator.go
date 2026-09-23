@@ -461,9 +461,10 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			}
 			latency := time.Since(startTime)
 			settleCtx := settlementContext(ctx)
-			if !completed {
-				setRelayObservationResult(settleCtx, "stream_error")
-				o.finalizeSelectionResult(plan, "error", latency)
+			if !completed || ctx.Err() != nil {
+				interrupted := *retryResult
+				interrupted.Err = relayStreamInterrupted(ctx, nil)
+				o.finalizeSelectionFromRetryResult(plan, &interrupted, latency)
 				if o.quotaPort != nil {
 					return o.quotaPort.Release(settleCtx, finalReservation, "downstream stream interrupted")
 				}

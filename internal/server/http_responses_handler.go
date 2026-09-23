@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -137,12 +138,9 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			}
 			usage := newResponsesStreamUsageTracker(estimateRawUsage(upstreamBody))
 			completed := writeRawStreamResponse(w, streamResp, usage)
-			if !completed {
+			if !completed || ctx.Err() != nil {
 				_ = s.releaseQuota(ctx, reservation.ReservationId, "incomplete upstream stream")
-				upstreamResp = &relayprovider.RawResponse{StatusCode: streamResp.StatusCode}
-				responseChannel = ch
-				setRelayObservationResult(ctx, "stream_error")
-				return nil
+				return relayStreamInterrupted(ctx, nil)
 			}
 			actualUsage := usage.Usage()
 			logInput := usageLogInput{
@@ -219,6 +217,9 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 	// Finalize routing selection outcome (code review #1/#2).
 	s.finalizeSelectionFromResult(plan, result, time.Since(retryStartedAt))
 	recordRelayRetryOutcome(r.Context(), result.Fallback, result.Err, result.FallbackReason)
+	if errors.Is(result.Err, errRelayStreamInterrupted) {
+		return
+	}
 
 	if result.Err != nil {
 		setErrorChannel(w, result.Channel)
@@ -358,9 +359,9 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		}
 		usage := newResponsesStreamUsageTracker(estimateRawUsage(body))
 		completed := writeRawStreamResponse(w, streamResp, usage)
-		if !completed {
+		if !completed || r.Context().Err() != nil {
 			_ = s.releaseQuota(r.Context(), reservation.ReservationId, "incomplete upstream stream")
-			setRelayObservationResult(r.Context(), "stream_error")
+			_ = relayStreamInterrupted(r.Context(), nil)
 			return
 		}
 		actualUsage := usage.Usage()

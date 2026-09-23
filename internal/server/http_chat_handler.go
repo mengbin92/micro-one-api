@@ -223,6 +223,9 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 	// routing_fallback_total fire once (code review #1/#2).
 	s.finalizeSelectionFromResult(plan, result, time.Since(retryStartedAt))
 	recordRelayRetryOutcome(r.Context(), result.Fallback, result.Err, result.FallbackReason)
+	if stderrors.Is(result.Err, errRelayStreamInterrupted) {
+		return
+	}
 
 	if result.Err != nil {
 		setErrorChannel(w, result.Channel)
@@ -348,8 +351,9 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 			s.ingestUsageLogAfterResponse(logInput)
 		}
 	} else {
-		setRelayObservationResult(r.Context(), "stream_error")
+		cancelStream()
 		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "stream error")
+		return relayStreamInterrupted(r.Context(), nil)
 	}
 	return nil
 }

@@ -1087,6 +1087,76 @@ func TestAdminHTTPPageIsServed(t *testing.T) {
 	}
 }
 
+func TestAdminHTTPPageSecurityHeadersAllowConfiguredRelay(t *testing.T) {
+	t.Setenv("ADMIN_WEB_RELAY_ORIGIN", "https://build-relay.example.test")
+	store := &adminHTTPSystemOptionsStore{values: map[string]string{
+		"ServerAddress": "https://relay.example.test:8443/v1",
+	}}
+	svc := service.NewAdminService(nil, nil, nil, adminbiz.NewSystemOptionsUsecase(store))
+	srv := NewHTTPServer(":0", svc, nil, "", adminWebRootFixture(t))
+
+	for _, path := range []string{"/", "/playground", "/assets/app.js"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s status = %d, body=%s", path, rec.Code, rec.Body.String())
+		}
+		if got := rec.Header().Get("X-Frame-Options"); got != "DENY" {
+			t.Fatalf("GET %s X-Frame-Options = %q", path, got)
+		}
+		if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+			t.Fatalf("GET %s X-Content-Type-Options = %q", path, got)
+		}
+		policy := rec.Header().Get("Content-Security-Policy")
+		if !strings.Contains(policy, "script-src 'self';") || !strings.Contains(policy, "frame-ancestors 'none';") {
+			t.Fatalf("GET %s incomplete CSP = %q", path, policy)
+		}
+		wantConnect := "connect-src 'self';"
+		if path != "/assets/app.js" {
+			wantConnect = "connect-src 'self' https://relay.example.test:8443;"
+		}
+		if !strings.Contains(policy, wantConnect) {
+			t.Fatalf("GET %s CSP = %q, want %q", path, policy, wantConnect)
+		}
+	}
+
+	store.values["ServerAddress"] = "https://new-relay.example.test/v1"
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/playground", nil))
+	if got := rec.Header().Get("Content-Security-Policy"); !strings.Contains(got, "connect-src 'self' https://new-relay.example.test;") || strings.Contains(got, "relay.example.test:8443") {
+		t.Fatalf("updated Relay CSP = %q", got)
+	}
+
+	store.values["ServerAddress"] = "https://relay.example.test; script-src *"
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/playground", nil))
+	if got := rec.Header().Get("Content-Security-Policy"); !strings.Contains(got, "connect-src 'self';") || strings.Contains(got, "script-src *") {
+		t.Fatalf("unsafe Relay CSP = %q", got)
+	}
+
+	store.values["ServerAddress"] = ""
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/playground", nil))
+	if got := rec.Header().Get("Content-Security-Policy"); !strings.Contains(got, "connect-src 'self' https://build-relay.example.test;") {
+		t.Fatalf("build Relay fallback CSP = %q", got)
+	}
+}
+
+func TestAdminWebRelayOriginRejectsUnsafeAddresses(t *testing.T) {
+	for _, address := range []string{
+		"", "javascript:alert(1)", "https://user:pass@relay.example.test",
+		"https://relay.example.test; script-src *", "https://relay.example.test\r\nscript-src *",
+	} {
+		if origin := adminWebRelayOrigin(address); origin != "" {
+			t.Errorf("address %q produced origin %q", address, origin)
+		}
+	}
+	if origin := adminWebRelayOrigin("http://127.0.0.1:8080/v1?token=secret"); origin != "http://127.0.0.1:8080" {
+		t.Fatalf("origin = %q", origin)
+	}
+}
+
 func TestAdminHTTPPageSPARouteFallback(t *testing.T) {
 	srv := NewHTTPServer(":0", nil, nil, "", adminWebRootFixture(t))
 	for _, path := range []string{"/", "/login", "/register", "/dashboard", "/tokens", "/pricing", "/redeem", "/admin/channel-health", "/admin/model-health", "/admin/cost-analysis", "/admin/reconciliation", "/admin/options", "/admin/subscription-plans"} {

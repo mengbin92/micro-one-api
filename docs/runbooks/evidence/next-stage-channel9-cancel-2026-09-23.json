@@ -1,0 +1,166 @@
+{
+  "date_utc": "2026-09-23",
+  "environment": "production",
+  "channel": {
+    "id": 9,
+    "name": "StepFun",
+    "health": "healthy",
+    "test_model": "step-3.7-flash",
+    "mapping": "enabled and unique to channel 9"
+  },
+  "credentials": {
+    "user_id": 2,
+    "token_ids": [29, 30],
+    "model_allowlist": ["step-3.7-flash"],
+    "initial_quota_tokens_each": 4096,
+    "validity_minutes_each": 30,
+    "final_status": "both disabled",
+    "secrets_recorded": false
+  },
+  "api_cancellations": [
+    {
+      "root_request_id": "stage3-ch9-1790149239491",
+      "endpoint": "/v1/messages",
+      "http_status": 200,
+      "first_content_delta_seen": true,
+      "normal_terminal_seen": false,
+      "client_abort_ms": 1839,
+      "channel_id": 9,
+      "reservation_id": "res_1790149240677246241_1790149240",
+      "reservation_status": "released",
+      "actual_cost": 0,
+      "consume_ledger_rows": 0
+    },
+    {
+      "root_request_id": "stage3-ch9-1790149515563",
+      "endpoint": "/v1/messages",
+      "http_status": 200,
+      "first_content_delta_seen": true,
+      "normal_terminal_seen": false,
+      "client_abort_ms": 2151,
+      "channel_id": 9,
+      "reservation_id": "res_1790149516707039006_1790149516",
+      "reservation_status": "released",
+      "actual_cost": 0,
+      "consume_ledger_rows": 0,
+      "tcp_observation": "14.103.2.83:443 SYN_SENT to ESTABLISHED; connection remained ESTABLISHED after abort"
+    }
+  ],
+  "browser_control": {
+    "origin": "https://console.mengbin.top",
+    "admin_session": "isolated browser fixture; admin-only API reads stubbed",
+    "status_endpoint_and_relay": "real production",
+    "endpoint": "/v1/chat/completions",
+    "root_request_id": "playground-chat-19ceb6cc-381a-463b-be24-f391aa303d6e",
+    "outcome": "completed before UI stop trigger; not counted as cancellation",
+    "channel_id": 9,
+    "reservation_status": "committed",
+    "actual_cost": 12,
+    "token_usage_tokens": 1056
+  },
+  "browser_cancellation": {
+    "origin": "https://console.mengbin.top",
+    "admin_session": "isolated browser fixture; admin-only API reads stubbed",
+    "status_endpoint_and_relay": "real production",
+    "endpoint": "/v1/chat/completions",
+    "root_request_id": "playground-chat-a4e0b452-e2c3-4df6-ad76-96f1b024a0d8",
+    "http_status_before_stop": 200,
+    "stop_button_clicked": true,
+    "ui_state": "stopped",
+    "browser_request_failure": "net::ERR_ABORTED",
+    "channel_id": 9,
+    "reservation_id": "res_1790152367389760969_1790152367",
+    "reservation_status": "released",
+    "actual_cost": 0,
+    "consume_ledger_rows": 0,
+    "relay_executor_result": "stream_error",
+    "csp_violations": 0,
+    "page_errors": 0,
+    "key_persisted_in_browser_storage": false
+  },
+  "public_headers": {
+    "path": "GET https://console.mengbin.top/playground",
+    "status": 200,
+    "csp_connect_src": "'self' https://api.mengbin.top",
+    "relay_cors_allows_console_origin": true,
+    "relay_cors_allows_local_tunnel_origin": false
+  },
+  "post_fix_verification": {
+    "source": "6b228152 plus working-tree cancellation fix",
+    "deployed_at_utc": "2026-09-23T09:29:24Z",
+    "service": "relay-gateway",
+    "platform": "linux/amd64",
+    "image": "sha256:638c8979c25f0f1d233459a6a25a9b81f6c3f6b7300bd7b255d8d56131c64007",
+    "rollback_tag": "rollback-20260923-172746",
+    "root_cause": "Interrupted legacy streams returned nil after releasing quota, producing successful routing audits; a fixed stream_error label also hid context cancellation. Orchestrator interruption finalization similarly discarded the cancellation cause.",
+    "local_verification": {
+      "test": "TestClientCancellationReachesUpstreamAndFinalizes",
+      "cases": 10,
+      "upstream": "Real controlled HTTP servers acknowledge request-context cancellation over HTTP/1.1 and HTTP/2. Messages and legacy Chat use Anthropic-compatible channels; orchestrator Chat uses OpenAI-compatible channels.",
+      "assertions": ["upstream context canceled", "exactly one attempt and reservation", "release once with a usable cleanup context", "no quota commit", "one final canceled or timeout audit", "matching execution metric"],
+      "related_regression": "TestIncompleteStreamsNeverCommitOrReplay also rejects appended JSON errors or fabricated DONE frames and requires an error audit.",
+      "commands_passed": [
+        "go test ./internal/server ./internal/biz ./internal/adaptor ./domain/upstream/provider -count=1",
+        "go test -race ./internal/server -run 'TestClientCancellationReachesUpstreamAndFinalizes|TestIncompleteStreamsNeverCommitOrReplay|TestCanceledAdaptorStream' -count=3",
+        "./scripts/check-architecture.sh"
+      ]
+    },
+    "production_api_cancellations": [
+      {
+        "root_request_id": "stage3-cancel-fixed-msg-1790156191446",
+        "endpoint": "/v1/messages",
+        "execution_path": "legacy",
+        "http_status": 200,
+        "first_sse_event_seen": true,
+        "normal_terminal_seen": false,
+        "client_abort_ms": 837,
+        "channel_id": 9,
+        "reservation_id": "res_1790156191957712322_1790156191",
+        "reservation_status": "released",
+        "attempt_number": 1,
+        "actual_cost": 0,
+        "consume_ledger_rows": 0,
+        "final_routing_audit_id": 69299,
+        "final_routing_result": "canceled",
+        "canceled_metric_delta": 1,
+        "admin_attempt_readback": "released"
+      },
+      {
+        "root_request_id": "stage3-cancel-fixed-chat-1790156194728",
+        "endpoint": "/v1/chat/completions",
+        "execution_path": "legacy",
+        "http_status": 200,
+        "first_sse_event_seen": true,
+        "normal_terminal_seen": false,
+        "client_abort_ms": 381,
+        "channel_id": 9,
+        "reservation_id": "res_1790156194856669694_1790156194",
+        "reservation_status": "released",
+        "attempt_number": 1,
+        "actual_cost": 0,
+        "consume_ledger_rows": 0,
+        "final_routing_audit_id": 69301,
+        "final_routing_result": "canceled",
+        "canceled_metric_delta": 1,
+        "admin_attempt_readback": "released"
+      }
+    ],
+    "preliminary_sample": {
+      "root_request_id": "stage3-cancel-fixed-msg-1790156110712",
+      "outcome": "Client cancellation occurred, but the harness initially treated its own AbortError as a test failure. Independent database readback confirms channel 9, attempt 1, released and actual_cost 0.",
+      "included_in_full_acceptance_samples": false
+    },
+    "credentials": {
+      "token_ids": [31, 32, 33],
+      "unused_preparation_token_id": 31,
+      "used_test_token_ids": [32, 33],
+      "quota_tokens_per_used_test_token": 4096,
+      "validity_minutes": 30,
+      "final_status": "all disabled; all used_quota values are zero",
+      "secrets_recorded": false,
+      "temporary_helpers_and_tunnels": "removed and closed"
+    },
+    "browser_retested_after_fix": false
+  },
+  "acceptance_boundary": "Browser abort was verified before this fix. After deployment, real channel 9 Messages and Chat cancellations independently verify released reservations, no charge, canceled audits and canceled metrics. Controlled HTTP/1.1 and HTTP/2 upstreams confirm request-context cancellation through the actual Relay handlers. StepFun does not provide a per-request cancellation acknowledgement here; vendor-internal computation stop remains unverified, and a reusable TCP connection remaining established is not a cancellation failure."
+}

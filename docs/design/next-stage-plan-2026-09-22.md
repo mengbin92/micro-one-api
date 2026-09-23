@@ -1,6 +1,6 @@
 # 下一阶段计划：可靠性补缺、运行可见性与文章技术债收口
 
-> **当前执行入口**。制定：2026-09-22；更新：2026-09-23。状态：第一批 R1–R4 已随 v0.31.1 发布；第二批 O1–O4 及 O5 正确性修复已完成本地实施和隔离验收，纳入 [v0.32.0](../releases/release-v0.32.0.md)，未部署。生产通知接收端、OTel 导出及生产回源成本仍待部署后验收。下一批为 Q1–Q3，按条件启动。
+> **当前执行入口**。制定：2026-09-22；更新：2026-09-23。状态：第一批 R1–R4 已随 v0.31.1 发布；第二批 O1–O4 及 O5 正确性修复已完成本地实施和隔离验收，纳入 [v0.32.0](../releases/release-v0.32.0.md) 并已上线。生产通知接收端、OTel 导出及生产回源成本仍待线上验收。第三批 Q1 安全头与取消终态修复已上线，渠道 9 复验确认预留释放、无扣费及 `canceled` 审计；其余验收见第 4 节。
 >
 > 初始规划基线：`develop@77e4db45`（[v0.31.0](../releases/release-v0.31.0.md)）；第二批审查基线：`develop@d70e02f2`（已合入 [v0.31.1](../releases/release-v0.31.1.md)）。第一批实现与隔离验收记录已纳入版本；第二批本地证据见第 3 节，不代表生产验收。
 >
@@ -102,7 +102,7 @@ R1 → R2 → R3 → R4 已完成实现及验收，见[第一批实施记录](..
 
 | ID / 优先级 | 最小范围与依赖 | 可验证的完成条件 |
 | --- | --- | --- |
-| O1 / P1 路由注册强制观测 | **已完成（本地验收，未部署）**。注册强制声明执行/只读/不支持类别；请求终态、实际 source/model、raw 健康与重试结算一次性记录统一。审查补齐中间件前置拒绝、1xx、panic、内部预算超时和固定路由标签；证据归入下节 | 新执行路由缺少观察声明时测试失败；成功、最终失败、取消、501/405、鉴权失败各有正确请求终态。用量仅对实际执行记录，不给 501/鉴权失败造 token；同源重试健康一次、账务一次，raw 不漏模型健康；`Flusher`/`Hijacker` 等能力不被包装破坏。依赖 R3/R4 |
+| O1 / P1 路由注册强制观测 | **已完成并上线，本地验收已通过**。注册强制声明执行/只读/不支持类别；请求终态、实际 source/model、raw 健康与重试结算一次性记录统一。审查补齐中间件前置拒绝、1xx、panic、内部预算超时和固定路由标签；证据归入下节 | 新执行路由缺少观察声明时测试失败；成功、最终失败、取消、501/405、鉴权失败各有正确请求终态。用量仅对实际执行记录，不给 501/鉴权失败造 token；同源重试健康一次、账务一次，raw 不漏模型健康；`Flusher`/`Hijacker` 等能力不被包装破坏。依赖 R3/R4 |
 | O2 / P1 告警与追踪闭环 | **实现及本地验收完成，生产送达待验收**。七类对账差异完整；HTTP span/兼容头/路由审计/Playground 关联；Alertmanager 接既有通知队列，新增送达、Redis 降级、去重冲突和探测用量看板 | 七类差异“仅此一类非零”的通知都解释得清；用户提供的请求 ID 能定位根请求/attempt/trace；本地 firing/resolved 通知真实 HTTP 接收并持久化 sent；无接收端为 failed/not_configured。生产验收不得以规则或 queued 日志代替 |
 | O3 / P1 订阅用量可解释 | **已完成（本地验收）**。billing 事务内读取结算及订阅部分冻结，admin/relay 使用同一 RPC；UI 展示 settled/frozen/available；旧 used/remaining 保留，补无限/超限与窗口/倍率契约；修正过期后购买为新建 | 三方言覆盖在途多请求、取消、跨窗结算、nil/0、过期、倍率变化；接口覆盖权威失败不回退，DTO 保留 null/0，浏览器覆盖无限/超限。见[接口契约](./subscription-usage-api.md) |
 | O4 / P1 账号治理与原子重置 | **已完成（本地验收）**。ChannelRepo 强制原子重置，陈旧扫描不得清除新窗口用量；读写共用窗口计算。manual 服务端筛选、原因/等待时长在手机和桌面均可见；Anthropic/Codex 探测 token 单列 | 故障注入后回滚 reset-run 并可重试；三方言双副本仅成功一次；过期扫描不清新用量；无额度配置的 manual 账号也能显示恢复信息；上游不返回 usage 时明确 missing，不推算美元成本 |
@@ -112,7 +112,7 @@ R1 → R2 → R3 → R4 已完成实现及验收，见[第一批实施记录](..
 
 ### 第二批审查及验收记录（2026-09-23）
 
-基于 `develop@d70e02f2`，实现提交 `f0d31ecf`，纳入 v0.32.0，未部署。本节合并 O1 验收内容，不单独保留 O1 runbook。
+基于 `develop@d70e02f2`，实现提交 `f0d31ecf`，纳入 v0.32.0。用户确认第二批已部署；2026-09-23 只读核对 admin、relay、channel、billing、notify 容器均运行，线上 `latest` 镜像创建于 05:44–06:03 UTC。镜像时间与容器状态不替代外部通知送达、OTel 导出和缓存成本的线上验收。本节合并 O1 验收内容，不单独保留 O1 runbook。
 
 | 审查发现 | 修复与回归证据 |
 | --- | --- |
@@ -149,6 +149,24 @@ docker run --rm --entrypoint /bin/promtool -v "$PWD/deploy/prometheus/alerts:/ru
 | Q1 / P1→P2 Playground 和控制台 | 安全头及浏览器取消链路优先；复用现有 CSP 中间件并适配实际 Relay origin/样式需求，先验证再启用。核对每次请求历史快照，编辑历史/重发语义作为独立功能；RechargePage、残余 slate/硬编码图表色按组件迁移，深浅色逐状态检查 | admin 静态页面真实响应头和浏览器无误拦截；Key 不落存储/日志/URL；停止后服务端上游/预留终态可回读；请求检查器与审计一致；充值/图表键盘可用、对比度合格。Markdown 另见 D7，不因排版需求放松 XSS 防线 |
 | Q2 / P1→P2 可重现验收和资料治理 | 承接 v0.31 F17 支付沙箱往返、流式隔离矩阵；raw E2E 验证默认模型/模型映射/预扣/成功/失败/释放。补数据库历史基线 schema 语义及 manual DDL 的 owner/前置条件/验证；增量变更选取相关 E2E 到 PR，保留快速 verify 分层 | 复用 mock upstream/共享 workflow，不新建测试框架；记录 commit、镜像、场景、证据及剩余边界。F17 未有沙箱证据就保持待验收；三方言不是只检查文件名。修正旧验收文档首部与末尾待办矛盾；事故模板记录发现时间/影响范围，未知历史明确未知 |
 | Q3 / P2 性能基线和门禁 | 复用 benchmark/构建产物统计：Linux/amd64 代表负载、至少 3 次取中位数；首屏 JS/CSS/字体字节预算、Dashboard 索引 EXPLAIN/同负载对照；测量余额新鲜度再调 staleTime，补高频内部跳转预取。定位 executor 流式回归前维持 legacy | 原始样本、样本量、P95/分配/字节数可重现；索引确实受益再保留结论。明确 20% 回归线和 5/5 E2E 是工程准入线而非统计保证；perf fixture 随代表性协议变更维护，基线脚本化。Go 升级前复测 jsonx，不能因文章结论永久冻结版本 |
+
+### 第三批实施与验收记录（2026-09-23）
+
+Q1 安全头首段基于 `develop@b733af59` 实施。admin-api 的 SPA 页面与资源响应复用现有安全头；文档 CSP 将 `connect-src` 限定为同源及 `ServerAddress` 的 Relay origin，未配置时可由 `ADMIN_WEB_RELAY_ORIGIN` 对齐前端构建回退地址。非法地址不进入策略，脚本保持同源，运行时图表/进度条的样式属性可用。实现及配置说明见 `app/admin/internal/server/http.go` 和 `web/README.md`。
+
+本地证据：`go test ./app/admin/internal/server ./platform/middleware -count=1` 通过，覆盖真实 admin 页面/SPA 回退/静态资源响应头、配置变更与非法地址；`web/` 下 `npm run build` 通过；生产构建经 `node scripts/verify-admin-csp.mjs http://127.0.0.1:4174` 注入同形 CSP 做隔离浏览器验证，跨域模型与请求成功，请求 ID 可见，无 CSP 违规、页面异常或 Key 落入浏览器存储。该浏览器验证使用 mock Relay，不能代表生产反向代理响应头或服务端账务终态。
+
+线上部署与验证：2026-09-23 07:02 UTC 通过 `scripts/deploy-update.sh admin-api` 在本地构建 linux/amd64 并更新生产 admin-api，现镜像 `sha256:5b36c959f0949fa0e6cb098ec7c78ff2e2c6537e293678d2ae7b04ea73ab4461`，旧镜像保留为 `rollback-20260923-150049`。部署前服务直连 `/playground` 为 200 且无 CSP；部署后为 200，CSP 含 `connect-src 'self' https://api.mengbin.top`，资源 JS 与 `/healthz` 均为 200，容器运行且启动日志无错误。通过临时 SSH 隧道使用真实线上 admin 响应头执行 `node scripts/verify-admin-csp.mjs http://127.0.0.1:4300 https://api.mengbin.top --live-header`，隔离 mock API/Relay 浏览器检查通过；未使用真实 Key 或执行线上模型请求。镜像仅证明本次 admin-api 更新，不将第二批外部验收判为完成。
+
+Q1 渠道 9 线上取消验收（2026-09-23）：当前 StepFun/channel 9 已改为 `step-3.7-flash`、`step-5-preview`，不再使用历史 `step-explore`。正式 `https://console.mengbin.top/playground` 的 GET 为 200，公网代理保留 `connect-src 'self' https://api.mengbin.top`；正式来源的 Relay CORS 预检通过。使用限模型、4096 tokens、30 分钟测试令牌在真实 Playground 发送 `step-3.7-flash` 流式请求，HTTP 200 后点击“停止”：页面显示已停止，浏览器请求为 `net::ERR_ABORTED`，无 CSP 违规、页面异常或 Key 落入浏览器存储；根请求 `playground-chat-a4e0b452-e2c3-4df6-ad76-96f1b024a0d8` 的管理 attempt 回读为 channel 9、`released`、实际费用 0，未有消费账本分录。Relay 将该断流计为 `stream_error`，不是 `canceled`；上游 HTTP 请求绑定取消上下文且关闭响应体，但 StepFun 的 TCP 连接在一次 API 取消后保持 `ESTABLISHED`（可能连接复用），没有供应商侧逐请求取消确认，因此只确认 Relay 边界停止转发和账务释放，不宣称供应商内部已停算。两枚测试令牌已停用。完整脱敏样本及一次完整结算的对照请求见[渠道 9 取消证据](../runbooks/evidence/next-stage-channel9-cancel-2026-09-23.json)。
+
+Q1 取消终态修复与复验（2026-09-23 09:29 UTC 部署）：基于 `6b228152` 工作树修复 legacy Chat/Messages/Responses 的流中断返回值，显式标记响应已开始后的不可重试错误，避免释放预留后仍写成功审计，也不向已经开始的 SSE 追加 JSON 错误。取消和请求超时分别记录为 `canceled` / `timeout`；orchestrator 在流关闭结算时保留取消原因及最终来源。Chat 写出中断后在释放预留前取消上游流，避免清理 RPC 延迟阻塞上游停止。
+
+本地 `TestClientCancellationReachesUpstreamAndFinalizes` 的 10 个场景通过真实 HTTP 链路确认受控上游收到请求取消，覆盖 HTTP/1.1、HTTP/2、legacy/orchestrator 和请求预算超时，断言只预留/释放一次、不提交、不重试，审计及指标终态一致。四个相关 Go 包完整回归、上述取消/断流用例三轮 `-race` 和分层检查通过。HTTP/2 验收对象是请求流；底层连接可以复用。
+
+本地交叉构建后上线 Relay 镜像 `sha256:638c8979c25f0f1d233459a6a25a9b81f6c3f6b7300bd7b255d8d56131c64007`，回滚标签 `rollback-20260923-172746`。渠道 9 真实 API 复验：Messages 根请求 `stage3-cancel-fixed-msg-1790156191446`（837ms 取消）和 Chat 根请求 `stage3-cancel-fixed-chat-1790156194728`（381ms 取消）均在首个 SSE 事件后、正常终态前断开，执行路径为 legacy；两者管理端回读均为一次尝试、channel 9、`released`、费用 0、无消费分录，最终路由审计为 `canceled`，对应执行指标各增加 1。全部本轮测试令牌已停用。部署后本轮验证为真实 API 调用，浏览器停止按钮的证据沿用前一次测试，未重复浏览器测试。
+
+Q1 的 Relay 可控取消边界（请求取消向上游传播、停止转发、预留释放及终态回读）已有上述证据。StepFun 内部是否停止推理仍需供应商逐请求确认，不能由 TCP 状态或网关审计推断；此项保留为供应商侧证据边界。Q1 尚待历史请求快照、充值/图表深浅色与键盘检查。Q2 的支付沙箱与历史迁移语义、Q3 性能基线仍未启动；第二批生产待验收项不因此关闭。
 
 Q1 安全/取消和 Q2 已发布能力验收可以前移到第一批收尾。样式整理、预取、阈值调优不阻塞凭证修复。
 
