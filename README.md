@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.31.0 发布公告](./docs/releases/release-v0.31.0.md)（计费恢复、请求追踪与跨来源故障切换，新增迁移 101–107） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.31.0)
+> 📣 **最新发布**：[v0.31.1 发布公告](./docs/releases/release-v0.31.1.md)（协议转换恢复、凭证补写与流式可靠性修复，新增迁移 108） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.31.1)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.31.1
+
+v0.31.1 是 v0.31.0 之后的 **PATCH 可靠性修复版本**：恢复 Responses→Chat／Anthropic 转换及默认兼容行为，保留流式中断释放、禁止重放和正确结算，补齐 OAuth 凭证后台补写与版本保护、低流量熔断及请求预算，并同步 main 的安全整数转换修复。**API/proto 增量扩展，MySQL/PostgreSQL/SQLite 新增迁移 108（channel）**；先确认凭证待写归零并核对迁移，再依次升级 channel-service、relay-gateway，无需重新发布前端。现网已分批运行等价修复，按实际状态核对，避免重复 DDL 或无必要重启。详见 [docs/releases/release-v0.31.1.md](./docs/releases/release-v0.31.1.md)。
 
 ### 升级到 v0.31.0
 
