@@ -171,13 +171,6 @@ func (r *routingGroupRepo) CreateRoutingGroup(ctx context.Context, group *biz.Ro
 		UpdatedAt:       now,
 	}
 	err := r.data.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var existing int64
-		if err := tx.Model(&routingGroupModel{}).Where(map[string]any{"key": group.Key}).Count(&existing).Error; err != nil {
-			return biz.ErrRoutingGroupStorage
-		}
-		if existing > 0 {
-			return biz.ErrRoutingGroupExists
-		}
 		if err := tx.Create(&row).Error; err != nil {
 			if isDuplicateKeyErr(err) {
 				return biz.ErrRoutingGroupExists
