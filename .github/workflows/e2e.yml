@@ -10,12 +10,28 @@ on:
         description: Git ref to test
         required: true
         type: string
+      run_routing:
+        description: Run the MySQL and SQLite routing acceptance matrix
+        required: false
+        type: boolean
+        default: true
+      run_compose:
+        description: Run the shared Compose E2E suite
+        required: false
+        type: boolean
+        default: true
+      run_frontend:
+        description: Run the Playwright browser suite
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
 jobs:
   routing-e2e:
+    if: inputs.run_routing
     name: Routing v2 acceptance (${{ matrix.driver }})
     runs-on: ubuntu-latest
     strategy:
@@ -41,6 +57,7 @@ jobs:
           if-no-files-found: ignore
 
   compose-e2e:
+    if: inputs.run_compose
     name: Compose E2E suite
     runs-on: ubuntu-latest
     steps:
@@ -121,6 +138,7 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.test.yml down -v --remove-orphans || true
 
   frontend-smoke:
+    if: inputs.run_frontend
     name: Playwright admin smoke
     runs-on: ubuntu-latest
     defaults:

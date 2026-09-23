@@ -33,6 +33,7 @@ interface PlaygroundMessage {
 }
 
 interface InspectorState {
+  clientRequestId?: string;
   traceId?: string;
   otelTraceId?: string;
   requestId?: string;
@@ -123,6 +124,8 @@ export function PlaygroundPage() {
   const [error, setError] = useState<RelayPlaygroundError | null>(null);
   const [modelError, setModelError] = useState<Error | null>(null);
   const [inspector, setInspector] = useState<InspectorState>(initialInspector);
+  const [inspectorHistory, setInspectorHistory] = useState<InspectorState[]>([]);
+  const [selectedInspectorId, setSelectedInspectorId] = useState<string | null>(null);
   const [showInspector, setShowInspector] = useState(false);
   const autoVerifyKey = useRef(handedOffKey);
   const modelRequestSequence = useRef(0);
@@ -161,6 +164,9 @@ export function PlaygroundPage() {
 
   const canSend = verifiedKey && Boolean(selectedModel) && draft.trim().length > 0 && !activeRequest.current;
   const currentAssistant = useMemo(() => messages.findLast((message) => message.role === 'assistant' && message.status !== 'completed'), [messages]);
+  const displayedInspector = selectedInspectorId
+    ? inspectorHistory.find((entry) => entry.clientRequestId === selectedInspectorId) ?? inspector
+    : inspector;
 
   function resetActiveRequest() {
     activeRequest.current = null;
@@ -270,10 +276,12 @@ export function PlaygroundPage() {
       0,
     );
     activeRequest.current = { id: requestId, controller };
+    if (inspector.requestId) setInspectorHistory((current) => [...current, inspector]);
+    setSelectedInspectorId(null);
     setDraft('');
     setError(null);
     setStatus('submitting');
-    setInspector({ requestId, startedAt, requestBody: request, rawEvents: [], rawBytes: 0 });
+    setInspector({ clientRequestId: requestId, requestId, startedAt, requestBody: request, rawEvents: [], rawBytes: 0 });
     setMessages((current) => [
       ...current,
       { id: id('user'), role: 'user', content },
@@ -333,6 +341,7 @@ export function PlaygroundPage() {
     if (!active) return;
     active.controller.abort();
     setStatus('stopped');
+    setInspector((current) => ({ ...current, completedAt: performance.now() }));
     setMessages((current) => current.map((message) => message.requestId === active.id ? { ...message, status: 'stopped' } : message));
     resetActiveRequest();
   }
@@ -342,6 +351,8 @@ export function PlaygroundPage() {
     requestSequence.current += 1;
     resetActiveRequest();
     setMessages([]);
+    setInspectorHistory([]);
+    setSelectedInspectorId(null);
     setDraft('');
     setError(null);
     setInspector(initialInspector);
@@ -349,8 +360,8 @@ export function PlaygroundPage() {
   }
 
   async function copyRequest() {
-    if (!inspector.requestBody) return;
-    await navigator.clipboard.writeText(JSON.stringify(inspector.requestBody, null, 2));
+    if (!displayedInspector.requestBody) return;
+    await navigator.clipboard.writeText(JSON.stringify(displayedInspector.requestBody, null, 2));
   }
 
   return (
@@ -465,6 +476,11 @@ export function PlaygroundPage() {
                   >
                     <div className="mb-1 text-xs font-medium opacity-70">{roleLabel}{message.status === 'stopped' ? ` · ${t('已停止')}` : ''}</div>
                     <div className="whitespace-pre-wrap break-words leading-6">{message.content || (message.status === 'streaming' ? '…' : '')}</div>
+                    {message.requestId ? (
+                      <button type="button" onClick={() => setSelectedInspectorId(message.requestId === inspector.clientRequestId ? null : message.requestId!)} className="mt-2 break-all text-left font-mono text-xs underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" aria-label={t("查看请求 {id}", { id: message.requestId })}>
+                        {message.requestId}
+                      </button>
+                    ) : null}
                   </article>
                 );
               })}
@@ -489,21 +505,21 @@ export function PlaygroundPage() {
           </CardHeader>
           <CardContent className="space-y-4 p-5">
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <Metric label="HTTP" value={inspector.status ? String(inspector.status) : '—'} />
-              <Metric label={t('完成原因')} value={inspector.finishReason || '—'} />
-              <Metric label="TTFT" value={formatDuration(inspector.startedAt, inspector.firstContentAt)} />
-              <Metric label={t("总耗时")} value={formatDuration(inspector.startedAt, inspector.completedAt)} />
-              <Metric label={t("输入 Token")} value={formatTokens(inspector.usage?.prompt_tokens)} />
-              <Metric label={t("输出 Token")} value={formatTokens(inspector.usage?.completion_tokens)} />
+              <Metric label="HTTP" value={displayedInspector.status ? String(displayedInspector.status) : '—'} />
+              <Metric label={t('完成原因')} value={displayedInspector.finishReason || '—'} />
+              <Metric label="TTFT" value={formatDuration(displayedInspector.startedAt, displayedInspector.firstContentAt)} />
+              <Metric label={t("总耗时")} value={formatDuration(displayedInspector.startedAt, displayedInspector.completedAt)} />
+              <Metric label={t("输入 Token")} value={formatTokens(displayedInspector.usage?.prompt_tokens)} />
+              <Metric label={t("输出 Token")} value={formatTokens(displayedInspector.usage?.completion_tokens)} />
             </div>
-            {inspector.requestId ? <div className="rounded-xl bg-muted p-3"><p className="text-xs font-semibold text-muted-foreground">{t('请求 ID')}</p><p className="mt-1 break-all font-mono text-xs text-foreground">{inspector.requestId}</p></div> : null}
-            {inspector.traceId ? <div className="bg-muted p-3"><p className="text-xs font-semibold text-muted-foreground">Trace ID</p><p className="mt-1 break-all font-mono text-xs">{inspector.traceId}</p></div> : null}
-            {inspector.otelTraceId ? <div className="bg-muted p-3"><p className="text-xs font-semibold text-muted-foreground">OTel Trace ID</p><p className="mt-1 break-all font-mono text-xs">{inspector.otelTraceId}</p></div> : null}
+            {displayedInspector.requestId ? <div className="rounded-xl bg-muted p-3"><p className="text-xs font-semibold text-muted-foreground">{t('请求 ID')}</p><p className="mt-1 break-all font-mono text-xs text-foreground">{displayedInspector.requestId}</p></div> : null}
+            {displayedInspector.traceId ? <div className="bg-muted p-3"><p className="text-xs font-semibold text-muted-foreground">Trace ID</p><p className="mt-1 break-all font-mono text-xs">{displayedInspector.traceId}</p></div> : null}
+            {displayedInspector.otelTraceId ? <div className="bg-muted p-3"><p className="text-xs font-semibold text-muted-foreground">OTel Trace ID</p><p className="mt-1 break-all font-mono text-xs">{displayedInspector.otelTraceId}</p></div> : null}
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => void copyRequest()} disabled={!inspector.requestBody}><Copy className="size-3.5" />{t("复制请求 JSON")}</Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => void copyRequest()} disabled={!displayedInspector.requestBody}><Copy className="size-3.5" />{t("复制请求 JSON")}</Button>
               <Button type="button" variant="outline" size="sm" onClick={() => setShowInspector((value) => !value)}><Eye className="size-3.5" />{t("原始事件")}</Button>
             </div>
-            {showInspector ? <pre className="max-h-72 overflow-auto rounded-xl bg-slate-950 p-3 text-xs leading-5 text-slate-200">{inspector.rawEvents.length ? inspector.rawEvents.join('\n\n') : t("暂无原始事件")}</pre> : null}
+            {showInspector ? <pre className="max-h-72 overflow-auto rounded-xl bg-foreground p-3 text-xs leading-5 text-background">{displayedInspector.rawEvents.length ? displayedInspector.rawEvents.join('\n\n') : t("暂无原始事件")}</pre> : null}
             <div className="rounded-xl border border-primary/20 bg-accent p-3 text-xs leading-5 text-accent-foreground">{t("费用和最终 Token 以使用记录为准。停止流式请求后，服务端可能已经产生部分用量。")}</div>
           </CardContent>
         </Card>

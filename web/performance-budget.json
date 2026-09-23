@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-23",
+  "description": "Q3 production build baseline after the v0.32.1 console work. JavaScript includes the entry and every modulepreload referenced by dist/index.html; CSS includes initial stylesheets; WOFF2 assets are already compressed.",
+  "allowedRegressionPercent": 20,
+  "baseline": {
+    "initialJavaScriptRawBytes": 724051,
+    "initialJavaScriptGzipBytes": 236900,
+    "initialCssRawBytes": 214134,
+    "initialCssGzipBytes": 61082,
+    "largestFontSubsetBytes": 76800,
+    "allFontSubsetsBytes": 4507216
+  }
+}
