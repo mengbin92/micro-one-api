@@ -445,6 +445,10 @@ func (m *testChannelRepo) ListUnrestrictedChannelsByGroup(ctx context.Context, g
 	return result, nil
 }
 
+func (m *testChannelRepo) StoreSubscriptionCredentials(context.Context, *channeltestutil.SubscriptionAccount) error {
+	return channeltestutil.ErrSubscriptionAccountNotFound
+}
+
 func (m *testChannelRepo) FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*channeltestutil.SubscriptionAccount, error) {
 	return nil, channeltestutil.ErrSubscriptionAccountNotFound
 }

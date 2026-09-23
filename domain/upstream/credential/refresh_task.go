@@ -148,6 +148,15 @@ func (t *RefreshTask) sweep() {
 	ctx, cancel := context.WithTimeout(context.Background(), t.interval)
 	defer cancel()
 
+	persisted := make(map[int64]bool)
+	for _, provider := range t.providers {
+		if pending, ok := provider.(PendingPersister); ok {
+			for _, id := range pending.PersistPending(ctx, t.interval) {
+				persisted[id] = true
+			}
+		}
+	}
+
 	// ExpiringSoon is optional: if the AccountLookup does not implement
 	// ExpiringScanner we simply skip the proactive sweep (request-time refresh
 	// still covers correctness).
@@ -163,6 +172,9 @@ func (t *RefreshTask) sweep() {
 		return
 	}
 	for _, id := range ids {
+		if persisted[id] {
+			continue
+		}
 		platform := t.platformOf(id)
 		if platform == "" {
 			continue

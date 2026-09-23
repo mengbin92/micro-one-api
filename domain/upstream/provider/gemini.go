@@ -53,11 +53,11 @@ func NewGeminiProvider(baseURL, apiKey string, timeout time.Duration) (*GeminiPr
 // Forward is not supported for Gemini because non-chat OpenAI-compatible
 // endpoints require endpoint-specific request and response conversion.
 func (p *GeminiProvider) Forward(ctx context.Context, req *RawRequest) (*RawResponse, error) {
-	return nil, fmt.Errorf("raw forwarding is not supported by gemini provider")
+	return nil, &CapabilityError{Feature: "raw forwarding is not supported by gemini provider"}
 }
 
 func (p *GeminiProvider) ForwardStream(ctx context.Context, req *RawRequest) (*RawStreamResponse, error) {
-	return nil, fmt.Errorf("raw stream forwarding is not supported by gemini provider")
+	return nil, &CapabilityError{Feature: "raw stream forwarding is not supported by gemini provider"}
 }
 
 // Gemini API request/response structures
@@ -269,6 +269,11 @@ func (p *GeminiProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 				continue
 			}
 
+			if len(wrapper.Candidates) > 0 && wrapper.Candidates[0].FinishReason != "" {
+				if !sendStreamChunk(ctx, chunkChan, StreamChunk{Complete: true}) {
+					return
+				}
+			}
 			if len(wrapper.Candidates) > 0 && len(wrapper.Candidates[0].Content.Parts) > 0 {
 				text := wrapper.Candidates[0].Content.Parts[0].Text
 				if text == "" {
@@ -286,12 +291,15 @@ func (p *GeminiProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 						},
 					},
 				}
-				chunkChan <- chunk
+				if !sendStreamChunk(ctx, chunkChan, chunk) {
+					return
+				}
 			}
 		}
 
 		if err := scanner.Err(); err != nil {
-			logProviderError("Gemini stream scanner error", zap.Error(err))
+			logProviderError("stream scanner error", zap.Error(err))
+			sendStreamChunk(ctx, chunkChan, StreamChunk{StreamError: err})
 		}
 	}()
 

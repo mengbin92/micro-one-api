@@ -926,72 +926,43 @@ func (uc *RelayUsecase) selectSchedulableSubscriptionAccount(ctx context.Context
 	if uc.subscription == nil {
 		return nil, fmt.Errorf("subscription account selector is not configured")
 	}
-	// sub2api #2: when the client supports server-side exclusion, pass the
-	// request-scoped failed set down instead of looping over priority tiers.
-	// The local schedulability re-check still runs so runtime-blocked accounts
-	// (relay-local state channel-service cannot see) are skipped and excluded.
-	if exClient, ok := uc.subscription.(SubscriptionAccountExcludingClient); ok {
-		localExclude := make(map[int64]bool, len(exclude)+8)
-		for id, blocked := range exclude {
-			if blocked {
-				localExclude[id] = true
-			}
-		}
-		var lastErr error
-		for range 8 {
-			account, err := exClient.SelectSubscriptionAccountExcluding(ctx, group, model, platform, localExclude)
-			if err != nil {
-				return nil, err
-			}
-			if account == nil || account.ID <= 0 {
-				return nil, fmt.Errorf("subscription account not found")
-			}
-			if !uc.isSubscriptionAccountSchedulable(ctx, account) {
-				localExclude[account.ID] = true
-				lastErr = fmt.Errorf("subscription account %d runtime blocked", account.ID)
-				continue
-			}
-			return account, nil
-		}
-		if lastErr != nil {
-			return nil, lastErr
-		}
-		return nil, fmt.Errorf("subscription account not found")
-	}
-	const maxAttempts = 8
-	excludedPriority := false
-	localExclude := make(map[int64]bool, len(exclude)+maxAttempts)
+	localExclude := make(map[int64]bool, len(exclude))
 	for id, blocked := range exclude {
 		if blocked {
 			localExclude[id] = true
 		}
 	}
-	var lastErr error
-	for range maxAttempts {
-		account, err := uc.subscription.SelectSubscriptionAccount(ctx, group, model, platform, excludedPriority)
+	seen := make(map[int64]bool)
+	excludedPriority := false
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		var account *SubscriptionAccount
+		var err error
+		if client, ok := uc.subscription.(SubscriptionAccountExcludingClient); ok {
+			account, err = client.SelectSubscriptionAccountExcluding(ctx, group, model, platform, localExclude)
+		} else {
+			account, err = uc.subscription.SelectSubscriptionAccount(ctx, group, model, platform, excludedPriority)
+		}
 		if err != nil {
 			return nil, err
 		}
 		if account == nil || account.ID <= 0 {
 			return nil, fmt.Errorf("subscription account not found")
 		}
-		if localExclude[account.ID] {
-			lastErr = fmt.Errorf("subscription account %d excluded", account.ID)
-			excludedPriority = true
-			continue
+		// A selector ignoring exclusions must not create an unbounded loop.
+		if seen[account.ID] {
+			return nil, fmt.Errorf("subscription account selection made no progress")
 		}
-		if !uc.isSubscriptionAccountSchedulable(ctx, account) {
+		seen[account.ID] = true
+		if localExclude[account.ID] || !uc.isSubscriptionAccountSchedulable(ctx, account) {
 			localExclude[account.ID] = true
-			lastErr = fmt.Errorf("subscription account %d runtime blocked", account.ID)
 			excludedPriority = true
 			continue
 		}
 		return account, nil
 	}
-	if lastErr != nil {
-		return nil, lastErr
-	}
-	return nil, fmt.Errorf("subscription account not found")
 }
 
 func (uc *RelayUsecase) isSubscriptionAccountSchedulable(ctx context.Context, account *SubscriptionAccount) bool {

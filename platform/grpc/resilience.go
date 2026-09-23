@@ -51,11 +51,11 @@ func DefaultBreakerConfig(name string) *BreakerConfig {
 		Interval:         60 * time.Second,
 		Timeout:          30 * time.Second,
 		ReadyToTrip:      DefaultReadyToTrip,
-		FallbackStrategy: FallbackCache,
+		FallbackStrategy: FallbackReject,
 	}
 }
 
-// DefaultReadyToTrip trips the breaker after 5 consecutive failures.
+// DefaultReadyToTrip requires at least five samples and a >=60% failure ratio.
 func DefaultReadyToTrip(counts gobreaker.Counts) bool {
 	failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
 	return counts.Requests >= 5 && failureRatio >= 0.6
@@ -149,6 +149,10 @@ func NewResilientClient[T any](
 	}
 }
 
+type callerContextError struct{ error }
+
+func (e *callerContextError) Unwrap() error { return e.error }
+
 // Execute runs the given function with circuit breaker protection.
 func (rc *ResilientClient[T]) Execute(
 	ctx context.Context,
@@ -158,6 +162,7 @@ func (rc *ResilientClient[T]) Execute(
 	state := rc.breaker.State()
 	metrics.CircuitBreakerState.WithLabelValues(rc.serviceName).Set(stateToGauge(state))
 
+	parent := ctx
 	result, err := rc.breaker.Execute(func() (any, error) {
 		// Apply timeout if configured
 		if rc.timeout > 0 {
@@ -171,6 +176,9 @@ func (rc *ResilientClient[T]) Execute(
 		// errors are treated as successes so client-error storms cannot trip the
 		// breaker. The outcome metrics are recorded below from the breaker result.
 		resp, err := fn(ctx, rc.client)
+		if err != nil && parent.Err() != nil {
+			return resp, &callerContextError{err}
+		}
 		return resp, err
 	})
 
@@ -237,6 +245,13 @@ func (rc *ResilientClient[T]) Name() string {
 
 // isRetryableError checks if an error should be considered for circuit breaker.
 func isRetryableError(err error) bool {
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	var caller *callerContextError
+	if errors.As(err, &caller) {
+		return false
+	}
 	if err == nil {
 		return false
 	}
@@ -342,11 +357,12 @@ func UnaryClientInterceptor(serviceName string, breaker *gobreaker.CircuitBreake
 func NewCircuitBreaker(name string) *gobreaker.CircuitBreaker {
 	cfg := DefaultBreakerConfig(name)
 	settings := gobreaker.Settings{
-		Name:        cfg.Name,
-		MaxRequests: cfg.MaxRequests,
-		Interval:    cfg.Interval,
-		Timeout:     cfg.Timeout,
-		ReadyToTrip: cfg.ReadyToTrip,
+		Name:         cfg.Name,
+		MaxRequests:  cfg.MaxRequests,
+		Interval:     cfg.Interval,
+		Timeout:      cfg.Timeout,
+		ReadyToTrip:  cfg.ReadyToTrip,
+		IsSuccessful: func(err error) bool { return err == nil || !isRetryableError(err) },
 		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
 			metrics.CircuitBreakerState.WithLabelValues(name).Set(stateToGauge(to))
 		},

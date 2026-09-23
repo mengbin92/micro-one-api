@@ -213,14 +213,10 @@ func TestClaudeOAuth_ConvertRequest(t *testing.T) {
 		}
 	})
 
-	t.Run("responses -> anthropic", func(t *testing.T) {
-		body := []byte(`{"model":"claude-sonnet-4-20250514","input":"hi"}`)
-		fmt, _, err := ad.ConvertRequest(nil, FormatOpenAIResponses, body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if fmt != FormatAnthropicMessages {
-			t.Fatalf("fmt = %v, want anthropic_messages", fmt)
+	t.Run("responses to anthropic", func(t *testing.T) {
+		format, body, err := ad.ConvertRequest(nil, FormatOpenAIResponses, []byte(`{"model":"m","input":"hi"}`))
+		if err != nil || format != FormatAnthropicMessages || !strings.Contains(string(body), `"messages"`) {
+			t.Fatalf("conversion: %s %s %v", format, body, err)
 		}
 	})
 }
@@ -605,5 +601,28 @@ func TestPumpAnthropicToResponsesKimiNoSpaceSSE(t *testing.T) {
 	}
 	if !strings.Contains(s, `"delta":"hi"`) {
 		t.Fatalf("kimi no-space SSE: expected text delta 'hi', got:\n%s", s)
+	}
+}
+
+func TestConvertedStreamsRejectBareEOF(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		pump       func(io.Reader, *io.PipeWriter, string)
+	}{
+		{"anthropic", "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"model\":\"m\",\"content\":[]}}\n\n", pumpAnthropicToChat},
+		{"responses", "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"r\",\"model\":\"m\",\"status\":\"in_progress\"}}\n\n", pumpResponsesToChat},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, w := io.Pipe()
+			go tc.pump(strings.NewReader(tc.body), w, "m")
+			defer r.Close()
+			body, err := io.ReadAll(r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(body), `"finish_reason":"error"`) {
+				t.Fatalf("bare EOF became success: %s", body)
+			}
+		})
 	}
 }

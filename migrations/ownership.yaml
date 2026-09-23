@@ -71,6 +71,8 @@ services:
     - 087_create_usage_semantic_source_blocks # usage-semantics quarantine (source+model isolation)
     - 091_create_model_health_states         # passive per-source model health snapshots
 
+    - 108_add_credential_revision
+
   billing:
     # billing_reservations / billing_ledgers / billing_redeem_* / payment_orders /
     # reconciliation_runs / account_receivables / user_subscriptions / subscription_groups /

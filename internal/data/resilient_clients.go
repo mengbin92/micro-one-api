@@ -20,9 +20,13 @@ func NewResilientIdentityClient(client identityv1.IdentityServiceClient, timeout
 	if client == nil {
 		return nil
 	}
+	cfg, timeout, err := appgrpc.ServiceBreakerConfig("identity", timeout)
+	if err != nil {
+		panic(err)
+	}
 	return &resilientIdentityClient{
 		IdentityServiceClient: client,
-		breaker:               appgrpc.NewResilientClient[identityv1.IdentityServiceClient](client, appgrpc.DefaultBreakerConfig("identity"), timeout, appgrpc.TypedRejectFallback[identityv1.IdentityServiceClient]()),
+		breaker:               appgrpc.NewResilientClient[identityv1.IdentityServiceClient](client, cfg, timeout, appgrpc.TypedRejectFallback[identityv1.IdentityServiceClient]()),
 	}
 }
 
@@ -45,9 +49,13 @@ func NewResilientChannelClient(client channelv1.ChannelServiceClient, timeout ti
 	if client == nil {
 		return nil
 	}
+	cfg, timeout, err := appgrpc.ServiceBreakerConfig("channel", timeout)
+	if err != nil {
+		panic(err)
+	}
 	return &resilientChannelClient{
 		ChannelServiceClient: client,
-		breaker:              appgrpc.NewResilientClient[channelv1.ChannelServiceClient](client, appgrpc.DefaultBreakerConfig("channel"), timeout, appgrpc.TypedRejectFallback[channelv1.ChannelServiceClient]()),
+		breaker:              appgrpc.NewResilientClient[channelv1.ChannelServiceClient](client, cfg, timeout, appgrpc.TypedRejectFallback[channelv1.ChannelServiceClient]()),
 	}
 }
 
@@ -236,9 +244,13 @@ func NewResilientBillingClient(client billingv1.BillingServiceClient, timeout ti
 	if client == nil {
 		return nil
 	}
+	cfg, timeout, err := appgrpc.ServiceBreakerConfig("billing", timeout)
+	if err != nil {
+		panic(err)
+	}
 	return &resilientBillingClient{
 		BillingServiceClient: client,
-		breaker:              appgrpc.NewResilientClient[billingv1.BillingServiceClient](client, appgrpc.DefaultBreakerConfig("billing"), timeout, appgrpc.TypedRejectFallback[billingv1.BillingServiceClient]()),
+		breaker:              appgrpc.NewResilientClient[billingv1.BillingServiceClient](client, cfg, timeout, appgrpc.TypedRejectFallback[billingv1.BillingServiceClient]()),
 	}
 }
 
@@ -301,9 +313,13 @@ func NewResilientLogClient(client logv1.LogServiceClient, timeout time.Duration)
 	if client == nil {
 		return nil
 	}
+	cfg, timeout, err := appgrpc.ServiceBreakerConfig("log", timeout)
+	if err != nil {
+		panic(err)
+	}
 	return &resilientLogClient{
 		LogServiceClient: client,
-		breaker:          appgrpc.NewResilientClient[logv1.LogServiceClient](client, appgrpc.DefaultBreakerConfig("log"), timeout, appgrpc.TypedRejectFallback[logv1.LogServiceClient]()),
+		breaker:          appgrpc.NewResilientClient[logv1.LogServiceClient](client, cfg, timeout, appgrpc.TypedRejectFallback[logv1.LogServiceClient]()),
 	}
 }
 

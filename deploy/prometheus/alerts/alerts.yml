@@ -481,3 +481,20 @@ groups:
         annotations:
           summary: "Routing metrics target unavailable"
           description: "{{ $labels.instance }} cannot be scraped. Restore the service or metrics endpoint before trusting routing/outbox gauges."
+
+  - name: credential-persistence
+    rules:
+      - alert: CredentialPersistenceFailing
+        expr: increase(micro_one_api_credential_persist_failures_total[5m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: OAuth credential persistence failing
+          description: 'Pending {{ $labels.platform }} credentials exist only in memory. Restore storage before restarting relay.'
+      - alert: CredentialPersistenceStalled
+        expr: micro_one_api_credential_pending_oldest_age_seconds > 2 * micro_one_api_credential_sweep_interval_seconds
+        labels:
+          severity: critical
+        annotations:
+          summary: OAuth credential persistence stalled
+          description: 'Pending {{ $labels.platform }} rotation is older than two scans. Restore storage; forced restart may require reauthorization.'

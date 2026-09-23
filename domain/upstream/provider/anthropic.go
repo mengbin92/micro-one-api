@@ -552,7 +552,7 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 				// the merged message_start/delta usage is exclusive, and the
 				// emitted OpenAI chunk is an inclusive projection of it.
 				canonical := canonicalFromAnthropicUsage(*usage)
-				chunkChan <- StreamChunk{
+				terminalChunk := StreamChunk{
 					Object: "chat.completion.chunk",
 					Model:  req.Model,
 					Choices: []StreamChoice{
@@ -560,6 +560,9 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 					},
 					Usage:     projectOpenAIUsageFromCanonical(canonical),
 					Canonical: canonical,
+				}
+				if !sendStreamChunk(ctx, chunkChan, terminalChunk) {
+					return
 				}
 				continue
 			}
@@ -578,17 +581,23 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 						},
 					},
 				}
-				chunkChan <- chunk
+				if !sendStreamChunk(ctx, chunkChan, chunk) {
+					return
+				}
 			}
 
 			// Handle message_stop
 			if event.Type == "message_stop" {
+				if !sendStreamChunk(ctx, chunkChan, StreamChunk{Complete: true}) {
+					return
+				}
 				break
 			}
 		}
 
 		if err := scanner.Err(); err != nil {
-			logProviderError("Anthropic stream scanner error", zap.Error(err))
+			logProviderError("stream scanner error", zap.Error(err))
+			sendStreamChunk(ctx, chunkChan, StreamChunk{StreamError: err})
 		}
 	}()
 

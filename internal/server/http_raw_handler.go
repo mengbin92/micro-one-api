@@ -138,7 +138,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 			logUpstreamUsage(logInput)
 			logInput.applyEnvelope(envelopeFromRawUsage(usage))
 			if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
-				return err
+				return relaybiz.MarkPostForwardError(err)
 			}
 			s.ingestUsageLog(ctx, logInput)
 			upstreamResp = resp
@@ -149,6 +149,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 		s.finalizeSelectionFromResult(plan, result, time.Since(retryStartedAt))
 
 		if result.Err != nil {
+			setErrorChannel(w, result.Channel)
 			s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")
 			return
 		}

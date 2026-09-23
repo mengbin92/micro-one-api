@@ -128,101 +128,22 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		}
 
 		if isRawStreamRequest(body) {
-			// Anthropic API-key channels speak /v1/messages, not Responses.
-			// Convert the inbound Responses request to Anthropic Messages and
-			// bridge the upstream SSE back to Responses SSE.
-			if isAnthropicAPIKeyChannel(ch) {
-				fallbackResp, fallbackErr := s.forwardResponsesViaAnthropicFallback(ctx, ch, r.Header.Clone(), retriedBody)
-				if fallbackErr != nil {
-					_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream stream error")
-					return fallbackErr
-				}
-				if fallbackResp.Stream != nil {
-					usage := newResponsesStreamUsageTracker(estimateRawUsage(retriedBody))
-					writeRawStreamResponse(w, fallbackResp.Stream, usage)
-					actualUsage := usage.Usage()
-					logInput := usageLogInput{
-						UserID:           plan.Auth.UserID,
-						TokenID:          plan.Auth.TokenID,
-						TokenName:        plan.Auth.TokenName,
-						RequestID:        requestID,
-						Endpoint:         r.URL.Path,
-						ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
-						Quota:            actualUsage.TotalTokens,
-						PromptTokens:     actualUsage.PromptTokens,
-						CompletionTokens: actualUsage.CompletionTokens,
-						CacheReadTokens:  actualUsage.CacheReadTokens,
-						ChannelID:        ch.ID,
-						ElapsedTime:      time.Since(startedAt).Milliseconds(),
-						IsStream:         true,
-
-						PromptExclusive: isPromptExclusiveChannelType(ch.Type)}
-					logInput.applyChannelInputs(ch)
-					logInput.applyReservation(reservation)
-					logInput.applyEnvelope(envelopeFromRawUsage(actualUsage))
-					if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
-						s.logPostResponseCommitError(err)
-					} else {
-						logUpstreamUsage(logInput)
-						s.ingestUsageLogAfterResponse(logInput)
-					}
-					upstreamResp = &relayprovider.RawResponse{StatusCode: fallbackResp.Stream.StatusCode}
-					responseChannel = ch
-					if responseID := usage.ResponseID(); responseID != "" {
-						s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, TokenID: plan.Auth.TokenID, RoutingGroupID: resolvedGroupID(plan.Auth), SubscriptionAccountID: subscriptionAccountIDFromChannel(ch)})
-					}
-					return nil
-				}
-			}
 			streamResp, streamErr := s.forwardResponsesRawStream(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), retriedBody)
 			if streamErr != nil {
 				terminalErr := streamErr
 				logResponsesUpstreamFailure(ctx, r.URL.Path, true, "native", streamErr)
-				if shouldFallbackResponsesToChat(upstreamPath, retriedBody, streamErr) {
-					fallbackResp, fallbackErr := s.forwardResponsesViaChatFallbackObserved(ctx, ch, r.Header.Clone(), retriedBody, streamErr)
-					if fallbackErr == nil && fallbackResp.Stream != nil {
-						usage := newResponsesStreamUsageTracker(estimateRawUsage(retriedBody))
-						writeRawStreamResponse(w, fallbackResp.Stream, usage)
-						actualUsage := usage.Usage()
-						logInput := usageLogInput{
-							UserID:           plan.Auth.UserID,
-							TokenID:          plan.Auth.TokenID,
-							TokenName:        plan.Auth.TokenName,
-							RequestID:        requestID,
-							Endpoint:         r.URL.Path,
-							ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
-							Quota:            actualUsage.TotalTokens,
-							PromptTokens:     actualUsage.PromptTokens,
-							CompletionTokens: actualUsage.CompletionTokens,
-							CacheReadTokens:  actualUsage.CacheReadTokens,
-							ChannelID:        ch.ID,
-							ElapsedTime:      time.Since(startedAt).Milliseconds(),
-							IsStream:         true,
-
-							PromptExclusive: isPromptExclusiveChannelType(ch.Type)}
-						logInput.applyChannelInputs(ch)
-						logInput.applyReservation(reservation)
-						logInput.applyEnvelope(envelopeFromRawUsage(actualUsage))
-						if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
-							s.logPostResponseCommitError(err)
-						} else {
-							logUpstreamUsage(logInput)
-							s.ingestUsageLogAfterResponse(logInput)
-						}
-						upstreamResp = &relayprovider.RawResponse{StatusCode: fallbackResp.Stream.StatusCode}
-						responseChannel = ch
-						if responseID := usage.ResponseID(); responseID != "" {
-							s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, TokenID: plan.Auth.TokenID, RoutingGroupID: resolvedGroupID(plan.Auth), SubscriptionAccountID: subscriptionAccountIDFromChannel(ch)})
-						}
-						return nil
-					}
-					terminalErr = responsesFallbackTerminalError(streamErr, fallbackErr)
-				}
 				_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream stream error")
 				return terminalErr
 			}
 			usage := newResponsesStreamUsageTracker(estimateRawUsage(upstreamBody))
-			writeRawStreamResponse(w, streamResp, usage)
+			completed := writeRawStreamResponse(w, streamResp, usage)
+			if !completed {
+				_ = s.releaseQuota(ctx, reservation.ReservationId, "incomplete upstream stream")
+				upstreamResp = &relayprovider.RawResponse{StatusCode: streamResp.StatusCode}
+				responseChannel = ch
+				setRelayObservationResult(ctx, "stream_error")
+				return nil
+			}
 			actualUsage := usage.Usage()
 			logInput := usageLogInput{
 				UserID:           plan.Auth.UserID,
@@ -257,92 +178,10 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			return nil
 		}
 
-		// Anthropic API-key channels speak /v1/messages, not Responses.
-		if isAnthropicAPIKeyChannel(ch) {
-			fallbackResp, fallbackErr := s.forwardResponsesViaAnthropicFallback(ctx, ch, r.Header.Clone(), retriedBody)
-			if fallbackErr == nil && fallbackResp.Response != nil {
-				usage := fallbackResp.Usage
-				if usage.TotalTokens <= 0 {
-					usage = extractRawUsage(fallbackResp.Response.Body, estimateRawTokens(upstreamBody))
-				}
-				logInput := usageLogInput{
-					UserID:           plan.Auth.UserID,
-					TokenID:          plan.Auth.TokenID,
-					TokenName:        plan.Auth.TokenName,
-					RequestID:        requestID,
-					Endpoint:         r.URL.Path,
-					ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
-					Quota:            usage.TotalTokens,
-					PromptTokens:     usage.PromptTokens,
-					CompletionTokens: usage.CompletionTokens,
-					CacheReadTokens:  usage.CacheReadTokens,
-					ChannelID:        ch.ID,
-					ElapsedTime:      time.Since(startedAt).Milliseconds(),
-					IsStream:         false,
-
-					PromptExclusive: isPromptExclusiveChannelType(ch.Type)}
-				logInput.applyChannelInputs(ch)
-				logInput.applyReservation(reservation)
-				logInput.applyEnvelope(envelopeFromRawUsage(usage))
-				if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
-					return err
-				}
-				logUpstreamUsage(logInput)
-				s.ingestUsageLog(ctx, logInput)
-				upstreamResp = fallbackResp.Response
-				responseChannel = ch
-				if responseID := extractResponseID(fallbackResp.Response.Body); responseID != "" {
-					s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, TokenID: plan.Auth.TokenID, RoutingGroupID: resolvedGroupID(plan.Auth), SubscriptionAccountID: subscriptionAccountIDFromChannel(ch)})
-				}
-				return nil
-			}
-			// Conversion/forwarding failed: surface as upstream error so the
-			// retry executor can fail over.
-			_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream anthropic error")
-			return fmt.Errorf("anthropic upstream: %w", fallbackErr)
-		}
-
 		resp, forwardErr := s.forwardResponsesRaw(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), retriedBody)
 		if forwardErr != nil {
 			terminalErr := forwardErr
 			logResponsesUpstreamFailure(ctx, r.URL.Path, false, "native", forwardErr)
-			if shouldFallbackResponsesToChat(upstreamPath, retriedBody, forwardErr) {
-				fallbackResp, fallbackErr := s.forwardResponsesViaChatFallbackObserved(ctx, ch, r.Header.Clone(), retriedBody, forwardErr)
-				if fallbackErr == nil && fallbackResp.Response != nil {
-					usage := fallbackResp.Usage
-					if usage.TotalTokens <= 0 {
-						usage = extractRawUsage(fallbackResp.Response.Body, estimateRawTokens(upstreamBody))
-					}
-					logInput := usageLogInput{
-						UserID:           plan.Auth.UserID,
-						TokenID:          plan.Auth.TokenID,
-						TokenName:        plan.Auth.TokenName,
-						RequestID:        requestID,
-						Endpoint:         r.URL.Path,
-						ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
-						Quota:            usage.TotalTokens,
-						PromptTokens:     usage.PromptTokens,
-						CompletionTokens: usage.CompletionTokens,
-						CacheReadTokens:  usage.CacheReadTokens,
-						ChannelID:        ch.ID,
-						ElapsedTime:      time.Since(startedAt).Milliseconds(),
-						IsStream:         false,
-
-						PromptExclusive: isPromptExclusiveChannelType(ch.Type)}
-					logInput.applyChannelInputs(ch)
-					logInput.applyReservation(reservation)
-					logInput.applyEnvelope(envelopeFromRawUsage(usage))
-					if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
-						return err
-					}
-					logUpstreamUsage(logInput)
-					s.ingestUsageLog(ctx, logInput)
-					upstreamResp = fallbackResp.Response
-					responseChannel = ch
-					return nil
-				}
-				terminalErr = responsesFallbackTerminalError(forwardErr, fallbackErr)
-			}
 			_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream error")
 			return terminalErr
 		}
@@ -368,7 +207,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		logInput.applyReservation(reservation)
 		logInput.applyEnvelope(envelopeFromRawUsage(usage))
 		if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
-			return err
+			return relaybiz.MarkPostForwardError(err)
 		}
 		logUpstreamUsage(logInput)
 		s.ingestUsageLog(ctx, logInput)
@@ -382,6 +221,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 	recordRelayRetryOutcome(r.Context(), result.Fallback, result.Err, result.FallbackReason)
 
 	if result.Err != nil {
+		setErrorChannel(w, result.Channel)
 		logResponsesUpstreamFailure(r.Context(), r.URL.Path, isRawStreamRequest(body), "terminal", result.Err)
 		s.writeResponsesUpstreamError(w, result.Err)
 		return
@@ -488,7 +328,6 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 	requestID := generateRequestID()
 	resolvedModel := routeResolvedModel(route)
 	r = r.WithContext(channelAttemptContext(r.Context(), requestID, 1, &route.Channel, resolvedModel))
-	fallbackBody := ensureRawModel(body, resolvedModel)
 	billingModel := s.BillingModelName(route.Model, routeResolvedModel(route), resolvedModel)
 	reservation, err := s.reserveAuthenticatedQuota(
 		r.Context(),
@@ -508,101 +347,22 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 
 	startedAt := time.Now()
 	if stream {
-		// Anthropic API-key channels speak /v1/messages, not Responses.
-		if isAnthropicAPIKeyChannel(&route.Channel) {
-			fallbackResp, fallbackErr := s.forwardResponsesViaAnthropicFallback(r.Context(), &route.Channel, r.Header.Clone(), fallbackBody)
-			if fallbackErr == nil && fallbackResp.Stream != nil {
-				usage := newResponsesStreamUsageTracker(estimateRawUsage(fallbackBody))
-				writeRawStreamResponse(w, fallbackResp.Stream, usage)
-				actualUsage := usage.Usage()
-				logInput := usageLogInput{
-					UserID:                authSnapshot.UserId,
-					TokenID:               authSnapshot.TokenId,
-					TokenName:             authSnapshot.TokenName,
-					RequestID:             requestID,
-					Endpoint:              r.URL.Path,
-					ModelName:             s.BillingModelName(route.Model, resolvedModel, resolvedModel),
-					Quota:                 actualUsage.TotalTokens,
-					PromptTokens:          actualUsage.PromptTokens,
-					CompletionTokens:      actualUsage.CompletionTokens,
-					CacheReadTokens:       actualUsage.CacheReadTokens,
-					ChannelID:             route.Channel.ID,
-					SubscriptionAccountID: route.SubscriptionAccountID,
-					ElapsedTime:           time.Since(startedAt).Milliseconds(),
-					IsStream:              true,
-
-					PromptExclusive: isPromptExclusiveChannelType(route.Channel.Type)}
-				logInput.applyChannelInputs(&route.Channel)
-				logInput.applyReservation(reservation)
-				logInput.applyEnvelope(envelopeFromRawUsage(actualUsage))
-				if err := s.commitQuotaAfterResponseObserved(r.Context(), reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
-					s.logPostResponseCommitError(err)
-				} else {
-					s.ingestUsageLogAfterResponse(logInput)
-				}
-				if responseID := usage.ResponseID(); responseID != "" {
-					route.UserID = authSnapshot.UserId
-					route.ResolvedModel = resolvedModel
-					s.storeResponseRoute(responseID, route)
-				}
-				return
-			}
-			_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream stream error")
-			logResponsesUpstreamFailure(r.Context(), r.URL.Path, true, "terminal", fallbackErr)
-			s.writeResponsesUpstreamError(w, fallbackErr)
-			return
-		}
 		streamResp, err := s.forwardResponsesRawStream(r.Context(), &route.Channel, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
 		if err != nil {
 			terminalErr := err
 			logResponsesUpstreamFailure(r.Context(), r.URL.Path, true, "native", err)
-			if shouldFallbackResponsesToChat(upstreamPath, fallbackBody, err) {
-				fallbackResp, fallbackErr := s.forwardResponsesViaChatFallbackObserved(r.Context(), &route.Channel, r.Header.Clone(), fallbackBody, err)
-				if fallbackErr == nil && fallbackResp.Stream != nil {
-					usage := newResponsesStreamUsageTracker(estimateRawUsage(fallbackBody))
-					writeRawStreamResponse(w, fallbackResp.Stream, usage)
-					actualUsage := usage.Usage()
-					logInput := usageLogInput{
-						UserID:                authSnapshot.UserId,
-						TokenID:               authSnapshot.TokenId,
-						TokenName:             authSnapshot.TokenName,
-						RequestID:             requestID,
-						Endpoint:              r.URL.Path,
-						ModelName:             s.BillingModelName(route.Model, resolvedModel, resolvedModel),
-						Quota:                 actualUsage.TotalTokens,
-						PromptTokens:          actualUsage.PromptTokens,
-						CompletionTokens:      actualUsage.CompletionTokens,
-						CacheReadTokens:       actualUsage.CacheReadTokens,
-						ChannelID:             route.Channel.ID,
-						SubscriptionAccountID: route.SubscriptionAccountID,
-						ElapsedTime:           time.Since(startedAt).Milliseconds(),
-						IsStream:              true,
-
-						PromptExclusive: isPromptExclusiveChannelType(route.Channel.Type)}
-					logInput.applyChannelInputs(&route.Channel)
-					logInput.applyReservation(reservation)
-					logInput.applyEnvelope(envelopeFromRawUsage(actualUsage))
-					if err := s.commitQuotaAfterResponseObserved(r.Context(), reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
-						s.logPostResponseCommitError(err)
-					} else {
-						s.ingestUsageLogAfterResponse(logInput)
-					}
-					if responseID := usage.ResponseID(); responseID != "" {
-						route.UserID = authSnapshot.UserId
-						route.ResolvedModel = resolvedModel
-						s.storeResponseRoute(responseID, route)
-					}
-					return
-				}
-				terminalErr = responsesFallbackTerminalError(err, fallbackErr)
-			}
 			_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream stream error")
 			logResponsesUpstreamFailure(r.Context(), r.URL.Path, true, "terminal", terminalErr)
 			s.writeResponsesUpstreamError(w, terminalErr)
 			return
 		}
 		usage := newResponsesStreamUsageTracker(estimateRawUsage(body))
-		writeRawStreamResponse(w, streamResp, usage)
+		completed := writeRawStreamResponse(w, streamResp, usage)
+		if !completed {
+			_ = s.releaseQuota(r.Context(), reservation.ReservationId, "incomplete upstream stream")
+			setRelayObservationResult(r.Context(), "stream_error")
+			return
+		}
 		actualUsage := usage.Usage()
 		logInput := usageLogInput{
 			UserID:                authSnapshot.UserId,
@@ -636,99 +396,10 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Anthropic API-key channels speak /v1/messages, not Responses.
-	if isAnthropicAPIKeyChannel(&route.Channel) {
-		fallbackResp, fallbackErr := s.forwardResponsesViaAnthropicFallback(r.Context(), &route.Channel, r.Header.Clone(), fallbackBody)
-		if fallbackErr == nil && fallbackResp.Response != nil {
-			usage := fallbackResp.Usage
-			if usage.TotalTokens <= 0 {
-				usage = extractRawUsage(fallbackResp.Response.Body, estimateRawTokens(fallbackBody))
-			}
-			logInput := usageLogInput{
-				UserID:                authSnapshot.UserId,
-				TokenID:               authSnapshot.TokenId,
-				TokenName:             authSnapshot.TokenName,
-				RequestID:             requestID,
-				Endpoint:              r.URL.Path,
-				ModelName:             s.BillingModelName(route.Model, resolvedModel, resolvedModel),
-				Quota:                 usage.TotalTokens,
-				PromptTokens:          usage.PromptTokens,
-				CompletionTokens:      usage.CompletionTokens,
-				CacheReadTokens:       usage.CacheReadTokens,
-				ChannelID:             route.Channel.ID,
-				SubscriptionAccountID: route.SubscriptionAccountID,
-				ElapsedTime:           time.Since(startedAt).Milliseconds(),
-				IsStream:              false,
-
-				PromptExclusive: isPromptExclusiveChannelType(route.Channel.Type)}
-			logInput.applyChannelInputs(&route.Channel)
-			logInput.applyReservation(reservation)
-			logInput.applyEnvelope(envelopeFromRawUsage(usage))
-			if err := s.commitQuota(r.Context(), reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
-				s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
-				return
-			}
-			s.ingestUsageLog(r.Context(), logInput)
-			if responseID := extractResponseID(fallbackResp.Response.Body); responseID != "" {
-				route.UserID = authSnapshot.UserId
-				route.ResolvedModel = resolvedModel
-				s.storeResponseRoute(responseID, route)
-			}
-			writeRawResponse(w, fallbackResp.Response)
-			return
-		}
-		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream error")
-		logResponsesUpstreamFailure(r.Context(), r.URL.Path, false, "terminal", fallbackErr)
-		s.writeResponsesUpstreamError(w, fallbackErr)
-		return
-	}
-
 	resp, err := s.forwardResponsesRaw(r.Context(), &route.Channel, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
 	if err != nil {
 		terminalErr := err
 		logResponsesUpstreamFailure(r.Context(), r.URL.Path, false, "native", err)
-		if shouldFallbackResponsesToChat(upstreamPath, fallbackBody, err) {
-			fallbackResp, fallbackErr := s.forwardResponsesViaChatFallbackObserved(r.Context(), &route.Channel, r.Header.Clone(), fallbackBody, err)
-			if fallbackErr == nil && fallbackResp.Response != nil {
-				usage := fallbackResp.Usage
-				if usage.TotalTokens <= 0 {
-					usage = extractRawUsage(fallbackResp.Response.Body, estimateRawTokens(fallbackBody))
-				}
-				logInput := usageLogInput{
-					UserID:                authSnapshot.UserId,
-					TokenID:               authSnapshot.TokenId,
-					TokenName:             authSnapshot.TokenName,
-					RequestID:             requestID,
-					Endpoint:              r.URL.Path,
-					ModelName:             s.BillingModelName(route.Model, resolvedModel, resolvedModel),
-					Quota:                 usage.TotalTokens,
-					PromptTokens:          usage.PromptTokens,
-					CompletionTokens:      usage.CompletionTokens,
-					CacheReadTokens:       usage.CacheReadTokens,
-					ChannelID:             route.Channel.ID,
-					SubscriptionAccountID: route.SubscriptionAccountID,
-					ElapsedTime:           time.Since(startedAt).Milliseconds(),
-					IsStream:              false,
-
-					PromptExclusive: isPromptExclusiveChannelType(route.Channel.Type)}
-				logInput.applyChannelInputs(&route.Channel)
-				logInput.applyReservation(reservation)
-				logInput.applyEnvelope(envelopeFromRawUsage(usage))
-				if err := s.commitQuota(r.Context(), reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
-					s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
-					return
-				}
-				s.ingestUsageLog(r.Context(), logInput)
-				if responseID := extractResponseID(fallbackResp.Response.Body); responseID != "" {
-					route.UserID = authSnapshot.UserId
-					route.ResolvedModel = resolvedModel
-					s.storeResponseRoute(responseID, route)
-				}
-				writeRawResponse(w, fallbackResp.Response)
-				return
-			}
-			terminalErr = responsesFallbackTerminalError(err, fallbackErr)
-		}
 		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream error")
 		logResponsesUpstreamFailure(r.Context(), r.URL.Path, false, "terminal", terminalErr)
 		s.writeResponsesUpstreamError(w, terminalErr)

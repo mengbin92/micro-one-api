@@ -18,6 +18,8 @@ func TestRoutingAcceptance(t *testing.T) {
 	switch os.Getenv("ROUTING_PHASE") {
 	case "legacy":
 		s.legacy()
+	case "stream-reliability":
+		s.streamReliability()
 	case "v2":
 		for _, test := range []struct {
 			name string
@@ -66,6 +68,8 @@ func (s *suite) legacy() {
 	s.adminAPI("POST", "/v1/topup", object{"user_id": fmt.Sprint(user.UserId), "amount": 50000000, "remark": "isolated routing acceptance"})
 	v := s.api("POST", "/api/token", s.state.Session, object{"name": "routing-legacy", "models": []string{"gpt-3.5-turbo"}, "unlimited_quota": true}, "")
 	s.state.Legacy = v["key"].(string)
+	reliability := s.api("POST", "/api/token", s.state.Session, object{"name": "r-batch", "unlimited_quota": true}, "")
+	s.state.Reliability = reliability["key"].(string)
 	s.chat(s.state.Legacy, "routing-legacy", false)
 	require.Nil(s.t, s.settled("routing-legacy"))
 	require.Less(s.t, s.balance(), int64(50000000))

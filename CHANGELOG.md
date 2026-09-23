@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-09-23
+
+v0.31.1 是 v0.31.0 之后的 **PATCH 可靠性修复版本**：恢复 Responses→Chat／Anthropic 及默认兼容行为，保留流式中断释放、禁止重放和正确结算，补齐 OAuth 凭证后台补写与版本保护、低流量熔断及请求预算，并同步 main 的安全整数转换修复。**API/proto 增量扩展，三方言新增 channel 迁移 108，主要升级 channel-service 和 relay-gateway**。详见 [release-v0.31.1.md](docs/releases/release-v0.31.1.md)。
+
+### Fixed
+
+- 恢复既有 Responses→Chat／Anthropic 与 Messages→Chat 转换；仅对确实无法转换的状态能力明确报错，原生请求保留透传；修正缓存创建 usage 明细和重复计费口径。
+- 流式裸 EOF 不再伪造成功，中断、取消和下游写失败释放预留；上游成功后转换或结算失败不重放，重试与退避共享时间预算。
+- OAuth 轮换后写库失败保留最新完整凭证，后台补写冷账号；revision 条件更新防止陈旧写入覆盖重新授权，错误日志不泄露凭证。
+- 低流量连续失败跨窗口触发熔断，半开限制单探测，账号候选不再受固定八次上限阻断。
+- 熔断阈值与重试序号使用经过范围校验或饱和的整数转换，同步 main 的 G115 修复及边界测试，无新增扫描豁免。
+
+### Added
+
+- 凭证专用写入 RPC、credential_revision 字段及 MySQL/PostgreSQL/SQLite 迁移 108；凭证待写数量、年龄、补写结果指标与告警。
+- 可选的连接、响应头、流式空闲、流式总预算和非流式总预算配置，以及下游 gRPC 熔断阈值校验；新增流式隔离矩阵验收证据。
+
 ## [0.31.0] - 2026-09-22
 
 v0.31.0 是 v0.30.1 之后的 **MINOR 功能与可靠性版本**：补齐计费持久恢复、有限额度 Key 幂等扣减与对账回读，新增根请求/attempt 追踪、管理台路由审计及普通渠道与订阅账号双向故障切换，并修复通知、Redis 消费、OAuth 持久化失败可见性和管理台数据口径。**API/proto 增量扩展，三方言新增迁移 101–107，升级覆盖九个服务及前端**。支付丢回调恢复与隔离栈流式矩阵仍有验收缺口，详见 [release-v0.31.0.md](docs/releases/release-v0.31.0.md)。

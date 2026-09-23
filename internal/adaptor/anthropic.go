@@ -67,6 +67,9 @@ func (a *AnthropicAdaptor) ConvertRequest(rc *RelayContext, inbound Format, body
 		}
 		return FormatAnthropicMessages, out, nil
 	case FormatOpenAIResponses:
+		if err := ValidateResponsesConversion(body); err != nil {
+			return "", nil, err
+		}
 		var request apicompat.ResponsesRequest
 		if err := jsonx.Unmarshal(body, &request); err != nil {
 			return "", nil, fmt.Errorf("anthropic adaptor: parse responses request: %w", err)
@@ -79,10 +82,9 @@ func (a *AnthropicAdaptor) ConvertRequest(rc *RelayContext, inbound Format, body
 		}
 		converted, err := apicompat.ResponsesToAnthropicRequest(&request)
 		if err != nil {
-			return "", nil, fmt.Errorf("anthropic adaptor: responses→anthropic: %w", err)
+			return "", nil, fmt.Errorf("anthropic adaptor: responses to anthropic: %w", err)
 		}
-		// API-key channels may target third-party Anthropic-compatible
-		// endpoints. Keep the request on their common Messages subset.
+		// Third-party Messages endpoints support the common API-key subset.
 		converted.Thinking = nil
 		converted.OutputConfig = nil
 		for index := range converted.Tools {
@@ -92,10 +94,7 @@ func (a *AnthropicAdaptor) ConvertRequest(rc *RelayContext, inbound Format, body
 			}
 		}
 		out, err := jsonx.Marshal(converted)
-		if err != nil {
-			return "", nil, fmt.Errorf("anthropic adaptor: marshal responses request: %w", err)
-		}
-		return FormatAnthropicMessages, out, nil
+		return FormatAnthropicMessages, out, err
 	default:
 		return "", nil, fmt.Errorf("anthropic adaptor: inbound format %q is not supported", inbound)
 	}

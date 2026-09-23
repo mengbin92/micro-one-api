@@ -22,7 +22,7 @@ docs/
 |---------|--------|
 | 个人单机，创建首个渠道和 Token | [quickstart-lite.md](./quickstart-lite.md) |
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
-| 查看下一阶段执行路线 | [design/v0.30-roadmap.md](./design/v0.30-roadmap.md) |
+| 查看下一阶段执行路线与文章技术债清单 | [design/next-stage-plan-2026-09-22.md](./design/next-stage-plan-2026-09-22.md) |
 | 查看当前待办和历史完成记录 | [TODO.md](./TODO.md) |
 | 查看产品界面预览 | [根 README 界面预览](../README.md#界面预览) |
 | 查看某版本发布内容 | [releases/](./releases/) |
@@ -36,9 +36,9 @@ docs/
 | 了解订阅系统路线图 | [design/subscription-follow-up-roadmap.md](./design/subscription-follow-up-roadmap.md) |
 | 查看 Kratos 大仓 / buf / v3 升级迁移方案 | [migration/](./migration/) |
 
-> **路线图入口治理**：「当前执行路线图」只有一个事实源——`design/` 下最新版本路线图，其头部标注「状态：进行中，当前唯一执行入口」。新阶段立项时：新建 `design/vX.Y-roadmap.md` 作为唯一入口 → 旧路线图头部降级为「已归档」并指回新入口 → 同步本表「查看下一阶段执行路线」行、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
+> **路线图入口治理**：「当前执行路线图」只有一个事实源——本表明确指向且头部标注「当前执行入口」的计划。未定发布版本时使用 `design/next-stage-plan-YYYY-MM-DD.md`，已定版本时使用 `design/vX.Y-roadmap.md`。新阶段立项时：新建计划 → 旧路线图标为「已归档」并指回新入口 → 同步本表、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-当前状态（2026-09-15）：代码基线 v0.29 已交付分组 A–F；P0 文档与运行基线、部署接线、只读预检和 MySQL / SQLite 真实链路验收均已完成。生产 B–F 已启用，详见[运行基线](./runbooks/routing-baseline-2026-09-13.md)。[v0.30 路线图](./design/v0.30-roadmap.md) 已完成 P1-1 至 P1-3；v0.27 已归档。
+当前状态（2026-09-22）：[v0.31.0](./releases/release-v0.31.0.md) 已发布，[v0.30 路线图](./design/v0.30-roadmap.md)已归档。[下一阶段计划](./design/next-stage-plan-2026-09-22.md)第一批 R1–R4 已完成本地实施和隔离验收（未部署），见[实施记录](./runbooks/first-batch-reliability-2026-09-22.md)；下一步 O1–O4，其他运行验收继续保留待办。
 
 ---
 
@@ -100,7 +100,8 @@ docs/
 | [v0.23-roadmap.md](./design/v0.23-roadmap.md) | v0.23 路线图：上线观察与 Relay executor 首切片（已归档） |
 | [v0.23-executor-observation.md](./design/v0.23-executor-observation.md) | executor 新旧路径 7 天生产观察与回滚事实源 |
 | [v0.24-web-release-readiness.md](./design/v0.24-web-release-readiness.md) | v0.24 双语 Web、中国法律协议与发布隔离准备清单 |
-| [v0.30-roadmap.md](./design/v0.30-roadmap.md) | 当前路线图：分组 v2 配置、真实链路验收与稳定性收口 |
+| [next-stage-plan-2026-09-22.md](./design/next-stage-plan-2026-09-22.md) | 当前计划：R1–R4 本地验收完成，第二批待实施；22 篇文章技术债逐篇追踪 |
+| [v0.30-roadmap.md](./design/v0.30-roadmap.md) | 已归档：分组 v2 配置、真实链路验收与稳定性收口 |
 | [v0.27-roadmap.md](./design/v0.27-roadmap.md) | 已归档：发布完整性、双灰度闭环与轻量产品化 |
 | [web-playground-implementation-plan.md](./design/web-playground-implementation-plan.md) | 用户侧 Web Playground：交互、密钥安全、SSE、Relay CORS、测试与发布方案 |
 | [architecture-review-remediation-report-2026-08-25.md](./design/architecture-review-remediation-report-2026-08-25.md) | 系统架构审查复核、修复方案与执行状态（2026-08-25） |

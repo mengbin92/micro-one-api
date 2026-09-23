@@ -54,6 +54,7 @@ type RelayRequest struct {
 	Model string
 	// Endpoint specifies which API endpoint is being called.
 	Endpoint APIEndpoint
+	RawQuery string
 	// Body contains the raw request body.
 	Body io.Reader
 	// IsStream indicates if the client expects a streaming response.
@@ -340,6 +341,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 				Token:         req.Token,
 				Model:         req.Model,
 				Endpoint:      string(req.Endpoint),
+				RawQuery:      req.RawQuery,
 				Body:          attemptBody,
 				Headers:       httpHeaderToMap(req.Headers),
 				RequestID:     req.RequestID,
@@ -415,6 +417,10 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			o.finalizeSelectionFromRetryResult(plan, retryResult, latency)
 			if retryResult.Fallback {
 				recordRelayFailover(ctx, "exhausted", retryResult.FallbackReason)
+			}
+			if retryResult.Channel != nil {
+				result.ChannelID = retryResult.Channel.ID
+				result.SubscriptionAccountID = retryResult.Channel.SubscriptionAccountID
 			}
 			result.Error = retryResult.Err
 			result.StatusCode = lastFailureStatus
@@ -511,6 +517,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			Token:         req.Token,
 			Model:         req.Model,
 			Endpoint:      string(req.Endpoint),
+			RawQuery:      req.RawQuery,
 			Body:          attemptBody,
 			Headers:       httpHeaderToMap(req.Headers),
 			RequestID:     req.RequestID,
@@ -637,6 +644,10 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		recordRelayFailover(ctx, failoverResult, retryResult.FallbackReason)
 	}
 	if retryResult != nil && retryResult.Err != nil {
+		if retryResult.Channel != nil {
+			result.ChannelID = retryResult.Channel.ID
+			result.SubscriptionAccountID = retryResult.Channel.SubscriptionAccountID
+		}
 		result.Error = retryResult.Err
 		result.StatusCode = lastFailureStatus
 		if result.StatusCode == 0 {
@@ -722,6 +733,9 @@ func rewriteRequestModel(body []byte, model string) []byte {
 }
 
 func mapUpstreamOrInternalStatus(err error) int {
+	if relaybiz.IsProtocolCapabilityMismatch(err) {
+		return http.StatusNotImplemented
+	}
 	if upstreamErr, ok := err.(*relayprovider.UpstreamHTTPError); ok {
 		return upstreamErr.StatusCode
 	}

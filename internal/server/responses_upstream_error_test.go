@@ -33,8 +33,8 @@ func TestHTTPServerResponsesUpstream4xxMatrix(t *testing.T) {
 		{name: "upstream_401", upstreamStatus: http.StatusUnauthorized, wantStatus: http.StatusBadGateway, wantPaths: "/v1/responses", wantResult: "client_error", wantReleases: 1, wantCategory: "upstream_auth"},
 		{name: "upstream_403", upstreamStatus: http.StatusForbidden, wantStatus: http.StatusBadGateway, wantPaths: "/v1/responses", wantResult: "client_error", wantReleases: 1, wantCategory: "upstream_auth"},
 		{name: "request_too_large", upstreamStatus: http.StatusRequestEntityTooLarge, wantStatus: http.StatusRequestEntityTooLarge, wantPaths: "/v1/responses", wantResult: "client_error", wantReleases: 1, wantCategory: "request_too_large"},
-		{name: "unsupported_media_fallback", upstreamStatus: http.StatusUnsupportedMediaType, wantStatus: http.StatusOK, wantPaths: "/v1/responses,/v1/chat/completions", wantResult: "success", wantCommits: 1, wantCategory: "request_compatibility"},
-		{name: "unprocessable_fallback", upstreamStatus: http.StatusUnprocessableEntity, wantStatus: http.StatusOK, wantPaths: "/v1/responses,/v1/chat/completions", wantResult: "success", wantCommits: 1, wantCategory: "request_compatibility"},
+		{name: "unsupported_media_fallback", upstreamStatus: http.StatusUnsupportedMediaType, wantStatus: http.StatusBadRequest, wantPaths: "/v1/responses", wantResult: "client_error", wantReleases: 1, wantCategory: "request_compatibility"},
+		{name: "unprocessable_fallback", upstreamStatus: http.StatusUnprocessableEntity, wantStatus: http.StatusBadRequest, wantPaths: "/v1/responses", wantResult: "client_error", wantReleases: 1, wantCategory: "request_compatibility"},
 	}
 
 	for _, stream := range []bool{false, true} {

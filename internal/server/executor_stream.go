@@ -228,3 +228,20 @@ func settlementContext(ctx context.Context) context.Context {
 	}
 	return context.WithoutCancel(ctx)
 }
+
+// Write lets all SSE forwarding paths share the same protocol terminal tracker.
+func (t *streamTerminalTracker) Write(p []byte) (int, error) {
+	t.ObserveBytes(p)
+	return len(p), nil
+}
+
+func streamEndpointForPath(path string) APIEndpoint {
+	switch path {
+	case "/v1/messages":
+		return EndpointAnthropicMessages
+	case "/v1/responses":
+		return EndpointResponses
+	default:
+		return EndpointChatCompletions
+	}
+}

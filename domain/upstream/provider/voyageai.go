@@ -39,15 +39,15 @@ func NewVoyageAIProvider(baseURL, apiKey string, timeout time.Duration) (*Voyage
 }
 
 func (p *VoyageAIProvider) ChatCompletions(ctx context.Context, req *ChatCompletionsRequest) (*ChatCompletionsResponse, error) {
-	return nil, fmt.Errorf("voyageai chat completions are not supported")
+	return nil, &CapabilityError{Feature: "voyageai chat completions are not supported"}
 }
 
 func (p *VoyageAIProvider) ChatCompletionsStream(ctx context.Context, req *ChatCompletionsRequest) (<-chan StreamChunk, error) {
-	return nil, fmt.Errorf("voyageai chat completions stream is not supported")
+	return nil, &CapabilityError{Feature: "voyageai chat completions stream is not supported"}
 }
 
 func (p *VoyageAIProvider) ForwardStream(ctx context.Context, req *RawRequest) (*RawStreamResponse, error) {
-	return nil, fmt.Errorf("raw stream forwarding is not supported by voyageai provider")
+	return nil, &CapabilityError{Feature: "raw stream forwarding is not supported by voyageai provider"}
 }
 
 func (p *VoyageAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawResponse, error) {
@@ -56,7 +56,7 @@ func (p *VoyageAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawRe
 	}
 	path := "/" + strings.TrimLeft(req.Path, "/")
 	if path != "/embeddings" && path != "/v1/embeddings" {
-		return nil, fmt.Errorf("voyageai raw path %s is not supported", req.Path)
+		return nil, &CapabilityError{Feature: "voyageai raw endpoint"}
 	}
 	method := req.Method
 	if method == "" {

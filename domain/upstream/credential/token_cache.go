@@ -5,10 +5,7 @@ import (
 	"time"
 )
 
-// tokenCache is an in-process cache of access tokens keyed by account ID. It
-// exists so the hot path (GetAccessToken) does not hit the AccountLookup on
-// every request. In a multi-instance deployment the Redis-backed provider
-// should be used instead; this cache is the single-process fallback.
+// tokenCache retains full credentials, including pending rotations, in process.
 type tokenCache struct {
 	mu  sync.RWMutex
 	m   map[int64]cacheEntry
@@ -16,13 +13,13 @@ type tokenCache struct {
 }
 
 type cacheEntry struct {
+	dirtySince  time.Time
 	accessToken string
 	expiresAt   time.Time
 	// creds holds the full credential set (including a rotated refresh token)
 	// when set. It lets resolve reuse a refreshed refresh token in-process even
 	// if persistence (Store) failed, so the account does not brick on the next
-	// refresh (domain-M1). Nil for cache entries seeded from an access-token-only
-	// lookup.
+	// refresh (domain-M1). Production lookups always retain full credentials.
 	creds *AccountCredentials
 }
 
@@ -56,7 +53,8 @@ func (c *tokenCache) setCreds(accountID int64, creds *AccountCredentials) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.m[accountID] = cacheEntry{accessToken: creds.AccessToken, expiresAt: creds.ExpiresAt, creds: creds}
+	cp := *creds
+	c.m[accountID] = cacheEntry{accessToken: cp.AccessToken, expiresAt: cp.ExpiresAt, creds: &cp}
 }
 
 // getCreds returns the full cached credential set if present.
@@ -67,13 +65,19 @@ func (c *tokenCache) getCreds(accountID int64) (*AccountCredentials, bool) {
 	if !ok {
 		return nil, false
 	}
-	return e.creds, e.creds != nil
+	if e.creds == nil {
+		return nil, false
+	}
+	cp := *e.creds
+	return &cp, true
 }
 
 func (c *tokenCache) delete(accountID int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	delete(c.m, accountID)
+	if c.m[accountID].dirtySince.IsZero() {
+		delete(c.m, accountID)
+	}
 }
 
 // stale reports whether the cached token is within RefreshSkew of expiry (or
@@ -93,3 +97,27 @@ func (c *tokenCache) stale(accountID int64) bool {
 func staleExpiry(expiresAt time.Time) bool {
 	return !time.Now().Add(RefreshSkew).Before(expiresAt)
 }
+
+// markDirty is called under the provider's per-account lock before Store.
+func (c *tokenCache) markDirty(id int64, creds *AccountCredentials) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	since := c.m[id].dirtySince
+	if since.IsZero() {
+		since = c.now()
+	}
+	cp := *creds
+	c.m[id] = cacheEntry{accessToken: cp.AccessToken, expiresAt: cp.ExpiresAt, creds: &cp, dirtySince: since}
+}
+func (c *tokenCache) pending() map[int64]time.Time {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	out := make(map[int64]time.Time)
+	for id, e := range c.m {
+		if !e.dirtySince.IsZero() {
+			out[id] = e.dirtySince
+		}
+	}
+	return out
+}
+func (c *tokenCache) discard(id int64) { c.mu.Lock(); defer c.mu.Unlock(); delete(c.m, id) }

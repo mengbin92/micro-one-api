@@ -56,6 +56,17 @@ func (n *NoopAccountLookup) Lookup(_ context.Context, id int64) (*AccountCredent
 func (n *NoopAccountLookup) Store(_ context.Context, id int64, creds *AccountCredentials) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	if creds == nil {
+		return ErrAccountNotFound
+	}
+	old, ok := n.byID[id]
+	if !ok || old == nil {
+		return ErrAccountNotFound
+	}
+	if old.Revision != creds.Revision {
+		return ErrCredentialConflict
+	}
+	creds.Revision++
 	cp := *creds
 	n.byID[id] = &cp
 	if creds != nil {

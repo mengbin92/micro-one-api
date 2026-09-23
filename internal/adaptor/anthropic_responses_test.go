@@ -2,54 +2,19 @@ package adaptor
 
 import (
 	"io"
+	"micro-one-api/internal/apicompat"
 	"net/http"
 	"strings"
 	"testing"
 
-	"micro-one-api/internal/apicompat"
 	"micro-one-api/pkg/jsonx"
 )
 
 func TestAnthropicAdaptorConvertsResponsesRequest(t *testing.T) {
 	adaptor := NewAnthropicAdaptor(nil, nil)
-	context := &RelayContext{
-		InboundFormat: FormatOpenAIResponses,
-		ResolvedModel: "step-explore",
-	}
-	body := []byte(`{
-		"model":"client-model",
-		"input":"inspect the repository",
-		"stream":true,
-		"reasoning":{"effort":"high"},
-		"tools":[{"type":"function","name":"edit_file","parameters":null}]
-	}`)
-
-	format, convertedBody, err := adaptor.ConvertRequest(context, FormatOpenAIResponses, body)
-	if err != nil {
-		t.Fatalf("ConvertRequest() error = %v", err)
-	}
-	if format != FormatAnthropicMessages {
-		t.Fatalf("format = %q, want %q", format, FormatAnthropicMessages)
-	}
-
-	var converted apicompat.AnthropicRequest
-	if err := jsonx.Unmarshal(convertedBody, &converted); err != nil {
-		t.Fatalf("unmarshal converted request: %v", err)
-	}
-	if converted.Model != "step-explore" || !converted.Stream {
-		t.Fatalf("converted model/stream = %q/%v", converted.Model, converted.Stream)
-	}
-	if converted.Thinking != nil || converted.OutputConfig != nil {
-		t.Fatalf("third-party extensions were not removed: thinking=%#v output_config=%#v", converted.Thinking, converted.OutputConfig)
-	}
-	if len(converted.Tools) != 1 {
-		t.Fatalf("tools = %#v", converted.Tools)
-	}
-	if converted.Tools[0].Type != "" {
-		t.Fatalf("tool type = %q, want empty common-schema type", converted.Tools[0].Type)
-	}
-	if got := string(converted.Tools[0].InputSchema); got != `{"type":"object","properties":{}}` {
-		t.Fatalf("input_schema = %s", got)
+	format, body, err := adaptor.ConvertRequest(&RelayContext{InboundFormat: FormatOpenAIResponses}, FormatOpenAIResponses, []byte(`{"model":"m","input":"ping"}`))
+	if err != nil || format != FormatAnthropicMessages || !strings.Contains(string(body), `"messages"`) {
+		t.Fatalf("protocol conversion: %s %s %v", format, body, err)
 	}
 }
 

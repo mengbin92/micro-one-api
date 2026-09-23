@@ -172,6 +172,7 @@ func relayRequestFromExecutorRequest(req relaybiz.ExecutorRequest) *RelayRequest
 		Token:         req.Token,
 		Model:         req.Model,
 		Endpoint:      APIEndpoint(req.Endpoint),
+		RawQuery:      req.RawQuery,
 		Body:          bytes.NewReader(req.Body),
 		IsStream:      req.Stream,
 		Headers:       headerMapToHTTP(req.Headers),

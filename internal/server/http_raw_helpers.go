@@ -349,6 +349,12 @@ func scanRawCacheShapeSignals(m map[string]any, signals *usagepkg.FieldShapeSign
 		if _, ok := details["cached_tokens"]; ok {
 			signals.HasOpenAICachedDetail = true
 		}
+		if _, ok := details["cache_creation_5m_tokens"]; ok {
+			signals.HasOpenAICreationDetail = true
+		}
+		if _, ok := details["cache_creation_1h_tokens"]; ok {
+			signals.HasOpenAICreationDetail = true
+		}
 		if _, ok := details["cache_read_tokens"]; ok {
 			signals.HasFlatCacheRead = true
 		}
@@ -808,7 +814,7 @@ func extractRawStreamResponseIDValue(value any) string {
 
 // writeRawStreamResponse writes a streaming raw upstream response to the
 // client, optionally tracking usage via the supplied trackers.
-func writeRawStreamResponse(w http.ResponseWriter, resp *relayprovider.RawStreamResponse, usageTracker ...*rawStreamUsageTracker) {
+func writeRawStreamResponse(w http.ResponseWriter, resp *relayprovider.RawStreamResponse, usageTracker ...*rawStreamUsageTracker) bool {
 	defer resp.Body.Close()
 
 	for key, values := range resp.Header {
@@ -822,15 +828,18 @@ func writeRawStreamResponse(w http.ResponseWriter, resp *relayprovider.RawStream
 	w.Header().Set("Content-Type", safeRawContentType(resp.Header.Get("Content-Type"), "text/event-stream"))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(resp.StatusCode)
+	terminal := &streamTerminalTracker{endpoint: EndpointResponses}
+	reader := io.TeeReader(resp.Body, terminal)
 	var copyErr error
 	if flusher, ok := w.(http.Flusher); ok {
-		_, copyErr = io.Copy(&flushWriter{w: w, flusher: flusher, usageTracker: firstRawStreamUsageTracker(usageTracker)}, resp.Body)
+		_, copyErr = io.Copy(&flushWriter{w: w, flusher: flusher, usageTracker: firstRawStreamUsageTracker(usageTracker)}, reader)
 	} else {
-		_, copyErr = io.Copy(&streamUsageWriter{w: w, usageTracker: firstRawStreamUsageTracker(usageTracker)}, resp.Body)
+		_, copyErr = io.Copy(&streamUsageWriter{w: w, usageTracker: firstRawStreamUsageTracker(usageTracker)}, reader)
 	}
 	if errors.Is(copyErr, relayprovider.ErrStreamIdleTimeout) {
 		applogger.Log.Warn("upstream SSE stream closed after idle timeout", zap.Error(copyErr))
 	}
+	return copyErr == nil && terminal.Success()
 }
 
 // firstRawStreamUsageTracker returns the first tracker in a variadic list, or

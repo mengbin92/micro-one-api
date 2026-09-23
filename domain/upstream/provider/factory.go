@@ -60,7 +60,7 @@ func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, a
 		ChannelTypeReplicate,
 		ChannelTypeBaidu,
 		ChannelTypeXunfei:
-		return nil, fmt.Errorf("channel type %d requires a native provider adapter", channelType)
+		return nil, &CapabilityError{Feature: fmt.Sprintf("native channel type %d", channelType)}
 	case ChannelTypeOllama:
 		// domain-M2: Ollama is a self-hosted provider whose default endpoint is
 		// loopback (http://localhost:11434/v1) and realistic deployments are on a
@@ -69,7 +69,7 @@ func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, a
 		// PROVIDER_DISABLE_SSRF_CHECK escape hatch (which disables protection for
 		// ALL channels). Use the allow-local constructor instead.
 		return NewOpenAIProviderAllowLocal(ResolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
-	case ChannelTypeOpenAI,
+	case ChannelTypeOpenAI, ChannelTypeClaude, // type 4 is the existing OpenAI-compatible alias
 		ChannelTypeDeepSeek,
 		ChannelTypeMistral,
 		ChannelTypeMoonshot,
@@ -88,8 +88,7 @@ func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, a
 		ChannelTypeDoubao:
 		return NewOpenAIProvider(ResolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
 	default:
-		// Default to OpenAI-compatible for unknown types
-		return NewOpenAIProvider(ResolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
+		return nil, &CapabilityError{Feature: fmt.Sprintf("channel type %d", channelType)}
 	}
 }
 

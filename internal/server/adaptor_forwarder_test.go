@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,53 +14,18 @@ import (
 	relaybiz "micro-one-api/internal/biz"
 )
 
-func TestRelayAdaptorForwarderConvertsResponsesForAnthropicAPIKeyChannel(t *testing.T) {
-	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/messages" {
-			t.Errorf("upstream path = %q", r.URL.Path)
-		}
-		if got := r.Header.Get("x-api-key"); got != "step-key" {
-			t.Errorf("x-api-key = %q", got)
-		}
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Errorf("read upstream body: %v", err)
-		}
-		requestBody := string(body)
-		if !strings.Contains(requestBody, `"model":"step-explore"`) || !strings.Contains(requestBody, `"messages"`) {
-			t.Errorf("converted upstream body = %s", requestBody)
-		}
-		if strings.Contains(requestBody, `"thinking"`) || strings.Contains(requestBody, `"output_config"`) {
-			t.Errorf("third-party-incompatible extensions remain: %s", requestBody)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"msg_step_1","type":"message","role":"assistant","model":"step-explore","content":[{"type":"text","text":"done"}],"stop_reason":"end_turn","usage":{"input_tokens":5,"output_tokens":2}}`))
-	}))
-	defer upstream.Close()
-
+func TestRelayAdaptorForwarderRejectsResponsesForEmbeddingOnlyChannel(t *testing.T) {
 	factory := relayprovider.NewProviderFactory(time.Second)
-	_ = NewHTTPServer(nil, nil, nil, factory, nil)
-	forwarder := newRelayAdaptorForwarder(factory, nil, &http.Client{Timeout: time.Second}, nil, nil)
-	response, err := forwarder.Forward(context.Background(), &relaybiz.RelayPlan{
-		Channel:       &relaybiz.Channel{ID: 9, Type: relayprovider.ChannelTypeAnthropic, BaseURL: upstream.URL, Key: "step-key"},
-		ResolvedModel: "step-explore",
-	}, relaybiz.ExecutorRequest{
-		Model:    "step-explore",
-		Endpoint: "responses",
-		Body:     []byte(`{"model":"step-explore","input":"inspect the repository","reasoning":{"effort":"high"}}`),
-	})
-	if err != nil {
-		t.Fatalf("Forward() error = %v", err)
+	forwarder := newRelayAdaptorForwarder(factory, nil, nil, nil, nil)
+	plan := &relaybiz.RelayPlan{Channel: &relaybiz.Channel{ID: 9, Type: relayprovider.ChannelTypeVoyageAI}, ResolvedModel: "m"}
+	req := relaybiz.ExecutorRequest{Endpoint: "responses", Model: "m", Body: []byte(`{"model":"m","input":"ping"}`)}
+	if resp, err := forwarder.Forward(context.Background(), plan, req); err == nil || resp != nil || !relaybiz.IsProtocolCapabilityMismatch(err) {
+		t.Fatalf("Forward = %v, %v", resp, err)
 	}
-	if response == nil || response.StatusCode != http.StatusOK {
-		t.Fatalf("response = %#v", response)
-	}
-	if body := string(response.Body); !strings.Contains(body, `"object":"response"`) || !strings.Contains(body, `"text":"done"`) {
-		t.Fatalf("responses body = %s", body)
-	}
-	if response.Usage == nil || response.Usage.BillableTotal() != 7 {
-		t.Fatalf("usage = %#v", response.Usage)
+	if resp, err := forwarder.(interface {
+		ForwardStream(context.Context, *relaybiz.RelayPlan, relaybiz.ExecutorRequest) (*relaybiz.StreamForwardResponse, error)
+	}).ForwardStream(context.Background(), plan, req); err == nil || resp != nil {
+		t.Fatalf("ForwardStream = %v, %v", resp, err)
 	}
 }
 

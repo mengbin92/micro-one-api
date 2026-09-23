@@ -1,14 +1,25 @@
 package server
 
 import (
+	stderrors "errors"
 	"net/http"
 	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	relayprovider "micro-one-api/domain/upstream/provider"
 	"micro-one-api/pkg/errors"
 )
+
+func (s *HTTPServer) writeCapabilityError(w http.ResponseWriter, err error) bool {
+	if capability, ok := stderrors.AsType[*relayprovider.CapabilityError](err); ok {
+		// CapabilityError contains only locally defined features, never upstream bodies.
+		s.writeNotImplemented(w, capability.Error())
+		return true
+	}
+	return false
+}
 
 // gatewayErrorMessage returns a generic, client-safe message for a status code,
 // hiding internal/upstream error detail (relay-H2). The full error is still
@@ -172,12 +183,14 @@ func (s *HTTPServer) handleChannelError(w http.ResponseWriter, err error) {
 }
 
 func (s *HTTPServer) writeError(w http.ResponseWriter, statusCode int, message string) {
+	if statusCode == http.StatusNotImplemented {
+		s.writeNotImplemented(w, "protocol capability unavailable")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_ = encodeJSON(w, map[string]any{
-		"error": map[string]any{
-			"message": message,
-		},
+		"error": errorIdentity(w, map[string]any{"message": message}),
 	})
 }
 

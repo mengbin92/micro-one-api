@@ -12,6 +12,7 @@ type ExecutorRequest struct {
 	Token         string
 	Model         string
 	Endpoint      string
+	RawQuery      string
 	Body          []byte
 	Headers       map[string][]string
 	RequestID     string

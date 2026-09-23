@@ -14,21 +14,24 @@ import (
 // WeightedSelector selects channels using a weighted round-robin
 // algorithm that considers response time, success rate, and configured weight.
 type WeightedSelector struct {
-	mu       sync.Mutex
-	channels map[int64]*channelState // channelID → runtime state
+	failureThreshold int
+	mu               sync.Mutex
+	channels         map[int64]*channelState // channelID → runtime state
 }
 
 // channelState holds runtime state for a channel.
 type channelState struct {
-	channel          *Channel
-	weight           int32           // configured weight
-	currentWeight    int64           // smooth WRR current weight (fixed-point scale)
-	recentLatency    *SlidingWindow  // last 100 request latencies
-	recentErrors     *SlidingCounter // last 60s error count
-	inflight         atomic.Int32    // current in-flight requests
-	maxConcurrent    int32           // max concurrent requests
-	lastFailure      time.Time       // last failure time
-	circuitOpenUntil int64           // Unix timestamp for circuit open
+	consecutiveFailures int
+	failureThreshold    int
+	channel             *Channel
+	weight              int32           // configured weight
+	currentWeight       int64           // smooth WRR current weight (fixed-point scale)
+	recentLatency       *SlidingWindow  // last 100 request latencies
+	recentErrors        *SlidingCounter // last 60s error count
+	inflight            atomic.Int32    // current in-flight requests
+	maxConcurrent       int32           // max concurrent requests
+	lastFailure         time.Time       // last failure time
+	circuitOpenUntil    int64           // Unix timestamp for circuit open
 }
 
 // SlidingWindow tracks recent latency values using a fixed-capacity ring
@@ -210,7 +213,8 @@ func (c *SlidingCounter) cleanup(now int64) {
 // NewWeightedSelector creates a new weighted channel selector.
 func NewWeightedSelector() *WeightedSelector {
 	return &WeightedSelector{
-		channels: make(map[int64]*channelState),
+		channels:         make(map[int64]*channelState),
+		failureThreshold: selectorFailureThreshold(),
 	}
 }
 
@@ -236,6 +240,7 @@ func (s *WeightedSelector) updateChannelLocked(channel *Channel) {
 	// Initialize new channel state
 	s.channels[channel.ID] = &channelState{
 		channel:          channel,
+		failureThreshold: s.failureThreshold,
 		weight:           configuredSelectorWeight(channel),
 		currentWeight:    0,
 		recentLatency:    NewSlidingWindow(100),
@@ -304,7 +309,7 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 
 		// channel-H1: skip open channels; half-open channels (sentinel) are
 		// eligible but we arm exactly one probe below.
-		if st := state.breakerState(now); st == circuitOpen {
+		if st := state.breakerState(now); st == circuitOpen || state.circuitOpenUntil == circuitHalfOpenSentinel {
 			continue
 		}
 
@@ -388,6 +393,11 @@ func (s *WeightedSelector) RecordHealth(channelID int64, success bool, latency i
 	// Update error rate (channel-H1: record both totals and errors so the
 	// circuit breaker sees a true error ratio, not errors-per-second).
 	state.recentErrors.RecordOutcome(success)
+	if success {
+		state.consecutiveFailures = 0
+	} else {
+		state.consecutiveFailures++
+	}
 	if !success {
 		state.lastFailure = time.Now()
 	}
@@ -514,11 +524,12 @@ func (cs *channelState) updateCircuitBreaker() {
 		// recordBreakerOutcome. Stay half-open until a probe resolves.
 		return
 	case circuitClosed:
-		// Closed: trip only once we have enough samples AND a high ratio.
-		if cs.recentErrors.Total() < circuitBreakerMinRequests {
-			return
+		// Closed: trip on consecutive failures OR sufficient samples with a high ratio.
+		threshold := cs.failureThreshold
+		if threshold <= 0 {
+			threshold = 5
 		}
-		if cs.recentErrors.Rate() > circuitBreakerErrorThreshold {
+		if cs.consecutiveFailures >= threshold || (cs.recentErrors.Total() >= circuitBreakerMinRequests && cs.recentErrors.Rate() > circuitBreakerErrorThreshold) {
 			cs.circuitOpenUntil = now + circuitBreakerOpenDuration.Nanoseconds()
 		}
 	}
@@ -553,6 +564,8 @@ func (cs *channelState) recordBreakerOutcome(success bool) {
 		return
 	}
 	if success {
+		cs.recentErrors = NewSlidingCounter(60 * time.Second)
+		cs.consecutiveFailures = 0
 		cs.circuitOpenUntil = 0 // half-open → closed
 	} else {
 		// half-open → reopened

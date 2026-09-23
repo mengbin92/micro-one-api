@@ -1,9 +1,11 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"micro-one-api/platform/metrics"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -30,10 +32,15 @@ func newStreamHTTPClient(timeout time.Duration) *http.Client {
 }
 
 func newStreamHTTPClientWithLocalAccess(timeout time.Duration, allowLocal bool) *http.Client {
+	cfg, err := StreamTimeoutsFromEnv(timeout)
+	if err != nil {
+		panic(err)
+	}
 	return &http.Client{
 		Transport: &streamTimeoutRoundTripper{
-			base:        streamTransport(timeout, allowLocal),
-			idleTimeout: timeout,
+			base:          streamTransport(cfg.Header, allowLocal),
+			idleTimeout:   cfg.Idle,
+			headerTimeout: cfg.Header,
 		},
 		CheckRedirect: upstreamRedirectPolicy(allowLocal),
 	}
@@ -61,18 +68,57 @@ func streamTransport(timeout time.Duration, allowLocal bool) *http.Transport {
 }
 
 type streamTimeoutRoundTripper struct {
-	base        http.RoundTripper
-	idleTimeout time.Duration
+	headerTimeout time.Duration
+	base          http.RoundTripper
+	idleTimeout   time.Duration
 }
 
 func (t *streamTimeoutRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	resp, err := t.base.RoundTrip(req)
-	if err != nil || resp == nil || resp.Body == nil || t.idleTimeout <= 0 {
+	ctx, cancel := context.WithCancelCause(req.Context())
+	var timer *time.Timer
+	if t.headerTimeout > 0 {
+		timer = time.AfterFunc(t.headerTimeout, func() { cancel(ErrStreamHeaderTimeout) })
+	}
+	resp, err := t.base.RoundTrip(req.Clone(ctx))
+	if timer != nil {
+		timer.Stop()
+	}
+	if err != nil || resp == nil || resp.Body == nil {
+		if cause := context.Cause(ctx); cause != nil {
+			err = cause
+		}
+		cancel(nil)
+		if err != nil {
+			metrics.StreamTerminations.WithLabelValues(StreamFailureReason(err)).Inc()
+		}
 		return resp, err
 	}
-	resp.Body = newStreamIdleReadCloser(resp.Body, t.idleTimeout)
+	resp.Body = &streamContextBody{ReadCloser: newStreamIdleReadCloser(resp.Body, t.idleTimeout), ctx: ctx, cancel: cancel}
 	return resp, nil
 }
+
+type streamContextBody struct {
+	io.ReadCloser
+	ctx    context.Context
+	cancel context.CancelCauseFunc
+	once   sync.Once
+}
+
+func (b *streamContextBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if err != nil {
+		if cause := context.Cause(b.ctx); cause != nil {
+			err = cause
+		}
+		b.once.Do(func() {
+			if err != io.EOF {
+				metrics.StreamTerminations.WithLabelValues(StreamFailureReason(err)).Inc()
+			}
+		})
+	}
+	return n, err
+}
+func (b *streamContextBody) Close() error { b.cancel(nil); return b.ReadCloser.Close() }
 
 type streamIdleReadCloser struct {
 	body        io.ReadCloser
@@ -103,6 +149,9 @@ func (r *streamIdleReadCloser) Read(p []byte) (int, error) {
 	n, err := r.body.Read(p)
 	if n > 0 {
 		r.touch()
+	}
+	if err != nil {
+		r.doneOnce.Do(func() { close(r.done) })
 	}
 	if err != nil && r.timedOut.Load() {
 		return n, fmt.Errorf("%w after %s", ErrStreamIdleTimeout, r.idleTimeout)

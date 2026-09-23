@@ -10,7 +10,10 @@ import (
 	relayquota "micro-one-api/internal/quota"
 	"micro-one-api/pkg/safecast"
 
+	kerrors "github.com/go-kratos/kratos/v3/errors"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // ChannelSubscriptionAccountStore adapts channel-service subscription-account
@@ -43,6 +46,7 @@ func (s *ChannelSubscriptionAccountStore) Lookup(ctx context.Context, accountID 
 	}
 	return &relaycredential.AccountCredentials{
 		AccountID:    account.GetAccountId(),
+		Revision:     account.GetCredentialRevision(),
 		AccessToken:  account.GetAccessToken(),
 		RefreshToken: account.GetRefreshToken(),
 		ExpiresAt:    time.Unix(account.GetExpiresAt(), 0),
@@ -53,20 +57,22 @@ func (s *ChannelSubscriptionAccountStore) Store(ctx context.Context, accountID i
 	if s == nil || s.client == nil {
 		return relaycredential.ErrNotConfigured
 	}
-	req := &channelv1.UpdateSubscriptionAccountRequest{Id: accountID}
-	if creds != nil {
-		req.AccessToken = creds.AccessToken
-		req.RefreshToken = creds.RefreshToken
-		req.ExpiresAt = creds.ExpiresAt.Unix()
-		req.AccountId = creds.AccountID
+	if creds == nil {
+		return relaycredential.ErrAccountNotFound
 	}
-	reply, err := s.client.UpdateSubscriptionAccount(ctx, req)
+	reply, err := s.client.StoreSubscriptionCredentials(ctx, &channelv1.StoreSubscriptionCredentialsRequest{
+		Id: accountID, ExpectedRevision: creds.Revision, AccessToken: creds.AccessToken, RefreshToken: creds.RefreshToken, ExpiresAt: creds.ExpiresAt.Unix(), AccountId: creds.AccountID,
+	})
 	if err != nil {
+		if status.Code(err) == codes.Aborted || kerrors.FromError(err).Reason == channelv1.CredentialErrorReason_CREDENTIAL_REVISION_CONFLICT.String() {
+			return relaycredential.ErrCredentialConflict
+		}
 		return err
 	}
-	if reply != nil && !reply.GetSuccess() {
+	if reply == nil || reply.Revision <= creds.Revision {
 		return relaycredential.ErrRefreshFailed
 	}
+	creds.Revision = reply.Revision
 	return nil
 }
 

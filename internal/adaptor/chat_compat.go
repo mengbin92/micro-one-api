@@ -17,6 +17,9 @@ func convertRequestToChat(rc *RelayContext, inbound Format, body []byte) (Format
 	case FormatOpenAIChatCompletions:
 		return FormatOpenAIChatCompletions, body, nil
 	case FormatOpenAIResponses:
+		if err := ValidateResponsesConversion(body); err != nil {
+			return "", nil, err
+		}
 		var responsesRequest apicompat.ResponsesRequest
 		if err := jsonx.Unmarshal(body, &responsesRequest); err != nil {
 			return "", nil, fmt.Errorf("parse responses request: %w", err)

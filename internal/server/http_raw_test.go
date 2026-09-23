@@ -711,7 +711,7 @@ func TestHTTPServerResponsesCreateStreamsRawSSE(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"pong\"}\n\n"))
 		w.(http.Flusher).Flush()
-		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+		_, _ = w.Write([]byte("event: response.completed\ndata: {\"type\":\"response.completed\"}\n\ndata: [DONE]\n\n"))
 	}))
 	defer upstream.Close()
 
@@ -842,11 +842,11 @@ func TestHTTPServerResponsesCreateStreamStoresRouteForPreviousResponse(t *testin
 			_, _ = w.Write([]byte("data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_stream_123\",\"object\":\"response\",\"status\":\"in_progress\"}}\n\n"))
 			w.(http.Flusher).Flush()
 			_, _ = w.Write([]byte("data: {\"type\":\"response.completed\",\"response_id\":\"resp_stream_123\",\"response\":{\"id\":\"resp_stream_123\",\"usage\":{\"input_tokens\":2,\"output_tokens\":3,\"total_tokens\":5}}}\n\n"))
-			_, _ = w.Write([]byte("data: [DONE]\n\n"))
+			_, _ = w.Write([]byte("event: response.completed\ndata: {\"type\":\"response.completed\"}\n\ndata: [DONE]\n\n"))
 			return
 		}
 		_, _ = w.Write([]byte("data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_stream_456\",\"object\":\"response\",\"status\":\"in_progress\"}}\n\n"))
-		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+		_, _ = w.Write([]byte("event: response.completed\ndata: {\"type\":\"response.completed\"}\n\ndata: [DONE]\n\n"))
 	}))
 	defer upstream.Close()
 
@@ -903,7 +903,7 @@ func TestHTTPServerResponsesCreateStreamStoresRouteForPreviousResponse(t *testin
 	}
 }
 
-func TestHTTPServerResponsesStreamCommitsAfterRequestContextCanceled(t *testing.T) {
+func TestHTTPServerResponsesIncompleteStreamReleasesAfterRequestContextCanceled(t *testing.T) {
 	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -947,11 +947,11 @@ func TestHTTPServerResponsesStreamCommitsAfterRequestContextCanceled(t *testing.
 	if baseRec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body=%s", baseRec.Code, baseRec.Body.String())
 	}
-	if billingClient.commits != 1 {
-		t.Fatalf("commits = %d, want 1", billingClient.commits)
+	if billingClient.commits != 0 || billingClient.releases != 1 {
+		t.Fatalf("commits = %d, want 0 with one release", billingClient.commits)
 	}
-	if len(logClient.entries) != 1 {
-		t.Fatalf("usage logs = %d, want 1", len(logClient.entries))
+	if len(logClient.entries) != 0 {
+		t.Fatalf("usage logs = %d, want 0", len(logClient.entries))
 	}
 }
 
@@ -1022,92 +1022,6 @@ func (r *cancelOnFirstWriteRecorder) Write(p []byte) (int, error) {
 
 func (r *cancelOnFirstWriteRecorder) Flush() {}
 
-func TestHTTPServerResponsesCreateFallsBackToChatCompletions(t *testing.T) {
-	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
-
-	var gotPaths []string
-	var chatPayload map[string]any
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPaths = append(gotPaths, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/v1/responses":
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"error":{"message":"not found"}}`))
-		case "/v1/chat/completions":
-			_ = json.NewDecoder(r.Body).Decode(&chatPayload)
-			_, _ = w.Write([]byte(`{
-				"id":"chatcmpl_fallback_123",
-				"object":"chat.completion",
-				"created":1710000000,
-				"model":"gpt-4o-mini",
-				"choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],
-				"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6,"prompt_tokens_details":{"cached_tokens":3}}
-			}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer upstream.Close()
-
-	identityClient := rawIdentityClient{}
-	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
-	billingClient := &rawBillingClient{}
-	logClient := &rawLogClient{}
-	relayUsecase := relaybiz.NewRelayUsecase(
-		relaydata.NewIdentityAdapter(identityClient),
-		relaydata.NewChannelAdapter(channelClient),
-		nil,
-		&relaybiz.RetryPolicy{MaxAttempts: 1},
-	)
-	httpServer := NewHTTPServer(
-		identityClient,
-		channelClient,
-		billingClient,
-		relayprovider.NewProviderFactory(time.Second),
-		relayUsecase,
-		logClient,
-	)
-	srv := khttp.NewServer()
-	httpServer.RegisterRoutes(srv)
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-4o-mini","input":"ping"}`))
-	req.Header.Set("Authorization", "Bearer user-token")
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-
-	srv.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
-	}
-	if got := strings.Join(gotPaths, ","); got != "/v1/responses,/v1/chat/completions" {
-		t.Fatalf("upstream paths = %q", got)
-	}
-	if chatPayload["model"] != "gpt-4o-mini" {
-		t.Fatalf("fallback chat model = %v", chatPayload["model"])
-	}
-	if !strings.Contains(rec.Body.String(), `"object":"response"`) || !strings.Contains(rec.Body.String(), `"output_text":"pong"`) {
-		t.Fatalf("fallback response mismatch: %s", rec.Body.String())
-	}
-	if !strings.Contains(rec.Body.String(), `"input_tokens_details":{"cached_tokens":3}`) {
-		t.Fatalf("fallback response missing cached token detail: %s", rec.Body.String())
-	}
-	if billingClient.commits != 1 || billingClient.releases != 0 {
-		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
-	}
-	if len(logClient.entries) != 1 {
-		t.Fatalf("usage logs = %d, want 1", len(logClient.entries))
-	}
-	if len(billingClient.commitRequests) != 1 || billingClient.commitRequests[0].Endpoint != "/v1/responses" {
-		t.Fatalf("commit endpoint mismatch: %#v", billingClient.commitRequests)
-	}
-	gotLog := logClient.entries[0]
-	if gotLog.Quota != 6 || gotLog.PromptTokens != 4 || gotLog.CompletionTokens != 2 || gotLog.CacheReadTokens != 3 {
-		t.Fatalf("usage log mismatch: quota=%d prompt=%d completion=%d cache=%d", gotLog.Quota, gotLog.PromptTokens, gotLog.CompletionTokens, gotLog.CacheReadTokens)
-	}
-}
-
 func TestChatCompletionResponseToResponsesPreservesTokenDetails(t *testing.T) {
 	body, usage, err := chatCompletionResponseToResponses([]byte(`{
 		"id":"chatcmpl_fallback_123",
@@ -1138,337 +1052,6 @@ func TestChatCompletionResponseToResponsesPreservesTokenDetails(t *testing.T) {
 	}
 }
 
-func TestShouldFallbackResponsesToChatIncludesProviderBadRequest(t *testing.T) {
-	err := &relayprovider.UpstreamHTTPError{
-		StatusCode: http.StatusBadRequest,
-		Body:       []byte(`{"error":{"message":"responses not supported"}}`),
-	}
-	body := []byte(`{"model":"gpt-4o-mini","input":"ping"}`)
-
-	if !shouldFallbackResponsesToChat("/responses", body, err) {
-		t.Fatal("expected responses bad request to fall back to chat completions")
-	}
-	if shouldFallbackResponsesToChat("/responses/input_tokens", body, err) {
-		t.Fatal("input_tokens should not fall back to chat completions")
-	}
-}
-
-func TestShouldFallbackResponsesToChatCompatibilityStatusesRequireConvertibleBody(t *testing.T) {
-	convertible := []byte(`{"model":"gpt-4o-mini","input":"ping"}`)
-	notConvertible := []byte(`{"input":"ping"}`)
-	for _, status := range []int{http.StatusUnsupportedMediaType, http.StatusUnprocessableEntity} {
-		err := &relayprovider.UpstreamHTTPError{StatusCode: status, Body: []byte(`{"error":{"message":"unsupported responses request"}}`)}
-		if !shouldFallbackResponsesToChat("/responses", convertible, err) {
-			t.Fatalf("status %d with convertible body should fall back", status)
-		}
-		if shouldFallbackResponsesToChat("/responses", notConvertible, err) {
-			t.Fatalf("status %d with non-convertible body should not fall back", status)
-		}
-	}
-
-	err := &relayprovider.UpstreamHTTPError{StatusCode: http.StatusRequestEntityTooLarge}
-	if shouldFallbackResponsesToChat("/responses", convertible, err) {
-		t.Fatal("413 must not fall back")
-	}
-}
-
-func TestResponsesFallbackTerminalErrorUsesActualFallbackFailure(t *testing.T) {
-	original := &relayprovider.UpstreamHTTPError{
-		StatusCode: http.StatusMethodNotAllowed,
-		Body:       []byte("responses endpoint unavailable"),
-	}
-	fallback := &relayprovider.UpstreamHTTPError{
-		StatusCode: http.StatusBadRequest,
-		Body:       []byte("reasoning_content must be passed back"),
-	}
-
-	got := responsesFallbackTerminalError(original, fallback)
-	if got != fallback {
-		t.Fatalf("terminal error = %v, want actual chat fallback error %v", got, fallback)
-	}
-	if status := relaybiz.UpstreamStatus(got); status != http.StatusBadRequest {
-		t.Fatalf("terminal status = %d, want 400", status)
-	}
-}
-
-func TestHTTPServerResponsesFallbackReturnsChatFailure(t *testing.T) {
-	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
-
-	var gotPaths []string
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPaths = append(gotPaths, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/v1/responses":
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			_, _ = w.Write([]byte(`{"error":{"message":"responses unavailable"}}`))
-		case "/v1/chat/completions":
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"error":{"message":"reasoning_content must be passed back"}}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer upstream.Close()
-
-	identityClient := rawIdentityClient{}
-	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
-	billingClient := &rawBillingClient{}
-	logClient := &rawLogClient{}
-	relayUsecase := relaybiz.NewRelayUsecase(
-		relaydata.NewIdentityAdapter(identityClient),
-		relaydata.NewChannelAdapter(channelClient),
-		nil,
-		&relaybiz.RetryPolicy{MaxAttempts: 1},
-	)
-	httpServer := NewHTTPServer(
-		identityClient,
-		channelClient,
-		billingClient,
-		relayprovider.NewProviderFactory(time.Second),
-		relayUsecase,
-		logClient,
-	)
-	srv := khttp.NewServer()
-	httpServer.RegisterRoutes(srv)
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"deepseek-v4-pro-0813","input":"ping"}`))
-	req.Header.Set("Authorization", "Bearer user-token")
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-
-	srv.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400, body=%s", rec.Code, rec.Body.String())
-	}
-	if got := strings.Join(gotPaths, ","); got != "/v1/responses,/v1/chat/completions" {
-		t.Fatalf("upstream paths = %q", got)
-	}
-	if !strings.Contains(rec.Body.String(), `"message":"reasoning_content must be passed back"`) {
-		t.Fatalf("client error body should preserve actionable fallback detail: %s", rec.Body.String())
-	}
-	if billingClient.commits != 0 || billingClient.releases != 1 {
-		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
-	}
-	if len(logClient.entries) != 0 {
-		t.Fatalf("usage logs = %d, want 0", len(logClient.entries))
-	}
-}
-
-func TestHTTPServerResponsesPreviousResponseFallsBackToChatCompletions(t *testing.T) {
-	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
-
-	var chatPayloads []map[string]any
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/v1/responses":
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"error":{"message":"not found"}}`))
-		case "/v1/chat/completions":
-			var payload map[string]any
-			_ = json.NewDecoder(r.Body).Decode(&payload)
-			chatPayloads = append(chatPayloads, payload)
-			_, _ = w.Write([]byte(`{
-				"id":"chatcmpl_fallback_123",
-				"object":"chat.completion",
-				"created":1710000000,
-				"model":"mimo-v2.5-pro",
-				"choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],
-				"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}
-			}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer upstream.Close()
-
-	cfgPath := t.TempDir() + "/models.yaml"
-	if err := os.WriteFile(cfgPath, []byte(`models:
-  gpt-5:
-    actual_name: mimo-v2.5-pro
-    capabilities: [function_call, streaming]
-`), 0o600); err != nil {
-		t.Fatalf("write model config: %v", err)
-	}
-	modelMapper, err := relaybiz.NewModelMapper(cfgPath)
-	if err != nil {
-		t.Fatalf("NewModelMapper: %v", err)
-	}
-
-	identityClient := rawIdentityClient{}
-	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
-	billingClient := &rawBillingClient{}
-	relayUsecase := relaybiz.NewRelayUsecase(
-		relaydata.NewIdentityAdapter(identityClient),
-		relaydata.NewChannelAdapter(channelClient),
-		modelMapper,
-		&relaybiz.RetryPolicy{MaxAttempts: 1},
-	)
-	httpServer := NewHTTPServer(
-		identityClient,
-		channelClient,
-		billingClient,
-		relayprovider.NewProviderFactory(time.Second),
-		relayUsecase,
-	)
-	srv := khttp.NewServer()
-	httpServer.RegisterRoutes(srv)
-
-	createReq := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5","input":"ping"}`))
-	createReq.Header.Set("Authorization", "Bearer user-token")
-	createReq.Header.Set("Content-Type", "application/json")
-	createRec := httptest.NewRecorder()
-	srv.ServeHTTP(createRec, createReq)
-	if createRec.Code != http.StatusOK {
-		t.Fatalf("create status = %d, want 200, body=%s", createRec.Code, createRec.Body.String())
-	}
-
-	var createBody struct {
-		ID string `json:"id"`
-	}
-	if err := json.Unmarshal(createRec.Body.Bytes(), &createBody); err != nil {
-		t.Fatalf("decode create response: %v, body=%s", err, createRec.Body.String())
-	}
-	nextReq := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"previous_response_id":"`+createBody.ID+`","input":"continue"}`))
-	nextReq.Header.Set("Authorization", "Bearer user-token")
-	nextReq.Header.Set("Content-Type", "application/json")
-	nextRec := httptest.NewRecorder()
-	srv.ServeHTTP(nextRec, nextReq)
-
-	if nextRec.Code != http.StatusOK {
-		t.Fatalf("next status = %d, want 200, body=%s", nextRec.Code, nextRec.Body.String())
-	}
-	if len(chatPayloads) != 2 {
-		t.Fatalf("chat fallback calls = %d, want 2", len(chatPayloads))
-	}
-	if chatPayloads[1]["model"] != "mimo-v2.5-pro" {
-		t.Fatalf("previous response fallback model = %v, want mimo-v2.5-pro", chatPayloads[1]["model"])
-	}
-	if billingClient.commits != 2 || billingClient.releases != 0 {
-		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
-	}
-}
-
-func TestHTTPServerResponsesCreateStreamFallsBackToChatCompletions(t *testing.T) {
-	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
-
-	var gotPaths []string
-	var chatStream bool
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPaths = append(gotPaths, r.URL.Path)
-		switch r.URL.Path {
-		case "/v1/responses":
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"error":{"message":"not found"}}`))
-		case "/v1/chat/completions":
-			var payload map[string]any
-			_ = json.NewDecoder(r.Body).Decode(&payload)
-			chatStream, _ = payload["stream"].(bool)
-			w.Header().Set("Content-Type", "text/event-stream")
-			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"po"},"finish_reason":null}]}` + "\n\n"))
-			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"ng"},"finish_reason":null}]}` + "\n\n"))
-			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}` + "\n\n"))
-			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[],"usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6,"prompt_tokens_details":{"cached_tokens":3}}}` + "\n\n"))
-			_, _ = w.Write([]byte("data: [DONE]\n\n"))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer upstream.Close()
-
-	identityClient := rawIdentityClient{}
-	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
-	billingClient := &rawBillingClient{}
-	logClient := &rawLogClient{}
-	relayUsecase := relaybiz.NewRelayUsecase(
-		relaydata.NewIdentityAdapter(identityClient),
-		relaydata.NewChannelAdapter(channelClient),
-		nil,
-		&relaybiz.RetryPolicy{MaxAttempts: 1},
-	)
-	httpServer := NewHTTPServer(
-		identityClient,
-		channelClient,
-		billingClient,
-		relayprovider.NewProviderFactory(time.Second),
-		relayUsecase,
-		logClient,
-	)
-	srv := khttp.NewServer()
-	httpServer.RegisterRoutes(srv)
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-4o-mini","input":"ping","stream":true}`))
-	req.Header.Set("Authorization", "Bearer user-token")
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-
-	srv.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
-	}
-	if got := strings.Join(gotPaths, ","); got != "/v1/responses,/v1/chat/completions" {
-		t.Fatalf("upstream paths = %q", got)
-	}
-	if !chatStream {
-		t.Fatal("fallback chat request was not streaming")
-	}
-	body := rec.Body.String()
-	for _, want := range []string{
-		`event: response.created`,
-		`"type":"response.created"`,
-		`event: response.in_progress`,
-		`"type":"response.in_progress"`,
-		`event: response.output_item.added`,
-		`"type":"response.output_item.added"`,
-		`event: response.content_part.added`,
-		`"type":"response.content_part.added"`,
-		`event: response.output_text.delta`,
-		`"type":"response.output_text.delta"`,
-		`"delta":"po"`,
-		`event: response.output_text.done`,
-		`"type":"response.output_text.done"`,
-		`event: response.content_part.done`,
-		`"type":"response.content_part.done"`,
-		`event: response.output_item.done`,
-		`"type":"response.output_item.done"`,
-		`event: response.completed`,
-		`"type":"response.completed"`,
-		`data: [DONE]`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("fallback stream body missing %s: %s", want, body)
-		}
-	}
-	if strings.Contains(body, `"response_id":"chatcmpl_stream_123"`) {
-		t.Fatalf("fallback stream leaked chat completion id as response_id: %s", body)
-	}
-	if !strings.Contains(body, `"response_id":"resp_`) {
-		t.Fatalf("fallback stream body mismatch: %s", body)
-	}
-	if billingClient.commits != 1 || billingClient.releases != 0 {
-		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
-	}
-	if len(billingClient.commitRequests) != 1 || billingClient.commitRequests[0].Endpoint != "/v1/responses" {
-		t.Fatalf("commit endpoint mismatch: %#v", billingClient.commitRequests)
-	}
-	if len(logClient.entries) != 1 || !logClient.entries[0].IsStream {
-		t.Fatalf("stream usage log mismatch: entries=%#v", logClient.entries)
-	}
-	gotLog := logClient.entries[0]
-	if gotLog.Quota != 6 || gotLog.PromptTokens != 4 || gotLog.CompletionTokens != 2 || gotLog.CacheReadTokens != 3 {
-		t.Fatalf("stream usage log = quota:%d prompt:%d completion:%d cache:%d", gotLog.Quota, gotLog.PromptTokens, gotLog.CompletionTokens, gotLog.CacheReadTokens)
-	}
-	for _, want := range []string{`"usage":`, `"input_tokens":4`, `"output_tokens":2`, `"total_tokens":6`, `"input_tokens_details"`, `"cached_tokens":3`} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("fallback stream response missing responses usage field %s: %s", want, body)
-		}
-	}
-}
-
 func TestResponsesStreamFallbackPreservesTokenDetails(t *testing.T) {
 	state := newResponsesStreamFallbackState("resp_test", "msg_resp_test")
 	var out strings.Builder
@@ -1481,100 +1064,6 @@ func TestResponsesStreamFallbackPreservesTokenDetails(t *testing.T) {
 	}
 	if state.usage.PromptTokens != 29 || state.usage.CompletionTokens != 11 || state.usage.TotalTokens != 40 || state.usage.CacheReadTokens != 7 {
 		t.Fatalf("usage = prompt:%d completion:%d total:%d cache:%d", state.usage.PromptTokens, state.usage.CompletionTokens, state.usage.TotalTokens, state.usage.CacheReadTokens)
-	}
-}
-
-func TestHTTPServerResponsesCreateStreamFallbackConvertsToolCalls(t *testing.T) {
-	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
-
-	var chatStream bool
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/v1/responses":
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"error":{"message":"not found"}}`))
-		case "/v1/chat/completions":
-			var payload map[string]any
-			_ = json.NewDecoder(r.Body).Decode(&payload)
-			chatStream, _ = payload["stream"].(bool)
-			w.Header().Set("Content-Type", "text/event-stream")
-			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_tool_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_exec_123","type":"function","function":{"name":"exec_command","arguments":"{\"cmd\":"}}]},"finish_reason":null}]}` + "\n\n"))
-			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_tool_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"date\"}"}}]},"finish_reason":null}]}` + "\n\n"))
-			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_tool_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":9,"completion_tokens":3,"total_tokens":12}}` + "\n\n"))
-			_, _ = w.Write([]byte("data: [DONE]\n\n"))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer upstream.Close()
-
-	identityClient := rawIdentityClient{}
-	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
-	billingClient := &rawBillingClient{}
-	logClient := &rawLogClient{}
-	relayUsecase := relaybiz.NewRelayUsecase(
-		relaydata.NewIdentityAdapter(identityClient),
-		relaydata.NewChannelAdapter(channelClient),
-		nil,
-		&relaybiz.RetryPolicy{MaxAttempts: 1},
-	)
-	httpServer := NewHTTPServer(
-		identityClient,
-		channelClient,
-		billingClient,
-		relayprovider.NewProviderFactory(time.Second),
-		relayUsecase,
-		logClient,
-	)
-	srv := khttp.NewServer()
-	httpServer.RegisterRoutes(srv)
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{
-		"model":"gpt-4o-mini",
-		"input":"run date",
-		"tools":[{"type":"function","name":"exec_command","parameters":{"type":"object"}}],
-		"stream":true
-	}`))
-	req.Header.Set("Authorization", "Bearer user-token")
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-
-	srv.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
-	}
-	if !chatStream {
-		t.Fatal("fallback chat request was not streaming")
-	}
-	body := rec.Body.String()
-	for _, want := range []string{
-		`event: response.output_item.added`,
-		`"type":"function_call"`,
-		`"call_id":"call_exec_123"`,
-		`"name":"exec_command"`,
-		`event: response.function_call_arguments.delta`,
-		`"delta":"{\"cmd\":"`,
-		`"delta":"\"date\"}"`,
-		`event: response.function_call_arguments.done`,
-		`"arguments":"{\"cmd\":\"date\"}"`,
-		`event: response.output_item.done`,
-		`event: response.completed`,
-		`data: [DONE]`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("fallback tool stream body missing %s: %s", want, body)
-		}
-	}
-	if strings.Contains(body, `response.output_text.done`) {
-		t.Fatalf("tool-call fallback should not emit text-done events: %s", body)
-	}
-	if billingClient.commits != 1 || billingClient.releases != 0 {
-		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
-	}
-	if len(logClient.entries) != 1 || !logClient.entries[0].IsStream {
-		t.Fatalf("stream usage log mismatch: entries=%#v", logClient.entries)
 	}
 }
 

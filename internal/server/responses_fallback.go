@@ -2,122 +2,31 @@ package server
 
 import (
 	"bufio"
-	"context"
-	stderrors "errors"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 
 	"micro-one-api/pkg/jsonx"
-	applogger "micro-one-api/platform/logging"
 
 	relayprovider "micro-one-api/domain/upstream/provider"
 	"micro-one-api/internal/apicompat"
-	relaybiz "micro-one-api/internal/biz"
 	usagepkg "micro-one-api/internal/server/usage"
-
-	"go.uber.org/zap"
 )
 
-type responsesFallbackResult struct {
-	Response *relayprovider.RawResponse
-	Stream   *relayprovider.RawStreamResponse
-	Usage    rawUsage
-}
-
 func shouldFallbackResponsesToChat(path string, body []byte, err error) bool {
-	if path != "/responses" || err == nil {
-		return false
-	}
 	var upstreamErr *relayprovider.UpstreamHTTPError
-	if !stderrors.As(err, &upstreamErr) {
+	if path != "/responses" || !errors.As(err, &upstreamErr) {
 		return false
 	}
 	switch upstreamErr.StatusCode {
-	case http.StatusBadRequest, http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented, http.StatusBadGateway, http.StatusServiceUnavailable:
-		return true
-	case http.StatusUnsupportedMediaType, http.StatusUnprocessableEntity:
-		// A 415/422 can mean either an unsupported Responses request shape or
-		// a genuine client error. Only try Chat Completions when the inbound
-		// request satisfies the converter contract; otherwise preserve the
-		// deterministic client failure without issuing a second upstream call.
+	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
 		_, _, conversionErr := responsesRequestToChatCompletionsBody(body)
 		return conversionErr == nil
 	default:
 		return false
 	}
-}
-
-func (s *HTTPServer) forwardResponsesViaChatFallback(ctx context.Context, ch *relaybiz.Channel, header http.Header, body []byte) (*responsesFallbackResult, error) {
-	chatBody, clientStream, err := responsesRequestToChatCompletionsBody(body)
-	if err != nil {
-		return nil, err
-	}
-	if clientStream {
-		streamResp, err := s.forwardResponsesRawStream(ctx, ch, http.MethodPost, "/chat/completions", "", header, chatBody)
-		if err != nil {
-			return nil, err
-		}
-		fallbackStream := transformChatCompletionStreamToResponses(streamResp)
-		return &responsesFallbackResult{
-			Stream: &relayprovider.RawStreamResponse{
-				StatusCode: streamResp.StatusCode,
-				Header:     fallbackStream.Header,
-				Body:       fallbackStream.Body,
-			},
-			Usage: rawUsage{TotalTokens: estimateRawTokens(body)},
-		}, nil
-	}
-
-	resp, err := s.forwardResponsesRaw(ctx, ch, http.MethodPost, "/chat/completions", "", header, chatBody)
-	if err != nil {
-		return nil, err
-	}
-	bodyResp, usage, err := chatCompletionResponseToResponses(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	headerResp := resp.Header.Clone()
-	headerResp.Set("Content-Type", "application/json")
-	return &responsesFallbackResult{
-		Response: &relayprovider.RawResponse{StatusCode: resp.StatusCode, Header: headerResp, Body: bodyResp},
-		Usage:    usage,
-	}, nil
-}
-
-func (s *HTTPServer) forwardResponsesViaChatFallbackObserved(ctx context.Context, ch *relaybiz.Channel, header http.Header, body []byte, triggerErr error) (*responsesFallbackResult, error) {
-	result, fallbackErr := s.forwardResponsesViaChatFallback(ctx, ch, header, body)
-	fields := []zap.Field{
-		zap.Int64("channel_id", ch.ID),
-		zap.String("channel", ch.Name),
-		zap.Int("responses_status", relaybiz.UpstreamStatus(triggerErr)),
-		zap.String("responses_error_category", responsesUpstreamErrorCategory(relaybiz.UpstreamStatus(triggerErr))),
-	}
-	if fallbackErr != nil {
-		fields = append(fields,
-			zap.Int("chat_fallback_status", relaybiz.UpstreamStatus(fallbackErr)),
-			zap.String("chat_fallback_error_category", responsesUpstreamErrorCategory(relaybiz.UpstreamStatus(fallbackErr))),
-		)
-		applogger.Log.Warn("responses to chat fallback failed", fields...)
-		return result, fallbackErr
-	}
-	status := 0
-	if result != nil && result.Stream != nil {
-		status = result.Stream.StatusCode
-	} else if result != nil && result.Response != nil {
-		status = result.Response.StatusCode
-	}
-	fields = append(fields, zap.Int("chat_fallback_status", status))
-	applogger.Log.Info("responses to chat fallback succeeded", fields...)
-	return result, nil
-}
-
-func responsesFallbackTerminalError(originalErr, fallbackErr error) error {
-	if fallbackErr != nil {
-		return fallbackErr
-	}
-	return originalErr
 }
 
 func responsesRequestToChatCompletionsBody(body []byte) ([]byte, bool, error) {
@@ -748,47 +657,6 @@ func writeResponsesSSE(w io.Writer, event map[string]any) {
 // and converts the Anthropic response/stream back to the Responses format the
 // client (Codex) expects.
 // ---------------------------------------------------------------------------
-
-// forwardResponsesViaAnthropicFallback converts a Responses API request to an
-// Anthropic Messages request, calls the upstream, and converts the response
-// back to Responses format. It mirrors forwardResponsesViaChatFallback but
-// targets Anthropic channels (type=2) whose upstream is /v1/messages.
-func (s *HTTPServer) forwardResponsesViaAnthropicFallback(ctx context.Context, ch *relaybiz.Channel, header http.Header, body []byte) (*responsesFallbackResult, error) {
-	anthropicBody, clientStream, err := responsesRequestToAnthropicBody(body)
-	if err != nil {
-		return nil, err
-	}
-	if clientStream {
-		streamResp, err := s.forwardResponsesRawStream(ctx, ch, http.MethodPost, "/messages", "", header, anthropicBody)
-		if err != nil {
-			return nil, err
-		}
-		fallbackStream := transformAnthropicStreamToResponses(streamResp)
-		return &responsesFallbackResult{
-			Stream: &relayprovider.RawStreamResponse{
-				StatusCode: streamResp.StatusCode,
-				Header:     fallbackStream.Header,
-				Body:       fallbackStream.Body,
-			},
-			Usage: rawUsage{TotalTokens: estimateRawTokens(body)},
-		}, nil
-	}
-
-	resp, err := s.forwardResponsesRaw(ctx, ch, http.MethodPost, "/messages", "", header, anthropicBody)
-	if err != nil {
-		return nil, err
-	}
-	bodyResp, usage, err := anthropicResponseToResponses(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	headerResp := resp.Header.Clone()
-	headerResp.Set("Content-Type", "application/json")
-	return &responsesFallbackResult{
-		Response: &relayprovider.RawResponse{StatusCode: resp.StatusCode, Header: headerResp, Body: bodyResp},
-		Usage:    usage,
-	}, nil
-}
 
 // responsesRequestToAnthropicBody converts a Responses API request body into
 // an Anthropic Messages request body and reports whether the client requested

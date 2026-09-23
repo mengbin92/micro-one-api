@@ -52,6 +52,28 @@ func main() {
 			}
 			return
 		}
+		model := fmt.Sprint(req["model"])
+		if strings.HasPrefix(model, "fault-") {
+			http.Error(w, "controlled upstream failure", 500)
+			return
+		}
+		if strings.HasPrefix(model, "partial-") {
+			w.Header().Set("Content-Type", "text/event-stream")
+			if strings.Contains(r.URL.Path, "messages") {
+				event(w, "message_start", map[string]any{"type": "message_start", "message": map[string]any{"id": id, "type": "message", "role": "assistant", "model": model, "content": []any{}, "usage": map[string]any{"input_tokens": 4, "output_tokens": 0}}})
+				event(w, "content_block_delta", map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "text_delta", "text": "partial"}})
+			} else {
+				event(w, "", map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"content": "partial"}}}})
+			}
+			return
+		}
+		if strings.Contains(r.URL.Path, "messages") {
+			w.Header().Set("Content-Type", "text/event-stream")
+			event(w, "message_start", map[string]any{"type": "message_start", "message": map[string]any{"id": id, "type": "message", "role": "assistant", "model": model, "content": []any{}, "usage": map[string]any{"input_tokens": 100, "output_tokens": 0}}})
+			event(w, "message_delta", map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": "end_turn"}, "usage": map[string]any{"output_tokens": 20}})
+			event(w, "message_stop", map[string]any{"type": "message_stop"})
+			return
+		}
 		usage := map[string]any{"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120}
 		if stream {
 			w.Header().Set("Content-Type", "text/event-stream")

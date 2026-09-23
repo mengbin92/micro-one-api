@@ -82,6 +82,9 @@ func TestOpenAIProvider_ChatCompletionsStream(t *testing.T) {
 
 	var fullContent strings.Builder
 	for chunk := range chunkChan {
+		if chunk.Complete {
+			continue
+		}
 		chunkCount++
 		if len(chunk.Choices) > 0 {
 			fullContent.WriteString(chunk.Choices[0].Delta.Content)
@@ -128,6 +131,9 @@ func TestOpenAIProvider_ChatCompletionsStreamParsesUsage(t *testing.T) {
 
 	var usage Usage
 	for chunk := range chunkChan {
+		if chunk.Complete {
+			continue
+		}
 		if chunk.Usage.TotalTokens > 0 {
 			usage = chunk.Usage
 		}
@@ -142,8 +148,10 @@ func TestReadOpenAIStreamScannerErrorWithNilLoggerDoesNotPanic(t *testing.T) {
 	previous := applogger.SwapLogger(nil)
 	t.Cleanup(func() { applogger.SwapLogger(previous) })
 
-	for range readOpenAIStream(&http.Response{Body: errorReadCloser{err: errors.New("read failed")}}) {
-		t.Fatal("expected no chunks")
+	for chunk := range readOpenAIStream(&http.Response{Body: errorReadCloser{err: errors.New("read failed")}}) {
+		if chunk.StreamError == nil {
+			t.Fatal("expected terminal stream error")
+		}
 	}
 }
 
@@ -190,6 +198,9 @@ func TestOpenAIProvider_ChatCompletionsStreamPassesToolCallDeltas(t *testing.T) 
 
 	var chunks []StreamChunk
 	for chunk := range chunkChan {
+		if chunk.Complete {
+			continue
+		}
 		chunks = append(chunks, chunk)
 	}
 	if len(chunks) != 2 {
@@ -535,11 +546,8 @@ func TestProviderFactory_CreateProvider(t *testing.T) {
 	}
 
 	p2, err := factory.CreateProvider(999, "https://custom.api/v1", "sk-test")
-	if err != nil {
-		t.Fatalf("CreateProvider(unknown) error = %v", err)
-	}
-	if p2 == nil {
-		t.Fatal("expected non-nil provider for unknown type")
+	if err == nil || p2 != nil {
+		t.Fatal("unknown provider must be rejected")
 	}
 }
 

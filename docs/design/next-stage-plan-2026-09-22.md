@@ -1,0 +1,196 @@
+# 下一阶段计划：可靠性补缺、运行可见性与文章技术债收口
+
+> 制定：2026-09-22；状态：第一批 R1–R4 已完成本地实施及隔离验收；第二批待实施，仍为当前执行入口。
+>
+> 核对基线：`develop@77e4db45`（[v0.31.0](../releases/release-v0.31.0.md)）。规划时完成分支切换、文章盘点和静态核对；随后第一批已实现并通过本地验收。实现与验收记录随本批一并提交，未部署或启动生产观察。
+>
+> 来源：桌面 `/Users/neo/Desktop/micro-one-api-articles/` 的 04–25 共 22 篇原文、用户补充的四组建议，以及仓库既有验收记录。`wechat/` 是发布副本，不重复记债；目录中没有 01–03 原文，不推测其内容。
+>
+> 用户于 2026-09-23 纠正边界：**恢复既有 Responses→Chat/Anthropic 转换及默认兼容行为；仅对确实无法转换的能力明确报错。保留流式中断、禁止重复执行、正确结算和显式同模型故障切换。**
+
+## 1. 阶段范围和现状纠偏
+
+本阶段优先解决会丢凭证、无法隔离故障、错误与计费归属不清的缺口。文章中的所有遗留项在第 6 节登记去向；“登记”不代表全部纳入本阶段发布。暂不预定发布版本，按验收完成的批次决定 PATCH/MINOR。
+
+以下旧描述不能直接当作当前待办：
+
+| 文章/建议中的描述 | 当前证据与结论 | 本阶段处理 |
+| --- | --- | --- |
+| OAuth Store 失败只有日志 | [base_token_provider.go](../../domain/upstream/credential/base_token_provider.go) 已有三次短重试和 `CredentialPersistFailures`；仍用标准库日志，未检出对应告警规则 | 补持久化状态、主动补写及告警，不重复造计数器（R1） |
+| outbox 没有积压监控 | [outbox 指标](../../platform/routingoutbox/report.go) 与 [P1-1 验收](../runbooks/p1-acceptance-2026-09-15.md) 已有积压、年龄、失败和恢复证据 | 复用；承接外部告警送达与毒事件处置（O2、D3） |
+| raw 路径完全没有模型健康 | `handleRawRelay → ExecuteWithCandidates → recordHealth → RecordModelHealth` 已贯通，见 [raw handler](../../internal/server/http_raw_handler.go)、[retry.go](../../internal/biz/retry.go) | 修正旧结论；核验成功/失败覆盖和恰好一次记录（O1） |
+| 不同来源 ID 冲突；候选每次重算 | [RoutingSourceIdentity / RoutingCandidateList](../../internal/biz/relay.go) 已实现；[候选回归](../../internal/biz/retry_candidates_test.go) 含同号跨来源 | 保留回归；候选耗尽仍有重新选路分支，需明确策略，不宣称候选永不扩展（R2、R3） |
+| SSE 没有空闲超时 | [stream_timeout.go](../../domain/upstream/provider/stream_timeout.go) 已按字节活动滑动计时，流式客户端没有 `http.Client.Timeout` | 检查各入口接入，分开总预算/首包/空闲语义（R4） |
+| 所有数据库 smoke 只有 MySQL | [CI](../../.github/workflows/ci.yml) 已跑 MySQL/PostgreSQL；[共享 E2E](../../.github/workflows/e2e.yml) 含 MySQL/SQLite 路由；v0.30 有三方言升级证据 | 只补历史 schema 语义及未覆盖场景（Q2） |
+| `isValid` 永远 true | [handleSubscriptionUsage](../../internal/server/http_status_handler.go) 已在未配置/无订阅时返回 false，有订阅时按状态计算 | 保留兼容别名；补字段契约及冻结额，不删字段（O3） |
+| Playground 不显示请求 ID | [PlaygroundPage.tsx](../../web/src/pages/PlaygroundPage.tsx) 已有请求检查器和错误 ID 展示 | 补与根请求/OTel 的关联和端到端证据（O2、Q1） |
+| 服务器完全没有 CSP 实现 | [SecurityHeaders](../../platform/middleware/security.go) 已有 CSP，但尚不能据此证明 admin 静态页面接入或生产生效；其 `connect-src 'self'` 也不满足跨域 Relay | 核对静态服务与入口代理、补适配后的头及浏览器验收（Q1） |
+| v0.30 仍是下一阶段 | v0.30 路线图各项已完成；v0.31 已发布并补齐结算恢复、尝试追踪、通知重试等 | 旧路线图归档，本文件接管剩余事项 |
+
+## 2. 第一批：请求与凭证可靠性（R）
+
+R1 → R2 → R3 → R4 已完成实现及验收，见[第一批实施记录](../runbooks/first-batch-reliability-2026-09-22.md)。本批实现、回归测试与验收记录一并提交，提交记录见本文件 Git 历史。下表所述风险来自静态核对，新增缺陷先用最小回归复现，不以文章断言代替测试结果。
+
+### R1 · P0：轮换凭证保留、周期补写和告警
+
+**状态：已完成（2026-09-22，本地/隔离验收，未部署）**。
+
+**入口**：[base_token_provider.go](../../domain/upstream/credential/base_token_provider.go)、[token_cache.go](../../domain/upstream/credential/token_cache.go)、[refresh_task.go](../../domain/upstream/credential/refresh_task.go)、[AccountLookup 契约](../../domain/upstream/credential/token_provider.go)。
+
+除了文章所述“冷账号无人请求就不补写”，当前路径还有三处需要先复现的缺口：
+
+- Store 持续失败时 `Refresh` 仍返回 nil；后台 `refreshAccount` 随即 `Invalidate`，可能清掉唯一一份新 refresh token。
+- `resolve(force=true)` 和凭证临近过期时会读取持久层，未优先使用待落库的轮换凭证。
+- `resolve` 命中完整凭证后调用 access-token-only 的 `cache.set`，会丢掉完整凭证字段；当前热路径返回缓存也不补 Store。因此“下次 resolve 自动补写”并不是可靠保证。
+
+**最小实现范围**：
+
+1. 缓存明确保存完整凭证及 dirty/待持久化状态；刷新成功与持久化成功分开表达，不能因“请求可继续”就清除待补写数据。过期再刷新也必须基于最新 refresh token。
+2. 复用现有后台 sweep，先扫描待补写项，再做到期刷新；待补写集合不能只来自 `ExpiringSoon`，否则长有效期的冷账号仍会漏掉。补写仅 Store，不再调用 OAuth 刷新接口。
+3. 写回使用版本比较/条件更新，防止覆盖人工重新授权或另一写入者的新凭证。当前 `AccountCredentials`/`Store` 无 revision/CAS，不能假定已有版本字段：沿 channel 的 biz repo → data → RPC 增量补齐；需要迁移时三方言同步，生成代码按仓库工具生成。
+4. 保留短暂 Store 重试；跨分钟故障交给周期补写。统一结构化、脱敏日志，沿用失败 counter，新增待补写数量/最老年龄及成功补写信号；标签仅用有限平台/结果，账号 ID 只进日志。
+5. 告警初始建议：5 分钟内持久化失败增量大于 0 发 warning；待补写年龄超过两个扫描周期发 critical。通过规则测试校准，恢复后自动消警；修正“已有 Redis 实现”和“下次 resolve 会补写”的注释。
+
+**验收**：Store 连续失败后凭证仍可用；无新用户请求也能在数据库恢复后的下一轮补写；后台成功 hook 不清 dirty；强制/到期刷新用最新凭证；人工重授权版本冲突不被覆盖；不泄露 token；故障与恢复均有指标和告警证据。
+
+**明确边界**：进程内补写不能消除“持久化持续失败且进程强杀”的窗口，本项不得宣称跨重启无损。恢复写入前避免计划重启；强杀后须明确暴露重新授权需求。多副本协调另见 D1。
+
+### R2 · P1：低流量熔断与候选完整性
+
+**状态：已完成（2026-09-22，本地/隔离验收，未部署）**。
+
+**入口**：[普通渠道 selector](../../app/channel/internal/biz/selector.go)、[账号 selector](../../app/channel/internal/biz/account_selector.go)、[账号选择循环](../../internal/biz/relay.go)、[重试健康归并](../../internal/biz/retry.go)。
+
+- 两种 selector 都有“60 秒内至少 10 个样本且错误比例 > 50%”的条件；新增连续失败阈值，与比例条件取或。建议首版 `N=5`，显式配置且校验正值；独立于 60 秒样本窗口，在成功后清零。
+- 连击以“同一请求、同一来源的最终健康结果”为单位，同源内部重试不能凑满 N；沿用已有错误分类，客户端取消、本地并发/RPM拒绝、计费提交失败和模型专属错误不能误伤整个来源。
+- 对用户建议的“直接半开”，本计划采用现有状态机的受控恢复：触发后 open 冷却，再 half-open 放行一个探测，失败重新 open、成功清理连击和旧失败窗口。直接放行全部半开请求不能解决低流量故障。需验证多并发探测时确实只有一个名额，不能只看 sentinel/常量。
+- 普通渠道与订阅账号同号继续用 `(kind,id)` 区分，覆盖排除集、健康统计与审计。候选快照保留请求内顺序；所有重选仍须重新验证撤权和可调度性。
+- 清除“固定尝试 8 次，池中第 9 个账号可用却返回无账号”的上限问题：优先消费现有候选/服务端排除能力，受请求预算约束且检测无进展，不简单改成更大的魔数。已核实账号 selector 的 Acquire/Release 由 `RecordSubscriptionAccountSlot` 生产 RPC 调用，保留并修正空转描述。
+
+**验收**：不足 10 个窗口样本、跨窗口累计 N 次连败会隔离；中途一次成功清零；比例熔断仍生效；半开并发仅一个探测；同号来源互不污染；8 个被封账号后仍能命中可用账号；成功探测不被旧失败样本立即再次熔断。
+
+### R3 · P1：明确能力错误、统一 501、保留受控故障切换
+
+**状态：已完成（2026-09-22，本地/隔离验收，未部署）**。
+
+**入口**：[provider factory](../../domain/upstream/provider/factory.go)、[routes.go](../../internal/server/routes.go)、[retry.go](../../internal/biz/retry.go)、现有兼容性矩阵和路由审计。
+
+- 明确允许的 provider 类型/别名和协议能力。已声明但未实现的原生类型保持明确错误；未知数字类型不得走默认 OpenAI 分支。部署前只读盘点存量类型，明确兼容类型沿用显式枚举；不因配置错误发送上游请求。
+- 未实现且无法转换的能力错误类型化并禁止重放；保留既有协议适配。OpenAI-compatible Responses 404/405/501 允许同来源转换一次到 Chat；Anthropic 直接转换，状态资源能力单独校验，原生成功不转换。
+- 网络错误、可重试上游失败只按显式策略在同一公开模型的授权候选间切换；不换成另一公开模型。每次 attempt 固定实际来源、映射后的上游模型及计费预留，复用 v0.31 根请求追踪。最终错误带 request ID 和已授权、非敏感的 channel/source 标识，服务端审计记录完整尝试；无已选来源时不捏造 ID。
+- 所有已实现和明确不支持的路由之后，最后注册 `/v1/` 前缀兜底，复用同形状 OpenAI 501 handler；现有 29 个声明保留能力清单作用。已匹配资源的 404、已匹配端点的方法错误、鉴权限流、CORS/OPTIONS、body limit 仍按现有契约处理；`/api/*`、`/healthz`、`/metrics` 不受影响。
+- 兜底路径使用固定指标标签，不能把任意 URL 放进 Prometheus。流式一旦向客户端开始输出，禁止换上游；账务提交失败禁止重放上游。
+
+**验收**：未知 `/v1/new_endpoint` 为同形状 501；精确/前缀已知路由仍优先；未知类型和预先可判定的不可转换能力零上游调用；支持转换的请求通过新旧入口、流式和非流式矩阵。转换后仍不支持的能力终止执行；受控同模型切换有完整 attempt/计费归属；不同模型、无权限来源、已出流、提交失败均不触发替代执行。
+
+### R4 · P1：SSE 空闲超时与总预算分离
+
+**状态：已完成（2026-09-22，本地/隔离验收，未部署）**。
+
+**入口**：[共享 SSE client](../../domain/upstream/provider/stream_timeout.go)、[adaptor 接入](../../internal/server/http_adaptor.go)、[SSE 转发](../../internal/server/http_raw_helpers.go)、[下游韧性](../../platform/grpc/resilience.go)。
+
+- 复用现有滑动字节空闲超时，不另写 SSE 计时器；检查 Chat、Messages、Responses、provider/adaptor、legacy/orchestrator 的接入一致性。
+- 分别定义连接/响应头等待、流式空闲、可选总时长、非流式请求总预算。默认保留健康长流行为，不把非流式 timeout 直接当流式总时长；配置的总预算始终不能超过调用方 deadline。
+- keepalive 注释行算网络活动，可重置空闲计时，但不能延长总预算；业务“多久没生成内容”不冒充网络空闲。没有 keepalive 的上游允许明确的空闲参数覆盖，不能靠无限拉大所有超时处理。
+- 各次重试及退避共享剩余请求预算；SSE 断流/用户取消关闭上游、释放并发槽，并按现有 usage/结算规则进入一致终态，不统一猜测为成功或退款。
+- 区分首包超时、空闲超时、总预算耗尽、客户端取消；复用有限标签观测。
+- gRPC 下游 breaker 单独验证：按 identity/channel/billing/log 允许有限的阈值、冷却和预算覆盖，保持鉴权/计费 fail-close、日志故障不阻断请求。默认关闭不是自动开启的理由，故障恢复与误熔断验证通过后再决定启用范围，并同步“连续失败”与实际比例判断不符的注释。
+
+**验收**：注释 keepalive 保活、静默流超时、持续数据长流不被非流式超时截断、持续 keepalive 不能突破显式总时长、取消无 goroutine/槽位泄漏；R3 的已出流不切换和结算不重放同时通过。补 [既有验收记录](../runbooks/data-flow-next-stage-acceptance.md) 中尚未完成的流式跨来源隔离矩阵。
+
+## 3. 第二批：观测与额度解释（O）
+
+| ID / 优先级 | 最小范围与依赖 | 可验证的完成条件 |
+| --- | --- | --- |
+| O1 / P1 路由注册强制观测 | 在现有 `handleFunc`/`handlePrefix`/`wrapRoute` 注册缝隙统一请求生命周期观察，声明执行/只读/不支持类别；执行结果携带实际 source/model，复用 retry 与结算记录器。先列 Chat/Messages/Responses/raw/WS 的记录矩阵，删除重复写入后再接包装 | 新执行路由缺少观察声明时测试失败；成功、最终失败、取消、501/405、鉴权失败各有正确请求终态。用量仅对实际执行记录，不给 501/鉴权失败造 token；同源重试健康一次、账务一次，raw 不漏模型健康；`Flusher`/`Hijacker` 等能力不被包装破坏。依赖 R3/R4 |
+| O2 / P1 告警与追踪闭环 | 补 `buildAlertContent` 缺的 receivable_mirror/refund_reversal；关联 X-Request-ID、根请求、X-Trace-ID 与 OTel，保留现有兼容头；盘点有用指标的看板/告警。把 R1 及既有 outbox/Redis 降级信号接到既有通知能力，复核实际外部送达 | 七类差异“仅此一类非零”的通知都解释得清；用户提供的请求 ID 能定位根请求/attempt/trace；告警 firing→实际通知→恢复可回读，未配置通知明确显示未送达。去重冲突指标仅按操作/结果计数，不带用户/请求标签；不把出日志视为通知完成 |
+| O3 / P1 订阅用量可解释 | 从 billing 权威预留/结算语义提供 settled、frozen、available，并明确预留所属窗口和倍率；保留旧 used/remaining，增加 unlimited/over-limit 等明确语义及兼容字段文档；对齐购买快照与当前配置用途，修正文档中 expired 续费“复活”与实际新建的矛盾 | 在途批量请求、跨窗结算、取消释放、nil/0、过期、倍率改变都有 API/UI 一致样例；不能用“总预扣”冒充“订阅部分冻结”；旧客户端可继续解析。影响履行字段的快照新增规则/老订单默认值明确，未知历史不推测回填 |
+| O4 / P1 账号治理与原子重置 | 复用 repo 事务重置实现，移除/禁止生产进入“先写重置记录、后清用量”非原子路径；共用账号固定/滚动窗口计算。运营页补封禁原因/到期、预计恢复标识、manual 待处理筛选及卡住时长，探测成本单列 | 注入重置中途失败后可安全重试，唯一键不永久卡窗口；双副本同时重置一次；读/写/预扣一致；manual 账号可定位，预计时间不显示为承诺；探测使用量不混入用户账单 |
+| O5 / P2 缓存与降级边界 | 清理 L2 反序列化坏值并回源；搜索调用方后删除死精确失效接口、明确整片失效命名；核对事件接线与陈旧注释。V2 鉴权缓存仍绕过，先量回源成本。gRPC 实际 reject 与 `FallbackCache` 指标标签一致化 | 坏值不会持续到 TTL 才停止解析失败；删接口不影响广播；Redis 断开时 legacy 与 V2 的撤权/失效实际延迟分别有证据和应急操作。不得沿用文章 5/10 分钟为所有现网路径结论；不得先恢复 V2 缓存再补版本校验 |
+
+统一包装只负责观测与强制接入，**不承担业务计费或自行解析响应猜 token**。业务终态仍由 biz/执行器/结算路径产出，避免把“忘记记录”变成“记录两次”。
+
+## 4. 第三批：前端、验证与性能（Q）
+
+| ID / 优先级 | 范围 | 退出条件 |
+| --- | --- | --- |
+| Q1 / P1→P2 Playground 和控制台 | 安全头及浏览器取消链路优先；复用现有 CSP 中间件并适配实际 Relay origin/样式需求，先验证再启用。核对每次请求历史快照，编辑历史/重发语义作为独立功能；RechargePage、残余 slate/硬编码图表色按组件迁移，深浅色逐状态检查 | admin 静态页面真实响应头和浏览器无误拦截；Key 不落存储/日志/URL；停止后服务端上游/预留终态可回读；请求检查器与审计一致；充值/图表键盘可用、对比度合格。Markdown 另见 D7，不因排版需求放松 XSS 防线 |
+| Q2 / P1→P2 可重现验收和资料治理 | 承接 v0.31 F17 支付沙箱往返、流式隔离矩阵；raw E2E 验证默认模型/模型映射/预扣/成功/失败/释放。补数据库历史基线 schema 语义及 manual DDL 的 owner/前置条件/验证；增量变更选取相关 E2E 到 PR，保留快速 verify 分层 | 复用 mock upstream/共享 workflow，不新建测试框架；记录 commit、镜像、场景、证据及剩余边界。F17 未有沙箱证据就保持待验收；三方言不是只检查文件名。修正旧验收文档首部与末尾待办矛盾；事故模板记录发现时间/影响范围，未知历史明确未知 |
+| Q3 / P2 性能基线和门禁 | 复用 benchmark/构建产物统计：Linux/amd64 代表负载、至少 3 次取中位数；首屏 JS/CSS/字体字节预算、Dashboard 索引 EXPLAIN/同负载对照；测量余额新鲜度再调 staleTime，补高频内部跳转预取。定位 executor 流式回归前维持 legacy | 原始样本、样本量、P95/分配/字节数可重现；索引确实受益再保留结论。明确 20% 回归线和 5/5 E2E 是工程准入线而非统计保证；perf fixture 随代表性协议变更维护，基线脚本化。Go 升级前复测 jsonx，不能因文章结论永久冻结版本 |
+
+Q1 安全/取消和 Q2 已发布能力验收可以前移到第一批收尾。样式整理、预取、阈值调优不阻塞凭证修复。
+
+## 5. 条件启动的后续功能与技术债（D）
+
+| ID | 明确保留的待办 | 启动条件与最低边界 |
+| --- | --- | --- |
+| D1 多副本凭证/负载 | 凭证共享与跨进程刷新互斥、selector 状态、Redis 故障时并发/RPM退化、登录限流跨副本 | **扩 relay OAuth 副本前必须完成凭证协调**。优先现有 Redis 租约 + 持久层版本 fencing/CAS，含持锁者崩溃、过期锁旧写者、人工重授权；不能仅把 token map 放 Redis 就宣称 rotation 安全。先明确单刷新 owner 和降级策略，不引入新队列；全局限额退化必须告警，`limit/N` 不能在未知副本数下伪装全局保证 |
+| D2 额度/订阅新产品 | 账号月窗口、用户自然月（现为 30 天）、本地 USD 与上游百分比标定、用户预约/账号排队、部分退款、升级补差/降级续费 | 有明确平台/套餐或退款需求再做。自然月是新增契约，不能静默改变旧订单；部分退款含累计金额、幂等和权益处理；外部原路退款仍属单独支付能力，不把站内冲正当原路退款；不凭百分比推算未经校准的美元额度 |
+| D3 事件/缓存规模治理 | outbox 毒事件隔离与人工重放、积压自适应轮询、精确失效反向索引、预热、V2 版本缓存、全量 sweeper/对账增量化、差异确认/忽略 | 毒事件先故障注入和处置手册，出现队首阻塞再补有界次数/隔离/重放；Redis 不可用不是毒事件，不能跳过丢授权事件。性能项以扫描耗时、回源 QPS、积压和重复告警为触发证据；复用现有存储，暂不上 MQ，不默认自动修账 |
+| D4 模型能力和健康选路 | 未实现的 Hunyuan/Xingchen/Bedrock/Cloudflare/VertexAI/Replicate/Baidu/Xunfei 原生适配；模型级健康影响路由；上游字符串错误/状态码分类；embeddings 默认模型错误；audio/images/moderations 的 CostBound | 默认模型参数和可操作错误先在 O1/R3 检查；新增原生适配按真实接入需求逐家做。模型健康排除需 model-unavailable 与全渠道故障区分、恢复探测/防饥饿及灰度；类型化上游错误优先，文案兼容限制在对应 provider。没有可靠单位/价格/字段校验时不上虚假成本上限 |
+| D5 存储、安全和审计 | 分区启用与保留期、账本归档、手工 SSRF 地址段更新、全局禁用 SSRF 的启动警示、独立审计查询/存储、临时内容排障、localStorage 会话迁 cookie | SSRF 绕过启动告警/配置检查随 R3 做；特殊网段回归随网络栈更新。日志分区先核规模/DDL/readiness；账本不删。内容排障需限时、授权、脱敏、访问审计与清理，不默认保存 prompt。cookie 与 CSRF/身份接口一起设计，不半迁移 |
+| D6 架构收敛 | provider/adaptor 双抽象；executor/legacy、重复 RelayRequest/构造器、WS executor；channel/admin/identity 大文件；Dockerfile/Compose、relay 目录结构 | executor 要先解决性能归因、完成独立可比观察和回滚验收，之后单独删 legacy。大文件随对应聚合变更拆，保留事务和分层边界；不因行数启动整仓重写。小服务的分层转换/文件成本是接受的架构代价，不新增模板工程 |
+| D7 体验和质量扩展 | 安全 Markdown、历史消息编辑/重发、全站字体优化、覆盖率门禁、更多交互时序用例、对账容差参数化 | 先完成 Q1/Q3 基线；Markdown 先明确安全 renderer/sanitizer 与 CSP 兼容再实现。覆盖率优先关键钱/权限/取消分支，不追求全仓任意百分比；容差先保留同源精确比较，只有业务证据支持才配置化，禁止以放宽容差掩盖并发错账 |
+
+## 6. 文章逐篇追踪表
+
+文件均位于上述桌面原文目录。这里保留每篇“未解决”段落的去向，便于后续文章勘误；“待核”表示未做完整运行验证，实施时先复核，不直接当成已证实缺陷。
+
+| 原文 / 段落 | 遗留项与本次处理 |
+| --- | --- |
+| `04-subscription-account-pool.md` §4.4、§11 | Redis fail-open 及 N×limit、跨副本选择状态 → D1；降级告警 → O2；封禁原因/恢复倒计时 → O4；固定 8 次选取 → R2；Acquire/Release 已核实为生产 RPC 负载回报，保留；负载排队 → D2 |
+| `05-multi-provider-adapters.md` §8 | provider/adaptor 双轨 → D6；未知类型默认兼容 → R3；手工特殊 IP 表、SSRF 全局绕过警示 → D5（警示前移 R3）；未实现原生类型 → D4；SSE 语义 → R4 |
+| `06-credential-rotation.md` §3.3、§7–8 | Redis 实现缺失/多副本 rotation → D1；冷账号补写、重试时间尺度、错误 Redis 注释、标准日志 → R1；计数器已存在，补告警/恢复信号；新增发现的 dirty 缓存失效路径也在 R1 |
+| `07-raw-relay.md` §6.2、§7 | “无模型健康”已过时，统一记录/成功失败矩阵 → O1；默认 embeddings 模型错误 → R3/O1/D4；未知路由 501 → R3；raw 完整 E2E → Q2；非 embeddings CostBound → D4 |
+| `08-subscription-quota-windows.md` §9 | 账号月窗口、USD/百分比标定、用户自然月、排队预约 → D2；固定/滚动计算重复 → O4；30 天口径先在 O3 明示，不改历史契约 |
+| `09-subscription-account-governance.md` §6 | 非原子重置降级窗口 → O4（生产 repo 已有原子实现，补契约约束）；全量定期扫 → D3；探测成本、预计恢复提示、manual 待处理入口 → O4 |
+| `10-subscription-accounting-semantics.md` §7 | expired 续费文档、快照字段演化/默认值、快照与当前配置口径 → O3；部分退款、升级/降级续费枚举 → D2；现有整单终态不冒充部分退款 |
+| `11-subscription-usage-api.md` §6 | nil limit/remaining 0 的歧义、重复兼容字段来源、frozen 缺失、超额状态 → O3；“isValid 永远 true”已过时 |
+| `12-multilevel-cache.md` §8 | V2 绕过已确认，是当前正确性保护 → O5 测量后 D3；全片清/SCAN/反向索引、预热 → D3；误导命名/无人调用接口、L2 坏值 → O5；删除前逐调用方核查 |
+| `13-routing-outbox-eventual-consistency.md` §6、§8 | 积压监控已完成；Redis 故障失效窗口 → O5；实际通知闭环 → O2；固定轮询、毒事件卡批次/死信 → D3；Streams XAUTOCLAIM 已在 v0.31 接入，不等于已有毒事件治理 |
+| `14-migration-and-partitioning.md` §6 | 历史方言覆盖、072 边界、manual DDL、owner 人工登记 → Q2；MySQL-only smoke 旧结论纠正；分区默认关闭 → D5，只在容量和保留政策需要时启用，不把默认关闭本身当 bug |
+| `15-circuit-breaker-timeout-degradation.md` §6 | gRPC resilience 默认关闭的运行验证、不同下游阈值 → R4/Q2；timeout×retry 预算 → R4；fallback 指标与实际 reject 不符 → O5；整片鉴权失效 → O5/D3。此处 5 样本 gRPC breaker 与 R2 的 10 样本来源 selector 是两层，不能混为一项 |
+| `16-reconciliation.md` §7 | 全量扫描、已确认/忽略状态 → D3；七类计数但通知只展示五类，当前仍成立 → O2；容差硬编码 → D7；receivable 精确镜像并发验证 → Q2，先测不放宽比较 |
+| `17-observability.md` §9 | X-Trace-ID/OTel 关联、没人使用的指标、去重冲突低基数指标 → O2；独立审计存储/查询与临时内容排障 → D5（v0.31 路由审计不等于管理操作审计）；手工基线 → Q3 |
+| `18-incident-postmortem.md` §6 | 模型健康不参与选路、文案匹配及 413/415/422 分类边界 → D4；统一事故记录、发现耗时与影响范围 → Q2；旧事件无样本就写未知，不编造数字 |
+| `19-web-playground.md` §8 | Markdown → D7；CSP 实际接入/生产头 → Q1；多轮快照核对 → Q1，编辑历史功能 → D7；取消到服务端确认 → R4/Q1/Q2；请求 ID UI 已有 → O2/Q1 关联验证 |
+| `20-web-apple-redesign.md` §7 | RechargePage 未迁、残余 slate/图表 token、深色模式状态 → Q1；中文字体首屏对照 → Q3。旧文数量不作当前验收数字，不盲目全局替换 |
+| `21-console-performance.md` §7 | 内部导航预取、staleTime/余额新鲜度、真实索引收益、首屏性能门禁、字体分片 → Q3；先测当前 v0.31，不套用文章旧体积 |
+| `22-testing-strategy.md` §7 | Relay/raw/浏览器取消 E2E、交互时序 → Q2；5/5 依据 → Q3；Postgres/SQLite-only-static 旧结论纠正，历史迁移覆盖 → Q2；关键分支覆盖率 → D7；verify 不带全量 E2E 保留分层，相关 PR 触发 E2E → Q2 |
+| `23-code-review-remediation.md` §8 及被引用审查表 | 延期项集中跟踪 → 本表；定期小批复核/发现证据完整性 → Q2；channel data 拆分 → D6；localStorage 会话 → D5；既有报告另含 selector/登录限流多副本 → D1，双 RelayRequest/构造器/目录/部署模板 → D6，不重开已修 P1/P2 |
+| `24-performance-decisions.md` §4 | 20% 阈值依据、Go/jsonx 升级边界、常态性能验证、代表负载 fixture → Q3；executor 流式 P95 回归未归因 → Q3/D6，不能凭新一次成功就恢复默认开启 |
+| `25-kratos-minimal-slice.md` §6 | DTO/DO/PO 转换重复、文件数、小服务维护成本为已接受架构取舍 → D6 按实际业务触发，遵循 AGENTS 分层；示例建服务顺序不是本项目新增功能清单 |
+
+### 用户四组补充的映射
+
+| 建议 | 处理 |
+| --- | --- |
+| 1：低流量连败、复合键、请求内候选稳定 | R2；复合键/预计算已存在，重点补低样本触发、半开单探测及候选耗尽策略；R3/R4 守住已出流不换源 |
+| 2：复用预刷新补写、持久化失败计数与告警 | R1；counter 已存在，CAS 尚无接口；先修缓存生命周期，再补无请求补偿和真实告警，不加队列 |
+| 3：最后注册 `/v1/*` 501、统一包装记录用量 | R3/O1；复用注册入口、区分请求指标/模型健康/实际用量，避免重复结算和遗漏 raw |
+| 4：未实现直接错误、实际 channel、SSE 空闲/总超时分开 | R3/R4/O2；保留既有协议转换和显式同模型故障切换；不可转换能力明确报错，禁止模型降级和成功后的重放；已有空闲实现优先复用 |
+
+## 7. 执行、验证与退出门槛
+
+1. **第一批交付 R1–R4**：凭证不丢内存最新值、冷账号可补写；低流量可熔断；错误边界和同模型切换明确；长流/取消/计费终态可验证。每项先补能失败的回归再改实现，R1 可独立提前交付。
+2. **第二批交付 O1–O4，按测量推进 O5**：注册层观察、实际告警送达、冻结额度解释及账号运营闭环。不存在接收端时将送达验收保留待办，不能以规则通过冒充有人收到。
+3. **第三批按需交付 Q1–Q3**：Q1 安全/取消和 Q2 v0.31 未结验收前移；样式和性能以真实基线安排。D1 是扩副本前置门，其他 D 项按表中触发条件立项。
+
+验证入口如下；第一批实际已执行结果见[验收记录](../runbooks/first-batch-reliability-2026-09-22.md)，全量 verify、integration、补充 race、三方言迁移/CAS、Prometheus 规则及 24 场景流式隔离矩阵均通过：
+
+```bash
+go test ./domain/upstream/credential ./domain/upstream/provider
+go test ./app/channel/internal/biz ./internal/biz ./internal/server
+go test ./app/billing/internal/biz ./platform/cache ./platform/grpc
+go test -race ./domain/upstream/credential ./app/channel/internal/biz
+make test-integration
+python3 scripts/test-routing-e2e.py --driver=mysql --reliability-only
+python3 scripts/test-routing-e2e.py --driver=sqlite3 --skip-build --reliability-only
+make verify
+```
+
+仅按变更范围运行相应命令；钱/权限/迁移/并发路径必须有故障及恢复证据。Prometheus 规则沿用现有规则测试，前端沿用现有单测和浏览器 E2E，数据库变更跑对应三方言检查。生产主机不跑构建或破坏性故障注入；先隔离环境验收，再按仓库部署流程分服务上线。
+
+每项完成记录至少包括：任务 ID、提交、实际行为、测试/运行证据、剩余边界。运行事实、隔离测试、静态核对分开记录；外部通知、支付宝沙箱、长时间观察缺证据时保持待验收。发布时另走 release note → CHANGELOG → README → develop → main → tag 的完整流程。
+
+本次规划交付检查：22 篇文章与四组建议均已映射；完成项不重复立项；本文件、TODO 和索引一致；本地 Markdown 链接与 diff 空白检查通过后交付。

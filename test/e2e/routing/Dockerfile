@@ -1,5 +1,5 @@
 # Isolated acceptance image: real service entrypoints share one build/cache.
-FROM golang:1.27-alpine AS build
+FROM golang:1.27-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS build
 RUN apk add --no-cache git ca-certificates make build-base
 ENV GOPROXY=https://proxy.golang.org|https://goproxy.cn|direct
 WORKDIR /app
@@ -18,7 +18,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=1 go build -p 2 
     ./app/identity/cmd/routing-backfill ./scripts/routing-preflight ./test/e2e/routingmock
 RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=1 go test -c -p 2 -o /out/routing-e2e ./test/e2e/routing
 
-FROM alpine:3.20
+FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
 RUN apk add --no-cache ca-certificates sqlite-libs
 COPY --from=build /out /out
 COPY --from=build /app/configs /app/configs

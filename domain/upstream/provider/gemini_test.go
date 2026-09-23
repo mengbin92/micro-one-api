@@ -122,6 +122,9 @@ func TestGeminiProvider_ChatCompletionsStream(t *testing.T) {
 	var fullContent strings.Builder
 	chunkCount := 0
 	for chunk := range chunkChan {
+		if chunk.Complete {
+			continue
+		}
 		chunkCount++
 		if len(chunk.Choices) > 0 {
 			fullContent.WriteString(chunk.Choices[0].Delta.Content)

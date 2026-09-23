@@ -205,6 +205,7 @@ func toSubscriptionAccountInfoWithSecrets(account *biz.SubscriptionAccount, incl
 		refreshToken = account.RefreshToken
 	}
 	return &commonv1.SubscriptionAccountInfo{
+		CredentialRevision:     account.CredentialRevision,
 		Id:                     account.ID,
 		Name:                   account.Name,
 		Platform:               account.Platform,
@@ -1029,4 +1030,15 @@ func (s *ChannelService) ChangeChannelStatus(ctx context.Context, req *channelv1
 		Success: true,
 		Message: "ok",
 	}, nil
+}
+
+func (s *ChannelService) StoreSubscriptionCredentials(ctx context.Context, req *channelv1.StoreSubscriptionCredentialsRequest) (*channelv1.StoreSubscriptionCredentialsReply, error) {
+	if req.GetId() <= 0 || req.GetExpectedRevision() < 0 || req.GetAccessToken() == "" {
+		return nil, biz.ErrCredentialConflict
+	}
+	account := &biz.SubscriptionAccount{ID: req.GetId(), CredentialRevision: req.GetExpectedRevision(), AccessToken: req.GetAccessToken(), RefreshToken: req.GetRefreshToken(), ExpiresAt: req.GetExpiresAt(), AccountID: req.GetAccountId()}
+	if err := s.uc.StoreSubscriptionCredentials(ctx, account); err != nil {
+		return nil, err
+	}
+	return &channelv1.StoreSubscriptionCredentialsReply{Revision: account.CredentialRevision}, nil
 }

@@ -72,6 +72,9 @@ func responsesUpstreamErrorCategory(status int) string {
 // behavior: preserve actionable OpenAI error metadata for request errors, but
 // keep upstream credentials and raw response bodies private.
 func (s *HTTPServer) writeResponsesUpstreamError(w http.ResponseWriter, err error) {
+	if s.writeCapabilityError(w, err) {
+		return
+	}
 	upstreamStatus := relaybiz.UpstreamStatus(err)
 	clientStatus := mapUpstreamError(upstreamStatus)
 	if clientStatus == http.StatusRequestEntityTooLarge {
@@ -112,7 +115,7 @@ func (s *HTTPServer) writeResponsesUpstreamError(w http.ResponseWriter, err erro
 			}
 		}
 	}
-	s.writeJSON(w, clientStatus, map[string]any{"error": payload})
+	s.writeJSON(w, clientStatus, map[string]any{"error": errorIdentity(w, payload)})
 }
 
 func sanitizeResponsesErrorField(value string) string {

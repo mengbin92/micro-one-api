@@ -180,12 +180,14 @@ type UsageTokenDetails struct {
 
 // StreamChunk represents a single SSE chunk from streaming response
 type StreamChunk struct {
-	ID      string         `json:"id"`
-	Object  string         `json:"object"`
-	Created int64          `json:"created"`
-	Model   string         `json:"model"`
-	Choices []StreamChoice `json:"choices"`
-	Usage   Usage          `json:"usage,omitempty"`
+	Complete    bool           `json:"-"`
+	StreamError error          `json:"-"`
+	ID          string         `json:"id"`
+	Object      string         `json:"object"`
+	Created     int64          `json:"created"`
+	Model       string         `json:"model"`
+	Choices     []StreamChoice `json:"choices"`
+	Usage       Usage          `json:"usage,omitempty"`
 	// Canonical carries the parser-proven billing buckets for terminal usage
 	// chunks (in-process only, see ChatCompletionsResponse.Canonical).
 	Canonical *CanonicalUsage `json:"-"`
@@ -558,10 +560,14 @@ func (p *OpenAIProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody}
 	}
 
-	return readOpenAIStream(resp), nil
+	return readOpenAIStream(resp, ctx), nil
 }
 
-func readOpenAIStream(resp *http.Response) <-chan StreamChunk {
+func readOpenAIStream(resp *http.Response, contexts ...context.Context) <-chan StreamChunk {
+	ctx := context.Background()
+	if len(contexts) > 0 {
+		ctx = contexts[0]
+	}
 	chunkChan := make(chan StreamChunk, 10)
 
 	go func() {
@@ -580,6 +586,9 @@ func readOpenAIStream(resp *http.Response) <-chan StreamChunk {
 
 			if data, ok := strings.CutPrefix(line, "data: "); ok {
 				if data == "[DONE]" {
+					if !sendStreamChunk(ctx, chunkChan, StreamChunk{Complete: true}) {
+						return
+					}
 					break
 				}
 
@@ -592,12 +601,15 @@ func readOpenAIStream(resp *http.Response) <-chan StreamChunk {
 					)
 					continue
 				}
-				chunkChan <- chunk
+				if !sendStreamChunk(ctx, chunkChan, chunk) {
+					return
+				}
 			}
 		}
 
 		if err := scanner.Err(); err != nil {
 			logProviderError("scanner error", zap.Error(err))
+			sendStreamChunk(ctx, chunkChan, StreamChunk{StreamError: err})
 		}
 	}()
 
@@ -610,4 +622,13 @@ func logProviderWarn(msg string, fields ...zap.Field) {
 
 func logProviderError(msg string, fields ...zap.Field) {
 	applogger.Log.Error(msg, fields...)
+}
+
+func sendStreamChunk(ctx context.Context, chunks chan<- StreamChunk, chunk StreamChunk) bool {
+	select {
+	case chunks <- chunk:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
