@@ -23,17 +23,18 @@ import (
 
 type object = map[string]any
 type fixture struct {
-	Reliability        string            `json:"reliability"`
-	UserID             int64             `json:"user_id"`
-	Session            string            `json:"session"`
-	Legacy             string            `json:"legacy"`
-	LegacySubscription int64             `json:"legacy_subscription"`
-	LegacyPlan         int64             `json:"legacy_plan"`
-	Fixed              string            `json:"fixed"`
-	FixedID            int64             `json:"fixed_id"`
-	Ordered            string            `json:"ordered"`
-	Groups             map[string]int64  `json:"groups"`
-	Requests           map[string]string `json:"requests"`
+	Reliability        string              `json:"reliability"`
+	UserID             int64               `json:"user_id"`
+	Session            string              `json:"session"`
+	Legacy             string              `json:"legacy"`
+	LegacySubscription int64               `json:"legacy_subscription"`
+	LegacyPlan         int64               `json:"legacy_plan"`
+	Fixed              string              `json:"fixed"`
+	FixedID            int64               `json:"fixed_id"`
+	Ordered            string              `json:"ordered"`
+	Groups             map[string]int64    `json:"groups"`
+	Requests           map[string]string   `json:"requests"`
+	O5                 map[string]o5sample `json:"o5"`
 }
 type suite struct {
 	t            *testing.T
@@ -64,7 +65,7 @@ func newSuite(t *testing.T) *suite {
 		return err == nil && status == 200
 	}, 90*time.Second, time.Second, "relay readiness")
 	// Fault phases reuse the established session: login itself requires Redis.
-	if os.Getenv("ROUTING_PHASE") != "redis-down" {
+	if phase := os.Getenv("ROUTING_PHASE"); phase != "redis-down" && phase != "legacy-redis-down" {
 		require.Eventually(t, func() bool {
 			status, body, err := send("POST", s.admin+"/api/user/login", "", object{"username": "admin", "password": os.Getenv("INITIAL_ADMIN_PASSWORD")}, "")
 			return err == nil && status == 200 && bytes.Contains(body, []byte(`"success":true`))
@@ -74,7 +75,7 @@ func newSuite(t *testing.T) *suite {
 	// socket that is still restarting after Compose changed its gate.
 	ctx, conn := s.conn("BILLING_GRPC_ENDPOINT")
 	version := int32(2)
-	if phase := os.Getenv("ROUTING_PHASE"); phase == "legacy" || phase == "stream-reliability" || phase == "missing-capability" {
+	if phase := os.Getenv("ROUTING_PHASE"); phase == "legacy" || phase == "stream-reliability" || phase == "missing-capability" || phase == "legacy-redis-down" || phase == "legacy-redis-recovered" {
 		version = 0
 	}
 	require.Eventually(t, func() bool {
