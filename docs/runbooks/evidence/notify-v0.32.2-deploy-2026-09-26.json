@@ -1,0 +1,35 @@
+{
+  "date": "2026-09-26",
+  "service": "notify-worker",
+  "build": {
+    "source_commit": "537932cc",
+    "platform": "linux/amd64",
+    "location": "local Apple Silicon buildx; no production-host build",
+    "image_id": "sha256:60fe97072e3d518f34833e9b999fd6f8c79b4a7cf7f6c164dfbc6dbd13a30696"
+  },
+  "deployment": {
+    "time": "2026-09-26 10:08:06 CST",
+    "previous_container_image": "sha256:aa80afd57d4168ac0b34b67360f3b5eb53b9df6b71debf62f5985035378b45be",
+    "rollback_tag": "docker-compose-notify-worker:rollback-20260926-100806",
+    "compose_change": "Added only ALERTMANAGER_NOTIFY_TYPE passthrough to the production server-only Compose file; preserved other server-specific settings.",
+    "env_change": "Set ALERTMANAGER_NOTIFY_TYPE=wecom; existing NOTIFY_WECOM_WEBHOOK_URL remained unchanged and is omitted from evidence.",
+    "config_backups": [
+      "docker-compose.yml.bak.notify-20260926-100806",
+      ".env.bak.notify-20260926-100806"
+    ]
+  },
+  "verification": {
+    "compose_config": "passed; resolved alert type wecom and nonempty WeCom endpoint",
+    "container_running": true,
+    "restart_count": 0,
+    "container_image_matches_build": true,
+    "healthz": "HTTP 200, status ok",
+    "local_gates": [
+      "make verify passed",
+      "make test-integration passed",
+      "notify firing/resolved to a local WeCom-format HTTP sink persisted sent",
+      "three Compose variants resolved type and endpoint"
+    ]
+  },
+  "remaining_boundary": "No deliberate production alert was sent to the external WeCom group. A real firing/resolved receipt and persisted sent record remain required for O2 production delivery acceptance."
+}

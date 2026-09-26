@@ -123,6 +123,10 @@ func (a *ClaudeOAuthAdaptor) BuildUpstreamRequest(ctx context.Context, rc *Relay
 		return nil, fmt.Errorf("claude_oauth: relay context has no subscription account")
 	}
 	token := rc.Account.AccessToken
+	refreshable := rc.Account.AccountType != "setup_token" && rc.Account.AccountType != "static_key"
+	if policy, ok := a.tokens.(credential.AuthoritativeTokenProvider); ok && policy.RequiresAuthoritativeLookup() && refreshable {
+		token = ""
+	}
 	var err error
 	if token == "" {
 		if a.tokens == nil {

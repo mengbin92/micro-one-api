@@ -7,6 +7,24 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.32.2] - 2026-09-26
+
+v0.32.2 是 v0.32.1 之后的 **PATCH 运行可靠性与验收收口版本**：保护多 Relay OAuth 轮换、补齐控制台历史快照与可复现门禁，并让 Alertmanager 使用企业微信机器人格式。内部 channel gRPC 增量扩展，三方言新增迁移 109；生产 notify-worker 已更新，真实外部告警送达仍待验收。详见 [release-v0.32.2.md](docs/releases/release-v0.32.2.md)。
+
+### Added
+
+- Redis 租约与持久化 pending/revision 协调多 Relay OAuth 刷新，新增 channel claim RPC、迁移 109、冷账号扫描及降级告警。
+- Playground 每轮请求检查器快照、充值页主题与键盘语义；raw 路由 E2E、历史迁移语义、PR 按路径触发 E2E、事故模板和前端构建字节预算。
+- 三样本性能回归脚本和 Dashboard 同 fixture 索引对照；保留 Linux/amd64 当前提交及生产 MySQL 对照待验收边界。
+
+### Fixed
+
+- Alertmanager 告警组可选择企业微信等已有 sender，Compose 透传通知类型及接收地址；拒绝无效类型和没有收件人的 email 配置，避免通知静默入队后无法送达。
+
+### Changed
+
+- 生产独立 Compose 保留原有定制，仅为 notify-worker 透传告警类型；本机交叉构建并上线 notify-worker，记录镜像、回滚与健康证据。真实外部 firing/resolved 回执尚未取得。
+
 ## [0.32.1] - 2026-09-23
 
 v0.32.1 是 v0.32.0 之后的 **PATCH 可靠性与安全修复版本**：修复流式取消误记成功、管理台安全响应头缺失及 SQLite 并发创建分组锁冲突。**无 API/proto 变更、无新增迁移**；更新 channel-service、admin-api、relay-gateway，无需重新发布前端。渠道 9 已完成真实取消复验，详见 [release-v0.32.1.md](docs/releases/release-v0.32.1.md)。

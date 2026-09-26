@@ -106,6 +106,38 @@ test('ranking tabs support arrow keys and expose their panel', async ({ page }) 
   await expect(tabs.first()).toBeFocused();
 });
 
+for (const theme of ['light', 'dark']) {
+  test(`recharge amount choices remain usable in ${theme} mode`, async ({ page }) => {
+    await seedLayoutPage(page, 'zh-CN');
+    await page.addInitScript((value) => localStorage.setItem('web:theme', JSON.stringify(value)), theme);
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto('/recharge');
+      const preset = page.getByRole('button', { name: /¥50/ });
+      await preset.focus();
+      await page.keyboard.press('Enter');
+      await expect(preset).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByLabel('自定义金额')).toHaveValue('50');
+      await expect(page.getByRole('button', { name: /确认支付.*¥ 50\.00/ })).toBeVisible();
+      await expectNoPageOverflow(page);
+      const contrast = await preset.evaluate((element) => {
+        const color = (value: string) => {
+          const channels = value.match(/[\d.]+/g)!.slice(0, 3).map(Number);
+          const linear = channels.map((channel) => {
+            const normalized = channel / 255;
+            return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+          });
+          return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+        };
+        const foreground = color(getComputedStyle(element).color);
+        const background = color(getComputedStyle(element).backgroundColor);
+        return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+      });
+      expect(contrast).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+}
+
 test('overview never reports healthy when the summary request fails', async ({ page }) => {
   await seedLayoutPage(page);
   await page.route('**/api/admin/summary', (route) => route.fulfill({ status: 500, json: { message: 'Summary unavailable' } }));

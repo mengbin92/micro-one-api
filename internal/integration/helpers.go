@@ -449,6 +449,10 @@ func (m *testChannelRepo) StoreSubscriptionCredentials(context.Context, *channel
 	return channeltestutil.ErrSubscriptionAccountNotFound
 }
 
+func (m *testChannelRepo) ClaimSubscriptionCredentialRefresh(context.Context, *channeltestutil.SubscriptionAccount) error {
+	return nil
+}
+
 func (m *testChannelRepo) FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*channeltestutil.SubscriptionAccount, error) {
 	return nil, channeltestutil.ErrSubscriptionAccountNotFound
 }

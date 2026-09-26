@@ -105,6 +105,53 @@ describe('PlaygroundPage', () => {
     expect(screen.getByText('4')).toBeInTheDocument();
   });
 
+  it('keeps each request snapshot available after later turns', async () => {
+    const user = userEvent.setup();
+    const requests: Array<{ messages: Array<{ role: string; content: string }> }> = [];
+    server.use(
+      http.get('/api/status', () => HttpResponse.json({ success: true, data: { server_address: 'https://relay.test' } })),
+      http.get('https://relay.test/v1/models', () => HttpResponse.json({ data: [{ id: 'demo-model' }] })),
+      http.post('https://relay.test/v1/chat/completions', async ({ request }) => {
+        requests.push(await request.json() as typeof requests[number]);
+        return HttpResponse.json(
+          { choices: [{ message: { content: `answer ${requests.length}` }, finish_reason: 'stop' }] },
+          { headers: { 'X-Request-ID': `server-request-${requests.length}` } },
+        );
+      }),
+    );
+    setPlaygroundCredential('sk-playground-secret');
+    renderWithQuery(<MemoryRouter initialEntries={['/playground']}><PlaygroundPage /></MemoryRouter>);
+
+    await screen.findByText('已验证：sk-p••••cret');
+    await user.click(screen.getByRole('checkbox', { name: '流式输出' }));
+    await user.type(screen.getByLabelText('System Prompt（可选）'), 'first system');
+    await user.type(screen.getByLabelText('输入消息'), 'first question');
+    await user.click(screen.getByRole('button', { name: '发送' }));
+    expect(await screen.findByText('answer 1')).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText('System Prompt（可选）'));
+    await user.type(screen.getByLabelText('System Prompt（可选）'), 'second system');
+    await user.type(screen.getByLabelText('输入消息'), 'second question');
+    await user.click(screen.getByRole('button', { name: '发送' }));
+    expect(await screen.findByText('answer 2')).toBeInTheDocument();
+
+    expect(requests[0].messages).toEqual([
+      { role: 'system', content: 'first system' },
+      { role: 'user', content: 'first question' },
+    ]);
+    expect(requests[1].messages).toEqual([
+      { role: 'system', content: 'second system' },
+      { role: 'user', content: 'first question' },
+      { role: 'assistant', content: 'answer 1' },
+      { role: 'user', content: 'second question' },
+    ]);
+
+    await user.click(screen.getAllByRole('button', { name: /查看请求 playground-chat-/ })[0]);
+    expect(screen.getByText('server-request-1')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '复制请求 JSON' }));
+    expect(JSON.parse(await navigator.clipboard.readText())).toMatchObject({ messages: requests[0].messages });
+  });
+
   it('stops before retaining more than 4 MiB of assistant content', async () => {
     const user = userEvent.setup();
     server.use(

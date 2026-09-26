@@ -12,6 +12,8 @@ Prometheus**, not k6 — see `docs/design/BASELINE.md` for the full methodology.
 | `mock-upstream/main.go` | Deterministic, dependency-free OpenAI-compatible upstream. Fixed IDs, fixed token counts, configurable delay. |
 | `k6-baseline.js` | k6 load profile hitting `/healthz`, `/v1/models`, `/v1/chat/completions`. Per-endpoint metrics, corrected throughput. |
 | `k6-relay-subscription-stress.js` | Pre-prod stress test for subscription-account paths (session sticky, failover, concurrency). |
+| `summarize-regression.py` | Requires at least three baseline and candidate summaries, reports medians, and applies the 20% engineering gate. |
+| `dashboard-index.py` | Builds one deterministic SQLite fixture and compares the old and new Dashboard indexes with identical queries. |
 | `results/` | Archived raw k6 samples and aggregate summary JSON files. |
 
 ## What the k6 baseline measures (and what it doesn't)
@@ -103,3 +105,39 @@ When comparing Phase 0 or `v0.16.0`, keep this benchmark harness at the current
 P3.1 commit and use the historical Git SHA only for the service worktree. Those
 historical versions do not contain `make benchmark-mock` or the mock-upstream
 source.
+
+## Median and regression gate
+
+Use at least three full summaries for each version. The gate compares medians,
+rejects more than 20% latency or throughput regression, rejects a non-zero
+dropped-iteration median, and caps the HTTP error rate at 1%:
+
+```bash
+python3 scripts/benchmark/summarize-regression.py \
+  --baseline /path/to/baseline-1.json \
+  --baseline /path/to/baseline-2.json \
+  --baseline /path/to/baseline-3.json \
+  --candidate /path/to/candidate-1.json \
+  --candidate /path/to/candidate-2.json \
+  --candidate /path/to/candidate-3.json \
+  --output /path/to/regression-report.json
+```
+
+This is an engineering admission line, not a statistical significance claim.
+Keep the machine, service data, configuration, k6 version, mock upstream and
+arrival-rate profile fixed. If a representative protocol or execution path
+changes, update the fixture before accepting a new baseline.
+
+## Dashboard index fixture
+
+The Dashboard query-plan check uses the same generated rows, parameters and
+aggregate query for both indexes and retains every raw timing sample:
+
+```bash
+python3 scripts/benchmark/dashboard-index.py \
+  --output /tmp/dashboard-index.json
+```
+
+The result proves SQLite plan selection and relative behavior for that fixture.
+It is not a substitute for `EXPLAIN ANALYZE` and same-window timing on the
+production MySQL shape.

@@ -64,14 +64,37 @@ func (n *NoopAccountLookup) Store(_ context.Context, id int64, creds *AccountCre
 		return ErrAccountNotFound
 	}
 	if old.Revision != creds.Revision {
+		if !old.RefreshPending && old.Revision == creds.Revision+1 && old.AccessToken == creds.AccessToken && old.RefreshToken == creds.RefreshToken && old.ExpiresAt.Equal(creds.ExpiresAt) && old.AccountID == creds.AccountID {
+			creds.Revision, creds.RefreshPending = old.Revision, false
+			return nil
+		}
 		return ErrCredentialConflict
 	}
 	creds.Revision++
+	creds.RefreshPending = false
 	cp := *creds
 	n.byID[id] = &cp
 	if creds != nil {
 		n.expiry[id] = creds.ExpiresAt
 	}
+	return nil
+}
+
+func (n *NoopAccountLookup) ClaimRefresh(_ context.Context, id int64, creds *AccountCredentials) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	old, ok := n.byID[id]
+	if !ok || old == nil {
+		return ErrAccountNotFound
+	}
+	if old.Revision != creds.Revision || old.RefreshPending {
+		return ErrCredentialConflict
+	}
+	cp := *old
+	cp.Revision++
+	cp.RefreshPending = true
+	n.byID[id] = &cp
+	creds.Revision, creds.RefreshPending = cp.Revision, true
 	return nil
 }
 
@@ -90,7 +113,7 @@ func (n *NoopAccountLookup) ExpiringSoon(_ context.Context, within time.Duration
 	threshold := time.Now().Add(within)
 	var ids []int64
 	for id, exp := range n.expiry {
-		if !exp.After(threshold) {
+		if creds := n.byID[id]; creds != nil && (creds.RefreshPending || !exp.After(threshold)) {
 			ids = append(ids, id)
 		}
 	}

@@ -72,6 +72,7 @@ services:
     - 091_create_model_health_states         # passive per-source model health snapshots
 
     - 108_add_credential_revision
+    - 109_add_credential_refresh_pending
 
   billing:
     # billing_reservations / billing_ledgers / billing_redeem_* / payment_orders /

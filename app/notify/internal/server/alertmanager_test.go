@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,7 +22,7 @@ func TestAlertmanagerDeliveryAndRecovery(t *testing.T) {
 	repo, err := data.NewRepositoryFromEnv("sqlite3")
 	require.NoError(t, err)
 	uc := biz.NewNotifyUsecase(repo)
-	srv := NewHTTPServer("", service.NewNotifyService(uc))
+	srv := NewHTTPServer("", service.NewNotifyService(uc, ""))
 	received := make(chan string, 2)
 	sink := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -56,4 +57,47 @@ func TestAlertmanagerDeliveryAndRecovery(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 1, total)
 	require.Contains(t, failed[0].LastError, "not configured")
+}
+
+func TestAlertmanagerNotifyTypeConfigurable(t *testing.T) {
+	t.Setenv("NOTIFY_SQL_DSN", "")
+	t.Setenv("SQL_DSN", "")
+	repo, err := data.NewRepositoryFromEnv("sqlite3")
+	require.NoError(t, err)
+	uc := biz.NewNotifyUsecase(repo)
+	srv := NewHTTPServer("", service.NewNotifyService(uc, biz.NotifyTypeWeCom))
+	received := make(chan []byte, 2)
+	sink := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		received <- body
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"errcode":0}`))
+	}))
+	defer sink.Close()
+	dispatch := biz.NewDispatcher(uc, biz.NewMultiSender(biz.SenderConfig{WeComWebhookURL: sink.URL}), time.Second, 20, 1)
+	for _, state := range []string{"firing", "resolved"} {
+		body := `{"status":"` + state + `","alerts":[{"status":"` + state + `","labels":{"alertname":"Probe"},"annotations":{}}]}`
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/alerts/alertmanager", strings.NewReader(body)))
+		require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
+		var created struct {
+			ID int64 `json:"id"`
+		}
+		require.NoError(t, jsonx.Unmarshal(rec.Body.Bytes(), &created))
+		require.NoError(t, dispatch.DispatchOnce(context.Background()))
+		n, err := uc.GetNotification(context.Background(), created.ID)
+		require.NoError(t, err)
+		require.Equal(t, biz.NotifyTypeWeCom, n.Type)
+		require.Equal(t, biz.NotifyStatusSent, n.Status)
+		var message struct {
+			MsgType string `json:"msgtype"`
+			Text    struct {
+				Content string `json:"content"`
+			} `json:"text"`
+		}
+		require.NoError(t, jsonx.Unmarshal(<-received, &message))
+		require.Equal(t, "text", message.MsgType)
+		require.Contains(t, message.Text.Content, `[monitor:`+state+`]`)
+		require.Contains(t, message.Text.Content, `"status":"`+state+`"`)
+	}
 }

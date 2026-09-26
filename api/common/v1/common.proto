@@ -135,6 +135,7 @@ message ChannelInfo {
 
 message SubscriptionAccountInfo {
   int64 credential_revision = 38; // CAS fencing for OAuth writes
+  bool credential_refresh_pending = 39; // An OAuth rotation may be in flight; never replay it.
   int64 id = 1;
   string name = 2;
   string platform = 3;

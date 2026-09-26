@@ -1,8 +1,11 @@
 package main
 
 import (
+	"fmt"
+
 	kconfig "github.com/go-kratos/kratos/v3/config"
 
+	"micro-one-api/app/notify/internal/biz"
 	notifyconf "micro-one-api/app/notify/internal/conf"
 	xconfig "micro-one-api/platform/config"
 	appregistry "micro-one-api/platform/registry"
@@ -41,8 +44,21 @@ func loadConfig(confPath string) (*Config, error) {
 	// kratos Scan does not allocate nested proto message pointers;
 	// explicitly initialize nil messages to avoid nil panics.
 	initBootstrap(&bootstrap)
+	if err := validateAlertmanagerNotifyType(bootstrap.NotifySvc.AlertmanagerNotifyType); err != nil {
+		return nil, err
+	}
 
 	return &Config{Bootstrap: &bootstrap}, nil
+}
+
+func validateAlertmanagerNotifyType(notifyType string) error {
+	switch notifyType {
+	case "", biz.NotifyTypeWebhook, biz.NotifyTypeEvent, biz.NotifyTypeWeCom,
+		biz.NotifyTypeDingTalk, biz.NotifyTypeFeishu, biz.NotifyTypeSlack:
+		return nil
+	default:
+		return fmt.Errorf("invalid alertmanager_notify_type %q: use webhook, event, wecom, dingtalk, feishu, or slack", notifyType)
+	}
 }
 
 // initBootstrap ensures all nested message pointers are non-nil.

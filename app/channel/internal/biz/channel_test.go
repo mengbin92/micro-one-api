@@ -1534,3 +1534,7 @@ func TestChannelUsecase_SelectSubscriptionAccountExcluding_KeepsTierSiblings(t *
 func (r *mockChannelRepo) StoreSubscriptionCredentials(ctx context.Context, a *SubscriptionAccount) error {
 	return r.UpdateSubscriptionAccount(ctx, a)
 }
+
+func (r *mockChannelRepo) ClaimSubscriptionCredentialRefresh(context.Context, *SubscriptionAccount) error {
+	return nil
+}

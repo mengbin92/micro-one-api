@@ -22,10 +22,11 @@ import (
 // a thundering herd of requests does not all hit the token endpoint at once.
 // One refresh per account wins; the rest read the updated cache.
 type baseTokenProvider struct {
-	lookup    AccountLookup
-	cache     *tokenCache
-	refresher *refresher
-	refreshMu sync.Map // accountID int64 -> *sync.Mutex
+	lookup      AccountLookup
+	cache       *tokenCache
+	refresher   *refresher
+	refreshMu   sync.Map // accountID int64 -> *refreshMutex
+	coordinator RefreshCoordinator
 
 	// defaultRefreshURL is used when the account's stored RefreshURL is empty.
 	defaultRefreshURL string
@@ -38,6 +39,9 @@ type baseTokenProvider struct {
 func (b *baseTokenProvider) GetAccessToken(ctx context.Context, accountID int64) (string, error) {
 	if b.lookup == nil {
 		return "", ErrNotConfigured
+	}
+	if b.coordinator != nil {
+		return b.resolveDistributed(ctx, accountID, false)
 	}
 	if token, _, ok := b.cache.get(accountID); ok && !b.cache.stale(accountID) {
 		return token, nil
@@ -54,6 +58,10 @@ func (b *baseTokenProvider) GetAccessToken(ctx context.Context, accountID int64)
 
 // Refresh forces a token refresh for the account regardless of expiry.
 func (b *baseTokenProvider) Refresh(ctx context.Context, accountID int64) error {
+	if b.coordinator != nil {
+		_, err := b.resolveDistributed(ctx, accountID, true)
+		return err
+	}
 	mu := b.lockFor(accountID)
 	mu.Lock()
 	defer mu.Unlock()
@@ -83,6 +91,9 @@ func (b *baseTokenProvider) resolve(ctx context.Context, accountID int64, force 
 	}
 	if creds == nil {
 		return "", ErrAccountNotFound
+	}
+	if creds.RefreshPending && !dirty {
+		return "", ErrRefreshUncertain
 	}
 	// If the stored token is still valid and we are not forcing, seed the cache
 	// from it and return. This avoids a redundant refresh when the provider's
@@ -203,9 +214,22 @@ func persistWithRetry(ctx context.Context, lookup AccountLookup, accountID int64
 	return lastErr
 }
 
-func (b *baseTokenProvider) lockFor(accountID int64) *sync.Mutex {
-	v, _ := b.refreshMu.LoadOrStore(accountID, &sync.Mutex{})
-	return v.(*sync.Mutex)
+func (b *baseTokenProvider) lockFor(accountID int64) *refreshMutex {
+	v, _ := b.refreshMu.LoadOrStore(accountID, &refreshMutex{held: make(chan struct{}, 1)})
+	return v.(*refreshMutex)
+}
+
+type refreshMutex struct{ held chan struct{} }
+
+func (m *refreshMutex) Lock()   { m.held <- struct{}{} }
+func (m *refreshMutex) Unlock() { <-m.held }
+func (m *refreshMutex) lockContext(ctx context.Context) error {
+	select {
+	case m.held <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // logPersistFailure reports a credential persistence failure without failing

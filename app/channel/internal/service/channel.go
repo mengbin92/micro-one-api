@@ -205,6 +205,8 @@ func toSubscriptionAccountInfoWithSecrets(account *biz.SubscriptionAccount, incl
 		refreshToken = account.RefreshToken
 	}
 	return &commonv1.SubscriptionAccountInfo{
+		CredentialRefreshPending: account.CredentialRefreshPending,
+
 		CredentialRevision:     account.CredentialRevision,
 		Id:                     account.ID,
 		Name:                   account.Name,
@@ -1049,6 +1051,17 @@ func (s *ChannelService) StoreSubscriptionCredentials(ctx context.Context, req *
 	}
 	account := &biz.SubscriptionAccount{ID: req.GetId(), CredentialRevision: req.GetExpectedRevision(), AccessToken: req.GetAccessToken(), RefreshToken: req.GetRefreshToken(), ExpiresAt: req.GetExpiresAt(), AccountID: req.GetAccountId()}
 	if err := s.uc.StoreSubscriptionCredentials(ctx, account); err != nil {
+		return nil, err
+	}
+	return &channelv1.StoreSubscriptionCredentialsReply{Revision: account.CredentialRevision}, nil
+}
+
+func (s *ChannelService) ClaimSubscriptionCredentialRefresh(ctx context.Context, req *channelv1.ClaimSubscriptionCredentialRefreshRequest) (*channelv1.StoreSubscriptionCredentialsReply, error) {
+	if req.GetId() <= 0 || req.GetExpectedRevision() < 0 {
+		return nil, biz.ErrCredentialConflict
+	}
+	account := &biz.SubscriptionAccount{ID: req.GetId(), CredentialRevision: req.GetExpectedRevision()}
+	if err := s.uc.ClaimSubscriptionCredentialRefresh(ctx, account); err != nil {
 		return nil, err
 	}
 	return &channelv1.StoreSubscriptionCredentialsReply{Revision: account.CredentialRevision}, nil

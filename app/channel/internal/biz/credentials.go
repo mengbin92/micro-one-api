@@ -11,3 +11,7 @@ var ErrCredentialConflict = errors.Conflict(channelv1.CredentialErrorReason_CRED
 func (uc *ChannelUsecase) StoreSubscriptionCredentials(ctx context.Context, account *SubscriptionAccount) error {
 	return uc.repo.StoreSubscriptionCredentials(ctx, account)
 }
+
+func (uc *ChannelUsecase) ClaimSubscriptionCredentialRefresh(ctx context.Context, account *SubscriptionAccount) error {
+	return uc.repo.ClaimSubscriptionCredentialRefresh(ctx, account)
+}

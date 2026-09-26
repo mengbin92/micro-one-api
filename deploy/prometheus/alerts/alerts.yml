@@ -501,6 +501,27 @@ groups:
 
   - name: operations-delivery
     rules:
+      - alert: CredentialRefreshUncertain
+        expr: sum by (instance, platform) (increase(micro_one_api_credential_coordination_total{result="uncertain"}[30m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: OAuth rotation has an unresolved durable claim
+          description: 'Check the refresh owner and pending writes. Never clear the claim or replay the stored token; recover owner persistence or reauthorize with a new refresh token.'
+      - alert: CredentialCoordinationUnavailable
+        expr: sum by (instance, platform) (increase(micro_one_api_credential_coordination_total{result="unavailable"}[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Distributed OAuth refresh coordination is unavailable
+          description: 'Restore Redis and channel storage. Refresh fails closed; do not switch multiple replicas to single mode.'
+      - alert: LoginLimiterRedisDegraded
+        expr: sum by (instance) (increase(micro_one_api_identity_login_limiter_degraded_total[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Login throttling lost its shared Redis state
+          description: 'Restore Redis; local login counters do not enforce a fleet-wide limit.'
       - alert: AccountLimiterRedisDegraded
         expr: sum by (instance) (increase(micro_one_api_relay_account_concurrency_fallback_total[5m])) > 0 or sum by (instance) (increase(micro_one_api_relay_account_rpm_fallback_total[5m])) > 0
         labels:

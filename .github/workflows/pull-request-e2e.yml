@@ -1,0 +1,86 @@
+name: Pull Request E2E
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - '.github/workflows/e2e.yml'
+      - '.github/workflows/pull-request-e2e.yml'
+      - 'Dockerfile'
+      - 'api/**'
+      - 'app/**'
+      - 'cmd/**'
+      - 'configs/**'
+      - 'deployments/docker-compose/**'
+      - 'domain/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'internal/**'
+      - 'migrations/**'
+      - 'pkg/**'
+      - 'platform/**'
+      - 'scripts/test-routing-e2e.py'
+      - 'test/e2e/**'
+      - 'web/**'
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Select affected E2E suites
+    runs-on: ubuntu-latest
+    outputs:
+      any: ${{ steps.filter.outputs.any }}
+      routing: ${{ steps.filter.outputs.routing }}
+      compose: ${{ steps.filter.outputs.compose }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: filter
+        name: Classify changed paths
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          routing=false
+          compose=false
+          frontend=false
+          while IFS= read -r path; do
+            case "$path" in
+              web/*)
+                frontend=true
+                ;;
+              .github/workflows/e2e.yml|.github/workflows/pull-request-e2e.yml)
+                routing=true
+                compose=true
+                frontend=true
+                ;;
+              api/*|app/*|cmd/*|configs/*|deployments/docker-compose/*|domain/*|internal/*|migrations/*|pkg/*|platform/*|test/e2e/*|scripts/test-routing-e2e.py|Dockerfile|go.mod|go.sum)
+                routing=true
+                compose=true
+                ;;
+            esac
+          done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          if [ "$routing" = true ] || [ "$compose" = true ] || [ "$frontend" = true ]; then
+            any=true
+          else
+            any=false
+          fi
+          echo "routing=$routing" >> "$GITHUB_OUTPUT"
+          echo "compose=$compose" >> "$GITHUB_OUTPUT"
+          echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
+          echo "any=$any" >> "$GITHUB_OUTPUT"
+
+  affected-e2e:
+    name: Affected E2E
+    needs: changes
+    if: needs.changes.outputs.any == 'true'
+    uses: ./.github/workflows/e2e.yml
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+      run_routing: ${{ needs.changes.outputs.routing == 'true' }}
+      run_compose: ${{ needs.changes.outputs.compose == 'true' }}
+      run_frontend: ${{ needs.changes.outputs.frontend == 'true' }}

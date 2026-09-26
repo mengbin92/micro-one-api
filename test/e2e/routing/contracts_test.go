@@ -1,13 +1,128 @@
 package routingtest
 
 import (
+	"database/sql"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	billingv1 "micro-one-api/api/billing/v1"
+	channelv1 "micro-one-api/api/channel/v1"
 )
+
+func (s *suite) rawSource(name, clientModel, upstreamModel, modelType string) string {
+	s.t.Helper()
+	ctx, conn := s.conn("CHANNEL_GRPC_ENDPOINT")
+	client := channelv1.NewChannelServiceClient(conn)
+	var modelPK int64
+	err := s.db.QueryRow("SELECT id FROM models WHERE model_id = ?", clientModel).Scan(&modelPK)
+	if err == sql.ErrNoRows {
+		created, createErr := client.CreateModel(ctx, &channelv1.CreateModelRequest{
+			ModelId: clientModel, DisplayName: clientModel, Provider: "openai",
+			ModelType: modelType, IsPublic: true, PricingInput: 1, PricingOutput: 1,
+		})
+		require.NoError(s.t, createErr)
+		require.True(s.t, created.Success)
+		modelPK = created.ModelPk
+	} else {
+		require.NoError(s.t, err)
+	}
+
+	group := s.group(name, "wallet_only", false)
+	created, err := client.CreateChannel(ctx, &channelv1.CreateChannelRequest{
+		Name: name, Type: 1, BaseUrl: "http://mock-upstream:9999/v1",
+		Key: "sk-local-fixture", Models: clientModel, Group: name, Priority: 1, Weight: 1,
+	})
+	require.NoError(s.t, err)
+	require.True(s.t, created.Success)
+	require.Eventually(s.t, func() bool {
+		return s.scalar("SELECT COUNT(*) FROM model_channel_mapping WHERE channel_id=? AND model_id=?", created.ChannelId, modelPK) == 1
+	}, 5*time.Second, 20*time.Millisecond)
+	mapping, err := client.UpsertChannelModelMapping(ctx, &channelv1.UpsertChannelModelMappingRequest{
+		ChannelId: created.ChannelId, ModelPk: modelPK, Priority: 1, UpstreamModelId: upstreamModel,
+	})
+	require.NoError(s.t, err)
+	require.True(s.t, mapping.Success, mapping.Message)
+	s.access(group, "grant", name)
+	return s.token("fixed", group, nil)["key"].(string)
+}
+
+func (s *suite) rawContracts() {
+	root := s.t
+	if !root.Run("default_model_reserves_before_forward", func(t *testing.T) {
+		s.t = t
+		key := s.rawSource("q2-raw-default", "text-embedding-ada-002", "text-embedding-ada-002", "embedding")
+		lastReservation := s.scalar("SELECT COALESCE(MAX(id),0) FROM billing_reservations")
+		beforeBalance := s.balance()
+		type result struct {
+			status int
+			body   []byte
+			err    error
+		}
+		done := make(chan result, 1)
+		go func() {
+			status, body, err := send("POST", s.relay+"/v1/embeddings", key, object{"input": "freeze-price default raw model"}, "q2-raw-default")
+			done <- result{status: status, body: body, err: err}
+		}()
+		s.trackRequest("q2-raw-default", lastReservation)
+		require.EqualValues(t, 1, s.scalar("SELECT COUNT(*) FROM billing_reservations WHERE request_id=? AND status='reserved'", s.state.Requests["q2-raw-default"]), "raw forwarding must reserve before the delayed upstream returns")
+		response := <-done
+		require.NoError(t, response.err)
+		require.Equal(t, 200, response.status, "embeddings: %s", response.body)
+		require.Contains(t, string(response.body), `"model":null`, "mock upstream must receive the raw body without a synthetic model field")
+		s.settled("q2-raw-default")
+		var model, sourceKind, upstreamModel string
+		require.NoError(t, s.db.QueryRow("SELECT model,source_kind,upstream_model_id FROM billing_reservations WHERE request_id=?", s.state.Requests["q2-raw-default"]).Scan(&model, &sourceKind, &upstreamModel))
+		require.Equal(t, "text-embedding-ada-002", model)
+		require.Equal(t, "channel", sourceKind)
+		require.Equal(t, "text-embedding-ada-002", upstreamModel)
+		require.EqualValues(t, 1, s.scalar("SELECT COUNT(*) FROM billing_reservations WHERE request_id=? AND status='committed'", s.state.Requests["q2-raw-default"]))
+		require.EqualValues(t, 1, s.scalar("SELECT COUNT(*) FROM billing_ledgers l JOIN billing_reservations r ON r.reservation_id=l.reference_id WHERE r.request_id=? AND l.type='consume'", s.state.Requests["q2-raw-default"]))
+		require.Less(t, s.balance(), beforeBalance)
+	}) {
+		s.t = root
+		return
+	}
+
+	if !root.Run("mapped_model_commits_actual_source", func(t *testing.T) {
+		s.t = t
+		key := s.rawSource("q2-raw-mapped", "q2-public-embedding", "text-embedding-3-small", "embedding")
+		lastReservation := s.scalar("SELECT COALESCE(MAX(id),0) FROM billing_reservations")
+		status, body, err := send("POST", s.relay+"/v1/embeddings", key, object{"model": "q2-public-embedding", "input": "mapped raw model"}, "q2-raw-mapped")
+		require.NoError(t, err)
+		require.Equal(t, 200, status, "embeddings: %s", body)
+		require.Contains(t, string(body), `"model":"text-embedding-3-small"`)
+		s.trackRequest("q2-raw-mapped", lastReservation)
+		s.settled("q2-raw-mapped")
+		var sourceKind, upstreamModel string
+		require.NoError(t, s.db.QueryRow("SELECT source_kind,upstream_model_id FROM billing_reservations WHERE request_id=?", s.state.Requests["q2-raw-mapped"]).Scan(&sourceKind, &upstreamModel))
+		require.Equal(t, "channel", sourceKind)
+		require.Equal(t, "text-embedding-3-small", upstreamModel)
+		require.EqualValues(t, 1, s.scalar("SELECT COUNT(*) FROM billing_ledgers l JOIN billing_reservations r ON r.reservation_id=l.reference_id WHERE r.request_id=? AND l.type='consume'", s.state.Requests["q2-raw-mapped"]))
+	}) {
+		s.t = root
+		return
+	}
+
+	root.Run("upstream_failure_releases_without_charge", func(t *testing.T) {
+		s.t = t
+		key := s.rawSource("q2-raw-failure", "q2-failing-chat", "fault-q2-failing-chat", "chat")
+		lastReservation, beforeBalance, beforeCalls := s.scalar("SELECT COALESCE(MAX(id),0) FROM billing_reservations"), s.balance(), s.calls()
+		status, body, err := send("POST", s.relay+"/v1/chat/completions", key, object{"model": "q2-failing-chat", "messages": []any{object{"role": "user", "content": "controlled failure"}}}, "q2-raw-failure")
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, status, 500, "relay: %s", body)
+		require.Eventually(t, func() bool {
+			return s.scalar("SELECT COUNT(*) FROM billing_reservations WHERE id>? AND status='reserved'", lastReservation) == 0
+		}, 15*time.Second, 100*time.Millisecond)
+		require.Positive(t, s.scalar("SELECT COUNT(*) FROM billing_reservations WHERE id>? AND status='released'", lastReservation))
+		require.Zero(t, s.scalar("SELECT COUNT(*) FROM billing_reservations WHERE id>? AND status='committed'", lastReservation))
+		require.Zero(t, s.scalar("SELECT COUNT(*) FROM billing_ledgers l JOIN billing_reservations r ON r.reservation_id=l.reference_id WHERE r.id>? AND l.type='consume'", lastReservation))
+		require.Greater(t, s.calls(), beforeCalls)
+		require.Equal(t, beforeBalance, s.balance())
+	})
+	s.t = root
+}
 
 func (s *suite) plan(name string, group int64, limit float64) int64 {
 	quota := s.adminAPI("POST", "/api/v1/admin/subscription-groups", object{"name": name, "display_name": name, "rate_multiplier": 1, "daily_limit_usd": limit, "weekly_limit_usd": limit * 7, "monthly_limit_usd": limit * 30, "status": 1})

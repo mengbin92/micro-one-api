@@ -7,6 +7,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/stretchr/testify/require"
+	"micro-one-api/platform/metrics"
 )
 
 type mockIdentityRepo struct {
@@ -923,6 +927,29 @@ func TestIdentityUsecase_LoginRateLimitUsesLocalStateOnlyAsFallback(t *testing.T
 	if !errors.Is(err, ErrUserDisabled) {
 		t.Fatalf("login error = %v, want authentication to run after shared state clears", err)
 	}
+}
+
+func TestLoginLimiterDegradationIsObservableAcrossReplicas(t *testing.T) {
+	repo := &distributedRateRepo{mockIdentityRepo: &mockIdentityRepo{}, failures: map[string]int64{}, failErr: errors.New("Redis unavailable")}
+	first, second := NewIdentityUsecase(repo, nil), NewIdentityUsecase(repo, nil)
+	ctx := context.Background()
+	readBefore := testutil.ToFloat64(metrics.LoginLimiterDegraded.WithLabelValues("read"))
+	writeBefore := testutil.ToFloat64(metrics.LoginLimiterDegraded.WithLabelValues("write"))
+	for _, uc := range []*IdentityUsecase{first, second} {
+		for range maxLoginAttempts {
+			require.NoError(t, uc.checkLoginRateLimit(ctx, "user:test"))
+			uc.recordLoginFailure(ctx, "user:test")
+		}
+		require.Error(t, uc.checkLoginRateLimit(ctx, "user:test"))
+	}
+	require.Greater(t, testutil.ToFloat64(metrics.LoginLimiterDegraded.WithLabelValues("read")), readBefore)
+	require.Greater(t, testutil.ToFloat64(metrics.LoginLimiterDegraded.WithLabelValues("write")), writeBefore)
+	repo.failErr = nil
+	// Once Redis recovers, its authoritative shared count controls admission.
+	repo.failures["user:test"] = maxLoginAttempts
+	require.Error(t, second.checkLoginRateLimit(ctx, "user:test"))
+	first.clearDistributedLoginAttempts(ctx, "user:test")
+	require.NoError(t, second.checkLoginRateLimit(ctx, "user:test"))
 }
 
 func TestIdentityUsecase_Login_IssuesSessionJWTWithoutCreatingAPIToken(t *testing.T) {

@@ -45,11 +45,12 @@ func (s *ChannelSubscriptionAccountStore) Lookup(ctx context.Context, accountID 
 		return nil, relaycredential.ErrAccountNotFound
 	}
 	return &relaycredential.AccountCredentials{
-		AccountID:    account.GetAccountId(),
-		Revision:     account.GetCredentialRevision(),
-		AccessToken:  account.GetAccessToken(),
-		RefreshToken: account.GetRefreshToken(),
-		ExpiresAt:    time.Unix(account.GetExpiresAt(), 0),
+		AccountID:      account.GetAccountId(),
+		Revision:       account.GetCredentialRevision(),
+		RefreshPending: account.GetCredentialRefreshPending(),
+		AccessToken:    account.GetAccessToken(),
+		RefreshToken:   account.GetRefreshToken(),
+		ExpiresAt:      time.Unix(account.GetExpiresAt(), 0),
 	}, nil
 }
 
@@ -73,6 +74,26 @@ func (s *ChannelSubscriptionAccountStore) Store(ctx context.Context, accountID i
 		return relaycredential.ErrRefreshFailed
 	}
 	creds.Revision = reply.Revision
+	creds.RefreshPending = false
+	return nil
+}
+
+func (s *ChannelSubscriptionAccountStore) ClaimRefresh(ctx context.Context, accountID int64, creds *relaycredential.AccountCredentials) error {
+	if s == nil || s.client == nil || creds == nil {
+		return relaycredential.ErrNotConfigured
+	}
+	reply, err := s.client.ClaimSubscriptionCredentialRefresh(ctx, &channelv1.ClaimSubscriptionCredentialRefreshRequest{Id: accountID, ExpectedRevision: creds.Revision})
+	if err != nil {
+		if status.Code(err) == codes.Aborted || kerrors.FromError(err).Reason == channelv1.CredentialErrorReason_CREDENTIAL_REVISION_CONFLICT.String() {
+			return relaycredential.ErrCredentialConflict
+		}
+		return err
+	}
+	if reply == nil || reply.Revision != creds.Revision+1 {
+		return relaycredential.ErrCoordinationUnavailable
+	}
+	creds.Revision = reply.Revision
+	creds.RefreshPending = true
 	return nil
 }
 

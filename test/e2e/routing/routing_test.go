@@ -24,7 +24,7 @@ func TestRoutingAcceptance(t *testing.T) {
 		for _, test := range []struct {
 			name string
 			run  func()
-		}{{"fixed_and_revocation", s.fixed}, {"frozen_price_and_idempotency", s.frozenPrice}, {"ordered", s.ordered}, {"contracts_and_settlement", s.contracts}, {"sessions", s.sessions}} {
+		}{{"fixed_and_revocation", s.fixed}, {"frozen_price_and_idempotency", s.frozenPrice}, {"ordered", s.ordered}, {"contracts_and_settlement", s.contracts}, {"sessions", s.sessions}, {"raw_contracts", s.rawContracts}} {
 			if !t.Run(test.name, func(t *testing.T) { s.t = t; test.run() }) {
 				return
 			}

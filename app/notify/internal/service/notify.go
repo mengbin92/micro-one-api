@@ -17,10 +17,16 @@ import (
 type NotifyService struct {
 	notifyv1.UnimplementedNotifyServiceServer
 	uc *biz.NotifyUsecase
+	// alertmanagerNotifyType selects the sender channel for Alertmanager
+	// alert groups (webhook, wecom, ...); defaults to webhook.
+	alertmanagerNotifyType string
 }
 
-func NewNotifyService(uc *biz.NotifyUsecase) *NotifyService {
-	return &NotifyService{uc: uc}
+func NewNotifyService(uc *biz.NotifyUsecase, alertmanagerNotifyType string) *NotifyService {
+	if alertmanagerNotifyType == "" {
+		alertmanagerNotifyType = biz.NotifyTypeWebhook
+	}
+	return &NotifyService{uc: uc, alertmanagerNotifyType: alertmanagerNotifyType}
 }
 
 // gRPC interface implementation

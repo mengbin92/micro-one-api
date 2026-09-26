@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 
-	"micro-one-api/app/notify/internal/biz"
 	"micro-one-api/pkg/jsonx"
 )
 
@@ -48,7 +47,7 @@ func (s *NotifyService) HandleAlertmanager(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid alert group")
 		return
 	}
-	n, err := s.uc.CreateNotification(r.Context(), biz.NotifyTypeWebhook, "", fmt.Sprintf("[monitor:%s] %d alerts", payload.Status, len(payload.Alerts)), string(content))
+	n, err := s.uc.CreateNotification(r.Context(), s.alertmanagerNotifyType, "", fmt.Sprintf("[monitor:%s] %d alerts", payload.Status, len(payload.Alerts)), string(content))
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "could not queue alert group")
 		return

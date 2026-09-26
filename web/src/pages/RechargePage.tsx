@@ -106,36 +106,35 @@ export function RechargePage() {
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4 pb-28">
-      <section className="overflow-hidden rounded-lg border border-blue-100 bg-white shadow-sm dark:border-white/10 dark:bg-card">
+      <section className="overflow-hidden border-y border-border bg-card md:rounded-lg md:border">
         <div className="grid min-h-28 grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1.1fr]">
           <div className="flex flex-col justify-center px-6 py-5 text-center md:text-left">
-            <div className="text-3xl font-black text-blue-600 sm:text-4xl">1 CNY = {RATE} USD</div>
-            <div className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">{t("实时汇率 · 固定倍率")}</div>
+            <div className="text-2xl font-semibold text-primary sm:text-3xl">1 CNY = {RATE} USD</div>
+            <div className="mt-2 text-sm text-muted-foreground">{t("固定充值倍率")}</div>
           </div>
-          <div className="hidden items-center px-4 text-blue-500 md:flex">
+          <div className="hidden items-center px-4 text-muted-foreground md:flex">
             <ChevronRight className="size-8" />
           </div>
-          <div className="flex flex-col justify-center border-t border-blue-50 px-6 py-5 text-center md:border-l md:border-t-0 dark:border-white/10">
-            <div className="text-4xl font-black text-orange-500">{formatCny(amount)}</div>
-            <div className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">{t("您将支付")}</div>
+          <div className="flex flex-col justify-center border-t border-border px-6 py-5 text-center md:border-l md:border-t-0">
+            <div className="text-3xl font-semibold text-foreground">{formatCny(amount)}</div>
+            <div className="mt-2 text-sm text-muted-foreground">{t("您将支付")}</div>
           </div>
-          <div className="hidden items-center px-4 text-blue-500 md:flex">
+          <div className="hidden items-center px-4 text-muted-foreground md:flex">
             <ChevronRight className="size-8" />
           </div>
-          <div className="relative flex flex-col justify-center overflow-hidden bg-blue-600 px-6 py-5 text-center text-white md:text-left">
-            <div className="absolute inset-y-0 -left-10 hidden w-20 -skew-x-12 bg-white md:block dark:bg-card" />
-            <div className="relative md:pl-8">
-              <div className="text-4xl font-black">{formatUsd(receiveAmount)}</div>
-              <div className="mt-2 text-sm font-bold text-blue-100">{t("充值成功后到账")}</div>
+          <div className="flex flex-col justify-center bg-accent px-6 py-5 text-center text-accent-foreground md:text-left">
+            <div>
+              <div className="text-3xl font-semibold">{formatUsd(receiveAmount)}</div>
+              <div className="mt-2 text-sm">{t("充值成功后到账")}</div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-card">
+      <section className="border-b border-border p-5">
         <div className="mb-5 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-black text-slate-950 dark:text-white">{t("快捷金额")}</h2>
-          <div className="hidden items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-black text-emerald-600 sm:flex dark:bg-emerald-500/10 dark:text-emerald-300">
+          <h2 className="text-lg font-semibold text-foreground">{t("快捷金额")}</h2>
+          <div className="hidden items-center gap-2 text-sm font-medium text-muted-foreground sm:flex">
             <WalletCards className="size-4" />{t("当前余额")}{formatUsd(amountUnitsToUsd(dashboard?.balance))}
           </div>
         </div>
@@ -147,19 +146,20 @@ export function RechargePage() {
               <button
                 key={preset}
                 type="button"
+                aria-pressed={selected}
                 onClick={() => setAmountInput(String(preset))}
                 className={cn(
-                  'relative flex min-h-24 flex-col items-center justify-center rounded-lg border bg-white px-4 text-center transition-colors dark:bg-background',
+                  'relative flex min-h-24 flex-col items-center justify-center rounded-lg border bg-card px-4 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
                   selected
-                    ? 'border-blue-500 bg-blue-50/60 text-blue-600 ring-1 ring-blue-500 dark:bg-blue-500/10'
-                    : 'border-slate-200 text-slate-950 hover:border-blue-300 hover:bg-blue-50/40 dark:border-white/10 dark:text-white dark:hover:bg-white/5',
+                    ? 'border-primary bg-accent text-accent-foreground ring-1 ring-primary'
+                    : 'border-border text-foreground hover:border-primary hover:bg-accent/50',
                 )}
               >
-                <span className="text-2xl font-black">¥{preset}</span>
-                <span className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">{t("得")}{formatUsd(preset * RATE)}
+                <span className="text-2xl font-semibold">¥{preset}</span>
+                <span className="mt-2 text-sm text-muted-foreground">{t("得")}{formatUsd(preset * RATE)}
                 </span>
                 {selected && (
-                  <span className="absolute right-4 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-full bg-blue-600 text-white shadow-sm">
+                  <span className="absolute right-4 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-full bg-primary text-primary-foreground">
                     <Check className="size-5" />
                   </span>
                 )}
@@ -169,9 +169,9 @@ export function RechargePage() {
         </div>
 
         <div className="mt-6">
-          <label htmlFor="custom-amount" className="text-base font-black text-slate-700 dark:text-slate-200">{t("自定义金额")}</label>
-          <div className="mt-3 flex h-14 items-center rounded-lg border border-slate-200 bg-white px-4 shadow-sm focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 dark:border-white/10 dark:bg-background">
-            <span className="mr-4 text-lg font-black text-slate-500">¥</span>
+          <label htmlFor="custom-amount" className="text-sm font-medium text-foreground">{t("自定义金额")}</label>
+          <div className="mt-3 flex h-14 items-center rounded-lg border border-input bg-background px-4 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
+            <span className="mr-4 text-lg font-semibold text-muted-foreground">¥</span>
             <input
               id="custom-amount"
               type="number"
@@ -179,48 +179,45 @@ export function RechargePage() {
               step="0.01"
               value={amountInput}
               onChange={(event) => setAmountInput(event.target.value)}
-              className="h-full min-w-0 flex-1 bg-transparent text-lg font-black text-slate-950 outline-none dark:text-white"
+              className="h-full min-w-0 flex-1 bg-transparent text-lg font-semibold text-foreground outline-none"
             />
           </div>
         </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-card">
-        <h2 className="mb-4 text-lg font-black text-slate-950 dark:text-white">{t("支付方式")}</h2>
-        <button
-          type="button"
-          className="flex min-h-16 w-full items-center gap-4 rounded-lg border border-blue-500 bg-blue-50/50 px-4 text-left ring-1 ring-blue-500 dark:bg-blue-500/10"
-        >
-          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-[#1677ff] text-xl font-black text-white">{t("支")}</span>
+      <section className="border-b border-border p-5">
+        <h2 className="mb-4 text-lg font-semibold text-foreground">{t("支付方式")}</h2>
+        <div className="flex min-h-16 w-full items-center gap-4 rounded-lg border border-primary bg-accent px-4 text-left">
+          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary text-xl font-semibold text-primary-foreground">{t("支")}</span>
           <span className="min-w-0 flex-1">
-            <span className="block text-base font-black text-slate-950 dark:text-white">{t("支付宝")}</span>
-            <span className="block text-sm font-bold text-slate-500 dark:text-slate-400">{t("推荐使用支付宝扫码支付")}</span>
+            <span className="block text-base font-semibold text-foreground">{t("支付宝")}</span>
+            <span className="block text-sm text-muted-foreground">{t("推荐使用支付宝扫码支付")}</span>
           </span>
-          <span className="grid size-8 place-items-center rounded-full bg-blue-600 text-white">
+          <span className="grid size-8 place-items-center rounded-full bg-primary text-primary-foreground">
             <Check className="size-5" />
           </span>
-        </button>
+        </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-card">
+      <section className="border-b border-border p-5">
         <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr_auto] md:items-center">
           <div>
-            <div className="text-sm font-bold text-slate-500 dark:text-slate-400">{t("充值金额（您将支付）")}</div>
-            <div className="mt-3 text-3xl font-black text-slate-950 dark:text-white">{formatCny(amount)}</div>
+            <div className="text-sm text-muted-foreground">{t("充值金额（您将支付）")}</div>
+            <div className="mt-3 text-2xl font-semibold text-foreground">{formatCny(amount)}</div>
           </div>
-          <ChevronRight className="hidden size-8 text-slate-400 md:block" />
+          <ChevronRight className="hidden size-8 text-muted-foreground md:block" />
           <div>
-            <div className="text-sm font-bold text-slate-500 dark:text-slate-400">{t("到账金额（充值成功后得到到账）")}</div>
-            <div className="mt-3 text-3xl font-black text-blue-600">{formatUsd(receiveAmount)}</div>
+            <div className="text-sm text-muted-foreground">{t("到账金额（充值成功后得到到账）")}</div>
+            <div className="mt-3 text-2xl font-semibold text-primary">{formatUsd(receiveAmount)}</div>
           </div>
           <div className="text-left md:text-right">
-            <div className="text-sm font-bold text-slate-500 dark:text-slate-400">{t("充值倍率")}</div>
-            <div className="mt-3 text-lg font-black text-slate-950 dark:text-white">1 CNY = {RATE} USD</div>
+            <div className="text-sm text-muted-foreground">{t("充值倍率")}</div>
+            <div className="mt-3 text-lg font-semibold text-foreground">1 CNY = {RATE} USD</div>
           </div>
         </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-card">
+      <section className="p-5">
         <PurchasablePlansSection />
       </section>
 
@@ -230,13 +227,13 @@ export function RechargePage() {
           size="lg"
           disabled={!canSubmit}
           onClick={handleCreatePayment}
-          className="h-14 w-full rounded-lg bg-blue-600 text-lg font-black text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700"
+          className="h-14 w-full rounded-lg text-base font-semibold shadow-surface-md"
         >
           {createPayment.isPending ? <Loader2 className="size-5 animate-spin" /> : <ShieldCheck className="size-5" />}{t("确认支付")}{formatCny(amount)}
         </Button>
       </div>
 
-      <div className="flex items-center gap-2 px-1 text-sm font-semibold text-slate-500 dark:text-slate-400">
+      <div className="flex items-center gap-2 px-1 text-sm text-muted-foreground">
         <CreditCard className="size-4" />{t("支付完成后系统会自动入账，可在我的订单查看订单状态。")}</div>
     </div>
   );

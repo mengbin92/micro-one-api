@@ -20,6 +20,7 @@ registry:
     health_check_interval: 10
 notify_svc:
   webhook_url: ${NOTIFY_WEBHOOK_URL:-}
+  alertmanager_notify_type: ${ALERTMANAGER_NOTIFY_TYPE:-webhook}
   smtp_host: ${NOTIFY_SMTP_HOST:-}
   smtp_port: ${NOTIFY_SMTP_PORT:-587}
   smtp_user: ${NOTIFY_SMTP_USER:-}

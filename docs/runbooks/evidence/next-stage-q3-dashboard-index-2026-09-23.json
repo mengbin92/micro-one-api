@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-09-23T14:07:19.780749+00:00",
+  "environment": {
+    "architecture": "arm64",
+    "python": "3.9.6",
+    "sqlite": "3.54.0"
+  },
+  "fixture": {
+    "rows": 200000,
+    "samples_per_index": 9,
+    "same_query_and_parameters": true
+  },
+  "control_index": {
+    "raw_ms": [
+      28.537541,
+      27.725458,
+      28.170958,
+      42.132459,
+      35.725958,
+      56.351125,
+      32.111709,
+      46.2525,
+      30.4935
+    ],
+    "median_ms": 32.111709,
+    "p95_ms": 56.351125,
+    "result_rows": 11,
+    "plan": [
+      "SEARCH billing_ledgers USING INDEX idx_billing_ledgers_user_created_model (user_id=? AND created_at>? AND created_at<?)",
+      "USE TEMP B-TREE FOR GROUP BY"
+    ]
+  },
+  "candidate_index": {
+    "raw_ms": [
+      11.916833,
+      13.86475,
+      13.159667,
+      13.296417,
+      15.783208,
+      14.253666,
+      14.637083,
+      13.831584,
+      17.282167
+    ],
+    "median_ms": 13.86475,
+    "p95_ms": 17.282167,
+    "result_rows": 11,
+    "plan": [
+      "SEARCH billing_ledgers USING INDEX idx_billing_ledgers_user_type_created (user_id=? AND type=? AND created_at>? AND created_at<?)",
+      "USE TEMP B-TREE FOR GROUP BY"
+    ]
+  },
+  "median_improvement_percent": 56.823381776410585,
+  "minimum_improvement_percent": 5.0,
+  "passed": true,
+  "scope": "SQLite query-plan and deterministic fixture evidence; not a production MySQL latency claim."
+}
