@@ -1,0 +1,72 @@
+{
+  "id": "f17-fault-acceptance-2026-09-26",
+  "date": "2026-09-26",
+  "layer": "isolated-fault-injection",
+  "scope": "支付宝支付链路四个故障子项的隔离验收（丢回调收敛 / 查单暂时失败重试 / 重复签名回调幂等 / 发放失败恢复）",
+  "code": {
+    "fix_commit": "8a1abde9",
+    "test_commit": "9790d2c2",
+    "branch": "develop"
+  },
+  "method": "内存 fake repo/provider/issuer/assigner（biz 层）、stub 验签器 + 真实 usecase（service 层）、sqlite :memory: 真实事务（repo 层）；无沙箱依赖、无生产接线变更",
+  "results": [
+    {
+      "subitem": "lost_notify_reconcile_convergence",
+      "status": "pass",
+      "tests": ["TestPaymentReconcileLostNotifyConverges"],
+      "observed": "pending 订单经 ReconcilePendingOrders 查单收敛为 paid，余额发放恰好一次"
+    },
+    {
+      "subitem": "transient_query_failure_retry",
+      "status": "pass",
+      "tests": ["TestPaymentReconcileQueryFailureStaysPendingAndRetriesNextRound"],
+      "observed": "查询失败计入 QueryFailures、订单保持 pending 不发放；下一轮重试收敛成功",
+      "production_semantics": "固定 1 分钟间隔无限重试，无退避/上限/死信"
+    },
+    {
+      "subitem": "duplicate_signed_callback_idempotency",
+      "status": "pass",
+      "tests": [
+        "TestPaymentDuplicatePaidNotificationIssuesOnce",
+        "TestHandleAlipayNotifyDuplicateSignedCallbackIdempotent",
+        "TestPaymentRepo_MarkOrderPaidReplayDoesNotReissue"
+      ],
+      "observed": "三道闸门：状态短路（发放回调至多一次）、账本 dedupe claim、HTTP 层回 success 不重发"
+    },
+    {
+      "subitem": "grant_failure_recovery",
+      "status": "pass",
+      "tests": [
+        "TestPaymentBalanceGrantFailureRollsBackAndRecovers",
+        "TestPaymentSubscriptionGrantFailureRollsBackAndRecovers"
+      ],
+      "observed": "余额/订阅发放失败整事务回滚保持 pending；重放后恰好发放一次"
+    }
+  ],
+  "negative_evidence": [
+    "TestHandleAlipayNotifyVerifyFailureRespondsFail",
+    "TestHandleAlipayNotifyNonSuccessIsSwallowed",
+    "TestHandleAlipayNotifyAmountMismatchRespondsFail",
+    "TestHandleAlipayNotifyAppIDMismatchRespondsFail"
+  ],
+  "fix_found_by_injection": {
+    "commit": "8a1abde9",
+    "issue": "MarkOrderPaid 幂等重放路径在短路前覆盖返回副本的 ProviderTradeNo（DB 行不受影响，无资损）",
+    "resolution": "赋值移到 paid 短路之后，repo 回归测试锁定"
+  },
+  "execution": {
+    "unit": "go test ./app/billing/... -count=1 全绿",
+    "race": "go test -race ./app/billing/internal/biz ./app/billing/internal/data 通过",
+    "gosec": "无新增"
+  },
+  "remaining_boundaries": [
+    "查单重试无退避/上限/失败告警，长期故障只打 warn 日志（D3/运维手册范围）",
+    "支付宝侧真实重发间隔/次数由平台控制，HTTP 层重复回调为 stub 模拟",
+    "admin 补单补偿失败的 stuck_issuance 卡死订单靠对账上报，不自动修复",
+    "同步 return_url 不能代替服务端 notify_url 回执（沿用沙箱证据结论）"
+  ],
+  "related": [
+    "runbooks/f17-fault-acceptance-2026-09-26.md",
+    "runbooks/evidence/f17-alipay-sandbox-roundtrip-2026-09-26.json"
+  ]
+}
