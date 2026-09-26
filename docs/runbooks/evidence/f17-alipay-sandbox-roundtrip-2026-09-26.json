@@ -1,0 +1,47 @@
+{
+  "scenario": "F17 Alipay sandbox normal payment and balance issuance",
+  "captured_at_utc": "2026-09-26T03:05:06Z",
+  "environment": "production billing-service using the Alipay sandbox gateway",
+  "billing_image_id": "sha256:591a786dec3ae46514e9a38b329307cccfadc67044481ca947bd523e214481ed",
+  "billing_container_started_at_utc": "2026-09-23T05:46:37.28687997Z",
+  "order_sha256_prefix": "4a24488aed4938a4",
+  "test_account": "existing console administrator account; numeric user ID and sandbox buyer credentials omitted",
+  "amount": {
+    "payment_currency": "CNY",
+    "payment_minor_units": 1,
+    "asset_amount_internal_units": 1000,
+    "asset_display_usd": "0.1000"
+  },
+  "before_payment": {
+    "order_status": "pending",
+    "asset_issue_status": "pending",
+    "matching_recharge_ledgers": 0
+  },
+  "after_payment": {
+    "paid_at_utc": "2026-09-26T03:03:38Z",
+    "order_status": "paid",
+    "asset_issue_status": "issued",
+    "provider_trade_number_present": true,
+    "matching_recharge_ledgers": 1,
+    "matching_recharge_amount_internal_units": 1000,
+    "matching_ledger_dedupe_claims": 1,
+    "console_order_status": "已支付；资产：issued",
+    "console_recharge_record_present": true
+  },
+  "browser_return": {
+    "reported_by_user": true,
+    "host": "console.mengbin.top",
+    "path": "/orders",
+    "method": "alipay.trade.page.pay.return",
+    "note": "This is the browser return_url after payment, not the server-to-server notify_url. The user reported several sandbox login attempts before payment succeeded. The signed query string is intentionally omitted."
+  },
+  "server_notify_evidence": "No server-to-server Alipay notify HTTP receipt was archived. The database and console independently confirm paid and issued state, but either an async notify or the one-minute provider query job could have marked the order paid; the available logs and HTTP metrics do not distinguish them.",
+  "result": "Normal sandbox payment, browser return, and exactly one balance issuance verified; async server notify delivery is not independently established.",
+  "remaining_f17": [
+    "lost callback followed by background provider query convergence",
+    "temporary provider query failure and retry",
+    "duplicate signed callback idempotency",
+    "asset issuance failure followed by safe retry or compensation"
+  ],
+  "security": "No sandbox buyer login or payment password, merchant key, signed payment URL, provider trade number, or full order number is stored."
+}

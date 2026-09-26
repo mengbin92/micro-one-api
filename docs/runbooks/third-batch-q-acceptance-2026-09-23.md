@@ -33,9 +33,9 @@ Q1 的供应商内部是否在客户端取消后停止推理，仍受 [渠道 9 
 
 `.github/workflows/pull-request-e2e.yml` 按 PR 路径选择共享 E2E：Web 改动运行 Playwright，后端/迁移/Compose/路由验收改动运行 routing 与 Compose 矩阵；nightly 和 release 仍默认运行全部套件。快速 `ci.yml` 不被全量 E2E 取代。
 
-历史 schema 语义已有三方言证据：SQLite 覆盖 fresh、分段增量和时间字段历史形态；本轮把 D1 新增的 109 镜像纳入已知迁移数，并在 fresh/增量两条路径显式断言 `credential_refresh_pending` 落地。MySQL/PostgreSQL smoke 覆盖 fresh、repeat、status、失败回滚及历史 `schema_migrations.applied_at NOT NULL` 无默认值的显式修复流程。手工分区 DDL 已限定 MySQL、schema owner、迁移 078、claim 回填、维护窗口和验证步骤。`data-flow-next-stage-acceptance.md` 首尾均明确 F17 支付沙箱仍待验收，不再存在“已完成/待办”冲突。新增 `docs/incidents/TEMPLATE.md`，强制记录发现时间、影响窗口、范围、样本来源及无法恢复的 `UNKNOWN`。
+历史 schema 语义已有三方言证据：SQLite 覆盖 fresh、分段增量和时间字段历史形态；本轮把 D1 新增的 109 镜像纳入已知迁移数，并在 fresh/增量两条路径显式断言 `credential_refresh_pending` 落地。MySQL/PostgreSQL smoke 覆盖 fresh、repeat、status、失败回滚及历史 `schema_migrations.applied_at NOT NULL` 无默认值的显式修复流程。手工分区 DDL 已限定 MySQL、schema owner、迁移 078、claim 回填、维护窗口和验证步骤。`data-flow-next-stage-acceptance.md` 首尾均区分 F17 沙箱正常往返与仍待验收的故障子项。新增 `docs/incidents/TEMPLATE.md`，强制记录发现时间、影响窗口、范围、样本来源及无法恢复的 `UNKNOWN`。
 
-剩余外部边界：没有支付宝沙箱凭据和真实往返证据，F17 继续保持待验收；不能以本地 mock 支付标记完成。
+2026-09-26 已完成一笔支付宝沙箱 ¥0.01 正常支付往返：生产订单由 `pending/pending` 收敛到 `paid/issued`，有支付宝交易号和支付时间，对应充值账本及幂等 claim 各 1 条、到账 $0.1000；控制台订单与充值记录一致。用户确认支付后的浏览器返回到控制台 `/orders`，该 `alipay.trade.page.pay.return` 路径属于同步 `return_url`，不能代替服务端异步 `notify_url` 回执。当前没有归档异步通知 HTTP 记录，订单终态也可能由每分钟后台查单收敛；脱敏口径见 [F17 沙箱往返证据](evidence/f17-alipay-sandbox-roundtrip-2026-09-26.json)。F17 的丢回调、查单暂时失败、重复签名回调和发放失败恢复仍待隔离故障验收；正常支付成功不替代这些场景。
 
 ## Q3：性能基线与门禁
 
