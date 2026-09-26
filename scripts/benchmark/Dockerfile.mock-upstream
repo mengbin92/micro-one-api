@@ -1,0 +1,8 @@
+FROM golang:1.27-alpine AS build
+WORKDIR /src
+COPY scripts/benchmark/mock-upstream/main.go .
+RUN CGO_ENABLED=0 go build -trimpath -o /mock-upstream main.go
+
+FROM scratch
+COPY --from=build /mock-upstream /mock-upstream
+ENTRYPOINT ["/mock-upstream", "-addr", "0.0.0.0:18099", "-delay-ms", "2"]

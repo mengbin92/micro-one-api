@@ -1,0 +1,8 @@
+services:
+  mock-upstream:
+    image: q3-mock-upstream:local
+    networks:
+      - backend
+  relay-gateway:
+    environment:
+      PROVIDER_DISABLE_SSRF_CHECK: "true"

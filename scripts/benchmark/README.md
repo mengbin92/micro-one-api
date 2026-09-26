@@ -14,6 +14,7 @@ Prometheus**, not k6 — see `docs/design/BASELINE.md` for the full methodology.
 | `k6-relay-subscription-stress.js` | Pre-prod stress test for subscription-account paths (session sticky, failover, concurrency). |
 | `summarize-regression.py` | Requires at least three baseline and candidate summaries, reports medians, and applies the 20% engineering gate. |
 | `dashboard-index.py` | Builds one deterministic SQLite fixture and compares the old and new Dashboard indexes with identical queries. |
+| `run-q3-ci.sh` / `q3-fixture.py` | Recreate old and current stacks on one Linux/amd64 runner, seed the same HTTP fixture, and run three full profiles each. |
 | `results/` | Archived raw k6 samples and aggregate summary JSON files. |
 
 ## What the k6 baseline measures (and what it doesn't)
@@ -82,8 +83,8 @@ verify syntax, summary export and raw output.
 ## Known k6 quirks
 
 - `make benchmark-baseline` writes the summary via k6's native
-  `--summary-export` flag (the old `RESULTS_FILE=` env var is not read by k6
-  and produced no file).
+  `--summary-export` flag. The CI comparison supplies `RESULTS_FILE` directly
+  to `k6-baseline.js`, whose `handleSummary` writes the full summary there.
 - On some k6 versions (observed: v2.1.0 devel), the `--summary-export` JSON
   reports rate metrics with `passes`/`fails` swapped and unreliable
   `thresholds` entries. Trust the stdout summary and the process exit code
@@ -127,6 +128,23 @@ This is an engineering admission line, not a statistical significance claim.
 Keep the machine, service data, configuration, k6 version, mock upstream and
 arrival-rate profile fixed. If a representative protocol or execution path
 changes, update the fixture before accepting a new baseline.
+
+## Q3 Linux/amd64 CI comparison
+
+The `Q3 Linux amd64 comparison` workflow runs on demand and when the workflow
+file changes on `develop`. It checks out the archived `ff518b1` baseline and
+the pushed candidate into separate worktrees, then builds and runs each stack
+in the same `ubuntu-24.04` job. Both use the same k6 v0.54.0 image, harness,
+fixed 2ms mock, synthetic user/channel/token fixture and full eight-minute
+arrival profile (`ITERATION_TARGET_RATE=10`). MySQL and Redis volumes are
+recreated between versions. Transaction samples are cleared before each run.
+
+The artifact contains runner and commit fingerprints, three raw JSON streams
+and three full summaries per version, Compose build logs, and the median
+regression report. The runner can have different CPU and memory from the
+archived 2026-08-10 host; compare the two versions **within this CI job**,
+not their absolute latency against the archived host. The workflow's
+20% threshold is an engineering gate, not a statistical confidence interval.
 
 ## Dashboard index fixture
 

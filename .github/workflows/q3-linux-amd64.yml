@@ -1,0 +1,37 @@
+name: Q3 Linux amd64 comparison
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - .github/workflows/q3-linux-amd64.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: q3-linux-amd64
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    name: Old vs current, three full runs each
+    runs-on: ubuntu-24.04
+    timeout-minutes: 170
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Run isolated Linux/amd64 comparison
+        run: bash scripts/benchmark/run-q3-ci.sh
+        env:
+          Q3_RESULTS_DIR: ${{ runner.temp }}/q3-results
+      - name: Upload raw samples and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: q3-linux-amd64-${{ github.run_id }}
+          path: ${{ runner.temp }}/q3-results/
+          if-no-files-found: warn
+          retention-days: 30
