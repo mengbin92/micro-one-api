@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# Compare ff518b1 with the checked-out commit on one Linux/amd64 CI runner.
+# Compare the pinned release baseline with the checked-out commit on one
+# Linux/amd64 CI runner. Bump Q3_BASELINE_REF to the latest release tag on
+# every release — see docs/runbooks/q3-rebaseline-2026-09-26.md for why
+# ff518b1 (v0.17.1 era) was retired and what the historical comparison
+# showed.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
-baseline_ref="${Q3_BASELINE_REF:-ff518b1}"
+baseline_ref="${Q3_BASELINE_REF:-v0.32.2}"
 results_dir="${Q3_RESULTS_DIR:-${RUNNER_TEMP:-/tmp}/q3-benchmark-results}"
 baseline_dir="${RUNNER_TEMP:-/tmp}/q3-baseline-worktree"
 compose_overlay="$repo_root/scripts/benchmark/q3-compose.yml"

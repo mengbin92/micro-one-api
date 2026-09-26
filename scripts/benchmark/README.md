@@ -132,12 +132,19 @@ changes, update the fixture before accepting a new baseline.
 ## Q3 Linux/amd64 CI comparison
 
 The `Q3 Linux amd64 comparison` workflow runs on demand and when the workflow
-file changes on `develop`. It checks out the archived `ff518b1` baseline and
-the pushed candidate into separate worktrees, then builds and runs each stack
-in the same `ubuntu-24.04` job. Both use the same k6 v0.54.0 image, harness,
-fixed 2ms mock, synthetic user/channel/token fixture and full eight-minute
-arrival profile (`ITERATION_TARGET_RATE=10`). MySQL and Redis volumes are
-recreated between versions. Transaction samples are cleared before each run.
+file or this harness changes on `develop`. It checks out the pinned release
+baseline (`Q3_BASELINE_REF`, currently `v0.32.2`) and the pushed candidate
+into separate worktrees, then builds and runs each stack in the same
+`ubuntu-24.04` job. Both use the same k6 v0.54.0 image, harness, fixed 2ms
+mock, synthetic user/channel/token fixture and full eight-minute arrival
+profile (`ITERATION_TARGET_RATE=10`). MySQL and Redis volumes are recreated
+between versions. Transaction samples are cleared before each run.
+
+The baseline ref is bumped to the latest release tag on every release; the
+comparison is only meaningful within this job. The archived `ff518b1`
+baseline was retired on 2026-09-26 after the first CI comparison measured a
+consistent +25% chat-P95 regression accumulated over the 436 commits between
+v0.17.1 and v0.32.2 — see `docs/runbooks/q3-rebaseline-2026-09-26.md`.
 
 The artifact contains runner and commit fingerprints, three raw JSON streams
 and three full summaries per version, Compose build logs, and the median

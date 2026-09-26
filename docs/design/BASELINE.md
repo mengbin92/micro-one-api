@@ -430,6 +430,12 @@ While running the baseline test, monitor:
 | 2026-08-09 | Phase 0 | `397e36c` | Linux/amd64 (Xeon E5-2686 v4 / 36-core / 31 GB) | 714.93 ms ⚠️ | 19.3 req/s | 3× k6 runs. P95 inflated by billing row-lock accumulation (tables not cleaned). |
 | 2026-08-10 | v0.16.0 | `a8e14db` | Linux/amd64 (Xeon E5-2686 v4 / 36-core / 31 GB) | 116.68 ms | 19.31 req/s | 3× k6 runs; billing tables truncated. 0% error rate. |
 | 2026-08-10 | develop | `ff518b1` | Linux/amd64 (Xeon E5-2686 v4 / 36-core / 31 GB) | 116.34 ms | 19.31 req/s | 3× k6 runs; billing tables truncated. 0% error rate. No regression vs v0.16.0. |
+| 2026-09-26 | develop | `ff518b1` → `ef9ea07` | Linux/amd64 (GitHub `ubuntu-24.04` runner, Q3 CI job 36218523742) | 38.20 → 47.86 ms (+25.3%) | 19.31 req/s (both) | 3× k6 runs per side, tight variance (±0.5 ms); chat P95 39.88 → 49.94 ms (+25.2%). Cross-version conclusion spanning 436 commits (v0.17.1 → v0.32.2); accepted as accumulated feature cost, not a single regression. Absolute latencies are runner-specific — only the within-job delta is comparable. Evidence: `docs/runbooks/q3-rebaseline-2026-09-26.md`. |
+
+> **Q3 CI baseline pin (2026-09-26):** the `Q3 Linux amd64 comparison` workflow
+> now pins `Q3_BASELINE_REF` to the latest release tag (`v0.32.2`) instead of
+> the archived `ff518b1`. Bump the ref on every release; the gate compares
+> candidate vs pinned release on the same runner.
 
 ## v0.11.0 Phase 3 §3.8: Observability Hot-Path Regression Baseline
 
