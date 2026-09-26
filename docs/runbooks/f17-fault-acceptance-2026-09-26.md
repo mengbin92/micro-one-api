@@ -22,7 +22,7 @@
 | 丢回调后的查单收敛 | `TestPaymentReconcileLostNotifyConverges` | ✅ 1 分钟 reconcile 任务经 `alipay.trade.query` 把 pending 订单收敛为 paid，余额恰好发放一次 |
 | 查单暂时失败重试 | `TestPaymentReconcileQueryFailureStaysPendingAndRetriesNextRound` | ✅ 查询失败计入 `QueryFailures`、订单保持 pending 不发放；下一轮自然重试成功。生产语义为固定 1 分钟间隔无限重试，无退避/上限/死信（见剩余边界） |
 | 重复签名回调幂等 | `TestPaymentDuplicatePaidNotificationIssuesOnce`（biz）、`TestHandleAlipayNotifyDuplicateSignedCallbackIdempotent`（HTTP）、`TestPaymentRepo_MarkOrderPaidReplayDoesNotReissue`（repo 事务） | ✅ 三道闸门各自验证：状态短路（发放回调至多一次）、账本 dedupe claim `topup:{user}:payment:{trade_no}`（ledger_repo 既有测试）、HTTP 层重复投递回 `success` 不引发重发风暴 |
-| 发放失败恢复 | `TestPaymentBalanceGrantFailureRollsBackAndRecovers`、`TestPaymentSubscriptionGrantFailureRollsBackAndRecovers` | ✅ 钱包/订阅发放失败使整事务回滚，订单保持 pending+asset_issue_status=pending；notify 回 `fail` 或下一轮查单重放后收敛成功，资产恰好发放一次 |
+| 发放失败恢复 | `TestPaymentBalanceGrantFailureRollsBackAndRecovers`、`TestPaymentSubscriptionGrantFailureRollsBackAndRecovers`、`TestPaymentRepo_MarkOrderPaidIssueFailureRollsBack` | ✅ usecase 故障重试及 repo 层真实 SQLite 事务回滚：订单保持 pending+asset_issue_status=pending；notify 回 `fail` 或下一轮查单重放后收敛成功 |
 
 配套负向证据（同一 HTTP 边界）：验签失败回 `fail`（
 `TestHandleAlipayNotifyVerifyFailureRespondsFail`）、非成功状态吞掉回
@@ -40,6 +40,8 @@
 ## 执行记录
 
 - `go test ./app/billing/... -count=1` 全绿；`go test -race ./app/billing/internal/biz ./app/billing/internal/data` 通过；gosec 无新增。
+- 后续 review 补充 `TestPaymentRepo_MarkOrderPaidIssueFailureRollsBack`，验证
+  发放回调在同一事务写入后失败时，写入与订单状态一同回滚，重放可成功。
 - 全部样本为隔离注入（sqlite :memory: + fake），与 2026-09-26 生产沙箱
   正常往返证据分属不同层，互不替代。
 

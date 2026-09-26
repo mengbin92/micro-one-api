@@ -1,0 +1,25 @@
+{
+  "id": "o2-qqmail-production-2026-09-26",
+  "date": "2026-09-26",
+  "environment": "production Linux/x86_64",
+  "configuration": {
+    "alertmanager_receiver": "notify-worker:8008/v1/alerts/alertmanager",
+    "notify_type": "email",
+    "smtp_host": "smtp.qq.com",
+    "smtp_port": 587,
+    "smtp_security": "STARTTLS; TLSv1.3 negotiated and certificate verification OK",
+    "sender_equals_recipient": true,
+    "mailbox": "redacted QQ address; stored only in production .env",
+    "authorization_code": "configured in production .env; value not read or recorded",
+    "notify_image_id": "sha256:9734c058c4f37082953f455e0caea37a35ecc25a91144d9af62c8529f878bc04",
+    "alertmanager_image": "prom/alertmanager:v0.28.1, linux/amd64"
+  },
+  "verification": [
+    "notify-worker initially restarted because production Compose did not pass ALERTMANAGER_EMAIL_RECIPIENT; adding the mapping and SMTP settings restored HTTP /healthz",
+    "Direct notify-worker firing test: notification 96, email, sent, retry_count 0",
+    "Direct notify-worker resolved test: notification 97, email, sent, retry_count 0",
+    "Alertmanager API firing test: notification 98 reached notify-worker, email, sent, retry_count 0; test alert subsequently resolved and no longer active",
+    "Prometheus was recreated to refresh its read-only bind mount; live API lists http://alertmanager:9093/api/v2/alerts as an active Alertmanager"
+  ],
+  "boundary": "The Alertmanager API test proves Alertmanager to notify-worker to QQ SMTP acceptance. It did not force a real Prometheus rule to fire, and SMTP acceptance does not independently prove that the mailbox UI displayed or a person read the message. Production had no firing rules at final check."
+}

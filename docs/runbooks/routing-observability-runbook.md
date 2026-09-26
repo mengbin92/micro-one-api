@@ -11,15 +11,20 @@
 
 上线涉及 relay、identity、channel，以及嵌入订阅 outbox 的 admin / billing 服务二进制，并同步规则和看板文件。按[部署说明](../../AGENTS.md#deployment)在本机交叉构建镜像；Prometheus 重新加载配置或重启后检查规则状态。第二批已随 v0.32.0 上线，服务状态核对与仍待生产验收的项目见[当前计划第 3 节](../design/next-stage-plan-2026-09-22.md#3-第二批观测与额度解释o)。
 
-仓库 Compose 已加入 Alertmanager 并接到 notify-worker；生产 firing/resolved 到外部接收端的闭环仍待验收。**firing、通知入队、外部接收成功是三个不同状态**，只有接收端响应成功并持久化 `sent` 才算完成一次通知投递。
+仓库及生产 Compose 均已加入 Alertmanager 并接到 notify-worker。2026-09-26
+受控测试确认 notify-worker 直连的 firing/resolved 邮件，以及 Alertmanager
+注入 firing → notify-worker → QQ SMTP 均持久化为 `sent`；真实 Prometheus
+规则触发后的自然告警仍待观察（[脱敏证据](evidence/o2-qqmail-production-2026-09-26.json)）。
+**firing、通知入队、SMTP 接受是三个不同状态**；邮箱界面呈现和人工阅读没有由
+`sent` 独立证明。
 
 ### 通知链路
 
 `Prometheus rules → Alertmanager → notify-worker /v1/alerts/alertmanager → notifications → Dispatcher → ALERTMANAGER_NOTIFY_TYPE 对应的接收端`。
 
 - [Alertmanager 配置](../../deploy/alertmanager/alertmanager.yml)按 alertname/service/severity 分组，默认等待 30s、组间隔 5m、重复 4h，包含 resolved 通知；只在 backend 网络开放，不映射公网端口。
-- notify-worker 先持久化再返回 202。`ALERTMANAGER_NOTIFY_TYPE` 默认为 `webhook`，可设为 `event`、`wecom`、`dingtalk`、`feishu` 或 `slack`；这些类型都可使用空 recipient 和对应的默认接收地址。`email` 需要逐条指定收件人，不能用作此配置；无效类型使 notify-worker 启动失败。`webhook`/`event` 接收 `{subject, content, ...}` JSON；`wecom` 使用企业微信群机器人 `msgtype=text`，正文含 subject 和告警 JSON（labels/annotations/firing/resolved）。
-- 生产企业微信机器人配置 `ALERTMANAGER_NOTIFY_TYPE=wecom` 与 `NOTIFY_WECOM_WEBHOOK_URL`（完整 URL 或机器人 key），并重建 notify-worker；不要把机器人 key 写入仓库或验收记录。其他类型分别使用 `NOTIFY_WEBHOOK_URL`、`NOTIFY_DINGTALK_WEBHOOK_URL`、`NOTIFY_FEISHU_WEBHOOK_URL`、`NOTIFY_SLACK_WEBHOOK_URL`。
+- notify-worker 先持久化再返回 202。`ALERTMANAGER_NOTIFY_TYPE` 默认为 `webhook`，也支持 `event`、`email`、`wecom`、`dingtalk`、`feishu`、`slack`。邮件通道必须配置 `ALERTMANAGER_EMAIL_RECIPIENT`、`NOTIFY_SMTP_HOST` 和 `NOTIFY_SMTP_FROM`；授权凭据由 `NOTIFY_SMTP_USER` / `NOTIFY_SMTP_PASS` 提供。其他类型可使用空 recipient 和对应的默认接收地址。当前线上镜像对无效类型和缺失收件人做启动校验；SMTP 主机和发件人也已在本地代码补上校验，待下次镜像部署。
+- 生产当前使用 QQ 邮箱：`ALERTMANAGER_NOTIFY_TYPE=email`、`NOTIFY_SMTP_HOST=smtp.qq.com`、`NOTIFY_SMTP_PORT=587`（STARTTLS），发件人与收件人为同一地址。地址和授权码只保存在生产 `.env`，不写入仓库。若改回企业微信，使用 `ALERTMANAGER_NOTIFY_TYPE=wecom` 与 `NOTIFY_WECOM_WEBHOOK_URL`；其他类型分别使用 `NOTIFY_WEBHOOK_URL`、`NOTIFY_DINGTALK_WEBHOOK_URL`、`NOTIFY_FEISHU_WEBHOOK_URL`、`NOTIFY_SLACK_WEBHOOK_URL`。
 - 所选类型未配置接收地址时通知记为 failed，`last_error` 明确 not configured；`notification_delivery_total{result="not_configured"}` 计数。配置接收端后对失败记录执行既有重试操作，不能把历史 queued 改称 sent。
 - 新看板 **Delivery, Credentials and Probe Usage**（UID `operations-delivery`）展示真实 sender 尝试、凭证补写年龄、Redis 限流降级、账本重复 claim 与账号探测 tokens/missing usage。通知链路自身不可用时仍可在 Prometheus/Grafana 看到 `NotificationDeliveryFailing`，不要依赖故障中的同一路通知作为唯一判断。
 - 本地验证：规则分别验证触发/恢复；`TestAlertmanagerDeliveryAndRecovery` 通过真实 HTTP 测试接收端验证 firing/resolved 内容及 sent/failed 状态。这是分段隔离验收，未声称跑过生产 Prometheus 到真实收件人的整链路。

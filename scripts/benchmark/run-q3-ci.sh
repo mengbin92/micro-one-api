@@ -9,10 +9,11 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 baseline_ref="${Q3_BASELINE_REF:-v0.32.2}"
 results_dir="${Q3_RESULTS_DIR:-${RUNNER_TEMP:-/tmp}/q3-benchmark-results}"
-baseline_dir="${RUNNER_TEMP:-/tmp}/q3-baseline-worktree"
+baseline_dir=""
 compose_overlay="$repo_root/scripts/benchmark/q3-compose.yml"
 compose_project=q3benchmark
 active_checkout=""
+baseline_worktree_created=false
 created_env_files=()
 created_token_files=()
 
@@ -24,10 +25,10 @@ if [[ -e "$repo_root/deployments/docker-compose/.env" ]]; then
   echo 'Refusing to run with an existing deployments/docker-compose/.env' >&2
   exit 2
 fi
-
 mkdir -p "$results_dir"
 results_dir="$(cd "$results_dir" && pwd)"
 chmod 700 "$results_dir"
+baseline_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/q3-baseline-worktree.XXXXXX")"
 
 cleanup_stack() {
   if [[ -n "$active_checkout" ]]; then
@@ -44,10 +45,15 @@ cleanup_stack() {
   if (( ${#created_env_files[@]} > 0 )); then
     rm -f "${created_env_files[@]}"
   fi
+  if [[ "$baseline_worktree_created" == true ]]; then
+    git -C "$repo_root" worktree remove --force "$baseline_dir"
+  fi
+  rmdir "$baseline_dir" 2>/dev/null || true
 }
 trap cleanup_stack EXIT
 
 git -C "$repo_root" worktree add --detach "$baseline_dir" "$baseline_ref"
+baseline_worktree_created=true
 baseline_sha="$(git -C "$baseline_dir" rev-parse HEAD)"
 candidate_sha="$(git -C "$repo_root" rev-parse HEAD)"
 

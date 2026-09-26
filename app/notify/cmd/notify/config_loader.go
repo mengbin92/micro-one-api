@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"net/mail"
+	"strings"
 
 	kconfig "github.com/go-kratos/kratos/v3/config"
 
@@ -47,7 +49,7 @@ func loadConfig(confPath string) (*Config, error) {
 	if err := validateAlertmanagerNotifyType(bootstrap.NotifySvc.AlertmanagerNotifyType); err != nil {
 		return nil, err
 	}
-	if err := validateAlertmanagerEmailRecipient(bootstrap.NotifySvc.AlertmanagerNotifyType, bootstrap.NotifySvc.AlertmanagerEmailRecipient); err != nil {
+	if err := validateAlertmanagerEmailConfig(bootstrap.NotifySvc.AlertmanagerNotifyType, bootstrap.NotifySvc.AlertmanagerEmailRecipient, bootstrap.NotifySvc.SmtpHost, bootstrap.NotifySvc.SmtpFrom); err != nil {
 		return nil, err
 	}
 
@@ -64,14 +66,36 @@ func validateAlertmanagerNotifyType(notifyType string) error {
 	}
 }
 
-// validateAlertmanagerEmailRecipient fails fast at startup when alertmanager
-// alerts are routed to email without a To address: every alert group would
-// otherwise queue a notification that can never send.
-func validateAlertmanagerEmailRecipient(notifyType, recipient string) error {
-	if notifyType == biz.NotifyTypeEmail && recipient == "" {
+// validateAlertmanagerEmailConfig rejects settings that would queue alerts
+// the email sender cannot deliver.
+func validateAlertmanagerEmailConfig(notifyType, recipient, smtpHost, smtpFrom string) error {
+	if notifyType != biz.NotifyTypeEmail {
+		return nil
+	}
+	if strings.TrimSpace(recipient) == "" {
 		return fmt.Errorf("alertmanager_email_recipient is required when alertmanager_notify_type is %q", biz.NotifyTypeEmail)
 	}
+	if !singleEmailAddress(recipient) {
+		return fmt.Errorf("invalid alertmanager_email_recipient %q: use one email address", recipient)
+	}
+	if strings.TrimSpace(smtpHost) == "" {
+		return fmt.Errorf("smtp_host is required when alertmanager_notify_type is %q", biz.NotifyTypeEmail)
+	}
+	if strings.TrimSpace(smtpFrom) == "" {
+		return fmt.Errorf("smtp_from is required when alertmanager_notify_type is %q", biz.NotifyTypeEmail)
+	}
+	if !singleEmailAddress(smtpFrom) {
+		return fmt.Errorf("invalid smtp_from %q: use one email address", smtpFrom)
+	}
 	return nil
+}
+
+func singleEmailAddress(value string) bool {
+	if value != strings.TrimSpace(value) {
+		return false
+	}
+	address, err := mail.ParseAddress(value)
+	return err == nil && address.Address == value
 }
 
 // initBootstrap ensures all nested message pointers are non-nil.

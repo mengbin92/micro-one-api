@@ -22,6 +22,8 @@ const o5Methods = `.*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|Ge
 
 // o5sample captures dependency-gRPC counts and P95 for one measurement window.
 type o5sample struct {
+	StartScrape float64 `json:"start_scrape_unix"`
+	EndScrape   float64 `json:"end_scrape_unix"`
 	// Counts maps "method|status" to increase() over the window.
 	Counts map[string]float64 `json:"counts"`
 	// P95MS maps method to histogram_quantile(0.95) over OK samples (ms).
@@ -68,21 +70,43 @@ func (s *suite) promVec(query string, labels ...string) (map[string]float64, boo
 	return out, true
 }
 
-// recordO5 samples dependency-gRPC counts and P95 over the last window minutes
-// and stores them under label in the shared fixture state.
-func (s *suite) recordO5(label string, windowMinutes int) {
+// nextO5Scrape returns the timestamp of a scrape performed after this call.
+// Each measured burst is bracketed by two such scrapes, so its range cannot
+// reuse samples from the preceding phase.
+func (s *suite) nextO5Scrape() float64 {
 	s.t.Helper()
+	scrapeAfter := float64(time.Now().UnixNano()) / float64(time.Second)
+	scrapeQuery := fmt.Sprintf(`max(timestamp(micro_one_api_dependency_grpc_latency_seconds_count{instance="relay-gateway:8080",method=~"%s"}))`, o5Methods)
+	var scraped float64
+	require.Eventually(s.t, func() bool {
+		values, ok := s.prom(scrapeQuery)
+		if ok && len(values) == 1 && values[0] > scrapeAfter {
+			scraped = values[0]
+			return true
+		}
+		return false
+	}, 60*time.Second, time.Second, scrapeQuery)
+	return scraped
+}
+
+// recordO5 samples only between the scrape preceding a burst and the first
+// scrape after it. The @ modifier fixes the end of each range to that scrape.
+func (s *suite) recordO5(label string, before float64) {
+	s.t.Helper()
+	after := s.nextO5Scrape()
+	windowSeconds := int(math.Ceil(after-before)) + 1
+	require.Greater(s.t, windowSeconds, 1)
+	end := strconv.FormatFloat(after, 'f', -1, 64)
 	if s.state.O5 == nil {
 		s.state.O5 = map[string]o5sample{}
 	}
 	countQuery := fmt.Sprintf(
-		`sum by (method, status) (increase(micro_one_api_dependency_grpc_latency_seconds_count{instance="relay-gateway:8080",method=~"%s"}[%dm]))`,
-		o5Methods, windowMinutes)
+		`sum by (method, status) (increase(micro_one_api_dependency_grpc_latency_seconds_count{instance="relay-gateway:8080",method=~"%s"}[%ds] @ %s))`,
+		o5Methods, windowSeconds, end)
 	p95Query := fmt.Sprintf(
-		`histogram_quantile(0.95, sum by (method, le) (increase(micro_one_api_dependency_grpc_latency_seconds_bucket{instance="relay-gateway:8080",status="OK",method=~"%s"}[%dm]))) * 1000`,
-		o5Methods, windowMinutes)
-	var sample o5sample
-	s.waitMetric(countQuery, func(v []float64) bool { return len(v) > 0 }, 60*time.Second)
+		`histogram_quantile(0.95, sum by (method, le) (increase(micro_one_api_dependency_grpc_latency_seconds_bucket{instance="relay-gateway:8080",status="OK",method=~"%s"}[%ds] @ %s))) * 1000`,
+		o5Methods, windowSeconds, end)
+	sample := o5sample{StartScrape: before, EndScrape: after}
 	counts, ok := s.promVec(countQuery, "method", "status")
 	require.True(s.t, ok, "dependency grpc counts query failed: %s", countQuery)
 	sample.Counts = counts
@@ -99,17 +123,6 @@ func (s *suite) recordO5(label string, windowMinutes int) {
 	}
 	s.state.O5[label] = sample
 	s.t.Logf("o5a[%s]: counts=%v p95_ms=%v", label, sample.Counts, sample.P95MS)
-}
-
-// waitDependencyRPCScraped blocks until Prometheus has scraped at least
-// minIncrease new dependency-gRPC samples in the last 2 minutes. Required
-// after a burst: relay increments its /metrics immediately, but with a 15s
-// scrape interval an instant increase() query right after the burst reads a
-// sample taken before it and reports zero.
-func (s *suite) waitDependencyRPCScraped(minIncrease float64) {
-	s.t.Helper()
-	query := fmt.Sprintf(`sum(increase(micro_one_api_dependency_grpc_latency_seconds_count{instance="relay-gateway:8080",method=~"%s"}[2m]))`, o5Methods)
-	s.waitMetric(query, func(v []float64) bool { return len(v) > 0 && v[0] >= minIncrease }, 60*time.Second)
 }
 
 // driveBurst sends n sequential chats with unique ids. Every request must

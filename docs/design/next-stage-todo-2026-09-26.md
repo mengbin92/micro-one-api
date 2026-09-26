@@ -2,17 +2,17 @@
 
 - 整理日期：2026-09-26
 - 依据：`docs/design/next-stage-plan-2026-09-22.md`（文档更新至 2026-09-26）
-- 说明：已于 2026-09-26 对生产通知记录、Prometheus 回源指标和 MySQL 索引计划做只读核对；各项原始口径见对应证据文件。生产 notify-worker 已配置企业微信接收端，但部署后尚无新的 Alertmanager 告警组，firing/resolved 送达仍待验收。
+- 说明：已于 2026-09-26 对生产通知记录、Prometheus 回源指标和 MySQL 索引计划做只读核对；各项原始口径见对应证据文件。生产已切换 QQ 邮件，并补上 Alertmanager 与 Prometheus 转发；受控 firing/resolved 邮件均为 sent，真实规则触发仍待自然观察。
 
 ## 一、优先收口：已实现功能的外部验收
 
 | 顺序 | 事项 | 完成证据 |
 | --- | --- | --- |
-| 1 | **O2 生产通知送达**：生产 notify-worker 的企业微信接收端已配置并更新服务；在获准发送测试告警后，验证真实机器人收到 firing 和 resolved，通知记录最终为 `sent`；同时确认失败及未配置状态可见。 | 接收端回执、持久化通知记录和对应告警样本。部署后尚无新的 Alertmanager 告警组，生产送达仍未关闭；机器人 key 不写入验收记录。 |
+| 1 | **O2 生产通知后续观察**：QQ 邮件配置、Alertmanager 服务及 Prometheus 转发已上线；受控 firing/resolved 邮件和 Alertmanager 注入 firing 均为 `sent`。继续观察真实规则触发后的 firing/resolved 及异常送达状态。 | [受控投递证据](../runbooks/evidence/o2-qqmail-production-2026-09-26.json)记录通知 96/97/98 和 SMTP 接受；真实规则告警及收件箱呈现未由该测试独立证明，授权码不入库。 |
 | 2 | **O2 OTel 导出**：为生产环境确定 OTLP collector 与受控存储，再让 Relay HTTP span 真正导出，并用一个用户请求 ID 串起根请求、attempt、trace 和路由审计。 | collector 中的 span 与同一请求的审计/检查器记录。生产尚无 exporter/collector 配置；本地关联测试不算生产导出。 |
-| 3 | **O5 生产缓存边界与成本**：回源 RPC 的 24 小时低流量 QPS/P95 已采样；继续在安全的隔离环境验证 Redis 故障传播及降级延迟，并在有代表性生产流量后复采成本。 | [当前样本](../runbooks/evidence/o5-production-rpc-baseline-2026-09-26.json)为 Prometheus 增量约 identity/channel 各 123、billing 59 次，P95 约 4–10ms，采样时近 5 分钟无调用；不能推断故障或高负载表现，不据此启动缓存优化。 |
-| 4 | **Q2 支付 F17 故障子项**：支付宝沙箱正常支付与浏览器返回已完成；继续在隔离环境验证丢回调后的后台查单收敛、查单暂时失败重试、重复签名回调幂等和发放失败恢复。 | [沙箱往返证据](../runbooks/evidence/f17-alipay-sandbox-roundtrip-2026-09-26.json)记录订单 `paid/issued`、到账和单条账本；浏览器 `return_url` 已确认，服务端异步 `notify_url` 未有独立 HTTP 回执，不能把正常付款等同故障验收。 |
-| 5 | **Q3 Linux/amd64 性能对照**：在待验收提交、同一 Linux/amd64 环境以代表负载完整运行 3 次 k6，取中位数，与归档基线对照。生产 MySQL Dashboard 索引 `EXPLAIN ANALYZE` 对照已完成。 | 三次原始 summary、P95/分配/样本量和门禁结论仍待补。生产 [MySQL 对照证据](../runbooks/evidence/q3-production-mysql-dashboard-index-2026-09-26.json)显示旧/新索引各三次中位数为 229/225ms，样本不能证明显著生产收益。完成前维持 legacy 为默认执行路径。 |
+| 3 | **O5 生产缓存边界与成本**：24 小时低流量回源 RPC 基线已采；隔离 Redis 故障下 chat 和结算可用性已验。修正采样时序后，仍需重跑隔离故障下的 RPC 延迟，并在有代表性生产流量后复采成本。 | [生产低流量样本](../runbooks/evidence/o5-production-rpc-baseline-2026-09-26.json)为 identity/channel 各约 123、billing 59 次增量，P95 约 4–10ms；[隔离验收](../runbooks/o5-redis-fault-isolation-2026-09-26.md)中的旧 RPC P95/恢复延迟因抓取时序缺陷不作为有效结论。不据此启动缓存优化。 |
+| 4 | **Q2 支付 F17 后续观察**：支付宝沙箱正常支付往返及丢回调查单、暂时失败重试、重复签名回调、发放失败恢复四项隔离故障验收已完成。后续关注长期查单失败时的告警/重试治理及实际平台重发。 | [沙箱往返证据](../runbooks/evidence/f17-alipay-sandbox-roundtrip-2026-09-26.json)与[隔离故障验收](../runbooks/f17-fault-acceptance-2026-09-26.md)分别记录正常付款和四项故障；浏览器 `return_url` 已确认，服务端异步 `notify_url` 没有独立沙箱 HTTP 回执。 |
+| 5 | **Q3 后续性能对照**：Linux/amd64 同机基线与候选各三次完整 k6 已完成，基线重定为 `v0.32.2` 后的门禁重跑通过。未来候选继续用同一流程比较；executor 流式回归归因前维持 legacy 默认路径。 | [Q3 对照及原始 artifact](../runbooks/q3-rebaseline-2026-09-26.md)记录旧归档基线下 chat P95 +25.2%、aggregate P95 +25.3%，新基线首跑七项门禁全过；[生产 MySQL 对照](../runbooks/evidence/q3-production-mysql-dashboard-index-2026-09-26.json)旧/新索引中位数 229/225ms，不能证明显著生产收益。 |
 
 ## 二、按外部条件补齐的验证
 
