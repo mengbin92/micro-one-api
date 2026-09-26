@@ -47,18 +47,31 @@ func loadConfig(confPath string) (*Config, error) {
 	if err := validateAlertmanagerNotifyType(bootstrap.NotifySvc.AlertmanagerNotifyType); err != nil {
 		return nil, err
 	}
+	if err := validateAlertmanagerEmailRecipient(bootstrap.NotifySvc.AlertmanagerNotifyType, bootstrap.NotifySvc.AlertmanagerEmailRecipient); err != nil {
+		return nil, err
+	}
 
 	return &Config{Bootstrap: &bootstrap}, nil
 }
 
 func validateAlertmanagerNotifyType(notifyType string) error {
 	switch notifyType {
-	case "", biz.NotifyTypeWebhook, biz.NotifyTypeEvent, biz.NotifyTypeWeCom,
+	case "", biz.NotifyTypeWebhook, biz.NotifyTypeEvent, biz.NotifyTypeEmail, biz.NotifyTypeWeCom,
 		biz.NotifyTypeDingTalk, biz.NotifyTypeFeishu, biz.NotifyTypeSlack:
 		return nil
 	default:
-		return fmt.Errorf("invalid alertmanager_notify_type %q: use webhook, event, wecom, dingtalk, feishu, or slack", notifyType)
+		return fmt.Errorf("invalid alertmanager_notify_type %q: use webhook, event, email, wecom, dingtalk, feishu, or slack", notifyType)
 	}
+}
+
+// validateAlertmanagerEmailRecipient fails fast at startup when alertmanager
+// alerts are routed to email without a To address: every alert group would
+// otherwise queue a notification that can never send.
+func validateAlertmanagerEmailRecipient(notifyType, recipient string) error {
+	if notifyType == biz.NotifyTypeEmail && recipient == "" {
+		return fmt.Errorf("alertmanager_email_recipient is required when alertmanager_notify_type is %q", biz.NotifyTypeEmail)
+	}
+	return nil
 }
 
 // initBootstrap ensures all nested message pointers are non-nil.

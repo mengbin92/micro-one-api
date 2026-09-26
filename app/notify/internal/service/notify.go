@@ -20,13 +20,26 @@ type NotifyService struct {
 	// alertmanagerNotifyType selects the sender channel for Alertmanager
 	// alert groups (webhook, wecom, ...); defaults to webhook.
 	alertmanagerNotifyType string
+	// alertmanagerEmailRecipient is the To address for Alertmanager alert
+	// groups when alertmanagerNotifyType is email.
+	alertmanagerEmailRecipient string
 }
 
-func NewNotifyService(uc *biz.NotifyUsecase, alertmanagerNotifyType string) *NotifyService {
+func NewNotifyService(uc *biz.NotifyUsecase, alertmanagerNotifyType, alertmanagerEmailRecipient string) *NotifyService {
 	if alertmanagerNotifyType == "" {
 		alertmanagerNotifyType = biz.NotifyTypeWebhook
 	}
-	return &NotifyService{uc: uc, alertmanagerNotifyType: alertmanagerNotifyType}
+	return &NotifyService{uc: uc, alertmanagerNotifyType: alertmanagerNotifyType, alertmanagerEmailRecipient: alertmanagerEmailRecipient}
+}
+
+// alertmanagerRecipient returns the To address for an Alertmanager alert
+// group; only the email channel needs one, other channels take their
+// destination from the sender configuration.
+func (s *NotifyService) alertmanagerRecipient() string {
+	if s.alertmanagerNotifyType == biz.NotifyTypeEmail {
+		return s.alertmanagerEmailRecipient
+	}
+	return ""
 }
 
 // gRPC interface implementation
