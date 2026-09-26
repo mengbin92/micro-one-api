@@ -19,10 +19,14 @@ import (
 	appregistry "micro-one-api/platform/registry"
 )
 
+func newNotifyService(cfg *Config, uc *biz.NotifyUsecase) *service.NotifyService {
+	return service.NewNotifyService(uc, cfg.Bootstrap.NotifySvc.AlertmanagerNotifyType)
+}
+
 var ProviderSet = wire.NewSet(
 	newRepo,
 	biz.NewNotifyUsecase,
-	service.NewNotifyService,
+	newNotifyService,
 	server.NewGRPCServer,
 	server.NewHTTPServer,
 	provideRegistrar,

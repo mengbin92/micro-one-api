@@ -97,7 +97,7 @@ func (r *testNotifyRepo) RecordFailure(ctx context.Context, id int64, maxRetry i
 func setupNotifyService(t *testing.T, addr string) (func(), notifyv1.NotifyServiceClient) {
 	repo := &testNotifyRepo{}
 	uc := notifybiz.NewNotifyUsecase(repo)
-	svc := notifyservice.NewNotifyService(uc)
+	svc := notifyservice.NewNotifyService(uc, "")
 
 	server := grpc.NewServer()
 	notifyv1.RegisterNotifyServiceServer(server, svc)

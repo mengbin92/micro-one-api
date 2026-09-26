@@ -15,11 +15,12 @@
 
 ### 通知链路
 
-`Prometheus rules → Alertmanager → notify-worker /v1/alerts/alertmanager → notifications → Dispatcher → NOTIFY_WEBHOOK_URL`。
+`Prometheus rules → Alertmanager → notify-worker /v1/alerts/alertmanager → notifications → Dispatcher → ALERTMANAGER_NOTIFY_TYPE 对应的接收端`。
 
 - [Alertmanager 配置](../../deploy/alertmanager/alertmanager.yml)按 alertname/service/severity 分组，默认等待 30s、组间隔 5m、重复 4h，包含 resolved 通知；只在 backend 网络开放，不映射公网端口。
-- notify-worker 先持久化再返回 202。复用既有 webhook sender、重试和通知状态，外部接收端需接受既有 `{subject, content, ...}` JSON；content 包含告警 labels/annotations/firing/resolved。
-- 未配置 `NOTIFY_WEBHOOK_URL` 时通知记为 failed，`last_error` 明确 not configured；`notification_delivery_total{result="not_configured"}` 计数。配置接收端后对失败记录执行既有重试操作，不能把历史 queued 改称 sent。
+- notify-worker 先持久化再返回 202。`ALERTMANAGER_NOTIFY_TYPE` 默认为 `webhook`，可设为 `event`、`wecom`、`dingtalk`、`feishu` 或 `slack`；这些类型都可使用空 recipient 和对应的默认接收地址。`email` 需要逐条指定收件人，不能用作此配置；无效类型使 notify-worker 启动失败。`webhook`/`event` 接收 `{subject, content, ...}` JSON；`wecom` 使用企业微信群机器人 `msgtype=text`，正文含 subject 和告警 JSON（labels/annotations/firing/resolved）。
+- 生产企业微信机器人配置 `ALERTMANAGER_NOTIFY_TYPE=wecom` 与 `NOTIFY_WECOM_WEBHOOK_URL`（完整 URL 或机器人 key），并重建 notify-worker；不要把机器人 key 写入仓库或验收记录。其他类型分别使用 `NOTIFY_WEBHOOK_URL`、`NOTIFY_DINGTALK_WEBHOOK_URL`、`NOTIFY_FEISHU_WEBHOOK_URL`、`NOTIFY_SLACK_WEBHOOK_URL`。
+- 所选类型未配置接收地址时通知记为 failed，`last_error` 明确 not configured；`notification_delivery_total{result="not_configured"}` 计数。配置接收端后对失败记录执行既有重试操作，不能把历史 queued 改称 sent。
 - 新看板 **Delivery, Credentials and Probe Usage**（UID `operations-delivery`）展示真实 sender 尝试、凭证补写年龄、Redis 限流降级、账本重复 claim 与账号探测 tokens/missing usage。通知链路自身不可用时仍可在 Prometheus/Grafana 看到 `NotificationDeliveryFailing`，不要依赖故障中的同一路通知作为唯一判断。
 - 本地验证：规则分别验证触发/恢复；`TestAlertmanagerDeliveryAndRecovery` 通过真实 HTTP 测试接收端验证 firing/resolved 内容及 sent/failed 状态。这是分段隔离验收，未声称跑过生产 Prometheus 到真实收件人的整链路。
 

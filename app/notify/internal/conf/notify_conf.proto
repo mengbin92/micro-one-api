@@ -85,4 +85,7 @@ message Notify {
   int32 dispatch_batch = 12 [json_name = "dispatch_batch"];
   // MaxRetry is the maximum send attempts before marking a notification failed.
   int32 max_retry = 13 [json_name = "max_retry"];
+  // AlertmanagerNotifyType is the notification type created for Alertmanager
+  // alert groups; empty falls back to webhook.
+  string alertmanager_notify_type = 14 [json_name = "alertmanager_notify_type"];
 }

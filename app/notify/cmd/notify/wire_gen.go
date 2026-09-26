@@ -31,7 +31,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		return nil, nil, err
 	}
 	notifyUsecase := biz.NewNotifyUsecase(repository)
-	notifyService := service.NewNotifyService(notifyUsecase)
+	notifyService := newNotifyService(config, notifyUsecase)
 	mainRegistrarResult := provideRegistrar(config)
 	app, cleanup := newApp(config, notifyUsecase, notifyService, mainRegistrarResult)
 	return app, func() {
@@ -41,8 +41,12 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 // wire.go:
 
+func newNotifyService(cfg *Config, uc *biz.NotifyUsecase) *service.NotifyService {
+	return service.NewNotifyService(uc, cfg.Bootstrap.NotifySvc.AlertmanagerNotifyType)
+}
+
 var ProviderSet = wire.NewSet(
-	newRepo, biz.NewNotifyUsecase, service.NewNotifyService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.NotifyRepo), new(*data.Repository)),
+	newRepo, biz.NewNotifyUsecase, newNotifyService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.NotifyRepo), new(*data.Repository)),
 )
 
 func newRepo(cfg *Config) (*data.Repository, error) {
