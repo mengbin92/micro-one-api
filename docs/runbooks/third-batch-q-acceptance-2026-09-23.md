@@ -51,6 +51,8 @@ Q1 的供应商内部是否在客户端取消后停止推理，仍受 [渠道 9 
 
 脚本以归档的 Linux/amd64 `ff518b1` 三次 summary 对自身做自检，七项均通过。该自检只证明解析和门禁逻辑；当前 `feb4241f` 工作树尚未在同一 Linux/amd64 机器完成 3 次全量 k6，因此没有写入新的跨版本性能结论。
 
+2026-09-26 补上了欠缺的 Linux/amd64 三次全量证据：`Q3 Linux amd64 comparison` CI job（同机对比归档基线 `ff518b1` 与 develop）测得 chat P95 39.88 → 49.94 ms（+25.2%）、aggregate P95 38.20 → 47.86 ms（+25.3%），吞吐/错误率/dropped 两侧一致，三轮方差极小（证据与门禁明细见 [Q3 基线重定 runbook](q3-rebaseline-2026-09-26.md)，原始 artifact `q3-linux-amd64-36218523742`）。该回退横跨 v0.17.1 → v0.32.2 共 436 个提交，判定为功能成本并据此把基线重定到 `v0.32.2`，重定后 run `36224859013` 七项门禁全过（同代码 job 内差值 +8.3%，即跨阶段 runner 噪声存在，20% 线保持工程准入口径）。
+
 ### Dashboard 索引
 
 `scripts/benchmark/dashboard-index.py` 在同一个 200,000 行 SQLite fixture 上分别强制旧 `(user_id, created_at, model_name)` 与新 `(user_id, type, created_at)` 索引，查询、参数、预热和 9 次采样完全相同。证据见 [next-stage-q3-dashboard-index-2026-09-23.json](evidence/next-stage-q3-dashboard-index-2026-09-23.json)：新索引计划同时收窄 user/type/time，median 从 32.11 ms 降到 13.86 ms（56.82%）。这是 arm64 SQLite 的可复现计划证据。
