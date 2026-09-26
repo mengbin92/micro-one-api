@@ -67,7 +67,7 @@ Relay 仅在配置 `OTEL_EXPORTER_OTLP_ENDPOINT` 时初始化 OTLP/HTTP exporter
 | legacy 事件失败但 Redis 仍可读 | L2 auth 5m、channel 10m 是各缓存默认 TTL，最后一次 L2 命中还可能重新填 L1（auth 30s/channel 60s） | 恢复 outbox/Redis 消费并确认积压清零；需要立即失效时同时处理 L1 与 L2，不能只删 Redis 键 |
 | V2 鉴权 | `CachedIdentityClient` 每次读取 identity，撤权后的下一请求看到拒绝；Redis 不参与该鉴权缓存 | 不临时关闭 V2 或恢复旧缓存来掩盖依赖故障；检查 authority RPC 和数据库，保持 fail-close |
 
-上述边界是代码契约和隔离证据；在途请求、并发回填、事件重投递及部署网络会影响实际传播时间。生产回源成本与故障延迟仍待测量：记录相同负载下 RPC QPS/P95、撤权时间、最后接受/首次拒绝时间、outbox pending 和 Redis 恢复时间。gRPC resilience 已使用配置策略/default `reject`，不把拒绝上报为 `cache`；本次未开启默认关闭的 breaker，也未恢复 V2 缓存。
+上述边界是代码契约和隔离证据；在途请求、并发回填、事件重投递及部署网络会影响实际传播时间。[2026-09-26 生产低流量基线](./evidence/o5-production-rpc-baseline-2026-09-26.json)记录了 V2 权威回源的 24 小时调用增量、1 小时 QPS 与 P95，近 5 分钟无调用，当前不据此恢复缓存。真实 Redis 故障期间仍需记录相同负载下 RPC QPS/P95、撤权时间、最后接受/首次拒绝时间、outbox pending 和 Redis 恢复时间；生产主机不做破坏性故障注入。gRPC resilience 已使用配置策略/default `reject`，不把拒绝上报为 `cache`；本次未开启默认关闭的 breaker，也未恢复 V2 缓存。
 
 manual 筛选在数据库先缩小候选，再在 data 层解析 legacy JSON、过滤后分页，以保证三方言和损坏旧 metadata 行行为一致。候选仍需扫描；大规模账号池的索引化筛选按 D3 测量后推进。
 

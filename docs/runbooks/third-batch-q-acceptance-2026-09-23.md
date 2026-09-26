@@ -53,7 +53,9 @@ Q1 的供应商内部是否在客户端取消后停止推理，仍受 [渠道 9 
 
 ### Dashboard 索引
 
-`scripts/benchmark/dashboard-index.py` 在同一个 200,000 行 SQLite fixture 上分别强制旧 `(user_id, created_at, model_name)` 与新 `(user_id, type, created_at)` 索引，查询、参数、预热和 9 次采样完全相同。证据见 [next-stage-q3-dashboard-index-2026-09-23.json](evidence/next-stage-q3-dashboard-index-2026-09-23.json)：新索引计划同时收窄 user/type/time，median 从 32.11 ms 降到 13.86 ms（56.82%）。这是 arm64 SQLite 的可复现计划证据，不外推为生产 MySQL 延迟；生产同负载 `EXPLAIN ANALYZE` 仍待采样。
+`scripts/benchmark/dashboard-index.py` 在同一个 200,000 行 SQLite fixture 上分别强制旧 `(user_id, created_at, model_name)` 与新 `(user_id, type, created_at)` 索引，查询、参数、预热和 9 次采样完全相同。证据见 [next-stage-q3-dashboard-index-2026-09-23.json](evidence/next-stage-q3-dashboard-index-2026-09-23.json)：新索引计划同时收窄 user/type/time，median 从 32.11 ms 降到 13.86 ms（56.82%）。这是 arm64 SQLite 的可复现计划证据。
+
+2026-09-26 在生产 MySQL 对 `AggregateLedgerByDate` 的同一用户、`consume`、相同 90 天窗口进行只读 `EXPLAIN ANALYZE`：旧索引三次 225/258/229ms，新索引三次 231/225/223ms，交替采样中位数分别为 229/225ms（新索引快 1.75%）。新索引确实把 type 加入 range 条件，但此用户 57,350 条旧索引范围记录中 57,301 条就是 consume，选择性很低；不能把 SQLite fixture 的 56.82% 提升外推到生产。原始口径、扫描行数和脱敏结果见[生产 MySQL 索引证据](evidence/q3-production-mysql-dashboard-index-2026-09-26.json)。这完成了该负载的生产计划核对，不构成对其他用户或高并发场景的性能保证。
 
 高频内部导航的 hover/focus 预取已由 `route-loaders.ts` 和 `AppNavigation.tsx` 接入；账户概览继续使用已发布的 30 秒 `staleTime`，本轮没有缺少新鲜度样本却继续调参。`RELAY_ORCHESTRATOR_ENABLED` 默认仍为 `false`，在新的流式 Linux/amd64 对照完成前保持 legacy 默认路径。
 

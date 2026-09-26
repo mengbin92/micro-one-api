@@ -1,0 +1,38 @@
+{
+  "date": "2026-09-26",
+  "source": "production MySQL 8.0, EXPLAIN ANALYZE, read-only",
+  "database": "oneapi_billing",
+  "table": "billing_ledgers",
+  "actual_table_rows_at_capture": 59025,
+  "sample": {
+    "selection": "The user with the most consume ledgers since 2026-06-26; user ID is intentionally omitted.",
+    "type": "consume",
+    "created_at_start": "2026-06-26 00:00:00",
+    "created_at_end": "2026-09-26 23:59:59",
+    "matching_rows": 57301,
+    "result_days": 62,
+    "query": "AggregateLedgerByDate's daily SELECT/SUM/COUNT with identical user, type and time predicates; FORCE INDEX is the only difference.",
+    "session_max_execution_time_ms": 2000
+  },
+  "indexes": {
+    "old": {
+      "name": "idx_billing_ledgers_user_created_model",
+      "columns": ["user_id", "created_at", "model_name"],
+      "plan_range_rows": 57350,
+      "balanced_root_actual_ms": [225, 258, 229],
+      "median_ms": 229
+    },
+    "new": {
+      "name": "idx_billing_ledgers_user_type_created",
+      "columns": ["user_id", "type", "created_at"],
+      "plan_range_rows": 57301,
+      "balanced_root_actual_ms": [231, 225, 223],
+      "median_ms": 225
+    }
+  },
+  "balanced_order": ["new", "old", "old", "new", "new", "old"],
+  "median_improvement_percent": 1.75,
+  "first_unbalanced_plan_ms_excluded_from_median": {"old": 658, "new": 342},
+  "interpretation": "The new index narrows the type predicate, but this production user's range is almost entirely consume rows (57301 of 57350). Under the same warm workload, the measured 1.75% median difference is small and not evidence of a material production latency gain. The separate 200k-row SQLite fixture has a different type distribution and must not be extrapolated to production MySQL.",
+  "remaining_boundary": "Only one dominant production user and three timed samples per index were measured. Recheck with a representative changed workload before changing indexes; current-commit Linux/amd64 three-run k6 baseline remains open."
+}

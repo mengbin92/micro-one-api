@@ -1,18 +1,18 @@
 # micro-one-api 下一阶段待办
 
 - 整理日期：2026-09-26
-- 依据：`docs/design/next-stage-plan-2026-09-22.md`（文档最近更新至 2026-09-24）
-- 说明：已核对 2026-09-26 工作区的通知配置改动；生产状态仍以计划文档为基线，未重新核验线上。
+- 依据：`docs/design/next-stage-plan-2026-09-22.md`（文档更新至 2026-09-26）
+- 说明：已于 2026-09-26 对生产通知记录、Prometheus 回源指标和 MySQL 索引计划做只读核对；各项原始口径见对应证据文件。生产 notify-worker 已配置企业微信接收端，但部署后尚无新的 Alertmanager 告警组，firing/resolved 送达仍待验收。
 
 ## 一、优先收口：已实现功能的外部验收
 
 | 顺序 | 事项 | 完成证据 |
 | --- | --- | --- |
-| 1 | **O2 生产通知送达**：在部署环境为 notify-worker 配置 `ALERTMANAGER_NOTIFY_TYPE=wecom` 和 `NOTIFY_WECOM_WEBHOOK_URL`，更新服务后验证真实企业微信机器人收到 firing 和 resolved，通知记录最终为 `sent`；同时确认失败及未配置状态可见。 | 接收端回执、持久化通知记录和对应告警样本。工作区已有企业微信格式及本地投递测试，生产送达仍未关闭；机器人 key 不写入验收记录。 |
-| 2 | **O2 OTel 导出**：让生产 Relay HTTP span 真正导出到 OTLP collector，并用一个用户请求 ID 串起根请求、attempt、trace 和路由审计。 | collector 中的 span 与同一请求的审计/检查器记录。不要把本地关联测试当成生产导出。 |
-| 3 | **O5 生产缓存边界与成本**：采样 V2 回源 RPC QPS/P95、真实 Redis 故障传播延迟和降级期间延迟；据结果决定是否启动缓存优化。 | 同口径时间窗口的原始指标、样本量和结论。 |
+| 1 | **O2 生产通知送达**：生产 notify-worker 的企业微信接收端已配置并更新服务；在获准发送测试告警后，验证真实机器人收到 firing 和 resolved，通知记录最终为 `sent`；同时确认失败及未配置状态可见。 | 接收端回执、持久化通知记录和对应告警样本。部署后尚无新的 Alertmanager 告警组，生产送达仍未关闭；机器人 key 不写入验收记录。 |
+| 2 | **O2 OTel 导出**：为生产环境确定 OTLP collector 与受控存储，再让 Relay HTTP span 真正导出，并用一个用户请求 ID 串起根请求、attempt、trace 和路由审计。 | collector 中的 span 与同一请求的审计/检查器记录。生产尚无 exporter/collector 配置；本地关联测试不算生产导出。 |
+| 3 | **O5 生产缓存边界与成本**：回源 RPC 的 24 小时低流量 QPS/P95 已采样；继续在安全的隔离环境验证 Redis 故障传播及降级延迟，并在有代表性生产流量后复采成本。 | [当前样本](../runbooks/evidence/o5-production-rpc-baseline-2026-09-26.json)为 Prometheus 增量约 identity/channel 各 123、billing 59 次，P95 约 4–10ms，采样时近 5 分钟无调用；不能推断故障或高负载表现，不据此启动缓存优化。 |
 | 4 | **Q2 支付 F17 沙箱**：获取支付宝沙箱凭据，完成真实往返与状态/账务核对。 | 沙箱请求、回调、最终状态及账务证据；本地 mock 不算完成。 |
-| 5 | **Q3 Linux/amd64 性能对照**：在待验收提交、同一 Linux/amd64 环境以代表负载完整运行 3 次 k6，取中位数，与归档基线对照；在生产 MySQL 同负载采样 Dashboard 索引的 `EXPLAIN ANALYZE`。 | 三次原始 summary、P95/分配/样本量、门禁结论及 MySQL 执行计划和耗时。完成前维持 legacy 为默认执行路径。 |
+| 5 | **Q3 Linux/amd64 性能对照**：在待验收提交、同一 Linux/amd64 环境以代表负载完整运行 3 次 k6，取中位数，与归档基线对照。生产 MySQL Dashboard 索引 `EXPLAIN ANALYZE` 对照已完成。 | 三次原始 summary、P95/分配/样本量和门禁结论仍待补。生产 [MySQL 对照证据](../runbooks/evidence/q3-production-mysql-dashboard-index-2026-09-26.json)显示旧/新索引各三次中位数为 229/225ms，样本不能证明显著生产收益。完成前维持 legacy 为默认执行路径。 |
 
 ## 二、按外部条件补齐的验证
 

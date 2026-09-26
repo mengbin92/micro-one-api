@@ -1,0 +1,43 @@
+{
+  "captured_at_utc": "2026-09-26T02:18:09.731Z",
+  "source": "production Prometheus query API, read-only",
+  "metric": "micro_one_api_dependency_grpc_latency_seconds",
+  "method_filter": "GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates",
+  "queries": {
+    "calls_24h": "sum by (service,method,status) (increase(micro_one_api_dependency_grpc_latency_seconds_count{method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\"}[24h]))",
+    "qps_1h": "sum by (service,method,status) (rate(micro_one_api_dependency_grpc_latency_seconds_count{method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\"}[1h]))",
+    "qps_5m": "sum by (service,method,status) (rate(micro_one_api_dependency_grpc_latency_seconds_count{method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\"}[5m]))",
+    "p95_24h": "histogram_quantile(0.95, sum by (service,method,le) (rate(micro_one_api_dependency_grpc_latency_seconds_bucket{method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\"}[24h])))"
+  },
+  "results": [
+    {
+      "service": "identity-service",
+      "method": "GetAuthSnapshot",
+      "status": "OK",
+      "prometheus_increase_24h": 123.03634550839091,
+      "qps_1h": 0.00892608089260809,
+      "qps_5m": 0,
+      "p95_24h_ms": 9.62307416908046
+    },
+    {
+      "service": "channel-service",
+      "method": "GetRoutingGroup",
+      "status": "OK",
+      "prometheus_increase_24h": 123.03634550839091,
+      "qps_1h": 0.00892608089260809,
+      "qps_5m": 0,
+      "p95_24h_ms": 8.934611253620689
+    },
+    {
+      "service": "billing-service",
+      "method": "GetRoutingCapabilities",
+      "status": "OK",
+      "prometheus_increase_24h": 59.129540342298284,
+      "qps_1h": 0.004463040446304045,
+      "qps_5m": 0,
+      "p95_24h_ms": 3.6999999999999954
+    }
+  ],
+  "interpretation": "Natural traffic was sparse and no 5-minute calls were observed at capture time. The increase values are Prometheus extrapolations, not exact integer request counts. The sample does not justify adding a V2 cache.",
+  "remaining_boundary": "No real Redis outage occurred during this sample. Production revocation propagation and failure latency were not measured; do not inject a destructive Redis outage on the constrained production host."
+}
