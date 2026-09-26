@@ -6,3 +6,13 @@ services:
   relay-gateway:
     environment:
       PROVIDER_DISABLE_SSRF_CHECK: "true"
+  mysql:
+    healthcheck:
+      # Baseline checkouts (e.g. ff518b1c) probe via the Unix socket
+      # (`mysqladmin ping -h localhost`): the MySQL entrypoint's temporary
+      # initdb server answers socket pings, so the container turns healthy
+      # before TCP/3306 accepts connections and the migrate one-shot dies
+      # with connection refused. Force TCP readiness for every checkout
+      # this overlay is stacked on; never regress this, even after the
+      # baseline moves past ff518b1c.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]

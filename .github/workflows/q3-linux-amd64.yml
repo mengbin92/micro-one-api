@@ -6,6 +6,7 @@ on:
     branches: [develop]
     paths:
       - .github/workflows/q3-linux-amd64.yml
+      - scripts/benchmark/**
 
 permissions:
   contents: read

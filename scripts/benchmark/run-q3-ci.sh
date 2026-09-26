@@ -125,6 +125,11 @@ run_version() {
     up -d --build admin-api relay-gateway mock-upstream \
     > "$results_dir/$label-compose-build.log" 2>&1; then
     tail -n 100 "$results_dir/$label-compose-build.log" >&2
+    # `up -d` never attaches the migrate one-shot's stderr; without this
+    # the only evidence of a failed migration is compose's exit-1 summary.
+    docker compose -p "$compose_project" \
+      -f "$compose_file" -f "$compose_overlay" --env-file "$compose_env" \
+      logs --tail=100 migrate mysql >&2 || true
     exit 1
   fi
   created_token_files+=("$token_env")
