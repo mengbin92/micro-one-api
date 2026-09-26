@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.32.1 发布公告](./docs/releases/release-v0.32.1.md)（流式取消终态、Playground 安全头与 SQLite 分组修复，无新增迁移） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.32.1)
+> 📣 **最新发布**：[v0.32.2 发布公告](./docs/releases/release-v0.32.2.md)（多 Relay 凭证协调、控制台验收与企业微信告警配置） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.32.2)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.32.2
+
+v0.32.2 是 v0.32.1 之后的 **PATCH 运行可靠性与验收收口版本**：保护多 Relay OAuth 轮换，补齐控制台历史快照与可复现门禁，让 Alertmanager 告警组使用企业微信机器人格式。**内部 channel gRPC 增量扩展，三方言新增迁移 109**；生产已先行完成 D1、前端和 notify-worker 更新，真实外部告警送达仍待验收。详见 [docs/releases/release-v0.32.2.md](./docs/releases/release-v0.32.2.md)。
 
 ### 升级到 v0.32.1
 
