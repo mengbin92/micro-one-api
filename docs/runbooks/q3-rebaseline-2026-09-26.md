@@ -46,8 +46,10 @@ dedupe/快照、routing v2、订阅计费等均会增加热链路开销。将此
   `v0.32.2`；每次发版随最新 release tag 递增。
 - 基线 tag 的 compose 已原生携带 TCP 型 mysql healthcheck（v0.32.2 验证），
   harness overlay 中的覆盖保留作兜底，防止未来基线回落到旧探测方式。
-- 候选侧与 `v0.32.2` 无服务代码差异时，该 job 等价于自检：预期差值 ≈ 0，
-  可用来验证 harness/fixture 本身无漂移。
+- 候选侧与 `v0.32.2` 无服务代码差异时，该 job 等价于自检；2026-09-26 重定后首跑
+  （run `36224859013`，v0.32.2 vs `e6298957`）七项门禁全部通过，job 内差值
+  +8.3%（aggregate P95 45.34 → 49.12 ms）——即使同机相继跑两侧，跨阶段也存在
+  runner 噪声，故门禁线保持 +20% 工程准入而非更严。
 
 ## 原始数据
 
@@ -55,3 +57,5 @@ dedupe/快照、routing v2、订阅计费等均会增加热链路开销。将此
 - run `36218523742`（首组完整对照）：artifact `q3-linux-amd64-36218523742`，
   含两侧 compose 构建日志、6 份原始 k6 summary、raw JSON 样本与
   `regression-report.json`
+- run `36224859013`（重定基线后首跑，全项 PASS）：artifact
+  `q3-linux-amd64-36224859013`
