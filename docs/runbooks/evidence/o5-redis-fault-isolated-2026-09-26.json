@@ -1,0 +1,62 @@
+{
+  "id": "o5-redis-fault-isolated-2026-09-26",
+  "date": "2026-09-26",
+  "layer": "isolated-fault-injection",
+  "scope": "Redis 故障传播与降级延迟：legacy 缓存路径与 V2 每请求回源路径在 Redis 停止/恢复窗口下的可用性、回源 RPC 样本量与 P95",
+  "harness": "scripts/test-routing-e2e.py（mysql driver，私有 Compose 项目，真实服务二进制 + mock upstream + Prometheus 15s 抓取）",
+  "code": {
+    "branch": "develop",
+    "phases": ["legacy-redis-down", "legacy-redis-recovered", "redis-down(O5a 扩展)", "redis-recovered(O5a 扩展)"]
+  },
+  "method": [
+    "legacy 窗口：legacy 相位后直接 stop redis，用 Legacy token 打 12 连 chat，验证缓存降级后可用性",
+    "V2 窗口：v2 相位后 stop redis（既有撤权断言保持），用 Legacy token（fixed 相位已验证其 V2 兼容）打 12 连 chat，Ordered token 因本相位撤权断言不可用",
+    "每窗口经 waitDependencyRPCScraped 等待 Prometheus 抓取（15s 间隔）后，用 increase() 取 dependency_grpc_latency_seconds 的 per-method 样本量与 histogram_quantile(0.95)",
+    "样本量为 Prometheus 在子抓取窗口上的外推值（increase），非整数请求计数"
+  ],
+  "results": {
+    "legacy": {
+      "baseline": {"counts": {"GetAuthSnapshot|OK": 0}, "p95_ms": {}},
+      "outage": {"counts": {"GetAuthSnapshot|OK": 0}, "p95_ms": {}},
+      "recovered": {"counts": {"GetAuthSnapshot|OK": 0}, "p95_ms": {}},
+      "interpretation": "三个窗口零回源样本：L1（30s TTL）完整吸收 12 连突发，Redis 断开未引发回源风暴；全部 chat 200 且结算成功（相位通过即证据）。L1 过期后的 loader 回源路径由 platform/cache 时间推进单测覆盖。"
+    },
+    "v2": {
+      "baseline_10m": {
+        "counts": {"GetAuthSnapshot|OK": 71.31, "GetRoutingGroup|OK": 8.0, "GetRoutingCapabilities|OK": 4.57, "CheckRoutingSettlement|OK": 0, "HasRoutingCandidates|OK": 0},
+        "p95_ms": {"GetAuthSnapshot": 4.06, "GetRoutingGroup": 4.53, "GetRoutingCapabilities": 0.95}
+      },
+      "outage_2m": {
+        "counts": {"GetAuthSnapshot|OK": 25.14, "GetRoutingGroup|OK": 25.14, "GetRoutingCapabilities|OK": 12.57, "CheckRoutingSettlement|OK": 0, "HasRoutingCandidates|OK": 0},
+        "p95_ms": {"GetAuthSnapshot": 8.9, "GetRoutingGroup": 4.98, "GetRoutingCapabilities": 2.8},
+        "status_non_ok": 0
+      },
+      "recovered_2m": {
+        "counts": {"GetAuthSnapshot|OK": 25.14, "GetRoutingGroup|OK": 25.14, "GetRoutingCapabilities|OK": 12.57},
+        "p95_ms": {"GetAuthSnapshot": 8.9, "GetRoutingGroup": 4.98, "GetRoutingCapabilities": 2.8},
+        "note": "恢复窗口与故障突发窗口在 2m 回看上有重叠，数值反映跨边界样本；与故障窗口一致说明无持续性退化"
+      },
+      "interpretation": "Redis 断开期间 V2 每请求回源全部成功（零非 OK 状态），chat 全部 200 且结算成功；GetAuthSnapshot P95 从 4.06ms 升至 8.9ms（约 +4.8ms，量级等同生产低流量样本的 4-10ms），其余方法 +0.5~2ms。延迟增加推测来自 identity 侧自身 Redis 依赖的回退（待查边界），有界且不影响可用性。"
+    }
+  },
+  "existing_coverage_referenced": [
+    "撤权传播暂停与恢复（routing_test.go redis-down/recovered 既有断言 + outbox 告警）",
+    "legacy L1 30s 边界（platform/cache 时间推进单测）",
+    "V2 撤权下一请求回源拒绝（第二批隔离验收）",
+    "idempotency 中间件 Redis 故障 fail-open（platform/middleware 代码审查，fixture 强制开启下突发仍全部成功）"
+  ],
+  "execution": {
+    "command": "python3 scripts/test-routing-e2e.py",
+    "result": "PASS all phases（legacy / legacy-redis-down / legacy-redis-recovered / v2 / redis-down / redis-recovered / missing-capability / creation-rollback）"
+  },
+  "remaining_boundary": [
+    "生产复采仍需有代表性流量后进行（o5-production-rpc-baseline-2026-09-26.json 的低流量样本结论不变：不据此启动缓存优化）",
+    "identity 侧 Redis 依赖的精确回退路径未归因（只观察到 GetAuthSnapshot P95 翻倍、零错误）",
+    "熔断打开时的拒绝不产生 dependency_grpc_latency 样本（conn 层拦截器盲区），故障期拒绝延迟不可见",
+    "CheckRoutingSettlement/HasRoutingCandidates 在本 fixture 的窗口内零样本，属调用模式而非埋点缺失"
+  ],
+  "related": [
+    "runbooks/evidence/o5-production-rpc-baseline-2026-09-26.json",
+    "runbooks/o5-redis-fault-isolation-2026-09-26.md"
+  ]
+}
