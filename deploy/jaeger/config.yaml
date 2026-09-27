@@ -1,0 +1,40 @@
+# Single-node O2 trace receiver and bounded local store. No host port is
+# published by Compose; Grafana queries Jaeger over the backend network.
+service:
+  extensions: [jaeger_storage, jaeger_query, healthcheckv2]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [jaeger_storage_exporter]
+
+extensions:
+  healthcheckv2:
+    use_v2: true
+    http:
+  jaeger_query:
+    storage:
+      traces: trace_store
+  jaeger_storage:
+    backends:
+      trace_store:
+        badger:
+          directories:
+            keys: /badger/keys
+            values: /badger/values
+          ephemeral: false
+          ttl:
+            spans: 48h
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  jaeger_storage_exporter:
+    trace_storage: trace_store

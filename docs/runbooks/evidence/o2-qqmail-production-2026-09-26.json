@@ -21,5 +21,17 @@
     "Alertmanager API firing test: notification 98 reached notify-worker, email, sent, retry_count 0; test alert subsequently resolved and no longer active",
     "Prometheus was recreated to refresh its read-only bind mount; live API lists http://alertmanager:9093/api/v2/alerts as an active Alertmanager"
   ],
-  "boundary": "The Alertmanager API test proves Alertmanager to notify-worker to QQ SMTP acceptance. It did not force a real Prometheus rule to fire, and SMTP acceptance does not independently prove that the mailbox UI displayed or a person read the message. Production had no firing rules at final check."
+  "boundary": "The Alertmanager API test proves Alertmanager to notify-worker to QQ SMTP acceptance. It did not force a real Prometheus rule to fire, and SMTP acceptance does not independently prove that the mailbox UI displayed or a person read the message. Production had no firing rules at final check.",
+  "follow_up_2026_09_27": {
+    "checked_at": "2026-09-27T10:16:48+08:00",
+    "method": "Read-only SSH: docker ps and promtool instant queries against the production Prometheus; no rule was injected or configuration changed.",
+    "observations": [
+      "Prometheus, Alertmanager, and notify-worker containers were running.",
+      "All nine micro-one-api scrape targets and Prometheus itself returned up=1.",
+      "sum(prometheus_rule_evaluation_failures_total) returned 0.",
+      "sum by (alertname) (max_over_time(ALERTS{alertstate=\"firing\"}[24h])) returned no series.",
+      "sum by (result) (increase(micro_one_api_notification_delivery_total[24h])) returned sent=3.0011; increase is extrapolated and must not be interpreted as an exact record count."
+    ],
+    "conclusion": "The production alert chain is running and scrape/rule evaluation is healthy, but the last 24 hours did not supply a natural Prometheus firing/resolved event for end-to-end acceptance. The observed sent counter is consistent with the three controlled deliveries already documented; it does not prove a real rule delivery."
+  }
 }

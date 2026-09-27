@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.33.0 发布公告](./docs/releases/release-v0.33.0.md)（Alertmanager 邮件告警、支付回调修复与故障验收） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.33.0)
+> 📣 **最新发布**：[v0.33.1 发布公告](./docs/releases/release-v0.33.1.md)（Relay OTLP 导出修复与观测验收） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.33.1)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.33.1
+
+v0.33.1 是 v0.33.0 之后的 **PATCH 观测可靠性版本**：修复 Relay 启用 OTLP 导出时的启动失败，加入内部 Jaeger 持久化接收与 Grafana 数据源，并完成 O5 Redis 故障延迟复测。**无公共 API/proto 变更、无数据库迁移或前端更新**；生产 Relay HTTP span 已验证，授权请求的 attempt／审计／trace 联查仍待完成。详见 [docs/releases/release-v0.33.1.md](./docs/releases/release-v0.33.1.md)。
 
 ### 升级到 v0.33.0
 

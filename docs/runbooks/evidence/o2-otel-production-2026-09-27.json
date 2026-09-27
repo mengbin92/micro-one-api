@@ -1,0 +1,50 @@
+{
+  "date_utc": "2026-09-27",
+  "task": "O2 OTLP export",
+  "environment": "production",
+  "collector": {
+    "image": "cr.jaegertracing.io/jaegertracing/jaeger:2.20.0",
+    "platform": "linux/amd64",
+    "receiver": "OTLP/HTTP 4318 on internal Docker backend network",
+    "query": "Jaeger 16686 on internal Docker backend network",
+    "storage": "persistent Badger named volume; 48h span TTL",
+    "host_ports_published": false,
+    "query_api_status": 200
+  },
+  "relay": {
+    "image_id": "sha256:80d9f90aade5290540fe330d50cbe3b07c112e026576a6f8f0a1e0e6c492fb85",
+    "endpoint": "http://jaeger:4318",
+    "sample_rate": 1,
+    "healthz_status": 200,
+    "tracing_errors_in_first_five_minutes": 0,
+    "rollback_tag": "rollback-o2-20260927-073728"
+  },
+  "grafana": {
+    "version": "12.4.3",
+    "datasource_uid": "jaeger",
+    "startup_provisioning_logged": true,
+    "production_datasource_health_api_checked": false,
+    "local_datasource_health_status": 200
+  },
+  "production_smoke": {
+    "endpoint": "GET /v1/models without authorization",
+    "http_status": 401,
+    "root_request_id": "o2-prod-export-smoke-20260927",
+    "otel_trace_id": "ba0c778230e61c04827527d770119981",
+    "jaeger_span_name": "HTTP GET",
+    "jaeger_service_name": "relay-gateway",
+    "jaeger_request_root_id_matches": true,
+    "jaeger_request_id_matches": true,
+    "attempt_expected": false
+  },
+  "local_validation": {
+    "regression_test_red_before_fix": "conflicting Schema URL: 1.43.0 and 1.24.0",
+    "regression_test_green_after_fix": true,
+    "relay_middleware_otlp_exported_to_jaeger": true,
+    "badger_trace_found_after_restart": true,
+    "go_test_non_e2e_packages": 144,
+    "go_test_non_e2e_result": "pass",
+    "go_test_all_boundary": "test/e2e/suite requires services on localhost:3000; not running in this test"
+  },
+  "remaining_acceptance": "Use one authorized user request to correlate root request ID, attempt, routing audit otel_trace_id, and Jaeger span."
+}

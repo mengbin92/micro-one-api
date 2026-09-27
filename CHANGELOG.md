@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.33.1] - 2026-09-27
+
+v0.33.1 是 v0.33.0 之后的 **PATCH 观测可靠性版本**：修复 Relay 启用 OTLP 导出时的启动失败，加入内部 Jaeger 持久化接收与 Grafana 数据源，并完成 O5 Redis 隔离故障延迟复测。无公共 API/proto 变更或数据库迁移；详见 [release-v0.33.1.md](docs/releases/release-v0.33.1.md)。
+
+### Fixed
+
+- Relay 的 OpenTelemetry 资源不再把旧 semconv schema 与新版 SDK 默认资源合并；启用 OTLP exporter 后可正常启动并导出 span。
+
+### Added
+
+- 内部 Jaeger OTLP/HTTP receiver、48 小时 Badger 持久化存储和 Grafana Jaeger 数据源；生产 Relay HTTP span 已按请求 ID 回查。
+- O5 Redis 故障独立采样窗口的 RPC 延迟复测与生产 O2 后续观察证据。
+
+### Changed
+
+- Q3 后续 Linux/amd64 性能对照基线更新为 v0.33.0。
+
 ## [0.33.0] - 2026-09-27
 
 v0.33.0 是 v0.32.2 之后的 **MINOR 通知能力与验收版本**：Alertmanager 告警组可通过已有邮件发送端投递，支付重复回调保持首次持久化的平台交易号，并补齐 F17、Q3、O5 的隔离验收与证据边界。无新增公共 HTTP API 或数据库迁移。详见 [release-v0.33.0.md](docs/releases/release-v0.33.0.md)。

@@ -1,0 +1,51 @@
+{
+  "id": "o5-redis-fault-isolated-retest-2026-09-27",
+  "date": "2026-09-27",
+  "layer": "isolated-fault-injection",
+  "code_commit": "47e3ca1d",
+  "image_digest": "sha256:2571b94280da6379a36c4aa3b275c6cf050fd994565c8a2c88acca0b6dd1ff07",
+  "command": "python3 scripts/test-routing-e2e.py",
+  "environment": "private MySQL Compose project with real service binaries, mock upstream, Redis, and Prometheus",
+  "result": "PASS all phases; private containers, network, and volumes removed",
+  "method": "Each 12-chat burst was bracketed by fresh Prometheus scrapes. increase() and histogram_quantile(0.95) were evaluated at the ending scrape over that pair of scrapes. Counts are extrapolated Prometheus increases, not integer request totals. P95 is for status=OK only.",
+  "samples": {
+    "legacy_baseline": {
+      "GetAuthSnapshot": {"count_ok": 0, "p95_ms": null}
+    },
+    "legacy_outage": {
+      "GetAuthSnapshot": {"count_ok": 1.1332, "p95_ms": 9.75}
+    },
+    "legacy_recovered": {
+      "GetAuthSnapshot": {"count_ok": 0, "p95_ms": null}
+    },
+    "v2_baseline": {
+      "GetAuthSnapshot": {"count_ok": 25.6, "p95_ms": 4.6},
+      "GetRoutingGroup": {"count_ok": 25.6, "p95_ms": 3.8},
+      "GetRoutingCapabilities": {"count_ok": 12.8, "p95_ms": 0.95},
+      "CheckRoutingSettlement": {"count_ok": 0, "p95_ms": null},
+      "HasRoutingCandidates": {"count_ok": 0, "p95_ms": null}
+    },
+    "v2_outage": {
+      "GetAuthSnapshot": {"count_ok": 25.6034, "p95_ms": 9.1429},
+      "GetRoutingGroup": {"count_ok": 25.6034, "p95_ms": 4.9652},
+      "GetRoutingCapabilities": {"count_ok": 12.8017, "p95_ms": 2.6},
+      "CheckRoutingSettlement": {"count_ok": 0, "p95_ms": null},
+      "HasRoutingCandidates": {"count_ok": 0, "p95_ms": null}
+    },
+    "v2_recovered": {
+      "GetAuthSnapshot": {"count_ok": 27.1982, "p95_ms": 4.9467},
+      "GetRoutingGroup": {"count_ok": 27.1982, "p95_ms": 4.92},
+      "GetRoutingCapabilities": {"count_ok": 13.5991, "p95_ms": 0.95},
+      "CheckRoutingSettlement": {"count_ok": 0, "p95_ms": null},
+      "HasRoutingCandidates": {"count_ok": 0, "p95_ms": null}
+    }
+  },
+  "availability": "All 12 chats in each outage burst returned 200; final request settlement succeeded. Existing revocation propagation and recovery assertions passed; RoutingOutboxDeliveryFailing and RoutingOutboxBacklog fired during outage and cleared after recovery.",
+  "boundaries": [
+    "Legacy healthy and recovered bursts had no measured GetAuthSnapshot RPC, so their P95 cannot be compared with the single extrapolated outage sample.",
+    "V2 identity and billing P95 rose during the Redis outage and returned close to healthy levels in the distinct recovery window; the exact identity-side Redis fallback path was not attributed.",
+    "The conn-layer circuit-breaker rejects before the dependency latency interceptor, so this metric does not cover reject latency.",
+    "No production Redis fault was injected; production cost re-sampling still requires representative traffic."
+  ],
+  "supersedes_latency_claims_in": "o5-redis-fault-isolated-2026-09-26.json"
+}
