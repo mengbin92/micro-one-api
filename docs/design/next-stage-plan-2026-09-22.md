@@ -1,6 +1,6 @@
 # 下一阶段计划：可靠性补缺、运行可见性与文章技术债收口
 
-> **当前执行入口**。制定：2026-09-22；更新：2026-09-26。状态：第一批 R1–R4 已随 v0.31.1 发布；第二批 O1–O4 及 O5 正确性修复已完成本地实施和隔离验收，纳入 [v0.32.0](../releases/release-v0.32.0.md) 并已上线。生产 QQ 邮件受控送达已验，真实规则触发与 OTel 导出仍待线上验收；生产 Redis 故障不在受限主机注入，其隔离环境 chat 可用性已验证，RPC 延迟采样需复测（第 3 节），生产成本复采保留；生产 V2 回源 RPC 已采低流量基线，见第 3 节。第三批 Q1 安全头、取消终态、历史快照与充值状态均已上线；Q2/Q3 的可复现门禁已补齐，生产 MySQL Dashboard 索引同负载对照、支付宝沙箱正常支付往返、F17 故障子项隔离验收与当前提交 Linux/amd64 三次全量 k6 均已完成（Q3 基线重定至 `v0.32.2`，见第 4 节）。详情见第 4 节。
+> **当前执行入口**。制定：2026-09-22；更新：2026-09-27。状态：第一批 R1–R4 已随 v0.31.1 发布；第二批 O1–O4 及 O5 正确性修复已完成本地实施和隔离验收，纳入 [v0.32.0](../releases/release-v0.32.0.md) 并已上线。生产 QQ 邮件受控送达已验；2026-09-27 只读观察过去 24 小时无真实规则 firing，真实规则触发与 OTel 导出仍待线上验收。生产 Redis 故障不在受限主机注入，其隔离环境 chat 可用性及修复采样后的 RPC 延迟复测已通过（第 3 节），生产成本复采保留；生产 V2 回源 RPC 已采低流量基线，见第 3 节。第三批 Q1 安全头、取消终态、历史快照与充值状态均已上线；Q2/Q3 的可复现门禁已补齐，生产 MySQL Dashboard 索引同负载对照、支付宝沙箱正常支付往返、F17 故障子项隔离验收与当前提交 Linux/amd64 三次全量 k6 均已完成（Q3 基线重定至 `v0.32.2`，见第 4 节）。详情见第 4 节。
 >
 > 初始规划基线：`develop@77e4db45`（[v0.31.0](../releases/release-v0.31.0.md)）；第二批审查基线：`develop@d70e02f2`（已合入 [v0.31.1](../releases/release-v0.31.1.md)）。第一批实现与隔离验收记录已纳入版本；第二批本地证据见第 3 节，不代表生产验收。
 >
@@ -108,7 +108,7 @@ R1 → R2 → R3 → R4 已完成实现及验收，见[第一批实施记录](..
 | O2 / P1 告警与追踪闭环 | **实现及本地验收完成，生产 QQ 邮件受控送达已验；真实规则触发待观察**。七类对账差异完整；HTTP span/兼容头/路由审计/Playground 关联；Alertmanager 接既有通知队列，新增送达、Redis 降级、去重冲突和探测用量看板 | 七类差异“仅此一类非零”的通知都解释得清；用户提供的请求 ID 能定位根请求/attempt/trace；本地 firing/resolved 通知真实 HTTP 接收并持久化 sent；无接收端为 failed/not_configured。生产受控测试的 firing/resolved 邮件已持久化 sent，Alertmanager 注入 firing 已送达；真实 Prometheus 规则触发仍待观察，见[证据](../runbooks/evidence/o2-qqmail-production-2026-09-26.json) |
 | O3 / P1 订阅用量可解释 | **已完成（本地验收）**。billing 事务内读取结算及订阅部分冻结，admin/relay 使用同一 RPC；UI 展示 settled/frozen/available；旧 used/remaining 保留，补无限/超限与窗口/倍率契约；修正过期后购买为新建 | 三方言覆盖在途多请求、取消、跨窗结算、nil/0、过期、倍率变化；接口覆盖权威失败不回退，DTO 保留 null/0，浏览器覆盖无限/超限。见[接口契约](./subscription-usage-api.md) |
 | O4 / P1 账号治理与原子重置 | **已完成（本地验收）**。ChannelRepo 强制原子重置，陈旧扫描不得清除新窗口用量；读写共用窗口计算。manual 服务端筛选、原因/等待时长在手机和桌面均可见；Anthropic/Codex 探测 token 单列 | 故障注入后回滚 reset-run 并可重试；三方言双副本仅成功一次；过期扫描不清新用量；无额度配置的 manual 账号也能显示恢复信息；上游不返回 usage 时明确 missing，不推算美元成本 |
-| O5 / P2 缓存与降级边界 | **正确性修复与隔离边界验收完成；Redis 故障下 chat 可用性已验证，RPC 延迟待复测**。坏值比较后删除、回源；缓存写入与 TTL 原子设置；移除无人调用的失效接口、整片失效改名 InvalidateAll、修正事件接线注释；V2 继续绕过缓存 | 坏值不计命中且回源失败仍清理；legacy Redis 断开后的 L1 30s 边界由时间推进测试验证，隔离 e2e 验证 chat 全成功；零回源的旧指标需重测确认；V2 撤权下一请求回源拒绝。2026-09-26 隔离故障注入确认 Redis 停止期间 chat 与结算成功；旧 RPC 样本存在抓取时序缺陷，P95 和恢复延迟须重测（[runbook](../runbooks/o5-redis-fault-isolation-2026-09-26.md)）；生产成本复采仍需代表性流量，低流量基线不支持启动缓存优化的结论不变 |
+| O5 / P2 缓存与降级边界 | **正确性修复与隔离边界验收完成；2026-09-27 Redis 故障 RPC 延迟已复测**。坏值比较后删除、回源；缓存写入与 TTL 原子设置；移除无人调用的失效接口、整片失效改名 InvalidateAll、修正事件接线注释；V2 继续绕过缓存 | 坏值不计命中且回源失败仍清理；legacy Redis 断开后的 L1 30s 边界由时间推进测试验证，隔离 e2e 验证 chat 全成功；复测在 legacy 故障窗口观测到回源，旧零样本结论撤销；V2 撤权下一请求回源拒绝。修复采样后的隔离复测中 GetAuthSnapshot P95 为 4.60ms → 9.14ms → 4.95ms（健康/故障/恢复，[runbook](../runbooks/o5-redis-fault-isolation-2026-09-26.md)）；identity 回退路径尚未归因，生产成本复采仍需代表性流量，低流量基线不支持启动缓存优化的结论不变 |
 
 统一包装只负责观测与强制接入，**不承担业务计费或自行解析响应猜 token**。业务终态仍由 biz/执行器/结算路径产出，避免把“忘记记录”变成“记录两次”。
 
@@ -142,7 +142,7 @@ docker run --rm --entrypoint /bin/promtool -v "$PWD/deploy/prometheus/alerts:/ru
 # web/ 下：npx playwright test e2e/operations-usage.spec.ts
 ```
 
-部署后已完成 [QQ 邮件受控 firing/resolved 与 Alertmanager 注入 firing 送达](../runbooks/evidence/o2-qqmail-production-2026-09-26.json)；真实 Prometheus 规则触发、OTLP collector 导出及 Redis 故障 RPC 延迟仍待验收。2026-09-26 的[生产 V2 回源低流量样本](../runbooks/evidence/o5-production-rpc-baseline-2026-09-26.json)已记录过去 24 小时 RPC 调用增量与 P95，但近 5 分钟没有调用，不能代表故障/高负载延迟；不据此启动缓存优化。隔离 Redis 故障下 chat 与结算可用性已验证，旧 RPC 延迟样本因抓取时序缺陷须重测。当前 OTel 关联覆盖 Relay HTTP span 和路由审计，生产没有配置 exporter/collector，不宣称所有下游服务都生成 span。告警桥接、缓存应急操作及指标用途见[运维手册](../runbooks/routing-observability-runbook.md)。剩余外部条件按原退出门槛继续登记。
+部署后已完成 [QQ 邮件受控 firing/resolved 与 Alertmanager 注入 firing 送达](../runbooks/evidence/o2-qqmail-production-2026-09-26.json)；2026-09-27 只读核对生产抓取目标和规则评估均健康，但过去 24 小时没有真实 Prometheus firing，OTLP collector 导出亦待验收。2026-09-26 的[生产 V2 回源低流量样本](../runbooks/evidence/o5-production-rpc-baseline-2026-09-26.json)已记录过去 24 小时 RPC 调用增量与 P95，但近 5 分钟没有调用，不能代表故障/高负载延迟；不据此启动缓存优化。隔离 Redis 故障下 chat 与结算可用性、独立抓取窗口的 RPC 延迟已于 2026-09-27 [复测](../runbooks/evidence/o5-redis-fault-isolated-retest-2026-09-27.json)。当前 OTel 关联覆盖 Relay HTTP span 和路由审计，生产没有配置 exporter/collector，不宣称所有下游服务都生成 span。告警桥接、缓存应急操作及指标用途见[运维手册](../runbooks/routing-observability-runbook.md)。剩余外部条件按原退出门槛继续登记。
 
 ## 4. 第三批：前端、验证与性能（Q）
 

@@ -1,16 +1,16 @@
 # micro-one-api 下一阶段待办
 
 - 整理日期：2026-09-26
-- 依据：`docs/design/next-stage-plan-2026-09-22.md`（文档更新至 2026-09-26）
-- 说明：已于 2026-09-26 对生产通知记录、Prometheus 回源指标和 MySQL 索引计划做只读核对；各项原始口径见对应证据文件。生产已切换 QQ 邮件，并补上 Alertmanager 与 Prometheus 转发；受控 firing/resolved 邮件均为 sent，真实规则触发仍待自然观察。
+- 依据：`docs/design/next-stage-plan-2026-09-22.md`（文档更新至 2026-09-27）
+- 说明：已于 2026-09-26 对生产通知记录、Prometheus 回源指标和 MySQL 索引计划做只读核对；2026-09-27 补做 O2 只读观察及 O5 隔离故障延迟复测，各项原始口径见对应证据文件。生产已切换 QQ 邮件，并补上 Alertmanager 与 Prometheus 转发；受控 firing/resolved 邮件均为 sent，真实规则触发仍待自然观察。
 
 ## 一、优先收口：已实现功能的外部验收
 
 | 顺序 | 事项 | 完成证据 |
 | --- | --- | --- |
-| 1 | **O2 生产通知后续观察**：QQ 邮件配置、Alertmanager 服务及 Prometheus 转发已上线；受控 firing/resolved 邮件和 Alertmanager 注入 firing 均为 `sent`。继续观察真实规则触发后的 firing/resolved 及异常送达状态。 | [受控投递证据](../runbooks/evidence/o2-qqmail-production-2026-09-26.json)记录通知 96/97/98 和 SMTP 接受；真实规则告警及收件箱呈现未由该测试独立证明，授权码不入库。 |
+| 1 | **O2 生产通知后续观察**：QQ 邮件配置、Alertmanager 服务及 Prometheus 转发已上线；受控 firing/resolved 邮件和 Alertmanager 注入 firing 均为 `sent`。2026-09-27 只读查询发现过去 24 小时无真实规则 firing，九个业务抓取目标均正常、规则评估失败数为零。继续观察真实规则触发后的 firing/resolved 及异常送达状态。 | [受控投递及后续观察](../runbooks/evidence/o2-qqmail-production-2026-09-26.json)记录通知 96/97/98、SMTP 接受和 24 小时 Prometheus 查询；真实规则告警及收件箱呈现仍缺独立证据，授权码不入库。 |
 | 2 | **O2 OTel 导出**：为生产环境确定 OTLP collector 与受控存储，再让 Relay HTTP span 真正导出，并用一个用户请求 ID 串起根请求、attempt、trace 和路由审计。 | collector 中的 span 与同一请求的审计/检查器记录。生产尚无 exporter/collector 配置；本地关联测试不算生产导出。 |
-| 3 | **O5 生产缓存边界与成本**：24 小时低流量回源 RPC 基线已采；隔离 Redis 故障下 chat 和结算可用性已验。修正采样时序后，仍需重跑隔离故障下的 RPC 延迟，并在有代表性生产流量后复采成本。 | [生产低流量样本](../runbooks/evidence/o5-production-rpc-baseline-2026-09-26.json)为 identity/channel 各约 123、billing 59 次增量，P95 约 4–10ms；[隔离验收](../runbooks/o5-redis-fault-isolation-2026-09-26.md)中的旧 RPC P95/恢复延迟因抓取时序缺陷不作为有效结论。不据此启动缓存优化。 |
+| 3 | **O5 生产缓存边界与成本**：24 小时低流量回源 RPC 基线已采；2026-09-27 修正采样时序后的完整隔离复测通过，Redis 故障下 chat、结算和恢复可用，V2 GetAuthSnapshot P95 为健康 4.60ms、故障 9.14ms、恢复 4.95ms。后续只在有代表性生产流量后复采成本。 | [生产低流量样本](../runbooks/evidence/o5-production-rpc-baseline-2026-09-26.json)为 identity/channel 各约 123、billing 59 次增量；[隔离复测](../runbooks/o5-redis-fault-isolation-2026-09-26.md)以独立抓取窗口取代旧 P95。identity 内部回退路径和熔断拒绝延迟仍无归因；不据此启动缓存优化。 |
 | 4 | **Q2 支付 F17 后续观察**：支付宝沙箱正常支付往返及丢回调查单、暂时失败重试、重复签名回调、发放失败恢复四项隔离故障验收已完成。后续关注长期查单失败时的告警/重试治理及实际平台重发。 | [沙箱往返证据](../runbooks/evidence/f17-alipay-sandbox-roundtrip-2026-09-26.json)与[隔离故障验收](../runbooks/f17-fault-acceptance-2026-09-26.md)分别记录正常付款和四项故障；浏览器 `return_url` 已确认，服务端异步 `notify_url` 没有独立沙箱 HTTP 回执。 |
 | 5 | **Q3 后续性能对照**：Linux/amd64 同机基线与候选各三次完整 k6 已完成，基线重定为 `v0.32.2` 后的门禁重跑通过。未来候选继续用同一流程比较；executor 流式回归归因前维持 legacy 默认路径。 | [Q3 对照及原始 artifact](../runbooks/q3-rebaseline-2026-09-26.md)记录旧归档基线下 chat P95 +25.2%、aggregate P95 +25.3%，新基线首跑七项门禁全过；[生产 MySQL 对照](../runbooks/evidence/q3-production-mysql-dashboard-index-2026-09-26.json)旧/新索引中位数 229/225ms，不能证明显著生产收益。 |
 
