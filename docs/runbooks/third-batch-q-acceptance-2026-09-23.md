@@ -33,9 +33,9 @@ Q1 的供应商内部是否在客户端取消后停止推理，仍受 [渠道 9 
 
 `.github/workflows/pull-request-e2e.yml` 按 PR 路径选择共享 E2E：Web 改动运行 Playwright，后端/迁移/Compose/路由验收改动运行 routing 与 Compose 矩阵；nightly 和 release 仍默认运行全部套件。快速 `ci.yml` 不被全量 E2E 取代。
 
-历史 schema 语义已有三方言证据：SQLite 覆盖 fresh、分段增量和时间字段历史形态；本轮把 D1 新增的 109 镜像纳入已知迁移数，并在 fresh/增量两条路径显式断言 `credential_refresh_pending` 落地。MySQL/PostgreSQL smoke 覆盖 fresh、repeat、status、失败回滚及历史 `schema_migrations.applied_at NOT NULL` 无默认值的显式修复流程。手工分区 DDL 已限定 MySQL、schema owner、迁移 078、claim 回填、维护窗口和验证步骤。`data-flow-next-stage-acceptance.md` 首尾均明确 F17 支付沙箱仍待验收，不再存在“已完成/待办”冲突。新增 `docs/incidents/TEMPLATE.md`，强制记录发现时间、影响窗口、范围、样本来源及无法恢复的 `UNKNOWN`。
+历史 schema 语义已有三方言证据：SQLite 覆盖 fresh、分段增量和时间字段历史形态；本轮把 D1 新增的 109 镜像纳入已知迁移数，并在 fresh/增量两条路径显式断言 `credential_refresh_pending` 落地。MySQL/PostgreSQL smoke 覆盖 fresh、repeat、status、失败回滚及历史 `schema_migrations.applied_at NOT NULL` 无默认值的显式修复流程。手工分区 DDL 已限定 MySQL、schema owner、迁移 078、claim 回填、维护窗口和验证步骤。`data-flow-next-stage-acceptance.md` 首尾均区分 F17 沙箱正常往返与仍待验收的故障子项。新增 `docs/incidents/TEMPLATE.md`，强制记录发现时间、影响窗口、范围、样本来源及无法恢复的 `UNKNOWN`。
 
-剩余外部边界：没有支付宝沙箱凭据和真实往返证据，F17 继续保持待验收；不能以本地 mock 支付标记完成。
+2026-09-26 已完成一笔支付宝沙箱 ¥0.01 正常支付往返：生产订单由 `pending/pending` 收敛到 `paid/issued`，有支付宝交易号和支付时间，对应充值账本及幂等 claim 各 1 条、到账 $0.1000；控制台订单与充值记录一致。用户确认支付后的浏览器返回到控制台 `/orders`，该 `alipay.trade.page.pay.return` 路径属于同步 `return_url`，不能代替服务端异步 `notify_url` 回执。当前没有归档异步通知 HTTP 记录，订单终态也可能由每分钟后台查单收敛；脱敏口径见 [F17 沙箱往返证据](evidence/f17-alipay-sandbox-roundtrip-2026-09-26.json)。同日完成 F17 四个故障子项的隔离故障验收（丢回调查单收敛、查单暂时失败重试、重复签名回调幂等、发放失败恢复），注入中发现并修复幂等重放覆盖 provider 单号的非资损缺陷；查单重试无退避/告警、stuck_issuance 不自动修复等剩余边界见 [F17 故障验收 runbook](f17-fault-acceptance-2026-09-26.md) 与 [证据](evidence/f17-fault-acceptance-2026-09-26.json)。
 
 ## Q3：性能基线与门禁
 
@@ -51,9 +51,13 @@ Q1 的供应商内部是否在客户端取消后停止推理，仍受 [渠道 9 
 
 脚本以归档的 Linux/amd64 `ff518b1` 三次 summary 对自身做自检，七项均通过。该自检只证明解析和门禁逻辑；当前 `feb4241f` 工作树尚未在同一 Linux/amd64 机器完成 3 次全量 k6，因此没有写入新的跨版本性能结论。
 
+2026-09-26 补上了欠缺的 Linux/amd64 三次全量证据：`Q3 Linux amd64 comparison` CI job（同机对比归档基线 `ff518b1` 与 develop）测得 chat P95 39.88 → 49.94 ms（+25.2%）、aggregate P95 38.20 → 47.86 ms（+25.3%），吞吐/错误率/dropped 两侧一致，三轮方差极小（证据与门禁明细见 [Q3 基线重定 runbook](q3-rebaseline-2026-09-26.md)，原始 artifact `q3-linux-amd64-36218523742`）。该回退横跨 v0.17.1 → v0.32.2 共 436 个提交，判定为功能成本并据此把基线重定到 `v0.32.2`，重定后 run `36224859013` 七项门禁全过（同代码 job 内差值 +8.3%，即跨阶段 runner 噪声存在，20% 线保持工程准入口径）。
+
 ### Dashboard 索引
 
-`scripts/benchmark/dashboard-index.py` 在同一个 200,000 行 SQLite fixture 上分别强制旧 `(user_id, created_at, model_name)` 与新 `(user_id, type, created_at)` 索引，查询、参数、预热和 9 次采样完全相同。证据见 [next-stage-q3-dashboard-index-2026-09-23.json](evidence/next-stage-q3-dashboard-index-2026-09-23.json)：新索引计划同时收窄 user/type/time，median 从 32.11 ms 降到 13.86 ms（56.82%）。这是 arm64 SQLite 的可复现计划证据，不外推为生产 MySQL 延迟；生产同负载 `EXPLAIN ANALYZE` 仍待采样。
+`scripts/benchmark/dashboard-index.py` 在同一个 200,000 行 SQLite fixture 上分别强制旧 `(user_id, created_at, model_name)` 与新 `(user_id, type, created_at)` 索引，查询、参数、预热和 9 次采样完全相同。证据见 [next-stage-q3-dashboard-index-2026-09-23.json](evidence/next-stage-q3-dashboard-index-2026-09-23.json)：新索引计划同时收窄 user/type/time，median 从 32.11 ms 降到 13.86 ms（56.82%）。这是 arm64 SQLite 的可复现计划证据。
+
+2026-09-26 在生产 MySQL 对 `AggregateLedgerByDate` 的同一用户、`consume`、相同 90 天窗口进行只读 `EXPLAIN ANALYZE`：旧索引三次 225/258/229ms，新索引三次 231/225/223ms，交替采样中位数分别为 229/225ms（新索引快 1.75%）。新索引确实把 type 加入 range 条件，但此用户 57,350 条旧索引范围记录中 57,301 条就是 consume，选择性很低；不能把 SQLite fixture 的 56.82% 提升外推到生产。原始口径、扫描行数和脱敏结果见[生产 MySQL 索引证据](evidence/q3-production-mysql-dashboard-index-2026-09-26.json)。这完成了该负载的生产计划核对，不构成对其他用户或高并发场景的性能保证。
 
 高频内部导航的 hover/focus 预取已由 `route-loaders.ts` 和 `AppNavigation.tsx` 接入；账户概览继续使用已发布的 30 秒 `staleTime`，本轮没有缺少新鲜度样本却继续调参。`RELAY_ORCHESTRATOR_ENABLED` 默认仍为 `false`，在新的流式 Linux/amd64 对照完成前保持 legacy 默认路径。
 

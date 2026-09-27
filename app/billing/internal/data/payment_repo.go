@@ -193,12 +193,16 @@ func (r *paymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeN
 		if err != nil {
 			return err
 		}
-		if providerTradeNo != "" {
-			order.ProviderTradeNo = providerTradeNo
-		}
 		if po.Status == biz.PaymentOrderStatusPaid {
+			// Idempotent replay (F17 duplicate signed callback): return the
+			// persisted order untouched. The caller-supplied providerTradeNo
+			// must NOT overwrite the in-memory copy either — the row and the
+			// returned order stay exactly as first paid.
 			result = order
 			return nil
+		}
+		if providerTradeNo != "" {
+			order.ProviderTradeNo = providerTradeNo
 		}
 		if po.Status != biz.PaymentOrderStatusPending {
 			return fmt.Errorf("payment order status %q cannot be marked paid", po.Status)

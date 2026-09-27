@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"net/mail"
+	"strings"
 
 	kconfig "github.com/go-kratos/kratos/v3/config"
 
@@ -47,18 +49,53 @@ func loadConfig(confPath string) (*Config, error) {
 	if err := validateAlertmanagerNotifyType(bootstrap.NotifySvc.AlertmanagerNotifyType); err != nil {
 		return nil, err
 	}
+	if err := validateAlertmanagerEmailConfig(bootstrap.NotifySvc.AlertmanagerNotifyType, bootstrap.NotifySvc.AlertmanagerEmailRecipient, bootstrap.NotifySvc.SmtpHost, bootstrap.NotifySvc.SmtpFrom); err != nil {
+		return nil, err
+	}
 
 	return &Config{Bootstrap: &bootstrap}, nil
 }
 
 func validateAlertmanagerNotifyType(notifyType string) error {
 	switch notifyType {
-	case "", biz.NotifyTypeWebhook, biz.NotifyTypeEvent, biz.NotifyTypeWeCom,
+	case "", biz.NotifyTypeWebhook, biz.NotifyTypeEvent, biz.NotifyTypeEmail, biz.NotifyTypeWeCom,
 		biz.NotifyTypeDingTalk, biz.NotifyTypeFeishu, biz.NotifyTypeSlack:
 		return nil
 	default:
-		return fmt.Errorf("invalid alertmanager_notify_type %q: use webhook, event, wecom, dingtalk, feishu, or slack", notifyType)
+		return fmt.Errorf("invalid alertmanager_notify_type %q: use webhook, event, email, wecom, dingtalk, feishu, or slack", notifyType)
 	}
+}
+
+// validateAlertmanagerEmailConfig rejects settings that would queue alerts
+// the email sender cannot deliver.
+func validateAlertmanagerEmailConfig(notifyType, recipient, smtpHost, smtpFrom string) error {
+	if notifyType != biz.NotifyTypeEmail {
+		return nil
+	}
+	if strings.TrimSpace(recipient) == "" {
+		return fmt.Errorf("alertmanager_email_recipient is required when alertmanager_notify_type is %q", biz.NotifyTypeEmail)
+	}
+	if !singleEmailAddress(recipient) {
+		return fmt.Errorf("invalid alertmanager_email_recipient %q: use one email address", recipient)
+	}
+	if strings.TrimSpace(smtpHost) == "" {
+		return fmt.Errorf("smtp_host is required when alertmanager_notify_type is %q", biz.NotifyTypeEmail)
+	}
+	if strings.TrimSpace(smtpFrom) == "" {
+		return fmt.Errorf("smtp_from is required when alertmanager_notify_type is %q", biz.NotifyTypeEmail)
+	}
+	if !singleEmailAddress(smtpFrom) {
+		return fmt.Errorf("invalid smtp_from %q: use one email address", smtpFrom)
+	}
+	return nil
+}
+
+func singleEmailAddress(value string) bool {
+	if value != strings.TrimSpace(value) {
+		return false
+	}
+	address, err := mail.ParseAddress(value)
+	return err == nil && address.Address == value
 }
 
 // initBootstrap ensures all nested message pointers are non-nil.

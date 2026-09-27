@@ -18,6 +18,9 @@ func TestRoutingAcceptance(t *testing.T) {
 	switch os.Getenv("ROUTING_PHASE") {
 	case "legacy":
 		s.legacy()
+		before := s.nextO5Scrape()
+		s.driveBurst(s.state.Legacy, "o5-legacy-baseline", 12)
+		s.recordO5("legacy_baseline", before)
 	case "stream-reliability":
 		s.streamReliability()
 	case "v2":
@@ -29,13 +32,32 @@ func TestRoutingAcceptance(t *testing.T) {
 				return
 			}
 		}
+		s.t = t
+		before := s.nextO5Scrape()
+		s.driveBurst(s.state.Legacy, "o5-v2-baseline", 12)
+		s.recordO5("v2_baseline", before)
 	case "creation-rollback":
 		s.creationRollback()
+	case "legacy-redis-down":
+		// O5a: the healthy baseline was captured in the legacy phase.
+		before := s.nextO5Scrape()
+		s.driveBurst(s.state.Legacy, "o5-legacy-down", 12)
+		s.recordO5("legacy_outage", before)
+	case "legacy-redis-recovered":
+		before := s.nextO5Scrape()
+		s.driveBurst(s.state.Legacy, "o5-legacy-recovered", 12)
+		s.recordO5("legacy_recovered", before)
 	case "redis-down":
 		s.access(s.state.Groups["p0-wallet"], "revoke", "fixture")
 		require.Positive(t, s.scalar("SELECT COUNT(*) FROM routing_change_outbox WHERE delivered_at=0"))
 		s.reject(s.state.Fixed, "routing-redis-down")
 		s.observeRedisOutage()
+		// O5a: V2 每请求回源路径在 Redis 故障下的可用性与降级延迟。用
+		// Legacy token（fixed 相位已在 V2 下验证过它），Ordered 的可用组
+		// 在本相位开头被撤权，不能用于故障窗口。
+		before := s.nextO5Scrape()
+		s.driveBurst(s.state.Legacy, "o5-v2-down", 12)
+		s.recordO5("v2_outage", before)
 	case "redis-recovered":
 		require.Eventually(t, func() bool { return s.scalar("SELECT COUNT(*) FROM routing_change_outbox WHERE delivered_at=0") == 0 }, 20*time.Second, 200*time.Millisecond)
 		s.reject(s.state.Fixed, "routing-redis-recovered-denied")
@@ -43,6 +65,10 @@ func TestRoutingAcceptance(t *testing.T) {
 		s.chat(s.state.Fixed, "routing-redis-recovered", false)
 		s.settled("routing-redis-recovered")
 		s.observeRedisRecovery()
+		// O5a: 恢复后的回源延迟应回到基线量级。
+		before := s.nextO5Scrape()
+		s.driveBurst(s.state.Legacy, "o5-v2-recovered", 12)
+		s.recordO5("v2_recovered", before)
 	case "missing-capability":
 		s.reject(s.state.Fixed, "routing-no-billing-capability")
 		s.reject(s.state.Ordered, "routing-no-ordered-capability")

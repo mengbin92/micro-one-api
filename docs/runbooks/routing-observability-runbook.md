@@ -11,15 +11,20 @@
 
 上线涉及 relay、identity、channel，以及嵌入订阅 outbox 的 admin / billing 服务二进制，并同步规则和看板文件。按[部署说明](../../AGENTS.md#deployment)在本机交叉构建镜像；Prometheus 重新加载配置或重启后检查规则状态。第二批已随 v0.32.0 上线，服务状态核对与仍待生产验收的项目见[当前计划第 3 节](../design/next-stage-plan-2026-09-22.md#3-第二批观测与额度解释o)。
 
-仓库 Compose 已加入 Alertmanager 并接到 notify-worker；生产 firing/resolved 到外部接收端的闭环仍待验收。**firing、通知入队、外部接收成功是三个不同状态**，只有接收端响应成功并持久化 `sent` 才算完成一次通知投递。
+仓库及生产 Compose 均已加入 Alertmanager 并接到 notify-worker。2026-09-26
+受控测试确认 notify-worker 直连的 firing/resolved 邮件，以及 Alertmanager
+注入 firing → notify-worker → QQ SMTP 均持久化为 `sent`；真实 Prometheus
+规则触发后的自然告警仍待观察（[脱敏证据](evidence/o2-qqmail-production-2026-09-26.json)）。
+**firing、通知入队、SMTP 接受是三个不同状态**；邮箱界面呈现和人工阅读没有由
+`sent` 独立证明。
 
 ### 通知链路
 
 `Prometheus rules → Alertmanager → notify-worker /v1/alerts/alertmanager → notifications → Dispatcher → ALERTMANAGER_NOTIFY_TYPE 对应的接收端`。
 
 - [Alertmanager 配置](../../deploy/alertmanager/alertmanager.yml)按 alertname/service/severity 分组，默认等待 30s、组间隔 5m、重复 4h，包含 resolved 通知；只在 backend 网络开放，不映射公网端口。
-- notify-worker 先持久化再返回 202。`ALERTMANAGER_NOTIFY_TYPE` 默认为 `webhook`，可设为 `event`、`wecom`、`dingtalk`、`feishu` 或 `slack`；这些类型都可使用空 recipient 和对应的默认接收地址。`email` 需要逐条指定收件人，不能用作此配置；无效类型使 notify-worker 启动失败。`webhook`/`event` 接收 `{subject, content, ...}` JSON；`wecom` 使用企业微信群机器人 `msgtype=text`，正文含 subject 和告警 JSON（labels/annotations/firing/resolved）。
-- 生产企业微信机器人配置 `ALERTMANAGER_NOTIFY_TYPE=wecom` 与 `NOTIFY_WECOM_WEBHOOK_URL`（完整 URL 或机器人 key），并重建 notify-worker；不要把机器人 key 写入仓库或验收记录。其他类型分别使用 `NOTIFY_WEBHOOK_URL`、`NOTIFY_DINGTALK_WEBHOOK_URL`、`NOTIFY_FEISHU_WEBHOOK_URL`、`NOTIFY_SLACK_WEBHOOK_URL`。
+- notify-worker 先持久化再返回 202。`ALERTMANAGER_NOTIFY_TYPE` 默认为 `webhook`，也支持 `event`、`email`、`wecom`、`dingtalk`、`feishu`、`slack`。邮件通道必须配置 `ALERTMANAGER_EMAIL_RECIPIENT`、`NOTIFY_SMTP_HOST` 和 `NOTIFY_SMTP_FROM`；授权凭据由 `NOTIFY_SMTP_USER` / `NOTIFY_SMTP_PASS` 提供。其他类型可使用空 recipient 和对应的默认接收地址。当前线上镜像对无效类型和缺失收件人做启动校验；SMTP 主机和发件人也已在本地代码补上校验，待下次镜像部署。
+- 生产当前使用 QQ 邮箱：`ALERTMANAGER_NOTIFY_TYPE=email`、`NOTIFY_SMTP_HOST=smtp.qq.com`、`NOTIFY_SMTP_PORT=587`（STARTTLS），发件人与收件人为同一地址。地址和授权码只保存在生产 `.env`，不写入仓库。若改回企业微信，使用 `ALERTMANAGER_NOTIFY_TYPE=wecom` 与 `NOTIFY_WECOM_WEBHOOK_URL`；其他类型分别使用 `NOTIFY_WEBHOOK_URL`、`NOTIFY_DINGTALK_WEBHOOK_URL`、`NOTIFY_FEISHU_WEBHOOK_URL`、`NOTIFY_SLACK_WEBHOOK_URL`。
 - 所选类型未配置接收地址时通知记为 failed，`last_error` 明确 not configured；`notification_delivery_total{result="not_configured"}` 计数。配置接收端后对失败记录执行既有重试操作，不能把历史 queued 改称 sent。
 - 新看板 **Delivery, Credentials and Probe Usage**（UID `operations-delivery`）展示真实 sender 尝试、凭证补写年龄、Redis 限流降级、账本重复 claim 与账号探测 tokens/missing usage。通知链路自身不可用时仍可在 Prometheus/Grafana 看到 `NotificationDeliveryFailing`，不要依赖故障中的同一路通知作为唯一判断。
 - 本地验证：规则分别验证触发/恢复；`TestAlertmanagerDeliveryAndRecovery` 通过真实 HTTP 测试接收端验证 firing/resolved 内容及 sent/failed 状态。这是分段隔离验收，未声称跑过生产 Prometheus 到真实收件人的整链路。
@@ -67,7 +72,7 @@ Relay 仅在配置 `OTEL_EXPORTER_OTLP_ENDPOINT` 时初始化 OTLP/HTTP exporter
 | legacy 事件失败但 Redis 仍可读 | L2 auth 5m、channel 10m 是各缓存默认 TTL，最后一次 L2 命中还可能重新填 L1（auth 30s/channel 60s） | 恢复 outbox/Redis 消费并确认积压清零；需要立即失效时同时处理 L1 与 L2，不能只删 Redis 键 |
 | V2 鉴权 | `CachedIdentityClient` 每次读取 identity，撤权后的下一请求看到拒绝；Redis 不参与该鉴权缓存 | 不临时关闭 V2 或恢复旧缓存来掩盖依赖故障；检查 authority RPC 和数据库，保持 fail-close |
 
-上述边界是代码契约和隔离证据；在途请求、并发回填、事件重投递及部署网络会影响实际传播时间。生产回源成本与故障延迟仍待测量：记录相同负载下 RPC QPS/P95、撤权时间、最后接受/首次拒绝时间、outbox pending 和 Redis 恢复时间。gRPC resilience 已使用配置策略/default `reject`，不把拒绝上报为 `cache`；本次未开启默认关闭的 breaker，也未恢复 V2 缓存。
+上述边界是代码契约和隔离证据；在途请求、并发回填、事件重投递及部署网络会影响实际传播时间。[2026-09-26 生产低流量基线](./evidence/o5-production-rpc-baseline-2026-09-26.json)记录了 V2 权威回源的 24 小时调用增量、1 小时 QPS 与 P95，近 5 分钟无调用，当前不据此恢复缓存。真实 Redis 故障期间仍需记录相同负载下 RPC QPS/P95、撤权时间、最后接受/首次拒绝时间、outbox pending 和 Redis 恢复时间；生产主机不做破坏性故障注入。gRPC resilience 已使用配置策略/default `reject`，不把拒绝上报为 `cache`；本次未开启默认关闭的 breaker，也未恢复 V2 缓存。
 
 manual 筛选在数据库先缩小候选，再在 data 层解析 legacy JSON、过滤后分页，以保证三方言和损坏旧 metadata 行行为一致。候选仍需扫描；大规模账号池的索引化筛选按 D3 测量后推进。
 

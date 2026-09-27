@@ -1,4 +1,6 @@
 # Isolated acceptance image: real service entrypoints share one build/cache.
+# The acceptance test binary is compiled from the working tree in this image,
+# so --skip-build must NOT be used after editing anything under test/.
 FROM golang:1.27-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS build
 RUN apk add --no-cache git ca-certificates make build-base
 ENV GOPROXY=https://proxy.golang.org|https://goproxy.cn|direct

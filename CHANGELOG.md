@@ -7,6 +7,24 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-09-27
+
+v0.33.0 是 v0.32.2 之后的 **MINOR 通知能力与验收版本**：Alertmanager 告警组可通过已有邮件发送端投递，支付重复回调保持首次持久化的平台交易号，并补齐 F17、Q3、O5 的隔离验收与证据边界。无新增公共 HTTP API 或数据库迁移。详见 [release-v0.33.0.md](docs/releases/release-v0.33.0.md)。
+
+### Added
+
+- Alertmanager 告警组支持 `email`，以 `ALERTMANAGER_EMAIL_RECIPIENT` 提供单个收件人；Compose 透传该变量，假 SMTP 测试覆盖 firing/resolved，生产 QQ SMTP 受控投递已验。
+- F17 支付丢回调、暂时查单失败、重复签名回调和发放失败的隔离故障注入；Q3 同机 Linux/amd64 三轮性能对照门禁；O5 Redis 隔离故障 chat/结算测试。
+
+### Fixed
+
+- 已支付订单重复回调的返回对象不再被新的平台交易号覆盖，保持与持久化记录一致；数据库行及资产发放幂等性不变。
+- Q3 基线 MySQL 健康检查改用 TCP 探测；O5 延迟采样修正抓取边界，旧 RPC P95 结论须复测。
+
+### Changed
+
+- Q3 后续对照基线重定为 v0.32.2；旧归档基线上的 P95 增幅作为跨版本功能成本记录。生产邮件链路已受控验收，真实规则触发和收件箱呈现仍待观察。
+
 ## [0.32.2] - 2026-09-26
 
 v0.32.2 是 v0.32.1 之后的 **PATCH 运行可靠性与验收收口版本**：保护多 Relay OAuth 轮换、补齐控制台历史快照与可复现门禁，并让 Alertmanager 使用企业微信机器人格式。内部 channel gRPC 增量扩展，三方言新增迁移 109；生产 notify-worker 已更新，真实外部告警送达仍待验收。详见 [release-v0.32.2.md](docs/releases/release-v0.32.2.md)。

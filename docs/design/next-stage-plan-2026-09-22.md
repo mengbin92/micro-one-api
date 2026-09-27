@@ -1,6 +1,6 @@
 # 下一阶段计划：可靠性补缺、运行可见性与文章技术债收口
 
-> **当前执行入口**。制定：2026-09-22；更新：2026-09-24。状态：第一批 R1–R4 已随 v0.31.1 发布；第二批 O1–O4 及 O5 正确性修复已完成本地实施和隔离验收，纳入 [v0.32.0](../releases/release-v0.32.0.md) 并已上线。生产通知接收端、OTel 导出及生产回源成本仍待线上验收。第三批 Q1 安全头、取消终态、历史快照与充值状态均已上线；Q2/Q3 的可复现门禁已补齐，支付宝沙箱、当前提交 Linux/amd64 三次基线和生产 MySQL 对照仍待外部验收。详情见第 4 节。
+> **当前执行入口**。制定：2026-09-22；更新：2026-09-26。状态：第一批 R1–R4 已随 v0.31.1 发布；第二批 O1–O4 及 O5 正确性修复已完成本地实施和隔离验收，纳入 [v0.32.0](../releases/release-v0.32.0.md) 并已上线。生产 QQ 邮件受控送达已验，真实规则触发与 OTel 导出仍待线上验收；生产 Redis 故障不在受限主机注入，其隔离环境 chat 可用性已验证，RPC 延迟采样需复测（第 3 节），生产成本复采保留；生产 V2 回源 RPC 已采低流量基线，见第 3 节。第三批 Q1 安全头、取消终态、历史快照与充值状态均已上线；Q2/Q3 的可复现门禁已补齐，生产 MySQL Dashboard 索引同负载对照、支付宝沙箱正常支付往返、F17 故障子项隔离验收与当前提交 Linux/amd64 三次全量 k6 均已完成（Q3 基线重定至 `v0.32.2`，见第 4 节）。详情见第 4 节。
 >
 > 初始规划基线：`develop@77e4db45`（[v0.31.0](../releases/release-v0.31.0.md)）；第二批审查基线：`develop@d70e02f2`（已合入 [v0.31.1](../releases/release-v0.31.1.md)）。第一批实现与隔离验收记录已纳入版本；第二批本地证据见第 3 节，不代表生产验收。
 >
@@ -105,10 +105,10 @@ R1 → R2 → R3 → R4 已完成实现及验收，见[第一批实施记录](..
 | ID / 优先级 | 最小范围与依赖 | 可验证的完成条件 |
 | --- | --- | --- |
 | O1 / P1 路由注册强制观测 | **已完成并上线，本地验收已通过**。注册强制声明执行/只读/不支持类别；请求终态、实际 source/model、raw 健康与重试结算一次性记录统一。审查补齐中间件前置拒绝、1xx、panic、内部预算超时和固定路由标签；证据归入下节 | 新执行路由缺少观察声明时测试失败；成功、最终失败、取消、501/405、鉴权失败各有正确请求终态。用量仅对实际执行记录，不给 501/鉴权失败造 token；同源重试健康一次、账务一次，raw 不漏模型健康；`Flusher`/`Hijacker` 等能力不被包装破坏。依赖 R3/R4 |
-| O2 / P1 告警与追踪闭环 | **实现及本地验收完成，生产送达待验收**。七类对账差异完整；HTTP span/兼容头/路由审计/Playground 关联；Alertmanager 接既有通知队列，新增送达、Redis 降级、去重冲突和探测用量看板 | 七类差异“仅此一类非零”的通知都解释得清；用户提供的请求 ID 能定位根请求/attempt/trace；本地 firing/resolved 通知真实 HTTP 接收并持久化 sent；无接收端为 failed/not_configured。生产验收不得以规则或 queued 日志代替 |
+| O2 / P1 告警与追踪闭环 | **实现及本地验收完成，生产 QQ 邮件受控送达已验；真实规则触发待观察**。七类对账差异完整；HTTP span/兼容头/路由审计/Playground 关联；Alertmanager 接既有通知队列，新增送达、Redis 降级、去重冲突和探测用量看板 | 七类差异“仅此一类非零”的通知都解释得清；用户提供的请求 ID 能定位根请求/attempt/trace；本地 firing/resolved 通知真实 HTTP 接收并持久化 sent；无接收端为 failed/not_configured。生产受控测试的 firing/resolved 邮件已持久化 sent，Alertmanager 注入 firing 已送达；真实 Prometheus 规则触发仍待观察，见[证据](../runbooks/evidence/o2-qqmail-production-2026-09-26.json) |
 | O3 / P1 订阅用量可解释 | **已完成（本地验收）**。billing 事务内读取结算及订阅部分冻结，admin/relay 使用同一 RPC；UI 展示 settled/frozen/available；旧 used/remaining 保留，补无限/超限与窗口/倍率契约；修正过期后购买为新建 | 三方言覆盖在途多请求、取消、跨窗结算、nil/0、过期、倍率变化；接口覆盖权威失败不回退，DTO 保留 null/0，浏览器覆盖无限/超限。见[接口契约](./subscription-usage-api.md) |
 | O4 / P1 账号治理与原子重置 | **已完成（本地验收）**。ChannelRepo 强制原子重置，陈旧扫描不得清除新窗口用量；读写共用窗口计算。manual 服务端筛选、原因/等待时长在手机和桌面均可见；Anthropic/Codex 探测 token 单列 | 故障注入后回滚 reset-run 并可重试；三方言双副本仅成功一次；过期扫描不清新用量；无额度配置的 manual 账号也能显示恢复信息；上游不返回 usage 时明确 missing，不推算美元成本 |
-| O5 / P2 缓存与降级边界 | **正确性修复与隔离边界验收完成；生产成本测量保留**。坏值比较后删除、回源；缓存写入与 TTL 原子设置；移除无人调用的失效接口、整片失效改名 InvalidateAll、修正事件接线注释；V2 继续绕过缓存 | 坏值不计命中且回源失败仍清理；legacy Redis 断开后的 L1 30s 边界由时间推进测试验证，V2 撤权下一请求回源拒绝。gRPC 已按实际配置/default reject 标记，未发现硬编码 cache。生产 RPC QPS/P95 与故障延迟按运维手册采样后再决定缓存优化 |
+| O5 / P2 缓存与降级边界 | **正确性修复与隔离边界验收完成；Redis 故障下 chat 可用性已验证，RPC 延迟待复测**。坏值比较后删除、回源；缓存写入与 TTL 原子设置；移除无人调用的失效接口、整片失效改名 InvalidateAll、修正事件接线注释；V2 继续绕过缓存 | 坏值不计命中且回源失败仍清理；legacy Redis 断开后的 L1 30s 边界由时间推进测试验证，隔离 e2e 验证 chat 全成功；零回源的旧指标需重测确认；V2 撤权下一请求回源拒绝。2026-09-26 隔离故障注入确认 Redis 停止期间 chat 与结算成功；旧 RPC 样本存在抓取时序缺陷，P95 和恢复延迟须重测（[runbook](../runbooks/o5-redis-fault-isolation-2026-09-26.md)）；生产成本复采仍需代表性流量，低流量基线不支持启动缓存优化的结论不变 |
 
 统一包装只负责观测与强制接入，**不承担业务计费或自行解析响应猜 token**。业务终态仍由 biz/执行器/结算路径产出，避免把“忘记记录”变成“记录两次”。
 
@@ -142,14 +142,14 @@ docker run --rm --entrypoint /bin/promtool -v "$PWD/deploy/prometheus/alerts:/ru
 # web/ 下：npx playwright test e2e/operations-usage.spec.ts
 ```
 
-部署后待验收：真实通知接收端的 firing/resolved 回执与 sent 记录、OTLP collector 导出、V2 回源 QPS/P95 和真实 Redis 故障传播延迟。未向任何外部接收人发送测试通知。当前 OTel 关联覆盖 Relay HTTP span 和路由审计，不宣称所有下游服务都生成 span。告警桥接、缓存应急操作及指标用途见[运维手册](../runbooks/routing-observability-runbook.md)。上述外部条件按原退出门槛继续登记，不以本地规则通过代替生产验收。
+部署后已完成 [QQ 邮件受控 firing/resolved 与 Alertmanager 注入 firing 送达](../runbooks/evidence/o2-qqmail-production-2026-09-26.json)；真实 Prometheus 规则触发、OTLP collector 导出及 Redis 故障 RPC 延迟仍待验收。2026-09-26 的[生产 V2 回源低流量样本](../runbooks/evidence/o5-production-rpc-baseline-2026-09-26.json)已记录过去 24 小时 RPC 调用增量与 P95，但近 5 分钟没有调用，不能代表故障/高负载延迟；不据此启动缓存优化。隔离 Redis 故障下 chat 与结算可用性已验证，旧 RPC 延迟样本因抓取时序缺陷须重测。当前 OTel 关联覆盖 Relay HTTP span 和路由审计，生产没有配置 exporter/collector，不宣称所有下游服务都生成 span。告警桥接、缓存应急操作及指标用途见[运维手册](../runbooks/routing-observability-runbook.md)。剩余外部条件按原退出门槛继续登记。
 
 ## 4. 第三批：前端、验证与性能（Q）
 
 | ID / 优先级 | 范围 | 退出条件 |
 | --- | --- | --- |
 | Q1 / P1→P2 Playground 和控制台 | 安全头及浏览器取消链路优先；复用现有 CSP 中间件并适配实际 Relay origin/样式需求，先验证再启用。核对每次请求历史快照，编辑历史/重发语义作为独立功能；RechargePage、残余 slate/硬编码图表色按组件迁移，深浅色逐状态检查 | admin 静态页面真实响应头和浏览器无误拦截；Key 不落存储/日志/URL；停止后服务端上游/预留终态可回读；请求检查器与审计一致；充值/图表键盘可用、对比度合格。Markdown 另见 D7，不因排版需求放松 XSS 防线 |
-| Q2 / P1→P2 可重现验收和资料治理 | 承接 v0.31 F17 支付沙箱往返、流式隔离矩阵；raw E2E 验证默认模型/模型映射/预扣/成功/失败/释放。补数据库历史基线 schema 语义及 manual DDL 的 owner/前置条件/验证；增量变更选取相关 E2E 到 PR，保留快速 verify 分层 | 复用 mock upstream/共享 workflow，不新建测试框架；记录 commit、镜像、场景、证据及剩余边界。F17 未有沙箱证据就保持待验收；三方言不是只检查文件名。修正旧验收文档首部与末尾待办矛盾；事故模板记录发现时间/影响范围，未知历史明确未知 |
+| Q2 / P1→P2 可重现验收和资料治理 | 承接 v0.31 F17 支付沙箱往返、流式隔离矩阵；raw E2E 验证默认模型/模型映射/预扣/成功/失败/释放。补数据库历史基线 schema 语义及 manual DDL 的 owner/前置条件/验证；增量变更选取相关 E2E 到 PR，保留快速 verify 分层 | 复用 mock upstream/共享 workflow，不新建测试框架；记录 commit、镜像、场景、证据及剩余边界。F17 正常支付沙箱往返及四个故障子项隔离验收已有证据；三方言不是只检查文件名。修正旧验收文档首部与末尾待办矛盾；事故模板记录发现时间/影响范围，未知历史明确未知 |
 | Q3 / P2 性能基线和门禁 | 复用 benchmark/构建产物统计：Linux/amd64 代表负载、至少 3 次取中位数；首屏 JS/CSS/字体字节预算、Dashboard 索引 EXPLAIN/同负载对照；测量余额新鲜度再调 staleTime，补高频内部跳转预取。定位 executor 流式回归前维持 legacy | 原始样本、样本量、P95/分配/字节数可重现；索引确实受益再保留结论。明确 20% 回归线和 5/5 E2E 是工程准入线而非统计保证；perf fixture 随代表性协议变更维护，基线脚本化。Go 升级前复测 jsonx，不能因文章结论永久冻结版本 |
 
 ### 第三批实施与验收记录（2026-09-23）
@@ -170,7 +170,7 @@ Q1 取消终态修复与复验（2026-09-23 09:29 UTC 部署）：基于 `6b2281
 
 本地交叉构建后上线 Relay 镜像 `sha256:638c8979c25f0f1d233459a6a25a9b81f6c3f6b7300bd7b255d8d56131c64007`，回滚标签 `rollback-20260923-172746`。渠道 9 真实 API 复验：Messages 根请求 `stage3-cancel-fixed-msg-1790156191446`（837ms 取消）和 Chat 根请求 `stage3-cancel-fixed-chat-1790156194728`（381ms 取消）均在首个 SSE 事件后、正常终态前断开，执行路径为 legacy；两者管理端回读均为一次尝试、channel 9、`released`、费用 0、无消费分录，最终路由审计为 `canceled`，对应执行指标各增加 1。全部本轮测试令牌已停用。部署后本轮验证为真实 API 调用，浏览器停止按钮的证据沿用前一次测试，未重复浏览器测试。
 
-Q1 的 Relay 可控取消边界（请求取消向上游传播、停止转发、预留释放及终态回读）已有上述证据。StepFun 内部是否停止推理仍需供应商逐请求确认，不能由 TCP 状态或网关审计推断；此项保留为供应商侧证据边界。历史请求快照、充值页主题 token、键盘语义和深浅色浏览器检查已完成，并于 2026-09-24 更新生产静态站点；图表既有 token 与排名标签页键盘回归复核通过。Q2 已补 raw 默认模型/映射/预留/失败释放 E2E、历史迁移语义核对、PR 按路径触发 E2E 和事故模板；支付宝 F17 仍因缺沙箱往返保持待验收。Q3 已补构建字节预算、三样本中位数回归门禁和 Dashboard 同 fixture 索引证据；当前提交的 Linux/amd64 三次全量 k6 与生产 MySQL 同负载对照尚待执行。完整本地记录见[第三批 Q1–Q3 验收](../runbooks/third-batch-q-acceptance-2026-09-23.md)；第二批生产待验收项不因此关闭。
+Q1 的 Relay 可控取消边界（请求取消向上游传播、停止转发、预留释放及终态回读）已有上述证据。StepFun 内部是否停止推理仍需供应商逐请求确认，不能由 TCP 状态或网关审计推断；此项保留为供应商侧证据边界。历史请求快照、充值页主题 token、键盘语义和深浅色浏览器检查已完成，并于 2026-09-24 更新生产静态站点；图表既有 token 与排名标签页键盘回归复核通过。Q2 已补 raw 默认模型/映射/预留/失败释放 E2E、历史迁移语义核对、PR 按路径触发 E2E 和事故模板；2026-09-26 [支付宝沙箱正常支付往返](../runbooks/evidence/f17-alipay-sandbox-roundtrip-2026-09-26.json)确认订单 `paid/issued`、充值账本和幂等 claim 各 1 条；同日 [F17 四个故障子项完成隔离故障验收](../runbooks/f17-fault-acceptance-2026-09-26.md)（丢回调查单收敛、查单暂时失败重试、重复签名回调幂等、发放失败恢复，含 HTTP 边界负向证据），注入过程中发现并修复了幂等重放覆盖 provider 单号的非资损缺陷（`8a1abde9`）；查单重试无退避/告警等剩余边界按 runbook 记录，不自动扩scope。Q3 已补构建字节预算、三样本中位数回归门禁和 Dashboard 同 fixture 索引证据；2026-09-26 [生产 MySQL 同负载对照](../runbooks/evidence/q3-production-mysql-dashboard-index-2026-09-26.json)证实新索引使用了 type 条件，但同一高用量用户旧/新索引各三次中位数为 229/225ms（仅 1.75%），不得将 SQLite fixture 的 56.82% 收益外推到生产。当前提交的 Linux/amd64 三次全量 k6 已于 2026-09-26 由 `Q3 Linux amd64 comparison` CI job 完成：归档基线 `ff518b1` 对 develop 的完整对照（run `36218523742`）测得 chat P95 +25.2%、aggregate P95 +25.3%（436 个提交的功能成本，证据与处置见 [Q3 基线重定 runbook](../runbooks/q3-rebaseline-2026-09-26.md)），基线随之重定到 `v0.32.2` 并重跑通过（run `36224859013`，七项门禁全过）。完整本地记录见[第三批 Q1–Q3 验收](../runbooks/third-batch-q-acceptance-2026-09-23.md)；第二批生产待验收项不因此关闭。
 
 Q1 安全/取消和 Q2 已发布能力验收可以前移到第一批收尾。样式整理、预取、阈值调优不阻塞凭证修复。
 
@@ -198,7 +198,7 @@ Q1 安全/取消和 Q2 已发布能力验收可以前移到第一批收尾。样
 
 线上更新（2026-09-23）：在 `oneapi_channel` 应用迁移 109，重复执行为 no-op，三个现有静态账号 pending 均为 0；本地交叉构建后依次更新 channel、Relay、identity，12:29 UTC 核对三个健康端点及公网 Relay 均为 200，容器 restart_count=0。Relay 协调模式为 `redis`，三平台 sweep 均为 600 秒；新 claim RPC 对 id=0 返回预期 Aborted，无写入。Prometheus 校验 46 条规则并成功重载，新增三条规则均为 health=ok/inactive。未更新前端或扩容实例。镜像、回滚标签、迁移/RPC/指标样本见[脱敏部署证据](../runbooks/evidence/d1-deploy-2026-09-23.json)及[Runbook 部署记录](../runbooks/subscription-redis-multi-replica-runbook.md#七d1-生产更新2026-09-23)。
 
-剩余边界：生产当前只有三个 `static_key` 账号，没有 OAuth 账号；本轮未执行真实供应商轮换、模型扣费请求或多进程故障切换，相关故障验证仍来自受控 OAuth HTTP、miniredis 和独立三方言数据库。进程在 OAuth 返回前或未持久化时死亡，可能仍需新授权；这是明确的人工恢复状态，不是自动接管成功。Redis 故障期间并发/RPM/登录限额只约束本地，恢复时须等待降级期间请求排空。多 channel selector/会话协调、第二批外部告警送达/OTel及第三批尚缺证据项继续保留。
+剩余边界：生产当前只有三个 `static_key` 账号，没有 OAuth 账号；本轮未执行真实供应商轮换、模型扣费请求或多进程故障切换，相关故障验证仍来自受控 OAuth HTTP、miniredis 和独立三方言数据库。进程在 OAuth 返回前或未持久化时死亡，可能仍需新授权；这是明确的人工恢复状态，不是自动接管成功。Redis 故障期间并发/RPM/登录限额只约束本地，恢复时须等待降级期间请求排空。多 channel selector/会话协调、真实规则告警与 OTel 导出、O5 故障 RPC 延迟复测及第三批其他外部证据项继续保留。
 
 ## 6. 文章逐篇追踪表
 
@@ -259,6 +259,6 @@ make verify
 
 仅按变更范围运行相应命令；钱/权限/迁移/并发路径必须有故障及恢复证据。Prometheus 规则沿用现有规则测试，前端沿用现有单测和浏览器 E2E，数据库变更跑对应三方言检查。生产主机不跑构建或破坏性故障注入；先隔离环境验收，再按仓库部署流程分服务上线。
 
-每项完成记录至少包括：任务 ID、提交、实际行为、测试/运行证据、剩余边界。运行事实、隔离测试、静态核对分开记录；外部通知、支付宝沙箱、长时间观察缺证据时保持待验收。发布时另走 release note → CHANGELOG → README → develop → main → tag 的完整流程。
+每项完成记录至少包括：任务 ID、提交、实际行为、测试/运行证据、剩余边界。运行事实、隔离测试、静态核对分开记录；已完成的受控 QQ 邮件送达和 F17 隔离故障验收按证据范围表述，真实规则触发及长时间观察缺证据时保持待验收。发布时另走 release note → CHANGELOG → README → develop → main → tag 的完整流程。
 
 本次规划交付检查：22 篇文章与四组建议均已映射；完成项不重复立项；本文件、TODO 和索引一致；本地 Markdown 链接与 diff 空白检查通过后交付。

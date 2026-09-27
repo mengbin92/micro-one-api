@@ -42,7 +42,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 // wire.go:
 
 func newNotifyService(cfg *Config, uc *biz.NotifyUsecase) *service.NotifyService {
-	return service.NewNotifyService(uc, cfg.Bootstrap.NotifySvc.AlertmanagerNotifyType)
+	return service.NewNotifyService(uc, cfg.Bootstrap.NotifySvc.AlertmanagerNotifyType, cfg.Bootstrap.NotifySvc.AlertmanagerEmailRecipient)
 }
 
 var ProviderSet = wire.NewSet(

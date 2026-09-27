@@ -88,4 +88,7 @@ message Notify {
   // AlertmanagerNotifyType is the notification type created for Alertmanager
   // alert groups; empty falls back to webhook.
   string alertmanager_notify_type = 14 [json_name = "alertmanager_notify_type"];
+  // AlertmanagerEmailRecipient is the To address for Alertmanager alert
+  // groups when alertmanager_notify_type is email; required in that case.
+  string alertmanager_email_recipient = 15 [json_name = "alertmanager_email_recipient"];
 }

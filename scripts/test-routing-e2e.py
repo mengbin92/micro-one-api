@@ -170,6 +170,13 @@ def main():
         print("[routing-e2e] production alert rule tests PASS", flush=True)
         run("up", "-d")
         test("legacy")
+        # O5a: legacy-mode Redis outage — chat availability and dependency-RPC
+        # degradation latency, before any V2 gates are applied.
+        run("stop", "redis")
+        test("legacy-redis-down")
+        run("start", "redis")
+        test("legacy-redis-recovered")
+        print("[routing-e2e] legacy Redis outage degradation PASS")
         if args.reliability_only:
             state = json.loads(run("run", "--rm", "-T", "--no-deps", "--entrypoint", "/bin/cat", "test-runner", "/state/state.json").stdout)
             digest = hmac.new(settings["SERVICE_TOKEN"].encode(), state["reliability"].encode(), hashlib.sha256).hexdigest()

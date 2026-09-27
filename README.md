@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.32.2 发布公告](./docs/releases/release-v0.32.2.md)（多 Relay 凭证协调、控制台验收与企业微信告警配置） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.32.2)
+> 📣 **最新发布**：[v0.33.0 发布公告](./docs/releases/release-v0.33.0.md)（Alertmanager 邮件告警、支付回调修复与故障验收） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.33.0)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.33.0
+
+v0.33.0 是 v0.32.2 之后的 **MINOR 通知能力与验收版本**：Alertmanager 告警组可使用邮件发送端，修复支付重复回调返回错误的平台交易号，并补齐 F17、Q3、O5 的验收记录。**无新增公共 HTTP API、无数据库迁移**；生产邮件链路已完成受控投递，真实规则触发和 O5 修正后 RPC 延迟仍待复测。详见 [docs/releases/release-v0.33.0.md](./docs/releases/release-v0.33.0.md)。
 
 ### 升级到 v0.32.2
 

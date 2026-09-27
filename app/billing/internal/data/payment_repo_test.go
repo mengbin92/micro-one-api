@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -203,4 +204,92 @@ func TestPaymentRepo_MarkOrderAssetIssuedRefusesRefunded(t *testing.T) {
 	require.False(t, claimed)
 	require.NotNil(t, order)
 	require.Equal(t, "refunded", order.AssetIssueStatus)
+}
+
+// F17-3 重复签名回调（repo 层）：重放已支付的 MarkOrderPaid 不得再次执行
+// 发放回调，也不得以新的 provider 单号覆盖原值 —— 状态短路是第一道闸门，
+// 账本 dedupe claim（topup:{user}:payment:{trade_no}）是第二道。
+func TestPaymentRepo_MarkOrderPaidReplayDoesNotReissue(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&PaymentOrder{}))
+
+	repo := NewPaymentRepo(&Data{db: db})
+	_, err = repo.CreateOrder(context.Background(), &biz.PaymentOrder{
+		UserID:           "42",
+		TradeNo:          "PAY-REPLAY-1",
+		Channel:          biz.PaymentChannelAlipay,
+		AssetType:        biz.PaymentAssetTypeBalance,
+		AssetAmount:      1000000,
+		MoneyCents:       1000,
+		Status:           biz.PaymentOrderStatusPending,
+		AssetIssueStatus: biz.PaymentAssetIssueStatusPending,
+	})
+	require.NoError(t, err)
+
+	issues := 0
+	paid, changed, err := repo.MarkOrderPaid(context.Background(), "PAY-REPLAY-1", "provider-1", func(order *biz.PaymentOrder, tx subscriptionbiz.Tx) error {
+		issues++
+		return nil
+	})
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.NotNil(t, paid)
+	require.Equal(t, 1, issues)
+
+	// 支付宝重发同一笔签名回调：不得再发放，也不得覆盖原 provider 单号。
+	replayed, changed, err := repo.MarkOrderPaid(context.Background(), "PAY-REPLAY-1", "provider-EVIL-REPLAY", func(order *biz.PaymentOrder, tx subscriptionbiz.Tx) error {
+		issues++
+		return nil
+	})
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.NotNil(t, replayed)
+	require.Equal(t, 1, issues)
+	require.Equal(t, biz.PaymentOrderStatusPaid, replayed.Status)
+	require.Equal(t, "provider-1", replayed.ProviderTradeNo)
+}
+
+func TestPaymentRepo_MarkOrderPaidIssueFailureRollsBack(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&PaymentOrder{}))
+	repo := NewPaymentRepo(&Data{db: db})
+	_, err = repo.CreateOrder(context.Background(), &biz.PaymentOrder{
+		UserID:           "42",
+		TradeNo:          "PAY-ISSUE-FAIL-1",
+		Channel:          biz.PaymentChannelAlipay,
+		AssetType:        biz.PaymentAssetTypeBalance,
+		AssetAmount:      1000000,
+		MoneyCents:       1000,
+		Status:           biz.PaymentOrderStatusPending,
+		AssetIssueStatus: biz.PaymentAssetIssueStatusPending,
+	})
+	require.NoError(t, err)
+
+	issueFailure := errors.New("asset store unavailable")
+	_, changed, err := repo.MarkOrderPaid(context.Background(), "PAY-ISSUE-FAIL-1", "provider-1", func(order *biz.PaymentOrder, tx subscriptionbiz.Tx) error {
+		// Model an issuer that writes through the shared transaction, then fails.
+		writeErr := tx.DB().(*gorm.DB).Model(&PaymentOrder{}).
+			Where("trade_no = ?", order.TradeNo).Update("provider_trade_no", "uncommitted").Error
+		if writeErr != nil {
+			return writeErr
+		}
+		return issueFailure
+	})
+	require.ErrorIs(t, err, issueFailure)
+	require.False(t, changed)
+	stored, err := repo.GetOrderByTradeNo(context.Background(), "PAY-ISSUE-FAIL-1")
+	require.NoError(t, err)
+	require.Equal(t, biz.PaymentOrderStatusPending, stored.Status)
+	require.Equal(t, biz.PaymentAssetIssueStatusPending, stored.AssetIssueStatus)
+	require.Empty(t, stored.ProviderTradeNo)
+
+	paid, changed, err := repo.MarkOrderPaid(context.Background(), "PAY-ISSUE-FAIL-1", "provider-1", func(_ *biz.PaymentOrder, _ subscriptionbiz.Tx) error {
+		return nil
+	})
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, biz.PaymentOrderStatusPaid, paid.Status)
+	require.Equal(t, "provider-1", paid.ProviderTradeNo)
 }
