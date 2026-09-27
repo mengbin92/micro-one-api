@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.33.1 发布公告](./docs/releases/release-v0.33.1.md)（Relay OTLP 导出修复与观测验收） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.33.1)
+> 📣 **最新发布**：[v0.33.2 发布公告](./docs/releases/release-v0.33.2.md)（新用户默认角色修复与线上角色流程验收） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.33.2)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.33.2
+
+v0.33.2 是 v0.33.1 之后的 **PATCH 用户角色修复版本**：普通注册、邀请码注册、后台创建与 OAuth 首次登录均显式赋予普通用户角色，修复新账号显示“访客”、提升再降级后才显示“用户”的不一致。**无公共 API/proto 变更、无数据库迁移或前端更新**；仅更新 `identity-service`，生产已补齐既有 `ADMIN_TOKEN` 透传并验证注册及提升、降级流程。历史访客账号不自动改写。详见 [docs/releases/release-v0.33.2.md](./docs/releases/release-v0.33.2.md)。
 
 ### 升级到 v0.33.1
 

@@ -7,7 +7,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
-baseline_ref="${Q3_BASELINE_REF:-v0.33.0}"
+baseline_ref="${Q3_BASELINE_REF:-v0.33.1}"
 results_dir="${Q3_RESULTS_DIR:-${RUNNER_TEMP:-/tmp}/q3-benchmark-results}"
 baseline_dir=""
 compose_overlay="$repo_root/scripts/benchmark/q3-compose.yml"

@@ -16,6 +16,7 @@ import (
 	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/app/identity/internal/biz"
 	identitydata "micro-one-api/app/identity/internal/data"
+	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/security"
 
 	"google.golang.org/grpc"
@@ -63,6 +64,17 @@ func TestIdentityHTTPRegisterLoginAndSelf(t *testing.T) {
 	// The attacker-supplied "vip" group must have been replaced with "default".
 	if !strings.Contains(selfRec.Body.String(), `"group":"default"`) {
 		t.Fatalf("self response must show default group, not client-supplied: %s", selfRec.Body.String())
+	}
+	var self struct {
+		Data struct {
+			Role int32 `json:"role"`
+		} `json:"data"`
+	}
+	if err := jsonx.Unmarshal(selfRec.Body.Bytes(), &self); err != nil {
+		t.Fatal(err)
+	}
+	if self.Data.Role != biz.RoleCommonUser {
+		t.Fatalf("registered user's self role = %d, want %d", self.Data.Role, biz.RoleCommonUser)
 	}
 }
 

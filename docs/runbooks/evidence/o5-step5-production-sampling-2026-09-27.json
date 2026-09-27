@@ -1,0 +1,96 @@
+{
+  "captured_at_utc": "2026-09-27T13:11:55Z",
+  "source": "production controlled sampling via SSH tunnel (relay HTTP 18080, identity gRPC 19001, Prometheus 19090); metric reads via Prometheus query API",
+  "purpose": "O5 权威 RPC 生产受控采样：以专用限时 token 发送 step-5-preview 成功请求，测量三类权威 RPC 的真实请求成本与延迟",
+  "model": "step-5-preview",
+  "token": {
+    "id": 34,
+    "name": "o5-step5-20260927-claude",
+    "user_id": 2,
+    "models": [
+      "step-5-preview"
+    ],
+    "expire_at_unix": 1790514570,
+    "note": "30 分钟限时，采样结束即自然过期，无法再鉴权"
+  },
+  "traffic": {
+    "request": {
+      "path": "/v1/chat/completions",
+      "stream": false,
+      "max_tokens": 16,
+      "prompt": "Reply exactly OK.",
+      "unique_x_request_id": true
+    },
+    "stages": {
+      "preflight": {
+        "count": 1,
+        "ok": 1
+      },
+      "stage1_1per10s": {
+        "count": 18,
+        "ok": 18
+      },
+      "stage2_1per5s": {
+        "count": 115,
+        "ok": 114,
+        "client_timeout_60s": 1
+      },
+      "note": "stage2 拆为 stage2(16) 与 stage2b(100) 两段；唯一失败为 1 次客户端 60s 超时，relay 日志无对应错误，判定为上游模型长尾"
+    },
+    "chat_latency_ms": {
+      "total_requests": 135,
+      "ok": 134,
+      "min": 790,
+      "p50": 1144,
+      "p95": 11180,
+      "max": 60002,
+      "mean": 2318
+    }
+  },
+  "metric": "micro_one_api_dependency_grpc_latency_seconds",
+  "instance": "relay-gateway:8080",
+  "window": {
+    "start_scrape_unix": 1790512946.507,
+    "end_scrape_unix": 1790514491.507,
+    "window_s": 1546,
+    "queries": {
+      "counts": "sum by (method, status) (increase(micro_one_api_dependency_grpc_latency_seconds_count{instance=\"relay-gateway:8080\",method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities)\"}[1546s] @ <end>))",
+      "p95": "histogram_quantile(0.95, sum by (method, le) (increase(micro_one_api_dependency_grpc_latency_seconds_bucket{instance=\"relay-gateway:8080\",status=\"OK\",method=~\"...\"}[1546s] @ <end>))) * 1000"
+    }
+  },
+  "results": [
+    {
+      "service": "identity-service",
+      "method": "GetAuthSnapshot",
+      "ok_increase": 294.19029126213593,
+      "non_ok_increase": 0,
+      "p95_ms": 4.906293706293705
+    },
+    {
+      "service": "channel-service",
+      "method": "GetRoutingGroup",
+      "ok_increase": 294.19029126213593,
+      "non_ok_increase": 0,
+      "p95_ms": 4.8791666666666655
+    },
+    {
+      "service": "billing-service",
+      "method": "GetRoutingCapabilities",
+      "ok_increase": 147.09514563106796,
+      "non_ok_increase": 0,
+      "p95_ms": 0.9631034482758619
+    }
+  ],
+  "observations": [
+    "每个成功 chat 请求触发 GetAuthSnapshot 与 GetRoutingGroup 各约 2 次、GetRoutingCapabilities 约 1 次（294/294/147 ≈ 2:2:1），与鉴权+选路+额度预留路径一致",
+    "窗口内三类权威 RPC 无非 OK 记录；未出现 5xx 或 429，未触发停止条件",
+    "生产 P95：GetAuthSnapshot 4.91ms、GetRoutingGroup 4.88ms、GetRoutingCapabilities 0.96ms，与 2026-09-27 隔离复测健康基线 4.60ms 一致",
+    "RPC 计数略高于客户端成功数（147 vs 134 次额度预留级请求），差值含 1 次客户端超时但服务端可能完成的请求及窗口内少量自然流量",
+    "relay-gateway 在采样前约 5 小时重启过，指标基数低；本窗口为重启后首个代表性流量段"
+  ],
+  "stop_conditions": {
+    "5xx_or_429": "not triggered",
+    "consecutive_client_failures": "1 (threshold 3)",
+    "resource_alerts": "none observed"
+  }
+}

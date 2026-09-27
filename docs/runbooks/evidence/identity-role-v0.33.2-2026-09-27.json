@@ -1,0 +1,37 @@
+{
+  "demote_admin_list_role": 1,
+  "promote_admin_list_role": 10,
+  "registered_admin_list_role": 1,
+  "registration_rpc_success": true,
+  "test_account_deleted": true,
+  "version": "v0.33.2",
+  "checked_at": "2026-09-27T13:50:52.808195+00:00",
+  "image_id": "sha256:9509a817ed55e769fb878623c5010d14c295195fc58f978b8a2235ebe712ab1c",
+  "source_revision": "9f9b4941",
+  "identity_health_status": 200,
+  "identity_status": "running",
+  "identity_restarts": 0,
+  "environment": "production",
+  "platform": "linux/amd64",
+  "source_commit": "9f9b4941972ab052c2df787e58f4433d259463ea",
+  "rollback_image": "docker-compose-identity-service:rollback-v0.33.2-20260927-214710",
+  "previous_image_id": "sha256:1f6d95354be65b25230a2925c230f82b45f0e138c500de1b58db053f331fc8b4",
+  "compose_backup": "docker-compose.yml.bak.identity-role-20260927-215023",
+  "configuration_change": "Pass existing ADMIN_TOKEN to identity-service; resolved value matches admin-api. No credentials retained.",
+  "recreated_services": [
+    "identity-service"
+  ],
+  "registration_probe": "Identity Register RPC, then admin-api user search and promote/demote HTTP endpoints. No registration reward path invoked.",
+  "test_account_cleanup": "DeleteUser RPC followed by empty ListUsers result; temporary remote executable removed.",
+  "historical_user_roles_modified": false,
+  "database_migrations": false,
+  "frontend_deployed": false,
+  "validation": {
+    "make_verify": "pass",
+    "web_test_files": 52,
+    "web_tests": 196,
+    "regression_red_before_fix": true,
+    "regression_green_after_fix": true
+  },
+  "validation_boundary": "Public HTTP registration and OAuth creation verified by local tests; live probe used registration RPC and admin HTTP APIs."
+}
