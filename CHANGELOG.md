@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.33.2] - 2026-09-27
+
+v0.33.2 是 v0.33.1 之后的 **PATCH 用户角色修复版本**：修复新账号默认保存为访客、与管理员降级后的普通用户角色不一致的问题，完成生产 identity-service 更新与角色流程验收。无公共 API/proto 变更、数据库迁移或前端资源更新；详见 [release-v0.33.2.md](docs/releases/release-v0.33.2.md)。
+
+### Fixed
+
+- 普通注册、邀请码注册、后台创建及 OAuth 首次登录显式使用普通用户角色 `1`，不再持久化角色零值 `0`（访客）；已有账号登录时保持原角色。
+- 生产独立 Compose 补齐仓库模板已有的 identity-service `ADMIN_TOKEN` 透传，恢复管理令牌调用的提升、降级校验；原配置和镜像均已备份。
+
+### Added
+
+- 新账号初始及持久化角色、提升/降级往返、HTTP 注册后角色和 OAuth 已有角色保留的回归测试；生产注册与管理接口角色回读的脱敏验收记录。
+
+### Changed
+
+- Q3 后续性能对照基线更新为 v0.33.1，补充 O5 生产受控采样记录；自然流量不足时仍不作生产缓存成本结论。
+
 ## [0.33.1] - 2026-09-27
 
 v0.33.1 是 v0.33.0 之后的 **PATCH 观测可靠性版本**：修复 Relay 启用 OTLP 导出时的启动失败，加入内部 Jaeger 持久化接收与 Grafana 数据源，并完成 O5 Redis 隔离故障延迟复测。无公共 API/proto 变更或数据库迁移；详见 [release-v0.33.1.md](docs/releases/release-v0.33.1.md)。
