@@ -490,7 +490,7 @@ services:
     cap_add:
       - NET_BIND_SERVICE
 
-  # ────────────── Monitoring (Prometheus + Grafana) ──────────────
+  # ────────────── Monitoring (Prometheus + Grafana + Jaeger) ──────────────
 
   alertmanager:
     image: prom/alertmanager:v0.28.1
@@ -536,6 +536,40 @@ services:
     cap_drop:
       - ALL
 
+  # Jaeger combines the OTLP collector, query API, and a 48-hour single-node
+  # Badger store. It has no host port; Grafana is the authenticated query UI.
+  jaeger-init:
+    image: alpine:3.20
+    command: ["sh", "-ec", "mkdir -p /badger/keys /badger/values && chown -R 10001:10001 /badger"]
+    volumes:
+      - jaeger_data:/badger
+    network_mode: none
+    restart: "no"
+
+  jaeger:
+    # Grafana 12.4.3's Jaeger datasource still uses /api/services; Jaeger
+    # 2.21 removes that v1 query endpoint. Re-test before upgrading either.
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.20.0
+    container_name: jaeger
+    command: ["--config", "/etc/jaeger/config.yaml"]
+    volumes:
+      - ../../deploy/jaeger/config.yaml:/etc/jaeger/config.yaml:ro
+      - jaeger_data:/badger
+    depends_on:
+      jaeger-init:
+        condition: service_completed_successfully
+    networks:
+      - backend
+    restart: unless-stopped
+    mem_limit: 512m
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+
   grafana:
     image: grafana/grafana-oss:12.4.3
     container_name: grafana
@@ -562,6 +596,7 @@ services:
 
 volumes:
   alertmanager_data:
+  jaeger_data:
   mysql_data:
   redis_data:
   prometheus_data:

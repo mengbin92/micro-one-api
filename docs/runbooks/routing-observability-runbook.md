@@ -37,7 +37,7 @@ Playground 请求检查器展示 `X-Request-ID`、兼容 `X-Trace-ID` 和有效�
 
 管理员使用 `/api/log/routing-audit?user_id=<id>&root_request_id=<X-Request-ID>` 联查 selection events 和 attempts；也可单独查询 `/api/log/attempts`。路由审计 JSON 和结构化日志携带 `trace_id`、`otel_trace_id`，由 root_request_id 找到 attempt_id、预留和实际来源。ID 不进入 Prometheus 标签。
 
-Relay 仅在配置 `OTEL_EXPORTER_OTLP_ENDPOINT` 时初始化 OTLP/HTTP exporter，默认采样率 1；未配置时兼容 ID 仍可用于日志关联。当前交付包含 Relay HTTP span 与审计关联，不承诺 downstream gRPC/server 或上游供应商都有 span。部署后需在 collector 中核对实际收到的 trace，启动无报错不等于导出成功。
+Relay 仅在配置 `OTEL_EXPORTER_OTLP_ENDPOINT` 时初始化 OTLP/HTTP exporter，默认采样率 1；未配置时兼容 ID 仍可用于日志关联。当前交付包含 Relay HTTP span 与审计关联，不承诺 downstream gRPC/server 或上游供应商都有 span。生产现已将 Relay 指向内部 Jaeger OTLP/HTTP receiver，使用持久化 Badger、48 小时 span TTL，Grafana 中有 Jaeger 数据源；collector 不发布宿主机端口。部署与回滚配置、实际导出证据和剩余的授权请求联查见 [O2 OTLP 上线记录](./o2-otel-export-2026-09-27.md)。启动无报错不等于导出成功，必须按响应头中的 `X-OTel-Trace-ID` 回查 span 的 `request.root_id`。
 
 ### 流式取消验收
 

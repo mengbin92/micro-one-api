@@ -15,7 +15,6 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -69,8 +68,8 @@ func InitTracer(cfg Config) (func(), error) {
 	res, err := resource.Merge(
 		resource.Default(),
 		resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceName(cfg.Service),
+			"", // service.name is stable; avoid conflicting with the SDK's default schema version.
+			attribute.String("service.name", cfg.Service),
 		),
 	)
 	if err != nil {

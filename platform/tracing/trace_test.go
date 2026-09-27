@@ -2,6 +2,7 @@ package xtrace
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -144,4 +145,42 @@ func TestInitTracer_Disabled_Noop(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, shutdown)
 	shutdown() // must not panic
+}
+
+func TestInitTracer_EnabledExportsSpan(t *testing.T) {
+	previous, propagator := otel.GetTracerProvider(), otel.GetTextMapPropagator()
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previous)
+		otel.SetTextMapPropagator(propagator)
+	})
+
+	received := make(chan []byte, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/traces" || r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		received <- body
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	shutdown, err := InitTracer(Config{
+		Enabled:    true,
+		Endpoint:   server.URL + "/v1/traces",
+		Service:    "relay-gateway",
+		SampleRate: 1,
+	})
+	require.NoError(t, err)
+	_, span := otel.Tracer("tracing-test").Start(context.Background(), "export-smoke")
+	span.End()
+	shutdown()
+
+	select {
+	case body := <-received:
+		require.NotEmpty(t, body)
+	default:
+		t.Fatal("OTLP receiver did not receive the finished span")
+	}
 }
