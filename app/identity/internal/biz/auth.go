@@ -679,6 +679,7 @@ func (uc *IdentityUsecase) RegisterWithAffCode(ctx context.Context, username, pa
 		Email:        email,
 		Group:        group,
 		Status:       UserStatusEnabled,
+		Role:         RoleCommonUser,
 		PasswordHash: string(hash),
 		AffCode:      newAffCode,
 	}
@@ -967,6 +968,7 @@ func (uc *IdentityUsecase) CreateUser(ctx context.Context, username, displayName
 		Email:       email,
 		Group:       group,
 		Status:      UserStatusEnabled,
+		Role:        RoleCommonUser,
 	}
 	if password != "" {
 		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -1281,6 +1283,7 @@ func (uc *IdentityUsecase) OAuthLogin(ctx context.Context, provider, oauthID, us
 			Email:         email,
 			Group:         "default",
 			Status:        UserStatusEnabled,
+			Role:          RoleCommonUser,
 			OAuthProvider: provider,
 			OAuthID:       oauthID,
 		}

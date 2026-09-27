@@ -997,6 +997,12 @@ func TestIdentityUsecase_Register_Success(t *testing.T) {
 	if user.Status != UserStatusEnabled {
 		t.Fatalf("expected enabled status, got: %d", user.Status)
 	}
+	if user.Role != RoleCommonUser {
+		t.Fatalf("registered user role = %d, want %d (common user)", user.Role, RoleCommonUser)
+	}
+	if repo.users[user.ID].Role != RoleCommonUser {
+		t.Fatalf("persisted user role = %d, want %d (common user)", repo.users[user.ID].Role, RoleCommonUser)
+	}
 	if user.AffCode == "" {
 		t.Fatal("expected aff code to be generated")
 	}
