@@ -1,0 +1,48 @@
+{
+  "id": "next-stage-postrelease-observation-2026-09-27",
+  "checked_at_utc": "2026-09-27T09:50:11Z",
+  "environment": "production Linux/x86_64",
+  "release": {
+    "tag": "v0.33.1",
+    "github_release_published_at_utc": "2026-09-27T09:35:56Z"
+  },
+  "method": "Read-only SSH: production Prometheus promtool instant queries and one MySQL COUNT on routing-selection logs; no alert or user request was injected.",
+  "o2_alerts": {
+    "scrape_targets_up": 9,
+    "prometheus_rule_evaluation_failures_total": 0,
+    "firing_alert_series_24h": 0,
+    "notification_delivery_sent_increase_24h": 3.000300772994853,
+    "interpretation": "No natural Prometheus firing occurred in the last 24 hours. The sent increase is extrapolated and remains consistent with the three previously documented controlled deliveries; it is not an exact notification count or proof of real-rule email delivery."
+  },
+  "o2_trace": {
+    "routing_selection_log_rows_since_otel_rollout": 0,
+    "since_utc": "2026-09-27T07:40:00Z",
+    "interpretation": "No authorized routing request has supplied an attempt/routing-audit/trace correlation sample since OTLP export was enabled. The earlier 401 HTTP span proves export only."
+  },
+  "o5_authority_calls_24h": [
+    {
+      "service": "identity-service",
+      "method": "GetAuthSnapshot",
+      "status": "OK",
+      "prometheus_increase": 95.01762586626005
+    },
+    {
+      "service": "channel-service",
+      "method": "GetRoutingGroup",
+      "status": "OK",
+      "prometheus_increase": 102.02305558513555
+    },
+    {
+      "service": "billing-service",
+      "method": "GetRoutingCapabilities",
+      "status": "OK",
+      "prometheus_increase": 47.00931298346156
+    }
+  ],
+  "o5_interpretation": "The 24-hour increases are Prometheus extrapolations, not exact request counts. Traffic remains sparse; do not infer representative production cache cost or start V2 cache optimization from this sample.",
+  "remaining": [
+    "Natural Prometheus firing/resolved alert and delivery evidence",
+    "One authorized user request correlating root ID, attempt, routing audit, and Jaeger trace",
+    "Representative production O5 authority-RPC volume before cost-driven optimization"
+  ]
+}

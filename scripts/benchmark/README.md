@@ -133,7 +133,7 @@ changes, update the fixture before accepting a new baseline.
 
 The `Q3 Linux amd64 comparison` workflow runs on demand and when the workflow
 file or this harness changes on `develop`. It checks out the pinned release
-baseline (`Q3_BASELINE_REF`, currently `v0.33.0`) into a temporary worktree
+baseline (`Q3_BASELINE_REF`, currently `v0.33.1`) into a temporary worktree
 and uses the current checkout as the candidate, then builds and runs each
 stack in the same `ubuntu-24.04` job. Both use the same k6 v0.54.0 image, harness, fixed 2ms
 mock, synthetic user/channel/token fixture and full eight-minute arrival
