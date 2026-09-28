@@ -152,6 +152,17 @@ var AsyncBillingMissingReservationID = prometheus.NewCounter(
 
 // Ledger and Reconciliation Metrics
 
+// PaymentReconcileRuns counts completed background payment scans, not orders.
+var PaymentReconcileRuns = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Name: "micro_one_api_billing_payment_reconcile_runs_total",
+	Help: "Completed pending-payment scans by result: success, partial (order refresh failed), error (scan failed).",
+}, []string{"result"})
+
+var PaymentReconcileFailed = prometheus.NewGauge(prometheus.GaugeOpts{
+	Name: "micro_one_api_billing_payment_reconcile_failed",
+	Help: "Whether the last completed pending-payment scan had any scan or order refresh failure (1) or none (0).",
+})
+
 // LedgerWriteDuration tracks ledger entry write duration.
 var LedgerWriteDuration = prometheus.NewHistogramVec(
 	prometheus.HistogramOpts{

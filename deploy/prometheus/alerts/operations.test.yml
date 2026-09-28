@@ -2,6 +2,40 @@ rule_files:
   - alerts.yml
 evaluation_interval: 1m
 tests:
+  - name: one pending payment repeatedly fails and then recovers
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_payment_reconcile_failed{instance="billing"}'
+        values: '0 1+0x6 0+0x3'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PaymentReconciliationFailing
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: PaymentReconciliationFailing
+        exp_alerts:
+          - exp_labels: {instance: billing, severity: warning}
+            exp_annotations:
+              summary: Pending payment reconciliation is failing
+              description: 'Payment scans or order refreshes have not recovered for 5 minutes. Check billing storage, provider queries and asset issuance; preserve pending orders and payment idempotency. See docs/runbooks/f17-fault-acceptance-2026-09-26.md.'
+      - eval_time: 8m
+        alertname: PaymentReconciliationFailing
+        exp_alerts: []
+  - name: transient payment failure and idle scans do not alert
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_payment_reconcile_failed{instance="billing"}'
+        values: '0 1 0+0x8'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PaymentReconciliationFailing
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: PaymentReconciliationFailing
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: PaymentReconciliationFailing
+        exp_alerts: []
   - name: unresolved OAuth claim fires and absence of further observations ages out
     interval: 1m
     input_series:

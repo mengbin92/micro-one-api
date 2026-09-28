@@ -293,12 +293,17 @@ func init() {
 		LedgerWriteDuration,
 		ReservationExpirationCount,
 		ReconciliationLaggedTransactions,
+		PaymentReconcileRuns,
+		PaymentReconcileFailed,
 		QuotaUsageCurrent,
 		QuotaBalanceRemaining,
 		QuotaFrozenAmount,
 		BillingLedgerUpstreamCostRecorded,
 		BillingLedgerGrossProfit,
 	)
+	for _, result := range []string{"success", "partial", "error"} {
+		PaymentReconcileRuns.WithLabelValues(result)
+	}
 
 	// Register subscription system metrics
 	prometheus.MustRegister(
