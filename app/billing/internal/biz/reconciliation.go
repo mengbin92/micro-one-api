@@ -448,10 +448,12 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 			continue
 		}
 		seenChannels[usage.ChannelID] = true
-		actual := int64(0)
-		if channel := channelByID[usage.ChannelID]; channel != nil {
-			actual = channel.UsedQuota
+		channel := channelByID[usage.ChannelID]
+		if channel == nil {
+			// Deleted channels retain their ledgers, but have no counter to compare.
+			continue
 		}
+		actual := channel.UsedQuota
 		if diffAbs(actual-usage.Quota) > 100 {
 			result.ChannelInconsistencies = append(result.ChannelInconsistencies, ChannelInconsistency{
 				ChannelID:         usage.ChannelID,

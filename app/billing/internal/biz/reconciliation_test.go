@@ -290,6 +290,8 @@ func TestRunReconciliation_ChannelUsageConsistency(t *testing.T) {
 		},
 		channelLedgerUsage: []*ChannelLedgerUsage{
 			{ChannelID: 10, Quota: 500, UpstreamCost: 123},
+			// Deleting a channel removes its counter, but preserves its ledger.
+			{ChannelID: 11, Quota: 700, UpstreamCost: 200},
 		},
 	}
 

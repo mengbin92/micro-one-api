@@ -201,6 +201,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Test Prometheus alert rules
+        run: |
+          docker run --rm --entrypoint /bin/promtool \
+            -v "$PWD/deploy/prometheus/alerts:/rules:ro" -w /rules \
+            prom/prometheus:v3.6.0 test rules operations.test.yml credential.test.yml routing.test.yml
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:

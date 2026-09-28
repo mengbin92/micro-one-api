@@ -1,0 +1,645 @@
+{
+  "checked_at_utc": "2026-09-28T03:11:04.541845+00:00",
+  "method": "Read-only production SSH; MySQL allowlisted fields and internal Prometheus/Jaeger HTTP GET. No new model request, alert injection, or configuration change.",
+  "o2_alerts": {
+    "targets": {
+      "query": "up{job=~\".*micro.*\"}",
+      "result": [
+        {
+          "metric": {
+            "__name__": "up",
+            "instance": "notify-worker:8008",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1790565064.593,
+            "1"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "up",
+            "instance": "identity-service:8001",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1790565064.593,
+            "1"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "up",
+            "instance": "config-service:8005",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1790565064.593,
+            "1"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "up",
+            "instance": "log-service:8006",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1790565064.593,
+            "1"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "up",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1790565064.593,
+            "1"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "up",
+            "instance": "admin-api:8000",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1790565064.593,
+            "1"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "up",
+            "instance": "channel-service:8002",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1790565064.593,
+            "1"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "up",
+            "instance": "billing-service:8004",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1790565064.593,
+            "1"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "up",
+            "instance": "monitor-worker:8007",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1790565064.593,
+            "1"
+          ]
+        }
+      ]
+    },
+    "firing_now": {
+      "query": "ALERTS{alertstate=\"firing\"}",
+      "result": []
+    },
+    "rules_failed": {
+      "query": "sum(prometheus_rule_evaluation_failures_total)",
+      "result": [
+        {
+          "metric": {},
+          "value": [
+            1790565064.706,
+            "0"
+          ]
+        }
+      ]
+    },
+    "firing_24h": {
+      "query": "sum by (alertname) (max_over_time(ALERTS{alertstate=\"firing\"}[24h]))",
+      "result": [
+        {
+          "metric": {
+            "alertname": "HighRelayErrorRate"
+          },
+          "value": [
+            1790565064.765,
+            "1"
+          ]
+        },
+        {
+          "metric": {
+            "alertname": "UpstreamCostMissing"
+          },
+          "value": [
+            1790565064.765,
+            "2"
+          ]
+        }
+      ]
+    },
+    "delivery_24h": {
+      "query": "sum by (result) (increase(micro_one_api_notification_delivery_total[24h]))",
+      "result": [
+        {
+          "metric": {
+            "result": "sent"
+          },
+          "value": [
+            1790565064.871,
+            "10.001736412571628"
+          ]
+        }
+      ]
+    }
+  },
+  "notifications": [
+    {
+      "id": 100,
+      "type": "email",
+      "alerts": [
+        {
+          "status": "firing",
+          "startsAt": "2026-09-27T11:59:36.163Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "fingerprint": "5fdc4a619b4f0afe",
+          "alertname": "HighRelayErrorRate",
+          "severity": "critical"
+        }
+      ],
+      "retry_count": 0,
+      "group_status": "firing",
+      "sent_at_unix": 1790510415,
+      "created_at_unix": 1790510406,
+      "delivery_status": "sent"
+    },
+    {
+      "id": 101,
+      "type": "email",
+      "alerts": [
+        {
+          "status": "resolved",
+          "startsAt": "2026-09-27T11:59:36.163Z",
+          "endsAt": "2026-09-27T12:23:36.163Z",
+          "fingerprint": "5fdc4a619b4f0afe",
+          "alertname": "HighRelayErrorRate",
+          "severity": "critical"
+        }
+      ],
+      "retry_count": 0,
+      "group_status": "resolved",
+      "sent_at_unix": 1790511915,
+      "created_at_unix": 1790511906,
+      "delivery_status": "sent"
+    },
+    {
+      "id": 102,
+      "type": "email",
+      "alerts": [
+        {
+          "status": "firing",
+          "startsAt": "2026-09-27T12:29:06.163Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "fingerprint": "5fdc4a619b4f0afe",
+          "alertname": "HighRelayErrorRate",
+          "severity": "critical"
+        }
+      ],
+      "retry_count": 0,
+      "group_status": "firing",
+      "sent_at_unix": 1790512184,
+      "created_at_unix": 1790512176,
+      "delivery_status": "sent"
+    },
+    {
+      "id": 103,
+      "type": "email",
+      "alerts": [
+        {
+          "status": "resolved",
+          "startsAt": "2026-09-27T12:29:06.163Z",
+          "endsAt": "2026-09-27T12:33:36.163Z",
+          "fingerprint": "5fdc4a619b4f0afe",
+          "alertname": "HighRelayErrorRate",
+          "severity": "critical"
+        }
+      ],
+      "retry_count": 0,
+      "group_status": "resolved",
+      "sent_at_unix": 1790512484,
+      "created_at_unix": 1790512476,
+      "delivery_status": "sent"
+    },
+    {
+      "id": 104,
+      "type": "email",
+      "alerts": [
+        {
+          "status": "firing",
+          "startsAt": "2026-09-27T12:57:56.448Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "fingerprint": "f17bb2a1d225110b",
+          "alertname": "UpstreamCostMissing",
+          "severity": "warning"
+        }
+      ],
+      "retry_count": 0,
+      "group_status": "firing",
+      "sent_at_unix": 1790513925,
+      "created_at_unix": 1790513906,
+      "delivery_status": "sent"
+    },
+    {
+      "id": 105,
+      "type": "email",
+      "alerts": [
+        {
+          "status": "resolved",
+          "startsAt": "2026-09-27T12:57:56.448Z",
+          "endsAt": "2026-09-27T13:22:56.448Z",
+          "fingerprint": "f17bb2a1d225110b",
+          "alertname": "UpstreamCostMissing",
+          "severity": "warning"
+        }
+      ],
+      "retry_count": 0,
+      "group_status": "resolved",
+      "sent_at_unix": 1790515425,
+      "created_at_unix": 1790515406,
+      "delivery_status": "sent"
+    },
+    {
+      "id": 106,
+      "type": "email",
+      "alerts": [
+        {
+          "status": "firing",
+          "startsAt": "2026-09-28T01:19:36.163Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "fingerprint": "5fdc4a619b4f0afe",
+          "alertname": "HighRelayErrorRate",
+          "severity": "critical"
+        }
+      ],
+      "retry_count": 0,
+      "group_status": "firing",
+      "sent_at_unix": 1790558414,
+      "created_at_unix": 1790558406,
+      "delivery_status": "sent"
+    },
+    {
+      "id": 107,
+      "type": "email",
+      "alerts": [
+        {
+          "status": "resolved",
+          "startsAt": "2026-09-28T01:19:36.163Z",
+          "endsAt": "2026-09-28T01:20:36.163Z",
+          "fingerprint": "5fdc4a619b4f0afe",
+          "alertname": "HighRelayErrorRate",
+          "severity": "critical"
+        }
+      ],
+      "retry_count": 0,
+      "group_status": "resolved",
+      "sent_at_unix": 1790558714,
+      "created_at_unix": 1790558706,
+      "delivery_status": "sent"
+    },
+    {
+      "id": 108,
+      "type": "email",
+      "alerts": [
+        {
+          "status": "firing",
+          "startsAt": "2026-09-28T01:26:06.163Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "fingerprint": "5fdc4a619b4f0afe",
+          "alertname": "HighRelayErrorRate",
+          "severity": "critical"
+        }
+      ],
+      "retry_count": 0,
+      "group_status": "firing",
+      "sent_at_unix": 1790558804,
+      "created_at_unix": 1790558796,
+      "delivery_status": "sent"
+    },
+    {
+      "id": 109,
+      "type": "email",
+      "alerts": [
+        {
+          "status": "resolved",
+          "startsAt": "2026-09-28T01:26:06.163Z",
+          "endsAt": "2026-09-28T01:29:06.163Z",
+          "fingerprint": "5fdc4a619b4f0afe",
+          "alertname": "HighRelayErrorRate",
+          "severity": "critical"
+        }
+      ],
+      "retry_count": 0,
+      "group_status": "resolved",
+      "sent_at_unix": 1790559105,
+      "created_at_unix": 1790559096,
+      "delivery_status": "sent"
+    }
+  ],
+  "correlations": [
+    {
+      "root_request_id": "o5-step5-stage2b-1790514467-100",
+      "trace_id": "392979152cd3a470f821997679f3f910",
+      "audits": [
+        {
+          "id": 70500,
+          "audit": {
+            "result": "",
+            "planned": true,
+            "fallback": false,
+            "trace_id": "392979152cd3a470f821997679f3f910",
+            "sticky_hit": false,
+            "otel_trace_id": "392979152cd3a470f821997679f3f910",
+            "priority_tier": 0,
+            "candidate_kinds": [
+              "channel"
+            ],
+            "provider_family": "other"
+          },
+          "model": "step-5-preview",
+          "user_id": 2,
+          "channel_id": 9,
+          "request_id": "o5-step5-stage2b-1790514467-100",
+          "source_kind": "channel",
+          "created_at_unix": 1790514467,
+          "root_request_id": "o5-step5-stage2b-1790514467-100"
+        },
+        {
+          "id": 70502,
+          "audit": {
+            "result": "success",
+            "planned": false,
+            "fallback": false,
+            "trace_id": "392979152cd3a470f821997679f3f910",
+            "sticky_hit": false,
+            "otel_trace_id": "392979152cd3a470f821997679f3f910",
+            "priority_tier": 0,
+            "candidate_kinds": [
+              "channel"
+            ],
+            "provider_family": "other"
+          },
+          "model": "step-5-preview",
+          "user_id": 2,
+          "channel_id": 9,
+          "request_id": "o5-step5-stage2b-1790514467-100",
+          "source_kind": "channel",
+          "created_at_unix": 1790514468,
+          "root_request_id": "o5-step5-stage2b-1790514467-100"
+        }
+      ],
+      "attempts": [
+        {
+          "model": "step-5-preview",
+          "status": "committed",
+          "user_id": "2",
+          "channel_id": "9",
+          "request_id": "req_261da490f3f8f638a3fd6f6e24c0f234",
+          "actual_cost": 1,
+          "source_kind": "channel",
+          "attempt_number": 1,
+          "reservation_id": "res_1790514467853841790_1790514467",
+          "root_request_id": "o5-step5-stage2b-1790514467-100",
+          "upstream_model_id": "step-5-preview"
+        }
+      ],
+      "spans": [
+        {
+          "traceID": "392979152cd3a470f821997679f3f910",
+          "spanID": "9dc4ca499e45beac",
+          "operationName": "HTTP POST",
+          "startTime": 1790514467815295,
+          "duration": 787703,
+          "tags": {
+            "request.id": "o5-step5-stage2b-1790514467-100",
+            "request.root_id": "o5-step5-stage2b-1790514467-100"
+          },
+          "service": "relay-gateway"
+        }
+      ]
+    }
+  ],
+  "notification_status_counts": [
+    {
+      "count": 10,
+      "status": "sent"
+    }
+  ],
+  "matching_rules": [
+    {
+      "name": "HighRelayErrorRate",
+      "query": "rate(micro_one_api_http_requests_total{service=\"relay-gateway\",status=~\"5..\"}[5m]) / rate(micro_one_api_http_requests_total{service=\"relay-gateway\"}[5m]) > 0.05",
+      "duration": 300,
+      "state": "inactive",
+      "health": "ok"
+    },
+    {
+      "name": "UpstreamCostMissing",
+      "query": "(sum by (provider_family) (rate(micro_one_api_routing_selection_total{result=\"success\"}[15m])) - sum by (provider_family) (rate(micro_one_api_billing_ledger_upstream_cost_recorded{result=\"priced\"}[15m])) or sum by (provider_family) (rate(micro_one_api_routing_selection_total{result=\"success\"}[15m]))) > 0",
+      "duration": 900,
+      "state": "inactive",
+      "health": "ok"
+    }
+  ],
+  "alert_episodes": [
+    {
+      "alertname": "HighRelayErrorRate",
+      "fingerprint": "5fdc4a619b4f0afe",
+      "starts_at_utc": "2026-09-27T11:59:36.163Z",
+      "ends_at_utc": "2026-09-27T12:23:36.163Z",
+      "firing_notification_id": 100,
+      "resolved_notification_id": 101,
+      "prometheus_firing_sample": {
+        "query": "ALERTS{alertstate=\"firing\",alertname=\"HighRelayErrorRate\"} @ 1790511096.163",
+        "result": [
+          {
+            "metric": {
+              "__name__": "ALERTS",
+              "alertname": "HighRelayErrorRate",
+              "alertstate": "firing",
+              "instance": "relay-gateway:8080",
+              "job": "micro-one-api",
+              "method": "POST",
+              "path": "/v1/messages",
+              "service": "relay-gateway",
+              "severity": "critical",
+              "stack": "micro-one-api",
+              "status": "502"
+            },
+            "value": [
+              1790565065.489,
+              "1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "alertname": "HighRelayErrorRate",
+      "fingerprint": "5fdc4a619b4f0afe",
+      "starts_at_utc": "2026-09-27T12:29:06.163Z",
+      "ends_at_utc": "2026-09-27T12:33:36.163Z",
+      "firing_notification_id": 102,
+      "resolved_notification_id": 103,
+      "prometheus_firing_sample": {
+        "query": "ALERTS{alertstate=\"firing\",alertname=\"HighRelayErrorRate\"} @ 1790512281.163",
+        "result": [
+          {
+            "metric": {
+              "__name__": "ALERTS",
+              "alertname": "HighRelayErrorRate",
+              "alertstate": "firing",
+              "instance": "relay-gateway:8080",
+              "job": "micro-one-api",
+              "method": "POST",
+              "path": "/v1/messages",
+              "service": "relay-gateway",
+              "severity": "critical",
+              "stack": "micro-one-api",
+              "status": "502"
+            },
+            "value": [
+              1790565065.545,
+              "1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "alertname": "UpstreamCostMissing",
+      "fingerprint": "f17bb2a1d225110b",
+      "starts_at_utc": "2026-09-27T12:57:56.448Z",
+      "ends_at_utc": "2026-09-27T13:22:56.448Z",
+      "firing_notification_id": 104,
+      "resolved_notification_id": 105,
+      "prometheus_firing_sample": {
+        "query": "ALERTS{alertstate=\"firing\",alertname=\"UpstreamCostMissing\"} @ 1790514626.448",
+        "result": [
+          {
+            "metric": {
+              "__name__": "ALERTS",
+              "alertname": "UpstreamCostMissing",
+              "alertstate": "firing",
+              "provider_family": "other",
+              "service": "billing-service",
+              "severity": "warning"
+            },
+            "value": [
+              1790565065.607,
+              "1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "alertname": "HighRelayErrorRate",
+      "fingerprint": "5fdc4a619b4f0afe",
+      "starts_at_utc": "2026-09-28T01:19:36.163Z",
+      "ends_at_utc": "2026-09-28T01:20:36.163Z",
+      "firing_notification_id": 106,
+      "resolved_notification_id": 107,
+      "prometheus_firing_sample": {
+        "query": "ALERTS{alertstate=\"firing\",alertname=\"HighRelayErrorRate\"} @ 1790558406.163",
+        "result": [
+          {
+            "metric": {
+              "__name__": "ALERTS",
+              "alertname": "HighRelayErrorRate",
+              "alertstate": "firing",
+              "instance": "relay-gateway:8080",
+              "job": "micro-one-api",
+              "method": "POST",
+              "path": "/v1/messages",
+              "service": "relay-gateway",
+              "severity": "critical",
+              "stack": "micro-one-api",
+              "status": "502"
+            },
+            "value": [
+              1790565065.661,
+              "1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "alertname": "HighRelayErrorRate",
+      "fingerprint": "5fdc4a619b4f0afe",
+      "starts_at_utc": "2026-09-28T01:26:06.163Z",
+      "ends_at_utc": "2026-09-28T01:29:06.163Z",
+      "firing_notification_id": 108,
+      "resolved_notification_id": 109,
+      "prometheus_firing_sample": {
+        "query": "ALERTS{alertstate=\"firing\",alertname=\"HighRelayErrorRate\"} @ 1790558856.163",
+        "result": [
+          {
+            "metric": {
+              "__name__": "ALERTS",
+              "alertname": "HighRelayErrorRate",
+              "alertstate": "firing",
+              "instance": "relay-gateway:8080",
+              "job": "micro-one-api",
+              "method": "POST",
+              "path": "/v1/messages",
+              "service": "relay-gateway",
+              "severity": "critical",
+              "stack": "micro-one-api",
+              "status": "502"
+            },
+            "value": [
+              1790565065.716,
+              "1"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "id": "o2-production-acceptance-2026-09-28",
+  "repository_head_at_verification": "794267bccde37e78ae258a14f28e6993d75654bf",
+  "scope": "O2 production rule firing/resolved delivery and retrospective authorized root/attempt/audit/HTTP span correlation",
+  "boundaries": [
+    "sent proves the notification dispatcher completed SMTP submission; mailbox rendering or human receipt was not independently observed.",
+    "The observation window includes controlled O5 sampling and other traffic. Actual Prometheus rule evaluation is proven, but these episodes are not classified as purely organic traffic.",
+    "The authorized sample comes from the documented 2026-09-27 O5 production sampling. Original HTTP response headers were not recaptured. Audit and attempt reads used their authoritative database rows, not the admin HTTP endpoint.",
+    "Only Relay HTTP spans are verified; no downstream gRPC or supplier span coverage is claimed. Jaeger retention is 48 hours.",
+    "Alert delivery/recovery does not establish the root cause or correctness of alert thresholds. HighRelayErrorRate samples carry /v1/messages status=502; UpstreamCostMissing carries provider_family=other.",
+    "Current repository HEAD records the verification context, not the deployed image revision of the historical request."
+  ],
+  "checks_passed": [
+    "nine_business_scrape_targets_up",
+    "rule_evaluation_failure_counter_zero",
+    "five_firing_resolved_pairs_with_historical_prometheus_samples",
+    "ten_notifications_sent_without_retry",
+    "no_current_firing",
+    "authorized_root_attempt_audit_jaeger_trace_match"
+  ]
+}

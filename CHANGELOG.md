@@ -7,6 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.33.4] - 2026-09-28
+
+v0.33.4 是 v0.33.3 之后的 **PATCH 对账准确性与支付对账告警版本**：billing 对账不再把已删除渠道的历史账本报为差异，支付对账持续失败 5 分钟触发告警；生产完成 6 项对账差异数据修复，最新对账运行差异为 0。无公共 API/proto 变更、数据库迁移或前端更新；仅需升级 `billing-service`。详见 [release-v0.33.4.md](docs/releases/release-v0.33.4.md)。
+
+### Fixed
+
+- 对账跳过无计数器行的已删除渠道，消除生产渠道 6/7/8 的幻影差异（-7.2M/-15.5M/-132.9M quota）；仍存在但漂移的渠道继续正常报告。
+- 生产数据修复：渠道 1/9 计数器对齐账本权威值，回填 2 条缺失消费日志并修正 1 条日志 quota，31 笔幻影应收（overdue 等于预留退款额、钱包全程为正）标记 settled；对账运行差异归零。
+
+### Added
+
+- 支付对账每次完成的扫描记录最新失败状态指标 `micro_one_api_billing_payment_reconcile_failed`，持续 5 分钟未恢复触发 `PaymentReconciliationFailing` 告警；关停中断保留此前状态；Prometheus 规则测试纳入 CI。
+- O2 生产验收的真实告警证据与 O5 生产 RPC 后续观察记录。
+
 ## [0.33.3] - 2026-09-28
 
 v0.33.3 是 v0.33.2 之后的 **PATCH Claude Code 网关兼容与安全修复版本**：透传 auto mode 服务端分类器所需的功能头与安全检查结果，修复压缩响应损坏和网关私有头泄露。无公共 API/proto 变更、数据库迁移或前端更新；仅需升级 `relay-gateway`。详见 [release-v0.33.3.md](docs/releases/release-v0.33.3.md)。

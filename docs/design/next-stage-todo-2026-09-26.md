@@ -1,18 +1,23 @@
 # micro-one-api 下一阶段待办
 
 - 整理日期：2026-09-26
-- 依据：`docs/design/next-stage-plan-2026-09-22.md`（文档更新至 2026-09-27）
-- 说明：已于 2026-09-26 对生产通知记录、Prometheus 回源指标和 MySQL 索引计划做只读核对；2026-09-27 补做 O2 只读观察及 O5 隔离故障延迟复测，并上线 O2 OTLP 导出；v0.33.1 发布后再次只读复核，仍无自然规则 firing 或授权路由请求。各项原始口径见对应证据文件。生产已切换 QQ 邮件，并补上 Alertmanager 与 Prometheus 转发；受控 firing/resolved 邮件均为 sent，真实规则触发仍待自然观察。
+- 依据：`docs/design/next-stage-plan-2026-09-22.md`（文档更新至 2026-09-28）
+- 本轮执行（2026-09-28）：用户确认线上目前仅本人使用，**暂缓 O5 代表性流量复采及缓存优化**，不再以补齐流量样本阻塞后续工作。转入 Q2/F17：支付补偿失败指标、持续失败告警及处置手册已完成本地验收；billing-service 与 Prometheus 规则已上线并完成只读接线核对，保留每分钟重试和账务幂等语义。
+- 说明：2026-09-28 已完成 O2 生产只读验收：五组真实规则 firing/resolved、十封通知均为 sent，既有授权请求的 root/attempt/audit/Jaeger trace 关联一致；同日收件人确认第五组（通知 108/109）QQ 收件箱呈现完整、内容与服务端一致。观察窗口含受控采样，不等于纯自然流量。见[本轮验收](../runbooks/o2-production-acceptance-2026-09-28.md)。此前分项证据保留。
 
 ## 一、优先收口：已实现功能的外部验收
 
 | 顺序 | 事项 | 完成证据 |
 | --- | --- | --- |
-| 1 | **O2 生产通知后续观察**：QQ 邮件配置、Alertmanager 服务及 Prometheus 转发已上线；受控 firing/resolved 邮件和 Alertmanager 注入 firing 均为 `sent`。2026-09-27 发布后复查仍发现过去 24 小时无真实规则 firing，九个业务抓取目标均正常、规则评估失败数为零。继续观察真实规则触发后的 firing/resolved 及异常送达状态。 | [受控投递及后续观察](../runbooks/evidence/o2-qqmail-production-2026-09-26.json)记录通知 96/97/98、SMTP 接受和 24 小时 Prometheus 查询；真实规则告警及收件箱呈现仍缺独立证据，授权码不入库。[发布后只读复核](../runbooks/evidence/next-stage-postrelease-observation-2026-09-27.json)仍无自然 firing。 |
-| 2 | **O2 OTel 授权请求联查**：生产已部署内部 Jaeger OTLP receiver、持久化 Badger 48 小时存储和 Grafana 数据源；Relay HTTP span 已实收，401 探测的请求 ID 与 Jaeger `request.root_id` 一致。发布后从 OTLP 上线时刻起仍无新的授权路由审计行；剩余：用一条授权用户请求把根请求、attempt、trace 和路由审计串齐。 | [上线记录](../runbooks/o2-otel-export-2026-09-27.md)与[脱敏证据](../runbooks/evidence/o2-otel-production-2026-09-27.json)覆盖导出、存储及无认证探测；该探测不产生 attempt，不能算完整关联验收；[发布后复核](../runbooks/evidence/next-stage-postrelease-observation-2026-09-27.json)记录授权审计行数为零。 |
+| 1 | **O2 生产规则送达已验（2026-09-28）**：四组 HighRelayErrorRate、一组 UpstreamCostMissing 的 firing/resolved 已按 fingerprint/startsAt 配对并回查历史 Prometheus 样本；通知 100–109 均 sent、重试 0。当前无 firing、九个抓取目标正常、规则评估失败 0。第五组（通知 108/109）QQ 收件箱呈现经收件人确认完整、内容一致。 | [本轮验收](../runbooks/o2-production-acceptance-2026-09-28.md)及[脱敏证据](../runbooks/evidence/o2-production-acceptance-2026-09-28.json)。证明真实规则、SMTP 提交及该组收件箱呈现，不证明纯自然流量、其余四组收件箱呈现、邮件阅读或告警根因；替代上次“尚无真实 firing”的现状。 |
+| 2 | **O2 OTel 授权请求服务端联查已验（2026-09-28）**：复用 2026-09-27 O5 的 step-5-preview 请求，核对同一 root、一次 committed attempt、planned/success 两条审计和 Jaeger HTTP span。 | [关联记录](../runbooks/o2-production-acceptance-2026-09-28.md#授权请求-root--attempt--audit--trace)与[证据](../runbooks/evidence/o2-production-acceptance-2026-09-28.json)。本轮为数据库/Jaeger 回溯，未重采响应头或管理 HTTP 接口；不扩大为下游 gRPC/供应商 span 验收。 |
 | 3 | **O5 生产缓存边界与成本**：24 小时低流量回源 RPC 基线已采；2026-09-27 修正采样时序后的完整隔离复测通过，Redis 故障下 chat、结算和恢复可用，V2 GetAuthSnapshot P95 为健康 4.60ms、故障 9.14ms、恢复 4.95ms。2026-09-27 晚以专用限时 token 完成 `step-5-preview` 生产受控采样：135 个成功路径请求（134 成功、1 次客户端超时），窗口内 GetAuthSnapshot/GetRoutingGroup 各约 294 次 OK、GetRoutingCapabilities 约 147 次 OK，无非 OK，P95 分别为 4.91/4.88/0.96ms。缓存优化是否启动，待自然业务流量达到可代表水平后再复采判断。 | [生产低流量样本](../runbooks/evidence/o5-production-rpc-baseline-2026-09-26.json)为 identity/channel 各约 123、billing 59 次增量；[隔离复测](../runbooks/o5-redis-fault-isolation-2026-09-26.md)以独立抓取窗口取代旧 P95。[受控采样证据](../runbooks/evidence/o5-step5-production-sampling-2026-09-27.json)确认单次成功请求成本为鉴权+选路各约 2 次、额度预留约 1 次权威 RPC 且全部 OK；identity 内部回退路径和熔断拒绝延迟仍无归因。 |
-| 4 | **Q2 支付 F17 后续观察**：支付宝沙箱正常支付往返及丢回调查单、暂时失败重试、重复签名回调、发放失败恢复四项隔离故障验收已完成。后续关注长期查单失败时的告警/重试治理及实际平台重发。 | [沙箱往返证据](../runbooks/evidence/f17-alipay-sandbox-roundtrip-2026-09-26.json)与[隔离故障验收](../runbooks/f17-fault-acceptance-2026-09-26.md)分别记录正常付款和四项故障；浏览器 `return_url` 已确认，服务端异步 `notify_url` 没有独立沙箱 HTTP 回执。 |
+| 4 | **Q2 支付 F17 后续观察**：支付宝沙箱正常往返及四项隔离故障验收已完成。2026-09-28 补齐后台扫描 success/partial/error 指标、最近一轮失败状态及持续 5 分钟告警，本地故障/恢复和规则验收通过；billing-service 与规则已上线，Prometheus 采到失败状态 0，新规则 health=ok/inactive。退避/扫描治理按证据启动，实际平台重发继续保留。 | [沙箱往返证据](../runbooks/evidence/f17-alipay-sandbox-roundtrip-2026-09-26.json)与[隔离故障、告警及上线记录](../runbooks/f17-fault-acceptance-2026-09-26.md)区分沙箱、本地注入与生产只读证据；服务端异步 `notify_url` 仍没有独立沙箱 HTTP 回执，新告警尚无生产 firing/resolved 或收件箱证据。 |
 | 5 | **Q3 后续性能对照**：Linux/amd64 同机基线与候选各三次完整 k6 已完成，历史基线重定为 `v0.32.2` 后的门禁重跑通过；v0.33.1 发布后，当前默认基线更新为 `v0.33.1`。未来候选继续用同一流程比较；executor 流式回归归因前维持 legacy 默认路径。 | [Q3 对照及原始 artifact](../runbooks/q3-rebaseline-2026-09-26.md)记录旧归档基线下 chat P95 +25.2%、aggregate P95 +25.3%，新基线首跑七项门禁全过；[生产 MySQL 对照](../runbooks/evidence/q3-production-mysql-dashboard-index-2026-09-26.json)旧/新索引中位数 229/225ms，不能证明显著生产收益。 |
+
+2026-09-28 06:37 UTC 已完成一次 [O5 只读复采](../runbooks/evidence/o5-production-rpc-observation-2026-09-28.json)：排除已知受控采样的最近 12 小时，鉴权/选路各约 859 次、额度能力约 404 次 OK，P95 为 4.95/4.85/0.97ms，未返回非 OK 序列。六个小时无调用，三类计数器各重置一次；样本量增加仍不能证明流量具有代表性，也未显示持续高负载或显著回源成本。O5 代表性生产流量验收继续保留，不启动缓存优化、不为凑样本额外制造生产模型调用。下一次复采需标注正常业务/峰值时段、请求分布与样本量，并区分受控流量、计数器重置及抓取缺口。
+
+O5 暂缓决定（2026-09-28）：以上历史样本继续保留，但当前不安排额外复采或生产模型调用；恢复条件是实际多用户/代表性业务流量出现，或有明确回源延迟、QPS、成本问题，再按上述口径测量。
 
 ## 二、按外部条件补齐的验证
 

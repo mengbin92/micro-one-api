@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.33.3 发布公告](./docs/releases/release-v0.33.3.md)（Claude Code auto mode 网关兼容与请求头安全修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.33.3)
+> 📣 **最新发布**：[v0.33.4 发布公告](./docs/releases/release-v0.33.4.md)（对账幻影差异修复与支付对账持续失败告警，生产对账差异归零） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.33.4)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.33.4
+
+v0.33.4 是 v0.33.3 之后的 **PATCH 对账准确性与支付对账告警版本**：billing 对账跳过已删除渠道的历史账本消除幻影差异，支付对账持续失败 5 分钟触发 `PaymentReconciliationFailing` 告警；生产已完成 6 项对账差异数据修复，最新对账运行差异为 0。**无公共 API/proto 变更、无数据库迁移或前端更新**；仅需更新 `billing-service`。详见 [docs/releases/release-v0.33.4.md](./docs/releases/release-v0.33.4.md)。
 
 ### 升级到 v0.33.3
 

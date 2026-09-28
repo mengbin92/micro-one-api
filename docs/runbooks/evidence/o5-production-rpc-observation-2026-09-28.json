@@ -1,0 +1,881 @@
+{
+  "captured_at_utc": "2026-09-28T06:37:23+00:00",
+  "evaluation_time_unix": 1790577443,
+  "source": "Read-only production Prometheus query API via docker exec prometheus wget; no model calls or runtime changes",
+  "instance": "relay-gateway:8080",
+  "queries": {
+    "up": {
+      "promql": "up",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "__name__": "up",
+                "instance": "notify-worker:8008",
+                "job": "micro-one-api",
+                "stack": "micro-one-api"
+              },
+              "value": [
+                1790577443,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "__name__": "up",
+                "instance": "identity-service:8001",
+                "job": "micro-one-api",
+                "stack": "micro-one-api"
+              },
+              "value": [
+                1790577443,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "__name__": "up",
+                "instance": "config-service:8005",
+                "job": "micro-one-api",
+                "stack": "micro-one-api"
+              },
+              "value": [
+                1790577443,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "__name__": "up",
+                "instance": "log-service:8006",
+                "job": "micro-one-api",
+                "stack": "micro-one-api"
+              },
+              "value": [
+                1790577443,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "__name__": "up",
+                "instance": "relay-gateway:8080",
+                "job": "micro-one-api",
+                "stack": "micro-one-api"
+              },
+              "value": [
+                1790577443,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "__name__": "up",
+                "instance": "localhost:9090",
+                "job": "prometheus"
+              },
+              "value": [
+                1790577443,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "__name__": "up",
+                "instance": "admin-api:8000",
+                "job": "micro-one-api",
+                "stack": "micro-one-api"
+              },
+              "value": [
+                1790577443,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "__name__": "up",
+                "instance": "channel-service:8002",
+                "job": "micro-one-api",
+                "stack": "micro-one-api"
+              },
+              "value": [
+                1790577443,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "__name__": "up",
+                "instance": "billing-service:8004",
+                "job": "micro-one-api",
+                "stack": "micro-one-api"
+              },
+              "value": [
+                1790577443,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "__name__": "up",
+                "instance": "monitor-worker:8007",
+                "job": "micro-one-api",
+                "stack": "micro-one-api"
+              },
+              "value": [
+                1790577443,
+                "1"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "firing": {
+      "promql": "ALERTS{alertstate=\"firing\"}",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": []
+        }
+      }
+    },
+    "rule_failures_24h": {
+      "promql": "sum(increase(prometheus_rule_evaluation_failures_total[24h]))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {},
+              "value": [
+                1790577443,
+                "0"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "relay_availability_12h": {
+      "promql": "avg_over_time(up{instance=\"relay-gateway:8080\"}[12h])",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "instance": "relay-gateway:8080",
+                "job": "micro-one-api",
+                "stack": "micro-one-api"
+              },
+              "value": [
+                1790577443,
+                "0.9996527777777777"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "relay_scrapes_12h": {
+      "promql": "count_over_time(up{instance=\"relay-gateway:8080\"}[12h])",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "instance": "relay-gateway:8080",
+                "job": "micro-one-api",
+                "stack": "micro-one-api"
+              },
+              "value": [
+                1790577443,
+                "2880"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "calls_24h": {
+      "promql": "sum by (service,method,status) (increase(micro_one_api_dependency_grpc_latency_seconds_count{instance=\"relay-gateway:8080\",method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\"}[24h]))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "method": "/api.billing.v1.BillingService/GetRoutingCapabilities",
+                "service": "billing-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "730.1267581177287"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.channel.v1.ChannelService/GetRoutingGroup",
+                "service": "channel-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "1509.2620246570584"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.identity.v1.IdentityService/GetAuthSnapshot",
+                "service": "identity-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "1509.2620246570584"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "p95_ok_ms_24h": {
+      "promql": "histogram_quantile(0.95, sum by (service,method,le) (increase(micro_one_api_dependency_grpc_latency_seconds_bucket{instance=\"relay-gateway:8080\",method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\",status=\"OK\"}[24h]))) * 1000",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "method": "/api.billing.v1.BillingService/GetRoutingCapabilities",
+                "service": "billing-service"
+              },
+              "value": [
+                1790577443,
+                "0.9795197740112994"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.channel.v1.ChannelService/GetRoutingGroup",
+                "service": "channel-service"
+              },
+              "value": [
+                1790577443,
+                "4.861414141414142"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.identity.v1.IdentityService/GetAuthSnapshot",
+                "service": "identity-service"
+              },
+              "value": [
+                1790577443,
+                "4.979319916724497"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "calls_12h": {
+      "promql": "sum by (service,method,status) (increase(micro_one_api_dependency_grpc_latency_seconds_count{instance=\"relay-gateway:8080\",method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\"}[12h]))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "method": "/api.billing.v1.BillingService/GetRoutingCapabilities",
+                "service": "billing-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "404.1403265022577"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.channel.v1.ChannelService/GetRoutingGroup",
+                "service": "channel-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "859.2983674887114"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.identity.v1.IdentityService/GetAuthSnapshot",
+                "service": "identity-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "859.2983674887114"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "p95_ok_ms_12h": {
+      "promql": "histogram_quantile(0.95, sum by (service,method,le) (increase(micro_one_api_dependency_grpc_latency_seconds_bucket{instance=\"relay-gateway:8080\",method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\",status=\"OK\"}[12h]))) * 1000",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "method": "/api.billing.v1.BillingService/GetRoutingCapabilities",
+                "service": "billing-service"
+              },
+              "value": [
+                1790577443,
+                "0.9741116751269034"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.channel.v1.ChannelService/GetRoutingGroup",
+                "service": "channel-service"
+              },
+              "value": [
+                1790577443,
+                "4.849292452830189"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.identity.v1.IdentityService/GetAuthSnapshot",
+                "service": "identity-service"
+              },
+              "value": [
+                1790577443,
+                "4.9470374848851275"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "calls_1h": {
+      "promql": "sum by (service,method,status) (increase(micro_one_api_dependency_grpc_latency_seconds_count{instance=\"relay-gateway:8080\",method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\"}[1h]))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "method": "/api.billing.v1.BillingService/GetRoutingCapabilities",
+                "service": "billing-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "0"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.channel.v1.ChannelService/GetRoutingGroup",
+                "service": "channel-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "13.05439330543933"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.identity.v1.IdentityService/GetAuthSnapshot",
+                "service": "identity-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "13.05439330543933"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "p95_ok_ms_1h": {
+      "promql": "histogram_quantile(0.95, sum by (service,method,le) (increase(micro_one_api_dependency_grpc_latency_seconds_bucket{instance=\"relay-gateway:8080\",method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\",status=\"OK\"}[1h]))) * 1000",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "method": "/api.billing.v1.BillingService/GetRoutingCapabilities",
+                "service": "billing-service"
+              },
+              "value": [
+                1790577443,
+                "NaN"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.channel.v1.ChannelService/GetRoutingGroup",
+                "service": "channel-service"
+              },
+              "value": [
+                1790577443,
+                "4.800000000000001"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.identity.v1.IdentityService/GetAuthSnapshot",
+                "service": "identity-service"
+              },
+              "value": [
+                1790577443,
+                "8.375"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "calls_5m": {
+      "promql": "sum by (service,method,status) (increase(micro_one_api_dependency_grpc_latency_seconds_count{instance=\"relay-gateway:8080\",method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\"}[5m]))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "method": "/api.billing.v1.BillingService/GetRoutingCapabilities",
+                "service": "billing-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "0"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.channel.v1.ChannelService/GetRoutingGroup",
+                "service": "channel-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "1.0526315789473684"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.identity.v1.IdentityService/GetAuthSnapshot",
+                "service": "identity-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "1.0526315789473684"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "p95_ok_ms_5m": {
+      "promql": "histogram_quantile(0.95, sum by (service,method,le) (increase(micro_one_api_dependency_grpc_latency_seconds_bucket{instance=\"relay-gateway:8080\",method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\",status=\"OK\"}[5m]))) * 1000",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "method": "/api.identity.v1.IdentityService/GetAuthSnapshot",
+                "service": "identity-service"
+              },
+              "value": [
+                1790577443,
+                "4.800000000000001"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.billing.v1.BillingService/GetRoutingCapabilities",
+                "service": "billing-service"
+              },
+              "value": [
+                1790577443,
+                "NaN"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.channel.v1.ChannelService/GetRoutingGroup",
+                "service": "channel-service"
+              },
+              "value": [
+                1790577443,
+                "4.800000000000001"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "counter_resets_12h": {
+      "promql": "sum by (service,method,status) (resets(micro_one_api_dependency_grpc_latency_seconds_count{instance=\"relay-gateway:8080\",method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\"}[12h]))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "method": "/api.billing.v1.BillingService/GetRoutingCapabilities",
+                "service": "billing-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.channel.v1.ChannelService/GetRoutingGroup",
+                "service": "channel-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.identity.v1.IdentityService/GetAuthSnapshot",
+                "service": "identity-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "1"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "latency_sum_seconds_12h": {
+      "promql": "sum by (service,method,status) (increase(micro_one_api_dependency_grpc_latency_seconds_sum{instance=\"relay-gateway:8080\",method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\"}[12h]))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "method": "/api.billing.v1.BillingService/GetRoutingCapabilities",
+                "service": "billing-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "0.19473789232372354"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.channel.v1.ChannelService/GetRoutingGroup",
+                "service": "channel-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "2.293827369836746"
+              ]
+            },
+            {
+              "metric": {
+                "method": "/api.identity.v1.IdentityService/GetAuthSnapshot",
+                "service": "identity-service",
+                "status": "OK"
+              },
+              "value": [
+                1790577443,
+                "2.822253845251821"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  "hourly_calls_12h": {
+    "promql": "sum by (service,method,status) (increase(micro_one_api_dependency_grpc_latency_seconds_count{instance=\"relay-gateway:8080\",method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\"}[1h]))",
+    "start": 1790537843,
+    "end": 1790577443,
+    "step_seconds": 3600,
+    "response": {
+      "status": "success",
+      "data": {
+        "resultType": "matrix",
+        "result": [
+          {
+            "metric": {
+              "method": "/api.billing.v1.BillingService/GetRoutingCapabilities",
+              "service": "billing-service",
+              "status": "OK"
+            },
+            "values": [
+              [
+                1790537843,
+                "0"
+              ],
+              [
+                1790541443,
+                "0"
+              ],
+              [
+                1790545043,
+                "0"
+              ],
+              [
+                1790548643,
+                "0"
+              ],
+              [
+                1790552243,
+                "0"
+              ],
+              [
+                1790555843,
+                "0"
+              ],
+              [
+                1790559443,
+                "38.15899581589958"
+              ],
+              [
+                1790563043,
+                "80.3347280334728"
+              ],
+              [
+                1790566643,
+                "94.39330543933053"
+              ],
+              [
+                1790570243,
+                "142.5941422594142"
+              ],
+              [
+                1790573843,
+                "49.20502092050209"
+              ],
+              [
+                1790577443,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "method": "/api.channel.v1.ChannelService/GetRoutingGroup",
+              "service": "channel-service",
+              "status": "OK"
+            },
+            "values": [
+              [
+                1790537843,
+                "0"
+              ],
+              [
+                1790541443,
+                "0"
+              ],
+              [
+                1790545043,
+                "0"
+              ],
+              [
+                1790548643,
+                "0"
+              ],
+              [
+                1790552243,
+                "0"
+              ],
+              [
+                1790555843,
+                "0"
+              ],
+              [
+                1790559443,
+                "84.35146443514644"
+              ],
+              [
+                1790563043,
+                "166.69456066945605"
+              ],
+              [
+                1790566643,
+                "191.79916317991632"
+              ],
+              [
+                1790570243,
+                "285.1882845188284"
+              ],
+              [
+                1790573843,
+                "118.49372384937237"
+              ],
+              [
+                1790577443,
+                "13.05439330543933"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "method": "/api.identity.v1.IdentityService/GetAuthSnapshot",
+              "service": "identity-service",
+              "status": "OK"
+            },
+            "values": [
+              [
+                1790537843,
+                "0"
+              ],
+              [
+                1790541443,
+                "0"
+              ],
+              [
+                1790545043,
+                "0"
+              ],
+              [
+                1790548643,
+                "0"
+              ],
+              [
+                1790552243,
+                "0"
+              ],
+              [
+                1790555843,
+                "0"
+              ],
+              [
+                1790559443,
+                "84.35146443514644"
+              ],
+              [
+                1790563043,
+                "166.69456066945605"
+              ],
+              [
+                1790566643,
+                "191.79916317991632"
+              ],
+              [
+                1790570243,
+                "285.1882845188284"
+              ],
+              [
+                1790573843,
+                "118.49372384937237"
+              ],
+              [
+                1790577443,
+                "13.05439330543933"
+              ]
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "repository_commit_at_capture": "23119d1201e770bb10deb63397750f32fff2b286",
+  "window_12h": {
+    "start_utc": "2026-09-27T18:37:23+00:00",
+    "end_utc": "2026-09-28T06:37:23+00:00",
+    "duration_seconds": 43200,
+    "excludes_documented_step5_sampling": true
+  },
+  "summary_12h": [
+    {
+      "service": "billing-service",
+      "method": "GetRoutingCapabilities",
+      "status": "OK",
+      "increase": 404.1403265022577,
+      "average_qps": 0.009355100150515225,
+      "p95_ok_ms": 0.9741116751269034,
+      "mean_ms": 0.4818571163366337,
+      "peak_hour_increase": 142.5941422594142,
+      "hours_with_zero_increase": 7
+    },
+    {
+      "service": "channel-service",
+      "method": "GetRoutingGroup",
+      "status": "OK",
+      "increase": 859.2983674887114,
+      "average_qps": 0.01989116591409054,
+      "p95_ok_ms": 4.849292452830189,
+      "mean_ms": 2.6694189778812536,
+      "peak_hour_increase": 285.1882845188284,
+      "hours_with_zero_increase": 6
+    },
+    {
+      "service": "identity-service",
+      "method": "GetAuthSnapshot",
+      "status": "OK",
+      "increase": 859.2983674887114,
+      "average_qps": 0.01989116591409054,
+      "p95_ok_ms": 4.9470374848851275,
+      "mean_ms": 3.284370076833524,
+      "peak_hour_increase": 285.1882845188284,
+      "hours_with_zero_increase": 6
+    }
+  ],
+  "interpretation": {
+    "decision": "Retain authoritative V2 RPCs; this observation does not justify starting cache optimization. Representative production traffic acceptance remains open.",
+    "access_correction": "Production Prometheus has no host port mapping. Query via docker exec prometheus wget against container-local 127.0.0.1:9090. Host localhost:9090 is not the Prometheus endpoint.",
+    "health": "At capture, 9 application targets plus Prometheus were up (10 total), no firing series were returned, and the 24h rule evaluation failure increase was zero.",
+    "limitations": [
+      "The 24h window includes the documented 2026-09-27 controlled sampling; it is not an organic-only baseline.",
+      "The 12h window excludes that documented sampling, but aggregate metrics cannot establish whether all remaining traffic is natural business use or representative of users/models/protocols.",
+      "All three observed methods have one counter reset in the 12h window. Prometheus increase handles observed resets and extrapolates; it is not an exact request count and cannot recover calls lost between scrapes.",
+      "Relay had 2880 up samples over 12h, including one failed scrape (2879/2880 successful). This is scrape health, not request availability.",
+      "Six of twelve hourly windows had zero calls for all three methods. Peak-hour identity/channel volume was about 285 calls each (0.079 QPS); sustained high-load cache cost is not demonstrated.",
+      "No non-OK series were returned for the selected methods. Other matched methods had no series; absence is not proof their paths ran successfully.",
+      "P95 values are histogram estimates. The last-hour/5m billing P95 is NaN because its call increase is zero, not zero latency.",
+      "Successful dependency RPCs do not prove successful relay/model requests. Redis outage, identity internal fallback attribution, breaker rejection latency and upstream response success were not tested."
+    ],
+    "next_measurement": "Re-sample an identified normal business or peak period with request mix and sample volume documented, separating controlled traffic and resets. Only consider cache work if repeated evidence attributes material request latency or resource cost to authority RPCs; preserve revocation correctness."
+  }
+}

@@ -1,6 +1,6 @@
 # 下一阶段计划：可靠性补缺、运行可见性与文章技术债收口
 
-> **当前执行入口**。制定：2026-09-22；更新：2026-09-27。状态：第一批 R1–R4 已随 v0.31.1 发布；第二批 O1–O4 及 O5 正确性修复已完成本地实施和隔离验收，纳入 [v0.32.0](../releases/release-v0.32.0.md) 并已上线。生产 QQ 邮件受控送达已验；2026-09-27 只读观察过去 24 小时无真实规则 firing，真实规则触发与 OTel 授权请求联查仍待线上验收；OTLP collector 已上线且 Relay HTTP span 已实收。生产 Redis 故障不在受限主机注入，其隔离环境 chat 可用性及修复采样后的 RPC 延迟复测已通过（第 3 节），生产成本复采保留；生产 V2 回源 RPC 已采低流量基线，见第 3 节。第三批 Q1 安全头、取消终态、历史快照与充值状态均已上线；Q2/Q3 的可复现门禁已补齐，生产 MySQL Dashboard 索引同负载对照、支付宝沙箱正常支付往返、F17 故障子项隔离验收与当前提交 Linux/amd64 三次全量 k6 均已完成（历史基线重定至 `v0.32.2`，当前默认对照更新为 `v0.33.1`，见第 4 节）。详情见第 4 节。
+> **当前执行入口**。制定：2026-09-22；更新：2026-09-28。状态：第一批 R1–R4 已随 v0.31.1 发布；第二批 O1–O4 及 O5 正确性修复已完成本地实施和隔离验收，纳入 [v0.32.0](../releases/release-v0.32.0.md) 并已上线。生产 QQ 邮件受控送达已验；2026-09-28 [只读验收](../runbooks/o2-production-acceptance-2026-09-28.md)补齐五组真实规则 firing/resolved 的 SMTP 提交及授权请求 root/attempt/audit/Jaeger trace 服务端关联；同日收件人确认第五组 QQ 收件箱呈现完整、内容一致。OTLP collector 已上线且 Relay HTTP span 已实收。生产 Redis 故障不在受限主机注入，其隔离环境 chat 可用性及修复采样后的 RPC 延迟复测已通过（第 3 节），生产成本复采保留；生产 V2 回源 RPC 已采低流量基线，见第 3 节。第三批 Q1 安全头、取消终态、历史快照与充值状态均已上线；Q2/Q3 的可复现门禁已补齐，生产 MySQL Dashboard 索引同负载对照、支付宝沙箱正常支付往返、F17 故障子项隔离验收与当前提交 Linux/amd64 三次全量 k6 均已完成（历史基线重定至 `v0.32.2`，当前默认对照更新为 `v0.33.1`，见第 4 节）。详情见第 4 节。
 >
 > 初始规划基线：`develop@77e4db45`（[v0.31.0](../releases/release-v0.31.0.md)）；第二批审查基线：`develop@d70e02f2`（已合入 [v0.31.1](../releases/release-v0.31.1.md)）。第一批实现与隔离验收记录已纳入版本；第二批本地证据见第 3 节，不代表生产验收。
 >
@@ -11,6 +11,8 @@
 > **后续执行更新（2026-09-23）**：用户确认按推荐顺序从 D1 推进。本轮完成 D1 的多 Relay OAuth 协调、负载退化告警及部署边界，**已通过本地/隔离验收并于 12:25–12:28 UTC 上线**；实现、文档及部署证据随本次 D1 提交归档。生产保持单 Relay、单 channel，已启用 `redis` 协调；当前没有 OAuth 账号，真实供应商轮换及多副本故障切换仍待验收。D2–D7 按条件保留，前三批仍缺外部证据的验收不因此关闭。
 
 ## 1. 阶段范围和现状纠偏
+
+**执行更新（2026-09-28）**：用户确认生产仅本人使用，暂缓 O5 的代表性流量复采和缓存优化；已有正确性修复与隔离证据保留，待真实使用规模或回源成本问题出现再恢复。下一步转入 Q2/F17 支付补偿失败可见性：后台扫描结果指标、最近一轮失败状态、持续 5 分钟告警及处置手册已完成本地验收，并已更新生产 billing-service 与 Prometheus 规则；线上只读核对指标已采集、规则健康且未触发，见 [F17 后续记录](../runbooks/f17-fault-acceptance-2026-09-26.md)。维持现有固定重试、事务及幂等边界，不因此启动 D2–D7 全部保留项。
 
 本阶段优先解决会丢凭证、无法隔离故障、错误与计费归属不清的缺口。文章中的所有遗留项在第 6 节登记去向；“登记”不代表全部纳入本阶段发布。暂不预定发布版本，按验收完成的批次决定 PATCH/MINOR。
 
@@ -105,7 +107,7 @@ R1 → R2 → R3 → R4 已完成实现及验收，见[第一批实施记录](..
 | ID / 优先级 | 最小范围与依赖 | 可验证的完成条件 |
 | --- | --- | --- |
 | O1 / P1 路由注册强制观测 | **已完成并上线，本地验收已通过**。注册强制声明执行/只读/不支持类别；请求终态、实际 source/model、raw 健康与重试结算一次性记录统一。审查补齐中间件前置拒绝、1xx、panic、内部预算超时和固定路由标签；证据归入下节 | 新执行路由缺少观察声明时测试失败；成功、最终失败、取消、501/405、鉴权失败各有正确请求终态。用量仅对实际执行记录，不给 501/鉴权失败造 token；同源重试健康一次、账务一次，raw 不漏模型健康；`Flusher`/`Hijacker` 等能力不被包装破坏。依赖 R3/R4 |
-| O2 / P1 告警与追踪闭环 | **实现及本地验收完成，生产 QQ 邮件受控送达与 Relay OTLP 导出已验；真实规则触发和授权请求联查待观察**。七类对账差异完整；HTTP span/兼容头/路由审计/Playground 关联；Alertmanager 接既有通知队列，新增送达、Redis 降级、去重冲突和探测用量看板 | 七类差异“仅此一类非零”的通知都解释得清；用户提供的请求 ID 能定位根请求/attempt/trace；本地 firing/resolved 通知真实 HTTP 接收并持久化 sent；无接收端为 failed/not_configured。生产受控测试的 firing/resolved 邮件已持久化 sent，Alertmanager 注入 firing 已送达；真实 Prometheus 规则触发仍待观察，见[通知证据](../runbooks/evidence/o2-qqmail-production-2026-09-26.json)；OTLP 生产导出已验，授权请求联查待完成，见[上线记录](../runbooks/o2-otel-export-2026-09-27.md) |
+| O2 / P1 告警与追踪闭环 | **实现、本地及生产服务端验收完成（2026-09-28）**。七类对账差异完整；HTTP span/兼容头/路由审计/Playground 关联；Alertmanager 接既有通知队列，新增送达、Redis 降级、去重冲突和探测用量看板 | 七类差异通知解释、本地 firing/resolved 持久化与未配置失败均已验；生产五组真实规则触发/恢复对应通知 100–109 均 sent，第五组 QQ 收件箱呈现经收件人确认，授权请求 root/attempt/audit/Jaeger HTTP span 一致，见[本轮验收](../runbooks/o2-production-acceptance-2026-09-28.md)。其余四组收件箱呈现与下游 span 不在已验范围；本轮未重采浏览器或管理 HTTP 接口。 |
 | O3 / P1 订阅用量可解释 | **已完成（本地验收）**。billing 事务内读取结算及订阅部分冻结，admin/relay 使用同一 RPC；UI 展示 settled/frozen/available；旧 used/remaining 保留，补无限/超限与窗口/倍率契约；修正过期后购买为新建 | 三方言覆盖在途多请求、取消、跨窗结算、nil/0、过期、倍率变化；接口覆盖权威失败不回退，DTO 保留 null/0，浏览器覆盖无限/超限。见[接口契约](./subscription-usage-api.md) |
 | O4 / P1 账号治理与原子重置 | **已完成（本地验收）**。ChannelRepo 强制原子重置，陈旧扫描不得清除新窗口用量；读写共用窗口计算。manual 服务端筛选、原因/等待时长在手机和桌面均可见；Anthropic/Codex 探测 token 单列 | 故障注入后回滚 reset-run 并可重试；三方言双副本仅成功一次；过期扫描不清新用量；无额度配置的 manual 账号也能显示恢复信息；上游不返回 usage 时明确 missing，不推算美元成本 |
 | O5 / P2 缓存与降级边界 | **正确性修复与隔离边界验收完成；2026-09-27 Redis 故障 RPC 延迟已复测**。坏值比较后删除、回源；缓存写入与 TTL 原子设置；移除无人调用的失效接口、整片失效改名 InvalidateAll、修正事件接线注释；V2 继续绕过缓存 | 坏值不计命中且回源失败仍清理；legacy Redis 断开后的 L1 30s 边界由时间推进测试验证，隔离 e2e 验证 chat 全成功；复测在 legacy 故障窗口观测到回源，旧零样本结论撤销；V2 撤权下一请求回源拒绝。修复采样后的隔离复测中 GetAuthSnapshot P95 为 4.60ms → 9.14ms → 4.95ms（健康/故障/恢复，[runbook](../runbooks/o5-redis-fault-isolation-2026-09-26.md)）；identity 回退路径尚未归因，生产成本复采仍需代表性流量，低流量基线不支持启动缓存优化的结论不变 |
@@ -142,7 +144,11 @@ docker run --rm --entrypoint /bin/promtool -v "$PWD/deploy/prometheus/alerts:/ru
 # web/ 下：npx playwright test e2e/operations-usage.spec.ts
 ```
 
-部署后已完成 [QQ 邮件受控 firing/resolved 与 Alertmanager 注入 firing 送达](../runbooks/evidence/o2-qqmail-production-2026-09-26.json)；2026-09-27 v0.33.1 发布后[只读复核](../runbooks/evidence/next-stage-postrelease-observation-2026-09-27.json)确认抓取目标和规则评估健康，但过去 24 小时仍无真实 Prometheus firing，OTLP collector 虽已实收 Relay HTTP span，授权请求联查仍缺实际样本。2026-09-26 的[生产 V2 回源低流量样本](../runbooks/evidence/o5-production-rpc-baseline-2026-09-26.json)已记录过去 24 小时 RPC 调用增量与 P95，但近 5 分钟没有调用，不能代表故障/高负载延迟；不据此启动缓存优化。隔离 Redis 故障下 chat 与结算可用性、独立抓取窗口的 RPC 延迟已于 2026-09-27 [复测](../runbooks/evidence/o5-redis-fault-isolated-retest-2026-09-27.json)。当前 OTel 关联覆盖 Relay HTTP span 和路由审计，生产 exporter/collector 已配置并通过无认证探测，授权用户请求的 attempt/审计与 span 全链尚未验收，不宣称所有下游服务都生成 span。告警桥接、缓存应急操作及指标用途见[运维手册](../runbooks/routing-observability-runbook.md)。剩余外部条件按原退出门槛继续登记。
+部署后已完成 [QQ 邮件受控 firing/resolved 与 Alertmanager 注入 firing 送达](../runbooks/evidence/o2-qqmail-production-2026-09-26.json)；2026-09-27 发布后[只读复核](../runbooks/evidence/next-stage-postrelease-observation-2026-09-27.json)当时没有真实 firing 或授权样本。2026-09-28 [O2 生产验收](../runbooks/o2-production-acceptance-2026-09-28.md)已补齐这两项：五组真实规则 firing/resolved 的十封通知均 sent，历史 Prometheus 样本逐组匹配；复用 O5 授权请求核对 root、一次 committed attempt、两条审计及 Jaeger HTTP span 一致。当前无 firing，九个抓取目标正常、规则评估失败为 0。窗口含受控采样，不等于纯自然流量；SMTP 提交不替代 QQ 收件箱呈现，服务端回溯也不替代本轮未重采的浏览器/管理 HTTP 验收，不宣称所有下游服务都有 span。
+
+O5 的[生产低流量样本](../runbooks/evidence/o5-production-rpc-baseline-2026-09-26.json)、[隔离 Redis 故障复测](../runbooks/evidence/o5-redis-fault-isolated-retest-2026-09-27.json)及[受控 step-5-preview 采样](../runbooks/evidence/o5-step5-production-sampling-2026-09-27.json)已归档；仍须代表性自然业务流量复采才能决定是否启动缓存优化。告警桥接、缓存应急操作及指标用途见[运维手册](../runbooks/routing-observability-runbook.md)。下一步按 TODO 收口 O5 的测量条件，其他外部边界按原退出门槛保留。
+
+2026-09-28 06:37 UTC [只读复采](../runbooks/evidence/o5-production-rpc-observation-2026-09-28.json)已完成：最近 12 小时（09-27 18:37 至 09-28 06:37 UTC，排除已知 step-5-preview 受控采样）GetAuthSnapshot/GetRoutingGroup 各约 859 次 OK、GetRoutingCapabilities 约 404 次 OK，P95 分别 4.95/4.85/0.97ms，平均 QPS 约 0.0199/0.0199/0.0094；未返回非 OK 序列。六个小时无调用，最高小时鉴权/选路各约 285 次（0.079 QPS），尚无持续高负载或显著回源成本证据，维持 V2 权威回源，不启动缓存优化。三类计数器各重置一次，Relay 的 2880 次抓取有一次失败；`increase` 为处理可见重置后的外推值，不能还原抓取间丢失的调用。24 小时窗口仍包含受控采样，12 小时窗口也不能仅凭聚合指标认定为纯自然或代表性流量。后续需标注正常业务/峰值时段、请求分布和样本量，再判断 RPC 延迟或资源成本是否构成实际瓶颈。查询使用 `docker exec prometheus wget` 访问容器内 API；生产 9090 未映射到宿主机，无需修改端口或重启服务。
 
 ## 4. 第三批：前端、验证与性能（Q）
 
@@ -198,7 +204,7 @@ Q1 安全/取消和 Q2 已发布能力验收可以前移到第一批收尾。样
 
 线上更新（2026-09-23）：在 `oneapi_channel` 应用迁移 109，重复执行为 no-op，三个现有静态账号 pending 均为 0；本地交叉构建后依次更新 channel、Relay、identity，12:29 UTC 核对三个健康端点及公网 Relay 均为 200，容器 restart_count=0。Relay 协调模式为 `redis`，三平台 sweep 均为 600 秒；新 claim RPC 对 id=0 返回预期 Aborted，无写入。Prometheus 校验 46 条规则并成功重载，新增三条规则均为 health=ok/inactive。未更新前端或扩容实例。镜像、回滚标签、迁移/RPC/指标样本见[脱敏部署证据](../runbooks/evidence/d1-deploy-2026-09-23.json)及[Runbook 部署记录](../runbooks/subscription-redis-multi-replica-runbook.md#七d1-生产更新2026-09-23)。
 
-剩余边界：生产当前只有三个 `static_key` 账号，没有 OAuth 账号；本轮未执行真实供应商轮换、模型扣费请求或多进程故障切换，相关故障验证仍来自受控 OAuth HTTP、miniredis 和独立三方言数据库。进程在 OAuth 返回前或未持久化时死亡，可能仍需新授权；这是明确的人工恢复状态，不是自动接管成功。Redis 故障期间并发/RPM/登录限额只约束本地，恢复时须等待降级期间请求排空。多 channel selector/会话协调、真实规则告警与 OTel 授权请求联查、生产成本复采及第三批其他外部证据项继续保留。
+剩余边界：生产当前只有三个 `static_key` 账号，没有 OAuth 账号；本轮未执行真实供应商轮换、模型扣费请求或多进程故障切换，相关故障验证仍来自受控 OAuth HTTP、miniredis 和独立三方言数据库。进程在 OAuth 返回前或未持久化时死亡，可能仍需新授权；这是明确的人工恢复状态，不是自动接管成功。Redis 故障期间并发/RPM/登录限额只约束本地，恢复时须等待降级期间请求排空。多 channel selector/会话协调、生产成本复采及第三批其他外部证据项继续保留；当时未验的真实规则告警与 OTel 授权请求服务端联查已于 2026-09-28 收口，见第 3 节。
 
 ## 6. 文章逐篇追踪表
 

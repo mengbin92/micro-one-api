@@ -108,6 +108,15 @@ groups:
   - name: billing-performance
     interval: 30s
     rules:
+      - alert: PaymentReconciliationFailing
+        expr: micro_one_api_billing_payment_reconcile_failed == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pending payment reconciliation is failing"
+          description: "Payment scans or order refreshes have not recovered for 5 minutes. Check billing storage, provider queries and asset issuance; preserve pending orders and payment idempotency. See docs/runbooks/f17-fault-acceptance-2026-09-26.md."
+
       - alert: BillingSettlementLag
         expr: |
           histogram_quantile(0.99,
