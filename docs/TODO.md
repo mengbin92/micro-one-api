@@ -1,16 +1,16 @@
 # 项目 TODO
 
-> 最后更新：2026-09-23
+> 最后更新：2026-09-28
 
 > **本轮 D1 已完成本地/隔离验收并上线（2026-09-23 12:25–12:28 UTC）**：迁移 109 已应用于 `oneapi_channel`，channel/Relay/identity 已更新，Relay 启用 `redis` 协调，三条新增告警加载正常；实现及证据随本次 D1 提交归档。生产仍为单 Relay、单 channel，只有静态账号，真实 OAuth 轮换及多副本故障切换待验收。见[计划 D1 记录](./design/next-stage-plan-2026-09-22.md#d1-实施与验收记录2026-09-23)和[部署证据](./runbooks/evidence/d1-deploy-2026-09-23.json)。多 channel 共享 selector、D2–D7 和前三批缺外部证据项继续按条件保留。
 >
 > **当前执行入口**：[下一阶段计划：可靠性补缺、运行可见性与文章技术债收口](./design/next-stage-plan-2026-09-22.md)。初始规划基于 `develop@77e4db45`（v0.31.0），第二批基于已合入 v0.31.1 的 `develop@d70e02f2`；汇总桌面 22 篇原文、四组补充建议及未结束验收，优先级、依赖与退出条件以新计划为准。下文保留历史登记，不作为当前待办。
 >
-> **第一批与第二批已交付**：R1–R4 已纳入 v0.31.1，见[第一批实施记录](./runbooks/first-batch-reliability-2026-09-22.md)；O1–O4 和 O5 正确性修复纳入 [v0.32.0](./releases/release-v0.32.0.md)，已部署，审查及隔离验收见[计划第 3 节](./design/next-stage-plan-2026-09-22.md#3-第二批观测与额度解释o)。生产外部通知送达、OTel 导出、回源成本/Redis 传播延迟仍待验收。第三批 Q1 安全头与取消终态修复已上线，渠道 9 真实取消确认预留释放、无扣费及 `canceled` 审计；历史请求快照、充值/图表检查和 Q2–Q3 仍待推进，见[计划第 4 节](./design/next-stage-plan-2026-09-22.md#4-第三批前端验证与性能q)。
+> **第一批与第二批已交付**：R1–R4 已纳入 v0.31.1，见[第一批实施记录](./runbooks/first-batch-reliability-2026-09-22.md)；O1–O4 和 O5 正确性修复纳入 [v0.32.0](./releases/release-v0.32.0.md)，已部署，审查及隔离验收见[计划第 3 节](./design/next-stage-plan-2026-09-22.md#3-第二批观测与额度解释o)。2026-09-28 [O2 生产验收](./runbooks/o2-production-acceptance-2026-09-28.md)已补齐五组真实规则 firing/resolved 的 SMTP 提交、第五组 QQ 收件箱呈现（收件人确认）与授权请求 root/attempt/audit/Jaeger span 服务端关联。O5 隔离 Redis 故障复测与受控采样已完成，代表性生产流量复采仍待条件。第三批 Q1 安全/取消、历史快照、充值/图表及 Q2–Q3 既定验收已完成，后续边界见[阶段 TODO](./design/next-stage-todo-2026-09-26.md)；详情见[计划第 4 节](./design/next-stage-plan-2026-09-22.md#4-第三批前端验证与性能q)。
 >
-> **已交付基线**：[v0.30 路线图](./design/v0.30-roadmap.md)已归档；[v0.31.0](./releases/release-v0.31.0.md)已发布结算恢复、请求尝试/实际来源追踪和跨来源切换，[v0.31.1](./releases/release-v0.31.1.md)补齐协议转换、凭证补写与流式可靠性。流式隔离矩阵已补齐（MySQL/SQLite 共 24 场景）；F17 支付沙箱与跨重启/多副本凭证边界仍按新计划跟踪。
+> **已交付基线**：[v0.30 路线图](./design/v0.30-roadmap.md)已归档；[v0.31.0](./releases/release-v0.31.0.md)已发布结算恢复、请求尝试/实际来源追踪和跨来源切换，[v0.31.1](./releases/release-v0.31.1.md)补齐协议转换、凭证补写与流式可靠性。流式隔离矩阵已补齐（MySQL/SQLite 共 24 场景）；F17 沙箱正常往返及四项隔离故障验收已完成，平台实际重发、长期查单治理与真实 OAuth/多副本边界仍按新计划跟踪。
 >
-> **补丁发布**：[v0.32.1](./releases/release-v0.32.1.md) 纳入 Q1 安全头、取消终态和 SQLite 创建分组锁冲突修复；未关闭的生产外部验收及 Q1–Q3 待办保持上述范围。
+> **补丁发布**：[v0.32.1](./releases/release-v0.32.1.md) 纳入 Q1 安全头、取消终态和 SQLite 创建分组锁冲突修复；此处为历史发布记录；后续验收现状以阶段 TODO 为准。
 >
 > **v0.27 已归档**：charge 回滚演练、K3 范围决策、Lite smoke 与文档收尾均已完成；扩面顺延，executor 保持 legacy。后续工作转入 v0.30，不重复立项。
 >

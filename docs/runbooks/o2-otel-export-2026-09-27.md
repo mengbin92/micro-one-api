@@ -13,7 +13,7 @@ Jaeger 2.21 移除了 Grafana 12.4.3 此处仍使用的 `/api/services` 查询�
 - 生产无认证 `GET /v1/models` 返回 401、`X-Request-ID=o2-prod-export-smoke-20260927`、`X-OTel-Trace-ID=ba0c778230e61c04827527d770119981`。在 Jaeger 查得 `HTTP GET` span，`request.root_id` 与 `request.id` 均为上述请求 ID。401 不会触发上游模型和路由 attempt，此证据只证明生产 HTTP span 的导出、存储和 ID 关联。
 - 生产 Relay `/healthz` 为 200；上线后五分钟内日志无 tracing 初始化或导出错误。Jaeger 内部 `/api/services` 为 200，Grafana 启动日志确认插入 `uid=jaeger` 数据源。本地 Grafana 的 Jaeger 数据源健康检查为 200；生产 Grafana 管理员凭据不可用于自动健康 API 验证，所以不把生产数据源健康检查标为已通过。
 
-脱敏、机器可读的上线记录见 [证据](./evidence/o2-otel-production-2026-09-27.json)。完整 O2 验收仍需一条授权用户请求：用其 `X-Request-ID` 查询 `/api/log/routing-audit?user_id=<id>&root_request_id=<ID>`，核对 attempt、最终 selection event 中的 `otel_trace_id`，再用该 ID 在 Jaeger 查 span 的 `request.root_id`。无认证探测不能代替该步骤；无需传递 API Key，只需请求 ID。
+脱敏、机器可读的上线记录见 [证据](./evidence/o2-otel-production-2026-09-27.json)。**后续更新（2026-09-28）**：[O2 生产验收](./o2-production-acceptance-2026-09-28.md)已复用 O5 授权请求完成 root/attempt/audit/Jaeger span 服务端联查，原“缺授权样本”待办已关闭。此次使用权威存储回溯，未重采原响应头或管理 HTTP 接口。以下保留管理端查询流程：用其 `X-Request-ID` 查询 `/api/log/routing-audit?user_id=<id>&root_request_id=<ID>`，核对 attempt、最终 selection event 中的 `otel_trace_id`，再用该 ID 在 Jaeger 查 span 的 `request.root_id`。无认证探测不能代替该步骤；无需传递 API Key，只需请求 ID。
 
 ## 查询与回滚
 

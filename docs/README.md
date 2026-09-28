@@ -42,7 +42,7 @@ docs/
 
 本轮进展（2026-09-23）：D1 已通过本地/隔离验收并于 12:25–12:28 UTC 上线，迁移 109、channel/Relay/identity 和新增告警均已验证，实现及证据随本次 D1 提交归档。生产启用 `redis` 协调，保持单 Relay/单 channel；无 OAuth 账号，真实轮换及多副本故障切换仍待验收。见[部署证据](./runbooks/evidence/d1-deploy-2026-09-23.json)及[多副本 Runbook](./runbooks/subscription-redis-multi-replica-runbook.md)。D2–D7 和缺外部证据项继续按条件保留。
 
-当前状态（2026-09-23）：[v0.32.0](./releases/release-v0.32.0.md) 交付第二批 O1–O4 和 O5 正确性修复，本地实施与隔离验收完成并已上线；[v0.30 路线图](./design/v0.30-roadmap.md)已归档。[下一阶段计划](./design/next-stage-plan-2026-09-22.md)第一批 R1–R4 已纳入 v0.31.1，第三批 Q1 安全头与取消终态修复已上线；渠道 9 复验确认取消后预留释放、无扣费、审计及指标为 `canceled`，见[脱敏证据](./runbooks/evidence/next-stage-channel9-cancel-2026-09-23.json)。第二批证据合并在计划第 3 节；生产通知送达、OTel 导出及回源/失效延迟测量仍待验收。
+当前状态（2026-09-28）：[下一阶段计划](./design/next-stage-plan-2026-09-22.md)的 R1–R4、O1–O4、O5 正确性及 Q1–Q3 既定实施/隔离验收已完成。今日 [O2 生产验收](./runbooks/o2-production-acceptance-2026-09-28.md)补齐真实规则 firing/resolved 的 SMTP 提交、第五组 QQ 收件箱呈现（收件人确认）与授权请求 root/attempt/audit/Jaeger span 服务端关联。下一项为 O5 代表性流量复采，真实 OAuth/多副本和其他外部边界继续按[阶段 TODO](./design/next-stage-todo-2026-09-26.md)跟踪，D2–D7 条件启动。
 
 ---
 
