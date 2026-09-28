@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.33.2 发布公告](./docs/releases/release-v0.33.2.md)（新用户默认角色修复与线上角色流程验收） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.33.2)
+> 📣 **最新发布**：[v0.33.3 发布公告](./docs/releases/release-v0.33.3.md)（Claude Code auto mode 网关兼容与请求头安全修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.33.3)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.33.3
+
+v0.33.3 是 v0.33.2 之后的 **PATCH Claude Code 网关兼容与安全修复版本**：保留 Anthropic 功能头、未知安全检查字段和 SSE 事件，修复 gzip 响应损坏以及 Cookie、逐跳头泄露。**无公共 API/proto 变更、无数据库迁移或前端更新**；仅需更新 `relay-gateway`。详见 [docs/releases/release-v0.33.3.md](./docs/releases/release-v0.33.3.md)。
 
 ### 升级到 v0.33.2
 

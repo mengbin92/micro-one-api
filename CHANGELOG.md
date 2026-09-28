@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.33.3] - 2026-09-28
+
+v0.33.3 是 v0.33.2 之后的 **PATCH Claude Code 网关兼容与安全修复版本**：透传 auto mode 服务端分类器所需的功能头与安全检查结果，修复压缩响应损坏和网关私有头泄露。无公共 API/proto 变更、数据库迁移或前端更新；仅需升级 `relay-gateway`。详见 [release-v0.33.3.md](docs/releases/release-v0.33.3.md)。
+
+### Fixed
+
+- Anthropic OAuth 与 API-key 转发保留客户端版本头及全部 beta 值，原生请求和响应保留未知安全检查字段与 SSE 事件。
+- 不再转发入站 Cookie、鉴权、逐跳头和客户端压缩偏好；gzip 响应、SSE 和用量解析保持正常。
+
+### Added
+
+- API-key/OAuth、JSON/SSE、gzip、工具 ID、安全检查字段及请求头隔离的回归覆盖。
+
 ## [0.33.2] - 2026-09-27
 
 v0.33.2 是 v0.33.1 之后的 **PATCH 用户角色修复版本**：修复新账号默认保存为访客、与管理员降级后的普通用户角色不一致的问题，完成生产 identity-service 更新与角色流程验收。无公共 API/proto 变更、数据库迁移或前端资源更新；详见 [release-v0.33.2.md](docs/releases/release-v0.33.2.md)。

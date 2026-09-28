@@ -187,15 +187,16 @@ func (a *ClaudeOAuthAdaptor) BuildUpstreamRequest(ctx context.Context, rc *Relay
 	if err != nil {
 		return nil, err
 	}
+	// Preserve feature headers, including unknown betas, for native clients.
+	a.copyForwardHeaders(req.Header, rc.InboundHeader)
+	req.Header.Del("x-api-key")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
-	// anthropic-beta: computed to match a Claude Code session.
-	betaInbound := ""
-	if rc.InboundHeader != nil {
-		betaInbound = rc.InboundHeader.Get("anthropic-beta")
+	if req.Header.Get("anthropic-version") == "" {
+		req.Header.Set("anthropic-version", "2023-06-01")
 	}
-	req.Header.Set("anthropic-beta", identity.ComputeAnthropicBeta(betaInbound))
 	if mimic {
+		req.Header.Set("anthropic-beta", identity.ComputeAnthropicBeta(strings.Join(req.Header.Values("anthropic-beta"), ",")))
 		applyClaudeFingerprintHeaders(req.Header, fp)
 	}
 	return req, nil

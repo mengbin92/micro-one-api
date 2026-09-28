@@ -394,7 +394,7 @@ func (p *OpenAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawResp
 	if err != nil {
 		return nil, fmt.Errorf("failed to create raw request: %w", err)
 	}
-	copyForwardHeaders(httpReq.Header, req.Header)
+	CopyForwardHeaders(httpReq.Header, req.Header)
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 
 	resp, err := p.httpClient.Do(httpReq)
@@ -418,9 +418,23 @@ func (p *OpenAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawResp
 	}, nil
 }
 
-func copyForwardHeaders(dst http.Header, src http.Header) {
+// CopyForwardHeaders preserves end-to-end request headers without forwarding
+// gateway credentials or hop-by-hop fields (including Connection nominations).
+// Let the upstream transport negotiate compression so it also decodes the
+// response before adaptors parse JSON, SSE and usage.
+func CopyForwardHeaders(dst http.Header, src http.Header) {
+	connectionHeaders := make(map[string]bool)
+	for _, value := range src.Values("Connection") {
+		for _, key := range strings.Split(value, ",") {
+			connectionHeaders[strings.ToLower(strings.TrimSpace(key))] = true
+		}
+	}
 	for key, values := range src {
-		if isHopByHopHeader(key) || strings.EqualFold(key, "Authorization") {
+		if isHopByHopHeader(key) || connectionHeaders[strings.ToLower(key)] {
+			continue
+		}
+		switch strings.ToLower(key) {
+		case "authorization", "x-api-key", "cookie", "accept-encoding":
 			continue
 		}
 		for _, value := range values {
@@ -457,7 +471,7 @@ func (p *OpenAIProvider) ForwardStream(ctx context.Context, req *RawRequest) (*R
 	if err != nil {
 		return nil, fmt.Errorf("failed to create raw request: %w", err)
 	}
-	copyForwardHeaders(httpReq.Header, req.Header)
+	CopyForwardHeaders(httpReq.Header, req.Header)
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 
 	resp, err := p.streamClient.Do(httpReq)

@@ -131,7 +131,9 @@ func (a *AnthropicAdaptor) BuildUpstreamRequest(ctx context.Context, rc *RelayCo
 	if key := apiKeyFromContext(rc); key != "" {
 		req.Header.Set("x-api-key", key)
 	}
-	req.Header.Set("anthropic-version", "2023-06-01")
+	if req.Header.Get("anthropic-version") == "" {
+		req.Header.Set("anthropic-version", "2023-06-01")
+	}
 	return req, nil
 }
 
