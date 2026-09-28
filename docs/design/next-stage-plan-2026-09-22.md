@@ -146,6 +146,8 @@ docker run --rm --entrypoint /bin/promtool -v "$PWD/deploy/prometheus/alerts:/ru
 
 O5 的[生产低流量样本](../runbooks/evidence/o5-production-rpc-baseline-2026-09-26.json)、[隔离 Redis 故障复测](../runbooks/evidence/o5-redis-fault-isolated-retest-2026-09-27.json)及[受控 step-5-preview 采样](../runbooks/evidence/o5-step5-production-sampling-2026-09-27.json)已归档；仍须代表性自然业务流量复采才能决定是否启动缓存优化。告警桥接、缓存应急操作及指标用途见[运维手册](../runbooks/routing-observability-runbook.md)。下一步按 TODO 收口 O5 的测量条件，其他外部边界按原退出门槛保留。
 
+2026-09-28 06:37 UTC [只读复采](../runbooks/evidence/o5-production-rpc-observation-2026-09-28.json)已完成：最近 12 小时（09-27 18:37 至 09-28 06:37 UTC，排除已知 step-5-preview 受控采样）GetAuthSnapshot/GetRoutingGroup 各约 859 次 OK、GetRoutingCapabilities 约 404 次 OK，P95 分别 4.95/4.85/0.97ms，平均 QPS 约 0.0199/0.0199/0.0094；未返回非 OK 序列。六个小时无调用，最高小时鉴权/选路各约 285 次（0.079 QPS），尚无持续高负载或显著回源成本证据，维持 V2 权威回源，不启动缓存优化。三类计数器各重置一次，Relay 的 2880 次抓取有一次失败；`increase` 为处理可见重置后的外推值，不能还原抓取间丢失的调用。24 小时窗口仍包含受控采样，12 小时窗口也不能仅凭聚合指标认定为纯自然或代表性流量。后续需标注正常业务/峰值时段、请求分布和样本量，再判断 RPC 延迟或资源成本是否构成实际瓶颈。查询使用 `docker exec prometheus wget` 访问容器内 API；生产 9090 未映射到宿主机，无需修改端口或重启服务。
+
 ## 4. 第三批：前端、验证与性能（Q）
 
 | ID / 优先级 | 范围 | 退出条件 |
