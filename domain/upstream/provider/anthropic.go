@@ -83,21 +83,14 @@ func (p *AnthropicProvider) anthropicForwardEndpoint(path string) string {
 // client headers while stripping any inbound Authorization so the upstream
 // only sees the channel's API key.
 func (p *AnthropicProvider) anthropicSetForwardHeaders(dst, src http.Header) {
-	if src != nil {
-		for key, values := range src {
-			if isHopByHopHeader(key) || strings.EqualFold(key, "Authorization") || strings.EqualFold(key, "x-api-key") || strings.EqualFold(key, "anthropic-version") {
-				continue
-			}
-			for _, value := range values {
-				dst.Add(key, value)
-			}
-		}
-	}
+	CopyForwardHeaders(dst, src)
 	dst.Set("Content-Type", "application/json")
 	if p.apiKey != "" {
 		dst.Set("x-api-key", p.apiKey)
 	}
-	dst.Set("anthropic-version", "2023-06-01")
+	if dst.Get("anthropic-version") == "" {
+		dst.Set("anthropic-version", "2023-06-01")
+	}
 }
 
 // Forward sends a raw request to the Anthropic Messages API and returns the
