@@ -74,7 +74,7 @@ func (p *VoyageAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawRe
 	if err != nil {
 		return nil, fmt.Errorf("failed to create voyageai request: %w", err)
 	}
-	copyForwardHeaders(httpReq.Header, req.Header)
+	CopyForwardHeaders(httpReq.Header, req.Header)
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 

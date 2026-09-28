@@ -202,7 +202,7 @@ func (p *AzureProvider) endpoint(deployment, path, rawQuery string) (string, err
 }
 
 func (p *AzureProvider) setHeaders(dst http.Header, src http.Header) {
-	copyForwardHeaders(dst, src)
+	CopyForwardHeaders(dst, src)
 	dst.Set("Content-Type", "application/json")
 	dst.Set("api-key", p.apiKey)
 	dst.Del("Authorization")
