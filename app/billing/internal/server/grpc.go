@@ -9,6 +9,7 @@ import (
 	billingv1 "micro-one-api/api/billing/v1"
 	"micro-one-api/app/billing/internal/service"
 	apptimeout "micro-one-api/pkg/timeout"
+	"micro-one-api/platform/grpc/xgrpc"
 
 	kgrpc "github.com/go-kratos/kratos/v3/transport/grpc"
 	"google.golang.org/grpc"
@@ -31,7 +32,13 @@ func NewGRPCServer(addr string, svc *service.BillingService) *kgrpc.Server {
 	srv := kgrpc.NewServer(
 		kgrpc.Address(addr),
 		kgrpc.Timeout(apptimeout.GetGRPCTimeout()),
-		kgrpc.UnaryInterceptor(serviceTokenUnaryInterceptor(serviceToken)),
+		// Metrics outermost: server-side handling latency (incl. auth) is the
+		// discriminating signal when client-side dependency latency moves
+		// (O5 attribution: relay-side contention vs downstream slowdown).
+		kgrpc.UnaryInterceptor(
+			xgrpc.MetricsUnaryServerInterceptor("billing-service"),
+			serviceTokenUnaryInterceptor(serviceToken),
+		),
 		kgrpc.StreamInterceptor(serviceTokenStreamInterceptor(serviceToken)),
 	)
 	billingv1.RegisterBillingServiceServer(srv, svc)

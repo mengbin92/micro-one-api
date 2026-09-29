@@ -4,6 +4,8 @@
 > 复测代码：`47e3ca1d`（`test/e2e/routing` O5a 相位 + 驱动脚本）
 > 依据：桌面待办第 3 项 / `docs/design/next-stage-plan-2026-09-22.md` 第 3 节 O5
 > 证据：[复测数据](evidence/o5-redis-fault-isolated-retest-2026-09-27.json)；[旧样本及纠错记录](evidence/o5-redis-fault-isolated-2026-09-26.json)
+> 归因复测：2026-09-29，代码 `09ff4aa0`，证据 [o5-attribution-2026-09-29.json](evidence/o5-attribution-2026-09-29.json)——
+> 该次服务端/进程采样在 review 中发现窗口缺陷；原始数字保留，归因结论已收窄，见下节。
 
 ## 结论先行
 
@@ -53,15 +55,53 @@ Redis 并驱动 chat 流量。2026-09-27 用修复后的抓取时序重跑完整
 未观测到这些方法的非 OK 样本。旧实现的 2 分钟回看可被前一相位的流量
 满足，且健康、故障、恢复窗口发生重叠；旧数字仅留在旧证据文件供追溯。
 
+## 2026-09-29 归因
+
+针对复测遗留的延迟问题，原运行在 O5a 窗口新增服务端处理 P95
+（`xgrpc.MetricsUnaryServerInterceptor`，1ms/2.5ms 桶）、进程 CPU 速率
+与 goroutine 峰值，记录为八相位 PASS。review 发现：只等待 relay 抓取，
+再向前扩 15 秒，不能保证其他服务已抓到突发结束后的样本，还可能混入
+相位内准备流量。原数字只保留为历史记录，不能据此关闭延迟归因。
+
+- **原始观测**：identity 服务端 P95 1.68 → 4.67 → 1.60ms；channel
+  只有故障/恢复 2.49/0.98ms，基线缺失；billing 故障服务端样本缺失，
+  客户端各窗口 0.95ms 不能替代服务端值。恢复值不能填作 channel 基线。
+- **DB 次数纠错**：V2 的 legacy-token 路径中，GetAuthSnapshot 为
+  FindTokenByKey、FindUserByID 各一次查询，加 GetRoutingFacts 事务内
+  user/token/grants 三次查询，共五次 SELECT；GetRoutingGroup 事务内
+  group/channels/accounts/model grants 共四次 SELECT，另有事务开销及
+  可能的 schema 探测。原文把 repo 调用数当查询数，“约 3/1 次”及
+  “延迟与 DB 工作量成正比”的论据均不成立。
+- **进程指标边界**：原窗口的 CPU 均值与采样 goroutine 峰值未显示持续
+  增压，不能排除短暂重试、重连或调度等待；这些窗口也需修正后重采。
+- **已确认的代码事实**：GetAuthSnapshot 同步调用路径没有 Redis 操作，
+  不存在该路径内的 Redis 回退；后台 Redis 工作仍可能争用共享资源。
+
+共享 MySQL / Docker VM 争用目前是**待验证假设**。fixture 未采集 DB
+耗时或宿主资源等待，也未做可分离该因素的对照。修正采样后重跑，结合
+DB/宿主观测，才可确认原因；单机共享拓扑不能外推生产。
+
+本次 review（修正采样代码 `49c9abb9`）已把采样改为等待 relay/identity/channel/billing 各自完成
+突发前后的成功抓取，每个目标按自己的时间边界查询并保存边界；移除
+固定 15 秒扩窗。查询错误、进程样本缺失，以及客户端测到方法但服务端
+无对应样本都会失败。服务端直方图包含所有状态/调用方，客户端 P95
+仅含 relay 的 OK 样本，复测仍需核对非 OK 与其他调用方流量。
+本次完成聚焦回归，未重建镜像或重跑 Compose，不能把旧八相位 PASS
+当成新采样器的完整验收。
+
 ## 剩余边界
 
-1. **identity 侧 Redis 依赖未归因**：复测确认 GetAuthSnapshot P95 在故障
-   窗口上升，但尚未定位 identity 内部的具体回退路径。
-2. **熔断拒绝是指标盲区**：ResilientClient 的熔断拒绝在 conn 层拦截器
-   之上返回，不产生 dependency_grpc_latency 样本；故障期的拒绝延迟不可见。
-3. **生产复采仍待代表性流量**：本次为隔离环境证据，不改变
-   `o5-production-rpc-baseline-2026-09-26.json` 的结论（低流量样本不支持
-   启动缓存优化）；生产 Redis 故障仍不应在受限主机上注入。
+1. **延迟上升仍待归因**：同步 RPC 内 Redis 回退假设已由代码路径排除；
+   共享 DB/VM 影响未证实，服务端窗口修正后的复测待补。
+2. **熔断拒绝计数已修复，延迟仍无样本**：open/half-open 拒绝按
+   `result="rejected"` 独立计数，不再增加 `CircuitBreakerFailures`。
+   本地计数回归通过；它不产生 dependency_grpc_latency 样本，不能视为
+   拒绝延迟盲区已关闭，也没有本次改动已部署生产的证据。
+3. **生产复采仍待代表性流量**：不改变低流量基线不支持启动缓存优化的
+   结论，也不在受限生产主机注入 Redis 故障。若发生自然故障，可事后
+   核对故障区间、请求成功/降级、账务结算、告警与通知送达、恢复后权限
+   和积压清理；证据齐全且符合既有语义才验收，缺项继续保留，发生故障
+   本身不等于通过。
 4. CheckRoutingSettlement / HasRoutingCandidates 在本 fixture 窗口零样本，
    属该负载下的调用模式（wallet 组不经结算检查），非埋点缺失。
 

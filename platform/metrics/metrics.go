@@ -49,7 +49,11 @@ var (
 			Subsystem: "grpc",
 			Name:      "request_duration_seconds",
 			Help:      "gRPC request duration in seconds",
-			Buckets:   []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+			// 1ms/2.5ms lower buckets: the routing dependency RPCs
+			// (GetAuthSnapshot/GetRoutingGroup/...) handle in 1-5ms, so a
+			// 5ms first bucket made every healthy sample land in one bucket
+			// and server-side quantiles useless for O5-style attribution.
+			Buckets: []float64{0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 		},
 		[]string{"service", "method"},
 	)

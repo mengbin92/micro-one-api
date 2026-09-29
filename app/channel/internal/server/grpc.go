@@ -16,7 +16,13 @@ func NewGRPCServer(addr string, svc *service.ChannelService) *kgrpc.Server {
 	srv := kgrpc.NewServer(
 		kgrpc.Address(addr),
 		kgrpc.Timeout(apptimeout.GetGRPCTimeout()),
-		kgrpc.UnaryInterceptor(xgrpc.ServiceTokenUnaryInterceptor(os.Getenv("SERVICE_TOKEN"))),
+		// Metrics outermost: server-side handling latency (incl. auth) is the
+		// discriminating signal when client-side dependency latency moves
+		// (O5 attribution: relay-side contention vs downstream slowdown).
+		kgrpc.UnaryInterceptor(
+			xgrpc.MetricsUnaryServerInterceptor("channel-service"),
+			xgrpc.ServiceTokenUnaryInterceptor(os.Getenv("SERVICE_TOKEN")),
+		),
 		kgrpc.StreamInterceptor(xgrpc.ServiceTokenStreamInterceptor(os.Getenv("SERVICE_TOKEN"))),
 	)
 	channelv1.RegisterChannelServiceServer(srv, svc)

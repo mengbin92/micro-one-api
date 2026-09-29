@@ -72,6 +72,14 @@ type FallbackFunc[T any] func(ctx context.Context, err error) (T, error)
 // only signal was an opaque formatted string).
 var ErrCircuitBreakerOpen = errors.New("circuit breaker open")
 
+// isBreakerRejection reports whether err is the breaker refusing to run the
+// call at all (open state, or half-open above MaxRequests) rather than a real
+// outcome from the wire. Such rejections are a distinct "rejected" outcome,
+// not an upstream failure.
+func isBreakerRejection(err error) bool {
+	return errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests)
+}
+
 // TypedRejectFallback returns a FallbackFunc that rejects the call with the typed
 // ErrCircuitBreakerOpen sentinel, preserving the original breaker error via
 // errors.Join so it is still available for logging while callers match on the
@@ -183,10 +191,16 @@ func (rc *ResilientClient[T]) Execute(
 	})
 
 	if err != nil {
+		// A breaker rejection never reached the downstream: counting it as a
+		// "failure" both hides the rejection volume (O5: open-breaker rejections
+		// produced no dependency-grpc samples and were indistinguishable from
+		// real upstream failures) and inflates failure-based alerting.
 		// platform-L5: distinguish client (non-retryable) errors from real
 		// upstream failures so the "failure" outcome only reflects breaker-
 		// relevant failures.
-		if !isRetryableError(err) {
+		if isBreakerRejection(err) {
+			metrics.CircuitBreakerRequests.WithLabelValues(rc.serviceName, "rejected").Inc()
+		} else if !isRetryableError(err) {
 			metrics.CircuitBreakerRequests.WithLabelValues(rc.serviceName, "client_error").Inc()
 		} else {
 			metrics.CircuitBreakerRequests.WithLabelValues(rc.serviceName, "failure").Inc()
@@ -338,7 +352,11 @@ func UnaryClientInterceptor(serviceName string, breaker *gobreaker.CircuitBreake
 		})
 
 		if err != nil {
-			if isRetryableError(err) {
+			if isBreakerRejection(err) {
+				// Open-breaker rejections never reached the wire; keep them
+				// visible as a distinct outcome instead of inflating failures.
+				metrics.CircuitBreakerRequests.WithLabelValues(serviceName, "rejected").Inc()
+			} else if isRetryableError(err) {
 				metrics.CircuitBreakerFailures.WithLabelValues(serviceName).Inc()
 				metrics.CircuitBreakerRequests.WithLabelValues(serviceName, "failure").Inc()
 			} else {
