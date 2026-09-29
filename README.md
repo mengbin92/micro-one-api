@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.33.4 发布公告](./docs/releases/release-v0.33.4.md)（对账幻影差异修复与支付对账持续失败告警，生产对账差异归零） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.33.4)
+> 📣 **最新发布**：[v0.33.5 发布公告](./docs/releases/release-v0.33.5.md)（熔断拒绝指标、服务端 gRPC 延迟观测与 O5 采样修正） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.33.5)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.33.5
+
+v0.33.5 是 v0.33.4 之后的 **PATCH 观测准确性版本**：熔断拒绝单独计数，identity/channel/billing 记录服务端 gRPC 延迟，O5 隔离采样逐目标对齐并纠正历史归因。**无公共 API/proto、数据库迁移或前端更新**；更新 `relay-gateway`、`identity-service`、`channel-service`、`billing-service`。详见 [docs/releases/release-v0.33.5.md](./docs/releases/release-v0.33.5.md)。
 
 ### 升级到 v0.33.4
 

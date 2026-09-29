@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.33.5] - 2026-09-29
+
+v0.33.5 是 v0.33.4 之后的 **PATCH 观测准确性版本**：熔断拒绝独立计数，identity/channel/billing 补齐服务端 gRPC 延迟指标，O5 隔离采样按各目标抓取窗口修正并撤回证据不足的根因结论。无公共 API/proto、迁移或前端更新；升级 `relay-gateway`、`identity-service`、`channel-service`、`billing-service`。详见 [release-v0.33.5.md](docs/releases/release-v0.33.5.md)。
+
+### Fixed
+
+- Relay 熔断拒绝按 `result="rejected"` 计数，不再抬高上游失败指标；指标测试重复运行不再受全局计数残留影响。
+- O5 隔离测试逐目标等待成功抓取并使用各自前后边界；查询错误和关键样本缺失会明确失败。历史归因收窄为待验证假设。
+
+### Added
+
+- identity/channel/billing 服务端 gRPC 方法处理时间、状态指标及 1ms/2.5ms 延迟桶。
+
 ## [0.33.4] - 2026-09-28
 
 v0.33.4 是 v0.33.3 之后的 **PATCH 对账准确性与支付对账告警版本**：billing 对账不再把已删除渠道的历史账本报为差异，支付对账持续失败 5 分钟触发告警；生产完成 6 项对账差异数据修复，最新对账运行差异为 0。无公共 API/proto 变更、数据库迁移或前端更新；仅需升级 `billing-service`。详见 [release-v0.33.4.md](docs/releases/release-v0.33.4.md)。
