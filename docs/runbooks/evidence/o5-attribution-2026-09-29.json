@@ -1,0 +1,80 @@
+{
+  "id": "o5-attribution-2026-09-29",
+  "date": "2026-09-29",
+  "layer": "isolated-fault-injection",
+  "code_commit": "09ff4aa0",
+  "base_commit": "f86dec27",
+  "command": "python3 scripts/test-routing-e2e.py (second run reused the image via --skip-build after a transient Docker daemon 502 aborted the first run's V2 bring-up; the aborted run's completed phases also passed)",
+  "environment": "private MySQL Compose project with real service binaries, mock upstream, Redis, and Prometheus",
+  "result": "PASS all eight phases; private containers, network, and volumes removed",
+  "purpose": "Attribute the Redis-outage dependency-RPC latency increase left open by o5-redis-fault-isolated-retest-2026-09-27 ('identity-side Redis fallback path not attributed'). Adds server-side handling P95 (newly wired xgrpc.MetricsUnaryServerInterceptor with 1ms/2.5ms buckets), per-instance process CPU rate, and max goroutines to each O5a window. Attribution queries use a look-back widened by one scrape interval because burst windows are bracketed by relay scrapes only.",
+  "windows": {
+    "legacy_baseline": {
+      "client_p95_ms": {"GetAuthSnapshot": null},
+      "client_count_ok": {"GetAuthSnapshot": 0},
+      "server_p95_ms": {},
+      "cpu_rate": {"relay-gateway": 0.0026, "identity-service": 0.0007, "channel-service": null, "billing-service": null},
+      "goroutines_max": {"relay-gateway": 78, "identity-service": 30, "channel-service": 32, "billing-service": 39}
+    },
+    "legacy_outage": {
+      "client_p95_ms": {"GetAuthSnapshot": 4.8},
+      "client_count_ok": {"GetAuthSnapshot": 1.0667},
+      "server_p95_ms": {"identity-service|GetAuthSnapshot": 2.425},
+      "cpu_rate": {"relay-gateway": 0.0063, "identity-service": 0.0003, "channel-service": 0.0007, "billing-service": 0},
+      "goroutines_max": {"relay-gateway": 103, "identity-service": 30, "channel-service": 32, "billing-service": 39}
+    },
+    "legacy_recovered": {
+      "client_p95_ms": {"GetAuthSnapshot": null},
+      "client_count_ok": {"GetAuthSnapshot": 0},
+      "server_p95_ms": {"billing-service|GetRoutingCapabilities": 0.95},
+      "cpu_rate": {"relay-gateway": 0.002, "identity-service": 0.002, "channel-service": 0.0047, "billing-service": 0.004},
+      "goroutines_max": {"relay-gateway": 103, "identity-service": 27, "channel-service": 32, "billing-service": 39}
+    },
+    "v2_baseline": {
+      "client_p95_ms": {"GetAuthSnapshot": 3.4, "GetRoutingGroup": 2.6, "GetRoutingCapabilities": 0.95, "CheckRoutingSettlement": null, "HasRoutingCandidates": null},
+      "client_count_ok": {"GetAuthSnapshot": 25.6, "GetRoutingGroup": 25.6, "GetRoutingCapabilities": 12.8, "CheckRoutingSettlement": 0, "HasRoutingCandidates": 0},
+      "server_p95_ms": {"identity-service|GetAuthSnapshot": 1.6839, "billing-service|GetRoutingCapabilities": 0.95},
+      "cpu_rate": {"relay-gateway": 0.0067, "identity-service": 0.0093, "channel-service": 0.0249, "billing-service": 0.0007},
+      "goroutines_max": {"relay-gateway": 110, "identity-service": 35, "channel-service": 35, "billing-service": 49}
+    },
+    "v2_outage": {
+      "client_p95_ms": {"GetAuthSnapshot": 8.0, "GetRoutingGroup": 4.8, "GetRoutingCapabilities": 0.95, "CheckRoutingSettlement": null, "HasRoutingCandidates": null},
+      "client_count_ok": {"GetAuthSnapshot": 25.6, "GetRoutingGroup": 25.6, "GetRoutingCapabilities": 12.8, "CheckRoutingSettlement": 0, "HasRoutingCandidates": 0},
+      "server_p95_ms": {"identity-service|GetAuthSnapshot": 4.6667, "channel-service|GetRoutingGroup": 2.4906},
+      "cpu_rate": {"relay-gateway": 0.0063, "identity-service": 0.0063, "channel-service": 0.0087, "billing-service": 0.0027},
+      "goroutines_max": {"relay-gateway": 77, "identity-service": 36, "channel-service": 35, "billing-service": 49}
+    },
+    "v2_recovered": {
+      "client_p95_ms": {"GetAuthSnapshot": 4.4, "GetRoutingGroup": 2.6, "GetRoutingCapabilities": 0.95, "CheckRoutingSettlement": null, "HasRoutingCandidates": null},
+      "client_count_ok": {"GetAuthSnapshot": 25.6, "GetRoutingGroup": 25.6, "GetRoutingCapabilities": 12.8, "CheckRoutingSettlement": 0, "HasRoutingCandidates": 0},
+      "server_p95_ms": {"identity-service|GetAuthSnapshot": 1.6, "channel-service|GetRoutingGroup": 0.9771, "billing-service|GetRoutingCapabilities": 0.95},
+      "cpu_rate": {"relay-gateway": 0.0023, "identity-service": 0.0023, "channel-service": 0.0087, "billing-service": 0.004},
+      "goroutines_max": {"relay-gateway": 103, "identity-service": 36, "channel-service": 38, "billing-service": 49}
+    }
+  },
+  "review_correction": {
+    "sampler_commit": "49c9abb9f04d50ad5cac08b84ec413fc3c94ed78",
+    "date": "2026-09-29",
+    "status": "Historical observations only; server/CPU/goroutine windows are not valid for causal attribution. Full Compose acceptance was not rerun during review.",
+    "reason": "Only relay scrapes bracketed the burst. Widening the start by 15s neither waits for a dependency's post-burst scrape nor excludes preceding setup traffic. Missing channel baseline and billing outage samples cannot be replaced by recovered or client-side measurements.",
+    "fix": "The reviewed sampler waits for all four targets and queries each target between its own successful pre/post-burst scrapes. Query failures and missing server samples for measured client methods now fail acceptance.",
+    "code_commit_note": "code_commit identifies the original pre-review run, retained on codex/review-four-backup-20260929; windows above were not regenerated by the corrected sampler."
+  },
+  "attribution": {
+    "observed_latency": "The original run reported identity server P95 1.68 -> 4.67 -> 1.60 ms, channel outage/recovered 2.49/0.98 ms with no baseline, and billing client P95 0.95 ms. These unsynchronized windows are retained for traceability, not a validated server/client comparison.",
+    "db_path_correction": "For the V2 legacy-token path, GetAuthSnapshot performs five SELECTs: token, user, then user/token/grants in GetRoutingFacts. GetRoutingGroup performs four SELECTs: group, channels, accounts, model grants, plus transaction overhead and possible schema probes. Counting repo calls as SQL reads produced the incorrect ~3/~1 claim; no proportionality or DB duration was measured.",
+    "process_pressure": "The recorded averages and sampled goroutine maxima show no sustained process-pressure increase in those windows. They cannot exclude brief retry/reconnect activity, and the windows require correction before comparison.",
+    "identity_has_no_redis_on_path": "Code inspection of GetAuthSnapshot -> ValidateToken/FindTokenByKey -> FindUserByID -> GetRoutingFacts finds MySQL reads and no Redis operation in this synchronous RPC path. Background Redis work can still contend for shared resources.",
+    "conclusion": "The identity-internal Redis fallback hypothesis is unsupported by its call path. Shared MySQL/Docker-VM contention remains a hypothesis, not an established cause. Corrected sampling plus DB/host measurements or a controlled comparison are needed to attribute the latency increase. The production O5 suspension decision is unchanged."
+  },
+  "boundaries": [
+    "Server-side channel baseline and billing outage samples are missing; no complete three-window server comparison exists for either method.",
+    "Legacy healthy/recovered bursts had no measured GetAuthSnapshot RPC (L1 absorbed lookups), unchanged from the 2026-09-27 retest.",
+    "MySQL/Redis containers are not Prometheus targets; database latency and VM contention were not measured directly.",
+    "Server latency includes all statuses and callers; client P95 includes only relay OK calls. Valid comparisons require excluding other traffic and accounting for errors.",
+    "Breaker rejections now have a local counter regression check; rejection latency and production deployment remain unverified.",
+    "A natural production Redis incident can provide acceptance evidence only after availability, fallback, settlement, alert delivery and recovery are checked; an incident alone is not a pass.",
+    "Millisecond-scale numbers come from a shared laptop Docker VM and are not a production latency budget."
+  ],
+  "related_evidence": "o5-redis-fault-isolated-retest-2026-09-27.json (latency attribution remains open)"
+}
