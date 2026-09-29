@@ -3,16 +3,30 @@ package grpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/sony/gobreaker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"micro-one-api/platform/metrics"
 )
+
+func TestIsBreakerRejection(t *testing.T) {
+	assert.True(t, isBreakerRejection(gobreaker.ErrOpenState))
+	assert.True(t, isBreakerRejection(gobreaker.ErrTooManyRequests))
+	assert.True(t, isBreakerRejection(fmt.Errorf("wrapped: %w", gobreaker.ErrOpenState)))
+	assert.False(t, isBreakerRejection(nil))
+	assert.False(t, isBreakerRejection(errors.New("boom")))
+	assert.False(t, isBreakerRejection(status.Error(codes.Unavailable, "down")))
+}
 
 func TestIsRetryableError_Table(t *testing.T) {
 	tests := []struct {
@@ -141,6 +155,78 @@ func TestResilientClient_SuccessRecovers(t *testing.T) {
 		})
 		return err == nil && rc.State() == gobreaker.StateClosed
 	}, 2*time.Second, 5*time.Millisecond)
+}
+
+func TestResilientClient_OpenRejectionsCountedAsRejected(t *testing.T) {
+	// O5: rejections while the breaker is open never reach the wire and
+	// produce no dependency-grpc samples; they must stay visible as the
+	// "rejected" outcome instead of inflating "failure".
+	rc := newTripFastClient("o5-reject-execute", 10*time.Minute, TypedRejectFallback[any]())
+	t.Cleanup(func() {
+		metrics.CircuitBreakerRequests.DeleteLabelValues("o5-reject-execute", "rejected")
+		metrics.CircuitBreakerRequests.DeleteLabelValues("o5-reject-execute", "failure")
+		metrics.CircuitBreakerFailures.DeleteLabelValues("o5-reject-execute")
+	})
+	rejected := metrics.CircuitBreakerRequests.WithLabelValues("o5-reject-execute", "rejected")
+
+	_, err := rc.Execute(context.Background(), func(ctx context.Context, client any) (any, error) {
+		return nil, status.Error(codes.Unavailable, "down")
+	})
+	require.Error(t, err)
+	require.Equal(t, gobreaker.StateOpen, rc.State())
+	assert.Equal(t, float64(0), testutil.ToFloat64(rejected),
+		"the tripping call reached the wire; it is a failure, not a rejection")
+
+	for range 3 {
+		_, err = rc.Execute(context.Background(), func(ctx context.Context, client any) (any, error) {
+			t.Fatal("fn must not be invoked while the breaker is open")
+			return nil, nil
+		})
+		require.ErrorIs(t, err, ErrCircuitBreakerOpen)
+	}
+	assert.Equal(t, float64(3), testutil.ToFloat64(rejected))
+	assert.Equal(t, float64(1), testutil.ToFloat64(
+		metrics.CircuitBreakerRequests.WithLabelValues("o5-reject-execute", "failure")))
+	assert.Equal(t, float64(1), testutil.ToFloat64(
+		metrics.CircuitBreakerFailures.WithLabelValues("o5-reject-execute")),
+		"rejections must not inflate the failure counter")
+}
+
+func TestUnaryClientInterceptor_OpenRejectionsCountedAsRejected(t *testing.T) {
+	t.Cleanup(func() {
+		metrics.CircuitBreakerRequests.DeleteLabelValues("o5-reject-interceptor", "rejected")
+		metrics.CircuitBreakerRequests.DeleteLabelValues("o5-reject-interceptor", "failure")
+		metrics.CircuitBreakerFailures.DeleteLabelValues("o5-reject-interceptor")
+	})
+	breaker := gobreaker.NewCircuitBreaker(gobreaker.Settings{
+		Name:        "o5-reject-interceptor",
+		MaxRequests: 1,
+		Timeout:     10 * time.Minute,
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			return counts.Requests >= 1 && counts.TotalFailures >= 1
+		},
+		IsSuccessful: func(err error) bool { return err == nil || !isRetryableError(err) },
+	})
+	interceptor := UnaryClientInterceptor("o5-reject-interceptor", breaker)
+	invocations := 0
+	invoker := func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+		invocations++
+		return status.Error(codes.Unavailable, "down")
+	}
+
+	require.Error(t, interceptor(context.Background(), "/test/Method", nil, nil, nil, invoker))
+	require.Equal(t, gobreaker.StateOpen, breaker.State())
+	for range 2 {
+		err := interceptor(context.Background(), "/test/Method", nil, nil, nil, invoker)
+		require.ErrorIs(t, err, gobreaker.ErrOpenState)
+	}
+	assert.Equal(t, 1, invocations, "an open breaker must not invoke the RPC")
+	assert.Equal(t, float64(2), testutil.ToFloat64(
+		metrics.CircuitBreakerRequests.WithLabelValues("o5-reject-interceptor", "rejected")))
+	assert.Equal(t, float64(1), testutil.ToFloat64(
+		metrics.CircuitBreakerRequests.WithLabelValues("o5-reject-interceptor", "failure")))
+	assert.Equal(t, float64(1), testutil.ToFloat64(
+		metrics.CircuitBreakerFailures.WithLabelValues("o5-reject-interceptor")))
 }
 
 func TestResilientClient_NoFallback_FormatsOpenError(t *testing.T) {
