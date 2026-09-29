@@ -1,0 +1,45 @@
+{
+  "id": "o5-attribution-retest-2026-09-29",
+  "date_utc": "2026-09-29T08:37:50Z",
+  "layer": "isolated-fault-injection",
+  "code_commit": "172bbff963d030ccc98f54b7442fede3069a7486",
+  "sampler_commit": "49c9abb9f04d50ad5cac08b84ec413fc3c94ed78",
+  "command": "python3 scripts/test-routing-e2e.py",
+  "environment": "private MySQL Compose project with real service binaries, mock upstream, Redis, and Prometheus",
+  "image_id": "sha256:dd7a18fe5da2115d201ba536dfd851838b13684d2e0ffc717f5256e7b77d6eea",
+  "acceptance_log_sha256": "13741167e642c8ab89b44ad0e11ddfd0ee9929b58a6e5131a41f7f3e47289cda",
+  "result": "PASS all eight phases; private containers, network, and volumes removed",
+  "sampling": "Each of relay, identity, channel, and billing had a successful scrape before and after each burst. Each target's own scrape bounds were used for its metrics. A measured client method without a corresponding server sample fails acceptance. Counts below are Prometheus increase() extrapolations, not literal request counts.",
+  "v2_windows": {
+    "healthy": {
+      "client_ok_extrapolated": {"GetAuthSnapshot": 24.0016, "GetRoutingGroup": 24.0016, "GetRoutingCapabilities": 12.0008},
+      "client_p95_ms": {"GetAuthSnapshot": 3.8, "GetRoutingGroup": 2.6, "GetRoutingCapabilities": 0.95},
+      "server_p95_ms": {"GetAuthSnapshot": 2.2, "GetRoutingGroup": 1.9, "GetRoutingCapabilities": 0.95},
+      "process_cpu_seconds_per_second": {"relay": 0.00267, "identity": 0.00333, "channel": 0.00733, "billing": 0.004},
+      "goroutines_max": {"relay": 110, "identity": 36, "channel": 35, "billing": 51}
+    },
+    "redis_down": {
+      "client_ok_extrapolated": {"GetAuthSnapshot": 24.0008, "GetRoutingGroup": 24.0008, "GetRoutingCapabilities": 12.0004},
+      "client_p95_ms": {"GetAuthSnapshot": 8.0, "GetRoutingGroup": 4.8, "GetRoutingCapabilities": 0.95},
+      "server_p95_ms": {"GetAuthSnapshot": 4.7, "GetRoutingGroup": 3.5, "GetRoutingCapabilities": 0.95},
+      "process_cpu_seconds_per_second": {"relay": 0.00633, "identity": 0.00733, "channel": 0.00733, "billing": 0.006},
+      "goroutines_max": {"relay": 77, "identity": 36, "channel": 38, "billing": 51}
+    },
+    "recovered": {
+      "client_ok_extrapolated": {"GetAuthSnapshot": 24.0016, "GetRoutingGroup": 24.0016, "GetRoutingCapabilities": 12.0008},
+      "client_p95_ms": {"GetAuthSnapshot": 3.8, "GetRoutingGroup": 2.6, "GetRoutingCapabilities": 0.95},
+      "server_p95_ms": {"GetAuthSnapshot": 2.2, "GetRoutingGroup": 1.6, "GetRoutingCapabilities": 0.95},
+      "process_cpu_seconds_per_second": {"relay": 0.00333, "identity": 0.004, "channel": 0.00733, "billing": 0.00467},
+      "goroutines_max": {"relay": 102, "identity": 35, "channel": 38, "billing": 51}
+    }
+  },
+  "legacy": "Healthy and recovered bursts had zero GetAuthSnapshot RPCs; the outage had approximately one extrapolated OK RPC (client P95 4.8 ms, server P95 2.43 ms). These windows cannot support a three-way latency comparison.",
+  "observability": "Redis-down outbox delivery/backlog alerts fired; after Redis recovery, pending and oldest age reached zero, alerts cleared, revoked access was denied and regrant settled. Missing billing capability was rejected with a bounded reason metric and alert.",
+  "conclusion": "The synchronized V2 samples show an increase inside identity and channel server handling during the Redis outage, while billing's measured method stayed near 0.95 ms. Identity GetAuthSnapshot has no synchronous Redis call. Shared DB or Docker VM contention is still unproven without DB/host measurements or a controlled comparison; these laptop numbers are not a production latency budget.",
+  "boundaries": [
+    "Server histograms include all statuses and callers; client histograms include only relay OK calls. The measured client count map showed only OK for these methods.",
+    "MySQL and Redis containers are not Prometheus targets, so this run did not measure DB duration or host contention directly.",
+    "Circuit-breaker rejection latency and production deployment of the rejected counter were not checked.",
+    "The production representative-traffic recheck and cache optimization remain deferred."
+  ]
+}

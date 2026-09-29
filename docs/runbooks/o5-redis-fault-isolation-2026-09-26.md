@@ -6,6 +6,7 @@
 > 证据：[复测数据](evidence/o5-redis-fault-isolated-retest-2026-09-27.json)；[旧样本及纠错记录](evidence/o5-redis-fault-isolated-2026-09-26.json)
 > 归因复测：2026-09-29，代码 `09ff4aa0`，证据 [o5-attribution-2026-09-29.json](evidence/o5-attribution-2026-09-29.json)——
 > 该次服务端/进程采样在 review 中发现窗口缺陷；原始数字保留，归因结论已收窄，见下节。
+> 修正窗口后的完整复测：2026-09-29，见 [新证据](evidence/o5-attribution-retest-2026-09-29.json)。
 
 ## 结论先行
 
@@ -89,10 +90,34 @@ DB/宿主观测，才可确认原因；单机共享拓扑不能外推生产。
 本次完成聚焦回归，未重建镜像或重跑 Compose，不能把旧八相位 PASS
 当成新采样器的完整验收。
 
+### 修正窗口后的完整复测（2026-09-29）
+
+使用 `develop@172bbff9` 重新构建隔离镜像并运行
+`python3 scripts/test-routing-e2e.py`。八个阶段均通过，测试项目的容器、
+网络和卷已清理。每轮突发前后均等到 relay、identity、channel、billing
+各自成功抓取，再按目标自己的抓取边界计算；客户端测到的方法均有服务端
+样本。原来缺失的 channel 健康基线和 billing 故障样本已补齐。
+
+| V2 窗口 | GetAuthSnapshot 客户端/服务端 P95 | GetRoutingGroup 客户端/服务端 P95 | GetRoutingCapabilities 客户端/服务端 P95 |
+| --- | --- | --- | --- |
+| 健康 | 3.8 / 2.2 ms | 2.6 / 1.9 ms | 0.95 / 0.95 ms |
+| Redis 故障 | 8.0 / 4.7 ms | 4.8 / 3.5 ms | 0.95 / 0.95 ms |
+| 恢复 | 3.8 / 2.2 ms | 2.6 / 1.6 ms | 0.95 / 0.95 ms |
+
+三轮各有约 24 个 OK 的鉴权和选路 RPC、约 12 个 OK 的额度能力 RPC；
+这是 Prometheus `increase()` 外推值。identity 与 channel 服务端处理时间随
+故障上升并在恢复后回落，billing 对应方法保持约 0.95 ms。进程 CPU 速率
+和 goroutine 最大值见[证据](evidence/o5-attribution-retest-2026-09-29.json)，
+这些样本没有测量 MySQL 查询耗时或 Docker VM 资源等待，不能确认共享
+MySQL/VM 争用是根因。legacy 的健康和恢复窗口均无 GetAuthSnapshot RPC，
+故障窗口约一个外推样本，仍不能做三段延迟比较。生产流量复采暂缓决定不变。
+
 ## 剩余边界
 
-1. **延迟上升仍待归因**：同步 RPC 内 Redis 回退假设已由代码路径排除；
-   共享 DB/VM 影响未证实，服务端窗口修正后的复测待补。
+1. **延迟上升仍待根因归属**：修正窗口后的完整复测确认 identity/channel
+   服务端延迟在隔离 Redis 故障时上升；同步 RPC 内 Redis 回退假设已由
+   代码路径排除。共享 DB/VM 影响仍未证实，需要 DB/宿主观测或可分离
+   因素的对照，不能把本机 P95 当成生产预算。
 2. **熔断拒绝计数已修复，延迟仍无样本**：open/half-open 拒绝按
    `result="rejected"` 独立计数，不再增加 `CircuitBreakerFailures`。
    本地计数回归通过；它不产生 dependency_grpc_latency 样本，不能视为
