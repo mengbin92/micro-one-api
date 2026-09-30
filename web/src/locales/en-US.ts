@@ -6,6 +6,8 @@ import { EN_US_LEGAL_MESSAGES } from '@/locales/en-US.legal';
 export const EN_US_MESSAGES: Record<string, string> = {
   ...GENERATED_MESSAGES,
   ...EN_US_LEGAL_MESSAGES,
+  "重用消息": "Reuse message",
+  "填入输入框，编辑后发送": "Fill the composer, edit and send",
   // Routing groups admin surface (v2 phases D–F): resource members, in-group
   // overrides, settlement policy and per-user multipliers.
   "上游模型": "Upstream model",

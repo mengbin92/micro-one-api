@@ -59,8 +59,9 @@
    `paid+issued+subscription_id=0` 卡死订单，现有机制是
    `ReconciliationDiscrepanciesTotal{stuck_issuance}` 对账上报、不自动修
    复（`reconciliation_stuck_test.go` 已覆盖检测）。自动修复未立项。
-4. 正常支付路径的浏览器 `return_url` 与异步 `notify_url` 边界沿用沙箱
-   证据的结论：同步返回不能代替服务端回执。
+4. 正常支付路径的浏览器 `return_url` 不能代替异步 `notify_url` 回执。
+   2026-09-30 已补独立沙箱回调验签/接收证据，见下节；不能据此证明
+   支付宝已收到 `success` 响应或实际执行了重发。
 
 ## 后续观测与处置（2026-09-28，Q2/F17）
 
@@ -129,7 +130,8 @@ git diff --check
 一分钟；此告警不是任务心跳或积压年龄监控，也不能证明单个订单持续失败。
 启动时失败状态初值为 0，需结合轮次计数判断任务是否执行过；进程重启会重置
 指标，服务停机/抓取中断不由此规则证明恢复。新告警的生产
-firing/resolved、实际平台重发和独立沙箱异步 HTTP 回执仍待相应证据。
+firing/resolved、实际平台重发仍待相应证据；独立沙箱异步 HTTP 接收
+证据已于 2026-09-30 补齐，见下节。
 
 ### 生产上线与只读核对（2026-09-28）
 
@@ -145,3 +147,31 @@ firing/resolved、实际平台重发和独立沙箱异步 HTTP 回执仍待相�
   `partial/error=0`（部署后首轮样本）；Prometheus 查询
   `instance=billing-service:8004` 的失败状态为 0。此为规则接线与正常扫描
   的生产只读证据，未触发真实支付故障，不证明 firing/resolved 通知送达。
+
+## 独立沙箱异步回调验收（2026-09-30）
+
+原有 HTTP 200 同时覆盖 `success`/`fail`，订单终态也可由后台查单推进，
+不足以证明支付宝回调已被接受。本轮在现有 `HandleAlipayNotify` 中，
+仅于验签、商户/金额交叉校验和 `MarkOrderPaid` 成功后写入
+`alipay notify accepted` 日志，字段限定为完整订单号的 SHA-256、订单状态
+及资产状态。无签名、买家身份、完整订单号或原始回调体；不改支付与幂等语义。
+
+`TestHandleAlipayNotifyAcceptanceLogIsVerifiedAndRedacted` 在接线前因
+有效回调没有日志而失败；接线后确认验签失败/金额不符不产生日志，
+有效回调及重复回调均产生日志且发放仅一次，字段只有上述三项。
+`go test ./app/billing/... -count=1`、通知 HTTP 用例 `-race`、分层检查及
+`git diff --check` 通过。重复用例仍为 fake 验签器的隔离证据。
+
+本机经 `scripts/deploy-update.sh billing-service` 交叉构建 linux/amd64
+并于 03:59 UTC 更新，镜像 `sha256:b2120a0a2fdfa2f14e5853e8da1dc6ae4c888c200882d0bccb1055663f1e39c6`；
+旧镜像保留为 `rollback-20260930-115808`。部署后健康正常、restart_count=0，
+支付补偿失败状态为 0。公网无效签名 POST 返回 HTTP 200、正文 `fail`，
+无对应接受日志。见 [取证就绪记录](evidence/f17-notify-readiness-2026-09-30.json)。
+
+用户确认完成一笔 ¥0.01 沙箱付款后，在 04:06:44.149 UTC 收到独立的
+成功接受日志；SHA-256 匹配的订单为 `paid/issued`、CNY 1 分、资产 1000
+内部单位（$0.1000），有供应商交易号，对应充值账本与幂等 claim 各 1 条。
+证据见 [沙箱异步回调记录](evidence/f17-sandbox-notify-2026-09-30.json)。
+这补齐了服务端 HTTP 回调验签/接收证据；不宣称平台收到了应答，不确定
+回调与后台查单谁先推进订单，也没有实际平台重发样本。核对 SQL 使用
+二进制键比较，避免生产表不同 collation 干扰取证；未修改数据库数据。

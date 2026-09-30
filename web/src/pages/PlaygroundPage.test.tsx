@@ -176,4 +176,42 @@ describe('PlaygroundPage', () => {
 
     expect(await screen.findByText(/Assistant 响应超过 4 MiB/)).toBeInTheDocument();
   });
+
+  it('reuses a historical user message as an editable draft without sending automatically', async () => {
+    const user = userEvent.setup();
+    const requests: Array<{ messages: Array<{ role: string; content: string }> }> = [];
+    server.use(
+      http.get('/api/status', () => HttpResponse.json({ success: true, data: { server_address: 'https://relay.test' } })),
+      http.get('https://relay.test/v1/models', () => HttpResponse.json({ data: [{ id: 'demo-model' }] })),
+      http.post('https://relay.test/v1/chat/completions', async ({ request }) => {
+        requests.push(await request.json() as typeof requests[number]);
+        return HttpResponse.json({ choices: [{ message: { content: `answer ${requests.length}` }, finish_reason: 'stop' }] });
+      }),
+    );
+    setPlaygroundCredential('sk-playground-secret');
+    renderWithQuery(<MemoryRouter initialEntries={['/playground']}><PlaygroundPage /></MemoryRouter>);
+
+    await screen.findByText('已验证：sk-p••••cret');
+    await user.click(screen.getByRole('checkbox', { name: '流式输出' }));
+    const input = screen.getByLabelText('输入消息');
+    await user.type(input, 'first question');
+    await user.click(screen.getByRole('button', { name: '发送' }));
+    expect(await screen.findByText('answer 1')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '重用消息' }));
+    expect(input).toHaveValue('first question');
+    expect(input).toHaveFocus();
+    expect(requests).toHaveLength(1);
+    expect(screen.getByText('answer 1')).toBeInTheDocument();
+
+    await user.type(input, ' edited');
+    await user.click(screen.getByRole('button', { name: '发送' }));
+    expect(await screen.findByText('answer 2')).toBeInTheDocument();
+    expect(requests[1].messages).toEqual([
+      { role: 'user', content: 'first question' },
+      { role: 'assistant', content: 'answer 1' },
+      { role: 'user', content: 'first question edited' },
+    ]);
+    expect(screen.getAllByRole('button', { name: '重用消息' })).toHaveLength(2);
+  });
 });

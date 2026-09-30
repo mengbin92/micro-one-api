@@ -1,6 +1,8 @@
 # 项目 TODO
 
-> 最后更新：2026-09-28
+> 最后更新：2026-09-30
+
+> **本轮顺序收口（2026-09-30）**：v0.33.5 四个生产镜像、健康和新增指标接线已核对；支付宝 ¥0.01 沙箱异步回调已独立确认验签/接收，对应订单 `paid/issued`、充值账本与幂等 claim 各 1 条；Playground 历史消息重用已上线（填回输入框，编辑后发送）。Lite Issue 暂无新的具体部署卡点，不新增改造。证据与剩余边界见[阶段 TODO](./design/next-stage-todo-2026-09-26.md)。
 
 > **本轮 D1 已完成本地/隔离验收并上线（2026-09-23 12:25–12:28 UTC）**：迁移 109 已应用于 `oneapi_channel`，channel/Relay/identity 已更新，Relay 启用 `redis` 协调，三条新增告警加载正常；实现及证据随本次 D1 提交归档。生产仍为单 Relay、单 channel，只有静态账号，真实 OAuth 轮换及多副本故障切换待验收。见[计划 D1 记录](./design/next-stage-plan-2026-09-22.md#d1-实施与验收记录2026-09-23)和[部署证据](./runbooks/evidence/d1-deploy-2026-09-23.json)。多 channel 共享 selector、D2–D7 和前三批缺外部证据项继续按条件保留。
 >
