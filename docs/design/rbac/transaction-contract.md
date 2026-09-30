@@ -1,6 +1,6 @@
 # 首批事务与切换契约
 
-> 2026-09-30 · A2 实现输入，尚无 IAM PO/迁移或事务 runner 实现。
+> 2026-09-30 · 首批冻结的事务契约；A2 PO/迁移/事务 runner 已实现，证据见 [A2 存储基础交付](./a2-storage-delivery.md)。真实账号用例接入与会话生命周期仍属 A4。
 
 biz 接口：`app/identity/internal/biz/iam.go` 的 IAMTx/IAMTxRunner。共享 PolicyState、WriteKind、ValidateOrigin 在 `domain/authorization/state.go`。data 从同一个 Data 长期连接实现 runner，现有 Repository 与 IAMRepo 不各建连接池；构造返回 biz 接口。
 
@@ -44,3 +44,9 @@ CheckWrite 只是状态门槛；迁移身份必须来自独立已验证凭证，
 A2 将主设计 6.2 的全部 `iam_*` 表登记为 identity ownership，使用当时下一空闲 migration 序号和 MySQL/PostgreSQL/SQLite 镜像；本批不预占编号、不增加空 DDL。初始化 policy 为 legacy/idle，policy/catalog revision 起始值明确，域键 platform/0/platform；同域组合引用和唯一约束不能仅凭 role_id。
 
 D0 屏障必须覆盖 [账号写入者清单](./account-writers.md) 的 CLI/旧实例/任务/跨服务 DB 通道；软件 CheckWrite 无法约束旧二进制。列级财务隔离或暂停结算方案、停写/排空/旧通道撤销证据、最终所有用户对账和兼容 IAM 回滚版本，均是后续交接门槛。
+
+## A2 实现落点
+
+`iam_tx.go` 的 runner 先锁 policy，`iam_repo.go` 的 CAS/账号适配/审计共享同一事务。只读句柄、跨 Data 句柄和已经结束的句柄均拒绝；仓储检测到变更却未追加成功审计时拒绝提交。SQLite 忙重试最多五次，每次重建事务并重新取得 policy 锁；返回结果与外部副作用只能在最终成功提交后采用。
+
+runner 校验持久化状态的合法组合，**不代替调用方的 WriteKind/迁移身份/权限判定**。A3–A6 用例必须在锁后通过同一 repo.Policy 读取并 CheckWrite，再执行完整治理检查。没有公开 IAM 管理 API 或普通 mode/cutover 修改接口。全部 15 张 IAM 表在 110 迁移由 identity 所有；目录 revision 1 的种子明确列举资源/action，全部操作 draft/unbound；没有回填现存账号角色。

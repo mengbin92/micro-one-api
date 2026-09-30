@@ -28,7 +28,7 @@ func TestConsumeTokenQuotaDBAtomicAndUserScoped(t *testing.T) {
 	if err := db.Create(&model).Error; err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	repo := &Repository{db: db}
+	repo := &Repository{Data: &Data{db: db}}
 
 	if _, err := repo.ConsumeTokenQuota(context.Background(), 8, model.ID, 10); err == nil {
 		t.Fatal("different user was allowed to consume token quota")
@@ -73,7 +73,7 @@ func TestConsumeTokenQuotaWithDedupeChargesReservationOnce(t *testing.T) {
 	if err := db.Create(&model).Error; err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	repo := &Repository{db: db}
+	repo := &Repository{Data: &Data{db: db}}
 	remaining, applied, err := repo.ConsumeTokenQuotaWithDedupe(context.Background(), 7, model.ID, 10, "reservation-1")
 	if err != nil || !applied || remaining != 90 {
 		t.Fatalf("first consume = remaining:%d applied:%v err:%v", remaining, applied, err)

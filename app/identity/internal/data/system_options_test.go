@@ -43,7 +43,7 @@ func TestGetSystemOptionDBFallsBackAcrossSchemas(t *testing.T) {
 	if err := db.Exec("INSERT INTO oneapi_admin.system_options (option_key, option_value) VALUES ('AmountForNewUser', '50000')").Error; err != nil {
 		t.Fatalf("seed option: %v", err)
 	}
-	repo := &Repository{db: db}
+	repo := &Repository{Data: &Data{db: db}}
 
 	got, err := repo.GetSystemOption(context.Background(), "AmountForNewUser")
 	if err != nil {
@@ -60,7 +60,7 @@ func TestGetSystemOptionDBPrefersOwnSchemaTable(t *testing.T) {
 	if err := db.Exec("INSERT INTO system_options (option_key, option_value) VALUES ('AmountForNewUser', '20000')").Error; err != nil {
 		t.Fatalf("seed option: %v", err)
 	}
-	repo := &Repository{db: db}
+	repo := &Repository{Data: &Data{db: db}}
 
 	got, err := repo.GetSystemOption(context.Background(), "AmountForNewUser")
 	if err != nil {
@@ -74,7 +74,7 @@ func TestGetSystemOptionDBPrefersOwnSchemaTable(t *testing.T) {
 func TestGetSystemOptionDBMissingTableEverywhereErrors(t *testing.T) {
 	db := openSystemOptionsTestDB(t, "identity-no-options")
 	t.Setenv("ADMIN_SCHEMA", "missing_admin")
-	repo := &Repository{db: db}
+	repo := &Repository{Data: &Data{db: db}}
 
 	if _, err := repo.GetSystemOption(context.Background(), "AmountForNewUser"); err == nil {
 		t.Fatal("expected error when no system_options table exists")
@@ -84,7 +84,7 @@ func TestGetSystemOptionDBMissingTableEverywhereErrors(t *testing.T) {
 func TestGetSystemOptionDBMissingKeyReturnsEmpty(t *testing.T) {
 	db := openSystemOptionsTestDB(t, "identity-empty-options")
 	createSystemOptionsTable(t, db)
-	repo := &Repository{db: db}
+	repo := &Repository{Data: &Data{db: db}}
 
 	got, err := repo.GetSystemOption(context.Background(), "AmountForNewUser")
 	if err != nil {

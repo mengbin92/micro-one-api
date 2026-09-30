@@ -19,9 +19,15 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// Data owns the long-lived identity clients shared by account and IAM repositories.
+// IAM constructors never open a second pool.
+type Data struct {
+	db    *gorm.DB
+	redis *redis.Client
+}
+
 type Repository struct {
-	db                  *gorm.DB
-	redis               *redis.Client
+	*Data
 	usersByID           map[int64]*biz.User
 	tokensByHash        map[string]*biz.Token
 	oauthIdentities     map[string]*biz.OAuthIdentity
@@ -135,7 +141,7 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 				zap.String("component", "identity.data"), zap.Error(pingErr))
 		}
 	}
-	rep := &Repository{db: db, redis: rdb}
+	rep := NewRepository(&Data{db: db, redis: rdb})
 	// L6: hash any pre-migration plaintext keys into key_hash and truncate the
 	// stored key to a display prefix, erasing plaintext from disk. Runs once;
 	// subsequent boots find zero pending rows.
@@ -148,14 +154,20 @@ func allowMemoryRepository() bool {
 	return allowed
 }
 
-func newMemoryRepository() *Repository {
+func NewRepository(d *Data) *Repository {
+	if d == nil {
+		d = &Data{}
+	}
 	return &Repository{
+		Data:                d,
 		usersByID:           make(map[int64]*biz.User),
 		tokensByHash:        make(map[string]*biz.Token),
 		oauthIdentities:     make(map[string]*biz.OAuthIdentity),
 		nextOAuthIdentityID: 1,
 	}
 }
+
+func newMemoryRepository() *Repository { return NewRepository(&Data{}) }
 
 func NewMemoryRepositoryForTest() *Repository {
 	return newMemoryRepository()

@@ -138,6 +138,8 @@ func TestSQLiteDialect_FreshInstall(t *testing.T) {
 		"091 model health snapshots must retain total latency for exact averages")
 	require.True(t, sqliteColumnExists(t, db, "subscription_accounts", "credential_refresh_pending"),
 		"109 credential refresh pending mirror must have applied")
+	require.True(t, sqliteColumnExists(t, db, "users", "authorization_revision"), "110 IAM user version must have applied")
+	require.Contains(t, tables, "iam_policy_state", "110 IAM policy singleton must have applied")
 }
 
 // TestSQLiteDialect_IncrementalUpgrade simulates a deployed Lite instance
@@ -156,7 +158,7 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 50, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 51, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
 	// Keep seeded legacy prices before 084 regardless of later appended migrations.
 	cut := sort.SearchStrings(files, "084_add_model_pricing_cache_read.sql")
