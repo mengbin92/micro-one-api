@@ -151,6 +151,12 @@ func TestIAMStorageDialects(t *testing.T) {
 			})
 			t.Run("concurrent_policy_cas", func(t *testing.T) {
 				const attempts = 8
+				var base uint64
+				require.NoError(t, runner.ReadIAMSnapshot(ctx, func(ctx context.Context, tx biz.IAMTx) error {
+					policy, err := repo.Policy(ctx, tx)
+					base = policy.PolicyRevision
+					return err
+				}))
 				var wg sync.WaitGroup
 				results := make(chan error, attempts)
 				for i := 0; i < attempts; i++ {
@@ -158,7 +164,7 @@ func TestIAMStorageDialects(t *testing.T) {
 					go func(i int) {
 						defer wg.Done()
 						results <- runner.RunIAMWrite(ctx, func(ctx context.Context, tx biz.IAMTx) error {
-							if err := repo.AdvancePolicy(ctx, tx, 1, false); err != nil {
+							if err := repo.AdvancePolicy(ctx, tx, base, false); err != nil {
 								return err
 							}
 							return repo.AppendAudit(ctx, tx, iamTestEvent(fmt.Sprintf("cas-%d", i)))

@@ -8,6 +8,7 @@ import (
 )
 
 var (
+	ErrIAMConstraintsViolated   = errors.Forbidden(identityv1.AuthorizationErrorReason_AUTHORIZATION_CONSTRAINT_VIOLATION.String(), "authorization constraints violated")
 	ErrIAMDependencyUnavailable = errors.ServiceUnavailable(identityv1.AuthorizationErrorReason_AUTHORIZATION_DEPENDENCY_UNAVAILABLE.String(), "authorization storage unavailable")
 	ErrIAMInvalidRelation       = errors.BadRequest(identityv1.AuthorizationErrorReason_AUTHORIZATION_CONSTRAINT_VIOLATION.String(), "invalid authorization relation")
 	ErrIAMNotFound              = errors.NotFound(identityv1.AuthorizationErrorReason_AUTHORIZATION_BUSINESS_RULE_VIOLATION.String(), "authorization relation not found")

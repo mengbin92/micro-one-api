@@ -297,6 +297,15 @@ func (r *iamRepo) SaveAssignment(ctx context.Context, handle biz.IAMTx, a biz.IA
 	if err := r.AdvanceUser(ctx, handle, a.UserID, revision); err != nil {
 		return biz.IAMAssignment{}, err
 	}
+	// A3 previews cover the whole context; even shared A4/default-assignment
+	// adapters must invalidate that base revision, not only the target user.
+	policy, err := r.Policy(ctx, handle)
+	if err != nil {
+		return biz.IAMAssignment{}, err
+	}
+	if err := r.AdvancePolicy(ctx, handle, policy.PolicyRevision, false); err != nil {
+		return biz.IAMAssignment{}, err
+	}
 	return p.toBiz()
 }
 func validateIAMAudit(e biz.IAMAuditEvent) error {

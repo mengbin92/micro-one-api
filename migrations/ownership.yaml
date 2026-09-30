@@ -38,6 +38,7 @@ services:
     - 098_identity_ordered_token_groups
     - 103_create_identity_token_quota_dedupe
     - 110_create_identity_iam
+    - 111_add_iam_cardinality_limits
 
   channel:
     - 092_create_routing_groups
