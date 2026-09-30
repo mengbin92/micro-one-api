@@ -1,0 +1,280 @@
+{
+  "captured_at_utc": "2026-09-30T22:35:26.464173+00:00",
+  "code_commit": "36759548a929dac1ed3d561df46a171aedcdc3b3",
+  "rollback_tag": "rollback-20261001-063501",
+  "authorization_mode": "legacy",
+  "services": {
+    "config-service": {
+      "image_id": "sha256:02cc50b9b35b6e918740756f64147e2521b3e8de8ce620f685c2d303888c8700",
+      "previous_image_id": "sha256:ad07bd117fea94c552d74681621dbfb1911dcc712ff2ebc5b31b1f27889982c6",
+      "running": true,
+      "restarts": 0,
+      "healthz": 200,
+      "architecture": "amd64",
+      "revision_label": "36759548",
+      "started_at": "2026-09-30T22:35:14.480352521Z"
+    },
+    "log-service": {
+      "image_id": "sha256:0560eaaf4d709644f8e56458d31725423da04badac00334d196c0ae1ac7b1288",
+      "previous_image_id": "sha256:5bbcab8f00c5160834f8eb283d9b52a1e5672e96ab77179605151e7c5cb01f98",
+      "running": true,
+      "restarts": 0,
+      "healthz": 200,
+      "architecture": "amd64",
+      "revision_label": "36759548",
+      "started_at": "2026-09-30T22:35:15.475416404Z"
+    },
+    "identity-service": {
+      "image_id": "sha256:87fd138d242f84a93a50d146ecaa28090f0ea1002fd3b2d4663d782585e62d3c",
+      "previous_image_id": "sha256:69c5b258414694e1533124474bf9e3606a0c3a9fe9e5cba56f641fec3ab9287e",
+      "running": true,
+      "restarts": 0,
+      "healthz": 200,
+      "architecture": "amd64",
+      "revision_label": "36759548",
+      "started_at": "2026-09-30T22:35:16.403545634Z"
+    },
+    "channel-service": {
+      "image_id": "sha256:f80e59ba0c0f14a6da88725801595f9a3a1000df2819910180836d4ac412abf8",
+      "previous_image_id": "sha256:ac3e357e302da7b3ce6fe8f5f5970c17237eaf500ce6a107bf129011cdf2bbf8",
+      "running": true,
+      "restarts": 0,
+      "healthz": 200,
+      "architecture": "amd64",
+      "revision_label": "36759548",
+      "started_at": "2026-09-30T22:35:19.590611631Z"
+    },
+    "billing-service": {
+      "image_id": "sha256:8b03ae067a619da9ff7ac8a59bdc8c72932e8630548f366400edd3392478711c",
+      "previous_image_id": "sha256:b2120a0a2fdfa2f14e5853e8da1dc6ae4c888c200882d0bccb1055663f1e39c6",
+      "running": true,
+      "restarts": 0,
+      "healthz": 200,
+      "architecture": "amd64",
+      "revision_label": "36759548",
+      "started_at": "2026-09-30T22:35:20.487538006Z"
+    },
+    "monitor-worker": {
+      "image_id": "sha256:68af70f7a7332bea89fa376fbb030d0345378c38d94b3cf4c37d89fb30219d52",
+      "previous_image_id": "sha256:8a7977b1a1a0e3ade2339197afcbeecb59c17ba2889d7a8c03ff1d107f715d2c",
+      "running": true,
+      "restarts": 0,
+      "healthz": 200,
+      "architecture": "amd64",
+      "revision_label": "36759548",
+      "started_at": "2026-09-30T22:35:21.595601051Z"
+    },
+    "notify-worker": {
+      "image_id": "sha256:dbb0808d04e3c6cf136b24070ee41d7877285d9d6e1968729dc049e00abb51db",
+      "previous_image_id": "sha256:9734c058c4f37082953f455e0caea37a35ecc25a91144d9af62c8529f878bc04",
+      "running": true,
+      "restarts": 0,
+      "healthz": 200,
+      "architecture": "amd64",
+      "revision_label": "36759548",
+      "started_at": "2026-09-30T22:35:22.520964003Z"
+    },
+    "admin-api": {
+      "image_id": "sha256:e57dbdda45348afa53d6667027233098198c9fe27853c853d0155355025df35d",
+      "previous_image_id": "sha256:5b36c959f0949fa0e6cb098ec7c78ff2e2c6537e293678d2ae7b04ea73ab4461",
+      "running": true,
+      "restarts": 0,
+      "healthz": 200,
+      "architecture": "amd64",
+      "revision_label": "36759548",
+      "started_at": "2026-09-30T22:35:23.475598547Z"
+    },
+    "relay-gateway": {
+      "image_id": "sha256:536b57273de1693886583acd3b13cb1ef21292b599461bee9dafe346e500e4b5",
+      "previous_image_id": "sha256:5c3ac747d00b5f7a0c9f8606f0763ac0b71f87cca6a73e9c4b45084cf168274a",
+      "running": true,
+      "restarts": 0,
+      "healthz": 200,
+      "architecture": "amd64",
+      "revision_label": "36759548",
+      "started_at": "2026-09-30T22:35:26.195158395Z"
+    }
+  },
+  "http_checks": {
+    "admin_health": 200,
+    "relay_health": 200,
+    "status": 200,
+    "admin_unauthenticated": 401,
+    "self_unauthenticated": 401,
+    "relay_models_unauthenticated": 401,
+    "admin_authorized": 200,
+    "identity_rpc_read": 200,
+    "channel_rpc_read": 200
+  },
+  "frontend": {
+    "action": "retained; all 169 files already match develop build",
+    "index_sha256": "a600d628ef6979d85371799820dedac3904b113ca48758b632010c25122d083f",
+    "served_index_matches_disk": true
+  },
+  "migrations": {
+    "captured_at_utc": "2026-09-30T22:35:13.817769+00:00",
+    "applied": [
+      "103_create_identity_token_quota_dedupe",
+      "110_create_identity_iam",
+      "111_add_iam_cardinality_limits"
+    ],
+    "repeat": "nothing to apply",
+    "authorization_mode": "legacy",
+    "cutover_state": "idle",
+    "policy_revision": 1,
+    "role_limits": null,
+    "live_assignments": 0,
+    "enabled_or_bound_permissions": 0,
+    "identity_snapshot": "/opt/micro-one-api/deploy-rbac-a3-36759548/identity-before.sql.gz",
+    "snapshot_bytes": 4521
+  },
+  "baseline": {
+    "captured_at_utc": "2026-09-30T22:26:41.848654+00:00",
+    "services": {
+      "identity-service": {
+        "image_id": "sha256:69c5b258414694e1533124474bf9e3606a0c3a9fe9e5cba56f641fec3ab9287e",
+        "running": true,
+        "restarts": 0,
+        "healthz": 200
+      },
+      "channel-service": {
+        "image_id": "sha256:ac3e357e302da7b3ce6fe8f5f5970c17237eaf500ce6a107bf129011cdf2bbf8",
+        "running": true,
+        "restarts": 0,
+        "healthz": 200
+      },
+      "billing-service": {
+        "image_id": "sha256:b2120a0a2fdfa2f14e5853e8da1dc6ae4c888c200882d0bccb1055663f1e39c6",
+        "running": true,
+        "restarts": 0,
+        "healthz": 200
+      },
+      "config-service": {
+        "image_id": "sha256:ad07bd117fea94c552d74681621dbfb1911dcc712ff2ebc5b31b1f27889982c6",
+        "running": true,
+        "restarts": 0,
+        "healthz": 200
+      },
+      "log-service": {
+        "image_id": "sha256:5bbcab8f00c5160834f8eb283d9b52a1e5672e96ab77179605151e7c5cb01f98",
+        "running": true,
+        "restarts": 0,
+        "healthz": 200
+      },
+      "monitor-worker": {
+        "image_id": "sha256:8a7977b1a1a0e3ade2339197afcbeecb59c17ba2889d7a8c03ff1d107f715d2c",
+        "running": true,
+        "restarts": 0,
+        "healthz": 200
+      },
+      "notify-worker": {
+        "image_id": "sha256:9734c058c4f37082953f455e0caea37a35ecc25a91144d9af62c8529f878bc04",
+        "running": true,
+        "restarts": 0,
+        "healthz": 200
+      },
+      "admin-api": {
+        "image_id": "sha256:5b36c959f0949fa0e6cb098ec7c78ff2e2c6537e293678d2ae7b04ea73ab4461",
+        "running": true,
+        "restarts": 0,
+        "healthz": 200
+      },
+      "relay-gateway": {
+        "image_id": "sha256:5c3ac747d00b5f7a0c9f8606f0763ac0b71f87cca6a73e9c4b45084cf168274a",
+        "running": true,
+        "restarts": 0,
+        "healthz": 200
+      }
+    },
+    "frontend_matches_local_build": true,
+    "frontend_index_sha256": "a600d628ef6979d85371799820dedac3904b113ca48758b632010c25122d083f",
+    "http_baseline": {
+      "status": 200,
+      "admin_unauthenticated": 401,
+      "self_unauthenticated": 401
+    }
+  },
+  "configuration": "server Compose and environment retained",
+  "build": "all linux/amd64 images built locally from Git archive; no build on production host",
+  "final_verification": {
+    "captured_at_utc": "2026-09-30T22:37:07.443782+00:00",
+    "services": {
+      "identity-service": {
+        "running": true,
+        "restarts": 0,
+        "healthz": 200,
+        "fatal_log_lines": 0,
+        "error_level_rows_last_100": 0
+      },
+      "channel-service": {
+        "running": true,
+        "restarts": 0,
+        "healthz": 200,
+        "fatal_log_lines": 0,
+        "error_level_rows_last_100": 0
+      },
+      "billing-service": {
+        "running": true,
+        "restarts": 0,
+        "healthz": 200,
+        "fatal_log_lines": 0,
+        "error_level_rows_last_100": 0
+      },
+      "config-service": {
+        "running": true,
+        "restarts": 0,
+        "healthz": 200,
+        "fatal_log_lines": 0,
+        "error_level_rows_last_100": 0
+      },
+      "log-service": {
+        "running": true,
+        "restarts": 0,
+        "healthz": 200,
+        "fatal_log_lines": 0,
+        "error_level_rows_last_100": 0
+      },
+      "monitor-worker": {
+        "running": true,
+        "restarts": 0,
+        "healthz": 200,
+        "fatal_log_lines": 0,
+        "error_level_rows_last_100": 0
+      },
+      "notify-worker": {
+        "running": true,
+        "restarts": 0,
+        "healthz": 200,
+        "fatal_log_lines": 0,
+        "error_level_rows_last_100": 0
+      },
+      "admin-api": {
+        "running": true,
+        "restarts": 0,
+        "healthz": 200,
+        "fatal_log_lines": 0,
+        "error_level_rows_last_100": 0
+      },
+      "relay-gateway": {
+        "running": true,
+        "restarts": 0,
+        "healthz": 200,
+        "fatal_log_lines": 0,
+        "error_level_rows_last_100": 0
+      }
+    },
+    "authorization_mode": "legacy",
+    "cutover_state": "idle",
+    "live_assignments": 0
+  },
+  "a3_commit": "39883ca7",
+  "operator_authorization": "User explicitly requested all production services updated to develop while retaining legacy authorization.",
+  "local_validation": [
+    "Three-driver actual storage acceptance passed",
+    "Targeted Go race checks passed",
+    "make all and wire-check passed",
+    "Architecture and migration checks passed",
+    "RBAC contract check passed: 583 rows",
+    "make verify passed"
+  ]
+}

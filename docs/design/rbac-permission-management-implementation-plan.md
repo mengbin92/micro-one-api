@@ -3,7 +3,7 @@
 > 日期：2026-09-30
 > 状态：P0、A1、A2 存储基础与 A3 约束子流程已完成；A4–D1 尚未开始。A2/A3 交付及三库证据见第 9.2/9.3 节。
 > 依据：[完整 RBAC 权限管理设计](./rbac-permission-management.md)。本文件细化实现顺序，不改变其授权语义。
-> 规划调查基线：`bf0c7de2`；首批交付复核基线：`951f1686`，工作分支 `codex/rbac-first-delivery`。本批验证记录见第 9 节；未部署或切换生产事实源。
+> 规划调查基线：`bf0c7de2`；首批交付复核基线：`951f1686`，工作分支 `codex/rbac-first-delivery`。本批验证记录见第 9 节；2026-10-01 已更新全部生产服务并保持 legacy，见 [生产更新记录](./rbac/a3-legacy-production-deployment.md)，未切换生产授权事实源。
 
 ## 1. 交付边界与实施选择
 
