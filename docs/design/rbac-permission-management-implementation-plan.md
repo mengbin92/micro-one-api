@@ -1,9 +1,9 @@
 # RBAC 权限管理实施方案
 
 > 日期：2026-09-30
-> 状态：重新规划，尚未开始实现；工作包和验收均为待完成。
+> 状态：开始实现前的第一批交付已完成（P0 清单、A1 模型/目录/语义反例，以及 A2 事务输入契约）；A2 存储实现及 A3–D1 尚未开始。
 > 依据：[完整 RBAC 权限管理设计](./rbac-permission-management.md)。本文件细化实现顺序，不改变其授权语义。
-> 代码基线：`bf0c7de2`；源码调查基于该提交。本文不代表已测试、部署或完成事实源切换。
+> 规划调查基线：`bf0c7de2`；首批交付复核基线：`951f1686`，工作分支 `codex/rbac-first-delivery`。本批验证记录见第 9 节；未部署或切换生产事实源。
 
 ## 1. 交付边界与实施选择
 
@@ -65,8 +65,8 @@ B2/B3/B4 可以在契约稳定后独立推进；C 阶段可并行开发，但不
 
 | 工作包 | 交付内容 | 完成门槛 |
 |---|---|---|
-| P0 | 实际入口、用户写入者、业务操作与调用主体清单；旧权限矩阵 | 所有注册 HTTP/gRPC 均有分类，复合动作、别名、公开/本人/系统路径和 root-only 能力明确 |
-| A1 | 固定 DO/DTO、scope 语义、目录与 context 校验 | allow 覆盖与 deny 命中分离；来源不串联；组织拒绝；可执行语义测试 |
+| P0（首批完成） | 实际入口、用户写入者、业务操作与调用主体清单；旧权限矩阵 | [入口矩阵](./rbac/entry-matrix.csv) 与 [写入者/旧权限](./rbac/account-writers.md)；源码漂移和未知 code 检查通过，执行链接入属于 B 阶段 |
+| A1（首批完成） | 固定 DO/DTO、scope 语义、目录与 context 校验 | allow 覆盖与 deny 命中分离；来源不串联；组织拒绝；可执行语义测试通过，目录全部 unbound |
 | A2 | IAM 表、用户版本、事务接口、三库迁移、持久化审计 | 锁/CAS/审计原子；SQLite 忙重试；失败无部分提交；三库约束和重复迁移通过 |
 | A3 | DAG、SSD/DSD、成员/分配/激活上限、未来区间预检 | 含继承、去重、半开区间和未来窗口；变更导致现存冲突时拒绝并给清单 |
 | A4 | JWT 验证结果、JTI 会话、按域激活、一致快照、统一账号写与救援 CLI 限制 | 新安装 root、注册、邀请、OAuth、后台创建的默认角色原子；旧会话可迁入 platform；并发 bootstrap 只建一个 root |
@@ -93,7 +93,7 @@ P0 必须补齐以下主设计目录与现有 handler 的差异，作为实施�
 | 通知发送 status 不等于用户确认/已读 | CreateNotification/UpdateNotificationStatus 属经核实系统 capability；acknowledge/test 及无实际规则 handler 的 code 保持 draft/unbound，不靠篡改发送状态实现确认 |
 | `iam.audit.export` 已列目录但 API 表只有查询 | 补 `ExportAuthorizationAuditEvents` 与 `GET /api/v1/admin/iam/audit-events:export`；管理范围过滤、敏感信息脱敏与导出权限独立验收 |
 
-这些补齐项在代码实现前仍是规划，只有真实执行点和支持范围完成测试后才 bound；权限目录草稿不能扩大后端能力。
+这些补齐项已进入首批固定 registry，仍全部 unbound；只有真实执行点和支持范围完成测试后才 bound，权限目录草稿不能扩大后端能力。源码复核另补入 model_alias、model_usage、usage_semantic_block 和 selection_event 的精确操作，见第 9 节交付记录。
 
 ## 4. 模型、算法与事务落地
 
@@ -263,9 +263,25 @@ make verify
 
 优先完成 P0 和 A1，再进入 A2；首批可以审查的结果固定为：
 
-- 全部 HTTP/RPC/账号写入矩阵，包含 caller 分类、实际权限组合、字段和数据所有者。
-- Scope/Context/Decision/版本 DTO 与 DO，固定目录 registry、protected 规则、错误 reason 契约。
-- shared-group、多来源边界、deny、继承/未来有效区间的可运行反例；组织未启用拒绝检查。
-- 事务接口、迁移归属标记、锁顺序与 mode/cutover 状态校验契约。
+- [x] 全部 HTTP/RPC/账号写入矩阵，包含 caller 分类、实际权限组合、字段和数据所有者。
+- [x] Scope/Context/Decision/版本 DTO 与 DO，固定目录 registry、protected 规则、错误 reason 契约。
+- [x] shared-group、多来源边界、deny、继承/未来有效区间的可运行反例；组织未启用拒绝检查。
+- [x] 事务接口、迁移归属标记、锁顺序与 mode/cutover 状态校验契约。
 
 首批不开放自定义角色，也不部署生产。A2–C3 完成后才能提交带完整验收证据的 D0/D1 切换执行方案。
+
+### 9.1 首批结果（2026-09-30）
+
+完整交付索引与可复验命令：[首批交付记录](./rbac/first-delivery.md)。本批没有新增运行时授权入口、IAM 数据库表、生产配置或 frontend IAM 功能；现有服务继续 legacy。
+
+| 结果 | 落点与事实 |
+|---|---|
+| P0 注册清单 | `rbac/entry-matrix.csv`：254 个 HTTP 注册、178 个完整 RPC、10 处 gRPC 注册，以及 134 个相关源码摘要。包含 admin cmd 实际 gRPC 构造、直接服务、动态 OAuth 别名、代理与 alternate relay 构造 |
+| 账号写与旧权 | `rbac/account-writers.md`：注册/邀请/OAuth/bootstrap/后台/自助/凭证/role/group/CLI/回填及 billing 财务 SQL；旧 0/1/10/100、ADMIN_TOKEN、SERVICE_TOKEN 的差异与保护边界 |
+| 纯模型/范围/目录 | `domain/authorization`；逐来源有限子句求交、读取任一组、整体写覆盖所有组、mandatory deny 不受激活/allow boundary 缩小、默认拒绝、未来边界失效；registry 均为 unbound，普通元数据不扩展 scope/context，root/core protected |
+| DTO/错误 | `api/common/v1/authorization.proto`；identity/admin error_reason；identity biz typed errors；proto JSON int64/uint64 字符串回归。通过 make 生成，沿用仓库忽略 pb/OpenAPI 生成文件的规则 |
+| 继承/未来反例 | identity biz `IAMSources` 保留独立继承路径，disabled 节点切断、循环/跨域/未知节点拒绝；`IAMMemberLimit` 验证未来重叠、去重、相邻及无限区间。此为 A1 参考算法，不代表 A3 SSD/DSD/全部约束已实现 |
+| 事务与状态 | identity biz `IAMTx/IAMTxRunner`；`rbac/transaction-contract.md` 冻结锁/CAS/审计与跨服务边界；可执行 CheckWrite/ValidateOrigin 校验合法状态及候选 batch 归属，data runner 与三库迁移留到 A2 |
+| 检查 | 首批定向 Go/race、make all、make wire-check、make verify 已通过；verify 包含格式、unit/race、架构、迁移治理、生成类型以及前端 lint/test/build。无 DDL，未执行三库 fresh/repeat/negative 或跨服务 IAM/Playwright/切换演练，不能计入 A2–D 验收 |
+
+后续从 A2 开始：共享 identity Data、PO/三库迁移、policy 锁与快照一致性、原子审计/账号写。矩阵 test_contract 列是后续执行链测试义务，不能据此声称当前所有 HTTP/RPC 已执行 IAM 权限校验。

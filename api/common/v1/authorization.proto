@@ -1,0 +1,73 @@
+syntax = "proto3";
+package api.common.v1;
+option go_package = "micro-one-api/api/common/v1;commonv1";
+import "google/protobuf/timestamp.proto";
+
+// IDs use protobuf int64 JSON strings. Domain keys are server canonical values.
+message AuthorizationContext {
+ string context_type = 1;
+ int64 organization_id = 2;
+ string context_key = 3;
+}
+// Finite union; each clause is a conjunction, empty scope matches nothing.
+message AuthorizationScope { repeated AuthorizationScopeClause clauses = 1; }
+message AuthorizationScopeClause {
+ bool all = 1;
+ bool self = 2;
+ repeated int64 user_ids = 3;
+ repeated int64 resource_ids = 4;
+ repeated int64 routing_group_ids = 5;
+}
+message AuthorizationVersions {
+ uint64 user_revision = 1;
+ uint64 policy_revision = 2;
+ uint64 catalog_revision = 3;
+ uint64 session_revision = 4;
+ uint64 session_context_revision = 5;
+ uint64 organization_revision = 6;
+ uint64 membership_revision = 7;
+ uint64 unit_revision = 8;
+}
+message AuthorizationActor {
+ int64 user_id = 1;
+ string service_id = 2;
+ string session_id = 3;
+ int64 password_epoch = 4;
+ google.protobuf.Timestamp expires_at = 5;
+}
+message AuthorizationObjectFacts {
+ AuthorizationContext context = 1;
+ int64 resource_id = 2;
+ int64 owner_user_id = 3;
+ repeated int64 routing_group_ids = 4;
+}
+message AuthorizationInterval {
+ google.protobuf.Timestamp starts_at = 1;
+ google.protobuf.Timestamp expires_at = 2;
+}
+enum AuthorizationEffect {
+ AUTHORIZATION_EFFECT_UNSPECIFIED = 0;
+ AUTHORIZATION_EFFECT_ALLOW = 1;
+ AUTHORIZATION_EFFECT_DENY = 2;
+}
+message AuthorizationGrantSource {
+ AuthorizationContext context = 1;
+ string operation = 2;
+ AuthorizationEffect effect = 3;
+ int64 assignment_id = 4;
+ int64 role_id = 5;
+ repeated int64 inheritance_path = 6;
+ AuthorizationScope role_scope = 7;
+ AuthorizationScope assignment_boundary = 8;
+ AuthorizationInterval validity = 9;
+ bool active = 10;
+}
+message AuthorizationDecision {
+ bool allowed = 1;
+ string reason = 2;
+ AuthorizationContext context = 3;
+ string operation = 4;
+ AuthorizationVersions versions = 5;
+ google.protobuf.Timestamp valid_until = 6;
+ repeated AuthorizationGrantSource sources = 7;
+}
