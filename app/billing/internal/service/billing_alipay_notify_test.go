@@ -2,13 +2,19 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"micro-one-api/app/billing/internal/biz"
+	applogger "micro-one-api/platform/logging"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 )
@@ -210,5 +216,39 @@ func TestHandleAlipayNotifyAppIDMismatchRespondsFail(t *testing.T) {
 	}
 	if issuer.issued != 0 {
 		t.Fatalf("issued = %d", issuer.issued)
+	}
+}
+
+func TestHandleAlipayNotifyAcceptanceLogIsVerifiedAndRedacted(t *testing.T) {
+	core, entries := observer.New(zap.InfoLevel)
+	applogger.SetLoggerForTest(t, zap.New(core))
+	svc, _, issuer := notifyService(pendingNotifyOrder())
+	verifier := svc.alipayVerifier.(*stubNotifyVerifier)
+	verifier.err = errors.New("bad signature")
+	if rec := postNotify(svc); rec.Body.String() != "fail" || entries.Len() != 0 {
+		t.Fatalf("invalid signature: body=%q logs=%d", rec.Body.String(), entries.Len())
+	}
+	verifier.err = nil
+	verifier.notify.TotalAmount++
+	if rec := postNotify(svc); rec.Body.String() != "fail" || entries.Len() != 0 {
+		t.Fatalf("amount mismatch: body=%q logs=%d", rec.Body.String(), entries.Len())
+	}
+	verifier.notify.TotalAmount--
+	for range 2 {
+		if rec := postNotify(svc); rec.Body.String() != "success" {
+			t.Fatalf("valid notify: body=%q", rec.Body.String())
+		}
+	}
+	if issuer.issued != 1 || entries.Len() != 2 {
+		t.Fatalf("duplicate notify: issued=%d logs=%d", issuer.issued, entries.Len())
+	}
+	for _, entry := range entries.All() {
+		fields := entry.ContextMap()
+		if entry.Message != "alipay notify accepted" || len(fields) != 3 ||
+			fields["order_sha256"] != fmt.Sprintf("%x", sha256.Sum256([]byte("PAY-1"))) ||
+			fields["order_status"] != biz.PaymentOrderStatusPaid ||
+			fields["asset_issue_status"] != biz.PaymentAssetIssueStatusIssued {
+			t.Fatalf("unexpected receipt: message=%q fields=%v", entry.Message, fields)
+		}
 	}
 }
