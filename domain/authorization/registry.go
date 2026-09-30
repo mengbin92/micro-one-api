@@ -12,6 +12,8 @@ const CatalogRevision uint64 = 1
 // adding metadata cannot publish an execution point or extend its scope/context.
 type Operation struct {
 	Code         string
+	Resource     string
+	Action       string
 	Owner        string
 	Scopes       []ScopeKind
 	ContextTypes []string
@@ -124,7 +126,7 @@ var registry = func() map[string]Operation {
 			if strings.HasPrefix(entry.resource, "organization.") && entry.resource != "organization.organization" {
 				contexts = []string{"organization"}
 			}
-			out[code] = Operation{Code: code, Owner: entry.owner, Scopes: slices.Clone(entry.scopes), ContextTypes: contexts, Protected: protected, WholeObject: !read, Binding: "unbound"}
+			out[code] = Operation{Code: code, Resource: entry.resource, Action: action, Owner: entry.owner, Scopes: slices.Clone(entry.scopes), ContextTypes: contexts, Protected: protected, WholeObject: !read, Binding: "unbound"}
 		}
 	}
 	return out

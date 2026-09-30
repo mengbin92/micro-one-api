@@ -17,6 +17,9 @@ type IAMRole struct {
 	ID                   int64
 	Context              authorization.Context
 	Code                 string
+	Name, Description    string
+	Builtin              bool
+	MaxMembers           *int64
 	Status               string
 	Revision             uint64
 	CreationDelegationID int64
@@ -31,6 +34,8 @@ type IAMAssignment struct {
 	Revoked            bool
 	Origin             string // legacy_candidate/default/bootstrap/explicit; no username inference.
 	MigrationBatchID   string
+	Revision           uint64
+	AssignedBy         int64
 }
 
 // IAMTx is data-owned and opaque; biz never imports a driver or storage model.

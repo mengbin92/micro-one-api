@@ -27,7 +27,7 @@ type routingGrantModel struct {
 func (routingGrantModel) TableName() string { return "user_routing_group_grants" }
 
 // NewRoutingBackfillRepository deliberately avoids startup token-hash backfill.
-func NewRoutingBackfillRepository(db *gorm.DB) *Repository { return &Repository{db: db} }
+func NewRoutingBackfillRepository(db *gorm.DB) *Repository { return &Repository{Data: &Data{db: db}} }
 
 func (r *Repository) CheckRoutingSchema(ctx context.Context) error {
 	if r.db == nil {
