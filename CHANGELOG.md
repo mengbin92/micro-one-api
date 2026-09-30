@@ -7,6 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.33.6] - 2026-09-30
+
+v0.33.6 是 v0.33.5 之后的 **PATCH 支付观测与控制台体验版本**：支付宝异步回调增加脱敏成功受理回执，Playground 支持编辑重用历史用户消息，并更新前端间接依赖。无公共 API/proto、迁移或新增配置；更新 `billing-service` 和前端 `web/dist`。详见 [release-v0.33.6.md](docs/releases/release-v0.33.6.md)。
+
+### Added
+
+- 支付宝回调验签、订单核对和成功受理后记录订单哈希及最终状态；无效通知不记录成功回执，日志不含回调敏感字段。
+- Playground 历史用户消息可填回输入框编辑后发送，保留会话历史和当前设置。
+- 生产服务、独立沙箱 HTTP 回调与账本、前端静态资源的脱敏验收记录。
+
+### Changed
+
+- 前端间接依赖更新：`ip-address` 10.7.2、`brace-expansion` 5.0.12、`fast-uri` 3.1.8、`undici` 7.30.0。
+- 阶段清单和 O5/F17 运维文档按已完成验收与剩余证据边界更新。
+
 ## [0.33.5] - 2026-09-29
 
 v0.33.5 是 v0.33.4 之后的 **PATCH 观测准确性版本**：熔断拒绝独立计数，identity/channel/billing 补齐服务端 gRPC 延迟指标，O5 隔离采样按各目标抓取窗口修正并撤回证据不足的根因结论。无公共 API/proto、迁移或前端更新；升级 `relay-gateway`、`identity-service`、`channel-service`、`billing-service`。详见 [release-v0.33.5.md](docs/releases/release-v0.33.5.md)。
