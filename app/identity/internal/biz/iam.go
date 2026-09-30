@@ -123,7 +123,8 @@ func IAMSources(ctx authorization.Context, roles map[int64]IAMRole, assignments 
 }
 
 // IAMMemberLimit is the reference future-window counterexample contract.
-// A3 will compose this with inheritance, SSD/DSD and all affected sessions.
+// A3 IAMCheckConstraints combines inheritance, SSD/DSD, all capacities and
+// affected session windows; this helper remains a narrow reference regression.
 func IAMMemberLimit(now time.Time, assignments []IAMAssignment, maxMembers int) error {
 	if now.IsZero() || maxMembers < 1 {
 		return authorization.ErrInterval

@@ -1,7 +1,7 @@
 # RBAC 权限管理实施方案
 
 > 日期：2026-09-30
-> 状态：P0、A1 与 A2 存储基础已完成；A3–D1 尚未开始。A2 交付及三库证据见第 9.2 节。
+> 状态：P0、A1、A2 存储基础与 A3 约束子流程已完成；A4–D1 尚未开始。A2/A3 交付及三库证据见第 9.2/9.3 节。
 > 依据：[完整 RBAC 权限管理设计](./rbac-permission-management.md)。本文件细化实现顺序，不改变其授权语义。
 > 规划调查基线：`bf0c7de2`；首批交付复核基线：`951f1686`，工作分支 `codex/rbac-first-delivery`。本批验证记录见第 9 节；未部署或切换生产事实源。
 
@@ -68,7 +68,7 @@ B2/B3/B4 可以在契约稳定后独立推进；C 阶段可并行开发，但不
 | P0（首批完成） | 实际入口、用户写入者、业务操作与调用主体清单；旧权限矩阵 | [入口矩阵](./rbac/entry-matrix.csv) 与 [写入者/旧权限](./rbac/account-writers.md)；源码漂移和未知 code 检查通过，执行链接入属于 B 阶段 |
 | A1（首批完成） | 固定 DO/DTO、scope 语义、目录与 context 校验 | allow 覆盖与 deny 命中分离；来源不串联；组织拒绝；可执行语义测试通过，目录全部 unbound |
 | A2（存储基础完成） | IAM 表、用户版本、事务接口、三库迁移、持久化审计 | 锁/CAS/审计原子；SQLite 忙重试；失败无部分提交；三库约束和重复迁移通过 |
-| A3 | DAG、SSD/DSD、成员/分配/激活上限、未来区间预检 | 含继承、去重、半开区间和未来窗口；变更导致现存冲突时拒绝并给清单 |
+| A3（约束子流程完成） | DAG、SSD/DSD、成员/分配/激活上限、未来区间预检 | 含继承、去重、半开区间和未来窗口；变更导致现存冲突时拒绝并给清单 |
 | A4 | JWT 验证结果、JTI 会话、按域激活、一致快照、统一账号写与救援 CLI 限制 | 新安装 root、注册、邀请、OAuth、后台创建的默认角色原子；旧会话可迁入 platform；并发 bootstrap 只建一个 root |
 | A5 | 三类委派、角色治理、预检/模拟、凭证接管保护 | 授权上限、受影响成员、自我扩权、未来 authority、创建来源及撤销 deny 全覆盖 |
 | A6 | 主设计第 7 节 IAM RPC、admin API、本人会话 API | 用户/服务双验证，范围过滤，reason/CAS，401/403/409，完整管理 API 可在隔离环境验证 |
@@ -284,7 +284,7 @@ make verify
 | 事务与状态 | identity biz `IAMTx/IAMTxRunner`；`rbac/transaction-contract.md` 冻结锁/CAS/审计与跨服务边界；可执行 CheckWrite/ValidateOrigin 校验合法状态及候选 batch 归属，data runner 与三库迁移留到 A2 |
 | 检查 | 首批定向 Go/race、make all、make wire-check、make verify 已通过；verify 包含格式、unit/race、架构、迁移治理、生成类型以及前端 lint/test/build。无 DDL，未执行三库 fresh/repeat/negative 或跨服务 IAM/Playwright/切换演练，不能计入 A2–D 验收 |
 
-首批交付后的 A2 存储基础已完成，见第 9.2 节；下一包为 A3。矩阵 test_contract 列是后续执行链测试义务，不能据此声称当前所有 HTTP/RPC 已执行 IAM 权限校验。
+首批交付后的 A2/A3 已完成，见第 9.2/9.3 节；下一包为 A4。矩阵 test_contract 列是后续执行链测试义务，不能据此声称当前所有 HTTP/RPC 已执行 IAM 权限校验。
 
 ### 9.2 A2 存储基础结果（2026-09-30）
 
@@ -297,4 +297,17 @@ make verify
 - [x] 账号/OAuth/routing 与默认分配共用事务的存储适配及回滚/初始化竞争验收；运行时统一账号与真实 bootstrap 接入仍属 A4。
 - [x] 三库实际 fresh/repeat/negative、引用约束、并发 CAS、快照一致性与定向 race；make all/wire-check/架构/migration-check/rbac-contract-check/verify。
 
-下一阶段从 A3 开始：DAG、SSD/DSD、成员/分配/激活上限，以及图/角色/约束变更对未来区间和现存会话的冲突预检。当前没有新增 IAM API、前端入口或生产部署；legacy 授权继续运行。
+A2 后续的 A3 已完成，见第 9.3 节。当前没有新增 IAM API、前端入口或生产部署；legacy 授权继续运行。
+
+### 9.3 A3 图、职责分离与未来基数结果（2026-09-30）
+
+完整计数语义、可信授权边界及可复验命令：[A3 约束交付记录](./rbac/a3-constraints-delivery.md)。工作分支 `codex/rbac-a3-constraints`，基线 `5691af25`。
+
+- [x] 全 DAG 校验、启用闭包、继承/多来源去重，禁用节点仍检查图结构。
+- [x] SSD、单会话 DSD、角色有效成员、用户授权闭包和会话激活闭包上限；111 三库 nullable 正上限迁移。
+- [x] 当前及所有未来半开区间预检，含相邻/无限、延期/恢复、graph/启停/约束改变对现存会话剩余窗口的影响；冲突给出角色/用户/session 与起止清单。
+- [x] 整批最终状态预检、policy/目标 revision CAS、原子写与成功审计、回滚后独立失败审计；共用分配写同时递增 user/policy。
+- [x] 强制 iam/complete 和可信 authorizer，缺失实现即拒绝；当前没有运行时绑定或新增管理入口，身份/委派与管理范围检查由 A4/A5 实现。
+- [x] 纯语义与 fake repo 用例测试、三库实际 fresh/repeat/negative/并发预约/回滚/会话约束、定向 race 与全仓检查。
+
+下一阶段为 A4：JWT 验证结果和真实 JTI、按域会话激活、一致授权快照，以及 bootstrap/注册/邀请/OAuth/后台创建的统一账号与默认角色事务、CLI/救援限制。A3 完成不表示运行入口已执行 IAM，也不构成生产管理开放条件。

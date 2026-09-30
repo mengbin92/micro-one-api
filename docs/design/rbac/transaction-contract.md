@@ -50,3 +50,9 @@ D0 屏障必须覆盖 [账号写入者清单](./account-writers.md) 的 CLI/旧�
 `iam_tx.go` 的 runner 先锁 policy，`iam_repo.go` 的 CAS/账号适配/审计共享同一事务。只读句柄、跨 Data 句柄和已经结束的句柄均拒绝；仓储检测到变更却未追加成功审计时拒绝提交。SQLite 忙重试最多五次，每次重建事务并重新取得 policy 锁；返回结果与外部副作用只能在最终成功提交后采用。
 
 runner 校验持久化状态的合法组合，**不代替调用方的 WriteKind/迁移身份/权限判定**。A3–A6 用例必须在锁后通过同一 repo.Policy 读取并 CheckWrite，再执行完整治理检查。没有公开 IAM 管理 API 或普通 mode/cutover 修改接口。全部 15 张 IAM 表在 110 迁移由 identity 所有；目录 revision 1 的种子明确列举资源/action，全部操作 draft/unbound；没有回填现存账号角色。
+
+## A3 约束子流程
+
+`iam_constraint_usecase.go` 在 policy 锁后检查 iam/complete、base policy revision 和可信 authorizer，再读取/验证全 context 的最终候选关系、所有未来分配边界及现存会话剩余窗口。通过后才写目标 CAS/关系/版本与成功审计；失败回滚后独立审计，不静默收回分配/激活。普通 source snapshot/preview 使用同一只读主库视图。共用 SaveAssignment 自 A3 起也递增 policy revision，不能仅更新 user revision 后让整域 preview 继续有效。
+
+两个平台角色数量上限由 111 迁移存入 policy；按闭包去重，NULL 无限、非正数拒绝。authorizer 当前无运行时实现或 Wire/server 绑定，默认拒绝，不能用客户端 actor/布尔身份替代。A4 默认账号与会话写、A5 委派治理、D0 迁移要在各自受保护用例里复用纯约束评估；不能因存储方法支持写入就绕过这些检查。详见 [A3 约束交付](./a3-constraints-delivery.md)。

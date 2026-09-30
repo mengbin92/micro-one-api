@@ -13,6 +13,7 @@ type iamPolicyModel struct {
 	PolicyRevision, CatalogRevision                 uint64
 	AuthorizationMode, CutoverState, CutoverBatchID string
 	CutoverVerifiedAt                               *int64
+	MaxRolesPerUser, MaxRolesPerSession             *int64
 }
 
 func (iamPolicyModel) TableName() string { return "iam_policy_state" }
