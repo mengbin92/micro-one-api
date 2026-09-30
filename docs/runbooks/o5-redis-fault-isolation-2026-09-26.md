@@ -121,7 +121,8 @@ MySQL/VM 争用是根因。legacy 的健康和恢复窗口均无 GetAuthSnapshot
 2. **熔断拒绝计数已修复，延迟仍无样本**：open/half-open 拒绝按
    `result="rejected"` 独立计数，不再增加 `CircuitBreakerFailures`。
    本地计数回归通过；它不产生 dependency_grpc_latency 样本，不能视为
-   拒绝延迟盲区已关闭，也没有本次改动已部署生产的证据。
+   拒绝延迟盲区已关闭。2026-09-30 已补生产镜像及指标接线核对，见下节；
+   当前无 `rejected` 序列，未人为触发生产熔断，拒绝行为仍以本地回归为证。
 3. **生产复采仍待代表性流量**：不改变低流量基线不支持启动缓存优化的
    结论，也不在受限生产主机注入 Redis 故障。若发生自然故障，可事后
    核对故障区间、请求成功/降级、账务结算、告警与通知送达、恢复后权限
@@ -129,6 +130,27 @@ MySQL/VM 争用是根因。legacy 的健康和恢复窗口均无 GetAuthSnapshot
    本身不等于通过。
 4. CheckRoutingSettlement / HasRoutingCandidates 在本 fixture 窗口零样本，
    属该负载下的调用模式（wallet 组不经结算检查），非埋点缺失。
+
+## v0.33.5 生产部署核对（2026-09-30）
+
+本轮只读核对已运行的 identity、channel、billing、Relay；未构建、重启、
+执行模型请求或注入故障。四个镜像 ID 与本机保留的
+`/tmp/deploy-v0.33.5.log`（2026-09-29 部署）完全一致，容器于
+2026-09-29 02:01–02:05 UTC 启动，均为 linux/amd64、restart_count=0，
+`/healthz` 均返回 `status=ok`。旧镜像的
+`rollback-20260929-095945` 标签仍可解析。
+
+三项依赖方法 GetAuthSnapshot / GetRoutingGroup / GetRoutingCapabilities
+均有服务端延迟样本，1ms/2.5ms 桶存在；独立的
+`micro_one_api_grpc_requests_total{status}` 可查询 OK/非 OK 计数。
+延迟直方图自身不含 status 标签，不能把其 P95 描述为仅 OK 请求。
+Prometheus 的九个业务抓取目标全部 up=1。Relay 的熔断请求计数可查询，
+但没有 `result="rejected"` 样本；不通过生产故障注入补齐它。
+
+脱敏原始结果见 [生产核对证据](evidence/v0.33.5-production-check-2026-09-30.json)。
+镜像没有嵌入 VCS revision，因此版本对应以部署日志、镜像 ID 和已出现的
+新增指标交叉核对，不宣称从二进制读到了 tag。此项关闭生产部署/埋点接线
+证据缺口；延迟根因、拒绝耗时与代表性业务流量验收仍保留。
 
 ## 执行记录
 

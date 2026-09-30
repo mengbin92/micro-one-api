@@ -1,0 +1,53 @@
+{
+  "captured_at_utc": "2026-09-30T04:09:06.695883+00:00",
+  "gateway": "https://openapi-sandbox.dl.alipaydev.com/gateway.do",
+  "notify_url": "https://api.mengbin.top/api/v1/user/payments/alipay/notify",
+  "billing_image_id": "sha256:b2120a0a2fdfa2f14e5853e8da1dc6ae4c888c200882d0bccb1055663f1e39c6",
+  "billing_started_at_utc": "2026-09-30T03:59:36.731493267Z",
+  "restart_count": 0,
+  "health": {
+    "status": "ok"
+  },
+  "rollback_tag": "docker-compose-billing-service:rollback-20260930-115808",
+  "rollback_image_id": "sha256:9ece9acad673a00a1eca9393592945ab17711133ddb5216a99a37c6903180e9a",
+  "public_invalid_signature_probe": {
+    "http_status": 200,
+    "body": "fail"
+  },
+  "accepted_http_notify_receipts": [
+    {
+      "timestamp": "2026-09-30T04:06:44.149Z",
+      "order_sha256": "7a96a7f1d395ec66f016ac190c9f8077a5d9ae25ae1fb337e835e0a8286156f3",
+      "order_status": "paid",
+      "asset_issue_status": "issued"
+    }
+  ],
+  "matching_orders": [
+    {
+      "order_sha256": "7a96a7f1d395ec66f016ac190c9f8077a5d9ae25ae1fb337e835e0a8286156f3",
+      "status": "paid",
+      "asset_issue_status": "issued",
+      "currency": "CNY",
+      "money_cents": "1",
+      "asset_amount": "1000",
+      "provider_trade_number_present": "1",
+      "matching_recharge_ledgers": "1",
+      "matching_dedupe_claims": "1"
+    }
+  ],
+  "result": "PASS: independent sandbox async HTTP notify accepted; matching order paid/issued with one recharge ledger and one dedupe claim",
+  "boundaries": [
+    "Accepted logs prove the HTTP handler verified and accepted a successful payment notify, including idempotent repeats.",
+    "They do not prove Alipay received the success response or that notify preceded background query issuance.",
+    "No signed callback body, complete order number, buyer data, signature or credentials are archived.",
+    "Duplicate platform delivery requires two accepted receipts for the same order; local duplicate tests are separate evidence."
+  ],
+  "payment_completion_reported_by_user": true,
+  "local_validation": [
+    "go test ./app/billing/... -count=1",
+    "go test -race ./app/billing/internal/service -run TestHandleAlipayNotify -count=1",
+    "./scripts/check-architecture.sh",
+    "git diff --check"
+  ],
+  "billing_service_source_sha256": "b432f59489e6dbd576e49e1c4adc210dfa66fa08900f61ef3c25968852e47f9d"
+}

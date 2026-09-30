@@ -1,0 +1,289 @@
+{
+  "captured_at_utc": "2026-09-30T03:49:57.791753+00:00",
+  "environment": "production, read-only",
+  "containers": {
+    "identity-service": {
+      "image_id": "sha256:69c5b258414694e1533124474bf9e3606a0c3a9fe9e5cba56f641fec3ab9287e",
+      "architecture": "amd64",
+      "started_at_utc": "2026-09-29T02:01:17.59247511Z",
+      "restart_count": 0,
+      "health": {
+        "status": "ok"
+      },
+      "rollback_tag": "rollback-20260929-095945",
+      "rollback_image_id": "sha256:9509a817ed55e769fb878623c5010d14c295195fc58f978b8a2235ebe712ab1c",
+      "selected_metric_samples": [
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.identity.v1.IdentityService/GetAuthSnapshot\",service=\"identity-service\",le=\"0.001\"} 0",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.identity.v1.IdentityService/GetAuthSnapshot\",service=\"identity-service\",le=\"0.0025\"} 13001",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.identity.v1.IdentityService/GetAuthSnapshot\",service=\"identity-service\",le=\"0.005\"} 14839",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.identity.v1.IdentityService/GetAuthSnapshot\",service=\"identity-service\",le=\"0.01\"} 14906",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.identity.v1.IdentityService/GetAuthSnapshot\",service=\"identity-service\",le=\"0.025\"} 14909",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.identity.v1.IdentityService/GetAuthSnapshot\",service=\"identity-service\",le=\"0.05\"} 14909",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.identity.v1.IdentityService/GetAuthSnapshot\",service=\"identity-service\",le=\"0.1\"} 14909",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.identity.v1.IdentityService/GetAuthSnapshot\",service=\"identity-service\",le=\"0.25\"} 14909",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.identity.v1.IdentityService/GetAuthSnapshot\",service=\"identity-service\",le=\"0.5\"} 14909",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.identity.v1.IdentityService/GetAuthSnapshot\",service=\"identity-service\",le=\"1\"} 14909",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.identity.v1.IdentityService/GetAuthSnapshot\",service=\"identity-service\",le=\"2.5\"} 14909",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.identity.v1.IdentityService/GetAuthSnapshot\",service=\"identity-service\",le=\"5\"} 14909",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.identity.v1.IdentityService/GetAuthSnapshot\",service=\"identity-service\",le=\"10\"} 14909",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.identity.v1.IdentityService/GetAuthSnapshot\",service=\"identity-service\",le=\"+Inf\"} 14909",
+        "micro_one_api_grpc_request_duration_seconds_sum{method=\"/api.identity.v1.IdentityService/GetAuthSnapshot\",service=\"identity-service\"} 35.76478373399998",
+        "micro_one_api_grpc_request_duration_seconds_count{method=\"/api.identity.v1.IdentityService/GetAuthSnapshot\",service=\"identity-service\"} 14909"
+      ]
+    },
+    "channel-service": {
+      "image_id": "sha256:ac3e357e302da7b3ce6fe8f5f5970c17237eaf500ce6a107bf129011cdf2bbf8",
+      "architecture": "amd64",
+      "started_at_utc": "2026-09-29T02:02:35.893692098Z",
+      "restart_count": 0,
+      "health": {
+        "status": "ok"
+      },
+      "rollback_tag": "rollback-20260929-095945",
+      "rollback_image_id": "sha256:6c3d047c11273e0121adfa6cfc05290d2ddd129f9a3fa72de219428487d17d04",
+      "selected_metric_samples": [
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.channel.v1.ChannelService/GetRoutingGroup\",service=\"channel-service\",le=\"0.001\"} 0",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.channel.v1.ChannelService/GetRoutingGroup\",service=\"channel-service\",le=\"0.0025\"} 24111",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.channel.v1.ChannelService/GetRoutingGroup\",service=\"channel-service\",le=\"0.005\"} 25038",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.channel.v1.ChannelService/GetRoutingGroup\",service=\"channel-service\",le=\"0.01\"} 25109",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.channel.v1.ChannelService/GetRoutingGroup\",service=\"channel-service\",le=\"0.025\"} 25115",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.channel.v1.ChannelService/GetRoutingGroup\",service=\"channel-service\",le=\"0.05\"} 25115",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.channel.v1.ChannelService/GetRoutingGroup\",service=\"channel-service\",le=\"0.1\"} 25115",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.channel.v1.ChannelService/GetRoutingGroup\",service=\"channel-service\",le=\"0.25\"} 25115",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.channel.v1.ChannelService/GetRoutingGroup\",service=\"channel-service\",le=\"0.5\"} 25115",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.channel.v1.ChannelService/GetRoutingGroup\",service=\"channel-service\",le=\"1\"} 25115",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.channel.v1.ChannelService/GetRoutingGroup\",service=\"channel-service\",le=\"2.5\"} 25115",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.channel.v1.ChannelService/GetRoutingGroup\",service=\"channel-service\",le=\"5\"} 25115",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.channel.v1.ChannelService/GetRoutingGroup\",service=\"channel-service\",le=\"10\"} 25115",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.channel.v1.ChannelService/GetRoutingGroup\",service=\"channel-service\",le=\"+Inf\"} 25115",
+        "micro_one_api_grpc_request_duration_seconds_sum{method=\"/api.channel.v1.ChannelService/GetRoutingGroup\",service=\"channel-service\"} 52.46802990200001",
+        "micro_one_api_grpc_request_duration_seconds_count{method=\"/api.channel.v1.ChannelService/GetRoutingGroup\",service=\"channel-service\"} 25115"
+      ]
+    },
+    "billing-service": {
+      "image_id": "sha256:9ece9acad673a00a1eca9393592945ab17711133ddb5216a99a37c6903180e9a",
+      "architecture": "amd64",
+      "started_at_utc": "2026-09-29T02:03:57.268897157Z",
+      "restart_count": 0,
+      "health": {
+        "status": "ok"
+      },
+      "rollback_tag": "rollback-20260929-095945",
+      "rollback_image_id": "sha256:4a79801e0db45c65962b13cb454dab992de3917ef5870fcf101493aa123e7b94",
+      "selected_metric_samples": [
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.billing.v1.BillingService/GetRoutingCapabilities\",service=\"billing-service\",le=\"0.001\"} 10207",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.billing.v1.BillingService/GetRoutingCapabilities\",service=\"billing-service\",le=\"0.0025\"} 10207",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.billing.v1.BillingService/GetRoutingCapabilities\",service=\"billing-service\",le=\"0.005\"} 10207",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.billing.v1.BillingService/GetRoutingCapabilities\",service=\"billing-service\",le=\"0.01\"} 10207",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.billing.v1.BillingService/GetRoutingCapabilities\",service=\"billing-service\",le=\"0.025\"} 10207",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.billing.v1.BillingService/GetRoutingCapabilities\",service=\"billing-service\",le=\"0.05\"} 10207",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.billing.v1.BillingService/GetRoutingCapabilities\",service=\"billing-service\",le=\"0.1\"} 10207",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.billing.v1.BillingService/GetRoutingCapabilities\",service=\"billing-service\",le=\"0.25\"} 10207",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.billing.v1.BillingService/GetRoutingCapabilities\",service=\"billing-service\",le=\"0.5\"} 10207",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.billing.v1.BillingService/GetRoutingCapabilities\",service=\"billing-service\",le=\"1\"} 10207",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.billing.v1.BillingService/GetRoutingCapabilities\",service=\"billing-service\",le=\"2.5\"} 10207",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.billing.v1.BillingService/GetRoutingCapabilities\",service=\"billing-service\",le=\"5\"} 10207",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.billing.v1.BillingService/GetRoutingCapabilities\",service=\"billing-service\",le=\"10\"} 10207",
+        "micro_one_api_grpc_request_duration_seconds_bucket{method=\"/api.billing.v1.BillingService/GetRoutingCapabilities\",service=\"billing-service\",le=\"+Inf\"} 10207",
+        "micro_one_api_grpc_request_duration_seconds_sum{method=\"/api.billing.v1.BillingService/GetRoutingCapabilities\",service=\"billing-service\"} 0.40001302199999933",
+        "micro_one_api_grpc_request_duration_seconds_count{method=\"/api.billing.v1.BillingService/GetRoutingCapabilities\",service=\"billing-service\"} 10207"
+      ]
+    },
+    "relay-gateway": {
+      "image_id": "sha256:5c3ac747d00b5f7a0c9f8606f0763ac0b71f87cca6a73e9c4b45084cf168274a",
+      "architecture": "amd64",
+      "started_at_utc": "2026-09-29T02:05:17.972888313Z",
+      "restart_count": 0,
+      "health": {
+        "status": "ok"
+      },
+      "rollback_tag": "rollback-20260929-095945",
+      "rollback_image_id": "sha256:3beac59a04951788906ad269f630b94f8b9d4f96bcf638af11b4bb0f6ad0c464",
+      "selected_metric_samples": [
+        "micro_one_api_resilience_circuit_breaker_requests_total{result=\"client_error\",service=\"channel\"} 28510",
+        "micro_one_api_resilience_circuit_breaker_requests_total{result=\"client_error\",service=\"identity\"} 1"
+      ]
+    }
+  },
+  "prometheus_up": [
+    {
+      "metric": {
+        "__name__": "up",
+        "instance": "notify-worker:8008",
+        "job": "micro-one-api",
+        "stack": "micro-one-api"
+      },
+      "value": [
+        1790740198.634,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "instance": "identity-service:8001",
+        "job": "micro-one-api",
+        "stack": "micro-one-api"
+      },
+      "value": [
+        1790740198.634,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "instance": "config-service:8005",
+        "job": "micro-one-api",
+        "stack": "micro-one-api"
+      },
+      "value": [
+        1790740198.634,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "instance": "log-service:8006",
+        "job": "micro-one-api",
+        "stack": "micro-one-api"
+      },
+      "value": [
+        1790740198.634,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "instance": "relay-gateway:8080",
+        "job": "micro-one-api",
+        "stack": "micro-one-api"
+      },
+      "value": [
+        1790740198.634,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "instance": "admin-api:8000",
+        "job": "micro-one-api",
+        "stack": "micro-one-api"
+      },
+      "value": [
+        1790740198.634,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "instance": "channel-service:8002",
+        "job": "micro-one-api",
+        "stack": "micro-one-api"
+      },
+      "value": [
+        1790740198.634,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "instance": "billing-service:8004",
+        "job": "micro-one-api",
+        "stack": "micro-one-api"
+      },
+      "value": [
+        1790740198.634,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "instance": "monitor-worker:8007",
+        "job": "micro-one-api",
+        "stack": "micro-one-api"
+      },
+      "value": [
+        1790740198.634,
+        "1"
+      ]
+    }
+  ],
+  "grpc_status_counts": [
+    {
+      "metric": {
+        "__name__": "micro_one_api_grpc_requests_total",
+        "instance": "channel-service:8002",
+        "job": "micro-one-api",
+        "method": "/api.channel.v1.ChannelService/GetRoutingGroup",
+        "service": "channel-service",
+        "stack": "micro-one-api",
+        "status": "OK"
+      },
+      "value": [
+        1790740198.692,
+        "25115"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "micro_one_api_grpc_requests_total",
+        "instance": "billing-service:8004",
+        "job": "micro-one-api",
+        "method": "/api.billing.v1.BillingService/GetRoutingCapabilities",
+        "service": "billing-service",
+        "stack": "micro-one-api",
+        "status": "OK"
+      },
+      "value": [
+        1790740198.692,
+        "10207"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "micro_one_api_grpc_requests_total",
+        "instance": "identity-service:8001",
+        "job": "micro-one-api",
+        "method": "/api.identity.v1.IdentityService/GetAuthSnapshot",
+        "service": "identity-service",
+        "stack": "micro-one-api",
+        "status": "OK"
+      },
+      "value": [
+        1790740198.692,
+        "14908"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "micro_one_api_grpc_requests_total",
+        "instance": "identity-service:8001",
+        "job": "micro-one-api",
+        "method": "/api.identity.v1.IdentityService/GetAuthSnapshot",
+        "service": "identity-service",
+        "stack": "micro-one-api",
+        "status": "Unauthenticated"
+      },
+      "value": [
+        1790740198.692,
+        "1"
+      ]
+    }
+  ],
+  "breaker_rejected": [],
+  "boundaries": [
+    "Image IDs match the local v0.33.5 deployment log dated 2026-09-29; no VCS revision is embedded in these images.",
+    "Latency histograms combine all statuses; status counts are a separate metric.",
+    "No rejected series is not evidence of missing code: no production fault or breaker rejection was injected.",
+    "No model requests, payment, deployment or Redis fault injection performed during this check.",
+    "O5 latency attribution and representative-traffic acceptance remain deferred."
+  ],
+  "result": "PASS: deployed images, health, rollback images, server-side metrics and scrape wiring verified"
+}

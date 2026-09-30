@@ -132,6 +132,7 @@ export function PlaygroundPage() {
   const modelRequest = useRef<{ controller: AbortController } | null>(null);
   const activeRequest = useRef<{ id: string; controller: AbortController } | null>(null);
   const requestSequence = useRef(0);
+  const draftInput = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -474,7 +475,14 @@ export function PlaygroundPage() {
                         : 'mr-8 border border-border bg-card text-foreground shadow-sm',
                     )}
                   >
-                    <div className="mb-1 text-xs font-medium opacity-70">{roleLabel}{message.status === 'stopped' ? ` · ${t('已停止')}` : ''}</div>
+                    <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+                      <span className="font-medium opacity-70">{roleLabel}{message.status === 'stopped' ? ` · ${t('已停止')}` : ''}</span>
+                      {message.role === 'user' ? (
+                        <button type="button" disabled={!verifiedKey || Boolean(activeRequest.current)} onClick={() => { setDraft(message.content); draftInput.current?.focus(); }} title={t("填入输入框，编辑后发送")} className="underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50">
+                          {t("重用消息")}
+                        </button>
+                      ) : null}
+                    </div>
                     <div className="whitespace-pre-wrap break-words leading-6">{message.content || (message.status === 'streaming' ? '…' : '')}</div>
                     {message.requestId ? (
                       <button type="button" onClick={() => setSelectedInspectorId(message.requestId === inspector.clientRequestId ? null : message.requestId!)} className="mt-2 break-all text-left font-mono text-xs underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" aria-label={t("查看请求 {id}", { id: message.requestId })}>
@@ -492,7 +500,7 @@ export function PlaygroundPage() {
                 <textarea id="playground-system" value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} disabled={Boolean(activeRequest.current)} rows={2} placeholder={t("定义助手行为…")} className="w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50" />
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
-                <textarea aria-label={t("输入消息")} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); void sendMessage(); } }} disabled={!verifiedKey || Boolean(activeRequest.current)} rows={3} placeholder={verifiedKey ? t("输入消息…") : t("先验证 API Key")} className="min-h-20 flex-1 resize-y rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50" />
+                <textarea ref={draftInput} aria-label={t("输入消息")} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); void sendMessage(); } }} disabled={!verifiedKey || Boolean(activeRequest.current)} rows={3} placeholder={verifiedKey ? t("输入消息…") : t("先验证 API Key")} className="min-h-20 flex-1 resize-y rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50" />
                 {activeRequest.current ? <Button type="button" variant="destructive" className="sm:w-28" onClick={stopGeneration}><Square className="size-4" />{t("停止")}</Button> : <Button type="button" className="sm:w-28" onClick={() => void sendMessage()} disabled={!canSend}><Send className="size-4" />{t("发送")}</Button>}
               </div>
             </div>

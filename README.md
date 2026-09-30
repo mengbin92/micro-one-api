@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.33.5 发布公告](./docs/releases/release-v0.33.5.md)（熔断拒绝指标、服务端 gRPC 延迟观测与 O5 采样修正） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.33.5)
+> 📣 **最新发布**：[v0.33.6 发布公告](./docs/releases/release-v0.33.6.md)（支付宝脱敏回调回执、Playground 消息重用与依赖更新） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.33.6)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.33.6
+
+v0.33.6 是 v0.33.5 之后的 **PATCH 支付观测与控制台体验版本**：支付宝异步回调增加脱敏成功受理回执，Playground 支持编辑重用历史用户消息，并更新前端间接依赖。**无公共 API/proto、数据库迁移或新增配置**；更新 `billing-service` 和前端 `web/dist`，本次生产已完成更新。详见 [docs/releases/release-v0.33.6.md](./docs/releases/release-v0.33.6.md)。
 
 ### 升级到 v0.33.5
 

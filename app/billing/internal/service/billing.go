@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"micro-one-api/domain/requesttrace"
@@ -1090,10 +1091,15 @@ func (s *BillingService) HandleAlipayNotify(w http.ResponseWriter, r *http.Reque
 		writeNotifyResponse(w, false)
 		return
 	}
-	if _, err := s.paymentUc.MarkOrderPaid(r.Context(), notify.TradeNo, notify.ProviderTradeNo); err != nil {
+	order, err := s.paymentUc.MarkOrderPaid(r.Context(), notify.TradeNo, notify.ProviderTradeNo)
+	if err != nil {
 		writeNotifyResponse(w, false)
 		return
 	}
+	applogger.Log.Info("alipay notify accepted",
+		zap.String("order_sha256", fmt.Sprintf("%x", sha256.Sum256([]byte(notify.TradeNo)))),
+		zap.String("order_status", order.Status),
+		zap.String("asset_issue_status", order.AssetIssueStatus))
 	writeNotifyResponse(w, true)
 }
 
