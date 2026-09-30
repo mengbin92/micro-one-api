@@ -1,0 +1,29 @@
+{
+  "captured_at_utc": "2026-09-30T04:18:14.724285+00:00",
+  "result": "PASS: production HTML and Playground asset match the locally tested build",
+  "checks": [
+    {
+      "url": "https://console.mengbin.top/playground",
+      "http_status": 200,
+      "sha256": "a600d628ef6979d85371799820dedac3904b113ca48758b632010c25122d083f",
+      "matches_local_build": true,
+      "content_security_policy": "default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.mengbin.top; frame-ancestors 'none';"
+    },
+    {
+      "url": "https://console.mengbin.top/assets/PlaygroundPage-7Kcd2na4.js",
+      "http_status": 200,
+      "sha256": "dea70834e789fbe08d52ae66dbe87081c8ce09ec1b0e6eb5503ac6fa8d904d01",
+      "matches_local_build": true
+    }
+  ],
+  "frontend_backup": "/opt/web/dist.bak.20260930-121611",
+  "behavior": "Reuse copies a historical user message into the focused composer; edit and send with current settings and conversation. No automatic request or history deletion.",
+  "local_validation": [
+    "12 Playground, Relay client and credential tests passed",
+    "ESLint for the three changed frontend source files passed",
+    "TypeScript, Vite build and six build-budget checks passed"
+  ],
+  "boundaries": [
+    "No authenticated production browser or model call was exercised; interaction was verified by local DOM tests."
+  ]
+}

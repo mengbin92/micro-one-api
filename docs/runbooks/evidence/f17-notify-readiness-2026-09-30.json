@@ -1,0 +1,26 @@
+{
+  "captured_at_utc": "2026-09-30T04:03:51.172386+00:00",
+  "gateway": "https://openapi-sandbox.dl.alipaydev.com/gateway.do",
+  "notify_url": "https://api.mengbin.top/api/v1/user/payments/alipay/notify",
+  "billing_image_id": "sha256:b2120a0a2fdfa2f14e5853e8da1dc6ae4c888c200882d0bccb1055663f1e39c6",
+  "billing_started_at_utc": "2026-09-30T03:59:36.731493267Z",
+  "restart_count": 0,
+  "health": {
+    "status": "ok"
+  },
+  "rollback_tag": "docker-compose-billing-service:rollback-20260930-115808",
+  "rollback_image_id": "sha256:9ece9acad673a00a1eca9393592945ab17711133ddb5216a99a37c6903180e9a",
+  "public_invalid_signature_probe": {
+    "http_status": 200,
+    "body": "fail"
+  },
+  "accepted_http_notify_receipts": [],
+  "matching_orders": [],
+  "result": "PENDING: no accepted sandbox callback yet",
+  "boundaries": [
+    "Accepted logs prove the HTTP handler verified and accepted a successful payment notify, including idempotent repeats.",
+    "They do not prove Alipay received the success response or that notify preceded background query issuance.",
+    "No signed callback body, complete order number, buyer data, signature or credentials are archived.",
+    "Duplicate platform delivery requires two accepted receipts for the same order; local duplicate tests are separate evidence."
+  ]
+}
