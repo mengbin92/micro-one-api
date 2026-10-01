@@ -320,9 +320,9 @@ func (s *IdentityService) SetUserRole(ctx context.Context, req *identityv1.SetUs
 	}
 	// operator == nil is only reachable here when the caller is
 	// service-authenticated, the ADMIN_TOKEN was independently validated, and
-	// OperatorUserId == 0. This represents a legitimate system-level
-	// call; SetRole applies its root-protection checks but skips the
-	// operator-vs-target rank comparison.
+	// OperatorUserId == 0. The persistent A4 runtime rejects this legacy
+	// system-level role mutation; credential rescue has a dedicated usecase.
+	// Explicit memory development mode keeps its compatibility behavior.
 	user, err := s.uc.SetRole(ctx, operator, req.UserId, req.Role)
 	if err != nil {
 		applogger.Log.Warn("SetUserRole failed", zap.Error(err))

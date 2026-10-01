@@ -25,12 +25,22 @@ import (
 var ProviderSet = wire.NewSet(
 	newRepo,
 	newAuditAuditor,
-	biz.NewIdentityUsecase,
+	newIdentityUsecase,
 	service.NewIdentityService,
 	server.NewGRPCServer,
 	provideRegistrar,
 	wire.Bind(new(biz.IdentityRepo), new(*data.Repository)),
 )
+
+// newIdentityUsecase connects the persistent runtime before any bootstrap or
+// transport starts. Memory mode is an explicit development-only legacy path.
+func newIdentityUsecase(repo *data.Repository, auditor *audit.Auditor) *biz.IdentityUsecase {
+	uc := biz.NewIdentityUsecase(repo, auditor)
+	if repo.HasPersistentStorage() {
+		uc.SetIAMRuntime(data.NewIAMRuntimeRepo(repo.Data), data.NewIAMTxRunner(repo.Data))
+	}
+	return uc
+}
 
 // newAuditAuditor provides the audit sink for identity-service login/logout
 // events. Unconditionally enabled; events go to the structured application log.

@@ -1,6 +1,6 @@
 # P0 账号写入者与旧权限矩阵
 
-> 2026-09-30 · 首批源码契约。表中“目标要求”是后续 A2/B1/D0 的执行义务，当前账号写路径仍是 legacy，尚未接入新状态门槛。
+> 2026-09-30 · 首批源码契约。下表保留 P0 调查时的源码基线；“目标要求”是 A2/B1/D0 的执行义务。A4 已接入真实账号事务、默认分配与 mode/cutover 门槛，当前进展见本文末节及 [A4 交付记录](./a4-sessions-accounts-delivery.md)。
 
 ## 账号创建与身份写
 
@@ -50,3 +50,12 @@
 | 未知 users.role | 可能落入旧 >= 比较，不能推测其含义 | 候选与最终 rebuild 阻断，人工核对；不静默转 member/admin |
 
 各 HTTP/RPC 具体复合动作、数据所有者、当前 guard、字段附加操作及后续测试义务见 [entry-matrix.csv](./entry-matrix.csv)。矩阵的 test_contract 列是验收义务，不是这些入口已通过 IAM 测试的声明。
+
+
+## A4 写入者进展（2026-10-01）
+
+- 真实 cmd Wire/bootstrap、注册/邀请码/OAuth/后台 legacy 创建通过 `createIAMAccount` 在 policy 锁内写账号/default 或 bootstrap 分配、OAuth 绑定、路由默认 grant、版本和成功审计；旧创建 helper 的公开持久化写入口拒绝。
+- UpdateSelf/邮箱/凭证/资料/旧 role/邀请码/注销使用 `mutateLegacyAccount` 的明确字段写；旧 `updateUserDB` 整行更新已移除。状态和密码 epoch 变化原子撤销已持久化会话；SetRole 锁后重读用户操作者，静态系统主体的持久化角色修改拒绝。
+- group/routing-access 写通过 IAMTx 适配加入 routing revision/grant/outbox 与 user/policy 版本、成功审计；远端 group 事实在回调外核实。
+- admin-reset/routing-backfill 与服务共用 policy 锁并校验 legacy/idle；IAM/非 idle 旧写拒绝。独立 root 凭证救援用例已实现，A6 再绑定受保护传输，不能用救援修改数值 role。
+- 新代码状态屏障不替代旧实例/任务/脚本/DB 通道隔离；billing 财务列和 D0 停写/排空/最终全量对账义务保留。普通 IAM 账号管理操作者/委派/资源范围由 A5/B1 完成，生产仍 legacy。

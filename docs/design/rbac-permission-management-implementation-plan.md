@@ -1,7 +1,7 @@
 # RBAC 权限管理实施方案
 
 > 日期：2026-09-30
-> 状态：P0、A1、A2 存储基础与 A3 约束子流程已完成；A4–D1 尚未开始。A2/A3 交付及三库证据见第 9.2/9.3 节。
+> 状态：P0、A1、A2 存储基础、A3 约束子流程与 A4 会话/账号原子写已完成；A5–D1 尚未开始。A2/A3/A4 交付及三库证据见第 9.2/9.3/9.4 节。
 > 依据：[完整 RBAC 权限管理设计](./rbac-permission-management.md)。本文件细化实现顺序，不改变其授权语义。
 > 规划调查基线：`bf0c7de2`；首批交付复核基线：`951f1686`，工作分支 `codex/rbac-first-delivery`。本批验证记录见第 9 节；2026-10-01 已更新全部生产服务并保持 legacy，见 [生产更新记录](./rbac/a3-legacy-production-deployment.md)，未切换生产授权事实源。
 
@@ -69,7 +69,7 @@ B2/B3/B4 可以在契约稳定后独立推进；C 阶段可并行开发，但不
 | A1（首批完成） | 固定 DO/DTO、scope 语义、目录与 context 校验 | allow 覆盖与 deny 命中分离；来源不串联；组织拒绝；可执行语义测试通过，目录全部 unbound |
 | A2（存储基础完成） | IAM 表、用户版本、事务接口、三库迁移、持久化审计 | 锁/CAS/审计原子；SQLite 忙重试；失败无部分提交；三库约束和重复迁移通过 |
 | A3（约束子流程完成） | DAG、SSD/DSD、成员/分配/激活上限、未来区间预检 | 含继承、去重、半开区间和未来窗口；变更导致现存冲突时拒绝并给清单 |
-| A4 | JWT 验证结果、JTI 会话、按域激活、一致快照、统一账号写与救援 CLI 限制 | 新安装 root、注册、邀请、OAuth、后台创建的默认角色原子；旧会话可迁入 platform；并发 bootstrap 只建一个 root |
+| A4（会话/账号原子写完成） | JWT 验证结果、JTI 会话、按域激活、一致快照、统一账号写与救援 CLI 限制 | 新安装 root、注册、邀请、OAuth、后台创建的默认角色原子；旧会话可迁入 platform；并发 bootstrap 只建一个 root |
 | A5 | 三类委派、角色治理、预检/模拟、凭证接管保护 | 授权上限、受影响成员、自我扩权、未来 authority、创建来源及撤销 deny 全覆盖 |
 | A6 | 主设计第 7 节 IAM RPC、admin API、本人会话 API | 用户/服务双验证，范围过滤，reason/CAS，401/403/409，完整管理 API 可在隔离环境验证 |
 | B0 | 服务专属身份、full-method allowlist、固定入口绑定 | 共享 SERVICE_TOKEN 或伪造服务名不能获得系统 capability；新增未分类入口检查失败 |
@@ -284,7 +284,7 @@ make verify
 | 事务与状态 | identity biz `IAMTx/IAMTxRunner`；`rbac/transaction-contract.md` 冻结锁/CAS/审计与跨服务边界；可执行 CheckWrite/ValidateOrigin 校验合法状态及候选 batch 归属，data runner 与三库迁移留到 A2 |
 | 检查 | 首批定向 Go/race、make all、make wire-check、make verify 已通过；verify 包含格式、unit/race、架构、迁移治理、生成类型以及前端 lint/test/build。无 DDL，未执行三库 fresh/repeat/negative 或跨服务 IAM/Playwright/切换演练，不能计入 A2–D 验收 |
 
-首批交付后的 A2/A3 已完成，见第 9.2/9.3 节；下一包为 A4。矩阵 test_contract 列是后续执行链测试义务，不能据此声称当前所有 HTTP/RPC 已执行 IAM 权限校验。
+首批交付后的 A2/A3/A4 已完成，见第 9.2/9.3/9.4 节；下一包为 A5。矩阵 test_contract 列是后续执行链测试义务，不能据此声称当前所有 HTTP/RPC 已执行 IAM 权限校验。
 
 ### 9.2 A2 存储基础结果（2026-09-30）
 
@@ -310,4 +310,19 @@ A2 后续的 A3 已完成，见第 9.3 节。当前没有新增 IAM API、前端
 - [x] 强制 iam/complete 和可信 authorizer，缺失实现即拒绝；当前没有运行时绑定或新增管理入口，身份/委派与管理范围检查由 A4/A5 实现。
 - [x] 纯语义与 fake repo 用例测试、三库实际 fresh/repeat/negative/并发预约/回滚/会话约束、定向 race 与全仓检查。
 
-下一阶段为 A4：JWT 验证结果和真实 JTI、按域会话激活、一致授权快照，以及 bootstrap/注册/邀请/OAuth/后台创建的统一账号与默认角色事务、CLI/救援限制。A3 完成不表示运行入口已执行 IAM，也不构成生产管理开放条件。
+A3 后续的 A4 已完成，见第 9.4 节。A3/A4 完成不表示所有运行入口已执行 IAM，也不构成生产管理开放条件。
+
+
+### 9.4 A4 会话、快照与账号原子写结果（2026-10-01）
+
+实现边界、兼容性收紧与可复验命令：[A4 会话/账号交付记录](./rbac/a4-sessions-accounts-delivery.md)。工作分支 `codex/rbac-a4-sessions-accounts`，基线 `d7427dff`。
+
+- [x] 共用 JWT 验证 Actor DO，真实 JTI、expiry、pwd epoch；缺失/过期/错误算法或身份拒绝，JWT role 不作 IAM 授权。
+- [x] platform 惰性会话、按域激活/选择、DSD 与未来约束、本人 CAS/撤销；既有撤销不复活，组织请求拒绝。
+- [x] 主库一致授权快照，独立来源/强制 deny、user/policy/catalog/session/context 版本和最早失效边界；三库实际跨连接更新一致性测试。
+- [x] 真实 Wire/bootstrap、注册/邀请码/OAuth/后台 legacy 创建接入账号、默认分配、OAuth/路由/版本/成功审计同事务；并发 root 与容量竞争、故障回滚。
+- [x] 明确账号字段写、密码 epoch/session 撤销、旧 group/routing outbox 原子，原始持久化整行写入口拒绝；旧写在 IAM 或非 idle 阻断。
+- [x] admin-reset/routing-backfill 持锁状态门槛；独立开关/身份/reason/root/CAS 的凭证救援用例；本人/救援新 API 与 CLI 传输绑定留到 A6，不提前发布。
+- [x] 显式三库定向 race、make all/wire-check/架构/migration-check/rbac-contract-check/verify；无驱动跳过计作通过。
+
+下一包为 A5 委派、角色治理与模拟。固定目录继续 unbound；生产继续 legacy。本批未部署、未切换、未新增 IAM 管理 API 或前端入口；静态 ADMIN_TOKEN 的持久化角色修改兼容路径收紧为拒绝，详见交付记录。

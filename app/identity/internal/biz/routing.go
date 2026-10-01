@@ -59,8 +59,19 @@ func (uc *IdentityUsecase) bindLegacyGroup(ctx context.Context, user *User) erro
 }
 
 func (uc *IdentityUsecase) createUser(ctx context.Context, user *User) error {
+	return uc.createAccount(ctx, user, true)
+}
+func (uc *IdentityUsecase) createAccount(ctx context.Context, user *User, allowIAM bool) error {
 	if err := uc.bindLegacyGroup(ctx, user); err != nil {
 		return err
+	}
+	if uc.iam != nil {
+		saved, _, err := uc.createIAMAccount(ctx, *user, false, allowIAM)
+		if err != nil {
+			return err
+		}
+		*user = saved
+		return nil
 	}
 	return uc.repo.CreateUser(ctx, user)
 }
