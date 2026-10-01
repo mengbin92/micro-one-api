@@ -1,7 +1,7 @@
 # RBAC A6 IAM RPC、后台 API 与本人会话交付
 
 > 2026-10-01 · 基线 `87025145` · 工作分支 `codex/rbac-a5-a6-governance-api`。
-> A6 后端 API 完成；治理语义见 [A5](./a5-governance-delivery.md)。当前仅隔离 IAM/complete 环境可验收管理 API；生产继续 legacy，本批未部署。
+> A6 后端 API 完成；治理语义见 [A5](./a5-governance-delivery.md)。当前仅隔离 IAM/complete 环境可验收管理 API；identity/admin 已按用户授权更新线上，生产继续 legacy；详见 [生产更新记录](./a5-a6-legacy-production-deployment.md)。
 
 ## 契约与真实启动链
 
@@ -54,4 +54,4 @@ admin-reset -iam-rescue -identity-grpc-endpoint '<identity-endpoint>' \
 
 P0 inventory 新增实际生成 HTTP 注册/annotation 检查与未注册服务反例，CLI rescue 文件纳入源码摘要。当前矩阵 757 行：254 原 HTTP 注册、55 实际 proto HTTP 路由、281 RPC、13 gRPC 注册、2 HTTP 生成注册、152 源码摘要。源码/注册漂移、未知 code、空/非法 caller 分类都阻断；矩阵中 B0–D 的测试义务不表示这些业务入口已接入 IAM。
 
-本批没有新迁移、前端 IAM 页面或生产发布。下一工作包为 B0/B1 业务身份与执行链、C1 授权查询/我的角色页面；D0 初始化、影子比较和交接演练完成前不得切换生产。
+本批没有新迁移或前端 IAM 页面；授权的生产更新保持 legacy，未执行事实源切换。下一工作包为 B0/B1 业务身份与执行链、C1 授权查询/我的角色页面；D0 初始化、影子比较和交接演练完成前不得切换生产。

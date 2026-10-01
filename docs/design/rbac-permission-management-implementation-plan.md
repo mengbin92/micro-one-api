@@ -339,7 +339,7 @@ A3 后续的 A4 已完成，见第 9.4 节。A3/A4 完成不表示所有运行�
 - [x] 委派撤销/到期停止后续治理但保留业务授权与创建引用；快照 valid_until 包含委派时间边界。
 - [x] SQLite/MySQL/PostgreSQL 实际三库及 race、继承/自我扩权/deny/再委派反例与全仓检查。
 
-普通管理写只在 iam/complete 放行。本批无生产部署或模式切换；目录固定执行绑定仅覆盖已交付 IAM 方法，业务资源继续 unbound。
+普通管理写只在 iam/complete 放行。用户已授权更新 identity/admin，见 [A4–A6 生产更新](./rbac/a5-a6-legacy-production-deployment.md)，继续 legacy/idle，未切换事实源；目录固定执行绑定仅覆盖已交付 IAM 方法，业务资源继续 unbound。
 
 ### 9.6 A6 IAM RPC、后台 API 与本人会话结果（2026-10-01）
 

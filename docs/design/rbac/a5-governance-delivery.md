@@ -1,7 +1,7 @@
 # RBAC A5 委派、角色治理与模拟交付
 
 > 2026-10-01 · 基线 `87025145` · 工作分支 `codex/rbac-a5-a6-governance-api`。
-> A5 后端治理完成；传输交付见 [A6](./a6-management-api-delivery.md)。本批未部署、未切换生产事实源，生产继续 legacy。
+> A5 后端治理完成；传输交付见 [A6](./a6-management-api-delivery.md)。identity/admin 已按用户授权更新线上，生产继续 legacy；详见 [生产更新记录](./a5-a6-legacy-production-deployment.md)。
 
 ## 实现与边界
 
