@@ -67,22 +67,23 @@ var (
 )
 
 type User struct {
-	DefaultRoutingGroupID int64
-	RoutingAccessRevision int64
-	PublicGroupAccess     string
-	ID                    int64
-	Username              string
-	DisplayName           string
-	Email                 string
-	Group                 string
-	Status                int32
-	Role                  int32
-	PasswordHash          string
-	OAuthProvider         string
-	OAuthID               string
-	Balance               int64
-	AffCode               string
-	InviterID             int64
+	AuthorizationRevision, AuthorizationPolicyRevision uint64
+	DefaultRoutingGroupID                              int64
+	RoutingAccessRevision                              int64
+	PublicGroupAccess                                  string
+	ID                                                 int64
+	Username                                           string
+	DisplayName                                        string
+	Email                                              string
+	Group                                              string
+	Status                                             int32
+	Role                                               int32
+	PasswordHash                                       string
+	OAuthProvider                                      string
+	OAuthID                                            string
+	Balance                                            int64
+	AffCode                                            string
+	InviterID                                          int64
 	// PasswordChangedAt is the unix epoch (milliseconds) of the most recent
 	// password change. It is embedded in session JWTs as `pwd_epoch`; any
 	// session token whose epoch predates this value is rejected on
@@ -709,7 +710,7 @@ func (uc *IdentityUsecase) GetOrCreateAffCode(ctx context.Context, userID int64)
 	if err != nil {
 		return "", err
 	}
-	if err := uc.mutateLegacyAccount(ctx, userID, "account.aff_code", []string{"aff_code"}, func(u *User) error {
+	if err := uc.mutateLegacyAccount(ctx, userID, "account.self.aff_code", []string{"aff_code"}, func(u *User) error {
 		if u.AffCode != "" {
 			code = u.AffCode
 		} else {
@@ -1196,6 +1197,13 @@ func (uc *IdentityUsecase) DeleteUser(ctx context.Context, userID int64) error {
 	})
 }
 func (uc *IdentityUsecase) ResetPasswordByEmail(ctx context.Context, email, password string) error {
+	mode, err := uc.AuthorizationMode(ctx)
+	if err != nil {
+		return err
+	}
+	if mode == "iam" {
+		return uc.resetIAMPasswordByEmail(ctx, email, password)
+	}
 	if email == "" || len(password) < 8 {
 		return ErrInvalidPassword
 	}
@@ -1217,7 +1225,7 @@ func (uc *IdentityUsecase) ResetPasswordByEmail(ctx context.Context, email, pass
 	})
 }
 func (uc *IdentityUsecase) InvalidateAllSessions(ctx context.Context, userID int64) error {
-	return uc.mutateLegacyAccount(ctx, userID, "account.logout.all", []string{"password_epoch"}, func(u *User) error {
+	return uc.mutateLegacyAccount(ctx, userID, "account.self.logout.all", []string{"password_epoch"}, func(u *User) error {
 		u.PasswordChangedAt = nextPasswordEpoch(u.PasswordChangedAt, uc.now())
 		return nil
 	})

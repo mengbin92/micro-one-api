@@ -171,6 +171,9 @@ func (v iamManagementView) permit(op string, id, uid int64) error {
 	return IAMDecisionError(d)
 }
 func IAMExecutionBound(op string) bool {
+	if authorization.ResourceBound(op) {
+		return true
+	}
 	for _, bound := range IAMMethods {
 		if op == bound {
 			return true

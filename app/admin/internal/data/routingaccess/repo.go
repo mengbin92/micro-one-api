@@ -28,6 +28,9 @@ func (r *repo) Facts(ctx context.Context, id int64) (*routing.SubjectFacts, erro
 		return nil, err
 	}
 	f := routingdto.FactsFromProto(p.GetFacts())
+	if f != nil {
+		f.AuthorizationRevision, f.AuthorizationPolicyRevision = p.AuthorizationRevision, p.AuthorizationPolicyRevision
+	}
 	if f == nil || f.AccessRevision <= 0 {
 		return nil, biz.ErrRoutingGroupUnavailable
 	}
@@ -37,11 +40,14 @@ func (r *repo) Facts(ctx context.Context, id int64) (*routing.SubjectFacts, erro
 	return f, nil
 }
 func (r *repo) Change(ctx context.Context, c biz.RoutingAccessChange) (*routing.SubjectFacts, error) {
-	p, err := r.identity.UpdateUserRoutingAccess(ctx, &identityv1.UpdateUserRoutingAccessRequest{UserId: c.UserID, ExpectedRevision: c.ExpectedRevision, RoutingGroupId: c.GroupID, Operation: c.Operation, GroupKey: c.GroupKey, SourceType: c.SourceType, SourceRef: c.SourceRef, StartsAt: c.StartsAt, ExpiresAt: c.ExpiresAt, PublicGroupAccess: c.PublicGroupAccess})
+	p, err := r.identity.UpdateUserRoutingAccess(ctx, &identityv1.UpdateUserRoutingAccessRequest{ExpectedUserRevision: c.ExpectedUserRevision, ExpectedPolicyRevision: c.ExpectedPolicyRevision, Reason: c.Reason, UserId: c.UserID, ExpectedRevision: c.ExpectedRevision, RoutingGroupId: c.GroupID, Operation: c.Operation, GroupKey: c.GroupKey, SourceType: c.SourceType, SourceRef: c.SourceRef, StartsAt: c.StartsAt, ExpiresAt: c.ExpiresAt, PublicGroupAccess: c.PublicGroupAccess})
 	if err != nil {
 		return nil, err
 	}
 	f := routingdto.FactsFromProto(p.GetFacts())
+	if f != nil {
+		f.AuthorizationRevision, f.AuthorizationPolicyRevision = p.AuthorizationRevision, p.AuthorizationPolicyRevision
+	}
 	if f == nil {
 		return nil, biz.ErrRoutingGroupUnavailable
 	}

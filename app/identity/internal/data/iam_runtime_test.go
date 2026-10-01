@@ -244,7 +244,13 @@ func TestIAMA4AccountRuntimeDialects(t *testing.T) {
 				require.ErrorIs(t, raw.DeleteUser(f.ctx, root.ID), biz.ErrIAMProtected)
 				for _, state := range []struct{ mode, cutover string }{{"legacy", "blocked"}, {"iam", "verified"}, {"iam", "complete"}} {
 					f.mode(state.mode, state.cutover)
-					require.ErrorIs(t, f.uc.UpdateSelfEmail(f.ctx, root.ID, "new@example.com"), biz.ErrIAMCutoverBlocked)
+					if state.cutover == "complete" {
+						// B1 opens only the verified self path. This old caller has no
+						// independently verified JWT/JTI and still cannot mutate.
+						require.ErrorIs(t, f.uc.UpdateSelfEmail(f.ctx, root.ID, "new@example.com"), biz.ErrInvalidToken)
+					} else {
+						require.ErrorIs(t, f.uc.UpdateSelfEmail(f.ctx, root.ID, "new@example.com"), biz.ErrIAMCutoverBlocked)
+					}
 					_, err := f.uc.SetRole(f.ctx, root, 2, biz.RoleAdminUser)
 					require.ErrorIs(t, err, biz.ErrIAMCutoverBlocked)
 					require.ErrorIs(t, f.uc.DeleteUser(f.ctx, 2), biz.ErrIAMCutoverBlocked)
@@ -473,7 +479,7 @@ func TestIAMA4RoutingAtomicRuntimeDialects(t *testing.T) {
 			require.Equal(t, beforePolicy+2, pr)
 			f.mode("iam", "complete")
 			_, err = f.uc.UpdateRoutingAccess(f.ctx, biz.RoutingAccessChange{UserID: u.ID, ExpectedRevision: 3, Operation: "public_access", PublicGroupAccess: "explicit_only"})
-			require.ErrorIs(t, err, biz.ErrIAMCutoverBlocked)
+			require.ErrorIs(t, err, biz.ErrIAMInvalidRelation)
 			_, err = NewRepository(&Data{db: f.db}).BackfillRoutingGroups(f.ctx, []*routing.Group{{ID: 72, Key: "next"}}, true)
 			require.ErrorIs(t, err, biz.ErrIAMCutoverBlocked)
 		})

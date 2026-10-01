@@ -133,13 +133,17 @@ func (uc *IdentityUsecase) runtimeWriteEvent(ctx context.Context, action, target
 // createIAMAccount is the sole persistent creation path, including bootstrap
 // and OAuth binding. Channel facts have already been checked outside retries.
 func (uc *IdentityUsecase) createIAMAccount(ctx context.Context, input User, bootstrap, allowIAM bool) (User, bool, error) {
+	return uc.createIAMAccountChecked(ctx, input, bootstrap, allowIAM, authorization.Actor{ServiceID: "identity-account"}, "account initialization", nil)
+}
+
+func (uc *IdentityUsecase) createIAMAccountChecked(ctx context.Context, input User, bootstrap, allowIAM bool, actor authorization.Actor, reason string, check func(context.Context, IAMTx, authorization.PolicyState) error) (User, bool, error) {
 	var saved User
 	created := false
 	action, code, origin := "account.create", "member", "default"
 	if bootstrap {
 		action, code, origin = "account.bootstrap", "root", "bootstrap"
 	}
-	err := uc.runtimeWriteEvent(ctx, action, input.Username, "account initialization", authorization.Actor{ServiceID: "identity-account"}, func(ctx context.Context, tx IAMTx, event *IAMAuditEvent) error {
+	err := uc.runtimeWriteEvent(ctx, action, input.Username, reason, actor, func(ctx context.Context, tx IAMTx, event *IAMAuditEvent) error {
 		saved = User{}
 		created = false
 		p, err := uc.iam.Policy(ctx, tx)
@@ -155,6 +159,11 @@ func (uc *IdentityUsecase) createIAMAccount(ctx context.Context, input User, boo
 		}
 		if p.CheckWrite(kind, false) != nil {
 			return ErrIAMCutoverBlocked
+		}
+		if check != nil {
+			if err := check(ctx, tx, p); err != nil {
+				return err
+			}
 		}
 		if bootstrap {
 			n, err := uc.iam.CountUsers(ctx, tx)
@@ -241,6 +250,15 @@ func (uc *IdentityUsecase) mutateLegacyAccount(ctx context.Context, id int64, ac
 	return uc.mutateLegacyAccountChecked(ctx, id, action, fields, nil, change)
 }
 func (uc *IdentityUsecase) mutateLegacyAccountChecked(ctx context.Context, id int64, action string, fields []string, verify func(context.Context, IAMTx) error, change func(*User) error) error {
+	if uc.iam != nil && strings.HasPrefix(action, "account.self.") {
+		mode, err := uc.AuthorizationMode(ctx)
+		if err != nil {
+			return err
+		}
+		if mode == "iam" {
+			return uc.mutateIAMSelfAccount(ctx, id, action, fields, change)
+		}
+	}
 	if uc.iam == nil {
 		u, err := uc.repo.FindUserByID(ctx, id)
 		if err != nil {
@@ -633,18 +651,49 @@ func (uc *IdentityUsecase) RevokeOwnSession(ctx context.Context, raw string, c a
 }
 
 func (uc *IdentityUsecase) bindIAMOAuthIdentity(ctx context.Context, id int64, provider, oauthID string) (*User, error) {
+	mode, err := uc.AuthorizationMode(ctx)
+	if err != nil {
+		return nil, err
+	}
+	actor := authorization.Actor{ServiceID: "identity-legacy-account"}
+	if mode == "iam" {
+		snapshot, err := uc.GetSessionAuthorization(ctx, authorization.Credential(ctx), authorization.Platform())
+		if err != nil {
+			return nil, err
+		}
+		if snapshot.Actor.UserID != id {
+			return nil, ErrIAMProtected
+		}
+		actor = snapshot.Actor
+	}
 	var saved User
-	err := uc.runtimeWrite(ctx, "account.oauth.bind", strconv.FormatInt(id, 10), "legacy OAuth binding", authorization.Actor{ServiceID: "identity-legacy-account"}, func(ctx context.Context, tx IAMTx) error {
+	err = uc.runtimeWrite(ctx, "account.oauth.bind", strconv.FormatInt(id, 10), "verified self OAuth binding", actor, func(ctx context.Context, tx IAMTx) error {
 		p, err := uc.iam.Policy(ctx, tx)
 		if err != nil {
 			return err
 		}
-		if p.CheckWrite(authorization.LegacyAccountWrite, false) != nil {
+		kind := authorization.LegacyAccountWrite
+		if mode == "iam" {
+			kind = authorization.IAMManagementWrite
+		}
+		if p.CheckWrite(kind, false) != nil {
 			return ErrIAMCutoverBlocked
 		}
 		saved, err = uc.iam.User(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		if mode == "iam" {
+			if err := checkIAMIdentity(actor, saved, uc.now()); err != nil {
+				return err
+			}
+			session, err := uc.iam.Session(ctx, tx, actor.SessionID, authorization.Platform())
+			if err != nil {
+				return err
+			}
+			if err := checkIAMSession(actor, session, uc.now()); err != nil {
+				return err
+			}
 		}
 		if saved.Status != UserStatusEnabled {
 			return ErrUserDisabled
@@ -667,11 +716,20 @@ func (uc *IdentityUsecase) bindIAMOAuthIdentity(ctx context.Context, id int64, p
 			return ErrOAuthAlreadyBound
 		}
 		if own != nil {
-			return nil
+			return errIAMNoChange
 		}
 		_, err = uc.iam.CreateOAuthIdentity(ctx, tx, OAuthIdentity{UserID: id, Provider: provider, ProviderID: oauthID, CreatedAt: uc.now().Unix(), UpdatedAt: uc.now().Unix()})
 		if err != nil {
 			return err
+		}
+		if mode == "iam" {
+			saved.PasswordChangedAt = nextPasswordEpoch(saved.PasswordChangedAt, uc.now())
+			if err := uc.iam.UpdateAccount(ctx, tx, saved, []string{"password_epoch"}); err != nil {
+				return err
+			}
+			if err := uc.iam.RevokeUserSessions(ctx, tx, id, uc.now()); err != nil {
+				return err
+			}
 		}
 		rev, err := uc.iam.UserRevision(ctx, tx, id)
 		if err != nil {

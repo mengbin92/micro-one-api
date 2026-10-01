@@ -35,15 +35,17 @@ type RoutingTokenReference struct {
 	Revision int64   `json:"revision"`
 }
 type RoutingFacts struct {
-	Tokens            []RoutingTokenReference `json:"tokens"`
-	DefaultGroupID    int64                   `json:"default_routing_group_id"`
-	Revision          int64                   `json:"revision"`
-	PublicGroupAccess string                  `json:"public_group_access"`
-	Grants            []RoutingGrant          `json:"grants"`
+	AuthorizationRevision       uint64                  `json:"authorization_revision,string"`
+	AuthorizationPolicyRevision uint64                  `json:"authorization_policy_revision,string"`
+	Tokens                      []RoutingTokenReference `json:"tokens"`
+	DefaultGroupID              int64                   `json:"default_routing_group_id"`
+	Revision                    int64                   `json:"revision"`
+	PublicGroupAccess           string                  `json:"public_group_access"`
+	Grants                      []RoutingGrant          `json:"grants"`
 }
 
 func factsReply(f *routing.SubjectFacts) *RoutingFacts {
-	out := &RoutingFacts{DefaultGroupID: f.DefaultGroupID, Revision: f.AccessRevision, PublicGroupAccess: f.PublicGroupAccess, Grants: []RoutingGrant{}}
+	out := &RoutingFacts{AuthorizationRevision: f.AuthorizationRevision, AuthorizationPolicyRevision: f.AuthorizationPolicyRevision, DefaultGroupID: f.DefaultGroupID, Revision: f.AccessRevision, PublicGroupAccess: f.PublicGroupAccess, Grants: []RoutingGrant{}}
 	for _, t := range f.TokenReferences {
 		out.Tokens = append(out.Tokens, RoutingTokenReference{ID: t.ID, Name: t.Name, Mode: t.Mode, GroupID: t.GroupID, GroupIDs: t.GroupIDs, Revision: t.Revision})
 	}
@@ -76,14 +78,17 @@ type AvailableGroups struct {
 	CreationEnabled  bool             `json:"creation_enabled"`
 }
 type RoutingAccessRequest struct {
-	ExpectedRevision  int64  `json:"expected_revision"`
-	Operation         string `json:"operation"`
-	GroupID           int64  `json:"routing_group_id"`
-	SourceType        string `json:"source_type"`
-	SourceRef         string `json:"source_ref"`
-	StartsAt          int64  `json:"starts_at"`
-	ExpiresAt         int64  `json:"expires_at"`
-	PublicGroupAccess string `json:"public_group_access"`
+	ExpectedUserRevision   uint64 `json:"expected_user_revision,string"`
+	ExpectedPolicyRevision uint64 `json:"expected_policy_revision,string"`
+	Reason                 string `json:"reason"`
+	ExpectedRevision       int64  `json:"expected_revision"`
+	Operation              string `json:"operation"`
+	GroupID                int64  `json:"routing_group_id"`
+	SourceType             string `json:"source_type"`
+	SourceRef              string `json:"source_ref"`
+	StartsAt               int64  `json:"starts_at"`
+	ExpiresAt              int64  `json:"expires_at"`
+	PublicGroupAccess      string `json:"public_group_access"`
 }
 type RoutingTokenRequest struct {
 	Name             string  `json:"name"`
@@ -97,7 +102,7 @@ func (s *AdminService) RoutingFacts(ctx context.Context, user int64) (*RoutingFa
 	if s.routingAccessUc == nil {
 		return nil, biz.ErrRoutingGroupUnavailable
 	}
-	f, err := s.routingAccessUc.Facts(ctx, user)
+	f, err := s.routingAccessUc.Facts(operatorRPCContext(ctx), user)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +142,7 @@ func (s *AdminService) ChangeRoutingAccess(ctx context.Context, user int64, r Ro
 	if s.routingAccessUc == nil {
 		return nil, biz.ErrRoutingGroupUnavailable
 	}
-	f, err := s.routingAccessUc.Change(ctx, biz.RoutingAccessChange{UserID: user, ExpectedRevision: r.ExpectedRevision, GroupID: r.GroupID, Operation: r.Operation, SourceType: r.SourceType, SourceRef: r.SourceRef, StartsAt: r.StartsAt, ExpiresAt: r.ExpiresAt, PublicGroupAccess: r.PublicGroupAccess}, self)
+	f, err := s.routingAccessUc.Change(operatorRPCContext(ctx), biz.RoutingAccessChange{ExpectedUserRevision: r.ExpectedUserRevision, ExpectedPolicyRevision: r.ExpectedPolicyRevision, Reason: r.Reason, UserID: user, ExpectedRevision: r.ExpectedRevision, GroupID: r.GroupID, Operation: r.Operation, SourceType: r.SourceType, SourceRef: r.SourceRef, StartsAt: r.StartsAt, ExpiresAt: r.ExpiresAt, PublicGroupAccess: r.PublicGroupAccess}, self)
 	if err != nil {
 		return nil, err
 	}

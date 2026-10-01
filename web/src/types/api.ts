@@ -1385,6 +1385,9 @@ export interface components {
              * @description 0=guest, 1=common, 10=admin, 100=root. See biz.Role* constants.
              */
             role?: number;
+            /** @description IAM owner CAS values; protobuf JSON encodes them as decimal strings. */
+            authorizationRevision?: string;
+            authorizationPolicyRevision?: string;
         };
         "api.config.v1.DeleteConfigResponse": {
             success?: boolean;

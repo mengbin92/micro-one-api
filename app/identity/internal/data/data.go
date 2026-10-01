@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"micro-one-api/app/identity/internal/biz"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/database/xdb"
 	applogger "micro-one-api/platform/logging"
 
@@ -617,6 +618,9 @@ func (r *Repository) ListUsers(ctx context.Context, page, pageSize int32, keywor
 	if r.db != nil {
 		return r.listUsersDB(ctx, page, pageSize, keyword, group, status)
 	}
+	if _, scoped := authorization.QueryScopeFromContext(ctx, "identity.user.list"); scoped {
+		return nil, 0, biz.ErrIAMDependencyUnavailable
+	}
 	r.identityLock.RLock()
 	defer r.identityLock.RUnlock()
 	var users []*biz.User
@@ -1010,6 +1014,12 @@ func oauthIdentityModelToBiz(model oauthIdentityModel) *biz.OAuthIdentity {
 func (r *Repository) listUsersDB(ctx context.Context, page, pageSize int32, keyword, group string, status int32) ([]*biz.User, int64, error) {
 	var models []userModel
 	query := r.db.WithContext(ctx).Model(&userModel{})
+	var scopeErr error
+	query, scopeErr = userScopeQuery(ctx, query)
+	if scopeErr != nil {
+		return nil, 0, scopeErr
+	}
+
 	if keyword != "" {
 		query = query.Where("username LIKE ? ESCAPE '!'", "%"+escapeLike(keyword)+"%")
 	}

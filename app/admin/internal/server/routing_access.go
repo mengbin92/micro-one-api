@@ -12,11 +12,13 @@ import (
 
 // The principal always comes from the authenticated session, never a body ID.
 func routingPrincipal(w http.ResponseWriter, r *http.Request, s *service.AdminService) (int64, bool) {
-	user, _, err := s.AuthorizeAdminToken(r.Context(), strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	raw := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	user, err := s.AuthenticateSelf(r.Context(), raw)
 	if err != nil || user <= 0 {
 		writeJSON(w, http.StatusUnauthorized, apiResponse(false, "请先登录", nil))
 		return 0, false
 	}
+	*r = *r.WithContext(service.WithOperatorCredential(r.Context(), raw))
 	return user, true
 }
 func handleRoutingAvailable(w http.ResponseWriter, r *http.Request, s *service.AdminService) {

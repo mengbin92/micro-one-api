@@ -55,6 +55,8 @@ service IAMService {
  rpc UpdateMenuItem(IAMRequest) returns (IAMReply);
  rpc ArchiveMenuItem(IAMRequest) returns (IAMReply);
  rpc CheckAuthorization(IAMRequest) returns (IAMReply);
+ // Called only by a verified data owner with a fixed execution point.
+ rpc GetResourceAuthorization(ResourceAuthorizationRequest) returns (ResourceAuthorizationReply);
  rpc GetUserEffectivePermissions(IAMRequest) returns (IAMReply);
  rpc ExplainAuthorization(IAMRequest) returns (IAMReply);
  rpc SimulateAuthorizationChange(IAMRequest) returns (IAMReply);
@@ -62,6 +64,21 @@ service IAMService {
  rpc GetAuthorizationAuditEvent(IAMRequest) returns (IAMReply);
  rpc ExportAuthorizationAuditEvents(IAMRequest) returns (IAMReply);
  rpc RescueRootCredential(IAMRescueRequest) returns (IAMReply);
+}
+
+message ResourceAuthorizationRequest {
+ string execution_point = 1;
+ string operation = 2;
+ api.common.v1.AuthorizationObjectFacts object = 3;
+}
+message ResourceAuthorizationReply {
+ string authorization_mode = 1;
+ int64 actor_user_id = 2;
+ repeated api.common.v1.AuthorizationScope allow = 3;
+ repeated api.common.v1.AuthorizationScope deny = 4;
+ api.common.v1.AuthorizationVersions versions = 5;
+ google.protobuf.Timestamp valid_until = 6;
+ api.common.v1.AuthorizationDecision decision = 7;
 }
 
 message IAMGrant {

@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/security/serviceidentity"
 )
 
 // First six columns are source facts; remaining columns require human review.
@@ -194,6 +195,12 @@ func check(rows, reviewed [][]string) error {
 	}
 	codeRE := regexp.MustCompile(`(?:admin|identity|channel|monitor|billing|subscription|log|system|notify|iam|organization)\.[a-z_]+(?:\.[a-z_]+)+`)
 	for i, row := range rows {
+		if row[0] == "RPC" {
+			policy, ok := serviceidentity.Lookup(row[2])
+			if !ok || policy.Owner != row[1] {
+				return fmt.Errorf("unclassified RPC capability %s", row[2])
+			}
+		}
 		actual := reviewed[i+1]
 		if len(actual) != len(header) || !slices.Equal(row, actual[:6]) {
 			return fmt.Errorf("source drift at row %d: %v", i+2, row[:5])

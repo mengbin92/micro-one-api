@@ -15,3 +15,9 @@ func NewIAMHTTP(client v.IAMServiceClient) *khttp.Server {
 	admin.SetIAMService(service.NewIAMAdminService(biz.NewIAMUsecase(iam.NewRepo(client))))
 	return server.NewHTTPServer(":0", admin, nil)
 }
+
+func NewManagedUsersHTTP(client v.IdentityServiceClient, iamClient v.IAMServiceClient) *khttp.Server {
+	admin := service.NewAdminService(nil, client, nil, nil)
+	admin.SetIAMService(service.NewIAMAdminService(biz.NewIAMUsecase(iam.NewRepo(iamClient))))
+	return server.NewHTTPServer(":0", admin, nil)
+}

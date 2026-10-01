@@ -59,6 +59,9 @@ message UserInfo {
   int64 last_login_at = 11;
   // 0=guest, 1=common, 10=admin, 100=root. See biz.Role* constants.
   int32 role = 12;
+  // IAM owner CAS values; protobuf JSON encodes them as decimal strings.
+  uint64 authorization_revision = 13;
+  uint64 authorization_policy_revision = 14;
 }
 
 // ========== 渠道摘要 ==========

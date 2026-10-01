@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"micro-one-api/platform/security/serviceidentity"
 	"os"
 	"os/signal"
 	"syscall"
@@ -188,7 +189,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	var channelConn *grpc.ClientConn
 	if cfg.Bootstrap.Clients != nil && cfg.Bootstrap.Clients.Channel != nil && cfg.Bootstrap.Clients.Channel.Endpoint != "" {
 		var err error
-		channelConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Channel.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(os.Getenv("SERVICE_TOKEN"))))
+		channelConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Channel.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())))
 		if err != nil {
 			applogger.Log.Error("dial channel endpoint", zap.Error(err))
 		} else {
@@ -216,7 +217,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 			var err error
 			notifyConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Notify.Endpoint,
 				grpc.WithTransportCredentials(insecure.NewCredentials()),
-				grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(os.Getenv("SERVICE_TOKEN"))),
+				grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())),
 				grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))
 			if err != nil {
 				applogger.Log.Error("dial notify endpoint", zap.Error(err))

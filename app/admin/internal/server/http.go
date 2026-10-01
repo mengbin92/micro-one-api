@@ -83,6 +83,25 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 			}
 			token := strings.TrimPrefix(authHeader, "Bearer ")
 
+			if svc != nil {
+				access, err := svc.AuthorizeConsole(r.Context(), token)
+				if err != nil {
+					writeServiceResponse(w, nil, err)
+					return
+				}
+				if access.Mode == "iam" {
+					if access.Decision == nil || !access.Decision.Allowed || !iamUserRouteReady(r) {
+						writeJSON(w, http.StatusForbidden, map[string]string{"error": "authorization denied or execution point unbound"})
+						return
+					}
+					ctx := context.WithValue(iamBusinessContext(r.Context()), adminOperatorContextKey{}, strconv.FormatInt(access.Query.ActorID, 10))
+					ctx = audit.WithActor(ctx, audit.ActorInfo{UserID: access.Query.ActorID})
+					ctx = service.WithOperatorCredential(ctx, token)
+					next(w, r.WithContext(ctx))
+					return
+				}
+			}
+
 			if adminToken != "" && subtle.ConstantTimeCompare([]byte(token), []byte(adminToken)) == 1 {
 				// Stamp a sentinel operator identity in typed context so audit
 				// records (import/export, refunds, etc.) never have an empty
@@ -184,6 +203,10 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 	channelHTTPProxy := newChannelHTTPProxy()
 	webAssets := newAdminWebAssets(optionString(options, 1))
 	handlePage := appmiddleware.SecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/v1" || strings.HasPrefix(r.URL.Path, "/v1/") {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "API entry not registered"})
+			return
+		}
 		if isAdminShellPath(r.URL.Path) {
 			w.Header().Set("Content-Security-Policy", adminWebContentSecurityPolicy(r.Context(), svc))
 		}
@@ -1579,6 +1602,17 @@ func providerNameFromType(channelType int32) string {
 
 func enrichUsersWithBilling(ctx context.Context, svc *service.AdminService, users []*commonv1.UserInfo) []map[string]any {
 	result := make([]map[string]any, 0, len(users))
+	if isIAMBusinessContext(ctx) {
+		for _, user := range users {
+			row := userInfoToMap(user, 0, 0)
+			row["authorizationRevision"] = strconv.FormatUint(user.AuthorizationRevision, 10)
+			row["authorizationPolicyRevision"] = strconv.FormatUint(user.AuthorizationPolicyRevision, 10)
+			delete(row, "balance")
+			delete(row, "usedAmount")
+			result = append(result, row)
+		}
+		return result
+	}
 
 	// Collect user IDs for batch query
 	userIDs := make([]string, 0, len(users))
@@ -1921,7 +1955,7 @@ func sanitizeAdminError(err error) string {
 	// gRPC status errors: keep the message for client-facing codes.
 	if st, ok := status.FromError(err); ok && st != nil {
 		switch st.Code() {
-		case codes.InvalidArgument, codes.NotFound, codes.AlreadyExists,
+		case codes.InvalidArgument, codes.NotFound, codes.AlreadyExists, codes.Aborted,
 			codes.PermissionDenied, codes.Unauthenticated,
 			codes.FailedPrecondition, codes.ResourceExhausted:
 			return st.Message()
@@ -1989,7 +2023,7 @@ func logEntriesToJSON(entries []*adminv1.LogEntry) []map[string]any {
 
 func writeOneAPIServiceResponse(w http.ResponseWriter, resp any, err error) {
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	success := true
@@ -2139,14 +2173,14 @@ func handleUsers(w http.ResponseWriter, r *http.Request, svc *service.AdminServi
 		handleListUsers(w, r, svc)
 	case http.MethodPost:
 		var req adminv1.AdminCreateUserRequest
-		if !decodeBody(w, r, &req) {
+		if !decodeManagedUserBody(w, r, &req, false) {
 			return
 		}
 		resp, err := svc.CreateUser(r.Context(), &req)
 		writeServiceResponse(w, resp, err)
 	case http.MethodPut:
 		var req adminv1.AdminUpdateUserRequest
-		if !decodeBody(w, r, &req) {
+		if !decodeManagedUserPatch(w, r, &req) {
 			return
 		}
 		resp, err := svc.UpdateUser(r.Context(), &req)
@@ -2175,26 +2209,15 @@ func handleOneAPIUsers(w http.ResponseWriter, r *http.Request, svc *service.Admi
 		handleOneAPIListUsers(w, r, svc)
 	case http.MethodPost:
 		var req adminv1.AdminCreateUserRequest
-		if !decodeBody(w, r, &req) {
+		if !decodeManagedUserBody(w, r, &req, false) {
 			return
 		}
 		resp, err := svc.CreateUser(r.Context(), &req)
 		writeOneAPIServiceResponse(w, resp, err)
 	case http.MethodPut:
-		var raw struct {
-			ID int64 `json:"id"`
-			*adminv1.AdminUpdateUserRequest
-		}
-		if !decodeBody(w, r, &raw) {
+		req := &adminv1.AdminUpdateUserRequest{}
+		if !decodeManagedUserPatch(w, r, req) {
 			return
-		}
-		if raw.AdminUpdateUserRequest == nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-			return
-		}
-		req := raw.AdminUpdateUserRequest
-		if req.UserId == 0 {
-			req.UserId = raw.ID
 		}
 		resp, err := svc.UpdateUser(r.Context(), req)
 		writeOneAPIServiceResponse(w, resp, err)
@@ -2263,7 +2286,11 @@ func handleOneAPIUserManage(w http.ResponseWriter, r *http.Request, svc *service
 		}
 		writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{"status": status, "role": user.GetRole()}))
 	case "delete":
-		resp, err := svc.DeleteUser(r.Context(), &adminv1.AdminDeleteUserRequest{UserId: userID})
+		deletion, ok := managedUserDeletionRequest(w, r, userID)
+		if !ok {
+			return
+		}
+		resp, err := svc.DeleteUser(r.Context(), deletion)
 		if err != nil || !resp.GetSuccess() {
 			message := ""
 			if resp != nil {
@@ -2329,12 +2356,21 @@ func handleOneAPIUserByID(w http.ResponseWriter, r *http.Request, svc *service.A
 	case http.MethodGet:
 		user, err := svc.GetUser(r.Context(), userID)
 		if err != nil {
-			writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
+			writeServiceResponse(w, nil, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, apiResponse(true, "", user))
+		if isIAMBusinessContext(r.Context()) {
+			row := enrichUsersWithBilling(r.Context(), svc, []*commonv1.UserInfo{user})[0]
+			writeJSON(w, http.StatusOK, apiResponse(true, "", row))
+		} else {
+			writeJSON(w, http.StatusOK, apiResponse(true, "", user))
+		}
 	case http.MethodDelete:
-		resp, err := svc.DeleteUser(r.Context(), &adminv1.AdminDeleteUserRequest{UserId: userID})
+		deletion, ok := managedUserDeletionRequest(w, r, userID)
+		if !ok {
+			return
+		}
+		resp, err := svc.DeleteUser(r.Context(), deletion)
 		writeOneAPIServiceResponse(w, resp, err)
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -2366,7 +2402,7 @@ func handleOneAPIListUsers(w http.ResponseWriter, r *http.Request, svc *service.
 		Status:   getQueryInt32(r, "status", 0),
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", enrichUsersWithBilling(r.Context(), svc, resp.GetUsers())))
@@ -2412,7 +2448,7 @@ func handleOneAPISearchUsers(w http.ResponseWriter, r *http.Request, svc *servic
 		Status:   getQueryInt32(r, "status", 0),
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", enrichUsersWithBilling(r.Context(), svc, resp.GetUsers())))
@@ -2429,12 +2465,27 @@ func handleUserByID(w http.ResponseWriter, r *http.Request, svc *service.AdminSe
 		return
 	}
 	switch r.Method {
+	case http.MethodGet:
+		user, err := svc.GetUser(r.Context(), userID)
+		if err != nil {
+			writeServiceResponse(w, nil, err)
+			return
+		}
+		if isIAMBusinessContext(r.Context()) {
+			writeIAMProto(w, user)
+		} else {
+			writeJSON(w, http.StatusOK, user)
+		}
 	case http.MethodDelete:
-		resp, err := svc.DeleteUser(r.Context(), &adminv1.AdminDeleteUserRequest{UserId: userID})
+		deletion, ok := managedUserDeletionRequest(w, r, userID)
+		if !ok {
+			return
+		}
+		resp, err := svc.DeleteUser(r.Context(), deletion)
 		writeServiceResponse(w, resp, err)
 	case http.MethodPut:
 		var req adminv1.AdminUpdateUserRequest
-		if !decodeBody(w, r, &req) {
+		if !decodeManagedUserPatch(w, r, &req) {
 			return
 		}
 		req.UserId = userID
@@ -2460,10 +2511,14 @@ func handleListUsers(w http.ResponseWriter, r *http.Request, svc *service.AdminS
 		Status:   status,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	if isIAMBusinessContext(r.Context()) {
+		writeIAMProto(w, resp)
+	} else {
+		writeJSON(w, http.StatusOK, resp)
+	}
 }
 
 func handleChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -4087,6 +4142,10 @@ type successErrorMessage interface {
 
 func writeServiceResponse(w http.ResponseWriter, resp any, err error) {
 	if err != nil {
+		if code, ok := resourceHTTPErrorCode(err); ok {
+			writeJSON(w, code, apiResponse(false, sanitizeAdminError(err), nil))
+			return
+		}
 		// A gRPC AlreadyExists from a downstream service is an idempotency
 		// conflict (duplicate Idempotency-Key, v0.18 P0 §5.4): surface it as
 		// 409 with the business message. Other transport/unknown errors keep

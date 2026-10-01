@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"google.golang.org/grpc/metadata"
 	"math"
 	"net/http"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"micro-one-api/domain/authorization"
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/iamdto"
 
@@ -235,7 +237,7 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 		handleEmailVerification(w, r, registrationPolicy.CodeDeliverer)
 	})
 	srv.HandleFunc("/api/reset_password", func(w http.ResponseWriter, r *http.Request) {
-		handleResetPasswordRequest(w, r, registrationPolicy.CodeDeliverer)
+		handleResetPasswordRequest(w, r, registrationPolicy.CodeDeliverer, uc)
 	})
 	srv.HandleFunc("/api/user/reset", func(w http.ResponseWriter, r *http.Request) {
 		handleResetPassword(w, r, uc, registrationPolicy.CodeDeliverer)
@@ -267,9 +269,11 @@ const (
 )
 
 type verificationRecord struct {
-	Code     string
-	At       time.Time
-	Attempts int
+	Code          string
+	At            time.Time
+	Attempts      int
+	UserID        int64
+	PasswordEpoch int64
 }
 
 var verificationStore = struct {
@@ -1022,12 +1026,17 @@ func handleUserPaymentOrders(w http.ResponseWriter, r *http.Request, uc *biz.Ide
 	}
 	userID := strconv.FormatInt(snapshot.UserID, 10)
 	user, err := uc.GetUser(r.Context(), snapshot.UserID)
-	if err == nil && user.IsAdmin() {
+	mode, modeErr := uc.AuthorizationMode(r.Context())
+	if modeErr != nil {
+		writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "authorization unavailable"})
+		return
+	}
+	if mode == "legacy" && err == nil && user.IsAdmin() {
 		userID = ""
 	}
 	query := r.URL.Query()
 	pageSize := min(queryInt32(r, "page_size", 20), 100)
-	resp, err := billingClient.ListPaymentOrders(r.Context(), &billingv1.ListPaymentOrdersRequest{
+	resp, err := billingClient.ListPaymentOrders(billingSelfContext(r.Context()), &billingv1.ListPaymentOrdersRequest{
 		Page:     queryInt32(r, "page", 1),
 		PageSize: pageSize,
 		UserId:   userID,
@@ -1061,7 +1070,7 @@ func handleUserPaymentOrderByTradeNo(w http.ResponseWriter, r *http.Request, uc 
 		writeJSON(w, http.StatusBadRequest, apiResponse{Success: false, Message: "trade_no is required"})
 		return
 	}
-	resp, err := billingClient.GetPaymentOrderByTradeNo(r.Context(), &billingv1.GetPaymentOrderByTradeNoRequest{TradeNo: tradeNo})
+	resp, err := billingClient.GetPaymentOrderByTradeNo(billingSelfContext(r.Context()), &billingv1.GetPaymentOrderByTradeNoRequest{TradeNo: tradeNo})
 	if err != nil {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
@@ -1076,7 +1085,12 @@ func handleUserPaymentOrderByTradeNo(w http.ResponseWriter, r *http.Request, uc 
 	}
 	order := resp.GetOrder()
 	user, userErr := uc.GetUser(r.Context(), snapshot.UserID)
-	isAdminUser := userErr == nil && user.IsAdmin()
+	mode, modeErr := uc.AuthorizationMode(r.Context())
+	if modeErr != nil {
+		writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "authorization unavailable"})
+		return
+	}
+	isAdminUser := mode == "legacy" && userErr == nil && user.IsAdmin()
 	if !isAdminUser && order.GetUserId() != strconv.FormatInt(snapshot.UserID, 10) {
 		writeJSON(w, http.StatusForbidden, apiResponse{Success: false, Message: "forbidden"})
 		return
@@ -1122,7 +1136,10 @@ func handleLogout(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 	// rejected on subsequent validation. This relies on the request carrying
 	// a valid session; logout without one is still a 200 (no-op reveal).
 	if snapshot, err := authSnapshotFromRequest(r, uc); err == nil && snapshot != nil && snapshot.UserID > 0 {
-		_ = uc.InvalidateAllSessions(r.Context(), snapshot.UserID)
+		if err := uc.InvalidateAllSessions(r.Context(), snapshot.UserID); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "session revocation failed"})
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: ""})
 }
@@ -1161,7 +1178,7 @@ func handleSelf(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase)
 		}
 		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: ""})
 	case http.MethodDelete:
-		if err := uc.DeleteUser(r.Context(), snapshot.UserID); err != nil {
+		if err := uc.DeleteSelf(r.Context(), snapshot.UserID); err != nil {
 			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 			return
 		}
@@ -1245,7 +1262,7 @@ func handleEmailVerification(w http.ResponseWriter, r *http.Request, deliverer C
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "verification code sent", Data: map[string]any{"email": email}})
 }
 
-func handleResetPasswordRequest(w http.ResponseWriter, r *http.Request, deliverer CodeDeliverer) {
+func handleResetPasswordRequest(w http.ResponseWriter, r *http.Request, deliverer CodeDeliverer, usecases ...*biz.IdentityUsecase) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
 		return
@@ -1261,8 +1278,12 @@ func handleResetPasswordRequest(w http.ResponseWriter, r *http.Request, delivere
 		return
 	}
 	gcVerificationStores()
+	record := verificationRecord{Code: token, At: time.Now()}
+	if len(usecases) > 0 && usecases[0] != nil {
+		record.UserID, record.PasswordEpoch, _ = usecases[0].PrepareEmailRecovery(r.Context(), email)
+	}
 	verificationStore.Lock()
-	verificationStore.items["r:"+email] = verificationRecord{Code: token, At: time.Now()}
+	verificationStore.items["r:"+email] = record
 	verificationStore.Unlock()
 	if deliverer == nil {
 		deliverer = noopCodeDeliverer{}
@@ -1294,11 +1315,12 @@ func handleResetPassword(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 		return
 	}
 	gcVerificationStores()
-	if _, ok := takeVerificationRecord("r:", req.Email, req.Token); !ok {
+	record, ok := takeVerificationRecord("r:", req.Email, req.Token)
+	if !ok {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "重置链接非法或已过期"})
 		return
 	}
-	if err := uc.ResetPasswordByEmail(r.Context(), req.Email, req.Password); err != nil {
+	if err := uc.ResetPasswordByEmail(biz.WithVerifiedEmailRecovery(r.Context(), req.Email, time.Now(), record.UserID, record.PasswordEpoch), req.Email, req.Password); err != nil {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
 	}
@@ -1409,6 +1431,9 @@ func oauthBindSnapshotFromRequest(r *http.Request, uc *biz.IdentityUsecase, prov
 	token, ok := bearerTokenFromRequest(r)
 	if ok {
 		snapshot, err := uc.GetSessionSnapshot(r.Context(), token)
+		if err == nil {
+			*r = *r.WithContext(authorization.WithCredential(r.Context(), token))
+		}
 		return snapshot, false, err
 	}
 	if state == "" {
@@ -1423,6 +1448,9 @@ func oauthBindSnapshotFromRequest(r *http.Request, uc *biz.IdentityUsecase, prov
 		return nil, false, biz.ErrInvalidToken
 	}
 	snapshot, err := uc.GetSessionSnapshot(r.Context(), record.Token)
+	if err == nil {
+		*r = *r.WithContext(authorization.WithCredential(r.Context(), record.Token))
+	}
 	return snapshot, true, err
 }
 
@@ -1604,7 +1632,11 @@ func authSnapshotFromRequest(r *http.Request, uc *biz.IdentityUsecase) (*biz.Aut
 	if !ok {
 		return nil, biz.ErrInvalidToken
 	}
-	return uc.GetSessionSnapshot(r.Context(), token)
+	snapshot, err := uc.GetSessionSnapshot(r.Context(), token)
+	if err == nil {
+		*r = *r.WithContext(authorization.WithCredential(r.Context(), token))
+	}
+	return snapshot, err
 }
 
 func bearerTokenFromRequest(r *http.Request) (string, bool) {
@@ -1816,6 +1848,9 @@ func handleOAuthCallback(w http.ResponseWriter, r *http.Request, provider oauth.
 			return
 		}
 		bindSnapshot, bindErr = uc.GetSessionSnapshot(r.Context(), bindRecord.Token)
+		if bindErr == nil {
+			*r = *r.WithContext(authorization.WithCredential(r.Context(), bindRecord.Token))
+		}
 		if bindErr != nil {
 			writeJSON(w, http.StatusUnauthorized, apiResponse{Success: false, Message: "invalid token"})
 			return
@@ -1865,4 +1900,17 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = jsonx.NewEncoder(w).Encode(v)
+}
+
+// Propagate only the credential already verified by identity's self guard.
+// Billing independently authenticates it; a URL user_id never becomes actor.
+func billingSelfContext(ctx context.Context) context.Context {
+	raw := authorization.Credential(ctx)
+	if raw == "" {
+		return ctx
+	}
+	md, _ := metadata.FromOutgoingContext(ctx)
+	md = md.Copy()
+	md.Set("x-operator-authorization", "Bearer "+raw)
+	return metadata.NewOutgoingContext(ctx, md)
 }
