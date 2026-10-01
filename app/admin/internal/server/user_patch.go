@@ -68,5 +68,6 @@ func writeIAMProto(w http.ResponseWriter, value proto.Message) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	// #nosec G705 -- body is protojson output served as application/json, not HTML.
 	_, _ = w.Write(body)
 }

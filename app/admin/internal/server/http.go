@@ -4180,6 +4180,7 @@ func writeServiceResponse(w http.ResponseWriter, resp any, err error) {
 // newOwnerHTTPProxy preserves the verified operator independently of admin's
 // service credential; browser service/caller headers do not establish identity.
 func newOwnerHTTPProxy(target *url.URL) *httputil.ReverseProxy {
+	// #nosec G704 -- target is validated by parseReverseProxyTarget at every call site.
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	director := proxy.Director
 	proxy.Director = func(r *http.Request) {

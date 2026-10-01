@@ -24,6 +24,7 @@ func (f *Flag) Scan(value any) error {
 	case bool:
 		*f = BoolInt(v)
 	case int64:
+		// #nosec G115 -- Flag is a 0/1 numeric boolean; databases return it as int64.
 		*f = Flag(v)
 	case int32:
 		*f = Flag(v)
