@@ -39,6 +39,7 @@ type AdminService struct {
 	identityClient  identityv1.IdentityServiceClient
 	channelClient   channelv1.ChannelServiceClient
 	systemOptsUc    *adminbiz.SystemOptionsUsecase
+	iam             *IAMAdminService
 	httpClient      *http.Client
 	providerFactory *relayprovider.ProviderFactory
 	subscriptionUc  *subscriptionbiz.SubscriptionUsecase
@@ -2679,4 +2680,12 @@ func (s *AdminService) AggregateUsageGroupedByChannel(ctx context.Context, start
 		totals.Count = t.GetCount()
 	}
 	return items, totals, nil
+}
+
+func (s *AdminService) SetIAMService(iam *IAMAdminService) { s.iam = iam }
+func (s *AdminService) IAMService() *IAMAdminService {
+	if s == nil {
+		return nil
+	}
+	return s.iam
 }

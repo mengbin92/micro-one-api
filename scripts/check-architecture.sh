@@ -153,6 +153,7 @@ while IFS='|' read -r package_path imports; do
     #   - monitor's internal/data (wraps channel-service client for health probing)
     #   - admin's data/channelclient (narrow channel-owner DO reader; v2 §7.1)
     #   - admin's data/routingaccess (identity/channel/billing RPC adapters; v2 D)
+    #   - admin's data/iam (identity IAM RPC adapter; RBAC implementation §4.1)
     # These adapter packages have no storage clients; biz sees only DOs.
     # In these cases, the data layer is the correct location for DTO imports,
     # not the biz layer.
@@ -166,7 +167,9 @@ while IFS='|' read -r package_path imports; do
        || [[ "${package_path}" == "${module_path}/app/admin/internal/data/routingaccess" \
              && ( "${imported}" == "${module_path}/api/identity/v1" \
                || "${imported}" == "${module_path}/api/channel/v1" \
-               || "${imported}" == "${module_path}/api/billing/v1" ) ]]; then
+               || "${imported}" == "${module_path}/api/billing/v1" ) ]] \
+       || [[ "${package_path}" == "${module_path}/app/admin/internal/data/iam" \
+             && "${imported}" == "${module_path}/api/identity/v1" ]]; then
       admin_dto_exempt=1
     fi
     if [[ "${pkg_layer}" == "data" \

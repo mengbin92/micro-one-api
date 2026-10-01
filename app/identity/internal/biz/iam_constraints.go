@@ -7,50 +7,16 @@ import (
 	"time"
 
 	"micro-one-api/domain/authorization"
+	"micro-one-api/domain/authorization/management"
 )
 
 // IAMLimits counts distinct effective roles, including inheritance, in one
 // context. Nil means unlimited; zero is invalid. Disabled nodes cut propagation.
-type IAMLimits struct {
-	MaxRolesPerUser, MaxRolesPerSession *int64
-}
-type IAMRoleConstraint struct {
-	ID         int64
-	Context    authorization.Context
-	Kind, Name string
-	RoleIDs    []int64
-	MaxCount   int64
-	Enabled    bool
-	Revision   uint64
-}
-type IAMSessionContext struct {
-	SessionID                   string
-	UserID                      int64
-	Context                     authorization.Context
-	ExpiresAt                   time.Time
-	RevokedAt, ContextRevokedAt *time.Time
-	ActivationState             string
-	ActiveRoleIDs               []int64
-	SessionRevision, Revision   uint64
-}
-type IAMConstraintState struct {
-	Context     authorization.Context
-	Roles       []IAMRole
-	Assignments []IAMAssignment
-	Constraints []IAMRoleConstraint
-	Sessions    []IAMSessionContext
-	Limits      IAMLimits
-}
-type IAMConstraintConflict struct {
-	ConstraintName       string
-	ProposedConstraint   bool
-	Kind                 string
-	ConstraintID, RoleID int64
-	UserIDs, RoleIDs     []int64
-	SessionIDs           []string
-	Actual, Limit        int64
-	Validity             authorization.Interval
-}
+type IAMLimits = management.Limits
+type IAMRoleConstraint = management.Constraint
+type IAMSessionContext = management.Session
+type IAMConstraintState = management.State
+type IAMConstraintConflict = management.Conflict
 
 // Conflict details remain a DO for authorized governance callers; ordinary
 // authorization errors must not disclose other users or hidden session IDs.

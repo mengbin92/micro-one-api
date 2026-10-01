@@ -39,12 +39,18 @@ const userStatusEnabled = 1
 
 func main() {
 	var (
-		username = flag.String("username", "admin", "username to reset (created if missing)")
-		password = flag.String("password", "", "new password; if empty, a random 16-char hex password is generated")
-		passFile = flag.String("generated-password-file", "", "file to write the generated password when -password is empty; created with mode 0600")
-		email    = flag.String("email", "", "email to set when creating a new user (ignored on reset unless -role is also set)")
-		quota    = flag.Int64("quota", 1_000_000, "quota to set when creating a new user (ignored on reset)")
-		role     = flag.Int("role", -1, "role to set (0=guest, 1=user, 10=admin, 100=root); negative means leave unchanged on reset, default to 100 on create")
+		rescue         = flag.Bool("iam-rescue", false, "recover enabled IAM root credentials via identity RPC; never writes SQL")
+		endpoint       = flag.String("identity-grpc-endpoint", os.Getenv("IDENTITY_GRPC_ENDPOINT"), "dedicated rescue RPC endpoint")
+		target         = flag.Int64("user-id", 0, "IAM rescue target root ID")
+		reason         = flag.String("reason", "", "IAM rescue audit reason")
+		userRevision   = flag.Uint64("expected-revision", 0, "IAM rescue user CAS revision")
+		policyRevision = flag.Uint64("expected-policy-revision", 0, "IAM rescue policy CAS revision")
+		username       = flag.String("username", "admin", "username to reset (created if missing)")
+		password       = flag.String("password", "", "new password; if empty, a random 16-char hex password is generated")
+		passFile       = flag.String("generated-password-file", "", "file to write the generated password when -password is empty; created with mode 0600")
+		email          = flag.String("email", "", "email to set when creating a new user (ignored on reset unless -role is also set)")
+		quota          = flag.Int64("quota", 1_000_000, "quota to set when creating a new user (ignored on reset)")
+		role           = flag.Int("role", -1, "role to set (0=guest, 1=user, 10=admin, 100=root); negative means leave unchanged on reset, default to 100 on create")
 	)
 	flag.Parse()
 
@@ -55,7 +61,7 @@ func main() {
 	}
 
 	dsn := pickDSN()
-	if dsn == "" {
+	if dsn == "" && !*rescue {
 		fmt.Fprintln(os.Stderr, "error: ADMIN_RESET_DSN, IDENTITY_SQL_DSN, or SQL_DSN must be set")
 		os.Exit(2)
 	}
@@ -75,6 +81,25 @@ func main() {
 		}
 		plain = hex.EncodeToString(buf)
 		generated = true
+	}
+
+	if *rescue {
+		if *role >= 0 || *email != "" {
+			fmt.Fprintln(os.Stderr, "error: IAM rescue cannot change role or email")
+			os.Exit(2)
+		}
+		if err := rescueIAMCredential(*endpoint, *target, plain, *reason, *userRevision, *policyRevision); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		if generated {
+			if err := writeGeneratedPasswordFile(outputFile, plain); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+		}
+		fmt.Println("IAM root credential recovered; sessions revoked")
+		return
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)

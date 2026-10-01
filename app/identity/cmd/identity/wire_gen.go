@@ -36,9 +36,11 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	auditor := newAuditAuditor()
 	identityUsecase := newIdentityUsecase(repository, auditor)
 	identityService := service.NewIdentityService(identityUsecase)
+	iamGovernanceUsecase := newIAMGovernanceUsecase(repository, identityUsecase)
+	iamService := service.NewIAMService(iamGovernanceUsecase, identityUsecase)
 	providerRegistry := setupOAuth(config)
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup := newApp(config, repository, identityUsecase, identityService, providerRegistry, mainRegistrarResult)
+	app, cleanup := newApp(config, repository, identityUsecase, identityService, iamService, providerRegistry, mainRegistrarResult)
 	return app, func() {
 		cleanup()
 	}, nil
@@ -49,7 +51,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 var ProviderSet = wire.NewSet(
 	newRepo,
 	newAuditAuditor,
-	newIdentityUsecase, service.NewIdentityService, server.NewGRPCServer, provideRegistrar, wire.Bind(new(biz.IdentityRepo), new(*data.Repository)),
+	newIdentityUsecase, service.NewIdentityService, newIAMGovernanceUsecase, service.NewIAMService, server.NewGRPCServer, provideRegistrar, wire.Bind(new(biz.IdentityRepo), new(*data.Repository)),
 )
 
 // newIdentityUsecase connects the persistent runtime before any bootstrap or
@@ -104,6 +106,7 @@ func newApp(
 	repo *data.Repository,
 	uc *biz.IdentityUsecase,
 	svc *service.IdentityService,
+	iam *service.IAMService,
 	oauthRegistry *oauth.ProviderRegistry,
 	reg registrarResult,
 ) (*kratos.App, func()) {
@@ -119,7 +122,7 @@ func newApp(
 		closeRouting = cleanup
 	}
 	bootstrapAdmin(uc)
-	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
+	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc, iam)
 	billingClient, billingConn, _ := newBillingClient(cfg)
 	httpSrv := server.NewHTTPServerWithRegistrationPolicy(
 		cfg.Bootstrap.Server.Http.Addr, uc, oauthRegistry,
@@ -137,4 +140,8 @@ func newApp(
 			billingConn.Close()
 		}
 	}
+}
+
+func newIAMGovernanceUsecase(repo *data.Repository, identity *biz.IdentityUsecase) *biz.IAMGovernanceUsecase {
+	return biz.NewIAMGovernanceUsecase(data.NewIAMManagementRepo(repo.Data), data.NewIAMTxRunner(repo.Data), identity)
 }

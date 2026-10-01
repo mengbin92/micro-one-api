@@ -1,0 +1,288 @@
+syntax = "proto3";
+package api.identity.v1;
+option go_package = "micro-one-api/api/identity/v1;identityv1";
+import "api/common/v1/authorization.proto";
+import "google/protobuf/field_mask.proto";
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+// Credentials and actor IDs never appear in ordinary management requests.
+// All sensitive writes require a reason, target CAS and policy CAS. Preview
+// results are descriptive; execution always rechecks the locked facts.
+service IAMService {
+ rpc ListResources(IAMRequest) returns (IAMReply);
+ rpc ListPermissions(IAMRequest) returns (IAMReply);
+ rpc GetPermission(IAMRequest) returns (IAMReply);
+ rpc CreatePermission(IAMRequest) returns (IAMReply);
+ rpc UpdatePermission(IAMRequest) returns (IAMReply);
+ rpc SetPermissionStatus(IAMRequest) returns (IAMReply);
+ rpc ArchivePermission(IAMRequest) returns (IAMReply);
+ rpc GetPermissionReferences(IAMRequest) returns (IAMReply);
+ rpc ListRoles(IAMRequest) returns (IAMReply);
+ rpc GetRole(IAMRequest) returns (IAMReply);
+ rpc CreateRole(IAMRequest) returns (IAMReply);
+ rpc UpdateRole(IAMRequest) returns (IAMReply);
+ rpc CopyRole(IAMRequest) returns (IAMReply);
+ rpc SetRoleStatus(IAMRequest) returns (IAMReply);
+ rpc ArchiveRole(IAMRequest) returns (IAMReply);
+ rpc GetRoleReferences(IAMRequest) returns (IAMReply);
+ rpc ListRoleMembers(IAMRequest) returns (IAMReply);
+ rpc GetRolePermissions(IAMRequest) returns (IAMReply);
+ rpc UpdateRolePermissions(IAMRequest) returns (IAMReply);
+ rpc UpdateRoleInheritance(IAMRequest) returns (IAMReply);
+ rpc PreviewRoleChange(IAMRequest) returns (IAMReply);
+ rpc GetUserRoles(IAMRequest) returns (IAMReply);
+ rpc AssignUserRole(IAMRequest) returns (IAMReply);
+ rpc RevokeUserRole(IAMRequest) returns (IAMReply);
+ rpc BatchAssignUserRoles(IAMRequest) returns (IAMReply);
+ rpc PreviewUserRoleChange(IAMRequest) returns (IAMReply);
+ rpc GetSessionAuthorization(IAMRequest) returns (IAMReply) { option (google.api.http) = { get: "/api/user/authorization" }; }
+ rpc GetSessionRoles(IAMRequest) returns (IAMReply) { option (google.api.http) = { get: "/api/user/session/roles" }; }
+ rpc ActivateSessionRoles(IAMRequest) returns (IAMReply) { option (google.api.http) = { put: "/api/user/session/roles" body: "*" }; }
+ rpc RevokeOwnSession(IAMRequest) returns (IAMReply) { option (google.api.http) = { delete: "/api/user/session" }; }
+ rpc RevokeUserSessions(IAMRequest) returns (IAMReply);
+ rpc ListUserSessions(IAMRequest) returns (IAMReply);
+ rpc ListDelegations(IAMRequest) returns (IAMReply);
+ rpc CreateDelegation(IAMRequest) returns (IAMReply);
+ rpc UpdateDelegation(IAMRequest) returns (IAMReply);
+ rpc RevokeDelegation(IAMRequest) returns (IAMReply);
+ rpc ListRoleConstraints(IAMRequest) returns (IAMReply);
+ rpc CreateRoleConstraint(IAMRequest) returns (IAMReply);
+ rpc UpdateRoleConstraint(IAMRequest) returns (IAMReply);
+ rpc DeleteRoleConstraint(IAMRequest) returns (IAMReply);
+ rpc ListMenuItems(IAMRequest) returns (IAMReply);
+ rpc CreateMenuItem(IAMRequest) returns (IAMReply);
+ rpc UpdateMenuItem(IAMRequest) returns (IAMReply);
+ rpc ArchiveMenuItem(IAMRequest) returns (IAMReply);
+ rpc CheckAuthorization(IAMRequest) returns (IAMReply);
+ rpc GetUserEffectivePermissions(IAMRequest) returns (IAMReply);
+ rpc ExplainAuthorization(IAMRequest) returns (IAMReply);
+ rpc SimulateAuthorizationChange(IAMRequest) returns (IAMReply);
+ rpc ListAuthorizationAuditEvents(IAMRequest) returns (IAMReply);
+ rpc GetAuthorizationAuditEvent(IAMRequest) returns (IAMReply);
+ rpc ExportAuthorizationAuditEvents(IAMRequest) returns (IAMReply);
+ rpc RescueRootCredential(IAMRescueRequest) returns (IAMReply);
+}
+
+message IAMGrant {
+ string operation = 1;
+ string effect = 2;
+ api.common.v1.AuthorizationScope scope = 3;
+}
+
+message IAMRole {
+ int64 id = 1;
+ api.common.v1.AuthorizationContext context = 2;
+ string code = 3;
+ string name = 4;
+ string description = 5;
+ bool builtin = 6;
+ optional int64 max_members = 7;
+ string status = 8;
+ uint64 revision = 9;
+ int64 creation_delegation_id = 10;
+ repeated int64 inherits = 11;
+ repeated IAMGrant grants = 12;
+}
+
+message IAMAssignment {
+ int64 id = 1;
+ int64 user_id = 2;
+ int64 role_id = 3;
+ api.common.v1.AuthorizationContext context = 4;
+ api.common.v1.AuthorizationScope boundary = 5;
+ api.common.v1.AuthorizationInterval validity = 6;
+ bool revoked = 7;
+ string origin = 8;
+ string migration_batch_id = 9;
+ uint64 revision = 10;
+ int64 assigned_by = 11;
+}
+
+message IAMCeiling {
+ api.common.v1.AuthorizationContext context = 1;
+ string operation = 2;
+ api.common.v1.AuthorizationScope scope = 3;
+}
+
+message IAMDelegation {
+ int64 id = 1;
+ int64 manager_role_id = 2;
+ int64 target_role_id = 3;
+ api.common.v1.AuthorizationContext context = 4;
+ string target_kind = 5;
+ repeated string actions = 6;
+ api.common.v1.AuthorizationScope target_user_scope = 7;
+ repeated IAMCeiling grant_ceiling = 8;
+ bool can_redelegate = 9;
+ api.common.v1.AuthorizationInterval validity = 10;
+ uint64 revision = 11;
+}
+
+message IAMPermission {
+ repeated string supported_scopes = 10;
+ repeated string context_types = 11;
+ bool protected = 12;
+ int64 id = 1;
+ int64 resource_id = 2;
+ string code = 3;
+ string name = 4;
+ string category = 5;
+ string risk_level = 6;
+ string status = 7;
+ string binding = 8;
+ uint64 revision = 9;
+}
+
+message IAMResource {
+ int64 id = 1;
+ string code = 2;
+ string name = 3;
+ string owner = 4;
+ bool enabled = 5;
+}
+
+message IAMMenu {
+ int64 id = 1;
+ int64 parent_id = 2;
+ string route_key = 3;
+ string name = 4;
+ string icon_key = 5;
+ int32 sort = 6;
+ bool enabled = 7;
+ repeated string required_all = 8;
+ repeated string required_any = 9;
+ uint64 revision = 10;
+}
+
+message IAMConstraint {
+ int64 id = 1;
+ api.common.v1.AuthorizationContext context = 2;
+ string kind = 3;
+ string name = 4;
+ repeated int64 role_ids = 5;
+ int64 max_count = 6;
+ bool enabled = 7;
+ uint64 revision = 8;
+}
+
+message IAMSession {
+ string session_id = 1;
+ int64 user_id = 2;
+ api.common.v1.AuthorizationContext context = 3;
+ google.protobuf.Timestamp expires_at = 4;
+ google.protobuf.Timestamp revoked_at = 5;
+ google.protobuf.Timestamp context_revoked_at = 6;
+ string activation_state = 7;
+ repeated int64 active_role_ids = 8;
+ uint64 session_revision = 9;
+ uint64 revision = 10;
+}
+
+message IAMReference {
+ string kind = 1;
+ int64 id = 2;
+ int64 user_id = 3;
+}
+
+message IAMConflict {
+ string constraint_name = 1;
+ bool proposed_constraint = 2;
+ string kind = 3;
+ int64 constraint_id = 4;
+ int64 role_id = 5;
+ repeated int64 user_ids = 6;
+ repeated int64 role_ids = 7;
+ repeated string session_ids = 8;
+ int64 actual = 9;
+ int64 limit = 10;
+ api.common.v1.AuthorizationInterval validity = 11;
+}
+
+message IAMAudit {
+ string event_id = 1;
+ api.common.v1.AuthorizationActor actor = 2;
+ api.common.v1.AuthorizationContext context = 3;
+ api.common.v1.AuthorizationContext target_context = 4;
+ string action = 5;
+ string target = 6;
+ string before = 7;
+ string after = 8;
+ string diff = 9;
+ string result = 10;
+ string request_id = 11;
+ string reason = 12;
+ api.common.v1.AuthorizationVersions versions = 13;
+ google.protobuf.Timestamp occurred_at = 14;
+}
+
+message IAMRequest {
+ api.common.v1.AuthorizationContext context = 1;
+ int64 id = 2;
+ int64 user_id = 3;
+ int64 source_id = 4;
+ string event_id = 5;
+ IAMRole role = 6;
+ IAMPermission permission = 7;
+ IAMDelegation delegation = 8;
+ IAMConstraint constraint = 9;
+ IAMMenu menu = 10;
+ IAMAssignment assignment = 11;
+ repeated IAMAssignment assignments = 12;
+ repeated IAMGrant grants = 13;
+ repeated int64 role_ids = 14;
+ uint64 expected_revision = 15;
+ uint64 expected_policy_revision = 16;
+ uint64 base_policy_revision = 17;
+ string content_digest = 18;
+ string reason = 19;
+ string request_id = 20;
+ string filter = 21;
+ string order_by = 22;
+ string page_token = 23;
+ int32 page_size = 24;
+ google.protobuf.FieldMask update_mask = 25;
+ string operation = 26;
+ api.common.v1.AuthorizationObjectFacts object = 27;
+}
+
+message IAMReply {
+ repeated IAMImpact impacts = 23;
+ repeated IAMSession sessions = 24;
+ repeated IAMRole roles = 1;
+ repeated IAMPermission permissions = 2;
+ repeated IAMResource resources = 3;
+ repeated IAMDelegation delegations = 4;
+ repeated IAMConstraint constraints = 5;
+ repeated IAMMenu menus = 6;
+ repeated IAMAssignment assignments = 7;
+ repeated IAMAudit audits = 8;
+ repeated IAMReference references = 9;
+ repeated IAMConflict conflicts = 10;
+ repeated api.common.v1.AuthorizationGrantSource sources = 11;
+ api.common.v1.AuthorizationDecision decision = 12;
+ api.common.v1.AuthorizationVersions versions = 13;
+ IAMSession session = 14;
+ google.protobuf.Timestamp valid_until = 15;
+ repeated int64 authorized_role_ids = 16;
+ repeated int64 active_role_ids = 17;
+ repeated int64 affected_user_ids = 18;
+ uint64 base_policy_revision = 19;
+ string content_digest = 20;
+ string next_page_token = 21;
+ int64 total = 22;
+}
+
+message IAMRescueRequest {
+ int64 user_id = 1;
+ string password = 2;
+ string reason = 3;
+ uint64 expected_revision = 4;
+ uint64 expected_policy_revision = 5;
+}
+
+message IAMImpact {
+ int64 user_id = 1;
+ repeated api.common.v1.AuthorizationGrantSource before = 2;
+ repeated api.common.v1.AuthorizationGrantSource after = 3;
+}

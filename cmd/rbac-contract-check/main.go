@@ -42,6 +42,7 @@ func inventory(root string) ([][]string, error) {
 	defer repo.Close()
 	repoFS := repo.FS()
 	rows := [][]string{}
+	httpRegistrations := map[string]bool{}
 	fset := token.NewFileSet()
 	err = fs.WalkDir(repoFS, ".", func(rel string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -64,7 +65,7 @@ func inventory(root string) ([][]string, error) {
 		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") || strings.HasSuffix(rel, ".pb.go") || strings.HasSuffix(rel, "wire_gen.go") {
 			return nil
 		}
-		if !strings.HasPrefix(rel, "app/") && !strings.HasPrefix(rel, "internal/server/") && rel != "cmd/admin-reset/main.go" {
+		if !strings.HasPrefix(rel, "app/") && !strings.HasPrefix(rel, "internal/server/") && !strings.HasPrefix(rel, "cmd/admin-reset/") {
 			return nil
 		}
 		data, err := repo.ReadFile(rel)
@@ -79,12 +80,12 @@ func inventory(root string) ([][]string, error) {
 		if strings.HasPrefix(rel, "app/") {
 			service = strings.Split(rel, "/")[1]
 		}
-		if rel == "cmd/admin-reset/main.go" {
+		if strings.HasPrefix(rel, "cmd/admin-reset/") {
 			service = "identity"
 		}
 		// Hash package source as well as registration: helper branch changes must
 		// prompt matrix review even when the outer route declaration is unchanged.
-		writer := strings.HasPrefix(rel, "app/identity/internal/biz/") || strings.HasPrefix(rel, "app/identity/internal/data/") || rel == "app/billing/internal/data/account_repo.go" || rel == "cmd/admin-reset/main.go"
+		writer := strings.HasPrefix(rel, "app/identity/internal/biz/") || strings.HasPrefix(rel, "app/identity/internal/data/") || rel == "app/billing/internal/data/account_repo.go" || strings.HasPrefix(rel, "cmd/admin-reset/")
 		if strings.Contains(rel, "/server/") || strings.Contains(rel, "/service/") || strings.HasSuffix(rel, "admin_helpers.go") || writer {
 			digest := fmt.Sprintf("%x", sha256.Sum256([]byte(render(fset, f))))
 			rows = append(rows, []string{"SOURCE", service, rel, rel, "package", digest})
@@ -99,6 +100,11 @@ func inventory(root string) ([][]string, error) {
 				return true
 			}
 			name := sel.Sel.Name
+			if strings.HasPrefix(name, "Register") && strings.HasSuffix(name, "ServiceHTTPServer") {
+				httpRegistrations[name] = true
+				rows = append(rows, []string{"HTTP_REGISTER", service, name, fmt.Sprintf("%s:%d", rel, fset.Position(call.Pos()).Line), render(fset, call), fmt.Sprintf("%x", sha256.Sum256([]byte(render(fset, call))))})
+				return true
+			}
 			if strings.HasPrefix(name, "Register") && strings.HasSuffix(name, "ServiceServer") {
 				rows = append(rows, []string{"GRPC_REGISTER", service, name, fmt.Sprintf("%s:%d", rel, fset.Position(call.Pos()).Line), render(fset, call), fmt.Sprintf("%x", sha256.Sum256([]byte(render(fset, call))))})
 				return true
@@ -153,6 +159,7 @@ func inventory(root string) ([][]string, error) {
 	}
 	packageRE := regexp.MustCompile(`(?m)^package\s+(\S+);`)
 	serviceRE := regexp.MustCompile(`(?m)^service\s+(\w+)\s*\{`)
+	httpRPCRE := regexp.MustCompile(`(?s)rpc\s+(\w+)\s*\([^;{]+?\{\s*option\s+\(google.api.http\)\s*=\s*\{\s*(get|post|put|patch|delete)\s*:\s*"([^"]+)"[^}]*\}\s*;?\s*\}`)
 	rpcRE := regexp.MustCompile(`\brpc\s+(\w+)\s*\([^;{]+[;{]`)
 	for _, rel := range files {
 		data, err := repo.ReadFile(rel)
@@ -168,6 +175,11 @@ func inventory(root string) ([][]string, error) {
 		}
 		srv := services[0]
 		owner := strings.Split(rel, "/")[1]
+		if httpRegistrations["Register"+string(srv[1])+"HTTPServer"] {
+			for _, m := range httpRPCRE.FindAllSubmatch(data, -1) {
+				rows = append(rows, []string{"HTTP_PROTO", owner, strings.ToUpper(string(m[2])) + " " + string(m[3]), rel, string(srv[1]) + "." + string(m[1]), fmt.Sprintf("%x", sha256.Sum256(m[0]))})
+			}
+		}
 		for _, m := range rpcRE.FindAllSubmatch(data, -1) {
 			rows = append(rows, []string{"RPC", owner, "/" + string(pkg[1]) + "." + string(srv[1]) + "/" + string(m[1]), rel, string(srv[1]) + "." + string(m[1]), fmt.Sprintf("%x", sha256.Sum256(m[0]))})
 		}

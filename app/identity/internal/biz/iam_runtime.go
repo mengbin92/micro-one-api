@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"micro-one-api/domain/authorization"
+	m "micro-one-api/domain/authorization/management"
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/audit"
 	sessionauth "micro-one-api/platform/security/auth"
@@ -364,6 +365,9 @@ func (uc *IdentityUsecase) ensureIAMSession(ctx context.Context, a authorization
 			return ErrIAMCutoverBlocked
 		}
 		u, err := uc.iam.User(ctx, tx, a.UserID)
+		if errors.Is(err, ErrIAMNotFound) {
+			return ErrInvalidToken
+		}
 		if err != nil {
 			return err
 		}
@@ -415,6 +419,9 @@ func (uc *IdentityUsecase) readIAMAuthorization(ctx context.Context, a authoriza
 			return ErrIAMCutoverBlocked
 		}
 		u, err := uc.iam.User(ctx, tx, a.UserID)
+		if errors.Is(err, ErrIAMNotFound) {
+			return ErrInvalidToken
+		}
 		if err != nil {
 			return err
 		}
@@ -462,6 +469,23 @@ func (uc *IdentityUsecase) readIAMAuthorization(ctx context.Context, a authoriza
 				for _, t := range []*time.Time{&assignment.Validity.StartsAt, assignment.Validity.ExpiresAt} {
 					if t != nil && t.After(now) && t.Before(validUntil) {
 						validUntil = *t
+					}
+				}
+			}
+		}
+		if reader, ok := uc.iam.(interface {
+			Delegations(context.Context, IAMTx, authorization.Context) ([]m.Delegation, error)
+		}); ok {
+			delegations, err := reader.Delegations(ctx, tx, c)
+			if err != nil {
+				return err
+			}
+			for _, d := range delegations {
+				if len(d.Actions) > 0 && slices.Contains(authorized, d.ManagerRoleID) {
+					for _, t := range []*time.Time{&d.Validity.StartsAt, d.Validity.ExpiresAt} {
+						if t != nil && t.After(now) && t.Before(validUntil) {
+							validUntil = *t
+						}
 					}
 				}
 			}
@@ -523,6 +547,9 @@ func (uc *IdentityUsecase) ActivateSessionRoles(ctx context.Context, raw string,
 			return ErrIAMCutoverBlocked
 		}
 		u, err := uc.iam.User(ctx, tx, a.UserID)
+		if errors.Is(err, ErrIAMNotFound) {
+			return ErrInvalidToken
+		}
 		if err != nil {
 			return err
 		}
@@ -585,6 +612,9 @@ func (uc *IdentityUsecase) RevokeOwnSession(ctx context.Context, raw string, c a
 			return ErrIAMCutoverBlocked
 		}
 		u, err := uc.iam.User(ctx, tx, a.UserID)
+		if errors.Is(err, ErrIAMNotFound) {
+			return ErrInvalidToken
+		}
 		if err != nil {
 			return err
 		}

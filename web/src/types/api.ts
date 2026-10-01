@@ -4,6 +4,566 @@
  */
 
 export interface paths {
+    "/api/user/authorization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_GetSessionAuthorization"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/user/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["IAMAdminService_RevokeOwnSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/user/session/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_GetSessionRoles"];
+        put: operations["IAMAdminService_ActivateSessionRoles"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/audit-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_ListAuthorizationAuditEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/audit-events/{eventId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_GetAuthorizationAuditEvent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/audit-events:export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_ExportAuthorizationAuditEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/authorization:check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IAMAdminService_CheckAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/authorization:explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IAMAdminService_ExplainAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/authorization:simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IAMAdminService_SimulateAuthorizationChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/constraints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_ListRoleConstraints"];
+        put?: never;
+        post: operations["IAMAdminService_CreateRoleConstraint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/constraints/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["IAMAdminService_UpdateRoleConstraint"];
+        post?: never;
+        delete: operations["IAMAdminService_DeleteRoleConstraint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/delegations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_ListDelegations"];
+        put?: never;
+        post: operations["IAMAdminService_CreateDelegation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/delegations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["IAMAdminService_RevokeDelegation"];
+        options?: never;
+        head?: never;
+        patch: operations["IAMAdminService_UpdateDelegation"];
+        trace?: never;
+    };
+    "/api/v1/admin/iam/menus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_ListMenuItems"];
+        put?: never;
+        post: operations["IAMAdminService_CreateMenuItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/menus/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["IAMAdminService_ArchiveMenuItem"];
+        options?: never;
+        head?: never;
+        patch: operations["IAMAdminService_UpdateMenuItem"];
+        trace?: never;
+    };
+    "/api/v1/admin/iam/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_ListPermissions"];
+        put?: never;
+        post: operations["IAMAdminService_CreatePermission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/permissions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_GetPermission"];
+        put?: never;
+        post?: never;
+        delete: operations["IAMAdminService_ArchivePermission"];
+        options?: never;
+        head?: never;
+        patch: operations["IAMAdminService_UpdatePermission"];
+        trace?: never;
+    };
+    "/api/v1/admin/iam/permissions/{id}/references": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_GetPermissionReferences"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/permissions/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IAMAdminService_SetPermissionStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_ListResources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_ListRoles"];
+        put?: never;
+        post: operations["IAMAdminService_CreateRole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/roles/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_GetRole"];
+        put?: never;
+        post?: never;
+        delete: operations["IAMAdminService_ArchiveRole"];
+        options?: never;
+        head?: never;
+        patch: operations["IAMAdminService_UpdateRole"];
+        trace?: never;
+    };
+    "/api/v1/admin/iam/roles/{id}/inheritance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["IAMAdminService_UpdateRoleInheritance"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/roles/{id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_ListRoleMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/roles/{id}/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_GetRolePermissions"];
+        put: operations["IAMAdminService_UpdateRolePermissions"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/roles/{id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IAMAdminService_PreviewRoleChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/roles/{id}/references": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_GetRoleReferences"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/roles/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IAMAdminService_SetRoleStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/roles/{sourceId}/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IAMAdminService_CopyRole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/users/roles:batchAssign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IAMAdminService_BatchAssignUserRoles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/users/{userId}/effective-permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_GetUserEffectivePermissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/users/{userId}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_GetUserRoles"];
+        put?: never;
+        post: operations["IAMAdminService_AssignUserRole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/users/{userId}/roles/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["IAMAdminService_RevokeUserRole"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/users/{userId}/roles:preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IAMAdminService_PreviewUserRoleChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/iam/users/{userId}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IAMAdminService_ListUserSessions"];
+        put?: never;
+        post?: never;
+        delete: operations["IAMAdminService_RevokeUserSessions"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/account": {
         parameters: {
             query?: never;
@@ -627,6 +1187,76 @@ export interface components {
             /** Format: int32 */
             status?: number;
         };
+        "api.common.v1.AuthorizationActor": {
+            userId?: string;
+            serviceId?: string;
+            sessionId?: string;
+            passwordEpoch?: string;
+            /** Format: date-time */
+            expiresAt?: string;
+        };
+        /** @description IDs use protobuf int64 JSON strings. Domain keys are server canonical values. */
+        "api.common.v1.AuthorizationContext": {
+            contextType?: string;
+            organizationId?: string;
+            contextKey?: string;
+        };
+        "api.common.v1.AuthorizationDecision": {
+            allowed?: boolean;
+            reason?: string;
+            context?: components["schemas"]["api.common.v1.AuthorizationContext"];
+            operation?: string;
+            versions?: components["schemas"]["api.common.v1.AuthorizationVersions"];
+            /** Format: date-time */
+            validUntil?: string;
+            sources?: components["schemas"]["api.common.v1.AuthorizationGrantSource"][];
+        };
+        "api.common.v1.AuthorizationGrantSource": {
+            context?: components["schemas"]["api.common.v1.AuthorizationContext"];
+            operation?: string;
+            /** Format: enum */
+            effect?: number;
+            assignmentId?: string;
+            roleId?: string;
+            inheritancePath?: string[];
+            roleScope?: components["schemas"]["api.common.v1.AuthorizationScope"];
+            assignmentBoundary?: components["schemas"]["api.common.v1.AuthorizationScope"];
+            validity?: components["schemas"]["api.common.v1.AuthorizationInterval"];
+            active?: boolean;
+        };
+        "api.common.v1.AuthorizationInterval": {
+            /** Format: date-time */
+            startsAt?: string;
+            /** Format: date-time */
+            expiresAt?: string;
+        };
+        "api.common.v1.AuthorizationObjectFacts": {
+            context?: components["schemas"]["api.common.v1.AuthorizationContext"];
+            resourceId?: string;
+            ownerUserId?: string;
+            routingGroupIds?: string[];
+        };
+        /** @description Finite union; each clause is a conjunction, empty scope matches nothing. */
+        "api.common.v1.AuthorizationScope": {
+            clauses?: components["schemas"]["api.common.v1.AuthorizationScopeClause"][];
+        };
+        "api.common.v1.AuthorizationScopeClause": {
+            all?: boolean;
+            self?: boolean;
+            userIds?: string[];
+            resourceIds?: string[];
+            routingGroupIds?: string[];
+        };
+        "api.common.v1.AuthorizationVersions": {
+            userRevision?: string;
+            policyRevision?: string;
+            catalogRevision?: string;
+            sessionRevision?: string;
+            sessionContextRevision?: string;
+            organizationRevision?: string;
+            membershipRevision?: string;
+            unitRevision?: string;
+        };
         "api.common.v1.ChannelSummary": {
             id?: string;
             name?: string;
@@ -780,6 +1410,213 @@ export interface components {
         };
         "api.config.v1.SetConfigResponse": {
             success?: boolean;
+            revision?: string;
+        };
+        "api.identity.v1.IAMAssignment": {
+            id?: string;
+            userId?: string;
+            roleId?: string;
+            context?: components["schemas"]["api.common.v1.AuthorizationContext"];
+            boundary?: components["schemas"]["api.common.v1.AuthorizationScope"];
+            validity?: components["schemas"]["api.common.v1.AuthorizationInterval"];
+            revoked?: boolean;
+            origin?: string;
+            migrationBatchId?: string;
+            revision?: string;
+            assignedBy?: string;
+        };
+        "api.identity.v1.IAMAudit": {
+            eventId?: string;
+            actor?: components["schemas"]["api.common.v1.AuthorizationActor"];
+            context?: components["schemas"]["api.common.v1.AuthorizationContext"];
+            targetContext?: components["schemas"]["api.common.v1.AuthorizationContext"];
+            action?: string;
+            target?: string;
+            before?: string;
+            after?: string;
+            diff?: string;
+            result?: string;
+            requestId?: string;
+            reason?: string;
+            versions?: components["schemas"]["api.common.v1.AuthorizationVersions"];
+            /** Format: date-time */
+            occurredAt?: string;
+        };
+        "api.identity.v1.IAMCeiling": {
+            context?: components["schemas"]["api.common.v1.AuthorizationContext"];
+            operation?: string;
+            scope?: components["schemas"]["api.common.v1.AuthorizationScope"];
+        };
+        "api.identity.v1.IAMConflict": {
+            constraintName?: string;
+            proposedConstraint?: boolean;
+            kind?: string;
+            constraintId?: string;
+            roleId?: string;
+            userIds?: string[];
+            roleIds?: string[];
+            sessionIds?: string[];
+            actual?: string;
+            limit?: string;
+            validity?: components["schemas"]["api.common.v1.AuthorizationInterval"];
+        };
+        "api.identity.v1.IAMConstraint": {
+            id?: string;
+            context?: components["schemas"]["api.common.v1.AuthorizationContext"];
+            kind?: string;
+            name?: string;
+            roleIds?: string[];
+            maxCount?: string;
+            enabled?: boolean;
+            revision?: string;
+        };
+        "api.identity.v1.IAMDelegation": {
+            id?: string;
+            managerRoleId?: string;
+            targetRoleId?: string;
+            context?: components["schemas"]["api.common.v1.AuthorizationContext"];
+            targetKind?: string;
+            actions?: string[];
+            targetUserScope?: components["schemas"]["api.common.v1.AuthorizationScope"];
+            grantCeiling?: components["schemas"]["api.identity.v1.IAMCeiling"][];
+            canRedelegate?: boolean;
+            validity?: components["schemas"]["api.common.v1.AuthorizationInterval"];
+            revision?: string;
+        };
+        "api.identity.v1.IAMGrant": {
+            operation?: string;
+            effect?: string;
+            scope?: components["schemas"]["api.common.v1.AuthorizationScope"];
+        };
+        "api.identity.v1.IAMImpact": {
+            userId?: string;
+            before?: components["schemas"]["api.common.v1.AuthorizationGrantSource"][];
+            after?: components["schemas"]["api.common.v1.AuthorizationGrantSource"][];
+        };
+        "api.identity.v1.IAMMenu": {
+            id?: string;
+            parentId?: string;
+            routeKey?: string;
+            name?: string;
+            iconKey?: string;
+            /** Format: int32 */
+            sort?: number;
+            enabled?: boolean;
+            requiredAll?: string[];
+            requiredAny?: string[];
+            revision?: string;
+        };
+        "api.identity.v1.IAMPermission": {
+            supportedScopes?: string[];
+            contextTypes?: string[];
+            protected?: boolean;
+            id?: string;
+            resourceId?: string;
+            code?: string;
+            name?: string;
+            category?: string;
+            riskLevel?: string;
+            status?: string;
+            binding?: string;
+            revision?: string;
+        };
+        "api.identity.v1.IAMReference": {
+            kind?: string;
+            id?: string;
+            userId?: string;
+        };
+        "api.identity.v1.IAMReply": {
+            impacts?: components["schemas"]["api.identity.v1.IAMImpact"][];
+            sessions?: components["schemas"]["api.identity.v1.IAMSession"][];
+            roles?: components["schemas"]["api.identity.v1.IAMRole"][];
+            permissions?: components["schemas"]["api.identity.v1.IAMPermission"][];
+            resources?: components["schemas"]["api.identity.v1.IAMResource"][];
+            delegations?: components["schemas"]["api.identity.v1.IAMDelegation"][];
+            constraints?: components["schemas"]["api.identity.v1.IAMConstraint"][];
+            menus?: components["schemas"]["api.identity.v1.IAMMenu"][];
+            assignments?: components["schemas"]["api.identity.v1.IAMAssignment"][];
+            audits?: components["schemas"]["api.identity.v1.IAMAudit"][];
+            references?: components["schemas"]["api.identity.v1.IAMReference"][];
+            conflicts?: components["schemas"]["api.identity.v1.IAMConflict"][];
+            sources?: components["schemas"]["api.common.v1.AuthorizationGrantSource"][];
+            decision?: components["schemas"]["api.common.v1.AuthorizationDecision"];
+            versions?: components["schemas"]["api.common.v1.AuthorizationVersions"];
+            session?: components["schemas"]["api.identity.v1.IAMSession"];
+            /** Format: date-time */
+            validUntil?: string;
+            authorizedRoleIds?: string[];
+            activeRoleIds?: string[];
+            affectedUserIds?: string[];
+            basePolicyRevision?: string;
+            contentDigest?: string;
+            nextPageToken?: string;
+            total?: string;
+        };
+        "api.identity.v1.IAMRequest": {
+            context?: components["schemas"]["api.common.v1.AuthorizationContext"];
+            id?: string;
+            userId?: string;
+            sourceId?: string;
+            eventId?: string;
+            role?: components["schemas"]["api.identity.v1.IAMRole"];
+            permission?: components["schemas"]["api.identity.v1.IAMPermission"];
+            delegation?: components["schemas"]["api.identity.v1.IAMDelegation"];
+            constraint?: components["schemas"]["api.identity.v1.IAMConstraint"];
+            menu?: components["schemas"]["api.identity.v1.IAMMenu"];
+            assignment?: components["schemas"]["api.identity.v1.IAMAssignment"];
+            assignments?: components["schemas"]["api.identity.v1.IAMAssignment"][];
+            grants?: components["schemas"]["api.identity.v1.IAMGrant"][];
+            roleIds?: string[];
+            expectedRevision?: string;
+            expectedPolicyRevision?: string;
+            basePolicyRevision?: string;
+            contentDigest?: string;
+            reason?: string;
+            requestId?: string;
+            filter?: string;
+            orderBy?: string;
+            pageToken?: string;
+            /** Format: int32 */
+            pageSize?: number;
+            /** Format: field-mask */
+            updateMask?: string;
+            operation?: string;
+            object?: components["schemas"]["api.common.v1.AuthorizationObjectFacts"];
+        };
+        "api.identity.v1.IAMResource": {
+            id?: string;
+            code?: string;
+            name?: string;
+            owner?: string;
+            enabled?: boolean;
+        };
+        "api.identity.v1.IAMRole": {
+            id?: string;
+            context?: components["schemas"]["api.common.v1.AuthorizationContext"];
+            code?: string;
+            name?: string;
+            description?: string;
+            builtin?: boolean;
+            maxMembers?: string;
+            status?: string;
+            revision?: string;
+            creationDelegationId?: string;
+            inherits?: string[];
+            grants?: components["schemas"]["api.identity.v1.IAMGrant"][];
+        };
+        "api.identity.v1.IAMSession": {
+            sessionId?: string;
+            userId?: string;
+            context?: components["schemas"]["api.common.v1.AuthorizationContext"];
+            /** Format: date-time */
+            expiresAt?: string;
+            /** Format: date-time */
+            revokedAt?: string;
+            /** Format: date-time */
+            contextRevokedAt?: string;
+            activationState?: string;
+            activeRoleIds?: string[];
+            sessionRevision?: string;
             revision?: string;
         };
         "api.log.v1.GetLogResponse": {
@@ -1046,6 +1883,3877 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    IAMAdminService_GetSessionAuthorization: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                id?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_RevokeOwnSession: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                id?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_GetSessionRoles: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                id?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_ActivateSessionRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_ListAuthorizationAuditEvents: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                id?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_GetAuthorizationAuditEvent: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                id?: string;
+                userId?: string;
+                sourceId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                eventId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_ExportAuthorizationAuditEvents: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                id?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_CheckAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_ExplainAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_SimulateAuthorizationChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_ListRoleConstraints: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                id?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_CreateRoleConstraint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_UpdateRoleConstraint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_DeleteRoleConstraint: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_ListDelegations: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                id?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_CreateDelegation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_RevokeDelegation: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_UpdateDelegation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_ListMenuItems: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                id?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_CreateMenuItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_ArchiveMenuItem: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_UpdateMenuItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_ListPermissions: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                id?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_CreatePermission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_GetPermission: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_ArchivePermission: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_UpdatePermission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_GetPermissionReferences: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_SetPermissionStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_ListResources: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                id?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_ListRoles: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                id?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_CreateRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_GetRole: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_ArchiveRole: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_UpdateRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_UpdateRoleInheritance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_ListRoleMembers: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_GetRolePermissions: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_UpdateRolePermissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_PreviewRoleChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_GetRoleReferences: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                userId?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_SetRoleStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_CopyRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_BatchAssignUserRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_GetUserEffectivePermissions: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                id?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_GetUserRoles: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                id?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_AssignUserRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_RevokeUserRole: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                userId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_PreviewUserRoleChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.IAMRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_ListUserSessions: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                id?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IAMAdminService_RevokeUserSessions: {
+        parameters: {
+            query?: {
+                "context.contextType"?: string;
+                "context.organizationId"?: string;
+                "context.contextKey"?: string;
+                id?: string;
+                sourceId?: string;
+                eventId?: string;
+                "role.id"?: string;
+                "role.context.contextType"?: string;
+                "role.context.organizationId"?: string;
+                "role.context.contextKey"?: string;
+                "role.code"?: string;
+                "role.name"?: string;
+                "role.description"?: string;
+                "role.builtin"?: boolean;
+                "role.maxMembers"?: string;
+                "role.status"?: string;
+                "role.revision"?: string;
+                "role.creationDelegationId"?: string;
+                "role.inherits"?: string[];
+                "permission.supportedScopes"?: string[];
+                "permission.contextTypes"?: string[];
+                "permission.protected"?: boolean;
+                "permission.id"?: string;
+                "permission.resourceId"?: string;
+                "permission.code"?: string;
+                "permission.name"?: string;
+                "permission.category"?: string;
+                "permission.riskLevel"?: string;
+                "permission.status"?: string;
+                "permission.binding"?: string;
+                "permission.revision"?: string;
+                "delegation.id"?: string;
+                "delegation.managerRoleId"?: string;
+                "delegation.targetRoleId"?: string;
+                "delegation.context.contextType"?: string;
+                "delegation.context.organizationId"?: string;
+                "delegation.context.contextKey"?: string;
+                "delegation.targetKind"?: string;
+                "delegation.actions"?: string[];
+                "delegation.canRedelegate"?: boolean;
+                "delegation.validity.startsAt"?: string;
+                "delegation.validity.expiresAt"?: string;
+                "delegation.revision"?: string;
+                "constraint.id"?: string;
+                "constraint.context.contextType"?: string;
+                "constraint.context.organizationId"?: string;
+                "constraint.context.contextKey"?: string;
+                "constraint.kind"?: string;
+                "constraint.name"?: string;
+                "constraint.roleIds"?: string[];
+                "constraint.maxCount"?: string;
+                "constraint.enabled"?: boolean;
+                "constraint.revision"?: string;
+                "menu.id"?: string;
+                "menu.parentId"?: string;
+                "menu.routeKey"?: string;
+                "menu.name"?: string;
+                "menu.iconKey"?: string;
+                "menu.sort"?: number;
+                "menu.enabled"?: boolean;
+                "menu.requiredAll"?: string[];
+                "menu.requiredAny"?: string[];
+                "menu.revision"?: string;
+                "assignment.id"?: string;
+                "assignment.userId"?: string;
+                "assignment.roleId"?: string;
+                "assignment.context.contextType"?: string;
+                "assignment.context.organizationId"?: string;
+                "assignment.context.contextKey"?: string;
+                "assignment.validity.startsAt"?: string;
+                "assignment.validity.expiresAt"?: string;
+                "assignment.revoked"?: boolean;
+                "assignment.origin"?: string;
+                "assignment.migrationBatchId"?: string;
+                "assignment.revision"?: string;
+                "assignment.assignedBy"?: string;
+                roleIds?: string[];
+                expectedRevision?: string;
+                expectedPolicyRevision?: string;
+                basePolicyRevision?: string;
+                contentDigest?: string;
+                reason?: string;
+                requestId?: string;
+                filter?: string;
+                orderBy?: string;
+                pageToken?: string;
+                pageSize?: number;
+                updateMask?: string;
+                operation?: string;
+                "object.context.contextType"?: string;
+                "object.context.organizationId"?: string;
+                "object.context.contextKey"?: string;
+                "object.resourceId"?: string;
+                "object.ownerUserId"?: string;
+                "object.routingGroupIds"?: string[];
+            };
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
     AdminService_GetAccountSnapshot: {
         parameters: {
             query?: {
