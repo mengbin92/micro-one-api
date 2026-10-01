@@ -628,7 +628,7 @@ func (s *AdminService) BatchGetAccountSnapshots(ctx context.Context, userIDs []s
 // ========== 用户管理 ==========
 
 func (s *AdminService) ListUsers(ctx context.Context, req *adminv1.AdminListUsersRequest) (*adminv1.AdminListUsersResponse, error) {
-	resp, err := s.identityClient.ListUsers(ctx, &identityv1.ListUsersRequest{
+	resp, err := s.identityClient.ListUsers(operatorRPCContext(ctx), &identityv1.ListUsersRequest{
 		Page:     req.Page,
 		PageSize: req.PageSize,
 		Keyword:  req.Keyword,
@@ -636,7 +636,7 @@ func (s *AdminService) ListUsers(ctx context.Context, req *adminv1.AdminListUser
 		Status:   req.Status,
 	})
 	if err != nil {
-		return &adminv1.AdminListUsersResponse{Users: []*commonv1.UserInfo{}, Total: 0}, nil
+		return nil, err
 	}
 	return &adminv1.AdminListUsersResponse{
 		Users: resp.Users,
@@ -645,7 +645,7 @@ func (s *AdminService) ListUsers(ctx context.Context, req *adminv1.AdminListUser
 }
 
 func (s *AdminService) GetUser(ctx context.Context, userID int64) (*commonv1.UserInfo, error) {
-	resp, err := s.identityClient.GetUser(ctx, &identityv1.GetUserRequest{UserId: userID})
+	resp, err := s.identityClient.GetUser(operatorRPCContext(ctx), &identityv1.GetUserRequest{UserId: userID})
 	if err != nil {
 		return nil, err
 	}
@@ -656,16 +656,17 @@ func (s *AdminService) GetUser(ctx context.Context, userID int64) (*commonv1.Use
 }
 
 func (s *AdminService) CreateUser(ctx context.Context, req *adminv1.AdminCreateUserRequest) (*adminv1.AdminCreateUserResponse, error) {
-	resp, err := s.identityClient.CreateUser(ctx, &identityv1.CreateUserRequest{
-		Username:    req.Username,
-		DisplayName: req.DisplayName,
-		Email:       req.Email,
-		Password:    req.Password,
-		Group:       req.Group,
-		Balance:     req.Balance,
+	resp, err := s.identityClient.CreateUser(operatorRPCContext(ctx), &identityv1.CreateUserRequest{
+		Username:               req.Username,
+		DisplayName:            req.DisplayName,
+		Email:                  req.Email,
+		Password:               req.Password,
+		Group:                  req.Group,
+		Balance:                req.Balance,
+		ExpectedPolicyRevision: req.ExpectedPolicyRevision, Reason: req.Reason,
 	})
 	if err != nil {
-		return &adminv1.AdminCreateUserResponse{Success: false, Message: err.Error()}, nil
+		return nil, err
 	}
 	return &adminv1.AdminCreateUserResponse{
 		Success: resp.Success,
@@ -675,23 +676,24 @@ func (s *AdminService) CreateUser(ctx context.Context, req *adminv1.AdminCreateU
 }
 
 func (s *AdminService) UpdateUser(ctx context.Context, req *adminv1.AdminUpdateUserRequest) (*adminv1.AdminUpdateUserResponse, error) {
-	resp, err := s.identityClient.UpdateUser(ctx, &identityv1.UpdateUserRequest{
+	resp, err := s.identityClient.UpdateUser(operatorRPCContext(ctx), &identityv1.UpdateUserRequest{
 		UserId:      req.UserId,
 		DisplayName: req.DisplayName,
 		Email:       req.Email,
 		Group:       req.Group,
 		Status:      req.Status,
+		UpdateMask:  req.UpdateMask, ExpectedRevision: req.ExpectedRevision, ExpectedPolicyRevision: req.ExpectedPolicyRevision, Reason: req.Reason, Password: req.Password,
 	})
 	if err != nil {
-		return &adminv1.AdminUpdateUserResponse{Success: false, Message: err.Error()}, nil
+		return nil, err
 	}
 	return &adminv1.AdminUpdateUserResponse{Success: resp.Success, Message: resp.Message}, nil
 }
 
 func (s *AdminService) DeleteUser(ctx context.Context, req *adminv1.AdminDeleteUserRequest) (*adminv1.AdminDeleteUserResponse, error) {
-	resp, err := s.identityClient.DeleteUser(ctx, &identityv1.DeleteUserRequest{UserId: req.UserId})
+	resp, err := s.identityClient.DeleteUser(operatorRPCContext(ctx), &identityv1.DeleteUserRequest{UserId: req.UserId, ExpectedRevision: req.ExpectedRevision, ExpectedPolicyRevision: req.ExpectedPolicyRevision, Reason: req.Reason})
 	if err != nil {
-		return &adminv1.AdminDeleteUserResponse{Success: false, Message: err.Error()}, nil
+		return nil, err
 	}
 	return &adminv1.AdminDeleteUserResponse{Success: resp.Success, Message: resp.Message}, nil
 }
@@ -744,7 +746,7 @@ func (s *AdminService) AuthorizeAdminToken(ctx context.Context, token string) (i
 	if !vr.GetValid() {
 		return 0, 0, ErrAdminUnauthorized
 	}
-	ur, err := s.identityClient.GetUser(ctx, &identityv1.GetUserRequest{UserId: vr.GetUserId()})
+	ur, err := s.identityClient.GetUser(operatorRPCContext(ctx), &identityv1.GetUserRequest{UserId: vr.GetUserId()})
 	if err != nil {
 		return 0, 0, err
 	}

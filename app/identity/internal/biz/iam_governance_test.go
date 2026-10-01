@@ -32,7 +32,9 @@ func TestManagementExecutionBindingIsExplicit(t *testing.T) {
 	require.True(t, IAMExecutionBound("iam.role.permissions.update"))
 	require.False(t, IAMExecutionBound("iam.menu.read"))
 	require.False(t, IAMExecutionBound("channel.channel.read"))
-	require.False(t, IAMExecutionBound("identity.user.credential.update"))
+	require.True(t, IAMExecutionBound("identity.user.credential.update"))
+	require.True(t, IAMExecutionBound("identity.user.list"))
+	require.True(t, IAMExecutionBound("identity.user.delete"))
 }
 
 func governanceTestView(t *testing.T) iamManagementView {

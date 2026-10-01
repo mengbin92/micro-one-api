@@ -58,6 +58,16 @@ func (r *Repository) UserRoutingFacts(ctx context.Context, userID int64) (*routi
 	}
 	var f *routing.SubjectFacts
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		f, err = loadUserRoutingFacts(tx, userID)
+		return err
+	}, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	return f, err
+}
+
+func loadUserRoutingFacts(tx *gorm.DB, userID int64) (*routing.SubjectFacts, error) {
+	var f *routing.SubjectFacts
+	err := func() error {
 		var u userModel
 		if err := tx.First(&u, userID).Error; err != nil {
 			return biz.ErrUserNotFound
@@ -97,9 +107,10 @@ func (r *Repository) UserRoutingFacts(ctx context.Context, userID int64) (*routi
 			f.Grants = append(f.Grants, routing.UserGroupGrant{GroupID: g.RoutingGroupID, SourceType: g.SourceType, SourceRef: g.SourceRef, StartsAt: g.StartsAt, ExpiresAt: g.ExpiresAt, Status: g.Status})
 		}
 		return nil
-	}, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	}()
 	return f, err
 }
+
 func (r *Repository) UpdateRoutingAccess(context.Context, biz.RoutingAccessChange) error {
 	return biz.ErrIAMProtected // Runtime writes join the caller's policy transaction.
 }
@@ -211,4 +222,12 @@ func (r *Repository) SetTokenRouting(ctx context.Context, userID, tokenID int64,
 		return 0, err
 	}
 	return revision + 1, nil
+}
+
+func (r *iamRepo) UserRoutingFactsTx(ctx context.Context, handle biz.IAMTx, userID int64) (*routing.SubjectFacts, error) {
+	tx, err := iamDB(ctx, r.data, handle, false)
+	if err != nil {
+		return nil, err
+	}
+	return loadUserRoutingFacts(tx.db, userID)
 }

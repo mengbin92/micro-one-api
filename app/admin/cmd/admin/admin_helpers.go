@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"micro-one-api/platform/security/serviceidentity"
 	"os"
 	"os/signal"
 	"syscall"
@@ -75,7 +76,7 @@ func newClients(cfg *Config) (*clientsResult, error) {
 	channelEndpoint, _ := resolver.ResolveGRPC(context.Background(), "channel-service")
 	billingEndpoint, _ := resolver.ResolveGRPC(context.Background(), "billing-service")
 
-	serviceToken := os.Getenv("SERVICE_TOKEN")
+	serviceToken := serviceidentity.ClientToken()
 	identityConn, err := grpc.NewClient(identityEndpoint,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceToken)),

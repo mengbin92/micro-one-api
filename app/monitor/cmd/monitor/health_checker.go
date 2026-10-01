@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"os"
+	"micro-one-api/platform/security/serviceidentity"
 	"time"
 
 	"google.golang.org/grpc"
@@ -50,7 +50,7 @@ func newChannelHealthCheckerImpl(cfg *Config) (*biz.ChannelHealthChecker, func()
 
 	conn, err := grpc.NewClient(clients.Channel.Endpoint,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(os.Getenv("SERVICE_TOKEN"))),
+		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())),
 		grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("channel-service")))
 	if err != nil {
 		applogger.Log.Warn("failed to create channel health client", zap.Error(err))

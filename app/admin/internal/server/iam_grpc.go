@@ -16,9 +16,9 @@ import (
 // absent, and identity independently verifies the user JWT and IAM authority.
 func IAMOperatorUnaryInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		if strings.HasPrefix(info.FullMethod, "/api.admin.v1.IAMAdminService/") {
-			md, _ := metadata.FromIncomingContext(ctx)
-			values := md.Get("x-operator-authorization")
+		md, _ := metadata.FromIncomingContext(ctx)
+		values := md.Get("x-operator-authorization")
+		if strings.HasPrefix(info.FullMethod, "/api.admin.v1.IAMAdminService/") || len(values) > 0 {
 			if len(values) != 1 || !strings.HasPrefix(values[0], "Bearer ") {
 				return nil, status.Error(codes.Unauthenticated, "user operator credential required")
 			}

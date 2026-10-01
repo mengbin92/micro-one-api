@@ -12,6 +12,8 @@ import (
 // RoutingAccessChange is an identity-owned command. Remote group references
 // have already been checked by admin orchestration; no channel PO crosses here.
 type RoutingAccessChange struct {
+	ExpectedUserRevision, ExpectedPolicyRevision                  uint64
+	Reason                                                        string
 	UserID, ExpectedRevision, GroupID                             int64
 	Operation, GroupKey, SourceType, SourceRef, PublicGroupAccess string
 	StartsAt, ExpiresAt                                           int64
@@ -60,7 +62,13 @@ func (uc *IdentityUsecase) UpdateRoutingAccess(ctx context.Context, c RoutingAcc
 	default:
 		return nil, ErrRoutingDefaultInvalid
 	}
-	if uc.iam != nil {
+	mode, modeErr := uc.AuthorizationMode(ctx)
+	if modeErr != nil {
+		return nil, modeErr
+	}
+	if mode == "iam" {
+		err = uc.updateIAMRoutingAccess(ctx, c)
+	} else if uc.iam != nil {
 		err = uc.runtimeWrite(ctx, "account.routing", fmt.Sprint(c.UserID), "legacy routing access mutation", authorization.Actor{ServiceID: "identity-legacy-account"}, func(ctx context.Context, tx IAMTx) error {
 			p, err := uc.iam.Policy(ctx, tx)
 			if err != nil {

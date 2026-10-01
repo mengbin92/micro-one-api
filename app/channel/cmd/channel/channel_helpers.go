@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"micro-one-api/platform/security/serviceidentity"
 	"os"
 	"strings"
 	"sync"
@@ -36,7 +37,7 @@ func configureHealthAlert(uc *biz.ChannelUsecase) (*grpc.ClientConn, error) {
 	}
 	conn, err := grpc.NewClient(endpoint,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(os.Getenv("SERVICE_TOKEN"))),
+		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())),
 		grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))
 	if err != nil {
 		return nil, fmt.Errorf("dial notify endpoint: %w", err)
@@ -168,7 +169,7 @@ func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, exi
 			if conn == nil {
 				c, err := grpc.NewClient(endpoint,
 					grpc.WithTransportCredentials(insecure.NewCredentials()),
-					grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(os.Getenv("SERVICE_TOKEN"))),
+					grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())),
 					grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))
 				if err != nil {
 					applogger.Log.Warn("failed to dial notify for quota alert", zap.Error(err))
