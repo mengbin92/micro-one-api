@@ -25,6 +25,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	"micro-one-api/domain/authorization"
 
 	"micro-one-api/platform/database/xdb"
 )
@@ -159,12 +161,52 @@ func pickDSN() string {
 // enabled admin row if none exists. When role >= 0 the role column is also
 // updated/set. Returns created=true when a new row was inserted.
 func upsertPassword(ctx context.Context, db *gorm.DB, username, hash, email string, quota int64, role int) (bool, error) {
+	var created bool
+	err := xdb.RetryTxOnBusy(ctx, db, 5, func(tx *gorm.DB) error {
+		// Same lock as identity cutover. A preflight outside this transaction would
+		// let a CLI race a mode switch and perform a legacy credential/role write.
+		if tx.Dialector.Name() == "sqlite" {
+			if err := tx.Exec("UPDATE iam_policy_state SET policy_revision = policy_revision WHERE id = 1").Error; err != nil {
+				return err
+			}
+		}
+		var p struct {
+			AuthorizationMode, CutoverState, CutoverBatchID string
+			CutoverVerifiedAt                               *int64
+		}
+		query := tx.Table("iam_policy_state").Where("id = 1")
+		if tx.Dialector.Name() != "sqlite" {
+			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+		if err := query.Take(&p).Error; err != nil {
+			return fmt.Errorf("read authorization state (migrations required): %w", err)
+		}
+		state := authorization.PolicyState{Mode: p.AuthorizationMode, Cutover: p.CutoverState, BatchID: p.CutoverBatchID}
+		if p.CutoverVerifiedAt != nil {
+			at := time.UnixMilli(*p.CutoverVerifiedAt)
+			state.VerifiedAt = &at
+		}
+		if state.CheckWrite(authorization.LegacyAccountWrite, false) != nil {
+			return fmt.Errorf("legacy admin-reset disabled in %s/%s; use the protected identity credential rescue usecase", state.Mode, state.Cutover)
+		}
+		var err error
+		created, err = upsertLegacyPassword(ctx, tx, username, hash, email, quota, role)
+		return err
+	})
+	if err != nil {
+		return false, err
+	}
+	return created, nil
+}
+
+func upsertLegacyPassword(ctx context.Context, db *gorm.DB, username, hash, email string, quota int64, role int) (bool, error) {
+
 	var count int64
 	if err := db.WithContext(ctx).Table("users").Where("username = ?", username).Count(&count).Error; err != nil {
 		return false, fmt.Errorf("query user: %w", err)
 	}
 	if count > 0 {
-		updates := map[string]any{"password_hash": hash}
+		updates := map[string]any{"password_hash": hash, "password_changed_at": gorm.Expr("CASE WHEN password_changed_at >= ? THEN password_changed_at + 1 ELSE ? END", time.Now().UnixMilli(), time.Now().UnixMilli())}
 		if role >= 0 {
 			updates["role"] = role
 		}

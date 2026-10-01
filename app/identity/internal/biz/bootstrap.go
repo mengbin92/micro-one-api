@@ -78,7 +78,18 @@ func (uc *IdentityUsecase) EnsureRootAdmin(ctx context.Context) (*BootstrapResul
 		PasswordHash: string(hash),
 		Balance:      uc.defaultQuota,
 	}
-	if err := uc.repo.CreateUser(ctx, user); err != nil {
+	if err := uc.bindLegacyGroup(ctx, user); err != nil {
+		return nil, err
+	}
+	if uc.iam != nil {
+		_, created, err := uc.createIAMAccount(ctx, *user, true, true)
+		if err != nil {
+			return nil, err
+		}
+		if !created {
+			return &BootstrapResult{}, nil
+		}
+	} else if err := uc.repo.CreateUser(ctx, user); err != nil {
 		return nil, fmt.Errorf("create admin user: %w", err)
 	}
 

@@ -56,3 +56,8 @@ runner 校验持久化状态的合法组合，**不代替调用方的 WriteKind/
 `iam_constraint_usecase.go` 在 policy 锁后检查 iam/complete、base policy revision 和可信 authorizer，再读取/验证全 context 的最终候选关系、所有未来分配边界及现存会话剩余窗口。通过后才写目标 CAS/关系/版本与成功审计；失败回滚后独立审计，不静默收回分配/激活。普通 source snapshot/preview 使用同一只读主库视图。共用 SaveAssignment 自 A3 起也递增 policy revision，不能仅更新 user revision 后让整域 preview 继续有效。
 
 两个平台角色数量上限由 111 迁移存入 policy；按闭包去重，NULL 无限、非正数拒绝。authorizer 当前无运行时实现或 Wire/server 绑定，默认拒绝，不能用客户端 actor/布尔身份替代。A4 默认账号与会话写、A5 委派治理、D0 迁移要在各自受保护用例里复用纯约束评估；不能因存储方法支持写入就绕过这些检查。详见 [A3 约束交付](./a3-constraints-delivery.md)。
+
+
+## A4 运行接入
+
+真实 identity Wire 启动链在 bootstrap/transport 前注入共享 IAM runtime；账号创建、默认分配、OAuth、旧 group/routing/outbox、明确字段更新、版本与成功审计共用 policy 锁后的 IAMTx。失败回滚后独立审计，重试不调用远端 group reader/发送邮件/输出密码或日志。真实 JTI 会话在 IAM/complete 惰性建立；撤销不替换、激活复用 A3 未来约束和 context CAS，主库快照同视图读取全部身份/关系/会话/版本。旧账号及 CLI/路由回填写在非 legacy/idle 拒绝。A6 将绑定本人会话与独立 root 凭证救援的传输适配，A5/B1 补齐 IAM 管理操作者/委派治理，当前固定目录继续 unbound。详见 [A4 交付与三库证据](./a4-sessions-accounts-delivery.md)。

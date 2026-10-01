@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"micro-one-api/app/identity/internal/biz"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/routing"
 	"micro-one-api/platform/routingoutbox"
 )
@@ -185,39 +187,68 @@ func (r *Repository) BackfillRoutingGroups(ctx context.Context, groups []*routin
 	}
 	rehearsal := errors.New("routing backfill rehearsal")
 	count := 0
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var users []userModel
-		if err := tx.Select("id", "group", "default_routing_group_id", "routing_access_revision", "public_group_access").Order("id").Find(&users).Error; err != nil {
+	eventID := uuid.NewString()
+	repo := NewIAMRepo(r.Data)
+	err := NewIAMTxRunner(r.Data).RunIAMWrite(ctx, func(ctx context.Context, handle biz.IAMTx) error {
+		txHandle, err := iamDB(ctx, r.Data, handle, true)
+		if err != nil {
 			return err
 		}
-		for _, u := range users {
-			id := byKey[u.Group]
-			if id <= 0 {
-				return fmt.Errorf("user %d has an unmapped routing group", u.ID)
-			}
-			if u.DefaultRoutingGroupID != 0 {
-				if u.DefaultRoutingGroupID != id || u.RoutingAccessRevision < 1 {
-					return biz.ErrRoutingAccessConflict
-				}
-				var grant routingGrantModel
-				if err := tx.Where(migrationGrant(u.ID, id)).First(&grant).Error; err != nil {
-					return biz.ErrRoutingAccessConflict
-				}
-				continue
-			}
-			if err := tx.Model(&userModel{}).Where("id = ? AND default_routing_group_id IS NULL", u.ID).Updates(map[string]any{"default_routing_group_id": id, "routing_access_revision": 1, "public_group_access": "explicit_only"}).Error; err != nil {
+		policy, err := repo.Policy(ctx, handle)
+		if err != nil {
+			return err
+		}
+		if policy.CheckWrite(authorization.LegacyAccountWrite, false) != nil {
+			return biz.ErrIAMCutoverBlocked
+		}
+		count = 0
+		err = txHandle.db.Transaction(func(tx *gorm.DB) error {
+			var users []userModel
+			if err := tx.Select("id", "group", "default_routing_group_id", "routing_access_revision", "public_group_access").Order("id").Find(&users).Error; err != nil {
 				return err
 			}
-			if err := tx.Create(migrationGrant(u.ID, id)).Error; err != nil {
+			for _, u := range users {
+				id := byKey[u.Group]
+				if id <= 0 {
+					return fmt.Errorf("user %d has an unmapped routing group", u.ID)
+				}
+				if u.DefaultRoutingGroupID != 0 {
+					if u.DefaultRoutingGroupID != id || u.RoutingAccessRevision < 1 {
+						return biz.ErrRoutingAccessConflict
+					}
+					var grant routingGrantModel
+					if err := tx.Where(migrationGrant(u.ID, id)).First(&grant).Error; err != nil {
+						return biz.ErrRoutingAccessConflict
+					}
+					continue
+				}
+				if err := tx.Model(&userModel{}).Where("id = ? AND default_routing_group_id IS NULL", u.ID).Updates(map[string]any{"default_routing_group_id": id, "routing_access_revision": 1, "public_group_access": "explicit_only", "authorization_revision": gorm.Expr("authorization_revision + 1")}).Error; err != nil {
+					return err
+				}
+				if err := tx.Create(migrationGrant(u.ID, id)).Error; err != nil {
+					return err
+				}
+				count++
+			}
+			if !apply {
+				return rehearsal
+			}
+			return nil
+		})
+		if err != nil {
+			if errors.Is(err, rehearsal) {
 				return err
 			}
-			count++
+			return iamRelationError(txHandle, err)
 		}
-		if !apply {
-			return rehearsal
+		if count == 0 {
+			return nil
 		}
-		return nil
-	}, &sql.TxOptions{Isolation: sql.LevelSerializable})
+		if err = repo.AdvancePolicy(ctx, handle, policy.PolicyRevision, false); err != nil {
+			return err
+		}
+		return repo.AppendAudit(ctx, handle, biz.IAMAuditEvent{EventID: eventID, Actor: authorization.Actor{ServiceID: "identity-routing-backfill"}, Context: authorization.Platform(), TargetContext: authorization.Platform(), Action: "account.routing.backfill", Target: "users", Result: "success", Reason: "legacy routing initialization", Before: "{}", After: fmt.Sprintf("{\"updated_users\":%d}", count), Diff: "{}", OccurredAt: time.Now().UTC()})
+	})
 	if errors.Is(err, rehearsal) {
 		err = nil
 	}

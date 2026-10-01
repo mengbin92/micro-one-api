@@ -26,10 +26,10 @@ func TestDefaultRoutingPreferenceDoesNotGrantAccess(t *testing.T) {
 	require.NoError(t, db.Table("users").Create(map[string]any{"id": 1, "username": "preference", "group": "default", "status": 1}).Error)
 	_, err := r.BackfillRoutingGroups(ctx, []*routing.Group{{ID: 10, Key: "default"}}, true)
 	require.NoError(t, err)
-	require.NoError(t, r.UpdateRoutingAccess(ctx, biz.RoutingAccessChange{UserID: 1, ExpectedRevision: 1, Operation: "grant", GroupID: 20, SourceType: "admin", SourceRef: "temporary", StartsAt: 100, ExpiresAt: 200}))
+	require.NoError(t, r.updateRoutingAccessDB(ctx, biz.RoutingAccessChange{UserID: 1, ExpectedRevision: 1, Operation: "grant", GroupID: 20, SourceType: "admin", SourceRef: "temporary", StartsAt: 100, ExpiresAt: 200}))
 	before, err := r.UserRoutingFacts(ctx, 1)
 	require.NoError(t, err)
-	require.NoError(t, r.UpdateRoutingAccess(ctx, biz.RoutingAccessChange{UserID: 1, ExpectedRevision: 2, Operation: "default", GroupID: 20, GroupKey: "vip"}))
+	require.NoError(t, r.updateRoutingAccessDB(ctx, biz.RoutingAccessChange{UserID: 1, ExpectedRevision: 2, Operation: "default", GroupID: 20, GroupKey: "vip"}))
 	after, err := r.UserRoutingFacts(ctx, 1)
 	require.NoError(t, err)
 	require.EqualValues(t, 20, after.DefaultGroupID)
@@ -53,8 +53,8 @@ func TestRoutingAccessAndFixedTokens(t *testing.T) {
 			require.NoError(t, err)
 			require.EqualValues(t, 20, read.RoutingGroupID)
 			c := biz.RoutingAccessChange{UserID: 1, ExpectedRevision: 1, Operation: "grant", GroupID: 20, SourceType: "admin", SourceRef: "a", StartsAt: 100, ExpiresAt: 200}
-			require.NoError(t, r.UpdateRoutingAccess(ctx, c))
-			require.ErrorIs(t, r.UpdateRoutingAccess(ctx, c), biz.ErrRoutingAccessConflict)
+			require.NoError(t, r.updateRoutingAccessDB(ctx, c))
+			require.ErrorIs(t, r.updateRoutingAccessDB(ctx, c), biz.ErrRoutingAccessConflict)
 			f, err := r.GetRoutingFacts(ctx, 1, token.ID, "default")
 			require.NoError(t, err)
 			require.Equal(t, "fixed", f.TokenMode)
@@ -65,18 +65,18 @@ func TestRoutingAccessAndFixedTokens(t *testing.T) {
 			c.ExpectedRevision = 2
 			c.SourceRef = "b"
 			c.ExpiresAt = 0
-			require.NoError(t, r.UpdateRoutingAccess(ctx, c))
+			require.NoError(t, r.updateRoutingAccessDB(ctx, c))
 			c.ExpectedRevision = 3
 			c.SourceRef = "a"
 			c.Operation = "revoke"
-			require.NoError(t, r.UpdateRoutingAccess(ctx, c))
+			require.NoError(t, r.updateRoutingAccessDB(ctx, c))
 			f, err = r.UserRoutingFacts(ctx, 1)
 			require.NoError(t, err)
 			require.Len(t, routing.AccessSources(f, g, 300), 1)
 			require.Len(t, f.TokenReferences, 1)
 			// Changing the preference keeps every independent source, including
 			// the original migration grant.
-			require.NoError(t, r.UpdateRoutingAccess(ctx, biz.RoutingAccessChange{UserID: 1, ExpectedRevision: 4, Operation: "default", GroupID: 20, GroupKey: "vip"}))
+			require.NoError(t, r.updateRoutingAccessDB(ctx, biz.RoutingAccessChange{UserID: 1, ExpectedRevision: 4, Operation: "default", GroupID: 20, GroupKey: "vip"}))
 			f, err = r.UserRoutingFacts(ctx, 1)
 			require.NoError(t, err)
 			require.Len(t, f.Grants, 3)
@@ -89,7 +89,7 @@ func TestRoutingAccessAndFixedTokens(t *testing.T) {
 			}))
 			c.ExpectedRevision = 5
 			c.SourceRef = "b"
-			require.Error(t, r.UpdateRoutingAccess(ctx, c))
+			require.Error(t, r.updateRoutingAccessDB(ctx, c))
 			require.NoError(t, db.Callback().Create().Remove("fail_grant"))
 			f, err = r.UserRoutingFacts(ctx, 1)
 			require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestRoutingAccessAndFixedTokens(t *testing.T) {
 			require.Len(t, routing.AccessSources(f, g, 300), 1)
 			oldGroup := &routing.Group{ID: 10, Key: "default", Status: "enabled", Revision: 1}
 			require.Len(t, routing.AccessSources(f, oldGroup, 300), 1, "changing a preference must not revoke an independent grant")
-			require.NoError(t, r.UpdateRoutingAccess(ctx, c))
+			require.NoError(t, r.updateRoutingAccessDB(ctx, c))
 			f, err = r.GetRoutingFacts(ctx, 1, token.ID, "vip")
 			require.NoError(t, err)
 			// Revoking the last explicit grant denies access even if the group
@@ -135,7 +135,7 @@ func TestOrderedTokenGroupOrders(t *testing.T) {
 			token := &biz.Token{UserID: 1, Name: "ordered", Key: "sk-ordered-key", KeyHash: "ordered-hash", Status: 1, RoutingMode: "ordered", RoutingGroupIDs: []int64{20, 30}, RoutingRevision: 1, UnlimitedQuota: true}
 			require.NoError(t, r.CreateToken(ctx, token))
 			for i, gid := range []int64{20, 30} {
-				require.NoError(t, r.UpdateRoutingAccess(ctx, biz.RoutingAccessChange{UserID: 1, ExpectedRevision: int64(i + 1), Operation: "grant", GroupID: gid, SourceType: "admin", SourceRef: "ord"}))
+				require.NoError(t, r.updateRoutingAccessDB(ctx, biz.RoutingAccessChange{UserID: 1, ExpectedRevision: int64(i + 1), Operation: "grant", GroupID: gid, SourceType: "admin", SourceRef: "ord"}))
 			}
 			f, err := r.GetRoutingFacts(ctx, 1, token.ID, "default")
 			require.NoError(t, err)
@@ -197,12 +197,12 @@ func TestRoutingAccessRevokeIsIdempotent(t *testing.T) {
 			require.NoError(t, err)
 
 			grant := biz.RoutingAccessChange{UserID: 1, ExpectedRevision: 1, Operation: "grant", GroupID: 20, SourceType: "admin", SourceRef: "a"}
-			require.NoError(t, r.UpdateRoutingAccess(ctx, grant))
+			require.NoError(t, r.updateRoutingAccessDB(ctx, grant))
 
 			revoke := grant
 			revoke.ExpectedRevision = 2
 			revoke.Operation = "revoke"
-			require.NoError(t, r.UpdateRoutingAccess(ctx, revoke))
+			require.NoError(t, r.updateRoutingAccessDB(ctx, revoke))
 			f, err := r.UserRoutingFacts(ctx, 1)
 			require.NoError(t, err)
 			require.EqualValues(t, 3, f.AccessRevision)
@@ -210,7 +210,7 @@ func TestRoutingAccessRevokeIsIdempotent(t *testing.T) {
 			// Replaying the revoke is a no-op: no revision bump, no new event.
 			replay := revoke
 			replay.ExpectedRevision = 3
-			require.NoError(t, r.UpdateRoutingAccess(ctx, replay))
+			require.NoError(t, r.updateRoutingAccessDB(ctx, replay))
 			f, err = r.UserRoutingFacts(ctx, 1)
 			require.NoError(t, err)
 			require.EqualValues(t, 3, f.AccessRevision, "a replayed revoke must not bump the revision")
@@ -219,7 +219,7 @@ func TestRoutingAccessRevokeIsIdempotent(t *testing.T) {
 			unknown := revoke
 			unknown.ExpectedRevision = 3
 			unknown.SourceRef = "missing"
-			require.NoError(t, r.UpdateRoutingAccess(ctx, unknown))
+			require.NoError(t, r.updateRoutingAccessDB(ctx, unknown))
 			f, err = r.UserRoutingFacts(ctx, 1)
 			require.NoError(t, err)
 			require.EqualValues(t, 3, f.AccessRevision, "revoking an unknown grant must not bump the revision")
@@ -284,7 +284,7 @@ func TestUpdateRoutingAccessRetriesStaleSnapshot(t *testing.T) {
 	defer func() { _ = db.Callback().Query().Remove("poison_routing_snapshot") }()
 
 	change := biz.RoutingAccessChange{UserID: 1, ExpectedRevision: 1, Operation: "grant", GroupID: 20, SourceType: "admin", SourceRef: "fixture"}
-	require.NoError(t, r.UpdateRoutingAccess(context.Background(), change))
+	require.NoError(t, r.updateRoutingAccessDB(context.Background(), change))
 	require.True(t, poisoned, "the poison hook must have fired")
 	require.EqualValues(t, 2, attempts.Load(), "first attempt poisoned, second replays on a fresh snapshot")
 

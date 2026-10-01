@@ -2,6 +2,8 @@ package biz
 
 import (
 	"context"
+	"fmt"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/routing"
 	"micro-one-api/platform/database/xdb"
 	"time"
@@ -58,7 +60,31 @@ func (uc *IdentityUsecase) UpdateRoutingAccess(ctx context.Context, c RoutingAcc
 	default:
 		return nil, ErrRoutingDefaultInvalid
 	}
-	if err = r.UpdateRoutingAccess(ctx, c); err != nil {
+	if uc.iam != nil {
+		err = uc.runtimeWrite(ctx, "account.routing", fmt.Sprint(c.UserID), "legacy routing access mutation", authorization.Actor{ServiceID: "identity-legacy-account"}, func(ctx context.Context, tx IAMTx) error {
+			p, err := uc.iam.Policy(ctx, tx)
+			if err != nil {
+				return err
+			}
+			if p.CheckWrite(authorization.LegacyAccountWrite, false) != nil {
+				return ErrIAMCutoverBlocked
+			}
+			if err = uc.iam.UpdateRoutingAccessTx(ctx, tx, c); err != nil {
+				return err
+			}
+			rev, err := uc.iam.UserRevision(ctx, tx, c.UserID)
+			if err != nil {
+				return err
+			}
+			if err = uc.iam.AdvanceUser(ctx, tx, c.UserID, rev); err != nil {
+				return err
+			}
+			return uc.iam.AdvancePolicy(ctx, tx, p.PolicyRevision, false)
+		})
+	} else {
+		err = r.UpdateRoutingAccess(ctx, c)
+	}
+	if err != nil {
 		return nil, err
 	}
 	// The facts re-read runs in its own transaction, outside the retried

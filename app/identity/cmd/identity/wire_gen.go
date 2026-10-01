@@ -34,7 +34,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		return nil, nil, err
 	}
 	auditor := newAuditAuditor()
-	identityUsecase := biz.NewIdentityUsecase(repository, auditor)
+	identityUsecase := newIdentityUsecase(repository, auditor)
 	identityService := service.NewIdentityService(identityUsecase)
 	providerRegistry := setupOAuth(config)
 	mainRegistrarResult := provideRegistrar(config)
@@ -48,8 +48,19 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 var ProviderSet = wire.NewSet(
 	newRepo,
-	newAuditAuditor, biz.NewIdentityUsecase, service.NewIdentityService, server.NewGRPCServer, provideRegistrar, wire.Bind(new(biz.IdentityRepo), new(*data.Repository)),
+	newAuditAuditor,
+	newIdentityUsecase, service.NewIdentityService, server.NewGRPCServer, provideRegistrar, wire.Bind(new(biz.IdentityRepo), new(*data.Repository)),
 )
+
+// newIdentityUsecase connects the persistent runtime before any bootstrap or
+// transport starts. Memory mode is an explicit development-only legacy path.
+func newIdentityUsecase(repo *data.Repository, auditor *audit.Auditor) *biz.IdentityUsecase {
+	uc := biz.NewIdentityUsecase(repo, auditor)
+	if repo.HasPersistentStorage() {
+		uc.SetIAMRuntime(data.NewIAMRuntimeRepo(repo.Data), data.NewIAMTxRunner(repo.Data))
+	}
+	return uc
+}
 
 // newAuditAuditor provides the audit sink for identity-service login/logout
 // events. Unconditionally enabled; events go to the structured application log.
