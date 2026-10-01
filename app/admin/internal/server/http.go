@@ -21,6 +21,7 @@ import (
 
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/iamdto"
+	"micro-one-api/platform/security/serviceidentity"
 
 	"log"
 
@@ -3634,7 +3635,7 @@ func listRoutingSelectionEvents(ctx context.Context, userID int64, rootID string
 	q.Set("user_id", strconv.FormatInt(userID, 10))
 	q.Set("root_request_id", rootID)
 	targetURL.RawQuery = q.Encode()
-	resp, err := doLogServiceRequest(ctx, http.MethodGet, targetURL, os.Getenv("SERVICE_TOKEN"))
+	resp, err := doLogServiceRequest(ctx, http.MethodGet, targetURL, serviceidentity.ClientToken())
 	if err != nil {
 		return nil, "", err
 	}
@@ -3657,7 +3658,7 @@ func handleOneAPIDeleteLogs(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, apiResponse(false, "end_time is required", nil))
 		return
 	}
-	serviceToken := os.Getenv("SERVICE_TOKEN")
+	serviceToken := serviceidentity.ClientToken()
 	targetURL, err := logServiceURLFromEnv("/v1/logs")
 	if err != nil || serviceToken == "" {
 		writeJSON(w, http.StatusNotImplemented, apiResponse(false, "log delete is not configured", nil))
@@ -3750,6 +3751,9 @@ func doLogServiceRequest(ctx context.Context, method string, targetURL *url.URL,
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+serviceToken)
+	if raw := service.OperatorCredential(ctx); raw != "" {
+		req.Header.Set("x-operator-authorization", "Bearer "+raw)
+	}
 	return http.DefaultClient.Do(req) // #nosec G704 -- request URL is validated to an allowed log-service origin above.
 }
 
@@ -4173,6 +4177,22 @@ func writeServiceResponse(w http.ResponseWriter, resp any, err error) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// newOwnerHTTPProxy preserves the verified operator independently of admin's
+// service credential; browser service/caller headers do not establish identity.
+func newOwnerHTTPProxy(target *url.URL) *httputil.ReverseProxy {
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	director := proxy.Director
+	proxy.Director = func(r *http.Request) {
+		director(r)
+		r.Header.Del("x-operator-authorization")
+		if raw := service.OperatorCredential(r.Context()); raw != "" {
+			r.Header.Set("x-operator-authorization", "Bearer "+raw)
+		}
+		r.Header.Set("Authorization", "Bearer "+serviceidentity.ClientToken())
+	}
+	return proxy
+}
+
 // newNotifyWorkerProxy creates a reverse proxy to the notify-worker HTTP service.
 // It reads the NOTIFY_HTTP_ENDPOINT environment variable, defaulting to http://notify-worker:8008.
 func newNotifyWorkerProxy() *httputil.ReverseProxy {
@@ -4185,7 +4205,7 @@ func newNotifyWorkerProxy() *httputil.ReverseProxy {
 	if err != nil {
 		return nil
 	}
-	return httputil.NewSingleHostReverseProxy(target) // #nosec G704 -- endpoint is configured by operators and validated by parseReverseProxyTarget.
+	return newOwnerHTTPProxy(target) // #nosec G704 -- endpoint is configured by operators and validated by parseReverseProxyTarget.
 }
 
 // newChannelHTTPProxy builds a reverse proxy to channel-service's HTTP port.
@@ -4202,7 +4222,7 @@ func newChannelHTTPProxy() *httputil.ReverseProxy {
 	if err != nil {
 		return nil
 	}
-	return httputil.NewSingleHostReverseProxy(target) // #nosec G704 -- endpoint is configured by operators and validated by parseReverseProxyTarget.
+	return newOwnerHTTPProxy(target) // #nosec G704 -- endpoint is configured by operators and validated by parseReverseProxyTarget.
 }
 
 // newBillingHTTPProxy builds a reverse proxy to billing-service's HTTP port.

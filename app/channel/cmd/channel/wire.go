@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	authz "micro-one-api/platform/authz"
 	"os"
 	"time"
 
@@ -77,6 +78,8 @@ func newApp(
 	svc *service.ChannelService,
 	reg registrarResult,
 ) (*kratos.App, func()) {
+	ownerAuth, _ := authz.FromEnvironment("channel")
+	svc.SetResourceAuthorization(ownerAuth)
 	closeOutbox := func() {}
 	if os.Getenv("CHANNEL_ROUTING_GROUP_DUAL_WRITE") == "true" {
 		closeOutbox = repo.StartRoutingOutbox()
@@ -138,6 +141,7 @@ func newApp(
 	app := kratos.New(opts...)
 
 	return app, func() {
+		_ = ownerAuth.Close()
 		closeOutbox()
 		if stopOpsAutomation != nil {
 			stopOpsAutomation()

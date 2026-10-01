@@ -104,3 +104,31 @@ func (p Principal) CanCall(fullMethod string) bool {
 	policy, ok := Lookup(fullMethod)
 	return ok && p.Dedicated && (slices.Contains(policy.UserCallers, p.Name) || slices.Contains(policy.SystemCallers, p.Name))
 }
+
+// RPCMethod is set only after transport credential verification.
+type methodKey struct{}
+
+func WithRPCMethod(ctx context.Context, method string) context.Context {
+	return context.WithValue(ctx, methodKey{}, method)
+}
+func RPCMethod(ctx context.Context) string {
+	method, _ := ctx.Value(methodKey{}).(string)
+	return method
+}
+
+// HasSystemCapability checks the exact currently executing RPC.
+func HasSystemCapability(ctx context.Context, method string) bool {
+	return RPCMethod(ctx) == method && FromContext(ctx).SystemCapability(method)
+}
+
+// HTTP-only owner adapters have explicit fixed caller policies; they do not
+// pretend to be generated gRPC methods or confer a system capability.
+func (p Principal) CanCallHTTP(entry string) bool {
+	policy, ok := httpPolicies[entry]
+	return ok && p.Dedicated && slices.Contains(policy.UserCallers, p.Name)
+}
+
+var httpPolicies = map[string]RPCPolicy{
+	"/api.log.v1.LogService/DeleteLogs":         {Owner: "log", UserCallers: []string{"admin"}},
+	"/api.log.v1.LogService/ListSelectionAudit": {Owner: "log", UserCallers: []string{"admin"}},
+}

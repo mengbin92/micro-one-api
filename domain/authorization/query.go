@@ -71,8 +71,12 @@ func Credential(ctx context.Context) string {
 }
 
 type queryKey struct{ operation string }
+type verifiedActorKey struct{}
 
 func WithQueryScope(ctx context.Context, operation string, q QueryScope) context.Context {
+	if q.ActorID > 0 {
+		ctx = context.WithValue(ctx, verifiedActorKey{}, q.ActorID)
+	}
 	return context.WithValue(ctx, queryKey{operation}, q)
 }
 func QueryScopeFromContext(ctx context.Context, operation string) (QueryScope, bool) {

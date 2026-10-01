@@ -28,6 +28,12 @@ func (s *IAMService) GetResourceAuthorization(ctx context.Context, p *v.Resource
 	if mode == "iam" && (!principal.Dedicated || principal.Name != point.Owner) {
 		return nil, status.Error(codes.PermissionDenied, "verified data owner required")
 	}
+	if p.ModeOnly {
+		if p.Operation != "" || p.Object != nil {
+			return nil, status.Error(codes.InvalidArgument, "mode probe cannot request authority")
+		}
+		return &v.ResourceAuthorizationReply{AuthorizationMode: mode}, nil
+	}
 	credential, system := operatorCredential(ctx)
 	if mode == "iam" && (credential == "" || system) {
 		return nil, status.Error(codes.Unauthenticated, "user operator required")

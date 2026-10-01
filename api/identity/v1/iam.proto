@@ -70,6 +70,8 @@ message ResourceAuthorizationRequest {
  string execution_point = 1;
  string operation = 2;
  api.common.v1.AuthorizationObjectFacts object = 3;
+ // Owner-only mode probe; returns no actor, scopes or decision.
+ bool mode_only = 4;
 }
 message ResourceAuthorizationReply {
  string authorization_mode = 1;

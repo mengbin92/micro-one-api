@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"fmt"
+	authz "micro-one-api/platform/authz"
 	"micro-one-api/platform/security/serviceidentity"
 	"os"
 	"os/signal"
@@ -157,10 +158,14 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	} else {
 		alipayVerifier = biz.NewAlipayPaymentProvider(biz.AlipayConfig{})
 	}
+	ownerAuth, _ := authz.FromEnvironment("billing")
+	uc.SetAuthorization(ownerAuth)
+	paymentUc.SetAuthorization(ownerAuth)
 	svc := service.NewBillingService(uc, reconUc, paymentUc, alipayVerifier)
 	// Code-review 2026-07-30 billing-L5: wire the configured merchant app id
 	// so HandleAlipayNotify can cross-check the app_id in the verified notify
 	// params before marking a local order paid.
+	svc.SetOwnerAuthorization(ownerAuth)
 	svc.SetExpectedAlipayAppID(configuredAlipayAppID)
 
 	// Phase 2: refund/reversal coordinator. The subscription reverter delegates
@@ -168,6 +173,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	// row the assigner created. The operational report builder aggregates
 	// payment_orders + user_subscriptions so the dashboard never samples.
 	refundUc := biz.NewRefundUsecase(d.PaymentRepo(), d.AccountRepo(), d.LedgerRepo(), subscriptionUc)
+	refundUc.SetAuthorization(ownerAuth)
 	svc.SetRefundUsecase(refundUc)
 	reportUc := biz.NewSubscriptionReportUsecase(data.NewOperationReportRepo(d))
 	svc.SetSubscriptionReportUsecase(reportUc)
@@ -301,6 +307,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 
 	_ = fmt.Sprintf // keep fmt import used; the real error paths are handled above
 	return app, func() {
+		_ = ownerAuth.Close()
 		cancel()
 		// Drain accepted settlements while their database and pricing evidence
 		// are still available, then close long-lived dependencies.

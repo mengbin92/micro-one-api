@@ -15,6 +15,7 @@ import (
 	"micro-one-api/app/notify/internal/data"
 	"micro-one-api/app/notify/internal/server"
 	"micro-one-api/app/notify/internal/service"
+	"micro-one-api/platform/authz"
 	registry2 "micro-one-api/platform/registry"
 	"time"
 )
@@ -66,6 +67,8 @@ func provideRegistrar(cfg *Config) registrarResult {
 }
 
 func newApp(cfg *Config, uc *biz.NotifyUsecase, svc *service.NotifyService, reg registrarResult) (*kratos.App, func()) {
+	ownerAuth, _ := authz.FromEnvironment("notify")
+	svc.SetAuthorization(ownerAuth)
 	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc)
 
@@ -103,5 +106,5 @@ func newApp(cfg *Config, uc *biz.NotifyUsecase, svc *service.NotifyService, reg 
 		opts = append(opts, kratos.Registrar(reg.Registrar))
 	}
 	app := kratos.New(opts...)
-	return app, stopDispatcher
+	return app, func() { stopDispatcher(); _ = ownerAuth.Close() }
 }

@@ -125,6 +125,7 @@ services:
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
+      - IDENTITY_GRPC_ENDPOINT=identity-service:9001
       - LOG_LEVEL=info
       - LOG_FORMAT=json
       - NOTIFY_GRPC_ENDPOINT=${NOTIFY_GRPC_ENDPOINT:-notify-worker:9008}
@@ -189,6 +190,7 @@ services:
       - RECON_ALERT_RECIPIENTS=${RECON_ALERT_RECIPIENTS:-[admin]}
       - RECON_ALERT_INTERVAL=${RECON_ALERT_INTERVAL:-1h}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
+      - IDENTITY_GRPC_ENDPOINT=identity-service:9001
       - LOG_FORMAT=json
     depends_on:
       migrate:
@@ -292,6 +294,7 @@ services:
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
+      - IDENTITY_GRPC_ENDPOINT=identity-service:9001
       - LOG_LEVEL=info
       - LOG_FORMAT=json
     depends_on:
@@ -326,6 +329,7 @@ services:
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
+      - IDENTITY_GRPC_ENDPOINT=identity-service:9001
       - LOG_LEVEL=info
       - LOG_FORMAT=json
     depends_on:
@@ -360,6 +364,7 @@ services:
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
+      - IDENTITY_GRPC_ENDPOINT=identity-service:9001
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002
       - LOG_LEVEL=info
       - LOG_FORMAT=json
@@ -395,6 +400,7 @@ services:
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
+      - IDENTITY_GRPC_ENDPOINT=identity-service:9001
       - LOG_LEVEL=info
       - LOG_FORMAT=json
       - NOTIFY_WEBHOOK_URL=${NOTIFY_WEBHOOK_URL:-}

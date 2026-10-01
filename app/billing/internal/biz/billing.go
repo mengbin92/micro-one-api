@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/security/serviceidentity"
 	"os"
 	"sort"
 	"strconv"
@@ -109,6 +111,7 @@ type SubscriptionPrimatives interface {
 }
 
 type BillingUsecase struct {
+	authorization       authorization.Resolver
 	routingPolicies     RoutingPolicyRepo
 	routingGroups       RoutingGroupReader
 	userPriceOverrides  UserPriceOverrideRepo
@@ -1522,10 +1525,31 @@ func (uc *BillingUsecase) releaseReservationLegacy(ctx context.Context, reservat
 }
 
 func (uc *BillingUsecase) GetAccountSnapshot(ctx context.Context, userID string) (*Account, error) {
+	var authErr error
+	ctx, authErr = uc.authorizeAccount(ctx, "billing.accounts.read", "billing.account.read", userID)
+	if authErr != nil {
+		return nil, authErr
+	}
 	return uc.accountRepo.GetAccountSnapshot(ctx, userID)
 }
 
 func (uc *BillingUsecase) BatchGetAccountSnapshots(ctx context.Context, userIDs []string) (map[string]*Account, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.accounts.read", "billing.account.read")
+	if authErr != nil {
+		return nil, authErr
+	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "billing.account.read"); iam {
+		for _, user := range userIDs {
+			facts, err := accountFacts(user)
+			if err != nil {
+				return nil, err
+			}
+			if err := authorization.Require(ctx, "billing.account.read", facts); err != nil {
+				return nil, err
+			}
+		}
+	}
 	return uc.accountRepo.BatchGetAccountSnapshots(ctx, userIDs)
 }
 
@@ -1537,6 +1561,17 @@ func (uc *BillingUsecase) BatchGetAccountSnapshots(ctx context.Context, userIDs 
 // the client's Idempotency-Key; empty means no idempotency guarantee (the
 // ledger still gets a unique auto key, never colliding with legacy rows).
 func (uc *BillingUsecase) TopUpQuota(ctx context.Context, userID, operatorID string, amount int64, remark, requestId string) (int64, error) {
+	var authErr error
+	ctx, authErr = uc.authorizeAccount(ctx, "billing.accounts.adjust", "billing.account.balance.adjust", userID)
+	if authErr != nil {
+		return 0, authErr
+	}
+	if q, iam := authorization.QueryScopeFromContext(ctx, "billing.account.balance.adjust"); iam {
+		if strings.TrimSpace(remark) == "" {
+			return 0, authorization.ErrDenied
+		}
+		operatorID = fmt.Sprint(q.ActorID)
+	}
 	if amount <= 0 {
 		return 0, fmt.Errorf("amount must be positive")
 	}
@@ -1553,6 +1588,9 @@ func (uc *BillingUsecase) TopUpQuota(ctx context.Context, userID, operatorID str
 			return 0, err
 		}
 		return balance, nil
+	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "billing.account.balance.adjust"); iam {
+		return 0, authorization.ErrDenied
 	}
 	if _, err := uc.accountRepo.GetAccountSnapshot(ctx, userID); err != nil {
 		return 0, fmt.Errorf("get account snapshot: %w", err)
@@ -1596,6 +1634,20 @@ func (uc *BillingUsecase) TopUpQuotaInTx(ctx context.Context, tx subscriptionbiz
 }
 
 func (uc *BillingUsecase) topUpQuotaInTx(ctx context.Context, tx subscriptionbiz.Tx, userID, operatorID string, amount int64, remark, requestId string) (int64, error) {
+	facts, err := accountFacts(userID)
+	if q, iam := authorization.QueryScopeFromContext(ctx, "billing.account.balance.adjust"); iam {
+		if strings.TrimSpace(remark) == "" {
+			return 0, authorization.ErrDenied
+		}
+		operatorID = fmt.Sprint(q.ActorID)
+		remark = fmt.Sprintf("%s [authorization user=%d policy=%d catalog=%d]", remark, q.Versions.User, q.Versions.Policy, q.Versions.Catalog)
+		if err != nil {
+			return 0, err
+		}
+		if err = authorization.Require(ctx, "billing.account.balance.adjust", facts); err != nil {
+			return 0, err
+		}
+	}
 	balance, err := uc.accountRepo.IncrementBalanceInTx(ctx, tx, userID, amount)
 	if err != nil {
 		return 0, fmt.Errorf("increment balance: %w", err)
@@ -1660,6 +1712,13 @@ func (uc *BillingUsecase) topUpQuotaInTx(ctx context.Context, tx subscriptionbiz
 // `{group_id}:subscription:legacy` collision that blocked any second purchase
 // of the same group).
 func (uc *BillingUsecase) PurchaseSubscription(ctx context.Context, userID string, priceQuota, groupID int64, remark, requestId string) (int64, error) {
+	if authorization.External(ctx) && serviceidentity.FromContext(ctx).Name == "identity" {
+		var err error
+		ctx, err = uc.AuthorizeSelf(ctx, userID)
+		if err != nil {
+			return 0, err
+		}
+	}
 	if priceQuota <= 0 {
 		return 0, fmt.Errorf("price quota must be positive")
 	}
@@ -1799,6 +1858,13 @@ func (uc *BillingUsecase) DeleteRedeemCode(ctx context.Context, code string) err
 }
 
 func (uc *BillingUsecase) RedeemCode(ctx context.Context, userID, code string) (int64, int64, error) {
+	if authorization.External(ctx) && serviceidentity.FromContext(ctx).Name == "identity" {
+		var err error
+		ctx, err = uc.AuthorizeSelf(ctx, userID)
+		if err != nil {
+			return 0, 0, err
+		}
+	}
 	redeemCode, err := uc.redeemRepo.GetRedeemCode(ctx, code)
 	if err != nil {
 		return 0, 0, fmt.Errorf("get redeem code: %w", err)
@@ -2890,6 +2956,16 @@ func positiveOrZero(v int64) int64 {
 // AggregateUsage runs a multi-dimensional SQL aggregation over the ledger.
 // An empty filter.Type means "all ledger types" (no type filter).
 func (uc *BillingUsecase) AggregateUsage(ctx context.Context, filter UsageFilter) ([]*UsageBucket, *UsageTotals, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.ledger.read", "billing.account.ledger.read")
+	if authErr != nil {
+		return nil, nil, authErr
+	}
+	ctx, authErr = uc.prepareCost(ctx)
+	if authErr != nil {
+		return nil, nil, authErr
+	}
+
 	return uc.ledgerRepo.AggregateUsage(ctx, filter)
 }
 
@@ -2933,35 +3009,97 @@ func (uc *BillingUsecase) calculateCost(ctx context.Context, group, model string
 
 // ListLedgersBySubscriptionAccount delegates to the ledger repo.
 func (uc *BillingUsecase) ListLedgersBySubscriptionAccount(ctx context.Context, subscriptionAccountID int64, page, pageSize int32) ([]*Ledger, int64, error) {
-	return uc.ledgerRepo.ListLedgersBySubscriptionAccount(ctx, subscriptionAccountID, page, pageSize)
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.ledger.read", "billing.account.ledger.read")
+	if authErr != nil {
+		return nil, 0, authErr
+	}
+	ctx, authErr = uc.prepareCost(ctx)
+	if authErr != nil {
+		return nil, 0, authErr
+	}
+
+	rows, total, err := uc.ledgerRepo.ListLedgersBySubscriptionAccount(ctx, subscriptionAccountID, page, pageSize)
+	return ledgerViews(ctx, rows), total, err
 }
 
 // ListLedgersWithFilters delegates to the ledger repo.
 func (uc *BillingUsecase) ListLedgersWithFilters(ctx context.Context, userID string, page, pageSize int32, ledgerType string, startTime, endTime time.Time) ([]*Ledger, int64, error) {
-	return uc.ledgerRepo.ListLedgersWithFilters(ctx, userID, page, pageSize, ledgerType, startTime, endTime)
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.ledger.read", "billing.account.ledger.read")
+	if authErr != nil {
+		return nil, 0, authErr
+	}
+	ctx, authErr = uc.prepareCost(ctx)
+	if authErr != nil {
+		return nil, 0, authErr
+	}
+
+	rows, total, err := uc.ledgerRepo.ListLedgersWithFilters(ctx, userID, page, pageSize, ledgerType, startTime, endTime)
+	return ledgerViews(ctx, rows), total, err
 }
 
 // ListLedgers delegates to the ledger repo.
 func (uc *BillingUsecase) ListLedgers(ctx context.Context, userID string, page, pageSize int32) ([]*Ledger, int64, error) {
-	return uc.ledgerRepo.ListLedgers(ctx, userID, page, pageSize)
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.ledger.read", "billing.account.ledger.read")
+	if authErr != nil {
+		return nil, 0, authErr
+	}
+	ctx, authErr = uc.prepareCost(ctx)
+	if authErr != nil {
+		return nil, 0, authErr
+	}
+
+	rows, total, err := uc.ledgerRepo.ListLedgers(ctx, userID, page, pageSize)
+	return ledgerViews(ctx, rows), total, err
 }
 
 func (uc *BillingUsecase) ListLedgersWithOptions(ctx context.Context, options LedgerListOptions) ([]*Ledger, int64, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.ledger.read", "billing.account.ledger.read")
+	if authErr != nil {
+		return nil, 0, authErr
+	}
+	ctx, authErr = uc.prepareCost(ctx)
+	if authErr != nil {
+		return nil, 0, authErr
+	}
+
 	if repo, ok := uc.ledgerRepo.(OrderedLedgerRepo); ok {
-		return repo.ListLedgersWithOptions(ctx, options)
+		rows, total, err := repo.ListLedgersWithOptions(ctx, options)
+		return ledgerViews(ctx, rows), total, err
 	}
 	if options.SubscriptionAccountID != 0 {
-		return uc.ledgerRepo.ListLedgersBySubscriptionAccount(ctx, options.SubscriptionAccountID, options.Page, options.PageSize)
+		rows, total, err := uc.ledgerRepo.ListLedgersBySubscriptionAccount(ctx, options.SubscriptionAccountID, options.Page, options.PageSize)
+		return ledgerViews(ctx, rows), total, err
 	}
-	return uc.ledgerRepo.ListLedgersWithFilters(ctx, options.UserID, options.Page, options.PageSize, options.Type, options.StartTime, options.EndTime)
+	rows, total, err := uc.ledgerRepo.ListLedgersWithFilters(ctx, options.UserID, options.Page, options.PageSize, options.Type, options.StartTime, options.EndTime)
+	return ledgerViews(ctx, rows), total, err
 }
 
 // GetLedgerByID returns a single ledger entry by its primary key.
 func (uc *BillingUsecase) GetLedgerByID(ctx context.Context, id int64) (*Ledger, error) {
-	return uc.ledgerRepo.GetLedgerByID(ctx, id)
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.ledger.read", "billing.account.ledger.read")
+	if authErr != nil {
+		return nil, authErr
+	}
+	ctx, authErr = uc.prepareCost(ctx)
+	if authErr != nil {
+		return nil, authErr
+	}
+
+	ledger, err := uc.ledgerRepo.GetLedgerByID(ctx, id)
+	return ledgerView(ctx, ledger), err
 }
 
 // AggregateLedgerByDate delegates to the ledger repo.
 func (uc *BillingUsecase) AggregateLedgerByDate(ctx context.Context, userID, ledgerType string, startTime, endTime time.Time) ([]*DailyAggregate, []*ModelAggregate, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.ledger.read", "billing.account.ledger.read")
+	if authErr != nil {
+		return nil, nil, authErr
+	}
 	return uc.ledgerRepo.AggregateLedgerByDate(ctx, userID, ledgerType, startTime, endTime)
 }

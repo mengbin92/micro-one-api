@@ -40,7 +40,7 @@ func TestListSubscriptionAccounts_PropagatesBackendFailure(t *testing.T) {
 		err: status.Error(codes.Unavailable, "connection refused"),
 	}, nil)
 	_, err := svc.ListSubscriptionAccounts(context.Background(), &adminv1.AdminListSubscriptionAccountsRequest{})
-	if status.Code(err) != codes.Internal {
-		t.Fatalf("code = %v, want Internal", status.Code(err))
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("code = %v, want Unavailable", status.Code(err))
 	}
 }

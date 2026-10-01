@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/database/authzquery"
 	"os"
 	"sort"
 	"strconv"
@@ -26,42 +28,42 @@ type Repository struct {
 }
 
 type logModel struct {
-	ID                    int64  `gorm:"column:id;primaryKey;autoIncrement"`
-	Level                 string `gorm:"column:level;index"`
-	Message               string `gorm:"column:message"`
-	Source                string `gorm:"column:source;index"`
-	RequestID             string `gorm:"column:request_id"`
-	RootRequestID         string `gorm:"column:root_request_id"`
-	AttemptNumber         int32  `gorm:"column:attempt_number"`
-	ReservationID         string `gorm:"column:reservation_id"`
-	SourceKind            string `gorm:"column:source_kind"`
-	UpstreamModelID       string `gorm:"column:upstream_model_id"`
-	UserID                int64  `gorm:"column:user_id"`
-	CreatedAt             int64  `gorm:"column:created_at;index"`
-	Username              string `gorm:"column:username"`
-	TokenName             string `gorm:"column:token_name"`
-	ModelName             string `gorm:"column:model_name;index"`
-	Quota                 int64  `gorm:"column:quota"`
-	PromptTokens          int64  `gorm:"column:prompt_tokens"`
-	CompletionTokens      int64  `gorm:"column:completion_tokens"`
-	CacheReadTokens       int64  `gorm:"column:cache_read_tokens"`
-	CacheCreation5mTokens int64  `gorm:"column:cache_creation_5m_tokens"`
-	CacheCreation1hTokens int64  `gorm:"column:cache_creation_1h_tokens"`
-	ChannelID             int64  `gorm:"column:channel_id"`
-	SubscriptionAccountID int64  `gorm:"column:subscription_account_id"`
-	ElapsedTime           int64  `gorm:"column:elapsed_time"`
-	IsStream              bool   `gorm:"column:is_stream"`
-	UncachedInputTokens   int64  `gorm:"column:uncached_input_tokens"`
-	ReportedPromptTokens  int64  `gorm:"column:reported_prompt_tokens"`
-	ReportedTotalTokens   int64  `gorm:"column:reported_total_tokens"`
-	BillableTotalTokens   int64  `gorm:"column:billable_total_tokens"`
-	UsageSemantics        string `gorm:"column:usage_semantics"`
-	UsageProtocol         string `gorm:"column:usage_protocol"`
-	UsageFieldShape       string `gorm:"column:usage_field_shape"`
-	UsageParseStatus      string `gorm:"column:usage_parse_status"`
-	UsageContractVersion  int32  `gorm:"column:usage_contract_version"`
-	CanonicalPresent      bool   `gorm:"column:canonical_present"`
-	UsageDecisionReason   string `gorm:"column:usage_decision_reason"`
+	ID                    int64    `gorm:"column:id;primaryKey;autoIncrement"`
+	Level                 string   `gorm:"column:level;index"`
+	Message               string   `gorm:"column:message"`
+	Source                string   `gorm:"column:source;index"`
+	RequestID             string   `gorm:"column:request_id"`
+	RootRequestID         string   `gorm:"column:root_request_id"`
+	AttemptNumber         int32    `gorm:"column:attempt_number"`
+	ReservationID         string   `gorm:"column:reservation_id"`
+	SourceKind            string   `gorm:"column:source_kind"`
+	UpstreamModelID       string   `gorm:"column:upstream_model_id"`
+	UserID                int64    `gorm:"column:user_id"`
+	CreatedAt             int64    `gorm:"column:created_at;index"`
+	Username              string   `gorm:"column:username"`
+	TokenName             string   `gorm:"column:token_name"`
+	ModelName             string   `gorm:"column:model_name;index"`
+	Quota                 int64    `gorm:"column:quota"`
+	PromptTokens          int64    `gorm:"column:prompt_tokens"`
+	CompletionTokens      int64    `gorm:"column:completion_tokens"`
+	CacheReadTokens       int64    `gorm:"column:cache_read_tokens"`
+	CacheCreation5mTokens int64    `gorm:"column:cache_creation_5m_tokens"`
+	CacheCreation1hTokens int64    `gorm:"column:cache_creation_1h_tokens"`
+	ChannelID             int64    `gorm:"column:channel_id"`
+	SubscriptionAccountID int64    `gorm:"column:subscription_account_id"`
+	ElapsedTime           int64    `gorm:"column:elapsed_time"`
+	IsStream              xdb.Flag `gorm:"column:is_stream"`
+	UncachedInputTokens   int64    `gorm:"column:uncached_input_tokens"`
+	ReportedPromptTokens  int64    `gorm:"column:reported_prompt_tokens"`
+	ReportedTotalTokens   int64    `gorm:"column:reported_total_tokens"`
+	BillableTotalTokens   int64    `gorm:"column:billable_total_tokens"`
+	UsageSemantics        string   `gorm:"column:usage_semantics"`
+	UsageProtocol         string   `gorm:"column:usage_protocol"`
+	UsageFieldShape       string   `gorm:"column:usage_field_shape"`
+	UsageParseStatus      string   `gorm:"column:usage_parse_status"`
+	UsageContractVersion  int32    `gorm:"column:usage_contract_version"`
+	CanonicalPresent      bool     `gorm:"column:canonical_present"`
+	UsageDecisionReason   string   `gorm:"column:usage_decision_reason"`
 }
 
 type logIngestDedupeClaimModel struct {
@@ -151,20 +153,24 @@ func (r *Repository) List(ctx context.Context, page, pageSize int32, level, sour
 	if r.db != nil {
 		return r.listDB(ctx, page, pageSize, level, source, keyword)
 	}
-	return r.listMemory(page, pageSize, level, source, keyword)
+	return r.listMemory(ctx, page, pageSize, level, source, keyword)
 }
 
 func (r *Repository) ListByUser(ctx context.Context, userID int64, page, pageSize int32, level, keyword string) ([]*biz.LogEntry, int64, error) {
 	if r.db != nil {
 		return r.listByUserDB(ctx, userID, page, pageSize, level, keyword)
 	}
-	return r.listByUserMemory(userID, page, pageSize, level, keyword)
+	return r.listByUserMemory(ctx, userID, page, pageSize, level, keyword)
 }
 
 func (r *Repository) ListSelectionAudit(ctx context.Context, userID int64, rootRequestID string) ([]*biz.LogEntry, error) {
 	if r.db != nil {
 		var models []logModel
-		err := r.db.WithContext(ctx).
+		query, err := authzquery.ApplyContext(ctx, r.db.WithContext(ctx).Model(&logModel{}), authzquery.Columns{Resource: "id", User: "user_id"}, "log.selection_event.list")
+		if err != nil {
+			return nil, err
+		}
+		err = query.
 			Where("user_id = ? AND root_request_id = ? AND source = ?", userID, rootRequestID, "routing-selection").
 			Order("created_at ASC, id ASC").Find(&models).Error
 		if err != nil {
@@ -180,7 +186,7 @@ func (r *Repository) ListSelectionAudit(ctx context.Context, userID int64, rootR
 	defer r.mu.RUnlock()
 	entries := make([]*biz.LogEntry, 0, 2)
 	for _, entry := range r.mem {
-		if entry.UserID == userID && entry.RootRequestID == rootRequestID && entry.Source == "routing-selection" {
+		if authorization.Require(ctx, "log.selection_event.list", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: entry.ID, OwnerUserID: entry.UserID}) == nil && entry.UserID == userID && entry.RootRequestID == rootRequestID && entry.Source == "routing-selection" {
 			cloned := *entry
 			entries = append(entries, &cloned)
 		}
@@ -205,7 +211,11 @@ func (r *Repository) Delete(ctx context.Context, filter biz.DeleteLogsFilter) (i
 	if r.db != nil {
 		return r.deleteDB(ctx, filter)
 	}
-	return r.deleteMemory(filter), nil
+	ctx, err := authorization.Refresh(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return r.deleteMemory(ctx, filter), nil
 }
 
 func (r *Repository) DeleteBefore(ctx context.Context, before time.Time) (int64, error) {
@@ -223,7 +233,7 @@ func (r *Repository) UsageByUser(ctx context.Context, userID int64, startTime, e
 	if r.db != nil {
 		return r.usageByUserDB(ctx, userID, startTime, endTime)
 	}
-	return r.usageByUserMemory(userID, startTime, endTime), nil
+	return r.usageByUserMemory(ctx, userID, startTime, endTime), nil
 }
 
 // DB implementations
@@ -261,7 +271,7 @@ func (r *Repository) getDB(ctx context.Context, id int64) (*biz.LogEntry, error)
 		ChannelID:             m.ChannelID,
 		SubscriptionAccountID: m.SubscriptionAccountID,
 		ElapsedTime:           m.ElapsedTime,
-		IsStream:              m.IsStream,
+		IsStream:              m.IsStream != 0,
 		UncachedInputTokens:   m.UncachedInputTokens,
 		ReportedPromptTokens:  m.ReportedPromptTokens,
 		ReportedTotalTokens:   m.ReportedTotalTokens,
@@ -278,6 +288,11 @@ func (r *Repository) getDB(ctx context.Context, id int64) (*biz.LogEntry, error)
 
 func (r *Repository) listDB(ctx context.Context, page, pageSize int32, level, source, keyword string) ([]*biz.LogEntry, int64, error) {
 	query := r.db.WithContext(ctx).Model(&logModel{})
+	var scopeErr error
+	query, scopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "id", User: "user_id"}, "log.request.list")
+	if scopeErr != nil {
+		return nil, 0, scopeErr
+	}
 	if level != "" {
 		query = query.Where("level = ?", level)
 	}
@@ -285,6 +300,10 @@ func (r *Repository) listDB(ctx context.Context, page, pageSize int32, level, so
 		query = query.Where("source = ?", source)
 	}
 	if keyword != "" {
+		query, scopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "id", User: "user_id"}, "log.request.content.read")
+		if scopeErr != nil {
+			return nil, 0, scopeErr
+		}
 		query = query.Where("message LIKE ? ESCAPE '!'", "%"+escapeLike(keyword)+"%")
 	}
 	var total int64
@@ -305,10 +324,19 @@ func (r *Repository) listDB(ctx context.Context, page, pageSize int32, level, so
 
 func (r *Repository) listByUserDB(ctx context.Context, userID int64, page, pageSize int32, level, keyword string) ([]*biz.LogEntry, int64, error) {
 	query := r.db.WithContext(ctx).Model(&logModel{}).Where("user_id = ? AND COALESCE(source, '') <> ?", userID, "routing-selection")
+	var scopeErr error
+	query, scopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "id", User: "user_id"}, "log.request.list")
+	if scopeErr != nil {
+		return nil, 0, scopeErr
+	}
 	if level != "" {
 		query = query.Where("level = ?", level)
 	}
 	if keyword != "" {
+		query, scopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "id", User: "user_id"}, "log.request.content.read")
+		if scopeErr != nil {
+			return nil, 0, scopeErr
+		}
 		query = query.Where("message LIKE ? ESCAPE '!'", "%"+escapeLike(keyword)+"%")
 	}
 	var total int64
@@ -352,7 +380,7 @@ func (r *Repository) createDB(ctx context.Context, entry *biz.LogEntry) error {
 		ChannelID:             entry.ChannelID,
 		SubscriptionAccountID: entry.SubscriptionAccountID,
 		ElapsedTime:           entry.ElapsedTime,
-		IsStream:              entry.IsStream,
+		IsStream:              xdb.BoolInt(entry.IsStream),
 		UncachedInputTokens:   entry.UncachedInputTokens,
 		ReportedPromptTokens:  entry.ReportedPromptTokens,
 		ReportedTotalTokens:   entry.ReportedTotalTokens,
@@ -457,7 +485,7 @@ func (r *Repository) CreateBatch(ctx context.Context, entries []*biz.LogEntry) e
 				ChannelID:             e.ChannelID,
 				SubscriptionAccountID: e.SubscriptionAccountID,
 				ElapsedTime:           e.ElapsedTime,
-				IsStream:              e.IsStream,
+				IsStream:              xdb.BoolInt(e.IsStream),
 				UncachedInputTokens:   e.UncachedInputTokens,
 				ReportedPromptTokens:  e.ReportedPromptTokens,
 				ReportedTotalTokens:   e.ReportedTotalTokens,
@@ -497,21 +525,31 @@ func (r *Repository) CreateBatch(ctx context.Context, entries []*biz.LogEntry) e
 }
 
 func (r *Repository) deleteDB(ctx context.Context, filter biz.DeleteLogsFilter) (int64, error) {
-	query := r.db.WithContext(ctx).Where("created_at <= ?", filter.EndTime.Unix())
-	if !filter.StartTime.IsZero() {
-		query = query.Where("created_at >= ?", filter.StartTime.Unix())
-	}
-	if filter.Level != "" {
-		query = query.Where("level = ?", filter.Level)
-	}
-	if filter.Source != "" {
-		query = query.Where("source = ?", filter.Source)
-	}
-	if filter.UserID != 0 {
-		query = query.Where("user_id = ?", filter.UserID)
-	}
-	result := query.Delete(&logModel{})
-	return result.RowsAffected, result.Error
+	var deleted int64
+	err := authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		query := tx.Where("created_at <= ?", filter.EndTime.Unix())
+		var scopeErr error
+		query, scopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "id", User: "user_id"}, "log.request.delete")
+		if scopeErr != nil {
+			return scopeErr
+		}
+		if !filter.StartTime.IsZero() {
+			query = query.Where("created_at >= ?", filter.StartTime.Unix())
+		}
+		if filter.Level != "" {
+			query = query.Where("level = ?", filter.Level)
+		}
+		if filter.Source != "" {
+			query = query.Where("source = ?", filter.Source)
+		}
+		if filter.UserID != 0 {
+			query = query.Where("user_id = ?", filter.UserID)
+		}
+		result := query.Delete(&logModel{})
+		deleted = result.RowsAffected
+		return result.Error
+	})
+	return deleted, err
 }
 
 func (r *Repository) usageByUserDB(ctx context.Context, userID int64, startTime, endTime time.Time) ([]*biz.UsageStat, error) {
@@ -530,6 +568,11 @@ func (r *Repository) usageByUserDB(ctx context.Context, userID int64, startTime,
 	query := r.db.WithContext(ctx).Table("logs").
 		Select(dayExpr+" AS day, model_name, COUNT(1) AS request_count, COALESCE(SUM(quota), 0) AS quota, COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens, COALESCE(SUM(completion_tokens), 0) AS completion_tokens, COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens, COALESCE(SUM(cache_creation_5m_tokens), 0) AS cache_creation_5m_tokens, COALESCE(SUM(cache_creation_1h_tokens), 0) AS cache_creation_1h_tokens").
 		Where("user_id = ? AND COALESCE(source, '') <> ? AND model_name <> ''", userID, "routing-selection")
+	var scopeErr error
+	query, scopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "id", User: "user_id"}, "log.request.stats.read")
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
 	if !startTime.IsZero() {
 		query = query.Where("created_at >= ?", startTime.Unix())
 	}
@@ -569,7 +612,7 @@ func logModelToEntry(m logModel) *biz.LogEntry {
 		ChannelID:             m.ChannelID,
 		SubscriptionAccountID: m.SubscriptionAccountID,
 		ElapsedTime:           m.ElapsedTime,
-		IsStream:              m.IsStream,
+		IsStream:              m.IsStream != 0,
 		UncachedInputTokens:   m.UncachedInputTokens,
 		ReportedPromptTokens:  m.ReportedPromptTokens,
 		ReportedTotalTokens:   m.ReportedTotalTokens,
@@ -597,18 +640,21 @@ func (r *Repository) getMemory(id int64) (*biz.LogEntry, error) {
 	return &cloned, nil
 }
 
-func (r *Repository) listMemory(page, pageSize int32, level, source, keyword string) ([]*biz.LogEntry, int64, error) {
+func (r *Repository) listMemory(ctx context.Context, page, pageSize int32, level, source, keyword string) ([]*biz.LogEntry, int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var all []*biz.LogEntry
 	for _, entry := range r.mem {
+		if authorization.Require(ctx, "log.request.list", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: entry.ID, OwnerUserID: entry.UserID}) != nil {
+			continue
+		}
 		if level != "" && entry.Level != level {
 			continue
 		}
 		if source != "" && entry.Source != source {
 			continue
 		}
-		if keyword != "" && !contains(entry.Message, keyword) {
+		if keyword != "" && (authorization.Require(ctx, "log.request.content.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: entry.ID, OwnerUserID: entry.UserID}) != nil || !contains(entry.Message, keyword)) {
 			continue
 		}
 		cloned := *entry
@@ -623,18 +669,21 @@ func (r *Repository) listMemory(page, pageSize int32, level, source, keyword str
 	return all[start:end], total, nil
 }
 
-func (r *Repository) listByUserMemory(userID int64, page, pageSize int32, level, keyword string) ([]*biz.LogEntry, int64, error) {
+func (r *Repository) listByUserMemory(ctx context.Context, userID int64, page, pageSize int32, level, keyword string) ([]*biz.LogEntry, int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var all []*biz.LogEntry
 	for _, entry := range r.mem {
+		if authorization.Require(ctx, "log.request.list", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: entry.ID, OwnerUserID: entry.UserID}) != nil {
+			continue
+		}
 		if entry.UserID != userID || entry.Source == "routing-selection" {
 			continue
 		}
 		if level != "" && entry.Level != level {
 			continue
 		}
-		if keyword != "" && !contains(entry.Message, keyword) {
+		if keyword != "" && (authorization.Require(ctx, "log.request.content.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: entry.ID, OwnerUserID: entry.UserID}) != nil || !contains(entry.Message, keyword)) {
 			continue
 		}
 		cloned := *entry
@@ -670,11 +719,14 @@ func (r *Repository) createMemory(entry *biz.LogEntry) error {
 	return nil
 }
 
-func (r *Repository) deleteMemory(filter biz.DeleteLogsFilter) int64 {
+func (r *Repository) deleteMemory(ctx context.Context, filter biz.DeleteLogsFilter) int64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var deleted int64
 	for id, entry := range r.mem {
+		if authorization.Require(ctx, "log.request.delete", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: entry.ID, OwnerUserID: entry.UserID}) != nil {
+			continue
+		}
 		if filter.Level != "" && entry.Level != filter.Level {
 			continue
 		}
@@ -709,11 +761,14 @@ func (r *Repository) deleteBeforeMemory(before time.Time) int64 {
 	return deleted
 }
 
-func (r *Repository) usageByUserMemory(userID int64, startTime, endTime time.Time) []*biz.UsageStat {
+func (r *Repository) usageByUserMemory(ctx context.Context, userID int64, startTime, endTime time.Time) []*biz.UsageStat {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	statsByKey := map[string]*biz.UsageStat{}
 	for _, entry := range r.mem {
+		if authorization.Require(ctx, "log.request.stats.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: entry.ID, OwnerUserID: entry.UserID}) != nil {
+			continue
+		}
 		if entry.UserID != userID || entry.Source == "routing-selection" || entry.ModelName == "" {
 			continue
 		}

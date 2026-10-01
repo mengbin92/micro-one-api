@@ -56,7 +56,7 @@ func ServiceIdentityUnaryInterceptor(verifier *serviceidentity.Verifier) grpc.Un
 		if principal.Dedicated && !principal.CanCall(info.FullMethod) {
 			return nil, status.Error(codes.PermissionDenied, "caller capability denied")
 		}
-		ctx = serviceidentity.WithPrincipal(ctx, principal)
+		ctx = serviceidentity.WithRPCMethod(serviceidentity.WithPrincipal(ctx, principal), info.FullMethod)
 		return handler(ctx, req)
 	}
 }

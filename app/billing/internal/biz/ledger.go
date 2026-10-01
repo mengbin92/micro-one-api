@@ -33,6 +33,7 @@ const (
 // BalanceCost so a single reservation can be reconciled against both
 // dimensions; legacy entries leave both fields zero.
 type Ledger struct {
+	CostFieldsVisible     bool
 	ID                    uint
 	UserID                string
 	Amount                int64
@@ -158,6 +159,7 @@ type UsageFilter struct {
 
 // UsageBucket is one aggregated row keyed by the requested dimensions.
 type UsageBucket struct {
+	CostFieldsVisible     bool
 	UserID                string
 	ChannelID             int64
 	SubscriptionAccountID int64
@@ -180,6 +182,7 @@ type UsageBucket struct {
 
 // UsageTotals holds grand totals across all buckets.
 type UsageTotals struct {
+	CostFieldsVisible     bool
 	Quota                 int64
 	UpstreamCost          int64
 	GrossProfit           int64

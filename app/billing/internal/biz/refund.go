@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"micro-one-api/domain/authorization"
 	"strconv"
+	"strings"
 	"time"
 
 	"micro-one-api/pkg/jsonx"
@@ -89,7 +91,7 @@ type RefundRepo interface {
 	// transaction. The revert callback runs inside the tx and must perform
 	// the wallet credit + ledger write + subscription mutation. Returns
 	// changed=false when the order was already refunded (idempotent).
-	MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error)
+	MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(context.Context, *PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error)
 }
 
 // SubscriptionReverter abstracts the subscription-side mutation a refund
@@ -106,6 +108,7 @@ type SubscriptionReverter interface {
 // refundUsecase coordinates the order status, wallet credit, ledger reversal,
 // and subscription mutation for a refund.
 type RefundUsecase struct {
+	authorization authorization.Resolver
 	orders        RefundRepo
 	accounts      AccountRepo
 	ledger        LedgerRepo
@@ -130,15 +133,36 @@ func (uc *RefundUsecase) RefundSubscriptionOrder(ctx context.Context, req Refund
 	if uc == nil || uc.orders == nil {
 		return nil, errors.New("refund usecase is not configured")
 	}
+
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.payments.refund", "billing.payment.refund")
+	if authErr != nil {
+		return nil, authErr
+	}
 	if req.TradeNo == "" {
 		return nil, errors.New("trade_no is required")
+	}
+	if q, iam := authorization.QueryScopeFromContext(ctx, "billing.payment.refund"); iam {
+		req.Operator = fmt.Sprint(q.ActorID)
+		if strings.TrimSpace(req.Reason) == "" {
+			return nil, authorization.ErrDenied
+		}
 	}
 	policy := req.Policy
 	if policy == "" {
 		policy = RefundPolicyRevoke
 	}
 	var result *RefundResult
-	order, changed, err := uc.orders.MarkOrderRefunded(ctx, req.TradeNo, req.Reason, func(order *PaymentOrder, tx subscriptionbiz.Tx) error {
+	order, changed, err := uc.orders.MarkOrderRefunded(ctx, req.TradeNo, req.Reason, func(ctx context.Context, order *PaymentOrder, tx subscriptionbiz.Tx) error {
+		if _, iam := authorization.QueryScopeFromContext(ctx, "billing.payment.refund"); iam {
+			facts, err := paymentFacts(order)
+			if err != nil {
+				return err
+			}
+			if err := authorization.Require(ctx, "billing.payment.refund", facts); err != nil {
+				return err
+			}
+		}
 		if order.AssetType != PaymentAssetTypeSubscription {
 			return fmt.Errorf("refund only supports subscription asset orders, got %q", order.AssetType)
 		}
@@ -174,6 +198,9 @@ func (uc *RefundUsecase) RefundSubscriptionOrder(ctx context.Context, req Refund
 		if req.Operator != "" {
 			remark = fmt.Sprintf("%s (by %s)", remark, req.Operator)
 		}
+		if q, iam := authorization.QueryScopeFromContext(ctx, "billing.payment.refund"); iam {
+			remark = fmt.Sprintf("%s [authorization actor=%d user=%d policy=%d catalog=%d]", remark, q.ActorID, q.Versions.User, q.Versions.Policy, q.Versions.Catalog)
+		}
 		ledger := &Ledger{
 			UserID:          order.UserID,
 			Amount:          refundQuota,
@@ -207,6 +234,19 @@ func (uc *RefundUsecase) RefundSubscriptionOrder(ctx context.Context, req Refund
 	if err != nil {
 		return nil, err
 	}
+	if order == nil {
+		return nil, errors.New("payment order not found")
+	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "billing.payment.refund"); !changed && iam {
+		facts, err := paymentFacts(order)
+		if err != nil {
+			return nil, err
+		}
+		if err = authorization.Require(ctx, "billing.payment.refund", facts); err != nil {
+			return nil, err
+		}
+	}
+
 	if !changed && result == nil {
 		// Idempotent re-entry: order was already refunded. Reconstruct a
 		// minimal result so the caller sees a stable response.

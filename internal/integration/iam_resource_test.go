@@ -25,7 +25,7 @@ import (
 
 func TestIAMB0B1OwnerAndUserBoundaries(t *testing.T) {
 	t.Setenv("SERVICE_TOKEN", "legacy-shared")
-	t.Setenv("SERVICE_CALLER_TOKENS", `{"admin":"admin-private","identity":"identity-private","relay":"relay-private"}`)
+	t.Setenv("SERVICE_CALLER_TOKENS", `{"admin":"admin-private","identity":"identity-private","relay":"relay-private","channel":"channel-private","billing":"billing-private","config":"config-private","log":"log-private","monitor":"monitor-private","notify":"notify-private"}`)
 	t.Setenv("JWT_SECRET_KEY", "b1-integration-jwt")
 	t.Setenv("INITIAL_ADMIN_PASSWORD", "b1-root-password")
 	t.Setenv("IDENTITY_ROUTING_V2", "false")
@@ -69,6 +69,39 @@ func TestIAMB0B1OwnerAndUserBoundaries(t *testing.T) {
 	request.Operation = "billing.payment.read"
 	_, err = iamClient.GetResourceAuthorization(ctx("identity-private", root), request)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	// Exercise the real owner-only policy RPC for completed B2-B4 slices.
+	// These checks catch operation declarations that fake owner resolvers
+	// could accept even though identity would reject them in production.
+	for _, tc := range []struct{ owner, point, operation string }{
+		{"channel", "channel.channels.update", "channel.channel.update"},
+		{"channel", "channel.routing_groups.read", "channel.routing_group.members.read"},
+		{"channel", "channel.routing_groups.write", "channel.routing_group.resource_override.update"},
+		{"channel", "channel.routing_groups.write", "channel.routing_group.members.update"},
+		{"billing", "billing.accounts.read", "billing.account.cost.read"},
+		{"billing", "billing.payments.refund", "billing.payment.refund"},
+		{"config", "system.options.update", "system.option.security.update"},
+		{"log", "log.requests.read", "log.request.content.read"},
+		{"monitor", "monitor.alert_rules", "monitor.alert_rule.update"},
+		{"notify", "notify.notifications", "notify.notification.read"},
+	} {
+		probe := &v.ResourceAuthorizationRequest{ExecutionPoint: tc.point, Operation: tc.operation}
+		reply, err := iamClient.GetResourceAuthorization(ctx(tc.owner+"-private", root), probe)
+		require.NoError(t, err, tc.point+"/"+tc.operation)
+		require.EqualValues(t, 1, reply.ActorUserId)
+		require.NotEmpty(t, reply.Allow)
+		_, err = iamClient.GetResourceAuthorization(ctx("admin-private", root), probe)
+		require.Equal(t, codes.PermissionDenied, status.Code(err), "admin cannot impersonate "+tc.owner)
+		_, err = iamClient.GetResourceAuthorization(ctx(tc.owner+"-private", memberRaw), probe)
+		require.Equal(t, codes.PermissionDenied, status.Code(err), "numeric role does not grant "+tc.operation)
+	}
+	_, err = iamClient.GetResourceAuthorization(ctx("channel-private", root), &v.ResourceAuthorizationRequest{ExecutionPoint: "channel.routing_groups.write", Operation: "channel.routing_group.archive"})
+	require.Equal(t, codes.InvalidArgument, status.Code(err), "draft operations remain unavailable even to root")
+	probe, err := iamClient.GetResourceAuthorization(ctx("billing-private", ""), &v.ResourceAuthorizationRequest{ExecutionPoint: "billing.self", ModeOnly: true})
+	require.NoError(t, err)
+	require.Equal(t, "iam", probe.AuthorizationMode)
+	require.Zero(t, probe.ActorUserId)
+	require.Empty(t, probe.Allow)
+	require.Nil(t, probe.Decision)
 	// Exercise the real admin guard, RPC adapter, identity service and owner tx.
 	adminConn, err := grpc.NewClient("passthrough:///b1-admin", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return listener.Dial() }), grpc.WithUnaryInterceptor(func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoke grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		md, _ := metadata.FromOutgoingContext(ctx)

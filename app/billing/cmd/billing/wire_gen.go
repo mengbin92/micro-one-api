@@ -25,6 +25,7 @@ import (
 	"micro-one-api/app/billing/internal/service"
 	biz2 "micro-one-api/domain/subscription/biz"
 	data2 "micro-one-api/domain/subscription/data"
+	"micro-one-api/platform/authz"
 	grpc2 "micro-one-api/platform/grpc"
 	"micro-one-api/platform/grpc/xgrpc"
 	"micro-one-api/platform/logging"
@@ -168,11 +169,16 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	} else {
 		alipayVerifier = biz.NewAlipayPaymentProvider(biz.AlipayConfig{})
 	}
+	ownerAuth, _ := authz.FromEnvironment("billing")
+	uc.SetAuthorization(ownerAuth)
+	paymentUc.SetAuthorization(ownerAuth)
 	svc := service.NewBillingService(uc, reconUc, paymentUc, alipayVerifier)
 
+	svc.SetOwnerAuthorization(ownerAuth)
 	svc.SetExpectedAlipayAppID(configuredAlipayAppID)
 
 	refundUc := biz.NewRefundUsecase(d.PaymentRepo(), d.AccountRepo(), d.LedgerRepo(), subscriptionUc)
+	refundUc.SetAuthorization(ownerAuth)
 	svc.SetRefundUsecase(refundUc)
 	reportUc := biz.NewSubscriptionReportUsecase(data.NewOperationReportRepo(d))
 	svc.SetSubscriptionReportUsecase(reportUc)
@@ -288,6 +294,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 
 	_ = fmt.Sprintf
 	return app, func() {
+		_ = ownerAuth.Close()
 		cancel()
 
 		if asyncBilling != nil {

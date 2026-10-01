@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"errors"
+	"micro-one-api/domain/authorization"
 	"time"
 )
 
@@ -57,7 +58,8 @@ type MonitorRepo interface {
 
 // MonitorUsecase implements business logic for monitor-worker.
 type MonitorUsecase struct {
-	repo MonitorRepo
+	authorization authorization.Resolver
+	repo          MonitorRepo
 }
 
 func NewMonitorUsecase(repo MonitorRepo) *MonitorUsecase {
@@ -65,6 +67,9 @@ func NewMonitorUsecase(repo MonitorRepo) *MonitorUsecase {
 }
 
 func (uc *MonitorUsecase) RecordHealthCheck(ctx context.Context, serviceName, status string, responseTime int64) error {
+	if err := uc.authorizeSystem(ctx, "/api.monitor.v1.MonitorService/SaveHealthCheck", "monitor.health.service", "monitor.health.service.read"); err != nil {
+		return err
+	}
 	check := &HealthCheck{
 		ServiceName:  serviceName,
 		Status:       status,
@@ -75,10 +80,20 @@ func (uc *MonitorUsecase) RecordHealthCheck(ctx context.Context, serviceName, st
 }
 
 func (uc *MonitorUsecase) GetLatestHealth(ctx context.Context, serviceName string) (*HealthCheck, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "monitor.health.service", "monitor.health.service.read")
+	if err != nil {
+		return nil, err
+	}
 	return uc.repo.GetLatestHealthCheck(ctx, serviceName)
 }
 
 func (uc *MonitorUsecase) ListHealthChecks(ctx context.Context, serviceName string, page, pageSize int32) ([]*HealthCheck, int64, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "monitor.health.service", "monitor.health.service.read")
+	if err != nil {
+		return nil, 0, err
+	}
 	if page < 1 {
 		page = 1
 	}
@@ -89,6 +104,14 @@ func (uc *MonitorUsecase) ListHealthChecks(ctx context.Context, serviceName stri
 }
 
 func (uc *MonitorUsecase) CreateAlertRule(ctx context.Context, rule *AlertRule) error {
+	var err error
+	ctx, err = uc.authorize(ctx, "monitor.alert_rules", "monitor.alert_rule.create")
+	if err != nil {
+		return err
+	}
+	if err := authorization.Require(ctx, "monitor.alert_rule.create", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+		return err
+	}
 	if rule.Name == "" || rule.ServiceName == "" || rule.Metric == "" {
 		return ErrInvalidAlertRule
 	}
@@ -97,10 +120,23 @@ func (uc *MonitorUsecase) CreateAlertRule(ctx context.Context, rule *AlertRule) 
 }
 
 func (uc *MonitorUsecase) GetAlertRule(ctx context.Context, id int64) (*AlertRule, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "monitor.alert_rules", "monitor.alert_rule.read")
+	if err != nil {
+		return nil, err
+	}
+	if err := authorization.Require(ctx, "monitor.alert_rule.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: id}); err != nil {
+		return nil, err
+	}
 	return uc.repo.GetAlertRule(ctx, id)
 }
 
 func (uc *MonitorUsecase) ListAlertRules(ctx context.Context, page, pageSize int32) ([]*AlertRule, int64, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "monitor.alert_rules", "monitor.alert_rule.list")
+	if err != nil {
+		return nil, 0, err
+	}
 	if page < 1 {
 		page = 1
 	}
@@ -111,9 +147,25 @@ func (uc *MonitorUsecase) ListAlertRules(ctx context.Context, page, pageSize int
 }
 
 func (uc *MonitorUsecase) UpdateAlertRule(ctx context.Context, rule *AlertRule) error {
+	var err error
+	ctx, err = uc.authorize(ctx, "monitor.alert_rules", "monitor.alert_rule.update")
+	if err != nil {
+		return err
+	}
+	if err := authorization.Require(ctx, "monitor.alert_rule.update", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: rule.ID}); err != nil {
+		return err
+	}
 	return uc.repo.UpdateAlertRule(ctx, rule)
 }
 
 func (uc *MonitorUsecase) DeleteAlertRule(ctx context.Context, id int64) error {
+	var err error
+	ctx, err = uc.authorize(ctx, "monitor.alert_rules", "monitor.alert_rule.delete")
+	if err != nil {
+		return err
+	}
+	if err := authorization.Require(ctx, "monitor.alert_rule.delete", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: id}); err != nil {
+		return err
+	}
 	return uc.repo.DeleteAlertRule(ctx, id)
 }

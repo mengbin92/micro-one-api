@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/authz"
 	"time"
 
 	channelv1 "micro-one-api/api/channel/v1"
@@ -19,6 +21,7 @@ type ChannelService struct {
 	routingUC         *biz.ModelRoutingUsecase
 	routingGroupUC    routingGroupUsecase
 	channelModelProbe channelModelProbeScheduler
+	authz             authorization.Resolver
 }
 
 func NewChannelService(uc *biz.ChannelUsecase) *ChannelService {
@@ -100,6 +103,9 @@ func (s *ChannelService) GetSubscriptionAccountModel(ctx context.Context, accoun
 func (s *ChannelService) GetSubscriptionAccountWithSecrets(ctx context.Context, req *channelv1.GetSubscriptionAccountRequest) (*channelv1.GetSubscriptionAccountReply, error) {
 	account, err := s.uc.GetSubscriptionAccount(ctx, req.AccountId)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		mappedErr := errors.MapChannelError(err)
 		return nil, mappedErr
 	}
@@ -110,6 +116,9 @@ func (s *ChannelService) GetSubscriptionAccountWithSecrets(ctx context.Context, 
 
 func (s *ChannelService) SelectChannel(ctx context.Context, req *channelv1.SelectChannelRequest) (*channelv1.SelectChannelReply, error) {
 	if err := s.validateRoutingGroupPair(ctx, req.RoutingGroupId, req.Group); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, err
 	}
 	var channel *biz.Channel
@@ -126,6 +135,9 @@ func (s *ChannelService) SelectChannel(ctx context.Context, req *channelv1.Selec
 		channel, err = s.uc.SelectChannel(ctx, req.Group, req.Model, req.ExcludeFirstPriority)
 	}
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		mappedErr := errors.MapChannelError(err)
 		return nil, mappedErr
 	}
@@ -135,8 +147,11 @@ func (s *ChannelService) SelectChannel(ctx context.Context, req *channelv1.Selec
 }
 
 func (s *ChannelService) GetChannel(ctx context.Context, req *channelv1.GetChannelRequest) (*channelv1.GetChannelReply, error) {
-	channel, err := s.uc.GetChannel(ctx, req.ChannelId)
+	channel, err := s.uc.ReadChannel(ctx, req.ChannelId)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		mappedErr := errors.MapChannelError(err)
 		return nil, mappedErr
 	}
@@ -150,10 +165,16 @@ func (s *ChannelService) ListAvailableModels(ctx context.Context, req *channelv1
 		return s.listAvailableModelsAcrossRoutingGroups(ctx, req.RoutingGroupIds)
 	}
 	if err := s.validateRoutingGroupPair(ctx, req.RoutingGroupId, req.Group); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, err
 	}
 	models, err := s.uc.ListAvailableModels(ctx, req.Group)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		mappedErr := errors.MapChannelError(err)
 		return nil, mappedErr
 	}
@@ -200,7 +221,9 @@ func toSubscriptionAccountInfoWithSecrets(account *biz.SubscriptionAccount, incl
 	}
 	accessToken := relaycredential.MaskSecret(account.AccessToken)
 	refreshToken := relaycredential.MaskSecret(account.RefreshToken)
+	metadata := biz.SubscriptionAccountPublicMetadata(account.Metadata)
 	if includeSecrets {
+		metadata = account.Metadata
 		accessToken = account.AccessToken
 		refreshToken = account.RefreshToken
 	}
@@ -223,7 +246,7 @@ func toSubscriptionAccountInfoWithSecrets(account *biz.SubscriptionAccount, incl
 		ExpiresAt:              account.ExpiresAt,
 		AccountId:              account.AccountID,
 		Fingerprint:            account.Fingerprint,
-		Metadata:               account.Metadata,
+		Metadata:               metadata,
 		CreatedAt:              account.CreatedAt,
 		UpdatedAt:              account.UpdatedAt,
 		Concurrency:            account.Concurrency,
@@ -382,6 +405,9 @@ func toChannelSummary(channel *biz.Channel) *commonv1.ChannelSummary {
 func (s *ChannelService) ListChannels(ctx context.Context, req *channelv1.ListChannelsRequest) (*channelv1.ListChannelsResponse, error) {
 	channels, total, err := s.uc.ListChannels(ctx, req.Page, req.PageSize, req.Keyword, req.Group, req.Status, req.Type)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		mappedErr := errors.MapChannelError(err)
 		return nil, mappedErr
 	}
@@ -397,6 +423,9 @@ func (s *ChannelService) ListChannels(ctx context.Context, req *channelv1.ListCh
 
 func (s *ChannelService) SelectSubscriptionAccount(ctx context.Context, req *channelv1.SelectSubscriptionAccountRequest) (*channelv1.SelectSubscriptionAccountReply, error) {
 	if err := s.validateRoutingGroupPair(ctx, req.RoutingGroupId, req.Group); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, err
 	}
 	var account *biz.SubscriptionAccount
@@ -413,6 +442,9 @@ func (s *ChannelService) SelectSubscriptionAccount(ctx context.Context, req *cha
 		account, err = s.uc.SelectSubscriptionAccount(ctx, req.Group, req.Model, req.Platform, req.ExcludeFirstPriority)
 	}
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		mappedErr := errors.MapChannelError(err)
 		return nil, mappedErr
 	}
@@ -424,6 +456,9 @@ func (s *ChannelService) SelectSubscriptionAccount(ctx context.Context, req *cha
 func (s *ChannelService) GetSubscriptionAccount(ctx context.Context, req *channelv1.GetSubscriptionAccountRequest) (*channelv1.GetSubscriptionAccountReply, error) {
 	account, err := s.uc.GetSubscriptionAccount(ctx, req.AccountId)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		mappedErr := errors.MapChannelError(err)
 		return nil, mappedErr
 	}
@@ -438,6 +473,9 @@ func (s *ChannelService) ListSubscriptionAccounts(ctx context.Context, req *chan
 	}
 	accounts, total, err := s.uc.ListSubscriptionAccounts(ctx, req.Page, req.PageSize, req.Keyword, req.Group, req.Status, req.Platform, req.RecoveryPolicy)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		mappedErr := errors.MapChannelError(err)
 		return nil, mappedErr
 	}
@@ -458,6 +496,9 @@ func (s *ChannelService) ListOAuthRefreshCandidates(ctx context.Context, req *ch
 	}
 	ids, err := s.uc.ListOAuthRefreshCandidates(ctx, within)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		mappedErr := errors.MapChannelError(err)
 		return nil, mappedErr
 	}
@@ -466,6 +507,9 @@ func (s *ChannelService) ListOAuthRefreshCandidates(ctx context.Context, req *ch
 
 func (s *ChannelService) ClearSubscriptionAccountError(ctx context.Context, req *channelv1.ClearSubscriptionAccountErrorRequest) (*channelv1.ClearSubscriptionAccountErrorResponse, error) {
 	if err := s.uc.ClearSubscriptionAccountError(ctx, req.GetAccountId()); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.ClearSubscriptionAccountErrorResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.ClearSubscriptionAccountErrorResponse{Success: true, Message: "ok"}, nil
@@ -473,6 +517,9 @@ func (s *ChannelService) ClearSubscriptionAccountError(ctx context.Context, req 
 
 func (s *ChannelService) SetSubscriptionAccountError(ctx context.Context, req *channelv1.SetSubscriptionAccountErrorRequest) (*channelv1.SetSubscriptionAccountErrorResponse, error) {
 	if err := s.uc.SetSubscriptionAccountError(ctx, req.GetAccountId(), req.GetMessage()); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.SetSubscriptionAccountErrorResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.SetSubscriptionAccountErrorResponse{Success: true, Message: "ok"}, nil
@@ -480,6 +527,9 @@ func (s *ChannelService) SetSubscriptionAccountError(ctx context.Context, req *c
 
 func (s *ChannelService) SetTempUnschedulable(ctx context.Context, req *channelv1.SetTempUnschedulableRequest) (*channelv1.SetTempUnschedulableResponse, error) {
 	if err := s.uc.SetTempUnschedulable(ctx, req.GetAccountId(), time.Unix(req.GetUntil(), 0), req.GetReason()); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.SetTempUnschedulableResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.SetTempUnschedulableResponse{Success: true, Message: "ok"}, nil
@@ -487,6 +537,9 @@ func (s *ChannelService) SetTempUnschedulable(ctx context.Context, req *channelv
 
 func (s *ChannelService) ClearTempUnschedulable(ctx context.Context, req *channelv1.ClearTempUnschedulableRequest) (*channelv1.ClearTempUnschedulableResponse, error) {
 	if err := s.uc.ClearTempUnschedulable(ctx, req.GetAccountId()); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.ClearTempUnschedulableResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.ClearTempUnschedulableResponse{Success: true, Message: "ok"}, nil
@@ -589,6 +642,9 @@ func (s *ChannelService) CreateSubscriptionAccount(ctx context.Context, req *cha
 		ModelMapping:           req.ModelMapping,
 	}
 	if err := s.uc.CreateSubscriptionAccount(ctx, account); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.CreateSubscriptionAccountResponse{
 			Success: false,
 			Message: err.Error(),
@@ -602,8 +658,11 @@ func (s *ChannelService) CreateSubscriptionAccount(ctx context.Context, req *cha
 }
 
 func (s *ChannelService) UpdateSubscriptionAccount(ctx context.Context, req *channelv1.UpdateSubscriptionAccountRequest) (*channelv1.UpdateSubscriptionAccountResponse, error) {
-	account, err := s.uc.GetSubscriptionAccount(ctx, req.Id)
+	account, err := s.uc.SubscriptionAccountForUpdate(ctx, req.Id)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.UpdateSubscriptionAccountResponse{
 			Success: false,
 			Message: err.Error(),
@@ -700,6 +759,9 @@ func (s *ChannelService) UpdateSubscriptionAccount(ctx context.Context, req *cha
 		account.ModelMapping = req.GetModelMapping()
 	}
 	if err := s.uc.UpdateSubscriptionAccount(ctx, account); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.UpdateSubscriptionAccountResponse{
 			Success: false,
 			Message: err.Error(),
@@ -713,6 +775,9 @@ func (s *ChannelService) UpdateSubscriptionAccount(ctx context.Context, req *cha
 
 func (s *ChannelService) DeleteSubscriptionAccount(ctx context.Context, req *channelv1.DeleteSubscriptionAccountRequest) (*channelv1.DeleteSubscriptionAccountResponse, error) {
 	if err := s.uc.DeleteSubscriptionAccount(ctx, req.AccountId); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.DeleteSubscriptionAccountResponse{
 			Success: false,
 			Message: err.Error(),
@@ -726,6 +791,9 @@ func (s *ChannelService) DeleteSubscriptionAccount(ctx context.Context, req *cha
 
 func (s *ChannelService) ChangeSubscriptionAccountStatus(ctx context.Context, req *channelv1.ChangeSubscriptionAccountStatusRequest) (*channelv1.ChangeSubscriptionAccountStatusResponse, error) {
 	if err := s.uc.ChangeSubscriptionAccountStatus(ctx, req.AccountId, req.Status); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.ChangeSubscriptionAccountStatusResponse{
 			Success: false,
 			Message: err.Error(),
@@ -774,6 +842,9 @@ func (s *ChannelService) RecordAccountQuotaSnapshot(ctx context.Context, req *ch
 		snapshot.UpdatedAt = time.Unix(req.GetUpdatedAt(), 0)
 	}
 	if err := s.uc.RecordAccountQuotaSnapshot(ctx, snapshot); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.RecordAccountQuotaSnapshotResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.RecordAccountQuotaSnapshotResponse{Success: true, Message: "ok"}, nil
@@ -827,6 +898,9 @@ func (s *ChannelService) AggregateSubscriptionAccountQuotaEvents(ctx context.Con
 
 func (s *ChannelService) ResetSubscriptionAccountQuota(ctx context.Context, req *channelv1.ResetSubscriptionAccountQuotaRequest) (*channelv1.ResetSubscriptionAccountQuotaResponse, error) {
 	if err := s.uc.ResetSubscriptionAccountQuota(ctx, req.GetAccountId(), req.GetScope()); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.ResetSubscriptionAccountQuotaResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.ResetSubscriptionAccountQuotaResponse{Success: true, Message: "ok"}, nil
@@ -877,6 +951,9 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *channelv1.Creat
 		},
 	}
 	if err := s.uc.CreateChannel(ctx, channel); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.CreateChannelResponse{
 			Success: false,
 			Message: err.Error(),
@@ -893,8 +970,11 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *channelv1.Creat
 }
 
 func (s *ChannelService) UpdateChannel(ctx context.Context, req *channelv1.UpdateChannelRequest) (*channelv1.UpdateChannelResponse, error) {
-	channel, err := s.uc.GetChannel(ctx, req.ChannelId)
+	channel, err := s.uc.ChannelForUpdate(ctx, req.ChannelId)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.UpdateChannelResponse{
 			Success: false,
 			Message: err.Error(),
@@ -956,6 +1036,9 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *channelv1.Updat
 		}
 	}
 	if err := s.uc.UpdateChannel(ctx, channel); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.UpdateChannelResponse{
 			Success: false,
 			Message: err.Error(),
@@ -969,6 +1052,9 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *channelv1.Updat
 
 func (s *ChannelService) RecordChannelUsage(ctx context.Context, req *channelv1.RecordChannelUsageRequest) (*channelv1.RecordChannelUsageResponse, error) {
 	if err := s.uc.RecordUsageOnce(ctx, req.ReservationId, req.ChannelId, req.Quota); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.RecordChannelUsageResponse{
 			Success: false,
 			Message: err.Error(),
@@ -988,6 +1074,9 @@ func (s *ChannelService) RecordChannelHealth(ctx context.Context, req *channelv1
 		ResponseTime: req.ResponseTime,
 	}
 	if err := s.uc.RecordHealth(ctx, event); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.RecordChannelHealthResponse{
 			Success: false,
 			Message: err.Error(),
@@ -1021,6 +1110,9 @@ func (s *ChannelService) RecordSubscriptionAccountSlot(_ context.Context, req *c
 
 func (s *ChannelService) DeleteChannel(ctx context.Context, req *channelv1.DeleteChannelRequest) (*channelv1.DeleteChannelResponse, error) {
 	if err := s.uc.DeleteChannel(ctx, req.ChannelId); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.DeleteChannelResponse{
 			Success: false,
 			Message: err.Error(),
@@ -1034,6 +1126,9 @@ func (s *ChannelService) DeleteChannel(ctx context.Context, req *channelv1.Delet
 
 func (s *ChannelService) ChangeChannelStatus(ctx context.Context, req *channelv1.ChangeChannelStatusRequest) (*channelv1.ChangeChannelStatusResponse, error) {
 	if err := s.uc.ChangeChannelStatus(ctx, req.ChannelId, req.Status); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.ChangeChannelStatusResponse{
 			Success: false,
 			Message: err.Error(),
@@ -1051,6 +1146,9 @@ func (s *ChannelService) StoreSubscriptionCredentials(ctx context.Context, req *
 	}
 	account := &biz.SubscriptionAccount{ID: req.GetId(), CredentialRevision: req.GetExpectedRevision(), AccessToken: req.GetAccessToken(), RefreshToken: req.GetRefreshToken(), ExpiresAt: req.GetExpiresAt(), AccountID: req.GetAccountId()}
 	if err := s.uc.StoreSubscriptionCredentials(ctx, account); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, err
 	}
 	return &channelv1.StoreSubscriptionCredentialsReply{Revision: account.CredentialRevision}, nil
@@ -1062,6 +1160,9 @@ func (s *ChannelService) ClaimSubscriptionCredentialRefresh(ctx context.Context,
 	}
 	account := &biz.SubscriptionAccount{ID: req.GetId(), CredentialRevision: req.GetExpectedRevision()}
 	if err := s.uc.ClaimSubscriptionCredentialRefresh(ctx, account); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, err
 	}
 	return &channelv1.StoreSubscriptionCredentialsReply{Revision: account.CredentialRevision}, nil

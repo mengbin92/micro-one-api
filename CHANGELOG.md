@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- RBAC B2–B4 部分资源所有者执行链：渠道/账号与路由组、账户/账本/订单、日志/配置/健康告警/通知的范围查询、对象写复验、敏感字段隔离及本人会话校验。每次写事务尝试前刷新授权，独立服务凭证与用户凭证分别验证。完成七组 SQLite/MySQL/PostgreSQL race 回归及全仓门禁；完整 B 阶段、前端管理页面和生产 IAM 切换仍未完成，见 [B 阶段进展与剩余门槛](docs/design/rbac/b-execution-progress.md)。本批未部署或发布。
+
+### Changed
+
+- RBAC 主设计与实施清单同步两批实际完成项、774 行入口契约和未完成门槛；新增 owner 连接 identity 的 Compose 端点配置，尚未部署专属服务凭证。
+
 ## [0.33.6] - 2026-09-30
 
 v0.33.6 是 v0.33.5 之后的 **PATCH 支付观测与控制台体验版本**：支付宝异步回调增加脱敏成功受理回执，Playground 支持编辑重用历史用户消息，并更新前端间接依赖。无公共 API/proto、迁移或新增配置；更新 `billing-service` 和前端 `web/dist`。详见 [release-v0.33.6.md](docs/releases/release-v0.33.6.md)。

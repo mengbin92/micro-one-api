@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/authz"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,6 +17,7 @@ import (
 
 // NotifyService is the transport layer entry for notify-worker.
 type NotifyService struct {
+	ownerAuthorization *authz.Client
 	notifyv1.UnimplementedNotifyServiceServer
 	uc *biz.NotifyUsecase
 	// alertmanagerNotifyType selects the sender channel for Alertmanager
@@ -142,7 +145,7 @@ func (s *NotifyService) HandleCreateNotification(w http.ResponseWriter, r *http.
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		authz.WriteHTTPError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, notificationToMap(n))
@@ -166,7 +169,7 @@ func (s *NotifyService) HandleGetNotification(w http.ResponseWriter, r *http.Req
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		authz.WriteHTTPError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, notificationToMap(n))
@@ -184,7 +187,7 @@ func (s *NotifyService) HandleListNotifications(w http.ResponseWriter, r *http.R
 	status := q.Get("status")
 	notifications, total, err := s.uc.ListNotifications(r.Context(), int32(page), int32(pageSize), notifyType, status)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		authz.WriteHTTPError(w, err)
 		return
 	}
 	items := make([]map[string]any, 0, len(notifications))
@@ -213,3 +216,9 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	w.WriteHeader(status)
 	_ = jsonx.NewEncoder(w).Encode(map[string]any{"error": message})
 }
+
+func (s *NotifyService) SetAuthorization(r authorization.Resolver) {
+	s.uc.SetAuthorization(r)
+	s.ownerAuthorization, _ = r.(*authz.Client)
+}
+func (s *NotifyService) OwnerAuthorizationClient() *authz.Client { return s.ownerAuthorization }

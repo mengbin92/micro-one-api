@@ -48,3 +48,14 @@ func TestEveryRegisteredRPCClassified(t *testing.T) {
 		require.Empty(t, desc.Streams, "new streams require separate capability review")
 	}
 }
+
+func TestHTTPOnlyPoliciesCannotConferSystemCapability(t *testing.T) {
+	entry := "/api.log.v1.LogService/DeleteLogs"
+	admin := Principal{Name: "admin", Dedicated: true}
+	if !admin.CanCallHTTP(entry) || admin.SystemCapability(entry) {
+		t.Fatal("HTTP user policy must be independent of system capability")
+	}
+	if (Principal{Name: "admin"}).CanCallHTTP(entry) || (Principal{Name: "relay", Dedicated: true}).CanCallHTTP(entry) || admin.CanCallHTTP(entry+"/unknown") {
+		t.Fatal("unverified or unknown HTTP caller allowed")
+	}
+}

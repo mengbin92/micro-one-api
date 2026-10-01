@@ -3,15 +3,20 @@
 package authzquery
 
 import (
+	"context"
 	"fmt"
 	"gorm.io/gorm"
 	"micro-one-api/domain/authorization"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type Columns struct {
 	Resource, User string
+	// UserText is explicit for owners whose immutable user_id column is TEXT.
+	UserText bool
 	// Groups is a data-owned SELECT with a single '?' for the candidate group
 	// IDs. It returns one row when the current object has a matching group.
 	Groups string
@@ -19,19 +24,29 @@ type Columns struct {
 
 var identifier = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?$`)
 
-func Apply(db *gorm.DB, q authorization.QueryScope, c Columns) (*gorm.DB, error) {
+func Predicate(q authorization.QueryScope, c Columns) (string, []any, error) {
 	if q.ActorID <= 0 || (c.Resource != "" && !identifier.MatchString(c.Resource)) || (c.User != "" && !identifier.MatchString(c.User)) {
-		return nil, authorization.ErrScope
+		return "", nil, authorization.ErrScope
+	}
+	if !q.ValidUntil.IsZero() && !time.Now().Before(q.ValidUntil) {
+		return "", nil, authorization.ErrDenied
 	}
 	allow, aa, err := compile(q.Allow, q.ActorID, c)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	deny, da, err := compile(q.Deny, q.ActorID, c)
 	if err != nil {
+		return "", nil, err
+	}
+	return "(" + allow + ") AND NOT (" + deny + ")", append(aa, da...), nil
+}
+func Apply(db *gorm.DB, q authorization.QueryScope, c Columns) (*gorm.DB, error) {
+	predicate, args, err := Predicate(q, c)
+	if err != nil {
 		return nil, err
 	}
-	return db.Where("("+allow+") AND NOT ("+deny+")", append(aa, da...)...), nil
+	return db.Where(predicate, args...), nil
 }
 
 func compile(scopes []authorization.Scope, actorID int64, cols Columns) (string, []any, error) {
@@ -51,7 +66,11 @@ func compile(scopes []authorization.Scope, actorID int64, cols Columns) (string,
 					return "", nil, authorization.ErrScope
 				}
 				conditions = append(conditions, cols.User+" = ?")
-				args = append(args, actorID)
+				if cols.UserText {
+					args = append(args, strconv.FormatInt(actorID, 10))
+				} else {
+					args = append(args, actorID)
+				}
 			}
 			for _, dim := range []struct {
 				column string
@@ -64,7 +83,15 @@ func compile(scopes []authorization.Scope, actorID int64, cols Columns) (string,
 					return "", nil, authorization.ErrScope
 				}
 				conditions = append(conditions, dim.column+" IN ?")
-				args = append(args, dim.ids)
+				if dim.column == cols.User && cols.UserText {
+					ids := make([]string, len(dim.ids))
+					for i, id := range dim.ids {
+						ids[i] = strconv.FormatInt(id, 10)
+					}
+					args = append(args, ids)
+				} else {
+					args = append(args, dim.ids)
+				}
 			}
 			if len(c.RoutingGroupIDs) > 0 {
 				if cols.Groups == "" || strings.Count(cols.Groups, "?") != 1 {
@@ -80,4 +107,22 @@ func compile(scopes []authorization.Scope, actorID int64, cols Columns) (string,
 		return "1 = 0", nil, nil
 	}
 	return strings.Join(parts, " OR "), args, nil
+}
+
+// ApplyContext intersects every required operation present in the verified
+// request context. Owners call it before count, aggregation and pagination.
+func ApplyContext(ctx context.Context, db *gorm.DB, c Columns, operations ...string) (*gorm.DB, error) {
+	for _, op := range operations {
+		if q, ok := authorization.QueryScopeFromContext(ctx, op); ok {
+			if !q.ValidUntil.IsZero() && !time.Now().Before(q.ValidUntil) {
+				return nil, authorization.ErrDenied
+			}
+			var err error
+			db, err = Apply(db, q, c)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return db, nil
 }

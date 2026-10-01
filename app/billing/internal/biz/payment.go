@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"micro-one-api/domain/authorization"
 	"strconv"
 	"time"
 
@@ -153,7 +154,7 @@ type PaymentRepo interface {
 	MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error)
 	// MarkOrderRefunded transitions a paid order to refunded, running the
 	// revert callback inside the same transaction. Idempotent.
-	MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error)
+	MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(context.Context, *PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error)
 	// MarkOrderAssetIssued atomically claims a paid order's asset issuance
 	// (asset_issue_status pending -> issued) under a row lock, so concurrent
 	// callers cannot both claim the same order (code-review M10). ok is true
@@ -181,6 +182,7 @@ type PaymentNotifyVerifier interface {
 }
 
 type PaymentUsecase struct {
+	authorization     authorization.Resolver
 	purchaseValidator interface {
 		ValidateRenewalContract(context.Context, int64, int64, *subscriptionbiz.SubscriptionContract) error
 	}
@@ -249,6 +251,22 @@ func (uc *PaymentUsecase) SetPlanSnapshotter(snapshotter PlanSnapshotter) {
 }
 
 func (uc *PaymentUsecase) CreateOrder(ctx context.Context, req CreatePaymentOrderRequest) (*PaymentOrder, error) {
+	if authorization.External(ctx) {
+		var err error
+		ctx, err = authorization.PrepareSelf(ctx, uc.authorization, "billing.self", "billing.payment.read")
+		if err != nil {
+			return nil, err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "billing.payment.read"); iam {
+			facts, err := accountFacts(req.UserID)
+			if err != nil {
+				return nil, err
+			}
+			if err := authorization.Require(ctx, "billing.payment.read", facts); err != nil {
+				return nil, err
+			}
+		}
+	}
 	if err := validateCreatePaymentOrderRequest(req); err != nil {
 		return nil, err
 	}
@@ -366,6 +384,11 @@ func (uc *PaymentUsecase) CreateOrder(ctx context.Context, req CreatePaymentOrde
 }
 
 func (uc *PaymentUsecase) GetOrderByTradeNo(ctx context.Context, tradeNo string) (*PaymentOrder, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.payments.read", "billing.payment.read")
+	if authErr != nil {
+		return nil, authErr
+	}
 	if tradeNo == "" {
 		return nil, errors.New("trade_no is required")
 	}
@@ -373,10 +396,24 @@ func (uc *PaymentUsecase) GetOrderByTradeNo(ctx context.Context, tradeNo string)
 	if err != nil || order == nil {
 		return order, err
 	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "billing.payment.read"); iam {
+		facts, err := paymentFacts(order)
+		if err != nil {
+			return nil, err
+		}
+		if err := authorization.Require(ctx, "billing.payment.read", facts); err != nil {
+			return nil, err
+		}
+	}
 	return uc.refreshProviderStatus(ctx, order)
 }
 
 func (uc *PaymentUsecase) ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.payments.list", "billing.payment.list")
+	if authErr != nil {
+		return nil, 0, authErr
+	}
 	if req.Page <= 0 {
 		req.Page = 1
 	}

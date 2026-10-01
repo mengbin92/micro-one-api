@@ -1,6 +1,7 @@
 package server
 
 import (
+	"micro-one-api/platform/authz"
 	"os"
 
 	notifyv1 "micro-one-api/api/notify/v1"
@@ -16,9 +17,14 @@ func NewGRPCServer(addr string, svc *service.NotifyService) *kgrpc.Server {
 	srv := kgrpc.NewServer(
 		kgrpc.Address(addr),
 		kgrpc.Timeout(apptimeout.GetGRPCTimeout()),
-		kgrpc.UnaryInterceptor(xgrpc.ServiceTokenUnaryInterceptor(os.Getenv("SERVICE_TOKEN"))),
+		kgrpc.UnaryInterceptor(xgrpc.ServiceTokenUnaryInterceptor(os.Getenv("SERVICE_TOKEN")), authz.OperatorUnaryInterceptor(), authz.CoverageUnaryInterceptor(svc.OwnerAuthorizationClient(), "notify.notifications", notifyReadyMethods)),
 		kgrpc.StreamInterceptor(xgrpc.ServiceTokenStreamInterceptor(os.Getenv("SERVICE_TOKEN"))),
 	)
 	notifyv1.RegisterNotifyServiceServer(srv, svc)
 	return srv
+}
+
+var notifyReadyMethods = []string{
+	"/api.notify.v1.NotifyService/GetNotification",
+	"/api.notify.v1.NotifyService/ListNotifications",
 }

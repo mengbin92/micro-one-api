@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"micro-one-api/domain/subscription/biz"
-	"micro-one-api/platform/database/xdb"
+	"micro-one-api/platform/database/authzquery"
 
 	"gorm.io/gorm"
 )
@@ -47,7 +47,7 @@ func NewTxRunner(d *Data) biz.TxRunner {
 // runner: read-then-write callbacks cannot survive a stale WAL snapshot on
 // the shared-file topology, and a rolled-back attempt commits nothing.
 func (r *runner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx biz.Tx) error) error {
-	return xdb.RetryTxOnBusy(ctx, r.db, 3, func(tx *gorm.DB) error {
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
 		return fn(ctx, &gormTx{db: tx})
 	})
 }
