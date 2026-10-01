@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	subscriptiondata "micro-one-api/domain/subscription/data"
+	"micro-one-api/platform/database/authzquery"
+	"strconv"
 	"time"
 
 	"micro-one-api/app/billing/internal/biz"
+	"micro-one-api/domain/authorization"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"micro-one-api/pkg/safecast"
@@ -56,7 +59,16 @@ func (r *paymentRepo) CreateOrder(ctx context.Context, order *biz.PaymentOrder) 
 	if err != nil {
 		return nil, err
 	}
-	if err := r.data.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	if err := authzquery.RunInTx(ctx, r.data.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if _, iam := authorization.QueryScopeFromContext(ctx, "billing.payment.read"); iam {
+			uid, err := strconv.ParseInt(order.UserID, 10, 64)
+			if err != nil || uid <= 0 {
+				return authorization.ErrDenied
+			}
+			if err := authorization.Require(ctx, "billing.payment.read", authorization.ObjectFacts{Context: authorization.Platform(), OwnerUserID: uid}); err != nil {
+				return err
+			}
+		}
 		if subscriptionbiz.EntitlementsEnabled() && order.AssetType == biz.PaymentAssetTypeSubscription {
 			if err := subscriptiondata.LockContractReferences(tx); err != nil {
 				return err
@@ -126,7 +138,10 @@ func (r *paymentRepo) ListOrders(ctx context.Context, req biz.ListPaymentOrdersR
 	if pageSize <= 0 {
 		pageSize = 20
 	}
-	query := r.data.db.WithContext(ctx).Model(&PaymentOrder{})
+	query, scopeErr := authzquery.ApplyContext(ctx, r.data.db.WithContext(ctx).Model(&PaymentOrder{}), authzquery.Columns{Resource: "payment_orders.id", User: "payment_orders.user_id", UserText: true}, "billing.payment.list")
+	if scopeErr != nil {
+		return nil, 0, scopeErr
+	}
 	if req.UserID != "" {
 		query = query.Where("user_id = ?", req.UserID)
 	}
@@ -311,11 +326,13 @@ func (r *paymentRepo) MarkOrderClosed(ctx context.Context, tradeNo, providerTrad
 // the wallet credit + ledger reversal + subscription mutation so all three
 // commit atomically. Returns changed=false when the order was already
 // refunded (idempotent re-entry from a replayed refund callback).
-func (r *paymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*biz.PaymentOrder, subscriptionbiz.Tx) error) (*biz.PaymentOrder, bool, error) {
+func (r *paymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(context.Context, *biz.PaymentOrder, subscriptionbiz.Tx) error) (*biz.PaymentOrder, bool, error) {
 	var result *biz.PaymentOrder
 	changed := false
 
-	err := r.data.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := authzquery.RunInTx(ctx, r.data.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		result = nil
+		changed = false
 		var po PaymentOrder
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("trade_no = ? OR provider_trade_no = ?", tradeNo, tradeNo).
@@ -329,6 +346,15 @@ func (r *paymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason str
 		order, err := toBizPaymentOrder(&po)
 		if err != nil {
 			return err
+		}
+		userID, parseErr := strconv.ParseInt(order.UserID, 10, 64)
+		if _, iam := authorization.QueryScopeFromContext(ctx, "billing.payment.refund"); iam {
+			if parseErr != nil || userID <= 0 {
+				return authorization.ErrDenied
+			}
+			if err := authorization.Require(ctx, "billing.payment.refund", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: order.ID, OwnerUserID: userID}); err != nil {
+				return err
+			}
 		}
 		// Idempotent: an already-refunded order short-circuits without
 		// re-running the revert, so a replayed refund callback cannot
@@ -345,7 +371,7 @@ func (r *paymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason str
 		if revert == nil {
 			return errors.New("refund revert callback is required")
 		}
-		if err := revert(order, &gormTx{db: tx}); err != nil {
+		if err := revert(ctx, order, &gormTx{db: tx}); err != nil {
 			return err
 		}
 

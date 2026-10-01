@@ -29,6 +29,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"micro-one-api/platform/authz"
 	"net/http"
 	"sort"
 	"strconv"
@@ -223,6 +224,9 @@ func (s *CodingPlanQuotaProbeService) queryZhipu(ctx context.Context, account *b
 	url := base + "/api/monitor/usage/quota/limit"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("zhipu request: %w", err)
 	}
 	req.Header.Set("Authorization", apiKey) // no Bearer
@@ -231,11 +235,17 @@ func (s *CodingPlanQuotaProbeService) queryZhipu(ctx context.Context, account *b
 
 	resp, err := s.client.Do(req)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("zhipu request: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("zhipu read body: %w", err)
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
@@ -247,6 +257,9 @@ func (s *CodingPlanQuotaProbeService) queryZhipu(ctx context.Context, account *b
 
 	root, err := decodeJSONObject(body)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("zhipu parse: %w", err)
 	}
 	if success, _ := root["success"].(bool); !success {
@@ -365,6 +378,9 @@ func (s *CodingPlanQuotaProbeService) queryKimi(ctx context.Context, account *bi
 	const url = "https://api.kimi.com/coding/v1/usages"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("kimi request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
@@ -372,11 +388,17 @@ func (s *CodingPlanQuotaProbeService) queryKimi(ctx context.Context, account *bi
 
 	resp, err := s.client.Do(req)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("kimi request: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("kimi read body: %w", err)
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
@@ -388,6 +410,9 @@ func (s *CodingPlanQuotaProbeService) queryKimi(ctx context.Context, account *bi
 
 	root, err := decodeJSONObject(body)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("kimi parse: %w", err)
 	}
 
@@ -459,6 +484,9 @@ func (s *CodingPlanQuotaProbeService) queryMinimax(ctx context.Context, account 
 	url := fmt.Sprintf("https://%s/v1/api/openplatform/coding_plan/remains", domain)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("minimax request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
@@ -466,11 +494,17 @@ func (s *CodingPlanQuotaProbeService) queryMinimax(ctx context.Context, account 
 
 	resp, err := s.client.Do(req)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("minimax request: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("minimax read body: %w", err)
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
@@ -482,6 +516,9 @@ func (s *CodingPlanQuotaProbeService) queryMinimax(ctx context.Context, account 
 
 	root, err := decodeJSONObject(body)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("minimax parse: %w", err)
 	}
 

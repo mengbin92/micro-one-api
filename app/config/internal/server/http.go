@@ -1,6 +1,7 @@
 package server
 
 import (
+	"micro-one-api/platform/authz"
 	"net/http"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
@@ -18,14 +19,14 @@ func NewHTTPServer(addr string, svc *service.ConfigService) *khttp.Server {
 		case http.MethodGet:
 			rest := r.URL.Path[len("/v1/configs/"):]
 			if countSlashes(rest) >= 1 {
-				svc.HandleGetConfig(w, r)
+				authz.HTTPContext("/api.config.v1.ConfigService/GetConfig", svc.HandleGetConfig)(w, r)
 			} else {
-				svc.HandleListConfigs(w, r)
+				authz.HTTPContext("/api.config.v1.ConfigService/ListConfigs", svc.HandleListConfigs)(w, r)
 			}
 		case http.MethodPut:
-			svc.HandleSetConfig(w, r)
+			authz.HTTPContext("/api.config.v1.ConfigService/SetConfig", svc.HandleSetConfig)(w, r)
 		case http.MethodDelete:
-			svc.HandleDeleteConfig(w, r)
+			authz.HTTPContext("/api.config.v1.ConfigService/DeleteConfig", svc.HandleDeleteConfig)(w, r)
 		default:
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		}

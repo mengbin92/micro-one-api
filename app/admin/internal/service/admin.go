@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"micro-one-api/platform/authz"
 	"net/http"
 	"net/url"
 	"sort"
@@ -60,6 +61,9 @@ func operatorCredential(ctx context.Context) string {
 	return credential
 }
 
+// OperatorCredential returns only the credential stamped by the verified admin guard.
+func OperatorCredential(ctx context.Context) string { return operatorCredential(ctx) }
+
 type OneAPIOption struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
@@ -108,6 +112,9 @@ func (s *AdminService) SetSubscriptionUsecases(subscriptionUc *subscriptionbiz.S
 func (s *AdminService) TopUpQuota(ctx context.Context, req *adminv1.TopUpQuotaRequest) (*adminv1.TopUpQuotaResponse, error) {
 	requestID, err := normalizeRequestID(req.RequestId)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.TopUpQuotaResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 	billingReq := &billingv1.TopUpQuotaRequest{
@@ -120,6 +127,9 @@ func (s *AdminService) TopUpQuota(ctx context.Context, req *adminv1.TopUpQuotaRe
 
 	resp, err := s.billingClient.TopUpQuota(ctx, billingReq)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		// Idempotency conflict: pass the gRPC AlreadyExists through so the
 		// HTTP layer maps it to 409 Conflict (v0.18 P0 design §5.4) instead of
 		// swallowing it into a Success:false business response (HTTP 200).
@@ -157,6 +167,9 @@ func (s *AdminService) CreateRedeemCode(ctx context.Context, req *adminv1.Create
 
 	_, err := s.billingClient.CreateRedeemCode(ctx, billingReq)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		st, ok := status.FromError(err)
 		if ok {
 			return &adminv1.CreateRedeemCodeResponse{
@@ -187,6 +200,9 @@ func (s *AdminService) CreateRedeemCodesBatch(ctx context.Context, req *adminv1.
 
 	resp, err := s.billingClient.CreateRedeemCodesBatch(ctx, billingReq)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		st, ok := status.FromError(err)
 		if ok {
 			return &adminv1.CreateRedeemCodesBatchResponse{
@@ -214,6 +230,9 @@ func (s *AdminService) GetRedeemCode(ctx context.Context, req *adminv1.GetRedeem
 
 	resp, err := s.billingClient.GetRedeemCode(ctx, billingReq)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		st, ok := status.FromError(err)
 		if ok {
 			if st.Code() == codes.NotFound {
@@ -250,6 +269,9 @@ func (s *AdminService) ListRedeemCodes(ctx context.Context, req *adminv1.ListRed
 
 	resp, err := s.billingClient.ListRedeemCodes(ctx, billingReq)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.ListRedeemCodesResponse{
 			Codes: []*adminv1.RedeemCodeInfo{},
 			Total: 0,
@@ -283,6 +305,9 @@ func (s *AdminService) SearchRedeemCodes(ctx context.Context, req *adminv1.Searc
 
 	resp, err := s.billingClient.SearchRedeemCodes(ctx, billingReq)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.RedeemCodesSearchResponse{
 			Codes: []*adminv1.RedeemCodeInfo{},
 		}, nil
@@ -317,6 +342,9 @@ func (s *AdminService) UpdateRedeemCode(ctx context.Context, req *adminv1.Update
 
 	_, err := s.billingClient.UpdateRedeemCode(ctx, billingReq)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		st, ok := status.FromError(err)
 		if ok {
 			return &adminv1.UpdateRedeemCodeResponse{
@@ -343,6 +371,9 @@ func (s *AdminService) DeleteRedeemCode(ctx context.Context, req *adminv1.Delete
 
 	_, err := s.billingClient.DeleteRedeemCode(ctx, billingReq)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		st, ok := status.FromError(err)
 		if ok {
 			return &adminv1.DeleteRedeemCodeResponse{
@@ -371,6 +402,9 @@ func (s *AdminService) ListUserLedger(ctx context.Context, req *adminv1.ListUser
 
 	resp, err := s.billingClient.ListLedger(ctx, billingReq)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		st, ok := status.FromError(err)
 		if ok {
 			if st.Code() == codes.NotFound {
@@ -570,6 +604,9 @@ func (s *AdminService) GetAccountSnapshot(ctx context.Context, req *adminv1.GetA
 
 	resp, err := s.billingClient.GetAccountSnapshot(ctx, billingReq)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		st, ok := status.FromError(err)
 		if ok {
 			if st.Code() == codes.NotFound {
@@ -710,6 +747,9 @@ func (s *AdminService) SetUserRole(ctx context.Context, req *adminv1.AdminSetUse
 		OperatorUserId: req.OperatorUserId,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.AdminSetUserRoleResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &adminv1.AdminSetUserRoleResponse{
@@ -771,6 +811,9 @@ func (s *AdminService) ResetUserQuota(ctx context.Context, req *adminv1.ResetUse
 		UserId: fmt.Sprintf("%d", req.UserId),
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.ResetUserQuotaResponse{Success: false, Message: err.Error()}, nil
 	}
 	currentQuota := int64(0)
@@ -788,6 +831,9 @@ func (s *AdminService) ResetUserQuota(ctx context.Context, req *adminv1.ResetUse
 		Remark:     req.Remark,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.ResetUserQuotaResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &adminv1.ResetUserQuotaResponse{Success: true, Message: "ok"}, nil
@@ -923,6 +969,9 @@ func (s *AdminService) ListChannels(ctx context.Context, req *adminv1.AdminListC
 		Type:     req.Type,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		// Surface the channel-service error instead of silently returning an
 		// empty list. See ListSubscriptionAccounts for rationale.
 		applogger.Log.Error("channel-service ListChannels failed", zap.Error(err))
@@ -961,6 +1010,9 @@ func (s *AdminService) CreateChannel(ctx context.Context, req *adminv1.AdminCrea
 		RestrictModels: req.RestrictModels,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.AdminCreateChannelResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &adminv1.AdminCreateChannelResponse{
@@ -986,6 +1038,9 @@ func (s *AdminService) UpdateChannel(ctx context.Context, req *adminv1.AdminUpda
 		RestrictModels: req.RestrictModels,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.AdminUpdateChannelResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &adminv1.AdminUpdateChannelResponse{
@@ -1005,6 +1060,9 @@ func (s *AdminService) ListSubscriptionAccounts(ctx context.Context, req *adminv
 		Platform:       req.Platform,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		// Surface the channel-service error instead of silently returning an
 		// empty list. The previous behaviour made every downstream failure
 		// (network, DB schema mismatch, panic) indistinguishable from "no
@@ -1153,6 +1211,9 @@ func (s *AdminService) CreateSubscriptionAccount(ctx context.Context, req *admin
 		ModelMapping:           req.ModelMapping,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.AdminCreateSubscriptionAccountResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &adminv1.AdminCreateSubscriptionAccountResponse{
@@ -1196,6 +1257,9 @@ func (s *AdminService) UpdateSubscriptionAccount(ctx context.Context, req *admin
 		ModelMapping:           req.ModelMapping,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.AdminUpdateSubscriptionAccountResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &adminv1.AdminUpdateSubscriptionAccountResponse{
@@ -1210,6 +1274,9 @@ func (s *AdminService) ResetSubscriptionAccountQuota(ctx context.Context, req *a
 		Scope:     req.Scope,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.AdminResetSubscriptionAccountQuotaResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &adminv1.AdminResetSubscriptionAccountQuotaResponse{
@@ -1221,6 +1288,9 @@ func (s *AdminService) ResetSubscriptionAccountQuota(ctx context.Context, req *a
 func (s *AdminService) DeleteSubscriptionAccount(ctx context.Context, req *adminv1.AdminDeleteSubscriptionAccountRequest) (*adminv1.AdminDeleteSubscriptionAccountResponse, error) {
 	resp, err := s.channelClient.DeleteSubscriptionAccount(ctx, &channelv1.DeleteSubscriptionAccountRequest{AccountId: req.AccountId})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.AdminDeleteSubscriptionAccountResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &adminv1.AdminDeleteSubscriptionAccountResponse{
@@ -1235,6 +1305,9 @@ func (s *AdminService) ChangeSubscriptionAccountStatus(ctx context.Context, req 
 		Status:    req.Status,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.AdminChangeSubscriptionAccountStatusResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &adminv1.AdminChangeSubscriptionAccountStatusResponse{
@@ -1861,6 +1934,9 @@ func (s *AdminService) DeleteChannel(ctx context.Context, req *adminv1.AdminDele
 		ChannelId: req.ChannelId,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.AdminDeleteChannelResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &adminv1.AdminDeleteChannelResponse{
@@ -1875,6 +1951,9 @@ func (s *AdminService) ChangeChannelStatus(ctx context.Context, req *adminv1.Adm
 		Status:    req.Status,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.AdminChangeChannelStatusResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &adminv1.AdminChangeChannelStatusResponse{
@@ -2013,6 +2092,9 @@ func (s *AdminService) UpdateOneAPIOption(ctx context.Context, key, value string
 		}, nil
 	}
 	if err := s.systemOptsUc.Set(ctx, key, value); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.UpdateSystemOptionsResponse{
 			Success: false,
 			Message: fmt.Sprintf("failed to save %s: %v", key, err),
@@ -2067,6 +2149,9 @@ func (s *AdminService) UpdateSystemOptions(ctx context.Context, req *adminv1.Upd
 	}
 
 	if err := s.systemOptsUc.Set(ctx, "site_title", req.Options.SiteTitle); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.UpdateSystemOptionsResponse{
 			Success: false,
 			Message: fmt.Sprintf("failed to save site_title: %v", err),
@@ -2078,6 +2163,9 @@ func (s *AdminService) UpdateSystemOptions(ctx context.Context, req *adminv1.Upd
 		registrationValue = "true"
 	}
 	if err := s.systemOptsUc.Set(ctx, "registration_enabled", registrationValue); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &adminv1.UpdateSystemOptionsResponse{
 			Success: false,
 			Message: fmt.Sprintf("failed to save registration_enabled: %v", err),
@@ -2126,6 +2214,9 @@ func (s *AdminService) ListLogs(ctx context.Context, req *adminv1.ListLogsReques
 	// Billing service now supports type filtering server-side
 	billingResp, err := s.billingClient.ListLedger(ctx, billingReq)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		st, ok := status.FromError(err)
 		if ok {
 			return &adminv1.ListLogsResponse{

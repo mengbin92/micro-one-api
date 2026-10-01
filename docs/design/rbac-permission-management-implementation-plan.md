@@ -1,7 +1,7 @@
 # RBAC 权限管理实施方案
 
 > 日期：2026-09-30
-> 状态：P0、A1–A6 已完成；B0/B1 进行中，B2–D1 尚未开始。A2–A6 交付及三库/API 验证证据见第 9.2–9.6 节；B 阶段首批实现与未完成门槛见第 9.7 节。
+> 状态：P0、A1–A6 已完成；B0–B4 进行中，C1–D1 尚未开始。A2–A6 交付及三库/API 验证证据见第 9.2–9.6 节；B 阶段两批实现与未完成门槛见第 9.7–9.8 节。
 > 依据：[完整 RBAC 权限管理设计](./rbac-permission-management.md)。本文件细化实现顺序，不改变其授权语义。
 > 规划调查基线：`bf0c7de2`；首批交付复核基线：`951f1686`，工作分支 `codex/rbac-first-delivery`。本批验证记录见第 9 节；2026-10-01 已更新全部生产服务并保持 legacy，见 [生产更新记录](./rbac/a3-legacy-production-deployment.md)，未切换生产授权事实源。
 
@@ -353,11 +353,11 @@ A3 后续的 A4 已完成，见第 9.4 节。A3/A4 完成不表示所有运行�
 - [x] 真实 admin HTTP → identity gRPC/biz/data、本人直接 HTTP、救援正反例与 race；入口矩阵补齐实际 proto HTTP annotation 及 CLI 源码，757 行契约检查通过。
 - [x] make all/wire-check/migration-check/rbac-contract-check/verify；前端 API 类型自动生成一致，未交付 C 阶段管理页面。
 
-CheckAuthorization 只接受当前实际 IAM owner 方法；业务 permission 字符串/浏览器对象事实不构成执行 capability，B0/B1–B4 仍需完整调用主体与资源事实注册。下一步为 B0/B1、C1；生产维持 legacy，D0/D1 门槛不因 A5/A6 完成而提前放开。
+A6 交付时，CheckAuthorization 只接受当前实际 IAM owner 方法；业务 permission 字符串/浏览器对象事实不构成执行 capability。后续 B0–B4 已开始接入固定 caller 与资源事实，当前进展见第 9.7–9.8 节；生产维持 legacy，D0/D1 门槛不因 A5/A6 完成而提前放开。
 
 ### 9.7 B 阶段首批进展（2026-10-01，尚未完成整阶段）
 
-代码位于 `codex/rbac-b-execution`。实现范围、验证与剩余工作见 [B 阶段进展记录](./rbac/b-execution-progress.md)。本记录不将底座或部分资源执行点计作 B0/B1 完成，也不将 B2–B4 的传输身份接入计作业务授权完成。
+首批来自 `codex/rbac-b-execution`，已通过 `e32b507a` 合入 `develop`；第二批源分支为 `codex/rbac-b2-b4-execution`。实现范围、验证与剩余工作见 [B 阶段进展记录](./rbac/b-execution-progress.md)。本记录不将底座或部分资源执行点计作 B0/B1 完成，也不将 B2–B4 的传输身份接入计作业务授权完成。
 
 - [x] 专属 opaque 服务凭证验证、客户端注入、固定 full-method caller 清单、未知 RPC 拒绝；共享凭证明确标记为兼容主体，不证明服务身份。
 - [x] 固定资源执行点与仅数据所有者可调用的授权 RPC；scope DO 与参数化 SQL 编译器。
@@ -368,9 +368,25 @@ CheckAuthorization 只接受当前实际 IAM owner 方法；业务 permission �
 - [ ] B0 全部系统/用户资源消费端 capability 和直接 HTTP 执行点闭合。
 - [x] B1 用户管理创建/删除的 reason/CAS、默认 member 分配、root/本人保护、成功审计原子及失败回滚。
 - [x] B1 独立 routing_access 的组范围、routing/user/policy CAS、outbox/版本/审计事务；本人登出/注销、OAuth 绑定与一次性邮箱恢复。
-- [ ] B1 本人订单在 billing 所有者的执行链（依赖 B3），所有兼容分支、跨服务引用和完整角色场景覆盖核验。
+- [x] B1/B3 本人订单及相关本人入口在 billing 所有者复核真实会话和归属，订单创建在事务前重新验证会话（第二批）。
+- [ ] B1 本人财务/订阅的完整业务场景、所有兼容分支、跨服务引用和完整角色场景覆盖核验。
 - [ ] B2 渠道/账号/OAuth/模型/映射/路由组/健康范围、字段与写提交复验。
 - [ ] B3 billing/共享 subscription、模型价格复合权限及后台报告导出。
 - [ ] B4 log/config/monitor/notify/system/content 的实际资源执行链。
 
 三库实际隔离执行、定向 race、真实 admin HTTP → identity gRPC/biz/data、SQL/纯范围对照及全仓检查见进展记录。未部署或切换生产；本批仍不能作为 D0/D1 的全执行覆盖证据。
+
+### 9.8 B2–B4 所有者第二批进展（2026-10-01）
+
+第二批接入渠道/账号、账户/账本/订单以及 log/config/monitor/notify 的实际 owner 决策和 SQL 范围，添加本人 owner 会话复验与独立敏感字段规则；后续补路由组/成员/override、事务尝试前决策刷新，并完成七组 SQLite/MySQL/PostgreSQL race 回归。进度、限制与剩余任务见 [B 阶段进展记录](./rbac/b-execution-progress.md#第二批b2b4-所有者执行切片)。声明与绑定分离，未完成的 OAuth/模型/模型路由/订阅/导出等操作保持 unbound，生产 authorization_mode 保持原状。此记录不将部分 owner 切片或拒绝未实现接口计作 B 阶段完成。
+
+- [x] B2 渠道/账号 CRUD、状态、凭证、额度/错误清理；实际组事实与 SQL 范围在 count/分页前生效，secret.read 独立脱敏。
+- [x] B2 路由组列表/详情/创建/更新/启停、成员独立读写与 override；原/目标全部组检查、锁/CAS/outbox 和写结果返回。
+- [x] B3 账户读/余额调整、账本详情/列表/统计、订单读/列表/退款；真实归属与 actor 检查、独立成本字段及可见标志。
+- [x] B4 日志读/列表/统计/选择事件/范围删除、独立正文权限与搜索；固定配置键分类/读写/脱敏；健康/告警规则与通知读范围。
+- [x] 每次资源写事务尝试前重新取得决策，撤权、mode/actor 变化或依赖故障阻断重试；本人订单创建复核会话。事务内锁定对象事实并检查决策期限，不宣称跨库全局串行撤权。
+- [x] 六个 owner 的实际启动链与 identity 连接、admin 代理独立服务/operator 凭证、防伪 header，以及已完成方法的固定执行绑定。
+- [x] 七组 owner 实际三库 race、真实 IAM RPC、事务重试反例；`make all`、`make wire-check`、`make rbac-contract-check`、`make verify` 通过，入口矩阵 774 行。
+- [ ] B0–B4 全量闭合：具体未完成项按 [剩余门槛表](./rbac/b-execution-progress.md#剩余门槛) 继续推进；admin IAM ready 清单仍只开放既有 B1 切片，未完成接口不得借传输身份放行。
+
+本批随代码更新主设计、进展记录、入口矩阵与未发布变更日志，以 `develop` 为集成目标；未推送远端、部署或发布，也未执行生产 IAM 切换。

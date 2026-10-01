@@ -80,7 +80,7 @@ func (r *memoryPaymentRepo) MarkOrderClosed(ctx context.Context, tradeNo, provid
 	return r.order, true, nil
 }
 
-func (r *memoryPaymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error) {
+func (r *memoryPaymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(context.Context, *PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error) {
 	if r.order == nil || r.order.TradeNo != tradeNo {
 		return nil, false, nil
 	}
@@ -91,7 +91,7 @@ func (r *memoryPaymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reas
 		return nil, false, fmt.Errorf("payment order status %q cannot be refunded", r.order.Status)
 	}
 	if revert != nil {
-		if err := revert(r.order, nil); err != nil {
+		if err := revert(ctx, r.order, nil); err != nil {
 			return nil, false, err
 		}
 	}

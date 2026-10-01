@@ -3,6 +3,8 @@ package data
 import (
 	"context"
 	"errors"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/database/authzquery"
 	"os"
 	"sync"
 	"time"
@@ -101,7 +103,7 @@ func (r *Repository) List(ctx context.Context, page, pageSize int32, notifyType,
 	if r.db != nil {
 		return r.listDB(ctx, page, pageSize, notifyType, status)
 	}
-	return r.listMemory(page, pageSize, notifyType, status)
+	return r.listMemory(ctx, page, pageSize, notifyType, status)
 }
 
 func (r *Repository) ListPending(ctx context.Context, limit int32, maxRetry int) ([]*biz.Notification, error) {
@@ -230,6 +232,11 @@ func (r *Repository) getDB(ctx context.Context, id int64) (*biz.Notification, er
 
 func (r *Repository) listDB(ctx context.Context, page, pageSize int32, notifyType, status string) ([]*biz.Notification, int64, error) {
 	query := r.db.WithContext(ctx).Model(&notificationModel{})
+	var scopeErr error
+	query, scopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "id"}, "notify.notification.list")
+	if scopeErr != nil {
+		return nil, 0, scopeErr
+	}
 	if notifyType != "" {
 		query = query.Where("type = ?", notifyType)
 	}
@@ -376,7 +383,7 @@ func (r *Repository) getMemory(id int64) (*biz.Notification, error) {
 	return &cloned, nil
 }
 
-func (r *Repository) listMemory(page, pageSize int32, notifyType, status string) ([]*biz.Notification, int64, error) {
+func (r *Repository) listMemory(ctx context.Context, page, pageSize int32, notifyType, status string) ([]*biz.Notification, int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var all []*biz.Notification
@@ -385,6 +392,9 @@ func (r *Repository) listMemory(page, pageSize int32, notifyType, status string)
 			continue
 		}
 		if status != "" && n.Status != status {
+			continue
+		}
+		if authorization.Require(ctx, "notify.notification.list", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: n.ID}) != nil {
 			continue
 		}
 		cloned := *n

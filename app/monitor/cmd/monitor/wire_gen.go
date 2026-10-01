@@ -14,6 +14,7 @@ import (
 	"micro-one-api/app/monitor/internal/data"
 	"micro-one-api/app/monitor/internal/server"
 	"micro-one-api/app/monitor/internal/service"
+	"micro-one-api/platform/authz"
 	registry2 "micro-one-api/platform/registry"
 )
 
@@ -60,6 +61,8 @@ func provideRegistrar(cfg *Config) registrarResult {
 }
 
 func newApp(cfg *Config, svc *service.MonitorService, reg registrarResult) (*kratos.App, func()) {
+	ownerAuth, _ := authz.FromEnvironment("monitor")
+	svc.SetAuthorization(ownerAuth)
 	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc)
 	_, channelCleanup := newChannelHealthChecker(cfg)
@@ -69,6 +72,7 @@ func newApp(cfg *Config, svc *service.MonitorService, reg registrarResult) (*kra
 	}
 	app := kratos.New(opts...)
 	return app, func() {
+		_ = ownerAuth.Close()
 		if channelCleanup != nil {
 			channelCleanup()
 		}

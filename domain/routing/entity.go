@@ -38,9 +38,11 @@ type GroupModelGrant struct {
 }
 
 type GroupDetail struct {
-	Group       *Group
-	Resources   []GroupResource
-	ModelGrants []GroupModelGrant
+	// MembersVisible distinguishes an authorized empty membership from redaction.
+	MembersVisible bool
+	Group          *Group
+	Resources      []GroupResource
+	ModelGrants    []GroupModelGrant
 }
 
 type GroupListRequest struct {

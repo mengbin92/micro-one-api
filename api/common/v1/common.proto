@@ -348,6 +348,7 @@ message LedgerEntry {
   string routing_group_key = 49;
   string request_snapshot_hash = 50;
   string request_snapshot_json = 51;
+  bool cost_fields_visible = 52; // false means restricted, not a zero cost.
 }
 
 // PricingSnapshot is the immutable per-request pricing evidence stored in

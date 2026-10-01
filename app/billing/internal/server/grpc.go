@@ -1,6 +1,7 @@
 package server
 
 import (
+	"micro-one-api/platform/authz"
 	"os"
 
 	billingv1 "micro-one-api/api/billing/v1"
@@ -26,6 +27,8 @@ func NewGRPCServer(addr string, svc *service.BillingService) *kgrpc.Server {
 		kgrpc.UnaryInterceptor(
 			xgrpc.MetricsUnaryServerInterceptor("billing-service"),
 			serviceTokenUnaryInterceptor(serviceToken),
+			authz.OperatorUnaryInterceptor(),
+			authz.CoverageUnaryInterceptor(svc.OwnerAuthorizationClient(), "billing.accounts.read", billingReadyMethods),
 		),
 		kgrpc.StreamInterceptor(serviceTokenStreamInterceptor(serviceToken)),
 	)
@@ -40,3 +43,11 @@ func serviceTokenUnaryInterceptor(serviceToken string) grpc.UnaryServerIntercept
 func serviceTokenStreamInterceptor(serviceToken string) grpc.StreamServerInterceptor {
 	return xgrpc.ServiceTokenStreamInterceptor(serviceToken)
 }
+
+var billingReadyMethods = func() []string {
+	out := []string{}
+	for _, method := range []string{"GetAccountSnapshot", "BatchGetAccountSnapshots", "TopUpQuota", "ListLedger", "GetLedgerEntry", "AggregateLedgerByDate", "AggregateUsage", "ListPaymentOrders", "GetPaymentOrderByTradeNo", "RefundPaymentOrder"} {
+		out = append(out, "/api.billing.v1.BillingService/"+method)
+	}
+	return out
+}()

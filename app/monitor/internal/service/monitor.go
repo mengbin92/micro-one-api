@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/authz"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,6 +17,7 @@ import (
 
 // MonitorService is the transport layer entry for monitor-worker.
 type MonitorService struct {
+	ownerAuthorization *authz.Client
 	monitorv1.UnimplementedMonitorServiceServer
 	uc *biz.MonitorUsecase
 }
@@ -177,7 +180,7 @@ func (s *MonitorService) HandleRecordHealthCheck(w http.ResponseWriter, r *http.
 		return
 	}
 	if err := s.uc.RecordHealthCheck(r.Context(), body.ServiceName, body.Status, body.ResponseTime); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeMonitorError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "ok"})
@@ -194,7 +197,7 @@ func (s *MonitorService) HandleListHealthChecks(w http.ResponseWriter, r *http.R
 	pageSize, _ := strconv.ParseInt(q.Get("page_size"), 10, 32)
 	checks, total, err := s.uc.ListHealthChecks(r.Context(), serviceName, int32(page), int32(pageSize))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeMonitorError(w, err)
 		return
 	}
 	items := make([]map[string]any, 0, len(checks))
@@ -217,7 +220,7 @@ func (s *MonitorService) HandleListAlertRules(w http.ResponseWriter, r *http.Req
 	pageSize, _ := strconv.ParseInt(q.Get("page_size"), 10, 32)
 	rules, total, err := s.uc.ListAlertRules(r.Context(), int32(page), int32(pageSize))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeMonitorError(w, err)
 		return
 	}
 	items := make([]map[string]any, 0, len(rules))
@@ -254,7 +257,7 @@ func (s *MonitorService) HandleCreateAlertRule(w http.ResponseWriter, r *http.Re
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeMonitorError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, alertRuleToMap(rule))
@@ -272,7 +275,7 @@ func (s *MonitorService) HandleGetAlertRule(w http.ResponseWriter, r *http.Reque
 	}
 	rule, err := s.uc.GetAlertRule(r.Context(), id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeMonitorError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, alertRuleToMap(rule))
@@ -310,7 +313,7 @@ func (s *MonitorService) HandleUpdateAlertRule(w http.ResponseWriter, r *http.Re
 		Threshold: body.Threshold, Operator: body.Operator, Duration: body.Duration, Enabled: enabled,
 	}
 	if err := s.uc.UpdateAlertRule(r.Context(), rule); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeMonitorError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -327,7 +330,7 @@ func (s *MonitorService) HandleDeleteAlertRule(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if err := s.uc.DeleteAlertRule(r.Context(), id); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeMonitorError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -357,4 +360,22 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = jsonx.NewEncoder(w).Encode(map[string]any{"error": message})
+}
+
+func (s *MonitorService) SetAuthorization(r authorization.Resolver) {
+	s.uc.SetAuthorization(r)
+	s.ownerAuthorization, _ = r.(*authz.Client)
+}
+func (s *MonitorService) OwnerAuthorizationClient() *authz.Client { return s.ownerAuthorization }
+
+// Preserve domain HTTP errors while retaining owner authorization statuses.
+func writeMonitorError(w http.ResponseWriter, err error) {
+	switch err {
+	case biz.ErrAlertRuleNotFound:
+		writeError(w, http.StatusNotFound, err.Error())
+	case biz.ErrInvalidAlertRule:
+		writeError(w, http.StatusBadRequest, err.Error())
+	default:
+		authz.WriteHTTPError(w, err)
+	}
 }

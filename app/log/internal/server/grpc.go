@@ -1,6 +1,7 @@
 package server
 
 import (
+	"micro-one-api/platform/authz"
 	"os"
 
 	logv1 "micro-one-api/api/log/v1"
@@ -17,9 +18,14 @@ func NewGRPCServer(addr string, svc *service.LogService) *kgrpc.Server {
 	srv := kgrpc.NewServer(
 		kgrpc.Address(addr),
 		kgrpc.Timeout(apptimeout.GetGRPCTimeout()),
-		kgrpc.UnaryInterceptor(xgrpc.ServiceTokenUnaryInterceptor(serviceToken)),
+		kgrpc.UnaryInterceptor(xgrpc.ServiceTokenUnaryInterceptor(serviceToken), authz.OperatorUnaryInterceptor(), authz.CoverageUnaryInterceptor(svc.OwnerAuthorizationClient(), "log.requests.list", logReadyMethods)),
 		kgrpc.StreamInterceptor(xgrpc.ServiceTokenStreamInterceptor(serviceToken)),
 	)
 	logv1.RegisterLogServiceServer(srv, svc)
 	return srv
+}
+
+var logReadyMethods = []string{
+	"/api.log.v1.LogService/GetLog",
+	"/api.log.v1.LogService/ListLogs",
 }

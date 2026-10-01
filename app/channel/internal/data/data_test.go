@@ -395,7 +395,7 @@ func TestCreateChannel_PopulatesAbilities(t *testing.T) {
 		_, expected := wantPairs[key]
 		require.True(t, expected, "unexpected ability row %s", key)
 		wantPairs[key] = true
-		assert.True(t, r.Enabled, "enabled should be true for enabled channel")
+		assert.True(t, r.Enabled != 0, "enabled should be true for enabled channel")
 		require.NotNil(t, r.Priority)
 		assert.EqualValues(t, 100, *r.Priority)
 		assert.Equal(t, ch.ID, r.ChannelID)
@@ -419,7 +419,7 @@ func TestCreateChannel_DisabledChannel_AbilitiesDisabled(t *testing.T) {
 
 	rows := loadAbilities(t, repo, ch.ID)
 	require.Len(t, rows, 1)
-	assert.False(t, rows[0].Enabled, "ability.enabled should be false when channel.status != 1")
+	assert.False(t, rows[0].Enabled != 0, "ability.enabled should be false when channel.status != 1")
 }
 
 func TestCreateChannel_SkipsEmptyGroupOrModel(t *testing.T) {
@@ -558,20 +558,20 @@ func TestChangeStatus_UpdatesAbilitiesEnabled(t *testing.T) {
 	}
 	require.NoError(t, repo.CreateChannel(ctx, ch))
 	rows := loadAbilities(t, repo, ch.ID)
-	require.True(t, rows[0].Enabled)
+	require.True(t, rows[0].Enabled != 0)
 
 	// Disable the channel.
 	require.NoError(t, repo.ChangeStatus(ctx, ch.ID, 2))
 
 	rows = loadAbilities(t, repo, ch.ID)
 	require.Len(t, rows, 1)
-	assert.False(t, rows[0].Enabled, "ability.enabled should be false after disabling channel")
+	assert.False(t, rows[0].Enabled != 0, "ability.enabled should be false after disabling channel")
 
 	// Re-enable.
 	require.NoError(t, repo.ChangeStatus(ctx, ch.ID, biz.ChannelStatusEnabled))
 
 	rows = loadAbilities(t, repo, ch.ID)
-	assert.True(t, rows[0].Enabled, "ability.enabled should be true after re-enabling channel")
+	assert.True(t, rows[0].Enabled != 0, "ability.enabled should be true after re-enabling channel")
 }
 
 func TestCreateSubscriptionAccount_PopulatesAbilities(t *testing.T) {
@@ -595,7 +595,7 @@ func TestCreateSubscriptionAccount_PopulatesAbilities(t *testing.T) {
 	rows := loadSubscriptionAbilities(t, repo, account.ID)
 	assert.Len(t, rows, 4)
 	for _, r := range rows {
-		assert.True(t, r.Enabled)
+		assert.True(t, r.Enabled != 0)
 		require.NotNil(t, r.Priority)
 		assert.EqualValues(t, 30, *r.Priority)
 		assert.Equal(t, "codex", r.Platform)

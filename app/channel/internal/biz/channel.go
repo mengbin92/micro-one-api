@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"micro-one-api/domain/authorization"
 	"os"
 	"sort"
 	"strconv"
@@ -357,6 +358,7 @@ func (c *modelsListCache) invalidateGroup(group string) {
 }
 
 type ChannelUsecase struct {
+	authorization          authorization.Resolver
 	repo                   ChannelRepo
 	eventBus               events.EventBus
 	now                    func() time.Time
@@ -607,7 +609,22 @@ func (uc *ChannelUsecase) selectUnrestrictedChannel(ctx context.Context, group s
 }
 
 func (uc *ChannelUsecase) GetChannel(ctx context.Context, channelID int64) (*Channel, error) {
-	return uc.repo.FindByID(ctx, channelID)
+	var err error
+	ctx, err = uc.authorizeObject(ctx, "channel.channels.read", "channel.channel.read", channelID, false)
+	if err != nil {
+		return nil, err
+	}
+	channel, err := uc.repo.FindByID(ctx, channelID)
+	if err != nil {
+		return nil, err
+	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "channel.channel.read"); iam {
+		copy := *channel
+		// Mapping read is unfinished; plain channel read cannot expose it.
+		copy.ModelMapping = ""
+		channel = &copy
+	}
+	return channel, nil
 }
 
 // SelectorStats returns a snapshot of the weighted selector's runtime state
@@ -824,7 +841,21 @@ func filterAbilitiesByRouted(abilities []SubscriptionAccountAbility, matches []*
 }
 
 func (uc *ChannelUsecase) GetSubscriptionAccount(ctx context.Context, accountID int64) (*SubscriptionAccount, error) {
-	return uc.repo.FindSubscriptionAccountByID(ctx, accountID)
+	var err error
+	ctx, err = uc.authorizeObject(ctx, "channel.accounts.read", "channel.account.read", accountID, true)
+	if err != nil {
+		return nil, err
+	}
+	account, err := uc.repo.FindSubscriptionAccountByID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "channel.account.read"); iam {
+		copy := *account
+		copy.ModelMapping = ""
+		account = &copy
+	}
+	return account, nil
 }
 
 type SubscriptionAccountRecoveryLister interface {
@@ -832,13 +863,20 @@ type SubscriptionAccountRecoveryLister interface {
 }
 
 func (uc *ChannelUsecase) ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string, recoveryPolicy ...string) ([]*SubscriptionAccount, int64, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "channel.accounts.list", "channel.account.list")
+	if err != nil {
+		return nil, 0, err
+	}
 	if len(recoveryPolicy) > 0 && recoveryPolicy[0] != "" {
 		if repo, ok := uc.repo.(SubscriptionAccountRecoveryLister); ok {
-			return repo.ListSubscriptionAccountsByRecovery(ctx, page, pageSize, keyword, group, status, platform, recoveryPolicy[0])
+			rows, total, err := repo.ListSubscriptionAccountsByRecovery(ctx, page, pageSize, keyword, group, status, platform, recoveryPolicy[0])
+			return redactAccountMappings(ctx, rows), total, err
 		}
 		return nil, 0, fmt.Errorf("recovery filtering is unavailable")
 	}
-	return uc.repo.ListSubscriptionAccounts(ctx, page, pageSize, keyword, group, status, platform)
+	rows, total, err := uc.repo.ListSubscriptionAccounts(ctx, page, pageSize, keyword, group, status, platform)
+	return redactAccountMappings(ctx, rows), total, err
 }
 
 func (uc *ChannelUsecase) ListOAuthRefreshCandidates(ctx context.Context, within time.Duration) ([]int64, error) {
@@ -850,6 +888,11 @@ func (uc *ChannelUsecase) SetSubscriptionAccountError(ctx context.Context, accou
 }
 
 func (uc *ChannelUsecase) ClearSubscriptionAccountError(ctx context.Context, accountID int64) error {
+	var err error
+	ctx, err = uc.authorizeObject(ctx, "channel.accounts.recovery", "channel.account.recovery.clear", accountID, true)
+	if err != nil {
+		return err
+	}
 	return uc.repo.SetSubscriptionAccountError(ctx, accountID, "")
 }
 
@@ -901,6 +944,11 @@ func (uc *ChannelUsecase) AggregateSubscriptionAccountQuotaEvents(ctx context.Co
 }
 
 func (uc *ChannelUsecase) ResetSubscriptionAccountQuota(ctx context.Context, accountID int64, scope string) error {
+	var err error
+	ctx, err = uc.authorizeObject(ctx, "channel.accounts.quota", "channel.account.quota.reset", accountID, true)
+	if err != nil {
+		return err
+	}
 	if accountID <= 0 {
 		return ErrSubscriptionAccountNotFound
 	}
@@ -921,6 +969,22 @@ func (uc *ChannelUsecase) AutoPauseAccount(ctx context.Context, accountID int64,
 }
 
 func (uc *ChannelUsecase) CreateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error {
+	var err error
+	ctx, err = uc.authorizeCreate(ctx, "channel.accounts.create", "channel.account.create", account.Group)
+	if err != nil {
+		return err
+	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.routing_groups.write", "channel.routing_group.members.update")
+	if err != nil {
+		return err
+	}
+	if account.ModelMapping != "" {
+		ctx, err = uc.authorizeCreate(ctx, "channel.model_mappings", "channel.model_mapping.create", account.Group)
+		if err != nil {
+			return err
+		}
+	}
+
 	if err := uc.repo.CreateSubscriptionAccount(ctx, account); err != nil {
 		return err
 	}
@@ -930,6 +994,30 @@ func (uc *ChannelUsecase) CreateSubscriptionAccount(ctx context.Context, account
 }
 
 func (uc *ChannelUsecase) UpdateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error {
+	var err error
+	ctx, err = uc.authorizeObject(ctx, "channel.accounts.update", "channel.account.update", account.ID, true)
+	if err != nil {
+		return err
+	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.routing_groups.write", "channel.routing_group.members.update")
+	if err != nil {
+		return err
+	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.accounts.credential", "channel.account.credential.update")
+	if err != nil {
+		return err
+	}
+	for _, operation := range []string{"channel.account.enable", "channel.account.disable", "channel.account.quota.reset"} {
+		point := "channel.accounts.update"
+		if operation == "channel.account.quota.reset" {
+			point = "channel.accounts.quota"
+		}
+		ctx, err = uc.authorizeOptional(ctx, point, operation)
+		if err != nil {
+			return err
+		}
+	}
+
 	if err := uc.repo.UpdateSubscriptionAccount(ctx, account); err != nil {
 		return err
 	}
@@ -939,6 +1027,15 @@ func (uc *ChannelUsecase) UpdateSubscriptionAccount(ctx context.Context, account
 }
 
 func (uc *ChannelUsecase) DeleteSubscriptionAccount(ctx context.Context, accountID int64) error {
+	var err error
+	ctx, err = uc.authorizeObject(ctx, "channel.accounts.delete", "channel.account.delete", accountID, true)
+	if err != nil {
+		return err
+	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.routing_groups.write", "channel.routing_group.members.update")
+	if err != nil {
+		return err
+	}
 	if err := uc.repo.DeleteSubscriptionAccount(ctx, accountID); err != nil {
 		return err
 	}
@@ -948,6 +1045,15 @@ func (uc *ChannelUsecase) DeleteSubscriptionAccount(ctx context.Context, account
 }
 
 func (uc *ChannelUsecase) ChangeSubscriptionAccountStatus(ctx context.Context, accountID int64, status int32) error {
+	op := "channel.account.disable"
+	if status == ChannelStatusEnabled {
+		op = "channel.account.enable"
+	}
+	var err error
+	ctx, err = uc.authorizeObject(ctx, "channel.accounts.update", op, accountID, true)
+	if err != nil {
+		return err
+	}
 	if err := uc.repo.ChangeSubscriptionAccountStatus(ctx, accountID, status); err != nil {
 		return err
 	}
@@ -994,10 +1100,45 @@ func (uc *ChannelUsecase) invalidateModelsListCache() {
 }
 
 func (uc *ChannelUsecase) ListChannels(ctx context.Context, page, pageSize int32, keyword, group string, status, chType int32) ([]*Channel, int64, error) {
-	return uc.repo.ListChannels(ctx, page, pageSize, keyword, group, status, chType)
+	var err error
+	ctx, err = uc.authorize(ctx, "channel.channels.list", "channel.channel.list")
+	if err != nil {
+		return nil, 0, err
+	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.channels.secret", "channel.channel.secret.read")
+	if err != nil {
+		return nil, 0, err
+	}
+	channels, total, err := uc.repo.ListChannels(ctx, page, pageSize, keyword, group, status, chType)
+	if err != nil {
+		return nil, 0, err
+	}
+	for i, channel := range channels {
+		channels[i], err = uc.redactChannel(ctx, channel)
+		if err != nil {
+			return nil, 0, err
+		}
+	}
+	return channels, total, nil
 }
 
 func (uc *ChannelUsecase) CreateChannel(ctx context.Context, channel *Channel) error {
+	var err error
+	ctx, err = uc.authorizeCreate(ctx, "channel.channels.create", "channel.channel.create", channel.Group)
+	if err != nil {
+		return err
+	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.routing_groups.write", "channel.routing_group.members.update")
+	if err != nil {
+		return err
+	}
+	if channel.ModelMapping != "" {
+		ctx, err = uc.authorizeCreate(ctx, "channel.model_mappings", "channel.model_mapping.create", channel.Group)
+		if err != nil {
+			return err
+		}
+	}
+
 	if err := uc.repo.CreateChannel(ctx, channel); err != nil {
 		return err
 	}
@@ -1007,6 +1148,19 @@ func (uc *ChannelUsecase) CreateChannel(ctx context.Context, channel *Channel) e
 }
 
 func (uc *ChannelUsecase) UpdateChannel(ctx context.Context, channel *Channel) error {
+	var err error
+	ctx, err = uc.authorizeObject(ctx, "channel.channels.update", "channel.channel.update", channel.ID, false)
+	if err != nil {
+		return err
+	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.routing_groups.write", "channel.routing_group.members.update")
+	if err != nil {
+		return err
+	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.channels.secret", "channel.channel.secret.rotate")
+	if err != nil {
+		return err
+	}
 	if err := uc.repo.UpdateChannel(ctx, channel); err != nil {
 		return err
 	}
@@ -1077,6 +1231,15 @@ func (uc *ChannelUsecase) RecordHealth(ctx context.Context, event ChannelHealthE
 }
 
 func (uc *ChannelUsecase) DeleteChannel(ctx context.Context, channelID int64) error {
+	var err error
+	ctx, err = uc.authorizeObject(ctx, "channel.channels.delete", "channel.channel.delete", channelID, false)
+	if err != nil {
+		return err
+	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.routing_groups.write", "channel.routing_group.members.update")
+	if err != nil {
+		return err
+	}
 	if err := uc.repo.DeleteChannel(ctx, channelID); err != nil {
 		return err
 	}
@@ -1086,6 +1249,15 @@ func (uc *ChannelUsecase) DeleteChannel(ctx context.Context, channelID int64) er
 }
 
 func (uc *ChannelUsecase) ChangeChannelStatus(ctx context.Context, channelID int64, status int32) error {
+	op := "channel.channel.disable"
+	if status == ChannelStatusEnabled {
+		op = "channel.channel.enable"
+	}
+	var err error
+	ctx, err = uc.authorizeObject(ctx, "channel.channels.update", op, channelID, false)
+	if err != nil {
+		return err
+	}
 	if err := uc.repo.ChangeStatus(ctx, channelID, status); err != nil {
 		return err
 	}

@@ -2,6 +2,8 @@ package server
 
 import (
 	"crypto/subtle"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/authz"
 	"net/http"
 	"os"
 	"strings"
@@ -64,32 +66,32 @@ func NewHTTPServer(addr string, svc *service.LogService, identityClients ...iden
 	})
 
 	// Protected log endpoints
-	srv.HandleFunc("/v1/selection-events", ServiceAuth(func(w http.ResponseWriter, r *http.Request) {
-		svc.HandleListSelectionAudit(w, r)
+	srv.HandleFunc("/v1/selection-events", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authz.HTTPContext("/api.log.v1.LogService/ListSelectionAudit", svc.HandleListSelectionAudit)(w, r)
 	}))
-	srv.HandleFunc("/v1/logs", ServiceAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/v1/logs", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			svc.HandleListLogs(w, r)
+			authz.HTTPContext("/api.log.v1.LogService/ListLogs", svc.HandleListLogs)(w, r)
 		case http.MethodPost:
-			svc.HandleIngestLog(w, r)
+			authz.HTTPContext("/api.log.v1.LogService/IngestLog", svc.HandleIngestLog)(w, r)
 		case http.MethodDelete:
-			svc.HandleDeleteLogs(w, r)
+			authz.HTTPContext("/api.log.v1.LogService/DeleteLogs", svc.HandleDeleteLogs)(w, r)
 		default:
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		}
 	}))
-	srv.HandlePrefix("/v1/logs/", ServiceAuth(func(w http.ResponseWriter, r *http.Request) {
-		svc.HandleGetLog(w, r)
+	srv.HandlePrefix("/v1/logs/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authz.HTTPContext("/api.log.v1.LogService/GetLog", svc.HandleGetLog)(w, r)
 	}))
 	srv.HandleFunc("/api/log/self", func(w http.ResponseWriter, r *http.Request) {
-		svc.HandleOneAPIUserLogs(w, r, identityClient)
+		svc.HandleOneAPIUserLogs(w, r.WithContext(authorization.WithCredential(authorization.WithExternal(r.Context()), r.Header.Get("Authorization"))), identityClient)
 	})
 	srv.HandleFunc("/api/log/self/search", func(w http.ResponseWriter, r *http.Request) {
-		svc.HandleOneAPIUserLogSearch(w, r, identityClient)
+		svc.HandleOneAPIUserLogSearch(w, r.WithContext(authorization.WithCredential(authorization.WithExternal(r.Context()), r.Header.Get("Authorization"))), identityClient)
 	})
 	srv.HandleFunc("/api/log/self/stat", func(w http.ResponseWriter, r *http.Request) {
-		svc.HandleOneAPIUserLogStats(w, r, identityClient)
+		svc.HandleOneAPIUserLogStats(w, r.WithContext(authorization.WithCredential(authorization.WithExternal(r.Context()), r.Header.Get("Authorization"))), identityClient)
 	})
 
 	return srv

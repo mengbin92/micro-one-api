@@ -3,6 +3,9 @@ package biz
 import (
 	"context"
 	"errors"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/security/serviceidentity"
+	"strings"
 	"time"
 )
 
@@ -33,7 +36,8 @@ type ConfigRepo interface {
 
 // ConfigUsecase implements business logic for config-service.
 type ConfigUsecase struct {
-	repo ConfigRepo
+	authorization authorization.Resolver
+	repo          ConfigRepo
 }
 
 func NewConfigUsecase(repo ConfigRepo) *ConfigUsecase {
@@ -41,25 +45,77 @@ func NewConfigUsecase(repo ConfigRepo) *ConfigUsecase {
 }
 
 func (uc *ConfigUsecase) GetConfig(ctx context.Context, namespace, key string) (*ConfigEntry, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "system.options.read", "system.option.read")
+	if err != nil {
+		return nil, err
+	}
+	if err := authorization.Require(ctx, "system.option.read", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+		return nil, err
+	}
 	if key == "" {
 		return nil, ErrInvalidKey
 	}
-	return uc.repo.Get(ctx, namespace, key)
+	entry, err := uc.repo.Get(ctx, namespace, key)
+	if authorization.External(ctx) && !serviceidentity.HasSystemCapability(ctx, serviceidentity.RPCMethod(ctx)) {
+		entry = configView(entry)
+	}
+	return entry, err
 }
 
 func (uc *ConfigUsecase) ListConfigs(ctx context.Context, namespace string, page, pageSize int32) ([]*ConfigEntry, int64, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "system.options.read", "system.option.read")
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := authorization.Require(ctx, "system.option.read", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+		return nil, 0, err
+	}
 	if page < 1 {
 		page = 1
 	}
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	return uc.repo.List(ctx, namespace, page, pageSize)
+	entries, total, err := uc.repo.List(ctx, namespace, page, pageSize)
+	if authorization.External(ctx) && !serviceidentity.HasSystemCapability(ctx, serviceidentity.RPCMethod(ctx)) {
+		for i, e := range entries {
+			entries[i] = configView(e)
+		}
+	}
+	return entries, total, err
 }
 
 func (uc *ConfigUsecase) SetConfig(ctx context.Context, namespace, key, value, comment string) error {
+	_, err := uc.setConfig(ctx, namespace, key, value, comment)
+	return err
+}
+func (uc *ConfigUsecase) setConfig(ctx context.Context, namespace, key, value, comment string) (*ConfigEntry, error) {
+	op := ConfigWriteOperation(namespace, key)
+	point := "system.options.update"
+	if strings.HasPrefix(op, "system.content.") {
+		point = "system.content"
+	}
+	var err error
+	if strings.HasPrefix(op, "system.option.") && op != "system.option.update" {
+		ctx, err = uc.authorize(ctx, "system.options.update", "system.option.update")
+		if err != nil {
+			return nil, err
+		}
+		if err = authorization.Require(ctx, "system.option.update", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+			return nil, err
+		}
+	}
+	ctx, err = uc.authorize(ctx, point, op)
+	if err != nil {
+		return nil, err
+	}
+	if err := authorization.Require(ctx, op, authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+		return nil, err
+	}
 	if key == "" {
-		return ErrInvalidKey
+		return nil, ErrInvalidKey
 	}
 	entry := &ConfigEntry{
 		Namespace: namespace,
@@ -69,12 +125,34 @@ func (uc *ConfigUsecase) SetConfig(ctx context.Context, namespace, key, value, c
 		UpdatedAt: time.Now(),
 	}
 	if err := uc.repo.Set(ctx, entry); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return entry, nil
 }
 
 func (uc *ConfigUsecase) DeleteConfig(ctx context.Context, namespace, key string) error {
+	op := ConfigWriteOperation(namespace, key)
+	point := "system.options.update"
+	if strings.HasPrefix(op, "system.content.") {
+		point = "system.content"
+	}
+	var err error
+	if strings.HasPrefix(op, "system.option.") && op != "system.option.update" {
+		ctx, err = uc.authorize(ctx, "system.options.update", "system.option.update")
+		if err != nil {
+			return err
+		}
+		if err = authorization.Require(ctx, "system.option.update", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+			return err
+		}
+	}
+	ctx, err = uc.authorize(ctx, point, op)
+	if err != nil {
+		return err
+	}
+	if err := authorization.Require(ctx, op, authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+		return err
+	}
 	if key == "" {
 		return ErrInvalidKey
 	}
@@ -82,4 +160,18 @@ func (uc *ConfigUsecase) DeleteConfig(ctx context.Context, namespace, key string
 		return err
 	}
 	return nil
+}
+
+// PublicContent exposes only the three fixed public presentation values.
+// It deliberately does not reuse the privileged generic configuration read.
+func (uc *ConfigUsecase) PublicContent(ctx context.Context, key string) (*ConfigEntry, error) {
+	switch key {
+	case "notice", "about", "home_page_content":
+		return uc.repo.Get(ctx, "system", key)
+	}
+	return nil, ErrInvalidKey
+}
+
+func (uc *ConfigUsecase) SetConfigEntry(ctx context.Context, namespace, key, value, comment string) (*ConfigEntry, error) {
+	return uc.setConfig(ctx, namespace, key, value, comment)
 }

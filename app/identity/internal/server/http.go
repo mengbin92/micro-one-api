@@ -17,6 +17,7 @@ import (
 
 	"micro-one-api/domain/authorization"
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/platform/authz"
 	"micro-one-api/platform/iamdto"
 
 	"go.uber.org/zap"
@@ -400,6 +401,10 @@ func handleRegister(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 	// the default group; admins assign other groups explicitly.
 	user, err := uc.RegisterWithAffCode(r.Context(), req.Username, req.Password, req.Email, "default", req.AffCode)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			authz.WriteHTTPError(w, err)
+			return
+		}
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
 	}
@@ -536,6 +541,10 @@ func handleAffCode(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUseca
 	}
 	code, err := uc.GetOrCreateAffCode(r.Context(), snapshot.UserID)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			authz.WriteHTTPError(w, err)
+			return
+		}
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
 	}
@@ -597,10 +606,14 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 		return
 	}
 	userID := strconv.FormatInt(snapshot.UserID, 10)
-	resp, err := billingClient.GetAccountSnapshot(r.Context(), &billingv1.GetAccountSnapshotRequest{
+	resp, err := billingClient.GetAccountSnapshot(billingSelfContext(r.Context()), &billingv1.GetAccountSnapshotRequest{
 		UserId: userID,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			authz.WriteHTTPError(w, err)
+			return
+		}
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
 	}
@@ -611,7 +624,7 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	sevenDaysAgo := startOfDay.AddDate(0, 0, -6)
 
-	aggResp, aggErr := billingClient.AggregateLedgerByDate(r.Context(), &billingv1.AggregateLedgerByDateRequest{
+	aggResp, aggErr := billingClient.AggregateLedgerByDate(billingSelfContext(r.Context()), &billingv1.AggregateLedgerByDateRequest{
 		UserId:    userID,
 		StartTime: timestamppb.New(sevenDaysAgo),
 		EndTime:   timestamppb.New(now),
@@ -744,13 +757,17 @@ func handleUserLogs(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 	logType := strings.TrimSpace(r.URL.Query().Get("type"))
 	userID := strconv.FormatInt(snapshot.UserID, 10)
 
-	resp, err := billingClient.ListLedger(r.Context(), &billingv1.ListLedgerRequest{
+	resp, err := billingClient.ListLedger(billingSelfContext(r.Context()), &billingv1.ListLedgerRequest{
 		UserId:   userID,
 		Page:     page,
 		PageSize: pageSize,
 		Type:     logType,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			authz.WriteHTTPError(w, err)
+			return
+		}
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
 	}
@@ -821,7 +838,7 @@ func handleDashboardBillingUsage(w http.ResponseWriter, r *http.Request, uc *biz
 		writeJSON(w, http.StatusOK, map[string]any{"error": map[string]any{"message": "billing service unavailable", "type": "one_api_error"}})
 		return
 	}
-	resp, err := billingClient.GetAccountSnapshot(r.Context(), &billingv1.GetAccountSnapshotRequest{
+	resp, err := billingClient.GetAccountSnapshot(billingSelfContext(r.Context()), &billingv1.GetAccountSnapshotRequest{
 		UserId: strconv.FormatInt(snapshot.UserID, 10),
 	})
 	if err != nil {
@@ -852,7 +869,7 @@ func handleDashboardBillingSubscription(w http.ResponseWriter, r *http.Request, 
 		writeJSON(w, http.StatusOK, map[string]any{"error": map[string]any{"message": "billing service unavailable", "type": "one_api_error"}})
 		return
 	}
-	resp, err := billingClient.GetAccountSnapshot(r.Context(), &billingv1.GetAccountSnapshotRequest{
+	resp, err := billingClient.GetAccountSnapshot(billingSelfContext(r.Context()), &billingv1.GetAccountSnapshotRequest{
 		UserId: strconv.FormatInt(snapshot.UserID, 10),
 	})
 	if err != nil {
@@ -903,11 +920,15 @@ func handleUserTopUp(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUse
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "key is required"})
 		return
 	}
-	resp, err := billingClient.RedeemCode(r.Context(), &billingv1.RedeemCodeRequest{
+	resp, err := billingClient.RedeemCode(billingSelfContext(r.Context()), &billingv1.RedeemCodeRequest{
 		UserId: strconv.FormatInt(snapshot.UserID, 10),
 		Code:   req.Key,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			authz.WriteHTTPError(w, err)
+			return
+		}
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
 	}
@@ -966,7 +987,7 @@ func handleCreatePaymentOrder(w http.ResponseWriter, r *http.Request, uc *biz.Id
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "amount too small"})
 		return
 	}
-	resp, err := billingClient.CreatePaymentOrder(r.Context(), &billingv1.CreatePaymentOrderRequest{
+	resp, err := billingClient.CreatePaymentOrder(billingSelfContext(r.Context()), &billingv1.CreatePaymentOrderRequest{
 		UserId:      strconv.FormatInt(snapshot.UserID, 10),
 		Channel:     req.PaymentMethod,
 		AssetType:   "balance",
@@ -975,6 +996,10 @@ func handleCreatePaymentOrder(w http.ResponseWriter, r *http.Request, uc *biz.Id
 		Currency:    "CNY",
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			authz.WriteHTTPError(w, err)
+			return
+		}
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
 	}
@@ -1045,6 +1070,10 @@ func handleUserPaymentOrders(w http.ResponseWriter, r *http.Request, uc *biz.Ide
 		TradeNo:  query.Get("trade_no"),
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			authz.WriteHTTPError(w, err)
+			return
+		}
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
 	}
@@ -1072,6 +1101,10 @@ func handleUserPaymentOrderByTradeNo(w http.ResponseWriter, r *http.Request, uc 
 	}
 	resp, err := billingClient.GetPaymentOrderByTradeNo(billingSelfContext(r.Context()), &billingv1.GetPaymentOrderByTradeNoRequest{TradeNo: tradeNo})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			authz.WriteHTTPError(w, err)
+			return
+		}
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
 	}
@@ -1414,6 +1447,10 @@ func handleOneAPIOAuthBind(w http.ResponseWriter, r *http.Request, registry *oau
 	}
 	user, err := uc.BindOAuthIdentity(r.Context(), snapshot.UserID, userInfo.Provider, userInfo.ProviderID)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			authz.WriteHTTPError(w, err)
+			return
+		}
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
 	}
@@ -1482,6 +1519,10 @@ func handleCreateUserToken(w http.ResponseWriter, r *http.Request, uc *biz.Ident
 	}
 	token, err := uc.CreateAccessToken(r.Context(), snapshot.UserID, "default", nil, 0)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			authz.WriteHTTPError(w, err)
+			return
+		}
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
 	}

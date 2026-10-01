@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/stretchr/testify/require"
+	"micro-one-api/domain/authorization"
+	authztest "micro-one-api/domain/authorization/testutil"
 	"sync"
 	"testing"
 	"time"
@@ -40,7 +43,7 @@ func (r *fakeRefundRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTra
 func (r *fakeRefundRepo) MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error) {
 	return nil, false, nil
 }
-func (r *fakeRefundRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error) {
+func (r *fakeRefundRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(context.Context, *PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls++
@@ -55,7 +58,7 @@ func (r *fakeRefundRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason 
 		return nil, false, fmt.Errorf("payment order status %q cannot be refunded", r.order.Status)
 	}
 	if revert != nil {
-		if err := revert(r.order, nil); err != nil {
+		if err := revert(ctx, r.order, nil); err != nil {
 			return nil, false, err
 		}
 	}
@@ -477,4 +480,18 @@ func TestRefund_FallsBackToPlanPriceWhenMoneyCentsZero(t *testing.T) {
 
 func (s *stubAccountRepo) GetAccountSnapshotInTx(ctx context.Context, _ subscriptionbiz.Tx, userID string) (*Account, error) {
 	return s.GetAccountSnapshot(ctx, userID)
+}
+
+func TestIAMB3RefundReplayDoesNotRevealHiddenOrder(t *testing.T) {
+	for _, status := range []string{PaymentOrderStatusPaid, PaymentOrderStatusRefunded} {
+		t.Run(status, func(t *testing.T) {
+			repo := &fakeRefundRepo{order: &PaymentOrder{ID: 20, UserID: "20", TradeNo: "hidden", Status: status}}
+			uc := NewRefundUsecase(repo, nil, nil, nil)
+			uc.SetAuthorization(&authztest.Resolver{ActorID: 10, Scopes: map[string]authorization.QueryScope{"billing.payment.refund": authztest.Users(10)}})
+			result, err := uc.RefundSubscriptionOrder(authztest.Context(), RefundRequest{TradeNo: "hidden", Reason: "legitimate reason", Operator: "forged-operator"})
+			require.ErrorIs(t, err, authorization.ErrDenied)
+			require.Nil(t, result)
+			require.Equal(t, status, repo.order.Status)
+		})
+	}
 }

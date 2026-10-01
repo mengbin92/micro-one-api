@@ -7,7 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"gorm.io/gorm/clause"
 	"micro-one-api/app/config/internal/biz"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/database/authzquery"
 	"micro-one-api/platform/database/xdb"
 
 	"github.com/redis/go-redis/v9"
@@ -108,12 +111,26 @@ func (r *Repository) Set(ctx context.Context, entry *biz.ConfigEntry) error {
 	if r.db != nil {
 		return r.setDB(ctx, entry)
 	}
+	ctx, err := authorization.Refresh(ctx)
+	if err != nil {
+		return err
+	}
+	if err = requireConfigWrite(ctx, entry.Namespace, entry.Key); err != nil {
+		return err
+	}
 	return r.setMemory(entry)
 }
 
 func (r *Repository) Delete(ctx context.Context, namespace, key string) error {
 	if r.db != nil {
 		return r.deleteDB(ctx, namespace, key)
+	}
+	ctx, err := authorization.Refresh(ctx)
+	if err != nil {
+		return err
+	}
+	if err = requireConfigWrite(ctx, namespace, key); err != nil {
+		return err
 	}
 	return r.deleteMemory(namespace, key)
 }
@@ -122,7 +139,7 @@ func (r *Repository) Delete(ctx context.Context, namespace, key string) error {
 
 func (r *Repository) getDB(ctx context.Context, namespace, key string) (*biz.ConfigEntry, error) {
 	var m configModel
-	if err := r.db.WithContext(ctx).Where("namespace = ? AND `key` = ?", namespace, key).First(&m).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where(map[string]any{"namespace": namespace, "key": key}).First(&m).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, biz.ErrConfigNotFound
 		}
@@ -169,38 +186,48 @@ func (r *Repository) listDB(ctx context.Context, namespace string, page, pageSiz
 }
 
 func (r *Repository) setDB(ctx context.Context, entry *biz.ConfigEntry) error {
-	var existing configModel
-	err := r.db.WithContext(ctx).Where("namespace = ? AND `key` = ?", entry.Namespace, entry.Key).First(&existing).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		m := configModel{
-			Namespace: entry.Namespace,
-			Key:       entry.Key,
-			Value:     entry.Value,
-			Comment:   entry.Comment,
-			UpdatedAt: entry.UpdatedAt.Unix(),
-			Revision:  1,
-		}
-		if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := requireConfigWrite(ctx, entry.Namespace, entry.Key); err != nil {
 			return err
 		}
-		entry.ID, entry.Revision = int64(m.ID), m.Revision
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	entry.ID = int64(existing.ID)
-	entry.Revision = existing.Revision + 1
-	return r.db.WithContext(ctx).Model(&existing).Updates(map[string]any{
-		"value":      entry.Value,
-		"comment":    entry.Comment,
-		"updated_at": entry.UpdatedAt.Unix(),
-		"revision":   entry.Revision,
-	}).Error
+		var existing configModel
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(map[string]any{"namespace": entry.Namespace, "key": entry.Key}).First(&existing).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			m := configModel{
+				Namespace: entry.Namespace,
+				Key:       entry.Key,
+				Value:     entry.Value,
+				Comment:   entry.Comment,
+				UpdatedAt: entry.UpdatedAt.Unix(),
+				Revision:  1,
+			}
+			if err := tx.Create(&m).Error; err != nil {
+				return err
+			}
+			entry.ID, entry.Revision = int64(m.ID), m.Revision
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		entry.ID = int64(existing.ID)
+		entry.Revision = existing.Revision + 1
+		return tx.Model(&existing).Updates(map[string]any{
+			"value":      entry.Value,
+			"comment":    entry.Comment,
+			"updated_at": entry.UpdatedAt.Unix(),
+			"revision":   entry.Revision,
+		}).Error
+	})
 }
 
 func (r *Repository) deleteDB(ctx context.Context, namespace, key string) error {
-	return r.db.WithContext(ctx).Where("namespace = ? AND `key` = ?", namespace, key).Delete(&configModel{}).Error
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := requireConfigWrite(ctx, namespace, key); err != nil {
+			return err
+		}
+		return tx.Where(map[string]any{"namespace": namespace, "key": key}).Delete(&configModel{}).Error
+	})
 }
 
 // Memory implementations
@@ -263,5 +290,15 @@ func (r *Repository) deleteMemory(namespace, key string) error {
 		return biz.ErrConfigNotFound
 	}
 	delete(r.mem, k)
+	return nil
+}
+
+func requireConfigWrite(ctx context.Context, namespace, key string) error {
+	facts := authorization.ObjectFacts{Context: authorization.Platform()}
+	for _, op := range []string{"system.option.update", biz.ConfigWriteOperation(namespace, key)} {
+		if err := authorization.Require(ctx, op, facts); err != nil {
+			return err
+		}
+	}
 	return nil
 }

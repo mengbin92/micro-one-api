@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/platform/authz"
 	"strconv"
 	"time"
 
@@ -194,6 +195,9 @@ func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID
 	}
 
 	if err := s.ensureSubscriptionCanUseGroup(ctx, userID, group.ID); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, err
 	}
 
@@ -215,6 +219,9 @@ func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID
 
 	sub, err := s.assignOrExtendGroupSubscription(ctx, userID, group, int64(group.DurationDays), "", "")
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		// Compensate: give the quota back so the user is not charged for a
 		// subscription that was never created.
 		if _, refundErr := s.billingClient.TopUpQuota(ctx, &billingv1.TopUpQuotaRequest{
@@ -259,6 +266,9 @@ func (s *AdminService) PurchaseSubscriptionPlan(ctx context.Context, userID, pla
 		return nil, subscriptionbiz.ErrSubscriptionPlanNotSaleable
 	}
 	if err := s.ensureSubscriptionCanUseGroup(ctx, userID, plan.GroupID); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, err
 	}
 
@@ -279,6 +289,9 @@ func (s *AdminService) PurchaseSubscriptionPlan(ctx context.Context, userID, pla
 	}
 	sub, err := s.assignOrExtendPlanSubscription(ctx, userID, plan, "")
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		if _, refundErr := s.billingClient.TopUpQuota(ctx, &billingv1.TopUpQuotaRequest{
 			UserId:     userIDStr,
 			Amount:     plan.PriceQuota,
@@ -432,6 +445,9 @@ func (s *AdminService) ChangeSubscription(ctx context.Context, req subscriptionb
 	if req.ToPlanID > 0 && s.planUc != nil {
 		plan, err := s.planUc.Get(ctx, req.ToPlanID)
 		if err != nil {
+			if authz.IsAuthorizationError(err) {
+				return nil, err
+			}
 			return nil, fmt.Errorf("load target plan for price validation: %w", err)
 		}
 		if plan == nil {
@@ -476,6 +492,9 @@ func (s *AdminService) ChangeSubscription(ctx context.Context, req subscriptionb
 				RequestId:   requestID,
 			})
 			if err != nil {
+				if authz.IsAuthorizationError(err) {
+					return nil, err
+				}
 				return nil, fmt.Errorf("charge upgrade difference: %w", err)
 			}
 			if !deduct.GetSuccess() {
@@ -714,6 +733,9 @@ func (s *AdminService) CompleteSubscriptionPurchase(ctx context.Context, userID 
 	// Get payment order to verify payment and get group_id
 	orderResp, err := s.billingClient.GetPaymentOrderByTradeNo(ctx, &billingv1.GetPaymentOrderByTradeNoRequest{TradeNo: tradeNo})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("failed to get payment order: %w", err)
 	}
 	if !orderResp.Success {
@@ -745,6 +767,9 @@ func (s *AdminService) CompleteSubscriptionPurchase(ctx context.Context, userID 
 		UserId:  strconv.FormatInt(userID, 10),
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("claim asset issuance: %w", err)
 	}
 	if !claimResp.Success {
@@ -812,6 +837,9 @@ func (s *AdminService) fulfilPaidOrder(ctx context.Context, userID int64, order 
 			return nil, subscriptionbiz.ErrSubscriptionPlanNotSaleable
 		}
 		if err := s.ensureSubscriptionCanUseGroup(ctx, userID, plan.GroupID); err != nil {
+			if authz.IsAuthorizationError(err) {
+				return nil, err
+			}
 			return nil, err
 		}
 		durationDays := order.AssetAmount
@@ -825,12 +853,18 @@ func (s *AdminService) fulfilPaidOrder(ctx context.Context, userID int64, order 
 		return s.assignOrExtendGroupSubscription(ctx, userID, plan.Group, durationDays, name, "")
 	}
 	if err := s.ensureSubscriptionCanUseGroup(ctx, userID, order.GroupId); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, err
 	}
 
 	// Get group info
 	group, err := s.groupUc.Get(ctx, order.GroupId)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("failed to get subscription group: %w", err)
 	}
 	if !isPurchasableGroup(group) {
@@ -839,6 +873,9 @@ func (s *AdminService) fulfilPaidOrder(ctx context.Context, userID int64, order 
 
 	sub, err := s.assignOrExtendGroupSubscription(ctx, userID, group, int64(group.DurationDays), "", "")
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("failed to assign subscription: %w", err)
 	}
 	return sub, nil
@@ -851,12 +888,18 @@ func (s *AdminService) fulfilPaidOrder(ctx context.Context, userID int64, order 
 func (s *AdminService) completeFromPlanSnapshot(ctx context.Context, userID int64, order *billingv1.PaymentOrder) (*subscriptionbiz.UserSubscription, error) {
 	snap, err := subscriptionbiz.DecodePlanSnapshot(order.GetPlanSnapshot())
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("decode plan snapshot: %w", err)
 	}
 	if snap.PlanID == 0 || snap.GroupID <= 0 {
 		return nil, fmt.Errorf("plan snapshot is incomplete")
 	}
 	if err := s.ensureSubscriptionCanUseGroup(ctx, userID, snap.GroupID); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, err
 	}
 	durationDays := order.GetAssetAmount()
@@ -868,6 +911,9 @@ func (s *AdminService) completeFromPlanSnapshot(ctx context.Context, userID int6
 	}
 	group, err := s.groupUc.Get(ctx, snap.GroupID)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("failed to get subscription group: %w", err)
 	}
 	name := snap.Name
@@ -900,6 +946,9 @@ func (s *AdminService) executeSubscriptionCommerce(ctx context.Context, user, pl
 	}
 	var result subscriptionCommerceResult
 	if err := jsonx.Unmarshal([]byte(reply.ResultJson), &result); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, err
 	}
 	return &result, nil

@@ -193,6 +193,7 @@ message RoutingGroupDetail {
   RoutingGroup group = 1;
   repeated RoutingGroupResource resources = 2;
   repeated RoutingGroupModelGrant model_grants = 3;
+  bool members_visible = 4;
 }
 
 message SelectChannelRequest {

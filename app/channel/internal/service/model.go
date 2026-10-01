@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"micro-one-api/platform/authz"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -183,6 +184,9 @@ func (s *ChannelService) ListModels(ctx context.Context, req *channelv1.ListMode
 		PublicOnly: req.PublicOnly,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, mapModelError(err)
 	}
 	result := make([]*channelv1.ModelSummary, 0, len(models))
@@ -215,6 +219,9 @@ func (s *ChannelService) GetModel(ctx context.Context, req *channelv1.GetModelRe
 		return nil, mapModelError(biz.ErrModelNotFound)
 	}
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, mapModelError(err)
 	}
 	resp := &channelv1.GetModelResponse{
@@ -326,6 +333,9 @@ func (s *ChannelService) BatchModels(ctx context.Context, req *channelv1.BatchMo
 	}
 	affected, err := uc.BatchModels(ctx, req.Action, req.ModelPks)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.BatchModelsResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.BatchModelsResponse{Success: true, Message: "ok", Affected: affected}, nil
@@ -340,6 +350,9 @@ func (s *ChannelService) ListModelAliases(ctx context.Context, req *channelv1.Li
 	}
 	aliases, err := uc.ListModelAliases(ctx, req.ModelPk)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, mapModelError(err)
 	}
 	result := make([]*channelv1.ModelAlias, 0, len(aliases))
@@ -385,6 +398,9 @@ func (s *ChannelService) ListChannelModelMappings(ctx context.Context, req *chan
 	}
 	mappings, err := uc.ListChannelMappings(ctx, req.ChannelId)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, mapModelError(err)
 	}
 	result := make([]*channelv1.ModelChannelMapping, 0, len(mappings))
@@ -440,6 +456,9 @@ func (s *ChannelService) ListSubscriptionModelMappings(ctx context.Context, req 
 	}
 	mappings, err := uc.ListSubscriptionMappings(ctx, req.SubscriptionAccountId)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, mapModelError(err)
 	}
 	result := make([]*channelv1.ModelSubscriptionMapping, 0, len(mappings))
@@ -576,6 +595,9 @@ func (s *ChannelService) ListModelUsageStats(ctx context.Context, req *channelv1
 	}
 	stats, total, err := uc.ListModelUsageStats(ctx, req.ModelPk, req.StartDate, req.EndDate, req.Page, req.PageSize)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, mapModelError(err)
 	}
 	result := make([]*channelv1.ModelUsageStat, 0, len(stats))
@@ -596,6 +618,9 @@ func (s *ChannelService) RecordModelHealth(ctx context.Context, req *channelv1.R
 		Success: req.Success, Error: req.Error, ResponseTimeMs: req.ResponseTime,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.RecordModelHealthResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.RecordModelHealthResponse{Success: true, Message: "ok"}, nil
@@ -610,6 +635,9 @@ func (s *ChannelService) ListModelHealth(ctx context.Context, req *channelv1.Lis
 		Keyword: req.Keyword, SourceKind: req.SourceKind, Status: req.Status,
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, mapModelError(err)
 	}
 	result := make([]*channelv1.ModelHealthState, 0, len(states))
@@ -661,6 +689,9 @@ func (s *ChannelService) CanonicalModelPreflight(ctx context.Context, req *empty
 	}
 	report, err := uc.CanonicalModelPreflight(ctx)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, mapModelError(err)
 	}
 	groups := make([]*channelv1.DuplicateModelGroup, 0, len(report.Groups))
@@ -693,6 +724,9 @@ func (s *ChannelService) MergeCanonicalModels(ctx context.Context, req *channelv
 	}
 	res, err := uc.MergeCanonicalModels(ctx, group)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		// A canonical conflict is a structured error the operator must act
 		// on; surface it via the error mapper so the HTTP/gRPC client gets
 		// MODEL_CANONICAL_CONFLICT rather than a generic failure.
@@ -722,6 +756,9 @@ func (s *ChannelService) ListUnpricedRoutedModels(ctx context.Context, req *chan
 	}
 	summaries, err := uc.ListUnpricedRoutedModels(ctx, priced)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, mapModelError(err)
 	}
 	out := make([]*channelv1.UnpricedRoutedModel, 0, len(summaries))

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/authz"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,6 +16,7 @@ import (
 
 // ConfigService is the transport layer entry for config-service.
 type ConfigService struct {
+	ownerAuthorization *authz.Client
 	configv1.UnimplementedConfigServiceServer
 	uc *biz.ConfigUsecase
 }
@@ -61,10 +64,7 @@ func (s *ConfigService) ListConfigs(ctx context.Context, req *configv1.ListConfi
 }
 
 func (s *ConfigService) SetConfig(ctx context.Context, req *configv1.SetConfigRequest) (*configv1.SetConfigResponse, error) {
-	if err := s.uc.SetConfig(ctx, req.Namespace, req.Key, req.Value, req.Comment); err != nil {
-		return nil, err
-	}
-	entry, err := s.uc.GetConfig(ctx, req.Namespace, req.Key)
+	entry, err := s.uc.SetConfigEntry(ctx, req.Namespace, req.Key, req.Value, req.Comment)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (s *ConfigService) HandleGetConfig(w http.ResponseWriter, r *http.Request) 
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		authz.WriteHTTPError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, configEntryToMap(entry))
@@ -117,7 +117,7 @@ func (s *ConfigService) HandleListConfigs(w http.ResponseWriter, r *http.Request
 	pageSize, _ := strconv.ParseInt(r.URL.Query().Get("page_size"), 10, 32)
 	entries, total, err := s.uc.ListConfigs(r.Context(), namespace, int32(page), int32(pageSize))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		authz.WriteHTTPError(w, err)
 		return
 	}
 	items := make([]map[string]any, 0, len(entries))
@@ -145,13 +145,9 @@ func (s *ConfigService) HandleSetConfig(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if err := s.uc.SetConfig(r.Context(), namespace, key, body.Value, body.Comment); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	entry, err := s.uc.GetConfig(r.Context(), namespace, key)
+	entry, err := s.uc.SetConfigEntry(r.Context(), namespace, key, body.Value, body.Comment)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		authz.WriteHTTPError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "revision": entry.Revision})
@@ -172,7 +168,7 @@ func (s *ConfigService) HandleDeleteConfig(w http.ResponseWriter, r *http.Reques
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		authz.WriteHTTPError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -188,7 +184,7 @@ func (s *ConfigService) HandleOneAPIContent(namespace, key, defaultValue string)
 			return
 		}
 		value := defaultValue
-		entry, err := s.uc.GetConfig(r.Context(), namespace, key)
+		entry, err := s.uc.PublicContent(r.Context(), key)
 		if err == nil && entry != nil {
 			value = entry.Value
 		}
@@ -235,3 +231,9 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	w.WriteHeader(status)
 	_ = jsonx.NewEncoder(w).Encode(map[string]any{"error": message})
 }
+
+func (s *ConfigService) SetAuthorization(r authorization.Resolver) {
+	s.uc.SetAuthorization(r)
+	s.ownerAuthorization, _ = r.(*authz.Client)
+}
+func (s *ConfigService) OwnerAuthorizationClient() *authz.Client { return s.ownerAuthorization }

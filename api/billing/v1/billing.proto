@@ -796,6 +796,7 @@ message UsageBucket {
   // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
   int64 cache_creation_5m_tokens = 17;  // SUM of 5 分钟 TTL cache 创建 token
   int64 cache_creation_1h_tokens = 18;  // SUM of 1 小时 TTL cache 创建 token
+  bool cost_fields_visible = 19; // false means restricted, not a zero cost.
 }
 
 message UsageTotals {
@@ -810,6 +811,7 @@ message UsageTotals {
   // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
   int64 cache_creation_5m_tokens = 9;   // SUM of 5 分钟 TTL cache 创建 token
   int64 cache_creation_1h_tokens = 10;  // SUM of 1 小时 TTL cache 创建 token
+  bool cost_fields_visible = 11; // false means restricted, not a zero cost.
 }
 
 message GetRoutingGroupPriceRequest { int64 routing_group_id = 1; int64 user_id = 2; }

@@ -120,7 +120,7 @@ var registry = func() map[string]Operation {
 				panic("duplicate authorization code: " + code)
 			}
 			// Read existence is separate from sensitive fields and from secret operations.
-			read := slices.Contains([]string{"list", "read", "export", "import_preview", "enter", "roles.read", "self.read", "user.read", "explain", "simulate", "contact.read", "stats.read", "cost.read", "ledger.read", "report.read", "references.read", "permissions.read", "members.read", "channel.read", "model.read", "selector.read", "issues.read", "user_override.read"}, action)
+			read := slices.Contains([]string{"list", "read", "export", "import_preview", "enter", "roles.read", "self.read", "user.read", "explain", "simulate", "contact.read", "secret.read", "content.read", "stats.read", "cost.read", "ledger.read", "report.read", "references.read", "permissions.read", "members.read", "channel.read", "model.read", "selector.read", "issues.read", "user_override.read"}, action)
 			protected := entry.resource == "iam.permission" || code == "iam.authorization.self.read" || strings.HasPrefix(code, "identity.session.")
 			contexts := []string{"platform"}
 			if strings.HasPrefix(entry.resource, "organization.") && entry.resource != "organization.organization" {

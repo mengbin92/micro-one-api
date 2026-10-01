@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"micro-one-api/platform/authz"
 	"sort"
 	"strings"
 
@@ -143,6 +144,9 @@ type UpstreamCostMigrationChange struct {
 func (s *AdminService) MigrateUpstreamCostKeys(ctx context.Context, dryRun bool) (*UpstreamCostMigrationPlan, error) {
 	raw, err := s.GetSystemOption(ctx, "UpstreamModelPrice")
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("read UpstreamModelPrice: %w", err)
 	}
 	prices, err := decodeUpstreamCostMap(raw)

@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"io"
+	"micro-one-api/platform/authz"
 	"net/http"
 
 	"micro-one-api/pkg/jsonx"
@@ -49,7 +50,7 @@ func (s *NotifyService) HandleAlertmanager(w http.ResponseWriter, r *http.Reques
 	}
 	n, err := s.uc.CreateNotification(r.Context(), s.alertmanagerNotifyType, s.alertmanagerRecipient(), fmt.Sprintf("[monitor:%s] %d alerts", payload.Status, len(payload.Alerts)), string(content))
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "could not queue alert group")
+		authz.WriteHTTPError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, notificationToMap(n))

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"micro-one-api/platform/authz"
 	"net/http"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
@@ -13,19 +14,19 @@ import (
 // NewHTTPServer wires HTTP transport for notify-worker.
 func NewHTTPServer(addr string, svc *service.NotifyService) *khttp.Server {
 	srv := xhttp.NewServer(khttp.Address(addr))
-	srv.HandleFunc("/v1/alerts/alertmanager", svc.HandleAlertmanager)
+	srv.HandleFunc("/v1/alerts/alertmanager", authz.HTTPContext("/api.notify.v1.NotifyService/CreateNotification", svc.HandleAlertmanager))
 	srv.HandleFunc("/v1/notifications", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			svc.HandleListNotifications(w, r)
+			authz.HTTPContext("/api.notify.v1.NotifyService/ListNotifications", svc.HandleListNotifications)(w, r)
 		case http.MethodPost:
-			svc.HandleCreateNotification(w, r)
+			authz.HTTPContext("/api.notify.v1.NotifyService/CreateNotification", svc.HandleCreateNotification)(w, r)
 		default:
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		}
 	})
 	srv.HandlePrefix("/v1/notifications/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		svc.HandleGetNotification(w, r)
+		authz.HTTPContext("/api.notify.v1.NotifyService/GetNotification", svc.HandleGetNotification)(w, r)
 	}))
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		metrics.Handler().ServeHTTP(w, r)

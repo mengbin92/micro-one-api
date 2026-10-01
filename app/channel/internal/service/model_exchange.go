@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"micro-one-api/platform/authz"
 	"strings"
 
 	channelv1 "micro-one-api/api/channel/v1"
@@ -42,6 +43,9 @@ func (s *ChannelService) ExportModels(ctx context.Context, req *channelv1.Export
 		Tier:      req.GetTier(),
 	}, req.GetExportPrices())
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, mapModelError(err)
 	}
 	models := make([]*channelv1.ModelExportModel, 0, len(result.Models))
@@ -72,6 +76,9 @@ func (s *ChannelService) ImportModels(ctx context.Context, req *channelv1.Import
 		ImportPrices:     req.GetImportPrices(),
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, mapModelExchangeError(err)
 	}
 	return importSummaryToResponse(summary), nil
@@ -95,6 +102,9 @@ func (s *ChannelService) DryRunImportModels(ctx context.Context, req *channelv1.
 		ImportPrices:     req.GetImportPrices(),
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, mapModelExchangeError(err)
 	}
 	return &channelv1.ImportModelsDryRunResponse{
