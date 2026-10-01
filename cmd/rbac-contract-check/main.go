@@ -33,35 +33,45 @@ func render(fset *token.FileSet, n ast.Node) string {
 }
 
 func inventory(root string) ([][]string, error) {
+	// Keep traversal and reads under one root, including parser input, so
+	// symlinks swapped during inventory cannot redirect reads outside it.
+	repo, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer repo.Close()
+	repoFS := repo.FS()
 	rows := [][]string{}
 	fset := token.NewFileSet()
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	err = fs.WalkDir(repoFS, ".", func(rel string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		rel, _ := filepath.Rel(root, path)
-		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
 			if slices.Contains([]string{".git", "node_modules", "vendor", ".codex"}, d.Name()) {
-				return filepath.SkipDir
+				return fs.SkipDir
 			}
 			return nil
 		}
 		if rel == "scripts/test-e2e-flow.sh" {
-			data, err := os.ReadFile(path)
+			data, err := repo.ReadFile(rel)
 			if err != nil {
 				return err
 			}
 			rows = append(rows, []string{"SOURCE", "identity", rel, rel, "test-only SQL writer", fmt.Sprintf("%x", sha256.Sum256(data))})
 			return nil
 		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") || strings.HasSuffix(path, ".pb.go") || strings.HasSuffix(path, "wire_gen.go") {
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") || strings.HasSuffix(rel, ".pb.go") || strings.HasSuffix(rel, "wire_gen.go") {
 			return nil
 		}
 		if !strings.HasPrefix(rel, "app/") && !strings.HasPrefix(rel, "internal/server/") && rel != "cmd/admin-reset/main.go" {
 			return nil
 		}
-		f, err := parser.ParseFile(fset, path, nil, 0)
+		data, err := repo.ReadFile(rel)
+		if err != nil {
+			return err
+		}
+		f, err := parser.ParseFile(fset, filepath.Join(root, filepath.FromSlash(rel)), data, 0)
 		if err != nil {
 			return err
 		}
@@ -137,15 +147,15 @@ func inventory(root string) ([][]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	files, err := filepath.Glob(filepath.Join(root, "api/*/v1/*.proto"))
+	files, err := fs.Glob(repoFS, "api/*/v1/*.proto")
 	if err != nil {
 		return nil, err
 	}
 	packageRE := regexp.MustCompile(`(?m)^package\s+(\S+);`)
 	serviceRE := regexp.MustCompile(`(?m)^service\s+(\w+)\s*\{`)
 	rpcRE := regexp.MustCompile(`\brpc\s+(\w+)\s*\([^;{]+[;{]`)
-	for _, path := range files {
-		data, err := os.ReadFile(path)
+	for _, rel := range files {
+		data, err := repo.ReadFile(rel)
 		if err != nil {
 			return nil, err
 		}
@@ -154,11 +164,9 @@ func inventory(root string) ([][]string, error) {
 			continue
 		}
 		if len(services) != 1 || len(pkg) == 0 {
-			return nil, fmt.Errorf("review service parser for %s (expected one service)", path)
+			return nil, fmt.Errorf("review service parser for %s (expected one service)", filepath.Join(root, filepath.FromSlash(rel)))
 		}
 		srv := services[0]
-		rel, _ := filepath.Rel(root, path)
-		rel = filepath.ToSlash(rel)
 		owner := strings.Split(rel, "/")[1]
 		for _, m := range rpcRE.FindAllSubmatch(data, -1) {
 			rows = append(rows, []string{"RPC", owner, "/" + string(pkg[1]) + "." + string(srv[1]) + "/" + string(m[1]), rel, string(srv[1]) + "." + string(m[1]), fmt.Sprintf("%x", sha256.Sum256(m[0]))})

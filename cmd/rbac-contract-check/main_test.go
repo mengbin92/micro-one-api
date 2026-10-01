@@ -85,3 +85,65 @@ func f(){ srv.HandleFunc("/a",handler); srv.HandlePrefix("/a/",handler); s.handl
 		t.Fatal(counts)
 	}
 }
+
+func TestInventoryRejectsSymlinksOutsideRoot(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		path    string
+		content string
+		dirLink bool
+	}{
+		{name: "script", path: "scripts/test-e2e-flow.sh", content: "#!/bin/sh\n"},
+		{name: "Go source", path: "app/admin/internal/server/http.go", content: "package server\n"},
+		{name: "proto file", path: "api/admin/v1/admin.proto", content: "package api.admin.v1;\nservice AdminService { rpc One(R) returns (R); }"},
+		{name: "proto directory", path: "api/admin/v1", content: "package api.admin.v1;\nservice AdminService { rpc One(R) returns (R); }", dirLink: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, outside := t.TempDir(), t.TempDir()
+			target := filepath.Join(outside, "source")
+			if tc.dirLink {
+				target = outside
+			}
+			file := target
+			if tc.dirLink {
+				file = filepath.Join(target, "admin.proto")
+			}
+			if err := os.WriteFile(file, []byte(tc.content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			link := filepath.Join(root, filepath.FromSlash(tc.path))
+			if err := os.MkdirAll(filepath.Dir(link), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, link); err != nil {
+				t.Fatal(err)
+			}
+			rows, err := inventory(root)
+			// Glob may omit an inaccessible directory; either result must prevent
+			// external source from becoming trusted inventory rows.
+			if err == nil && (!tc.dirLink || len(rows) != 0) {
+				t.Fatalf("inventory accepted an external symlink: %v", rows)
+			}
+		})
+	}
+}
+
+func TestInventoryAllowsSymlinksWithinRoot(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "scripts"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "source.sh"), []byte("#!/bin/sh\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../source.sh", filepath.Join(root, "scripts/test-e2e-flow.sh")); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := inventory(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0][3] != "scripts/test-e2e-flow.sh" {
+		t.Fatalf("unexpected inventory: %v", rows)
+	}
+}
