@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/platform/iamdto"
 
 	"log"
 
@@ -198,10 +199,14 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 	// (/api/..., /v1/...) and /metrics,
 	// /healthz register longer patterns and are never "not found".
 	srv := xhttp.NewServer(
+		khttp.RequestDecoder(iamdto.DecodeRequest), khttp.ResponseEncoder(iamdto.EncodeResponse),
 		khttp.Address(addr),
 		khttp.NotFoundHandler(http.HandlerFunc(handlePage)),
 	)
 	adminAuth := newAdminGuard(svc)
+	if iam := svc.IAMService(); iam != nil {
+		adminv1.RegisterIAMAdminServiceHTTPServer(srv, iam)
+	}
 
 	// Health and metrics (unauthenticated)
 	// SPA fallback (review admin-H1): the root "/" catch-all plus

@@ -17,6 +17,7 @@ import (
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/app/admin/internal/biz"
 	"micro-one-api/app/admin/internal/data"
+	"micro-one-api/app/admin/internal/server"
 	"micro-one-api/app/admin/internal/service"
 	"micro-one-api/platform/database/xdb"
 	grpcauth "micro-one-api/platform/grpc"
@@ -182,10 +183,13 @@ func newGRPCServer(cfg *Config, svc *service.AdminService) *grpcx.Server {
 	serviceToken := os.Getenv("SERVICE_TOKEN")
 	grpcSrv := grpcx.NewServer(
 		grpcx.Address(cfg.Bootstrap.Server.Grpc.Addr),
-		grpcx.UnaryInterceptor(xgrpc.ServiceTokenUnaryInterceptor(serviceToken)),
+		grpcx.UnaryInterceptor(xgrpc.ServiceTokenUnaryInterceptor(serviceToken), server.IAMOperatorUnaryInterceptor()),
 		grpcx.StreamInterceptor(xgrpc.ServiceTokenStreamInterceptor(serviceToken)),
 	)
 	adminv1.RegisterAdminServiceServer(grpcSrv, svc)
+	if iam := svc.IAMService(); iam != nil {
+		adminv1.RegisterIAMAdminServiceServer(grpcSrv, iam)
+	}
 	return grpcSrv
 }
 

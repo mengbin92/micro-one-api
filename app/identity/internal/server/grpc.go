@@ -34,7 +34,7 @@ import (
 // and forwards the separate operator credential. SetUserRole validates that
 // credential as either the identified user's session or ADMIN_TOKEN; the
 // request's operator_user_id never authenticates the caller by itself.
-func NewGRPCServer(addr string, svc *service.IdentityService) *kgrpc.Server {
+func NewGRPCServer(addr string, svc *service.IdentityService, iam ...*service.IAMService) *kgrpc.Server {
 	serviceToken := os.Getenv("SERVICE_TOKEN")
 	srv := kgrpc.NewServer(
 		kgrpc.Address(addr),
@@ -49,11 +49,20 @@ func NewGRPCServer(addr string, svc *service.IdentityService) *kgrpc.Server {
 		kgrpc.StreamInterceptor(serviceTokenStreamInterceptor(serviceToken)),
 	)
 	identityv1.RegisterIdentityServiceServer(srv, svc)
+	if len(iam) > 0 && iam[0] != nil {
+		identityv1.RegisterIAMServiceServer(srv, iam[0])
+	}
 	return srv
 }
 
 func serviceTokenUnaryInterceptor(serviceToken string) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		if info.FullMethod == identityv1.IAMService_RescueRootCredential_FullMethodName {
+			if err := validateServiceToken(ctx, os.Getenv("IAM_RESCUE_SERVICE_TOKEN")); err != nil {
+				return nil, err
+			}
+			return handler(operatorCredentialContext(service.RescueAuthenticatedContext(ctx)), req)
+		}
 		if err := validateServiceToken(ctx, serviceToken); err != nil {
 			return nil, err
 		}
@@ -92,7 +101,7 @@ func validateServiceToken(ctx context.Context, serviceToken string) error {
 		return status.Error(codes.Unauthenticated, "missing metadata")
 	}
 	values := md.Get("authorization")
-	if len(values) == 0 || !strings.HasPrefix(values[0], "Bearer ") {
+	if len(values) != 1 || !strings.HasPrefix(values[0], "Bearer ") {
 		return status.Error(codes.Unauthenticated, "missing or invalid authorization header")
 	}
 	token := strings.TrimPrefix(values[0], "Bearer ")
@@ -105,7 +114,7 @@ func validateServiceToken(ctx context.Context, serviceToken string) error {
 func operatorCredentialContext(ctx context.Context) context.Context {
 	md, _ := metadata.FromIncomingContext(ctx)
 	values := md.Get("x-operator-authorization")
-	if len(values) == 0 {
+	if len(values) != 1 {
 		return ctx
 	}
 	credential := strings.TrimSpace(values[0])

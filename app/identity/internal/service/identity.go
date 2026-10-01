@@ -16,6 +16,7 @@ import (
 	commonv1 "micro-one-api/api/common/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/app/identity/internal/biz"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/pkg/errors"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/routingdto"
@@ -369,6 +370,9 @@ func (s *IdentityService) ConsumeTokenQuota(ctx context.Context, req *identityv1
 func mapIdentityErrorToGRPC(err error) error {
 	if err == nil {
 		return nil
+	}
+	if stderrors.Is(err, biz.ErrSessionRevoked) {
+		return biz.IAMDecisionError(authorization.Decision{Reason: "SESSION_INVALID"})
 	}
 	// New domain errors already implement GRPCStatus with their typed reason.
 	// Preserve those details instead of flattening migration/capability errors.

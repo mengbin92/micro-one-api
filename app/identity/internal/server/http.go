@@ -15,12 +15,15 @@ import (
 	"time"
 
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/platform/iamdto"
 
 	"go.uber.org/zap"
 
 	billingv1 "micro-one-api/api/billing/v1"
 	commonv1 "micro-one-api/api/common/v1"
+	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/app/identity/internal/biz"
+	"micro-one-api/app/identity/internal/service"
 	xhttp "micro-one-api/platform/http"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
@@ -100,6 +103,7 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 	// structured logs carry a traceable identifier — the same pattern
 	// admin-api uses in newAdminGuard.
 	srv := xhttp.NewServer(
+		khttp.RequestDecoder(iamdto.DecodeRequest), khttp.ResponseEncoder(iamdto.EncodeResponse),
 		khttp.Address(addr),
 		khttp.Filter(appmiddleware.RequestID),
 	)
@@ -160,6 +164,7 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	identityv1.RegisterIAMServiceHTTPServer(srv, service.NewIAMService(nil, uc))
 	srv.HandleFunc("/api/user/register", func(w http.ResponseWriter, r *http.Request) {
 		handleRegister(w, r, uc, registrationPolicy, billingClient)
 	})

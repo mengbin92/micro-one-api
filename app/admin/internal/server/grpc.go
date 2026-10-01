@@ -14,9 +14,12 @@ import (
 func NewGRPCServer(svc *service.AdminService) *grpc.Server {
 	serviceToken := os.Getenv("SERVICE_TOKEN")
 	srv := grpc.NewServer(
-		grpc.UnaryInterceptor(xgrpc.ServiceTokenUnaryInterceptor(serviceToken)),
+		grpc.ChainUnaryInterceptor(xgrpc.ServiceTokenUnaryInterceptor(serviceToken), IAMOperatorUnaryInterceptor()),
 		grpc.StreamInterceptor(xgrpc.ServiceTokenStreamInterceptor(serviceToken)),
 	)
 	adminv1.RegisterAdminServiceServer(srv, svc)
+	if iam := svc.IAMService(); iam != nil {
+		adminv1.RegisterIAMAdminServiceServer(srv, iam)
+	}
 	return srv
 }

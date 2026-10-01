@@ -1,7 +1,7 @@
 # RBAC 权限管理实施方案
 
 > 日期：2026-09-30
-> 状态：P0、A1、A2 存储基础、A3 约束子流程与 A4 会话/账号原子写已完成；A5–D1 尚未开始。A2/A3/A4 交付及三库证据见第 9.2/9.3/9.4 节。
+> 状态：P0、A1–A6 已完成；B0–D1 尚未开始。A2–A6 交付及三库/API 验证证据见第 9.2–9.6 节。
 > 依据：[完整 RBAC 权限管理设计](./rbac-permission-management.md)。本文件细化实现顺序，不改变其授权语义。
 > 规划调查基线：`bf0c7de2`；首批交付复核基线：`951f1686`，工作分支 `codex/rbac-first-delivery`。本批验证记录见第 9 节；2026-10-01 已更新全部生产服务并保持 legacy，见 [生产更新记录](./rbac/a3-legacy-production-deployment.md)，未切换生产授权事实源。
 
@@ -70,8 +70,8 @@ B2/B3/B4 可以在契约稳定后独立推进；C 阶段可并行开发，但不
 | A2（存储基础完成） | IAM 表、用户版本、事务接口、三库迁移、持久化审计 | 锁/CAS/审计原子；SQLite 忙重试；失败无部分提交；三库约束和重复迁移通过 |
 | A3（约束子流程完成） | DAG、SSD/DSD、成员/分配/激活上限、未来区间预检 | 含继承、去重、半开区间和未来窗口；变更导致现存冲突时拒绝并给清单 |
 | A4（会话/账号原子写完成） | JWT 验证结果、JTI 会话、按域激活、一致快照、统一账号写与救援 CLI 限制 | 新安装 root、注册、邀请、OAuth、后台创建的默认角色原子；旧会话可迁入 platform；并发 bootstrap 只建一个 root |
-| A5 | 三类委派、角色治理、预检/模拟、凭证接管保护 | 授权上限、受影响成员、自我扩权、未来 authority、创建来源及撤销 deny 全覆盖 |
-| A6 | 主设计第 7 节 IAM RPC、admin API、本人会话 API | 用户/服务双验证，范围过滤，reason/CAS，401/403/409，完整管理 API 可在隔离环境验证 |
+| A5（治理完成） | 三类委派、角色治理、预检/模拟、凭证接管保护 | 授权上限、受影响成员、自我扩权、未来 authority、创建来源及撤销 deny 全覆盖 |
+| A6（API 完成） | 主设计第 7 节 IAM RPC、admin API、本人会话 API | 用户/服务双验证，范围过滤，reason/CAS，401/403/409，完整管理 API 可在隔离环境验证 |
 | B0 | 服务专属身份、full-method allowlist、固定入口绑定 | 共享 SERVICE_TOKEN 或伪造服务名不能获得系统 capability；新增未分类入口检查失败 |
 | B1 | 用户 CRUD、角色、凭证、自助、订单本人路径、路由授权 | 邮箱清空/替换、group、创建和兼容别名无旁路；原子写与 root 保护 |
 | B2 | channel/账号/OAuth/模型/路由/健康查询 | 范围覆盖列表、total、详情、批量、导出、写；敏感字段隔离；relay 凭证路径正确 |
@@ -284,7 +284,7 @@ make verify
 | 事务与状态 | identity biz `IAMTx/IAMTxRunner`；`rbac/transaction-contract.md` 冻结锁/CAS/审计与跨服务边界；可执行 CheckWrite/ValidateOrigin 校验合法状态及候选 batch 归属，data runner 与三库迁移留到 A2 |
 | 检查 | 首批定向 Go/race、make all、make wire-check、make verify 已通过；verify 包含格式、unit/race、架构、迁移治理、生成类型以及前端 lint/test/build。无 DDL，未执行三库 fresh/repeat/negative 或跨服务 IAM/Playwright/切换演练，不能计入 A2–D 验收 |
 
-首批交付后的 A2/A3/A4 已完成，见第 9.2/9.3/9.4 节；下一包为 A5。矩阵 test_contract 列是后续执行链测试义务，不能据此声称当前所有 HTTP/RPC 已执行 IAM 权限校验。
+首批交付后的 A2/A3/A4 已完成，见第 9.2/9.3/9.4 节；A5/A6 也已完成，见第 9.5/9.6 节。矩阵 test_contract 列是后续执行链测试义务，不能据此声称当前所有 HTTP/RPC 已执行 IAM 权限校验。
 
 ### 9.2 A2 存储基础结果（2026-09-30）
 
@@ -326,3 +326,31 @@ A3 后续的 A4 已完成，见第 9.4 节。A3/A4 完成不表示所有运行�
 - [x] 显式三库定向 race、make all/wire-check/架构/migration-check/rbac-contract-check/verify；无驱动跳过计作通过。
 
 下一包为 A5 委派、角色治理与模拟。固定目录继续 unbound；生产继续 legacy。本批未部署、未切换、未新增 IAM 管理 API 或前端入口；静态 ADMIN_TOKEN 的持久化角色修改兼容路径收紧为拒绝，详见交付记录。
+
+
+### 9.5 A5 委派、角色治理与模拟结果（2026-10-01）
+
+实现边界、反例及三库证据：[A5 治理交付记录](./rbac/a5-governance-delivery.md)。工作分支 `codex/rbac-a5-a6-governance-api`，基线 `87025145`。
+
+- [x] 三类委派、可再委派上限、动作/用户/权限范围/期限独立校验；创建来源与 draft 原子写，复制不携带成员/authority。
+- [x] 自身可激活角色、间接 senior/现存未来成员、root/内置保护、归档引用、撤销 deny 暴露其他分配的最大 allow 预检。
+- [x] 凭证接管检查未激活/disabled/未来最大 allow 与 IAM authority，不以 deny/DSD/数值等级掩盖；B1 负责接入实际凭证管理入口。
+- [x] Preview/Simulate 与真实写共用治理/约束，来源差异、受影响用户和冲突；base policy/目标 CAS、摘要复核和整批原子成功审计。
+- [x] 委派撤销/到期停止后续治理但保留业务授权与创建引用；快照 valid_until 包含委派时间边界。
+- [x] SQLite/MySQL/PostgreSQL 实际三库及 race、继承/自我扩权/deny/再委派反例与全仓检查。
+
+普通管理写只在 iam/complete 放行。用户已授权更新 identity/admin，见 [A4–A6 生产更新](./rbac/a5-a6-legacy-production-deployment.md)，继续 legacy/idle，未切换事实源；目录固定执行绑定仅覆盖已交付 IAM 方法，业务资源继续 unbound。
+
+### 9.6 A6 IAM RPC、后台 API 与本人会话结果（2026-10-01）
+
+接口、启动链和可复验命令：[A6 API 交付记录](./rbac/a6-management-api-delivery.md)。本包与 A5 同分支交付。
+
+- [x] identity IAMService 与 admin IAMAdminService：目录/角色/继承/分配/委派/约束/菜单/解释模拟/审计独立导出/会话；实际 Wire、admin cmd gRPC、alternate server 与 HTTP 注册完整。
+- [x] 用户 JWT/JTI 与服务凭证双验；actor 不接受客户端声明，ADMIN_TOKEN/数值 role 不作普通权限；本人 HTTP/RPC 仅操作自己的会话。
+- [x] identity 所有者逐对象范围与委派过滤、分页/total、独立 grant/member/source 读取；审计 SQL target 范围和非 root payload 脱敏。
+- [x] protojson 大 ID、timestamp/update_mask/unknown/context 校验；reason/CAS、401/403/409；DELETE 撤销由权威 assignment 解析，无 body 需求。
+- [x] 专用救援 RPC/CLI，独立服务凭证＋救援身份/开关/root/revision，提交后旧 session 失效；共享服务 token 和普通管理入口不能进入。
+- [x] 真实 admin HTTP → identity gRPC/biz/data、本人直接 HTTP、救援正反例与 race；入口矩阵补齐实际 proto HTTP annotation 及 CLI 源码，757 行契约检查通过。
+- [x] make all/wire-check/migration-check/rbac-contract-check/verify；前端 API 类型自动生成一致，未交付 C 阶段管理页面。
+
+CheckAuthorization 只接受当前实际 IAM owner 方法；业务 permission 字符串/浏览器对象事实不构成执行 capability，B0/B1–B4 仍需完整调用主体与资源事实注册。下一步为 B0/B1、C1；生产维持 legacy，D0/D1 门槛不因 A5/A6 完成而提前放开。

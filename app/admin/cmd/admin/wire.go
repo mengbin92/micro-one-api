@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	iamdata "micro-one-api/app/admin/internal/data/iam"
 	"micro-one-api/app/admin/internal/data/routingaccess"
 	"time"
 
@@ -31,6 +32,10 @@ var ProviderSet = wire.NewSet(
 	newSystemOptionsUsecase,
 	newSubscriptionUsecases,
 	provideIdentityClient,
+	provideIAMClient,
+	iamdata.NewRepo,
+	biz.NewIAMUsecase,
+	service.NewIAMAdminService,
 	provideChannelClient,
 	provideBillingClient,
 	newAuditAuditor,
@@ -85,11 +90,13 @@ func newApp(
 	clients *clientsResult,
 	sub subscriptionResult,
 	svc *service.AdminService,
+	iam *service.IAMAdminService,
 	routingGroups *biz.RoutingGroupUsecase,
 	routingAccess *biz.RoutingAccessUsecase,
 	auditor *audit.Auditor,
 	reg registrarResult,
 ) (*kratos.App, func()) {
+	svc.SetIAMService(iam)
 	svc.SetRoutingGroupUsecase(routingGroups)
 	svc.SetRoutingAccessUsecase(routingAccess)
 	// Wire optional subscription usecases onto the admin service.
@@ -140,4 +147,8 @@ func newApp(
 			clients.billingConn.Close()
 		}
 	}
+}
+
+func provideIAMClient(c *clientsResult) identityv1.IAMServiceClient {
+	return identityv1.NewIAMServiceClient(c.identityConn)
 }

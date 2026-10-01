@@ -147,3 +147,44 @@ func TestInventoryAllowsSymlinksWithinRoot(t *testing.T) {
 		t.Fatalf("unexpected inventory: %v", rows)
 	}
 }
+
+func TestInventoryIncludesOnlyRegisteredProtoHTTP(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "app", "admin", "internal", "server")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "http.go"), []byte(`package server
+ func f(){ v1.RegisterIAMAdminServiceHTTPServer(srv,svc) }`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	dir = filepath.Join(root, "api", "admin", "v1")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"IAMAdminService", "UnregisteredService"} {
+		body := `package api.admin.v1;
+service ` + name + ` {
+ rpc GetRole(R) returns (R) { option (google.api.http) = { get: "/roles/{id}" }; }
+}`
+		if err := os.WriteFile(filepath.Join(dir, name+".proto"), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := inventory(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, row := range rows {
+		if row[0] == "HTTP_PROTO" {
+			count++
+			if row[2] != "GET /roles/{id}" || row[4] != "IAMAdminService.GetRole" {
+				t.Fatal(row)
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("HTTP inventory: %v", rows)
+	}
+}

@@ -1,0 +1,139 @@
+{
+  "captured_at_utc": "2026-10-01T06:36:29.303977+00:00",
+  "code_commit": "26a531822bab03f72bdae9a46aab0523801c1f7c",
+  "revision_label": "26a53182",
+  "rollback_tag": "rollback-20261001-143622",
+  "services": {
+    "identity-service": {
+      "image_id": "sha256:8189b4bc7b5ee1f2e29dee939418f6c44221c4ecbfdd1012dbaf3aefa673aa35",
+      "running": true,
+      "restarts": 0,
+      "revision": "26a53182",
+      "previous_image_id": "sha256:87fd138d242f84a93a50d146ecaa28090f0ea1002fd3b2d4663d782585e62d3c",
+      "healthz": 200,
+      "architecture": "amd64"
+    },
+    "admin-api": {
+      "image_id": "sha256:9452f119c718e6651da3ccd594ef6ad5212176a8e82a5de3ae67ef37b4b643be",
+      "running": true,
+      "restarts": 0,
+      "revision": "26a53182",
+      "previous_image_id": "sha256:e57dbdda45348afa53d6667027233098198c9fe27853c853d0155355025df35d",
+      "healthz": 200,
+      "architecture": "amd64"
+    }
+  },
+  "retained_services": {
+    "channel-service": {
+      "image_id": "sha256:f80e59ba0c0f14a6da88725801595f9a3a1000df2819910180836d4ac412abf8",
+      "running": true,
+      "restarts": 0,
+      "revision": "36759548"
+    },
+    "billing-service": {
+      "image_id": "sha256:8b03ae067a619da9ff7ac8a59bdc8c72932e8630548f366400edd3392478711c",
+      "running": true,
+      "restarts": 0,
+      "revision": "36759548"
+    },
+    "config-service": {
+      "image_id": "sha256:02cc50b9b35b6e918740756f64147e2521b3e8de8ce620f685c2d303888c8700",
+      "running": true,
+      "restarts": 0,
+      "revision": "36759548"
+    },
+    "log-service": {
+      "image_id": "sha256:0560eaaf4d709644f8e56458d31725423da04badac00334d196c0ae1ac7b1288",
+      "running": true,
+      "restarts": 0,
+      "revision": "36759548"
+    },
+    "monitor-worker": {
+      "image_id": "sha256:68af70f7a7332bea89fa376fbb030d0345378c38d94b3cf4c37d89fb30219d52",
+      "running": true,
+      "restarts": 0,
+      "revision": "36759548"
+    },
+    "notify-worker": {
+      "image_id": "sha256:dbb0808d04e3c6cf136b24070ee41d7877285d9d6e1968729dc049e00abb51db",
+      "running": true,
+      "restarts": 0,
+      "revision": "36759548"
+    },
+    "relay-gateway": {
+      "image_id": "sha256:536b57273de1693886583acd3b13cb1ef21292b599461bee9dafe346e500e4b5",
+      "running": true,
+      "restarts": 0,
+      "revision": "36759548"
+    }
+  },
+  "http_checks": {
+    "admin_health": 200,
+    "status": 200,
+    "relay_health": 200,
+    "admin_unauthenticated": 401,
+    "self_unauthenticated": 401,
+    "iam_unauthenticated": 401,
+    "iam_self_unauthenticated": 401,
+    "relay_models_unauthenticated": 401,
+    "identity_health": 200,
+    "identity_self_unauthenticated": 401,
+    "legacy_admin_read": 200,
+    "legacy_identity_read": 200,
+    "legacy_channel_read": 200,
+    "iam_static_admin_rejected": 401
+  },
+  "policy_before": {
+    "authorization_mode": "legacy",
+    "cutover_state": "idle",
+    "policy_revision": 1,
+    "catalog_revision": 1,
+    "assignments": 0,
+    "non_draft_or_bound_permissions": 0,
+    "delegations": 0,
+    "sessions": 0
+  },
+  "policy_after": {
+    "authorization_mode": "legacy",
+    "cutover_state": "idle",
+    "policy_revision": 1,
+    "catalog_revision": 1,
+    "assignments": 0,
+    "non_draft_or_bound_permissions": 0,
+    "delegations": 0,
+    "sessions": 0
+  },
+  "configuration": "server Compose and environment retained",
+  "configuration_hashes": {
+    "docker-compose.yml": "2e07a75581c98b47064faf499701d05e0c3793b5c310a587057e9bd13fe02bc1",
+    ".env": "6da0af284547d071ada1f8c1e6c02521e85438fd6d1ae690929c131ba074356c"
+  },
+  "frontend": {
+    "action": "retained; changes are generated TypeScript declarations only",
+    "served_index_sha256": "a600d628ef6979d85371799820dedac3904b113ca48758b632010c25122d083f"
+  },
+  "migrations": "none; existing IAM tables verified; no cutover",
+  "build": "both linux/amd64 images built locally from the committed Git archive",
+  "identity_snapshot": "/opt/micro-one-api/deploy-rbac-a5-a6-26a53182/identity-before.sql.gz",
+  "final_health": {
+    "captured_at_utc": "2026-10-01T06:38:22.807342+00:00",
+    "services": {
+      "identity-service": {
+        "image_id": "sha256:8189b4bc7b5ee1f2e29dee939418f6c44221c4ecbfdd1012dbaf3aefa673aa35",
+        "revision": "26a53182",
+        "restarts": 0,
+        "running": true,
+        "healthz": 200,
+        "startup_error_count": 0
+      },
+      "admin-api": {
+        "image_id": "sha256:9452f119c718e6651da3ccd594ef6ad5212176a8e82a5de3ae67ef37b4b643be",
+        "revision": "26a53182",
+        "restarts": 0,
+        "running": true,
+        "healthz": 200,
+        "startup_error_count": 0
+      }
+    }
+  }
+}

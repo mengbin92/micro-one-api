@@ -6,37 +6,12 @@ import (
 	"time"
 
 	"micro-one-api/domain/authorization"
+	"micro-one-api/domain/authorization/management"
 )
 
-type IAMGrant struct {
-	Operation string
-	Effect    authorization.Effect
-	Scope     authorization.Scope
-}
-type IAMRole struct {
-	ID                   int64
-	Context              authorization.Context
-	Code                 string
-	Name, Description    string
-	Builtin              bool
-	MaxMembers           *int64
-	Status               string
-	Revision             uint64
-	CreationDelegationID int64
-	Inherits             []int64 // senior -> junior
-	Grants               []IAMGrant
-}
-type IAMAssignment struct {
-	ID, UserID, RoleID int64
-	Context            authorization.Context
-	Boundary           authorization.Scope
-	Validity           authorization.Interval
-	Revoked            bool
-	Origin             string // legacy_candidate/default/bootstrap/explicit; no username inference.
-	MigrationBatchID   string
-	Revision           uint64
-	AssignedBy         int64
-}
+type IAMGrant = management.Grant
+type IAMRole = management.Role
+type IAMAssignment = management.Assignment
 
 // IAMTx is data-owned and opaque; biz never imports a driver or storage model.
 type IAMTx interface{ Handle() any }
