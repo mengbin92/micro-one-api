@@ -1,0 +1,109 @@
+{
+  "checked_at": "2026-10-01T22:18:04.815847+08:00",
+  "local_branch": "develop",
+  "local_head": "3dd4736d",
+  "cause": "Six deployed resource owners lacked IDENTITY_GRPC_ENDPOINT after adding live identity authorization checks; clients fell back to container-local 127.0.0.1:9001.",
+  "repair": {
+    "backup": "/opt/micro-one-api/docker-compose/docker-compose.yml.bak.authz-endpoint-20261001-221309",
+    "change": "Only add IDENTITY_GRPC_ENDPOINT=identity-service:9001 to six resource services; validated effective Compose has no other changes.",
+    "images": "All retained; no builds or pulls.",
+    "relay_restart": "Graceful restart to refresh downstream connections after resource container IP changes."
+  },
+  "services": {
+    "identity-service": {
+      "running": true,
+      "restarts": 0,
+      "image_id": "sha256:79439866f7635b53754a8a8bb4c950438b38220bd4fb5073bb28357049200142",
+      "healthz": 200
+    },
+    "channel-service": {
+      "running": true,
+      "restarts": 0,
+      "image_id": "sha256:bb9c1f509481ba7f5b58b42721017c1f54aad495c9d1f32a5c02d196df15a2c1",
+      "healthz": 200,
+      "identity_endpoint": "identity-service:9001"
+    },
+    "billing-service": {
+      "running": true,
+      "restarts": 0,
+      "image_id": "sha256:cd486011d43f779731b86308b31465ef165bded53c94287dcbce0c78021d81ab",
+      "healthz": 200,
+      "identity_endpoint": "identity-service:9001"
+    },
+    "config-service": {
+      "running": true,
+      "restarts": 0,
+      "image_id": "sha256:aec6062f8da5e02ae6103bd2b6d8b0e298d088ba06e2a9f8d1d1e8e512cbd8f9",
+      "healthz": 200,
+      "identity_endpoint": "identity-service:9001"
+    },
+    "log-service": {
+      "running": true,
+      "restarts": 0,
+      "image_id": "sha256:29a386fcfca2bb42838e5cf2ccdefa25e6736f9b6b8030bc911025d666d1270a",
+      "healthz": 200,
+      "identity_endpoint": "identity-service:9001"
+    },
+    "monitor-worker": {
+      "running": true,
+      "restarts": 0,
+      "image_id": "sha256:8aad61f2b68851b1cc963ad3756094a8ca082d9a2ce02f0c13b3b4b569795af4",
+      "healthz": 200,
+      "identity_endpoint": "identity-service:9001"
+    },
+    "notify-worker": {
+      "running": true,
+      "restarts": 0,
+      "image_id": "sha256:34a43a2f69266aada1af1346d67217d517d078266102c4a01e3aedd30f46b87f",
+      "healthz": 200,
+      "identity_endpoint": "identity-service:9001"
+    },
+    "admin-api": {
+      "running": true,
+      "restarts": 0,
+      "image_id": "sha256:191aca1557a9ac1c122eec23db6c02cd58826aca438d03deb44796d0c1c930c0",
+      "healthz": 200
+    },
+    "relay-gateway": {
+      "running": true,
+      "restarts": 0,
+      "image_id": "sha256:67eafc951a8c6b7358c4ad6786742be24531e4f3a91bb3080407de07d2e28f78",
+      "healthz": 200
+    }
+  },
+  "http_checks": {
+    "/api/user/?page=1&page_size=1": {
+      "status": 200,
+      "ok": true
+    },
+    "/api/channel/?page=1&page_size=1": {
+      "status": 200,
+      "ok": true
+    },
+    "/api/v1/admin/routing-groups?page=1&page_size=1": {
+      "status": 200,
+      "ok": true
+    },
+    "/api/log/?page=1&page_size=1": {
+      "status": 200,
+      "ok": true
+    },
+    "/api/payment/orders?page=1&page_size=1": {
+      "status": 200,
+      "ok": true
+    },
+    "/v1/account?user_id=1": {
+      "status": 200,
+      "ok": true
+    }
+  },
+  "logs_after_relay_restart": {
+    "relay-gateway": {
+      "connection_refused_count": 0
+    },
+    "admin-api": {
+      "connection_refused_count": 0
+    }
+  },
+  "passed": true
+}
