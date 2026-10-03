@@ -14,6 +14,7 @@ import (
 // NewHTTPServer wires HTTP transport for monitor-worker.
 func NewHTTPServer(addr string, svc *service.MonitorService) *khttp.Server {
 	srv := xhttp.NewServer(khttp.Address(addr))
+	srv.HandleFunc("/v1/health-checks/latest", authz.HTTPContext("/api.monitor.v1.MonitorService/GetLatestHealthCheck", svc.HandleLatestHealthCheck))
 	srv.HandleFunc("/v1/health-checks", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

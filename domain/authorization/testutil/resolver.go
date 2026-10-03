@@ -40,7 +40,7 @@ func (r *Resolver) OptionalQuery(ctx context.Context, point, operation, credenti
 		return authorization.ResourceAuthorization{}, authorization.ErrDenied
 	}
 	if _, ok := r.Scopes[operation]; !ok && r.Err == nil && credential == "verified-session" {
-		return authorization.ResourceAuthorization{Mode: "iam"}, nil
+		return authorization.ResourceAuthorization{Mode: "iam", Query: authorization.QueryScope{ActorID: r.ActorID}}, nil
 	}
 	return r.Query(ctx, point, operation, credential)
 }
@@ -54,7 +54,7 @@ func (r *Resolver) ResolveActor(_ context.Context, _, credential string) (author
 	return authorization.Actor{UserID: r.ActorID, SessionID: "real-jti", ExpiresAt: time.Now().Add(time.Hour)}, "iam", nil
 }
 func Context() context.Context {
-	return authorization.WithCredential(authorization.WithExternal(context.Background()), "verified-session")
+	return authorization.WithWriteReason(authorization.WithCredential(authorization.WithExternal(context.Background()), "verified-session"), "isolated owner acceptance")
 }
 func All() authorization.QueryScope {
 	return authorization.QueryScope{ActorID: 1, Allow: []authorization.Scope{{Clauses: []authorization.Clause{{All: true}}}}}

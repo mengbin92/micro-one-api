@@ -153,7 +153,17 @@ func (c *Client) fetch(ctx context.Context, point, operation, credential string,
 func (c *Client) OptionalQuery(ctx context.Context, point, operation, credential string) (authorization.ResourceAuthorization, error) {
 	out, err := c.fetch(ctx, point, operation, credential, nil)
 	if status.Code(err) == codes.PermissionDenied {
-		return authorization.ResourceAuthorization{Mode: "iam"}, nil
+		// A denied optional permission still needs a live authenticated actor.
+		// Upserts may start with optional create/update decisions, so there is
+		// no earlier required permission from which to borrow the actor ID.
+		actor, mode, actorErr := c.ResolveActor(ctx, point, credential)
+		if actorErr != nil {
+			return authorization.ResourceAuthorization{Mode: mode}, actorErr
+		}
+		if mode != "iam" || actor.UserID <= 0 {
+			return authorization.ResourceAuthorization{Mode: mode}, errForbidden
+		}
+		return authorization.ResourceAuthorization{Mode: mode, Query: authorization.QueryScope{ActorID: actor.UserID, ValidUntil: actor.ExpiresAt}}, nil
 	}
 	return out, err
 }

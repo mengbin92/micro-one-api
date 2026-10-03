@@ -34,27 +34,28 @@ const ModelExchangeSchemaVersion = "1.2.0"
 // aliases and mappings. It mirrors the proto ModelExportModel but carries no
 // proto tags — it is the pure biz model owned by biz.
 type ModelExportModel struct {
-	ModelID              string
-	DisplayName          string
-	Description          string
-	Provider             string
-	ModelType            string
-	ContextWindow        int32
-	PricingInput         float64 // zero when prices are not exported
-	PricingOutput        float64
-	PricingCacheRead     float64
-	Status               int32
-	IsPublic             bool
-	Capabilities         []string
-	InputModalities      []string
-	OutputModalities     []string
-	Tags                 []string
-	Category             string
-	Tier                 string
-	Metadata             string
-	Aliases              []*ModelAlias
-	ChannelMappings      []*ModelChannelMapping
-	SubscriptionMappings []*ModelSubscriptionMapping
+	AuthorizationRevision int64
+	ModelID               string
+	DisplayName           string
+	Description           string
+	Provider              string
+	ModelType             string
+	ContextWindow         int32
+	PricingInput          float64 // zero when prices are not exported
+	PricingOutput         float64
+	PricingCacheRead      float64
+	Status                int32
+	IsPublic              bool
+	Capabilities          []string
+	InputModalities       []string
+	OutputModalities      []string
+	Tags                  []string
+	Category              string
+	Tier                  string
+	Metadata              string
+	Aliases               []*ModelAlias
+	ChannelMappings       []*ModelChannelMapping
+	SubscriptionMappings  []*ModelSubscriptionMapping
 }
 
 // ModelExportResult is the output of ExportModels.
@@ -144,6 +145,25 @@ type ModelExchangeRepo interface {
 // document. When exportPrices is false, pricing fields are zeroed in the
 // result so no price leaks into a config-migration export.
 func (uc *ModelUsecase) ExportModels(ctx context.Context, filter ListModelsFilter, exportPrices bool) (*ModelExportResult, error) {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.models.exchange", "channel.model.export")
+	if authErr != nil {
+		return nil, authErr
+	}
+	for _, entry := range []struct{ point, op string }{{"channel.model_aliases", "channel.model_alias.read"}, {"channel.model_mappings", "channel.model_mapping.read"}} {
+		ctx, authErr = uc.authorizeOptional(ctx, entry.point, entry.op)
+		if authErr != nil {
+			return nil, authErr
+		}
+	}
+	if exportPrices {
+		for _, op := range []string{"billing.pricing.read", "billing.pricing.export"} {
+			ctx, authErr = uc.authorize(ctx, "channel.models.pricing", op)
+			if authErr != nil {
+				return nil, authErr
+			}
+		}
+	}
 	if uc == nil {
 		return nil, ErrExportFailed
 	}
@@ -207,6 +227,22 @@ func (uc *ModelUsecase) ImportModels(ctx context.Context, models []*ModelExportM
 }
 
 func (uc *ModelUsecase) importModels(ctx context.Context, models []*ModelExportModel, options ImportOptions) (*ImportSummary, error) {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.models.exchange", "channel.model.import")
+	if authErr != nil {
+		return nil, authErr
+	}
+	for _, entry := range []struct{ point, op string }{
+		{"channel.models.create", "channel.model.create"}, {"channel.models.update", "channel.model.update"}, {"channel.models.update", "channel.model.enable"}, {"channel.models.update", "channel.model.disable"},
+		{"channel.model_aliases", "channel.model_alias.create"}, {"channel.model_aliases", "channel.model_alias.delete"},
+		{"channel.model_mappings", "channel.model_mapping.create"}, {"channel.model_mappings", "channel.model_mapping.update"}, {"channel.model_mappings", "channel.model_mapping.delete"},
+		{"channel.models.pricing", "billing.pricing.update"}, {"channel.models.pricing", "billing.pricing.import"},
+	} {
+		ctx, authErr = uc.authorizeOptional(ctx, entry.point, entry.op)
+		if authErr != nil {
+			return nil, authErr
+		}
+	}
 	if uc == nil {
 		return nil, ErrImportInvalidRecord
 	}

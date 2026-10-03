@@ -1024,7 +1024,7 @@ func (r *Repository) listUsersDB(ctx context.Context, page, pageSize int32, keyw
 		query = query.Where("username LIKE ? ESCAPE '!'", "%"+escapeLike(keyword)+"%")
 	}
 	if group != "" {
-		query = query.Where("`group` = ?", group)
+		query = query.Where(clause.Eq{Column: "group", Value: group})
 	}
 	if status != 0 {
 		query = query.Where("status = ?", status)

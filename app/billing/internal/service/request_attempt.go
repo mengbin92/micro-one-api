@@ -12,7 +12,7 @@ func (s *BillingService) ListRequestAttempts(ctx context.Context, req *billingv1
 	}
 	resp := &billingv1.ListRequestAttemptsResponse{Total: total}
 	for _, row := range rows {
-		resp.Items = append(resp.Items, &billingv1.RequestAttempt{RootRequestId: row.RootRequestID, RequestId: row.RequestID, AttemptNumber: row.AttemptNumber, ReservationId: row.ReservationID, Status: row.Status, ChannelId: row.ChannelID, SubscriptionAccountId: row.SubscriptionAccountID, SourceKind: row.SourceKind, UpstreamModelId: row.UpstreamModelID, ActualCost: row.ActualCost, CreatedAt: row.CreatedAt.Unix()})
+		resp.Items = append(resp.Items, &billingv1.RequestAttempt{CostFieldsVisible: row.CostFieldsVisible, RootRequestId: row.RootRequestID, RequestId: row.RequestID, AttemptNumber: row.AttemptNumber, ReservationId: row.ReservationID, Status: row.Status, ChannelId: row.ChannelID, SubscriptionAccountId: row.SubscriptionAccountID, SourceKind: row.SourceKind, UpstreamModelId: row.UpstreamModelID, ActualCost: row.ActualCost, CreatedAt: row.CreatedAt.Unix()})
 	}
 	return resp, nil
 }

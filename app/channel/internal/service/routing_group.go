@@ -7,6 +7,7 @@ import (
 
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/channel/internal/biz"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/routing"
 	"micro-one-api/pkg/filtering"
 	"micro-one-api/pkg/ordering"
@@ -144,6 +145,9 @@ func (s *ChannelService) SetRoutingGroupState(ctx context.Context, req *channelv
 	if req == nil {
 		return nil, biz.ErrRoutingGroupInvalid
 	}
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
 	detail, err := uc.SetState(ctx, req.Id, req.ExpectedRevision, req.Status, req.AccessMode)
 	if err != nil {
 		return nil, err
@@ -160,6 +164,12 @@ func (s *ChannelService) SetRoutingGroupResourceOverrides(ctx context.Context, r
 	}
 	if req == nil || req.RoutingGroupId <= 0 || req.SourceId <= 0 || (req.SourceKind != "channel" && req.SourceKind != "subscription") {
 		return nil, biz.ErrRoutingGroupInvalid
+	}
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
+	if req.ExpectedRevision > 0 {
+		ctx = authorization.WithExpectedResourceRevision(ctx, uint64(req.ExpectedRevision))
 	}
 	if _, err := uc.SetResourceOverrides(ctx, req.RoutingGroupId, routing.Source{Kind: req.SourceKind, ID: req.SourceId}, req.PriorityOverride, req.WeightOverride); err != nil {
 		return nil, err

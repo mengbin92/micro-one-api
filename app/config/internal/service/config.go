@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/authz"
 	"net/http"
@@ -64,16 +67,24 @@ func (s *ConfigService) ListConfigs(ctx context.Context, req *configv1.ListConfi
 }
 
 func (s *ConfigService) SetConfig(ctx context.Context, req *configv1.SetConfigRequest) (*configv1.SetConfigResponse, error) {
+	ctx = authorization.WithExpectedResourceRevision(ctx, req.ExpectedRevision)
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
 	entry, err := s.uc.SetConfigEntry(ctx, req.Namespace, req.Key, req.Value, req.Comment)
 	if err != nil {
-		return nil, err
+		return nil, configMutationError(err)
 	}
 	return &configv1.SetConfigResponse{Success: true, Revision: entry.Revision}, nil
 }
 
 func (s *ConfigService) DeleteConfig(ctx context.Context, req *configv1.DeleteConfigRequest) (*configv1.DeleteConfigResponse, error) {
+	ctx = authorization.WithExpectedResourceRevision(ctx, req.ExpectedRevision)
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
 	if err := s.uc.DeleteConfig(ctx, req.Namespace, req.Key); err != nil {
-		return nil, err
+		return nil, configMutationError(err)
 	}
 	return &configv1.DeleteConfigResponse{Success: true}, nil
 }
@@ -96,7 +107,7 @@ func (s *ConfigService) HandleGetConfig(w http.ResponseWriter, r *http.Request) 
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
-		authz.WriteHTTPError(w, err)
+		authz.WriteHTTPError(w, configMutationError(err))
 		return
 	}
 	writeJSON(w, http.StatusOK, configEntryToMap(entry))
@@ -117,7 +128,7 @@ func (s *ConfigService) HandleListConfigs(w http.ResponseWriter, r *http.Request
 	pageSize, _ := strconv.ParseInt(r.URL.Query().Get("page_size"), 10, 32)
 	entries, total, err := s.uc.ListConfigs(r.Context(), namespace, int32(page), int32(pageSize))
 	if err != nil {
-		authz.WriteHTTPError(w, err)
+		authz.WriteHTTPError(w, configMutationError(err))
 		return
 	}
 	items := make([]map[string]any, 0, len(entries))
@@ -138,19 +149,26 @@ func (s *ConfigService) HandleSetConfig(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var body struct {
-		Value   string `json:"value"`
-		Comment string `json:"comment"`
+		Value            string `json:"value"`
+		Comment          string `json:"comment"`
+		ExpectedRevision string `json:"expected_revision"`
+		Reason           string `json:"reason"`
 	}
 	if err := jsonx.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	entry, err := s.uc.SetConfigEntry(r.Context(), namespace, key, body.Value, body.Comment)
+	ctx, err := configMutationContext(r.Context(), body.ExpectedRevision, body.Reason)
 	if err != nil {
 		authz.WriteHTTPError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "revision": entry.Revision})
+	entry, err := s.uc.SetConfigEntry(ctx, namespace, key, body.Value, body.Comment)
+	if err != nil {
+		authz.WriteHTTPError(w, configMutationError(err))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "revision": strconv.FormatInt(entry.Revision, 10)})
 }
 
 func (s *ConfigService) HandleDeleteConfig(w http.ResponseWriter, r *http.Request) {
@@ -163,12 +181,17 @@ func (s *ConfigService) HandleDeleteConfig(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "namespace and key are required")
 		return
 	}
-	if err := s.uc.DeleteConfig(r.Context(), namespace, key); err != nil {
+	ctx, err := configMutationContext(r.Context(), r.URL.Query().Get("expected_revision"), r.URL.Query().Get("reason"))
+	if err != nil {
+		authz.WriteHTTPError(w, err)
+		return
+	}
+	if err := s.uc.DeleteConfig(ctx, namespace, key); err != nil {
 		if err == biz.ErrConfigNotFound {
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
-		authz.WriteHTTPError(w, err)
+		authz.WriteHTTPError(w, configMutationError(err))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -211,7 +234,7 @@ func parseTwoSegments(path, prefix string) (string, string) {
 func configEntryToMap(e *biz.ConfigEntry) map[string]any {
 	return map[string]any{
 		"id":         e.ID,
-		"revision":   e.Revision,
+		"revision":   strconv.FormatInt(e.Revision, 10),
 		"namespace":  e.Namespace,
 		"key":        e.Key,
 		"value":      e.Value,
@@ -237,3 +260,27 @@ func (s *ConfigService) SetAuthorization(r authorization.Resolver) {
 	s.ownerAuthorization, _ = r.(*authz.Client)
 }
 func (s *ConfigService) OwnerAuthorizationClient() *authz.Client { return s.ownerAuthorization }
+
+func configMutationContext(ctx context.Context, expected, reason string) (context.Context, error) {
+	if expected == "" {
+		expected = "0"
+	}
+	revision, err := strconv.ParseUint(expected, 10, 64)
+	if err != nil {
+		return ctx, status.Error(codes.InvalidArgument, "invalid expected_revision")
+	}
+	ctx = authorization.WithExpectedResourceRevision(ctx, revision)
+	if reason != "" {
+		ctx = authorization.WithWriteReason(ctx, reason)
+	}
+	return ctx, nil
+}
+func configMutationError(err error) error {
+	switch {
+	case errors.Is(err, biz.ErrConfigRevisionConflict):
+		return status.Error(codes.Aborted, err.Error())
+	case errors.Is(err, biz.ErrConfigMutationRequired):
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+	return err
+}

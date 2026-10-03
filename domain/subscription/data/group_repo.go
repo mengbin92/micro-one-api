@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/subscription/biz"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type groupModel struct {
+	Revision         int64    `gorm:"column:revision"`
 	ID               int64    `gorm:"column:id"`
 	Name             string   `gorm:"column:name"`
 	DisplayName      string   `gorm:"column:display_name"`
@@ -83,34 +86,79 @@ func (r *Repository) ListGroups(ctx context.Context) ([]*biz.SubscriptionGroup, 
 
 func (r *Repository) createGroupDB(ctx context.Context, group *biz.SubscriptionGroup) error {
 	model := groupToModel(group)
-	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
+	model.Revision = 1
+	if err := runSubscriptionTx(ctx, r.db, func(ctx context.Context, tx *gorm.DB) error {
+		if err := requireOperations(ctx, 0, 0, "subscription.quota_policy.create"); err != nil {
+			return err
+		}
+		if err := tx.Create(&model).Error; err != nil {
+			return err
+		}
+		return auditOperations(ctx, tx, model.ID, "subscription.quota_policy.create")
+	}); err != nil {
 		return err
 	}
 	group.ID = model.ID
+	group.Revision = model.Revision
 	return nil
 }
 
 func (r *Repository) updateGroupDB(ctx context.Context, group *biz.SubscriptionGroup) error {
 	model := groupToModel(group)
-	return r.db.WithContext(ctx).Model(&groupModel{}).Where("id = ?", group.ID).Updates(map[string]any{
-		"name":              model.Name,
-		"display_name":      model.DisplayName,
-		"platform":          model.Platform,
-		"subscription_type": model.SubscriptionType,
-		"daily_limit_usd":   model.DailyLimitUSD,
-		"weekly_limit_usd":  model.WeeklyLimitUSD,
-		"monthly_limit_usd": model.MonthlyLimitUSD,
-		"rate_multiplier":   model.RateMultiplier,
-		"status":            model.Status,
-		"price_quota":       model.PriceQuota,
-		"duration_days":     model.DurationDays,
-		"created_at":        model.CreatedAt,
-		"updated_at":        model.UpdatedAt,
-	}).Error
+	return runSubscriptionTx(ctx, r.db, func(ctx context.Context, tx *gorm.DB) error {
+		var old groupModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&old, group.ID).Error; err != nil {
+			return err
+		}
+		if err := requireOperations(ctx, old.ID, 0, "subscription.quota_policy.update"); err != nil {
+			return err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "subscription.quota_policy.update"); iam && (group.Revision <= 0 || group.Revision != old.Revision) {
+			return biz.ErrSubscriptionContractConflict
+		}
+		if err := tx.Model(&groupModel{}).Where("id = ? AND revision = ?", group.ID, old.Revision).Updates(map[string]any{
+			"revision":          old.Revision + 1,
+			"name":              model.Name,
+			"display_name":      model.DisplayName,
+			"platform":          model.Platform,
+			"subscription_type": model.SubscriptionType,
+			"daily_limit_usd":   model.DailyLimitUSD,
+			"weekly_limit_usd":  model.WeeklyLimitUSD,
+			"monthly_limit_usd": model.MonthlyLimitUSD,
+			"rate_multiplier":   model.RateMultiplier,
+			"status":            model.Status,
+			"price_quota":       model.PriceQuota,
+			"duration_days":     model.DurationDays,
+			"created_at":        model.CreatedAt,
+			"updated_at":        model.UpdatedAt,
+		}).Error; err != nil {
+			return err
+		}
+		group.Revision = old.Revision + 1
+		return auditOperations(ctx, tx, group.ID, "subscription.quota_policy.update")
+	})
 }
 
 func (r *Repository) deleteGroupDB(ctx context.Context, groupID int64) error {
-	return r.db.WithContext(ctx).Delete(&groupModel{}, groupID).Error
+	return runSubscriptionTx(ctx, r.db, func(ctx context.Context, tx *gorm.DB) error {
+		var old groupModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&old, groupID).Error; err != nil {
+			return err
+		}
+		if err := requireOperations(ctx, groupID, 0, "subscription.quota_policy.delete"); err != nil {
+			return err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "subscription.quota_policy.delete"); iam {
+			expected, ok := biz.ExpectedRevision(ctx)
+			if !ok || expected != old.Revision {
+				return biz.ErrSubscriptionContractConflict
+			}
+		}
+		if err := tx.Delete(&groupModel{}, groupID).Error; err != nil {
+			return err
+		}
+		return auditOperations(ctx, tx, groupID, "subscription.quota_policy.delete")
+	})
 }
 
 func (r *Repository) getGroupByIDDB(ctx context.Context, groupID int64) (*biz.SubscriptionGroup, error) {
@@ -118,8 +166,12 @@ func (r *Repository) getGroupByIDDB(ctx context.Context, groupID int64) (*biz.Su
 }
 
 func (r *Repository) getGroupByIDWithDB(ctx context.Context, db *gorm.DB, groupID int64) (*biz.SubscriptionGroup, error) {
+	scoped, scopeErr := groupQuery(ctx, db.WithContext(ctx))
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
 	var model groupModel
-	if err := db.WithContext(ctx).Where("id = ?", groupID).First(&model).Error; err != nil {
+	if err := scoped.Where("id = ?", groupID).First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, biz.ErrSubscriptionGroupNotFound
 		}
@@ -130,8 +182,12 @@ func (r *Repository) getGroupByIDWithDB(ctx context.Context, db *gorm.DB, groupI
 }
 
 func (r *Repository) getGroupByNameDB(ctx context.Context, name string) (*biz.SubscriptionGroup, error) {
+	scoped, scopeErr := groupQuery(ctx, r.db.WithContext(ctx))
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
 	var model groupModel
-	if err := r.db.WithContext(ctx).Where("name = ?", name).First(&model).Error; err != nil {
+	if err := scoped.Where("name = ?", name).First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, biz.ErrSubscriptionGroupNotFound
 		}
@@ -142,8 +198,12 @@ func (r *Repository) getGroupByNameDB(ctx context.Context, name string) (*biz.Su
 }
 
 func (r *Repository) listGroupsDB(ctx context.Context) ([]*biz.SubscriptionGroup, error) {
+	scoped, scopeErr := groupQuery(ctx, r.db.WithContext(ctx))
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
 	var rows []groupModel
-	if err := r.db.WithContext(ctx).Order("id ASC").Find(&rows).Error; err != nil {
+	if err := scoped.Order("id ASC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	result := make([]*biz.SubscriptionGroup, 0, len(rows))
@@ -160,6 +220,7 @@ func groupToModel(group *biz.SubscriptionGroup) groupModel {
 	}
 	return groupModel{
 		ID:               group.ID,
+		Revision:         group.Revision,
 		Name:             group.Name,
 		DisplayName:      group.DisplayName,
 		Platform:         group.Platform,
@@ -182,6 +243,7 @@ func groupFromModel(model *groupModel) biz.SubscriptionGroup {
 	}
 	return biz.SubscriptionGroup{
 		ID:               model.ID,
+		Revision:         model.Revision,
 		Name:             model.Name,
 		DisplayName:      model.DisplayName,
 		Platform:         model.Platform,
@@ -199,6 +261,9 @@ func groupFromModel(model *groupModel) biz.SubscriptionGroup {
 }
 
 func (r *Repository) createGroupMemory(ctx context.Context, group *biz.SubscriptionGroup) error {
+	if err := authorization.RequireDurableWrite(ctx, "subscription.quota_policy.create"); err != nil {
+		return err
+	}
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	group.ID = r.nextGroupID
@@ -209,6 +274,9 @@ func (r *Repository) createGroupMemory(ctx context.Context, group *biz.Subscript
 }
 
 func (r *Repository) updateGroupMemory(ctx context.Context, group *biz.SubscriptionGroup) error {
+	if err := authorization.RequireDurableWrite(ctx, "subscription.quota_policy.update"); err != nil {
+		return err
+	}
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	r.groups[group.ID] = cloneGroup(group)
@@ -216,6 +284,9 @@ func (r *Repository) updateGroupMemory(ctx context.Context, group *biz.Subscript
 }
 
 func (r *Repository) deleteGroupMemory(ctx context.Context, groupID int64) error {
+	if err := authorization.RequireDurableWrite(ctx, "subscription.quota_policy.delete"); err != nil {
+		return err
+	}
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	delete(r.groups, groupID)
@@ -229,6 +300,9 @@ func (r *Repository) getGroupByIDMemory(ctx context.Context, groupID int64) (*bi
 	if !ok {
 		return nil, biz.ErrSubscriptionGroupNotFound
 	}
+	if !memoryVisible(ctx, group.ID, 0, "subscription.quota_policy.read", "subscription.quota_policy.list") {
+		return nil, biz.ErrSubscriptionGroupNotFound
+	}
 	return cloneGroup(group), nil
 }
 
@@ -236,7 +310,7 @@ func (r *Repository) getGroupByNameMemory(ctx context.Context, name string) (*bi
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	for _, group := range r.groups {
-		if group.Name == name {
+		if group.Name == name && memoryVisible(ctx, group.ID, 0, "subscription.quota_policy.read", "subscription.quota_policy.list") {
 			return cloneGroup(group), nil
 		}
 	}
@@ -248,6 +322,9 @@ func (r *Repository) listGroupsMemory(ctx context.Context) ([]*biz.SubscriptionG
 	defer r.lock.RUnlock()
 	result := make([]*biz.SubscriptionGroup, 0, len(r.groups))
 	for _, group := range r.groups {
+		if !memoryVisible(ctx, group.ID, 0, "subscription.quota_policy.read", "subscription.quota_policy.list") {
+			continue
+		}
 		result = append(result, cloneGroup(group))
 	}
 	return result, nil

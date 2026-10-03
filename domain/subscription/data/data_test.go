@@ -34,7 +34,8 @@ func setupSubscriptionTestDB(t *testing.T) *Repository {
 			price_quota INTEGER NOT NULL DEFAULT 0,
 			duration_days INTEGER NOT NULL DEFAULT 0,
 			created_at INTEGER NOT NULL DEFAULT 0,
-			updated_at INTEGER NOT NULL DEFAULT 0
+			updated_at INTEGER NOT NULL DEFAULT 0,
+            revision INTEGER NOT NULL DEFAULT 1
 		)
 	`).Error)
 

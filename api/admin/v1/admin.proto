@@ -152,6 +152,7 @@ message CreateRedeemCodeRequest {
   int64 amount = 3;
   int32 count = 4;
   string operator_id = 5;
+  string reason = 6;
 }
 
 message CreateRedeemCodeResponse {
@@ -165,6 +166,7 @@ message CreateRedeemCodesBatchRequest {
   int32 count = 3;
   int32 batch_size = 4;
   string operator_id = 5;
+  string reason = 6;
 }
 
 message CreateRedeemCodesBatchResponse {
@@ -190,6 +192,7 @@ message RedeemCodeInfo {
   int32 status = 5;
   string created_by = 6;
   int64 created_at = 7;
+  int64 revision = 8;
 }
 
 message ListRedeemCodesRequest {
@@ -215,6 +218,7 @@ message UpdateRedeemCodeRequest {
   string name = 2;
   int64 amount = 3;
   int32 status = 4;
+  optional int64 expected_revision = 5; string reason = 6;
 }
 
 message UpdateRedeemCodeResponse {
@@ -224,6 +228,7 @@ message UpdateRedeemCodeResponse {
 
 message DeleteRedeemCodeRequest {
   string code = 1;
+  optional int64 expected_revision = 2; string reason = 3;
 }
 
 message DeleteRedeemCodeResponse {
@@ -377,6 +382,7 @@ message AdminCreateChannelRequest {
   string model_mapping = 10;
   string system_prompt = 11;
   optional bool restrict_models = 12;                 // restrict to abilities list. Optional: threaded to channel-service CreateChannel; defaults to true (legacy) when unset.
+  string reason = 13;
 }
 
 message AdminCreateChannelResponse {
@@ -398,6 +404,7 @@ message AdminUpdateChannelRequest {
   string model_mapping = 10;
   string system_prompt = 11;
   optional bool restrict_models = 12;                 // restrict to abilities list. Optional (proto3 presence): only applied when the caller sets it, so callers that update only balance/health never silently flip restrict_models.
+  int64 expected_revision = 13; string reason = 14;
 }
 
 message AdminUpdateChannelResponse {
@@ -407,6 +414,7 @@ message AdminUpdateChannelResponse {
 
 message AdminDeleteChannelRequest {
   int64 channel_id = 1;
+  int64 expected_revision = 2; string reason = 3;
 }
 
 message AdminDeleteChannelResponse {
@@ -417,6 +425,7 @@ message AdminDeleteChannelResponse {
 message AdminChangeChannelStatusRequest {
   int64 channel_id = 1;
   int32 status = 2;
+  int64 expected_revision = 3; string reason = 4;
 }
 
 message AdminChangeChannelStatusResponse {
@@ -470,6 +479,7 @@ message AdminCreateSubscriptionAccountRequest {
   string quota_reset_strategy = 28;
   string quota_timezone = 29;
   string model_mapping = 30;        // JSON {"src":"dst"} per-account model remap
+  string reason = 31;
 }
 
 message AdminCreateSubscriptionAccountResponse {
@@ -509,6 +519,7 @@ message AdminUpdateSubscriptionAccountRequest {
   optional string quota_reset_strategy = 28;
   optional string quota_timezone = 29;
   optional string model_mapping = 30; // JSON {"src":"dst"} per-account model remap
+  int64 expected_revision = 31; string reason = 32;
 }
 
 message AdminUpdateSubscriptionAccountResponse {
@@ -519,6 +530,7 @@ message AdminUpdateSubscriptionAccountResponse {
 message AdminResetSubscriptionAccountQuotaRequest {
   int64 account_id = 1;
   string scope = 2;
+  int64 expected_revision = 3; string reason = 4;
 }
 
 message AdminResetSubscriptionAccountQuotaResponse {
@@ -528,6 +540,7 @@ message AdminResetSubscriptionAccountQuotaResponse {
 
 message AdminDeleteSubscriptionAccountRequest {
   int64 account_id = 1;
+  int64 expected_revision = 2; string reason = 3;
 }
 
 message AdminDeleteSubscriptionAccountResponse {
@@ -538,6 +551,7 @@ message AdminDeleteSubscriptionAccountResponse {
 message AdminChangeSubscriptionAccountStatusRequest {
   int64 account_id = 1;
   int32 status = 2;
+  int64 expected_revision = 3; string reason = 4;
 }
 
 message AdminChangeSubscriptionAccountStatusResponse {
@@ -551,10 +565,12 @@ message GetSystemOptionsRequest {}
 
 message GetSystemOptionsResponse {
   common.v1.SystemOptions options = 1;
+  map<string,string> revisions = 2;
 }
 
 message UpdateSystemOptionsRequest {
   common.v1.SystemOptions options = 1;
+  map<string,string> expected_revisions = 2; string reason = 3;
 }
 
 message UpdateSystemOptionsResponse {
@@ -622,16 +638,21 @@ message UpsertModelRoutingRequest {
   int64 subscription_account_id = 4;
   optional bool enabled = 5;   // Optional (proto3 presence): when unset, enabled is left unchanged on update and defaults to true on insert (DB DEFAULT 1).
   int32 priority = 6;
+  uint64 expected_revision = 7;
+  string reason = 8;
 }
 
 message UpsertModelRoutingResponse {
   bool success = 1;
   string message = 2;
   int64 id = 3;
+  int64 revision = 4;
 }
 
 message DeleteModelRoutingRequest {
   int64 id = 1;
+  uint64 expected_revision = 2;
+  string reason = 3;
 }
 
 message DeleteModelRoutingResponse {

@@ -18,7 +18,7 @@ func (s *IdentityService) GetUserRoutingFacts(ctx context.Context, req *identity
 		return nil, mapIdentityErrorToGRPC(err)
 	}
 	var f *routing.SubjectFacts
-	if mode == "iam" && !serviceidentity.FromContext(ctx).SystemCapability(identityv1.IdentityService_GetUserRoutingFacts_FullMethodName) {
+	if mode == "iam" && !serviceidentity.HasSystemCapability(ctx, identityv1.IdentityService_GetUserRoutingFacts_FullMethodName) {
 		ctx, err = s.managedIdentityContext(ctx)
 		if err != nil {
 			return nil, err

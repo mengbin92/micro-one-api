@@ -52,7 +52,7 @@ func (s *AdminService) ListPurchasableSubscriptionGroups(ctx context.Context) ([
 	if s == nil || s.groupUc == nil {
 		return nil, ErrSubscriptionServiceNotConfigured
 	}
-	groups, err := s.groupUc.List(ctx)
+	groups, err := s.groupUc.ListForPurchase(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +203,7 @@ func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID
 
 	userIDStr := strconv.FormatInt(userID, 10)
 	remark := fmt.Sprintf("purchase subscription group=%d (%s)", group.ID, group.Name)
-	deduct, err := s.billingClient.PurchaseSubscription(ctx, &billingv1.PurchaseSubscriptionRequest{
+	deduct, err := s.billingClient.PurchaseSubscription(operatorRPCContext(ctx), &billingv1.PurchaseSubscriptionRequest{
 		UserId:      userIDStr,
 		PriceAmount: group.PriceQuota,
 		GroupId:     group.ID,
@@ -224,7 +224,7 @@ func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID
 		}
 		// Compensate: give the quota back so the user is not charged for a
 		// subscription that was never created.
-		if _, refundErr := s.billingClient.TopUpQuota(ctx, &billingv1.TopUpQuotaRequest{
+		if _, refundErr := s.billingClient.TopUpQuota(operatorRPCContext(ctx), &billingv1.TopUpQuotaRequest{
 			UserId:     userIDStr,
 			Amount:     group.PriceQuota,
 			OperatorId: "system",
@@ -274,7 +274,7 @@ func (s *AdminService) PurchaseSubscriptionPlan(ctx context.Context, userID, pla
 
 	userIDStr := strconv.FormatInt(userID, 10)
 	remark := fmt.Sprintf("purchase subscription plan=%d (%s)", plan.ID, plan.Name)
-	deduct, err := s.billingClient.PurchaseSubscription(ctx, &billingv1.PurchaseSubscriptionRequest{
+	deduct, err := s.billingClient.PurchaseSubscription(operatorRPCContext(ctx), &billingv1.PurchaseSubscriptionRequest{
 		UserId:      userIDStr,
 		PriceAmount: plan.PriceQuota,
 		GroupId:     plan.GroupID,
@@ -292,7 +292,7 @@ func (s *AdminService) PurchaseSubscriptionPlan(ctx context.Context, userID, pla
 		if authz.IsAuthorizationError(err) {
 			return nil, err
 		}
-		if _, refundErr := s.billingClient.TopUpQuota(ctx, &billingv1.TopUpQuotaRequest{
+		if _, refundErr := s.billingClient.TopUpQuota(operatorRPCContext(ctx), &billingv1.TopUpQuotaRequest{
 			UserId:     userIDStr,
 			Amount:     plan.PriceQuota,
 			OperatorId: "system",
@@ -484,7 +484,7 @@ func (s *AdminService) ChangeSubscription(ctx context.Context, req subscriptionb
 			}
 			userIDStr := strconv.FormatInt(req.UserID, 10)
 			remark := fmt.Sprintf("subscription upgrade group=%d (operator=%s)", req.ToGroupID, req.Operator)
-			deduct, err := s.billingClient.PurchaseSubscription(ctx, &billingv1.PurchaseSubscriptionRequest{
+			deduct, err := s.billingClient.PurchaseSubscription(operatorRPCContext(ctx), &billingv1.PurchaseSubscriptionRequest{
 				UserId:      userIDStr,
 				PriceAmount: charged,
 				GroupId:     req.ToGroupID,
@@ -510,7 +510,7 @@ func (s *AdminService) ChangeSubscription(ctx context.Context, req subscriptionb
 		// failed, so refund the difference so no charge lingers without a
 		// service change. Mirrors the PurchaseSubscription saga.
 		userIDStr := strconv.FormatInt(req.UserID, 10)
-		if _, refundErr := s.billingClient.TopUpQuota(ctx, &billingv1.TopUpQuotaRequest{
+		if _, refundErr := s.billingClient.TopUpQuota(operatorRPCContext(ctx), &billingv1.TopUpQuotaRequest{
 			UserId:     userIDStr,
 			Amount:     charged,
 			OperatorId: "system",
@@ -541,7 +541,7 @@ func (s *AdminService) GetSubscriptionProgress(ctx context.Context, userID int64
 		return nil, ErrSubscriptionServiceNotConfigured
 	}
 	if s.billingClient != nil {
-		reply, err := s.billingClient.GetSubscriptionUsage(ctx, &billingv1.GetSubscriptionUsageRequest{UserId: userID})
+		reply, err := s.billingClient.GetSubscriptionUsage(operatorRPCContext(ctx), &billingv1.GetSubscriptionUsageRequest{UserId: userID, SelfRequest: subscriptionbiz.IsSelfRequest(ctx)})
 		if err != nil {
 			return nil, err
 		}
@@ -670,7 +670,7 @@ func (s *AdminService) CreateSubscriptionPaymentOrder(ctx context.Context, userI
 		channel = "alipay"
 	}
 
-	paymentResp, err := s.billingClient.CreatePaymentOrder(ctx, &billingv1.CreatePaymentOrderRequest{
+	paymentResp, err := s.billingClient.CreatePaymentOrder(operatorRPCContext(ctx), &billingv1.CreatePaymentOrderRequest{
 		RequestId:   requestID,
 		UserId:      userIDStr,
 		Channel:     channel,
@@ -731,7 +731,7 @@ func (s *AdminService) CompleteSubscriptionPurchase(ctx context.Context, userID 
 	}
 
 	// Get payment order to verify payment and get group_id
-	orderResp, err := s.billingClient.GetPaymentOrderByTradeNo(ctx, &billingv1.GetPaymentOrderByTradeNoRequest{TradeNo: tradeNo})
+	orderResp, err := s.billingClient.GetPaymentOrderByTradeNo(operatorRPCContext(ctx), &billingv1.GetPaymentOrderByTradeNoRequest{TradeNo: tradeNo})
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -762,7 +762,7 @@ func (s *AdminService) CompleteSubscriptionPurchase(ctx context.Context, userID 
 	// (which would extend the user's entitlement repeatedly). On fulfilment
 	// failure the claim is released via UnmarkPaymentOrderAssetIssued so the
 	// order can be retried.
-	claimResp, err := s.billingClient.MarkPaymentOrderAssetIssued(ctx, &billingv1.MarkPaymentOrderAssetIssuedRequest{
+	claimResp, err := s.billingClient.MarkPaymentOrderAssetIssued(operatorRPCContext(ctx), &billingv1.MarkPaymentOrderAssetIssuedRequest{
 		TradeNo: tradeNo,
 		UserId:  strconv.FormatInt(userID, 10),
 	})
@@ -805,7 +805,7 @@ func (s *AdminService) CompleteSubscriptionPurchase(ctx context.Context, userID 
 		// (status=paid && asset_issue_status=issued && subscription_id=0).
 		// errors.Join preserves both the fulfilment and the release failures
 		// so callers can match on either.
-		if _, unmarkErr := s.billingClient.UnmarkPaymentOrderAssetIssued(ctx, &billingv1.UnmarkPaymentOrderAssetIssuedRequest{TradeNo: tradeNo}); unmarkErr != nil {
+		if _, unmarkErr := s.billingClient.UnmarkPaymentOrderAssetIssued(operatorRPCContext(ctx), &billingv1.UnmarkPaymentOrderAssetIssuedRequest{TradeNo: tradeNo}); unmarkErr != nil {
 			return nil, errors.Join(fulfilErr, fmt.Errorf("releasing asset-issuance claim after fulfilment failure: %w", unmarkErr))
 		}
 		return nil, fulfilErr
@@ -940,7 +940,7 @@ func (s *AdminService) executeSubscriptionCommerce(ctx context.Context, user, pl
 	if key == "" {
 		return nil, fmt.Errorf("Idempotency-Key is required for subscription purchases and changes")
 	}
-	reply, err := s.billingClient.ExecuteSubscriptionCommerce(ctx, &billingv1.SubscriptionCommerceRequest{UserId: user, PlanId: plan, FromSubscriptionId: from, ChangePolicy: policy, RequestId: key})
+	reply, err := s.billingClient.ExecuteSubscriptionCommerce(operatorRPCContext(ctx), &billingv1.SubscriptionCommerceRequest{UserId: user, PlanId: plan, FromSubscriptionId: from, ChangePolicy: policy, RequestId: key})
 	if err != nil {
 		return nil, err
 	}
@@ -962,7 +962,7 @@ func (s *AdminService) createContractPaymentOrder(ctx context.Context, userID, p
 	if currency == "" {
 		currency = "CNY"
 	}
-	resp, err := s.billingClient.CreatePaymentOrder(ctx, &billingv1.CreatePaymentOrderRequest{UserId: strconv.FormatInt(userID, 10), PlanId: planID, RequestId: requestID, Channel: channel, Currency: currency, AssetType: "subscription", AssetAmount: 1, MoneyCents: 1})
+	resp, err := s.billingClient.CreatePaymentOrder(operatorRPCContext(ctx), &billingv1.CreatePaymentOrderRequest{UserId: strconv.FormatInt(userID, 10), PlanId: planID, RequestId: requestID, Channel: channel, Currency: currency, AssetType: "subscription", AssetAmount: 1, MoneyCents: 1})
 	if err != nil {
 		return nil, nil, err
 	}

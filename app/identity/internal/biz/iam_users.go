@@ -137,3 +137,33 @@ func (uc *IdentityUsecase) GetManagedUser(ctx context.Context, id int64) (*User,
 	}
 	return u, nil
 }
+
+// UserExportRepo executes export scope at the authoritative SQL boundary.
+type UserExportRepo interface {
+	ExportUsers(context.Context, int32, int32, string, string, int32) ([]*User, int64, error)
+}
+
+func (uc *IdentityUsecase) ExportManagedUsers(ctx context.Context, page, size int32, keyword, group string, status int32) ([]*User, int64, error) {
+	if page < 1 || size < 1 || size > 200 || int64(page-1)*int64(size) > 2147483647 {
+		return nil, 0, ErrIAMInvalidRelation
+	}
+	ctx, _, err := uc.managedUserScope(ctx, "identity.users.export", "identity.user.export")
+	if err != nil {
+		return nil, 0, err
+	}
+	repo, ok := uc.repo.(UserExportRepo)
+	if !ok {
+		return nil, 0, ErrIAMDependencyUnavailable
+	}
+	users, total, err := repo.ExportUsers(ctx, page, size, keyword, group, status)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err = uc.redactManagedContact(ctx, "identity.users.export", users); err != nil {
+		return nil, 0, err
+	}
+	for _, u := range users {
+		u.PasswordHash = ""
+	}
+	return users, total, nil
+}

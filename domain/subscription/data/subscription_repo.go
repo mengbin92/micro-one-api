@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"errors"
+	"micro-one-api/domain/authorization"
 	"sort"
 	"strings"
 	"time"
@@ -274,9 +275,23 @@ func (r *Repository) createSubscriptionDB(ctx context.Context, subscription *biz
 func (r *Repository) createSubscriptionInTxDB(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription) error {
 	model := subscriptionToModel(subscription)
 	model.EntitlementRevision = 1
-	err := tx.WithContext(ctx).Transaction(func(db *gorm.DB) error {
+	err := runSubscriptionTx(ctx, tx, func(ctx context.Context, db *gorm.DB) error {
+		if err := requireOperations(ctx, 0, subscription.UserID, subscriptionWriteOps...); err != nil {
+			return err
+		}
+		for _, operation := range []string{"subscription.user_subscription.assign", "subscription.user_subscription.change"} {
+			if _, iam := authorization.QueryScopeFromContext(ctx, operation); iam {
+				if err := validateEnabledQuotaPolicy(db, subscription.GroupID); err != nil {
+					return err
+				}
+				break
+			}
+		}
 		if !biz.EntitlementsEnabled() && subscription.Contract == nil {
-			return db.Omit("ContractSnapshot", "EntitlementRevision", "SourceOrder", "PricePaid").Create(&model).Error
+			if err := db.Omit("ContractSnapshot", "EntitlementRevision", "SourceOrder", "PricePaid").Create(&model).Error; err != nil {
+				return err
+			}
+			return auditOperations(ctx, db, model.ID, subscriptionWriteOps...)
 		}
 		if err := LockContractReferences(db); err != nil {
 			return err
@@ -290,7 +305,10 @@ func (r *Repository) createSubscriptionInTxDB(ctx context.Context, tx *gorm.DB, 
 		if err := syncContractCoverage(db, "subscription_routing_entitlements", "subscription_id", model.ID, subscription.Contract); err != nil {
 			return err
 		}
-		return routingoutbox.Enqueue(db, "subscription", "subscription", model.ID, 1)
+		if err := routingoutbox.Enqueue(db, "subscription", "subscription", model.ID, 1); err != nil {
+			return err
+		}
+		return auditOperations(ctx, db, model.ID, subscriptionWriteOps...)
 	})
 	if err != nil {
 		if isDuplicateKeyErr(err) {
@@ -450,7 +468,13 @@ func updateSubscriptionFieldsWithTxCore(ctx context.Context, tx *gorm.DB, subscr
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
-		return biz.ErrSubscriptionNotFound
+		var n int64
+		if err := tx.Model(&subscriptionModel{}).Where("id = ?", subscription.ID).Count(&n).Error; err != nil {
+			return err
+		}
+		if n == 0 {
+			return biz.ErrSubscriptionNotFound
+		}
 	}
 	return nil
 }
@@ -476,6 +500,9 @@ func (r *Repository) UpdateSubscriptionFieldsInTx(ctx context.Context, tx biz.Tx
 }
 
 func (r *Repository) updateSubscriptionFieldsMemory(ctx context.Context, subscription *biz.UserSubscription, fields []biz.SubscriptionField) error {
+	if err := authorization.RequireDurableWrite(ctx, subscriptionWriteOps...); err != nil {
+		return err
+	}
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	existing, ok := r.subscriptions[subscription.ID]
@@ -532,8 +559,12 @@ func (r *Repository) deleteSubscriptionDB(ctx context.Context, subscriptionID in
 }
 
 func (r *Repository) getSubscriptionByIDDB(ctx context.Context, subscriptionID int64) (*biz.UserSubscription, error) {
+	scoped, scopeErr := subscriptionQuery(ctx, r.db.WithContext(ctx))
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
 	var model subscriptionModel
-	if err := r.db.WithContext(ctx).Where("id = ?", subscriptionID).First(&model).Error; err != nil {
+	if err := scoped.Where("id = ?", subscriptionID).First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, biz.ErrSubscriptionNotFound
 		}
@@ -544,8 +575,12 @@ func (r *Repository) getSubscriptionByIDDB(ctx context.Context, subscriptionID i
 }
 
 func (r *Repository) listSubscriptionsByUserDB(ctx context.Context, userID int64) ([]*biz.UserSubscription, error) {
+	scoped, scopeErr := subscriptionQuery(ctx, r.db.WithContext(ctx))
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
 	var rows []subscriptionModel
-	if err := r.db.WithContext(ctx).Where("user_id = ?", userID).Order("id ASC").Find(&rows).Error; err != nil {
+	if err := scoped.Where("user_id = ?", userID).Order("id ASC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	result := make([]*biz.UserSubscription, 0, len(rows))
@@ -557,6 +592,10 @@ func (r *Repository) listSubscriptionsByUserDB(ctx context.Context, userID int64
 }
 
 func (r *Repository) getActiveSubscriptionByUserDB(ctx context.Context, userID int64) (*biz.UserSubscription, error) {
+	scoped, scopeErr := subscriptionQuery(ctx, r.db.WithContext(ctx))
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
 	var model subscriptionModel
 	// Code-review 2026-07-30 domain-C1: defence-in-depth. The
 	// SubscriptionExpiryChecker is the primary mechanism that flips an active
@@ -567,7 +606,7 @@ func (r *Repository) getActiveSubscriptionByUserDB(ctx context.Context, userID i
 	// therefore also require expires_at > now here so the active set is correct
 	// regardless of the checker. The dedicated expiry filter still runs in the
 	// checker to actually persist the status transition for reporting.
-	if err := r.db.WithContext(ctx).
+	if err := scoped.
 		Where("user_id = ? AND status = ? AND expires_at > ?", userID, string(biz.SubscriptionStatusActive), time.Now().Unix()).
 		Order("updated_at DESC, id DESC").
 		First(&model).Error; err != nil {
@@ -605,8 +644,12 @@ func (r *Repository) getActiveSubscriptionByUserInTxDB(ctx context.Context, tx *
 }
 
 func (r *Repository) listActiveSubscriptionsDB(ctx context.Context) ([]*biz.UserSubscription, error) {
+	scoped, scopeErr := subscriptionQuery(ctx, r.db.WithContext(ctx))
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
 	var rows []subscriptionModel
-	if err := r.db.WithContext(ctx).
+	if err := scoped.
 		Where("status = ?", string(biz.SubscriptionStatusActive)).
 		Order("expires_at ASC, id ASC").
 		Find(&rows).Error; err != nil {
@@ -621,8 +664,12 @@ func (r *Repository) listActiveSubscriptionsDB(ctx context.Context) ([]*biz.User
 }
 
 func (r *Repository) listAllSubscriptionsDB(ctx context.Context) ([]*biz.UserSubscription, error) {
+	scoped, scopeErr := subscriptionQuery(ctx, r.db.WithContext(ctx))
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
 	var rows []subscriptionModel
-	if err := r.db.WithContext(ctx).
+	if err := scoped.
 		Order("created_at DESC, id DESC").
 		Find(&rows).Error; err != nil {
 		return nil, err
@@ -690,6 +737,9 @@ func subscriptionFromModel(model *subscriptionModel) biz.UserSubscription {
 }
 
 func (r *Repository) createSubscriptionMemory(ctx context.Context, subscription *biz.UserSubscription) error {
+	if err := authorization.RequireDurableWrite(ctx, subscriptionWriteOps...); err != nil {
+		return err
+	}
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	subscription.ID = r.nextSubID
@@ -701,6 +751,9 @@ func (r *Repository) createSubscriptionMemory(ctx context.Context, subscription 
 }
 
 func (r *Repository) updateSubscriptionMemory(ctx context.Context, subscription *biz.UserSubscription) error {
+	if err := authorization.RequireDurableWrite(ctx, subscriptionWriteOps...); err != nil {
+		return err
+	}
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	cloned := *subscription
@@ -710,6 +763,9 @@ func (r *Repository) updateSubscriptionMemory(ctx context.Context, subscription 
 }
 
 func (r *Repository) deleteSubscriptionMemory(ctx context.Context, subscriptionID int64) error {
+	if err := authorization.RequireDurableWrite(ctx, subscriptionWriteOps...); err != nil {
+		return err
+	}
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	delete(r.subscriptions, subscriptionID)
@@ -720,7 +776,7 @@ func (r *Repository) getSubscriptionByIDMemory(ctx context.Context, subscription
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	subscription, ok := r.subscriptions[subscriptionID]
-	if !ok {
+	if !ok || !memoryVisible(ctx, subscription.ID, subscription.UserID, "subscription.user_subscription.read", "subscription.user_subscription.list", "subscription.user_subscription.report.read") {
 		return nil, biz.ErrSubscriptionNotFound
 	}
 	cloned := *subscription
@@ -733,6 +789,9 @@ func (r *Repository) listSubscriptionsByUserMemory(ctx context.Context, userID i
 	defer r.lock.RUnlock()
 	result := make([]*biz.UserSubscription, 0)
 	for _, subscription := range r.subscriptions {
+		if !memoryVisible(ctx, subscription.ID, subscription.UserID, "subscription.user_subscription.read", "subscription.user_subscription.list", "subscription.user_subscription.report.read") {
+			continue
+		}
 		if subscription.UserID != userID {
 			continue
 		}
@@ -751,6 +810,9 @@ func (r *Repository) listActiveSubscriptionsMemory(ctx context.Context) ([]*biz.
 	defer r.lock.RUnlock()
 	result := make([]*biz.UserSubscription, 0)
 	for _, subscription := range r.subscriptions {
+		if !memoryVisible(ctx, subscription.ID, subscription.UserID, "subscription.user_subscription.read", "subscription.user_subscription.list", "subscription.user_subscription.report.read") {
+			continue
+		}
 		if subscription.Status != biz.SubscriptionStatusActive {
 			continue
 		}
@@ -772,6 +834,9 @@ func (r *Repository) listAllSubscriptionsMemory(ctx context.Context) ([]*biz.Use
 	defer r.lock.RUnlock()
 	result := make([]*biz.UserSubscription, 0, len(r.subscriptions))
 	for _, subscription := range r.subscriptions {
+		if !memoryVisible(ctx, subscription.ID, subscription.UserID, "subscription.user_subscription.read", "subscription.user_subscription.list", "subscription.user_subscription.report.read") {
+			continue
+		}
 		cloned := *subscription
 		cloned.Contract = biz.CloneContract(subscription.Contract)
 		result = append(result, &cloned)
@@ -791,6 +856,9 @@ func (r *Repository) getActiveSubscriptionByUserMemory(ctx context.Context, user
 	now := time.Now().Unix()
 	var chosen *biz.UserSubscription
 	for _, subscription := range r.subscriptions {
+		if !memoryVisible(ctx, subscription.ID, subscription.UserID, "subscription.user_subscription.read", "subscription.user_subscription.list", "subscription.user_subscription.report.read") {
+			continue
+		}
 		// domain-C1: same expires_at > now defence-in-depth as the DB path.
 		if subscription.UserID != userID || subscription.Status != biz.SubscriptionStatusActive || subscription.ExpiresAt <= now {
 			continue

@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"errors"
+	"micro-one-api/domain/authorization"
 	"time"
 
 	"micro-one-api/app/billing/internal/biz"
@@ -115,6 +116,15 @@ func (r *pricingSnapshotRepo) GetPricingSnapshotByHash(ctx context.Context, conf
 		}
 		return nil, err
 	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "billing.pricing.read"); iam {
+		id, err := r.ModelResourceID(ctx, model.ModelName)
+		if err != nil {
+			return nil, err
+		}
+		if authorization.Require(ctx, "billing.pricing.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: id}) != nil {
+			return nil, nil
+		}
+	}
 	return &biz.PricingSnapshot{
 		ID:                   model.ID,
 		ConfigHash:           model.ConfigHash,
@@ -129,4 +139,13 @@ func (r *pricingSnapshotRepo) GetPricingSnapshotByHash(ctx context.Context, conf
 		SnapshotVersion:      model.SnapshotVersion,
 		CreatedAt:            model.CreatedAt,
 	}, nil
+}
+
+func (r *pricingSnapshotRepo) ModelResourceID(ctx context.Context, model string) (int64, error) {
+	var row struct{ ID int64 }
+	err := r.data.db.WithContext(ctx).Table("models").Select("id").Where("model_id = ?", model).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, nil
+	}
+	return row.ID, err
 }

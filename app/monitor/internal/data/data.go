@@ -36,6 +36,7 @@ type healthCheckModel struct {
 func (healthCheckModel) TableName() string { return "health_checks" }
 
 type alertRuleModel struct {
+	Revision    uint64   `gorm:"column:revision"`
 	ID          int64    `gorm:"column:id;primaryKey;autoIncrement"`
 	Name        string   `gorm:"column:name"`
 	ServiceName string   `gorm:"column:service_name"`
@@ -119,7 +120,10 @@ func (r *Repository) GetLatestHealthCheck(ctx context.Context, serviceName strin
 
 func (r *Repository) CreateAlertRule(ctx context.Context, rule *biz.AlertRule) error {
 	if r.db != nil {
-		return r.createAlertRuleDB(ctx, rule)
+		return authzquery.RecordWriteFailure(ctx, r.db, "monitor.alert_rule.create", rule.ID, r.createAlertRuleDB(ctx, rule))
+	}
+	if err := authorization.RequireDurableWrite(ctx, "monitor.alert_rule.create"); err != nil {
+		return err
 	}
 	ctx, err := authorization.Refresh(ctx)
 	if err != nil {
@@ -147,7 +151,10 @@ func (r *Repository) ListAlertRules(ctx context.Context, page, pageSize int32) (
 
 func (r *Repository) UpdateAlertRule(ctx context.Context, rule *biz.AlertRule) error {
 	if r.db != nil {
-		return r.updateAlertRuleDB(ctx, rule)
+		return authzquery.RecordWriteFailure(ctx, r.db, "monitor.alert_rule.update", rule.ID, r.updateAlertRuleDB(ctx, rule))
+	}
+	if err := authorization.RequireDurableWrite(ctx, "monitor.alert_rule.update"); err != nil {
+		return err
 	}
 	ctx, err := authorization.Refresh(ctx)
 	if err != nil {
@@ -156,12 +163,15 @@ func (r *Repository) UpdateAlertRule(ctx context.Context, rule *biz.AlertRule) e
 	if err = authorization.Require(ctx, "monitor.alert_rule.update", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: rule.ID}); err != nil {
 		return err
 	}
-	return r.updateAlertRuleMemory(rule)
+	return r.updateAlertRuleMemory(ctx, rule)
 }
 
 func (r *Repository) DeleteAlertRule(ctx context.Context, id int64) error {
 	if r.db != nil {
-		return r.deleteAlertRuleDB(ctx, id)
+		return authzquery.RecordWriteFailure(ctx, r.db, "monitor.alert_rule.delete", id, r.deleteAlertRuleDB(ctx, id))
+	}
+	if err := authorization.RequireDurableWrite(ctx, "monitor.alert_rule.delete"); err != nil {
+		return err
 	}
 	ctx, err := authorization.Refresh(ctx)
 	if err != nil {
@@ -170,7 +180,7 @@ func (r *Repository) DeleteAlertRule(ctx context.Context, id int64) error {
 	if err = authorization.Require(ctx, "monitor.alert_rule.delete", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: id}); err != nil {
 		return err
 	}
-	return r.deleteAlertRuleMemory(id)
+	return r.deleteAlertRuleMemory(ctx, id)
 }
 
 // DB implementations - health checks
@@ -245,6 +255,7 @@ func (r *Repository) getLatestHealthCheckDB(ctx context.Context, serviceName str
 
 func (r *Repository) createAlertRuleDB(ctx context.Context, rule *biz.AlertRule) error {
 	m := alertRuleModel{
+		Revision:    1,
 		Name:        rule.Name,
 		ServiceName: rule.ServiceName,
 		Metric:      rule.Metric,
@@ -258,11 +269,21 @@ func (r *Repository) createAlertRuleDB(ctx context.Context, rule *biz.AlertRule)
 		if err := authorization.Require(ctx, "monitor.alert_rule.create", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
 			return err
 		}
-		return tx.Create(&m).Error
+		if _, iam := authorization.QueryScopeFromContext(ctx, "monitor.alert_rule.create"); iam {
+			expected, ok := authorization.ExpectedResourceRevision(ctx)
+			if !ok || expected != 0 {
+				return biz.ErrAlertRuleRevisionConflict
+			}
+		}
+		if err := tx.Create(&m).Error; err != nil {
+			return err
+		}
+		return authzquery.AppendWriteAudit(ctx, tx, "monitor.alert_rule.create", m.ID)
 	}); err != nil {
 		return err
 	}
 	rule.ID = m.ID
+	rule.Revision = m.Revision
 	return nil
 }
 
@@ -276,6 +297,7 @@ func (r *Repository) getAlertRuleDB(ctx context.Context, id int64) (*biz.AlertRu
 	}
 	return &biz.AlertRule{
 		ID:          m.ID,
+		Revision:    m.Revision,
 		Name:        m.Name,
 		ServiceName: m.ServiceName,
 		Metric:      m.Metric,
@@ -307,6 +329,7 @@ func (r *Repository) listAlertRulesDB(ctx context.Context, page, pageSize int32)
 	for i, m := range models {
 		rules[i] = &biz.AlertRule{
 			ID:          m.ID,
+			Revision:    m.Revision,
 			Name:        m.Name,
 			ServiceName: m.ServiceName,
 			Metric:      m.Metric,
@@ -321,7 +344,8 @@ func (r *Repository) listAlertRulesDB(ctx context.Context, page, pageSize int32)
 }
 
 func (r *Repository) updateAlertRuleDB(ctx context.Context, rule *biz.AlertRule) error {
-	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+	var revision uint64
+	err := authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
 		var current alertRuleModel
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, rule.ID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -332,7 +356,14 @@ func (r *Repository) updateAlertRuleDB(ctx context.Context, rule *biz.AlertRule)
 		if err := authorization.Require(ctx, "monitor.alert_rule.update", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: current.ID}); err != nil {
 			return err
 		}
-		return tx.Model(&alertRuleModel{}).Where("id = ?", rule.ID).Updates(map[string]any{
+		if _, iam := authorization.QueryScopeFromContext(ctx, "monitor.alert_rule.update"); iam {
+			expected, ok := authorization.ExpectedResourceRevision(ctx)
+			if !ok || expected != current.Revision {
+				return biz.ErrAlertRuleRevisionConflict
+			}
+		}
+		if err := tx.Model(&alertRuleModel{}).Where("id = ?", rule.ID).Updates(map[string]any{
+			"revision":     current.Revision + 1,
 			"name":         rule.Name,
 			"service_name": rule.ServiceName,
 			"metric":       rule.Metric,
@@ -340,8 +371,16 @@ func (r *Repository) updateAlertRuleDB(ctx context.Context, rule *biz.AlertRule)
 			"operator":     rule.Operator,
 			"duration":     rule.Duration,
 			"enabled":      xdb.BoolInt(rule.Enabled),
-		}).Error
+		}).Error; err != nil {
+			return err
+		}
+		revision = current.Revision + 1
+		return authzquery.AppendWriteAudit(ctx, tx, "monitor.alert_rule.update", rule.ID)
 	})
+	if err == nil {
+		rule.Revision = revision
+	}
+	return err
 }
 
 func (r *Repository) deleteAlertRuleDB(ctx context.Context, id int64) error {
@@ -356,7 +395,16 @@ func (r *Repository) deleteAlertRuleDB(ctx context.Context, id int64) error {
 		if err := authorization.Require(ctx, "monitor.alert_rule.delete", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: current.ID}); err != nil {
 			return err
 		}
-		return tx.Where("id = ?", id).Delete(&alertRuleModel{}).Error
+		if _, iam := authorization.QueryScopeFromContext(ctx, "monitor.alert_rule.delete"); iam {
+			expected, ok := authorization.ExpectedResourceRevision(ctx)
+			if !ok || expected != current.Revision {
+				return biz.ErrAlertRuleRevisionConflict
+			}
+		}
+		if err := tx.Where("id = ?", id).Delete(&alertRuleModel{}).Error; err != nil {
+			return err
+		}
+		return authzquery.AppendWriteAudit(ctx, tx, "monitor.alert_rule.delete", id)
 	})
 }
 
@@ -423,6 +471,7 @@ func (r *Repository) createAlertRuleMemory(rule *biz.AlertRule) error {
 	defer r.mu.Unlock()
 	r.ruleSeq++
 	rule.ID = r.ruleSeq
+	rule.Revision = 1
 	r.rules[rule.ID] = rule
 	return nil
 }
@@ -458,22 +507,38 @@ func (r *Repository) listAlertRulesMemory(ctx context.Context, page, pageSize in
 	return all[start:end], total, nil
 }
 
-func (r *Repository) updateAlertRuleMemory(rule *biz.AlertRule) error {
+func (r *Repository) updateAlertRuleMemory(ctx context.Context, rule *biz.AlertRule) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.rules[rule.ID]; !ok {
 		return biz.ErrAlertRuleNotFound
 	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "monitor.alert_rule.update"); iam {
+		expected, ok := authorization.ExpectedResourceRevision(ctx)
+		if !ok || expected != r.rules[rule.ID].Revision {
+			return biz.ErrAlertRuleRevisionConflict
+		}
+	}
+	rule.Revision = r.rules[rule.ID].Revision + 1
 	r.rules[rule.ID] = rule
 	return nil
 }
 
-func (r *Repository) deleteAlertRuleMemory(id int64) error {
+func (r *Repository) deleteAlertRuleMemory(ctx context.Context, id int64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.rules[id]; !ok {
 		return biz.ErrAlertRuleNotFound
 	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "monitor.alert_rule.delete"); iam {
+		expected, ok := authorization.ExpectedResourceRevision(ctx)
+		if !ok || expected != r.rules[id].Revision {
+			return biz.ErrAlertRuleRevisionConflict
+		}
+	}
 	delete(r.rules, id)
 	return nil
 }
+
+// NewRepositoryWithDB uses a shared caller-owned storage client.
+func NewRepositoryWithDB(db *gorm.DB) biz.MonitorRepo { return &Repository{db: db} }

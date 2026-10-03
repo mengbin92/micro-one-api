@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"micro-one-api/domain/authorization"
 	"time"
 
 	"go.uber.org/zap"
@@ -82,6 +83,7 @@ type ReconciliationRunStore interface {
 
 // ReconciliationResult holds the outcome of a reconciliation run.
 type ReconciliationResult struct {
+	IssuesVisible                bool
 	RunID                        int64                        `json:"run_id,omitempty"`
 	RunAt                        time.Time                    `json:"run_at"`
 	ExpiredCleaned               int                          `json:"expired_cleaned"`
@@ -259,6 +261,7 @@ type ReservationReleaser interface {
 
 // ReconciliationUsecase runs billing reconciliation tasks.
 type ReconciliationUsecase struct {
+	authorization   authorization.Resolver
 	accountRepo     AccountRepo
 	reservationRepo ReservationRepo
 	reconRepo       ReconciliationRepo
@@ -294,6 +297,21 @@ func (uc *ReconciliationUsecase) SetReservationReleaser(r ReservationReleaser) {
 
 // RunReconciliation performs a full reconciliation: cleans expired reservations and checks quota consistency.
 func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result *ReconciliationResult, err error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.reconciliation", "billing.reconciliation.run")
+	if authErr != nil {
+		return nil, authErr
+	}
+	if authErr = authorization.Require(ctx, "billing.reconciliation.run", authorization.ObjectFacts{Context: authorization.Platform()}); authErr != nil {
+		return nil, authErr
+	}
+	ctx, authErr = authorization.PrepareOptional(ctx, uc.authorization, "billing.reconciliation", "billing.reconciliation.issues.read")
+	if authErr != nil {
+		return nil, authErr
+	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "billing.reconciliation.run"); iam && authorization.WriteReason(ctx) == "" {
+		return nil, ErrRoutingContextInvalid
+	}
 	startedAt := time.Now()
 	result = &ReconciliationResult{
 		RunAt:  time.Now(),
@@ -346,6 +364,7 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 			metrics.ReconciliationDiscrepanciesTotal.WithLabelValues(ReconciliationDiscrepancyTypeRefund).Add(float64(len(result.RefundInconsistencies)))
 			metrics.ReconciliationDiscrepanciesTotal.WithLabelValues(ReconciliationDiscrepancyTypeStuckIssuance).Add(float64(len(result.StuckIssuanceInconsistencies)))
 		}
+		result = reconciliationView(ctx, result)
 	}()
 
 	// Step 1: Clean up expired reservations via the unified release
@@ -676,16 +695,68 @@ func diffAbs(v int64) int64 {
 // goes through the run store so the implementation is independent
 // of the in-memory cache used by the live reconciliation loop.
 func (uc *ReconciliationUsecase) ListReconciliationRuns(ctx context.Context, page, pageSize int32) ([]*ReconciliationResult, int64, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.reconciliation", "billing.reconciliation.read")
+	if authErr != nil {
+		return nil, 0, authErr
+	}
+	if authErr = authorization.Require(ctx, "billing.reconciliation.read", authorization.ObjectFacts{Context: authorization.Platform()}); authErr != nil {
+		return nil, 0, authErr
+	}
+	ctx, authErr = authorization.PrepareOptional(ctx, uc.authorization, "billing.reconciliation", "billing.reconciliation.issues.read")
+	if authErr != nil {
+		return nil, 0, authErr
+	}
 	if uc.runStore == nil {
 		return nil, 0, nil
 	}
-	return uc.runStore.ListRuns(ctx, page, pageSize)
+	rows, total, err := uc.runStore.ListRuns(ctx, page, pageSize)
+	for i, row := range rows {
+		rows[i] = reconciliationView(ctx, row)
+	}
+	return rows, total, err
 }
 
 // GetReconciliationRun returns a single stored run by id.
 func (uc *ReconciliationUsecase) GetReconciliationRun(ctx context.Context, runID int64) (*ReconciliationResult, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.reconciliation", "billing.reconciliation.read")
+	if authErr != nil {
+		return nil, authErr
+	}
+	if authErr = authorization.Require(ctx, "billing.reconciliation.read", authorization.ObjectFacts{Context: authorization.Platform()}); authErr != nil {
+		return nil, authErr
+	}
+	ctx, authErr = authorization.PrepareOptional(ctx, uc.authorization, "billing.reconciliation", "billing.reconciliation.issues.read")
+	if authErr != nil {
+		return nil, authErr
+	}
 	if uc.runStore == nil {
 		return nil, nil
 	}
-	return uc.runStore.GetRun(ctx, runID)
+	row, err := uc.runStore.GetRun(ctx, runID)
+	return reconciliationView(ctx, row), err
+}
+
+func reconciliationView(ctx context.Context, r *ReconciliationResult) *ReconciliationResult {
+	if r == nil {
+		return nil
+	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "billing.reconciliation.issues.read"); !iam {
+		r.IssuesVisible = true
+		return r
+	}
+	copy := *r
+	copy.IssuesVisible = authorization.Require(ctx, "billing.reconciliation.issues.read", authorization.ObjectFacts{Context: authorization.Platform()}) == nil
+	if copy.IssuesVisible {
+		return &copy
+	}
+	copy.AccountInconsistencies = nil
+	copy.ChannelInconsistencies = nil
+	copy.LogInconsistencies = nil
+	copy.SubscriptionInconsistencies = nil
+	copy.ReceivableInconsistencies = nil
+	copy.StuckIssuanceInconsistencies = nil
+	copy.RefundInconsistencies = nil
+	return &copy
 }

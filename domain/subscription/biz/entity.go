@@ -91,6 +91,8 @@ const (
 // not a routing group and granting this policy never changes users.group.
 // Platform and SubscriptionType describe the policy; they do not filter routes.
 type SubscriptionGroup struct {
+	Reason           string `json:"reason,omitempty"`
+	Revision         int64  `json:"revision"`
 	ID               int64  `json:"id"`
 	Name             string `json:"name"`
 	DisplayName      string `json:"display_name"`
@@ -112,6 +114,7 @@ type SubscriptionGroup struct {
 }
 
 type SubscriptionPlan struct {
+	Reason        string                `json:"reason,omitempty"`
 	Coverage      []RoutingCoverage     `json:"coverage,omitempty"`
 	Contract      *SubscriptionContract `json:"contract,omitempty"`
 	Revision      int64                 `json:"revision"`
@@ -174,6 +177,7 @@ type SubscriptionProgress struct {
 }
 
 type AssignSubscriptionRequest struct {
+	Reason           string                `json:"reason,omitempty"`
 	PricePaid        int64                 `json:"-"`
 	Coverage         []RoutingCoverage     `json:"coverage,omitempty"`
 	Contract         *SubscriptionContract `json:"-"` // trusted purchase snapshot, never accepted from HTTP

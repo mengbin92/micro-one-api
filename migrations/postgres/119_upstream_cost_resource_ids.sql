@@ -1,0 +1,1 @@
+CREATE TABLE upstream_cost_resources (id BIGSERIAL PRIMARY KEY, cost_key VARCHAR(512) NOT NULL UNIQUE);

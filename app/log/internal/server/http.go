@@ -65,6 +65,8 @@ func NewHTTPServer(addr string, svc *service.LogService, identityClients ...iden
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	srv.HandleFunc("/v1/logs/export", authz.HTTPContext("/api.log.v1.LogService/ExportLogs", svc.HandleExportLogs))
+	srv.HandleFunc("/v1/logs/purge", authz.HTTPContext("/api.log.v1.LogService/PurgeLogs", svc.HandlePurgeLogs))
 	// Protected log endpoints
 	srv.HandleFunc("/v1/selection-events", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authz.HTTPContext("/api.log.v1.LogService/ListSelectionAudit", svc.HandleListSelectionAudit)(w, r)

@@ -10,7 +10,8 @@ import (
 func prepareBilling(ctx context.Context, r authorization.Resolver, point, op string) (context.Context, error) {
 	// identity's public self adapters are authenticated again at the owner;
 	// their dedicated credential alone never grants another user's finances.
-	if authorization.External(ctx) && serviceidentity.FromContext(ctx).Name == "identity" {
+	selfUsage, _ := ctx.Value(selfSubscriptionUsageKey{}).(bool)
+	if authorization.External(ctx) && (serviceidentity.FromContext(ctx).Name == "identity" || selfUsage) {
 		return authorization.PrepareSelf(ctx, r, "billing.self", op)
 	}
 	if !authorization.External(ctx) || serviceidentity.HasSystemCapability(ctx, serviceidentity.RPCMethod(ctx)) {
@@ -85,4 +86,26 @@ func ledgerViews(ctx context.Context, ledgers []*Ledger) []*Ledger {
 		ledgers[i] = ledgerView(ctx, l)
 	}
 	return ledgers
+}
+
+func routingPolicyFacts(group, user int64) authorization.ObjectFacts {
+	return authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: group, OwnerUserID: user, RoutingGroupIDs: []int64{group}}
+}
+func (uc *ReconciliationUsecase) SetAuthorization(r authorization.Resolver)     { uc.authorization = r }
+func (uc *SubscriptionReportUsecase) SetAuthorization(r authorization.Resolver) { uc.authorization = r }
+
+type expectedWriteVersionKey struct{}
+
+func WithExpectedWriteVersion(ctx context.Context, version int64) context.Context {
+	return context.WithValue(ctx, expectedWriteVersionKey{}, version)
+}
+func ExpectedWriteVersion(ctx context.Context) (int64, bool) {
+	v, ok := ctx.Value(expectedWriteVersionKey{}).(int64)
+	return v, ok
+}
+func RequireWrite(ctx context.Context, op string, facts authorization.ObjectFacts) error {
+	if _, iam := authorization.QueryScopeFromContext(ctx, op); iam && authorization.WriteReason(ctx) == "" {
+		return ErrRoutingContextInvalid
+	}
+	return authorization.Require(ctx, op, facts)
 }

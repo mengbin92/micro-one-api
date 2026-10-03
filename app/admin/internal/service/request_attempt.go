@@ -10,5 +10,5 @@ func (s *AdminService) ListRequestAttempts(ctx context.Context, userID, rootID s
 	if s.billingClient == nil {
 		return nil, fmt.Errorf("billing service unavailable")
 	}
-	return s.billingClient.ListRequestAttempts(ctx, &billingv1.ListRequestAttemptsRequest{UserId: userID, RootRequestId: rootID, Page: page, PageSize: size})
+	return s.billingClient.ListRequestAttempts(operatorRPCContext(ctx), &billingv1.ListRequestAttemptsRequest{UserId: userID, RootRequestId: rootID, Page: page, PageSize: size})
 }

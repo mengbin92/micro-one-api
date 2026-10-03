@@ -25,6 +25,10 @@ func NewGRPCServer(addr string, svc *service.NotifyService) *kgrpc.Server {
 }
 
 var notifyReadyMethods = []string{
+	"/api.notify.v1.NotifyService/AcknowledgeNotification",
+	"/api.notify.v1.NotifyService/ListNotificationRules",
+	"/api.notify.v1.NotifyService/UpdateNotificationRule",
+	"/api.notify.v1.NotifyService/TestNotificationRule",
 	"/api.notify.v1.NotifyService/GetNotification",
 	"/api.notify.v1.NotifyService/ListNotifications",
 }

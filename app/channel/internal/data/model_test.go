@@ -28,6 +28,7 @@ func setupModelTestDB(t *testing.T) *Repository {
 	require.NoError(t, db.Exec(`
 		CREATE TABLE models (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			authorization_revision INTEGER NOT NULL DEFAULT 1,
 			model_id TEXT NOT NULL UNIQUE,
 			display_name TEXT NOT NULL,
 			description TEXT,
@@ -78,6 +79,7 @@ func setupModelTestDB(t *testing.T) *Repository {
 	require.NoError(t, db.Exec(`
 		CREATE TABLE channels (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			authorization_revision INTEGER NOT NULL DEFAULT 1,
 			name TEXT NOT NULL DEFAULT '',
 			status INTEGER NOT NULL DEFAULT 1,
 			created_at INTEGER NOT NULL DEFAULT 0,

@@ -324,7 +324,7 @@ func TestIAMA5LifecycleAtomicBatchAndCatalogDialects(t *testing.T) {
 				ID       int64
 				Revision uint64
 			}
-			require.NoError(t, f.db.Table("iam_permissions").Select("id, revision").Where("code = ?", "channel.model.read").Scan(&unbound).Error)
+			require.NoError(t, f.db.Table("iam_permissions").Select("id, revision").Where("code = ?", "iam.menu.read").Scan(&unbound).Error)
 			r = req()
 			r.ID, r.ExpectedRevision = unbound.ID, unbound.Revision
 			r.Permission = &m.Permission{Status: "enabled"}

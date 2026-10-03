@@ -3,6 +3,7 @@ package server
 import (
 	"micro-one-api/platform/authz"
 	"net/http"
+	"strings"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 
@@ -26,7 +27,23 @@ func NewHTTPServer(addr string, svc *service.NotifyService) *khttp.Server {
 		}
 	})
 	srv.HandlePrefix("/v1/notifications/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/status") {
+			authz.HTTPContext("/api.notify.v1.NotifyService/UpdateNotificationStatus", svc.HandleUpdateNotificationStatus)(w, r)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/acknowledge") {
+			authz.HTTPContext("/api.notify.v1.NotifyService/AcknowledgeNotification", svc.HandleNotificationManagement)(w, r)
+			return
+		}
 		authz.HTTPContext("/api.notify.v1.NotifyService/GetNotification", svc.HandleGetNotification)(w, r)
+	}))
+	srv.HandleFunc("/v1/notification-rules", authz.HTTPContext("/api.notify.v1.NotifyService/ListNotificationRules", svc.HandleNotificationManagement))
+	srv.HandlePrefix("/v1/notification-rules/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method := "/api.notify.v1.NotifyService/UpdateNotificationRule"
+		if strings.HasSuffix(r.URL.Path, "/test") {
+			method = "/api.notify.v1.NotifyService/TestNotificationRule"
+		}
+		authz.HTTPContext(method, svc.HandleNotificationManagement)(w, r)
 	}))
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		metrics.Handler().ServeHTTP(w, r)

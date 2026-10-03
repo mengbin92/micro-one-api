@@ -56,6 +56,7 @@ type RoutingGroupDetail struct {
 }
 
 func (s *AdminService) ListRoutingGroups(ctx context.Context, size int32, token, filter, order string) (*RoutingGroupList, error) {
+	ctx = operatorRPCContext(ctx)
 	if s.routingGroupUc == nil {
 		return nil, biz.ErrRoutingGroupUnavailable
 	}
@@ -79,6 +80,7 @@ func (s *AdminService) ListRoutingGroups(ctx context.Context, size int32, token,
 	return reply, nil
 }
 func (s *AdminService) GetRoutingGroup(ctx context.Context, id int64) (*RoutingGroupDetail, error) {
+	ctx = operatorRPCContext(ctx)
 	if s.routingGroupUc == nil {
 		return nil, biz.ErrRoutingGroupUnavailable
 	}
@@ -105,6 +107,7 @@ type RoutingGroupCreateRequest struct {
 // restricted, so members are attached through resource CSVs and enabling runs
 // the existing capability and price gates.
 func (s *AdminService) CreateRoutingGroup(ctx context.Context, r RoutingGroupCreateRequest) (*RoutingGroupDetail, error) {
+	ctx = operatorRPCContext(ctx)
 	uc, ok := s.routingAccessUc.(interface {
 		CreateGroup(context.Context, string, string, string, string) (*routing.Group, error)
 	})

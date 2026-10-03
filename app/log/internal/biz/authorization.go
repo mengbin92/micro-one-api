@@ -2,8 +2,10 @@ package biz
 
 import (
 	"context"
+	"errors"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/security/serviceidentity"
+	"strings"
 	"time"
 )
 
@@ -86,4 +88,50 @@ func (uc *LogUsecase) OwnUsageStats(ctx context.Context, userID int64, start, en
 		return nil, err
 	}
 	return uc.repo.UsageByUser(ctx, userID, start, end)
+}
+
+// ExportLogs is explicitly paged. Export grants define the query scope and do
+// not inherit list scope; content remains independently authorized.
+func (uc *LogUsecase) ExportLogs(ctx context.Context, page, pageSize int32, level, source, keyword string) ([]*LogEntry, int64, error) {
+	ctx, err := uc.authorizeUserOperation(ctx, "log.requests.export", "log.request.export")
+	if err != nil {
+		return nil, 0, err
+	}
+	ctx, err = uc.authorizeContent(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	if q, iam := authorization.QueryScopeFromContext(ctx, "log.request.export"); iam {
+		ctx = authorization.WithQueryScope(ctx, "log.request.list", q)
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 200 {
+		pageSize = 200
+	}
+	rows, total, err := uc.repo.List(ctx, page, pageSize, level, source, keyword)
+	return redactLogs(ctx, rows), total, err
+}
+
+func (uc *LogUsecase) PurgeLogs(ctx context.Context, before time.Time, reason string) (int64, error) {
+	ctx, err := uc.authorizeUserOperation(ctx, "log.requests.delete", "log.request.purge")
+	if err != nil {
+		return 0, err
+	}
+	if before.IsZero() || before.Unix() <= 0 || before.After(time.Now()) || strings.TrimSpace(reason) == "" {
+		return 0, errors.New("past cutoff and reason required")
+	}
+	if q, iam := authorization.QueryScopeFromContext(ctx, "log.request.purge"); iam && !q.Global() {
+		return 0, authorization.ErrDenied
+	}
+	ctx = authorization.WithWriteReason(ctx, reason)
+	return uc.repo.Delete(ctx, DeleteLogsFilter{EndTime: before, Operation: "log.request.purge"})
+}
+
+func (uc *LogUsecase) authorizeUserOperation(ctx context.Context, point, op string) (context.Context, error) {
+	if !authorization.External(ctx) {
+		return ctx, nil
+	}
+	return authorization.Prepare(ctx, uc.authorization, point, op)
 }

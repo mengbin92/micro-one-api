@@ -3,8 +3,9 @@ package data
 import (
 	"context"
 
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/subscription/biz"
-	"micro-one-api/platform/database/xdb"
+	"micro-one-api/platform/database/authzquery"
 
 	"gorm.io/gorm"
 )
@@ -52,7 +53,29 @@ func NewTxRunner(r *Repository) biz.TxRunner { return &runner{db: r.db} }
 // snapshot). A failed attempt has committed nothing and the callback re-reads
 // its guards each run, so replaying is safe. On MySQL the retry never fires.
 func (r *runner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx biz.Tx) error) error {
-	return xdb.RetryTxOnBusy(ctx, r.db, 3, func(tx *gorm.DB) error {
+	err := authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
 		return fn(ctx, &gormTx{db: tx})
 	})
+	return recordSubscriptionFailure(ctx, r.db, err)
+}
+
+// A nested owner mutation uses the already-refreshed outer transaction context.
+// Resolver calls belong before the outer replay loop, never under row locks.
+func runSubscriptionTx(ctx context.Context, db *gorm.DB, fn func(context.Context, *gorm.DB) error) error {
+	if _, nested := db.Statement.ConnPool.(gorm.TxCommitter); nested {
+		return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { return fn(ctx, tx) })
+	}
+	return recordSubscriptionFailure(ctx, db, authzquery.RunInTx(ctx, db, 3, fn))
+}
+
+func recordSubscriptionFailure(ctx context.Context, db *gorm.DB, err error) error {
+	if err == nil {
+		return nil
+	}
+	for _, op := range []string{"subscription.quota_policy.create", "subscription.quota_policy.update", "subscription.quota_policy.delete", "subscription.plan.create", "subscription.plan.update", "subscription.plan.publish", "subscription.plan.unpublish", "subscription.plan.delete", "subscription.user_subscription.assign", "subscription.user_subscription.change", "subscription.user_subscription.extend", "subscription.user_subscription.revoke", "subscription.user_subscription.quota.reset"} {
+		if q, iam := authorization.QueryScopeFromContext(ctx, op); iam && len(q.Allow) > 0 {
+			err = authzquery.RecordWriteFailure(ctx, db, op, 0, err)
+		}
+	}
+	return err
 }

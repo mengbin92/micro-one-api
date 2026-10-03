@@ -46,7 +46,7 @@ func serviceTokenStreamInterceptor(serviceToken string) grpc.StreamServerInterce
 
 var billingReadyMethods = func() []string {
 	out := []string{}
-	for _, method := range []string{"GetAccountSnapshot", "BatchGetAccountSnapshots", "TopUpQuota", "ListLedger", "GetLedgerEntry", "AggregateLedgerByDate", "AggregateUsage", "ListPaymentOrders", "GetPaymentOrderByTradeNo", "RefundPaymentOrder"} {
+	for _, method := range []string{"GetAccountSnapshot", "BatchGetAccountSnapshots", "TopUpQuota", "ListLedger", "GetLedgerEntry", "AggregateLedgerByDate", "AggregateUsage", "ListPaymentOrders", "GetPaymentOrderByTradeNo", "RefundPaymentOrder", "CreateRedeemCode", "CreateRedeemCodesBatch", "GetRedeemCode", "ListRedeemCodes", "SearchRedeemCodes", "UpdateRedeemCode", "DeleteRedeemCode", "ListRequestAttempts", "GetRoutingBillingPolicy", "PublishRoutingBillingPolicy", "GetRoutingGroupPrice", "SetUserRoutingPrice", "ClearUserRoutingPrice", "ListReconciliationRuns", "GetReconciliationRun", "SubscriptionOperationReport", "ExportLedgerEntries", "ExportCostReport", "ExportRedeemCodes", "RunReconciliation", "GetSubscriptionUsage", "ExecuteSubscriptionCommerce", "ResetAccountBalance"} {
 		out = append(out, "/api.billing.v1.BillingService/"+method)
 	}
 	return out

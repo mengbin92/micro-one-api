@@ -136,6 +136,7 @@ func setupChannelTestDB(t *testing.T) *Repository {
 	require.NoError(t, db.Exec(`
 		CREATE TABLE channels (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			authorization_revision INTEGER NOT NULL DEFAULT 1,
 			type INTEGER DEFAULT 0,
 			`+"`key`"+` TEXT,
 			status INTEGER DEFAULT 0,
@@ -188,6 +189,8 @@ func setupChannelTestDB(t *testing.T) *Repository {
 
 	require.NoError(t, db.Exec(`
 		CREATE TABLE subscription_accounts (
+			credential_revision INTEGER NOT NULL DEFAULT 1,
+			credential_refresh_pending INTEGER NOT NULL DEFAULT 0,
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL DEFAULT '',
 			platform TEXT NOT NULL,
@@ -201,8 +204,6 @@ func setupChannelTestDB(t *testing.T) *Repository {
 			access_token TEXT,
 			refresh_token TEXT,
 			expires_at INTEGER DEFAULT 0,
- credential_revision BIGINT NOT NULL DEFAULT 0,
- credential_refresh_pending BOOLEAN NOT NULL DEFAULT FALSE,
 			account_id TEXT DEFAULT '',
 			fingerprint TEXT,
 			metadata TEXT,
@@ -288,18 +289,39 @@ func setupChannelTestDB(t *testing.T) *Repository {
 			enabled INTEGER DEFAULT 1,
 			priority INTEGER NOT NULL DEFAULT 0,
 			created_at INTEGER NOT NULL DEFAULT 0,
-			updated_at INTEGER NOT NULL DEFAULT 0
+			updated_at INTEGER NOT NULL DEFAULT 0,
+			revision INTEGER NOT NULL DEFAULT 1
 		)
 	`).Error)
 	require.NoError(t, db.Exec(`
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_model_routings_group_model_account
 		ON model_routings(group_name, model, platform, subscription_account_id)
 	`).Error)
+	require.NoError(t, db.Exec(`
+		CREATE TABLE IF NOT EXISTS usage_semantic_source_blocks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			source_kind TEXT NOT NULL,
+			source_id INTEGER NOT NULL,
+			upstream_model_id TEXT NOT NULL,
+			adapter_protocol TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT '',
+			reason TEXT NOT NULL DEFAULT '',
+			window_started_at DATETIME,
+			consecutive_ambiguous INTEGER NOT NULL DEFAULT 0,
+			blocked_until DATETIME,
+			last_verified_at DATETIME,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			revision INTEGER NOT NULL DEFAULT 1,
+			UNIQUE(source_kind, source_id, upstream_model_id, adapter_protocol)
+		)
+	`).Error)
 
 	// Model registry + channel mappings (used by the registry list path).
 	require.NoError(t, db.Exec(`
 		CREATE TABLE models (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			authorization_revision INTEGER NOT NULL DEFAULT 1,
 			model_id TEXT NOT NULL,
 			display_name TEXT NOT NULL DEFAULT '',
 			description TEXT,

@@ -71,6 +71,7 @@ func TestIAMB2ChannelOwnerDialects(t *testing.T) {
 			policy.Scopes["channel.channel.update"] = authztest.Groups(g1.ID, g2.ID)
 			candidate, err := repo.FindByID(ctx, single.ID)
 			require.NoError(t, err)
+			require.Positive(t, candidate.AuthorizationRevision)
 			candidate.Group = "two"
 			require.Error(t, uc.UpdateChannel(request, candidate))
 			policy.Scopes["channel.routing_group.members.update"] = authztest.Resources(g1.ID, g2.ID)

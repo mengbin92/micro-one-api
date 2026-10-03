@@ -36,7 +36,7 @@ func TestIAMB2RoutingGroupOwnerDialects(t *testing.T) {
 				"channel.routing_group.resource_override.update": authztest.Resources(id),
 			}}
 			uc.SetAuthorization(policy)
-			request := authztest.Context()
+			request := authorization.WithWriteReason(authztest.Context(), "routing administration")
 			rows, err := uc.List(request, biz.RoutingGroupListOptions{Limit: 1})
 			require.NoError(t, err)
 			require.Len(t, rows, 1)
@@ -98,13 +98,13 @@ func TestIAMB2RoutingGroupOwnerDialects(t *testing.T) {
 			_, err = uc.SetState(request, id, current.Group.Revision, "enabled", "restricted")
 			require.True(t, errors.Is(err, biz.ErrRoutingGroupBaselineConflict))
 			priority := int64(12)
-			updated, err = uc.SetResourceOverrides(request, id, routing.Source{Kind: routing.Channel, ID: channel.ID}, &priority, nil)
+			updated, err = uc.SetResourceOverrides(authorization.WithExpectedResourceRevision(request, uint64(updated.Group.Revision)), id, routing.Source{Kind: routing.Channel, ID: channel.ID}, &priority, nil)
 			require.NoError(t, err, "override write does not require independent member read")
 			require.False(t, updated.MembersVisible)
 			actual, err := repo.GetRoutingGroup(raw, id)
 			require.NoError(t, err)
 			require.EqualValues(t, 12, actual.Resources[0].Priority)
-			_, err = uc.SetResourceOverrides(request, second.Group.ID, routing.Source{Kind: routing.Channel, ID: channel.ID}, &priority, nil)
+			_, err = uc.SetResourceOverrides(authorization.WithExpectedResourceRevision(request, uint64(second.Group.Revision)), second.Group.ID, routing.Source{Kind: routing.Channel, ID: channel.ID}, &priority, nil)
 			require.ErrorIs(t, err, authorization.ErrDenied)
 			// Expiry is checked again at the transaction edge, not only in transport.
 			expired := authztest.Resources(id)

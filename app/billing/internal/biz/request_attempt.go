@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/routing"
 )
@@ -37,6 +38,15 @@ type RequestAttemptRepo interface {
 }
 
 func (uc *BillingUsecase) ListRequestAttempts(ctx context.Context, userID, rootID string, page, size int) ([]*Reservation, int64, error) {
+	var err error
+	ctx, err = uc.authorizeAccount(ctx, "billing.request_attempts", "billing.account.ledger.read", userID)
+	if err != nil {
+		return nil, 0, err
+	}
+	ctx, err = uc.prepareCost(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
 	if userID == "" || rootID == "" || len(rootID) > 128 {
 		return nil, 0, ErrRoutingContextInvalid
 	}
@@ -53,5 +63,19 @@ func (uc *BillingUsecase) ListRequestAttempts(ctx context.Context, userID, rootI
 	if !ok {
 		return nil, 0, ErrRequestSnapshotUnavailable
 	}
-	return repo.ListRequestAttempts(ctx, userID, rootID, (page-1)*size, size)
+	rows, total, err := repo.ListRequestAttempts(ctx, userID, rootID, (page-1)*size, size)
+	if err != nil {
+		return nil, 0, err
+	}
+	facts, _ := accountFacts(userID)
+	visible := authorization.Require(ctx, "billing.account.cost.read", facts) == nil
+	for i, row := range rows {
+		copy := *row
+		copy.CostFieldsVisible = visible
+		if !visible {
+			copy.ActualCost = 0
+		}
+		rows[i] = &copy
+	}
+	return rows, total, nil
 }

@@ -64,6 +64,13 @@ func (s *IdentityService) GetUserModel(ctx context.Context, userID int64) (*biz.
 }
 
 func (s *IdentityService) ValidateToken(ctx context.Context, req *identityv1.ValidateTokenRequest) (*identityv1.ValidateTokenReply, error) {
+	mode, err := s.uc.AuthorizationMode(ctx)
+	if err != nil {
+		return nil, mapIdentityErrorToGRPC(err)
+	}
+	if mode == "iam" && !serviceidentity.HasSystemCapability(ctx, identityv1.IdentityService_ValidateToken_FullMethodName) {
+		return nil, status.Error(codes.PermissionDenied, "dedicated token verification capability required")
+	}
 	user, err := s.uc.ValidateSessionToken(ctx, req.Token)
 	if err != nil {
 		return nil, mapIdentityErrorToGRPC(err)
@@ -77,6 +84,13 @@ func (s *IdentityService) ValidateToken(ctx context.Context, req *identityv1.Val
 }
 
 func (s *IdentityService) GetAuthSnapshot(ctx context.Context, req *identityv1.GetAuthSnapshotRequest) (*identityv1.GetAuthSnapshotReply, error) {
+	mode, err := s.uc.AuthorizationMode(ctx)
+	if err != nil {
+		return nil, mapIdentityErrorToGRPC(err)
+	}
+	if mode == "iam" && !serviceidentity.HasSystemCapability(ctx, identityv1.IdentityService_GetAuthSnapshot_FullMethodName) {
+		return nil, status.Error(codes.PermissionDenied, "dedicated token verification capability required")
+	}
 	snapshot, err := s.uc.GetAuthSnapshot(ctx, req.Token, req.ClientIp)
 	if err != nil {
 		return nil, mapIdentityErrorToGRPC(err)
@@ -368,7 +382,7 @@ func (s *IdentityService) ConsumeTokenQuota(ctx context.Context, req *identityv1
 	if err != nil {
 		return nil, mapIdentityErrorToGRPC(err)
 	}
-	if mode == "iam" && !serviceidentity.FromContext(ctx).SystemCapability(identityv1.IdentityService_ConsumeTokenQuota_FullMethodName) {
+	if mode == "iam" && !serviceidentity.HasSystemCapability(ctx, identityv1.IdentityService_ConsumeTokenQuota_FullMethodName) {
 		return nil, status.Error(codes.PermissionDenied, "dedicated quota settlement capability required")
 	}
 	if !isServiceAuthenticated(ctx) {

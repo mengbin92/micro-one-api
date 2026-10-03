@@ -3,6 +3,8 @@ package data
 import (
 	"context"
 	"errors"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/database/authzquery"
 	"time"
 
 	"gorm.io/gorm"
@@ -57,7 +59,19 @@ func (r *userPriceOverrideRepo) Get(ctx context.Context, userID, groupID int64) 
 // A re-set after Clear resumes from MAX(history) so versions stay monotone.
 func (r *userPriceOverrideRepo) Set(ctx context.Context, userID, groupID int64, ratio float64) (int64, error) {
 	var version int64
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := biz.RequireWrite(ctx, "billing.routing_policy.user_override.update", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: groupID, OwnerUserID: userID, RoutingGroupIDs: []int64{groupID}}); err != nil {
+			return err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "billing.routing_policy.user_override.update"); iam {
+			var group struct{ Status string }
+			if err := tx.Table("routing_groups").Clauses(clause.Locking{Strength: "UPDATE"}).Select("status").Where("id = ?", groupID).Take(&group).Error; err != nil {
+				return err
+			}
+			if group.Status == "archived" {
+				return biz.ErrRoutingContextInvalid
+			}
+		}
 		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&userRoutingPriceHead{UserID: userID, RoutingGroupID: groupID}).Error; err != nil {
 			return err
 		}
@@ -65,6 +79,12 @@ func (r *userPriceOverrideRepo) Set(ctx context.Context, userID, groupID int64, 
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("user_id = ? AND routing_group_id = ?", userID, groupID).Take(&head).Error; err != nil {
 			return err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "billing.routing_policy.user_override.update"); iam {
+			expected, supplied := biz.ExpectedWriteVersion(ctx)
+			if !supplied || expected != head.Version {
+				return biz.ErrRoutingContextConflict
+			}
 		}
 		version = head.Version + 1
 		if head.Version == 0 {
@@ -88,19 +108,38 @@ func (r *userPriceOverrideRepo) Set(ctx context.Context, userID, groupID int64, 
 		if result.RowsAffected != 1 {
 			return biz.ErrRoutingContextConflict
 		}
-		return tx.Create(&userRoutingPriceOverride{UserID: userID, RoutingGroupID: groupID, Version: version, PriceRatio: ratio, CreatedAt: time.Now().Unix()}).Error
+		if err := tx.Create(&userRoutingPriceOverride{UserID: userID, RoutingGroupID: groupID, Version: version, PriceRatio: ratio, CreatedAt: time.Now().Unix()}).Error; err != nil {
+			return err
+		}
+		return authzquery.AppendWriteAudit(ctx, tx, "billing.routing_policy.user_override.update", groupID)
 	})
 	if err != nil {
-		return 0, err
+		return 0, authzquery.RecordWriteFailure(ctx, r.db, "billing.routing_policy.user_override.update", groupID, err)
 	}
 	return version, nil
 }
 
 // Clear drops the live head and keeps history (idempotent, audit retained).
 func (r *userPriceOverrideRepo) Clear(ctx context.Context, userID, groupID int64) error {
-	result := r.db.WithContext(ctx).Where("user_id = ? AND routing_group_id = ?", userID, groupID).Delete(&userRoutingPriceHead{})
-	if result.Error != nil {
-		return biz.ErrRequestSnapshotUnavailable
-	}
-	return nil
+	writeErr := authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := biz.RequireWrite(ctx, "billing.routing_policy.user_override.delete", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: groupID, OwnerUserID: userID, RoutingGroupIDs: []int64{groupID}}); err != nil {
+			return err
+		}
+		var head userRoutingPriceHead
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND routing_group_id = ?", userID, groupID).Take(&head).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "billing.routing_policy.user_override.delete"); iam {
+			expected, supplied := biz.ExpectedWriteVersion(ctx)
+			if !supplied || expected != head.Version {
+				return biz.ErrRoutingContextConflict
+			}
+		}
+		if err := tx.Where("user_id = ? AND routing_group_id = ?", userID, groupID).Delete(&userRoutingPriceHead{}).Error; err != nil {
+			return err
+		}
+		return authzquery.AppendWriteAudit(ctx, tx, "billing.routing_policy.user_override.delete", groupID)
+	})
+	return authzquery.RecordWriteFailure(ctx, r.db, "billing.routing_policy.user_override.delete", groupID, writeErr)
 }

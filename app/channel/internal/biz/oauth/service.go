@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"micro-one-api/domain/authorization"
 	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/app/channel/internal/biz"
@@ -61,6 +62,7 @@ type Service struct {
 }
 
 type AuthURLRequest struct {
+	Group       string
 	RedirectURI string
 }
 
@@ -159,6 +161,15 @@ func WithTokenURL(platform, tokenURL string) Option {
 }
 
 func (s *Service) AuthURL(ctx context.Context, platform string, req AuthURLRequest) (*AuthURLResult, error) {
+	var err error
+	if guard, ok := s.uc.(interface {
+		AuthorizeOAuth(context.Context, string) (context.Context, error)
+	}); ok {
+		ctx, err = guard.AuthorizeOAuth(ctx, req.Group)
+		if err != nil {
+			return nil, err
+		}
+	}
 	platform = normalizePlatform(platform)
 	if platform == "" {
 		return nil, fmt.Errorf("unsupported oauth platform")
@@ -180,12 +191,14 @@ func (s *Service) AuthURL(ctx context.Context, platform string, req AuthURLReque
 		redirectURI = defaultRedirectURI(platform)
 	}
 	session := &Session{
-		ID:           sessionID,
-		Platform:     platform,
-		State:        state,
-		CodeVerifier: verifier,
-		RedirectURI:  redirectURI,
-		CreatedAt:    s.now(),
+		ID:               sessionID,
+		Platform:         platform,
+		State:            state,
+		CodeVerifier:     verifier,
+		RedirectURI:      redirectURI,
+		CreatedAt:        s.now(),
+		CredentialDigest: oauthCredentialDigest(ctx),
+		Group:            req.Group,
 	}
 	s.store.Set(session)
 	authURL := buildAuthURL(platform, state, codeChallenge(verifier), redirectURI)
@@ -214,9 +227,36 @@ func (s *Service) Exchange(ctx context.Context, platform string, req ExchangeReq
 	if !ok || session.Platform != platform || session.State != state {
 		return nil, ErrInvalidSession
 	}
+	if session.CredentialDigest != oauthCredentialDigest(ctx) {
+		return nil, ErrInvalidSession
+	}
+	targetGroup := session.Group
+	if targetGroup == "" {
+		targetGroup = "default"
+	}
+	if req.Group == "" {
+		req.Group = "default"
+	}
+	if authorization.External(ctx) && req.Group != targetGroup {
+		return nil, ErrInvalidSession
+	}
+	if guard, ok := s.uc.(interface {
+		AuthorizeOAuth(context.Context, string) (context.Context, error)
+	}); ok {
+		var err error
+		ctx, err = guard.AuthorizeOAuth(ctx, req.Group)
+		if err != nil {
+			return nil, err
+		}
+	}
 	code := callback.Code
 	if code == "" {
 		return nil, fmt.Errorf("oauth code is required")
+	}
+	// Claim only after actor, target and current policy validation. Concurrent
+	// exchanges cannot redeem the same authorization code twice.
+	if _, ok := s.store.Pop(req.SessionID, s.now()); !ok {
+		return nil, ErrInvalidSession
 	}
 
 	token, err := s.exchangeCode(ctx, session, code)
@@ -227,7 +267,6 @@ func (s *Service) Exchange(ctx context.Context, platform string, req ExchangeReq
 	if err := s.uc.CreateSubscriptionAccount(ctx, account); err != nil {
 		return nil, err
 	}
-	s.store.Delete(req.SessionID)
 	return &ExchangeResult{
 		AccountID: account.ID,
 		Platform:  platform,
@@ -476,4 +515,12 @@ func truncate(body []byte) string {
 		return s[:300]
 	}
 	return s
+}
+
+func oauthCredentialDigest(ctx context.Context) string {
+	if !authorization.External(ctx) {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(authorization.Credential(ctx)))
+	return hex.EncodeToString(sum[:])
 }

@@ -214,6 +214,9 @@ func (uc *RoutingGroupUsecase) SetState(ctx context.Context, id, revision int64,
 	if err != nil {
 		return nil, err
 	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "channel.routing_group.update"); iam && strings.TrimSpace(authorization.WriteReason(ctx)) == "" {
+		return nil, ErrRoutingGroupInvalid
+	}
 	if authorization.External(ctx) && !serviceidentity.HasSystemCapability(ctx, serviceidentity.RPCMethod(ctx)) {
 		for _, op := range []string{"channel.routing_group.enable", "channel.routing_group.disable"} {
 			ctx, err = authorization.PrepareOptional(ctx, uc.authorization, "channel.routing_groups.write", op)
@@ -254,6 +257,12 @@ func (uc *RoutingGroupUsecase) SetResourceOverrides(ctx context.Context, groupID
 	ctx, err := uc.authorize(ctx, "channel.routing_group.resource_override.update")
 	if err != nil {
 		return nil, err
+	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "channel.routing_group.resource_override.update"); iam {
+		expected, present := authorization.ExpectedResourceRevision(ctx)
+		if !present || expected == 0 || strings.TrimSpace(authorization.WriteReason(ctx)) == "" {
+			return nil, ErrRoutingGroupInvalid
+		}
 	}
 	if err = authorization.Require(ctx, "channel.routing_group.resource_override.update", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: groupID}); err != nil {
 		return nil, err

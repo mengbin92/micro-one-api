@@ -18,6 +18,7 @@ service IdentityService {
   rpc Register(RegisterRequest) returns (RegisterResponse);
   rpc CreateAccessToken(CreateAccessTokenRequest) returns (CreateAccessTokenResponse);
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc ExportUsers(ExportUsersRequest) returns (ExportUsersReply);
   rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
   rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
   rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
@@ -235,3 +236,6 @@ message SetTokenRoutingRequest {
  repeated int64 routing_group_ids = 6;
 }
 message SetTokenRoutingReply { int64 revision = 1; }
+
+message ExportUsersRequest { ListUsersRequest query = 1; }
+message ExportUsersReply { string content_type = 1; string file_name = 2; bytes body = 3; }

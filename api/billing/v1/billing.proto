@@ -8,6 +8,11 @@ import "api/common/v1/common.proto";
 option go_package = "micro-one-api/api/billing/v1;billingv1";
 
 service BillingService {
+ rpc ResetAccountBalance(ResetAccountBalanceRequest) returns (TopUpQuotaResponse);
+ rpc ExportLedgerEntries(ListLedgerRequest) returns (ExportArtifactReply);
+ rpc ExportCostReport(ExportCostReportRequest) returns (ExportArtifactReply);
+ rpc ExportRedeemCodes(ExportRedeemCodesRequest) returns (ExportArtifactReply);
+ rpc RunReconciliation(RunReconciliationRequest) returns (GetReconciliationRunResponse);
  rpc GetSubscriptionUsage(GetSubscriptionUsageRequest) returns (GetSubscriptionUsageResponse);
  rpc ExecuteSubscriptionCommerce(SubscriptionCommerceRequest) returns (SubscriptionCommerceReply);
  rpc GetRoutingBillingPolicy(GetRoutingBillingPolicyRequest) returns (RoutingBillingPolicy);
@@ -61,7 +66,7 @@ service BillingService {
   rpc AggregateUsage(AggregateUsageRequest) returns (AggregateUsageResponse);
 }
 
-message GetSubscriptionUsageRequest { int64 user_id = 1; }
+message GetSubscriptionUsageRequest { int64 user_id = 1; bool self_request = 2; }
 message SubscriptionUsageDimension {
   double used = 1;
   optional double limit = 2;
@@ -95,9 +100,9 @@ message GetSubscriptionUsageResponse { SubscriptionUsage usage = 1; }
 
 message GetRoutingCapabilitiesRequest {}
 message GetRoutingCapabilitiesResponse { int32 request_snapshot_version = 1; bool fixed_routing = 2; bool subscription_contracts = 3; bool user_price_overrides = 4; }
-message SetUserRoutingPriceRequest { int64 user_id = 1; int64 routing_group_id = 2; double price_ratio = 3; }
+message SetUserRoutingPriceRequest { int64 user_id = 1; int64 routing_group_id = 2; double price_ratio = 3; optional int64 expected_version = 4; string reason = 5; }
 message SetUserRoutingPriceReply { int64 version = 1; }
-message ClearUserRoutingPriceRequest { int64 user_id = 1; int64 routing_group_id = 2; }
+message ClearUserRoutingPriceRequest { int64 user_id = 1; int64 routing_group_id = 2; optional int64 expected_version = 3; string reason = 4; }
 message ClearUserRoutingPriceReply {}
 message CheckRoutingSettlementRequest { int64 user_id = 1; int64 routing_group_id = 2; }
 message CheckRoutingSettlementReply { bool allowed = 1; string reason = 2; }
@@ -126,6 +131,7 @@ message ListRequestAttemptsRequest {
   int32 page_size = 4;
 }
 message RequestAttempt {
+ bool cost_fields_visible = 12;
   string root_request_id = 1;
   string request_id = 2;
   int32 attempt_number = 3;
@@ -387,6 +393,7 @@ message PurchaseSubscriptionResponse {
 // ========== 兑换码 ==========
 
 message CreateRedeemCodeRequest {
+ string reason = 6;
   string code = 1;
   string name = 2;
   int64 amount = 3;
@@ -400,6 +407,7 @@ message CreateRedeemCodeResponse {
 }
 
 message CreateRedeemCodesBatchRequest {
+ string reason = 6;
   string name = 1;
   int64 amount = 2;
   int32 count = 3;
@@ -453,6 +461,8 @@ message SearchRedeemCodesResponse {
 }
 
 message UpdateRedeemCodeRequest {
+ optional int64 expected_revision = 5;
+ string reason = 6;
   string code = 1;
   string name = 2;
   int64 amount = 3;
@@ -465,6 +475,8 @@ message UpdateRedeemCodeResponse {
 }
 
 message DeleteRedeemCodeRequest {
+ optional int64 expected_revision = 2;
+ string reason = 3;
   string code = 1;
 }
 
@@ -644,6 +656,7 @@ message SubscriptionOperationReportResponse {
 // ========== 对账 ==========
 
 message ReconciliationRun {
+ bool issues_visible = 11;
   int64 run_id = 1;
   int64 run_at = 2;
   int32 expired_cleaned = 3;
@@ -830,7 +843,14 @@ message GetRoutingGroupPriceReply {
 message RequestCostBound { string protocol = 1; int64 input_tokens = 2; string upstream_model = 3; }
 message GetRoutingBillingPolicyRequest { int64 routing_group_id = 1; }
 message RoutingBillingPolicy { int64 routing_group_id = 1; int64 version = 2; string billing_mode = 3; double price_ratio = 4; int64 effective_at = 5; }
-message PublishRoutingBillingPolicyRequest { int64 routing_group_id = 1; int64 expected_version = 2; string billing_mode = 3; double price_ratio = 4; }
+message PublishRoutingBillingPolicyRequest { int64 routing_group_id = 1; int64 expected_version = 2; string billing_mode = 3; double price_ratio = 4; string reason = 5; }
 
 message SubscriptionCommerceRequest { int64 user_id = 1; string request_id = 2; int64 plan_id = 3; int64 from_subscription_id = 4; string change_policy = 5; }
 message SubscriptionCommerceReply { string result_json = 1; }
+
+message ExportCostReportRequest { AggregateUsageRequest query = 1; bool include_costs = 2; }
+message ExportRedeemCodesRequest {}
+message ExportArtifactReply { string content_type = 1; string file_name = 2; bytes body = 3; }
+message RunReconciliationRequest { string reason = 1; }
+
+message ResetAccountBalanceRequest { string user_id = 1; int64 target_balance = 2; int64 expected_balance = 3; string reason = 4; string request_id = 5; }

@@ -209,11 +209,28 @@ func (r *Repository) Create(ctx context.Context, entry *biz.LogEntry) error {
 
 func (r *Repository) Delete(ctx context.Context, filter biz.DeleteLogsFilter) (int64, error) {
 	if r.db != nil {
-		return r.deleteDB(ctx, filter)
+		n, err := r.deleteDB(ctx, filter)
+		op := filter.Operation
+		if op == "" {
+			op = "log.request.delete"
+		}
+		return n, authzquery.RecordWriteFailure(ctx, r.db, op, 0, err)
+	}
+	op := filter.Operation
+	if op == "" {
+		op = "log.request.delete"
+	}
+	if err := authorization.RequireDurableWrite(ctx, op); err != nil {
+		return 0, err
 	}
 	ctx, err := authorization.Refresh(ctx)
 	if err != nil {
 		return 0, err
+	}
+	if filter.Operation == "log.request.purge" {
+		if q, iam := authorization.QueryScopeFromContext(ctx, filter.Operation); iam && !q.Global() {
+			return 0, authorization.ErrDenied
+		}
 	}
 	return r.deleteMemory(ctx, filter), nil
 }
@@ -525,11 +542,20 @@ func (r *Repository) CreateBatch(ctx context.Context, entries []*biz.LogEntry) e
 }
 
 func (r *Repository) deleteDB(ctx context.Context, filter biz.DeleteLogsFilter) (int64, error) {
+	op := filter.Operation
+	if op == "" {
+		op = "log.request.delete"
+	}
 	var deleted int64
 	err := authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if op == "log.request.purge" {
+			if q, iam := authorization.QueryScopeFromContext(ctx, op); iam && !q.Global() {
+				return authorization.ErrDenied
+			}
+		}
 		query := tx.Where("created_at <= ?", filter.EndTime.Unix())
 		var scopeErr error
-		query, scopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "id", User: "user_id"}, "log.request.delete")
+		query, scopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "id", User: "user_id"}, op)
 		if scopeErr != nil {
 			return scopeErr
 		}
@@ -547,7 +573,10 @@ func (r *Repository) deleteDB(ctx context.Context, filter biz.DeleteLogsFilter) 
 		}
 		result := query.Delete(&logModel{})
 		deleted = result.RowsAffected
-		return result.Error
+		if result.Error != nil {
+			return result.Error
+		}
+		return authzquery.AppendWriteAudit(ctx, tx, op, 0)
 	})
 	return deleted, err
 }
@@ -720,11 +749,15 @@ func (r *Repository) createMemory(entry *biz.LogEntry) error {
 }
 
 func (r *Repository) deleteMemory(ctx context.Context, filter biz.DeleteLogsFilter) int64 {
+	op := filter.Operation
+	if op == "" {
+		op = "log.request.delete"
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var deleted int64
 	for id, entry := range r.mem {
-		if authorization.Require(ctx, "log.request.delete", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: entry.ID, OwnerUserID: entry.UserID}) != nil {
+		if authorization.Require(ctx, op, authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: entry.ID, OwnerUserID: entry.UserID}) != nil {
 			continue
 		}
 		if filter.Level != "" && entry.Level != filter.Level {
@@ -819,3 +852,6 @@ func escapeLike(s string) string {
 	s = strings.ReplaceAll(s, "_", "!_")
 	return s
 }
+
+// NewRepositoryWithDB uses a shared caller-owned storage client.
+func NewRepositoryWithDB(db *gorm.DB) biz.LogRepo { return &Repository{db: db} }

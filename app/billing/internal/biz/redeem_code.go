@@ -9,6 +9,8 @@ const (
 )
 
 type RedeemCode struct {
+	Revision  int64
+	ID        int64
 	Code      string
 	Name      string
 	Amount    int64

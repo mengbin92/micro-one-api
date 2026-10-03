@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"gorm.io/gorm"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/database/authzquery"
 	"strconv"
 	"time"
 
 	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/app/billing/internal/biz"
-
-	"gorm.io/gorm"
 )
 
 type reconciliationRunModel struct {
@@ -107,13 +108,24 @@ func (r *reconciliationRunRepo) SaveRun(ctx context.Context, result *biz.Reconci
 		Status:            result.Status,
 		ErrorMessage:      result.ErrorMessage,
 	}
-	if err := r.data.db.WithContext(ctx).Create(model).Error; err != nil {
-		return 0, err
+	if err := authzquery.RunInTx(ctx, r.data.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := biz.RequireWrite(ctx, "billing.reconciliation.run", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+			return err
+		}
+		if err := tx.Create(model).Error; err != nil {
+			return err
+		}
+		return authzquery.AppendWriteAudit(ctx, tx, "billing.reconciliation.run", model.ID)
+	}); err != nil {
+		return 0, authzquery.RecordWriteFailure(ctx, r.data.db, "billing.reconciliation.run", 0, err)
 	}
 	return model.ID, nil
 }
 
 func (r *reconciliationRunRepo) ListRuns(ctx context.Context, page, pageSize int32) ([]*biz.ReconciliationResult, int64, error) {
+	if err := authorization.Require(ctx, "billing.reconciliation.read", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+		return nil, 0, err
+	}
 	if page <= 0 {
 		page = 1
 	}
@@ -140,6 +152,9 @@ func (r *reconciliationRunRepo) ListRuns(ctx context.Context, page, pageSize int
 }
 
 func (r *reconciliationRunRepo) GetRun(ctx context.Context, runID int64) (*biz.ReconciliationResult, error) {
+	if err := authorization.Require(ctx, "billing.reconciliation.read", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+		return nil, err
+	}
 	var m reconciliationRunModel
 	if err := r.data.db.WithContext(ctx).Where("id = ?", runID).First(&m).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

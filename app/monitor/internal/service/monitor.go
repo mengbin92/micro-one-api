@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/authz"
 	"net/http"
@@ -70,6 +73,10 @@ func (s *MonitorService) GetLatestHealthCheck(ctx context.Context, req *monitorv
 }
 
 func (s *MonitorService) CreateAlertRule(ctx context.Context, req *monitorv1.CreateAlertRuleRequest) (*monitorv1.CreateAlertRuleResponse, error) {
+	ctx = authorization.WithExpectedResourceRevision(ctx, req.ExpectedRevision)
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
 	rule := &biz.AlertRule{
 		Name:        req.Name,
 		ServiceName: req.ServiceName,
@@ -80,11 +87,11 @@ func (s *MonitorService) CreateAlertRule(ctx context.Context, req *monitorv1.Cre
 		Enabled:     req.Enabled,
 	}
 	if err := s.uc.CreateAlertRule(ctx, rule); err != nil {
-		return nil, err
+		return nil, monitorMutationError(err)
 	}
 	item, err := alertRuleToProto(rule)
 	if err != nil {
-		return nil, err
+		return nil, monitorMutationError(err)
 	}
 	return &monitorv1.CreateAlertRuleResponse{Rule: item}, nil
 }
@@ -102,6 +109,10 @@ func (s *MonitorService) GetAlertRule(ctx context.Context, req *monitorv1.GetAle
 }
 
 func (s *MonitorService) UpdateAlertRule(ctx context.Context, req *monitorv1.UpdateAlertRuleRequest) (*monitorv1.UpdateAlertRuleResponse, error) {
+	ctx = authorization.WithExpectedResourceRevision(ctx, req.ExpectedRevision)
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
 	rule := &biz.AlertRule{
 		ID:          req.Id,
 		Name:        req.Name,
@@ -113,14 +124,18 @@ func (s *MonitorService) UpdateAlertRule(ctx context.Context, req *monitorv1.Upd
 		Enabled:     req.Enabled,
 	}
 	if err := s.uc.UpdateAlertRule(ctx, rule); err != nil {
-		return nil, err
+		return nil, monitorMutationError(err)
 	}
 	return &monitorv1.UpdateAlertRuleResponse{Success: true}, nil
 }
 
 func (s *MonitorService) DeleteAlertRule(ctx context.Context, req *monitorv1.DeleteAlertRuleRequest) (*monitorv1.DeleteAlertRuleResponse, error) {
+	ctx = authorization.WithExpectedResourceRevision(ctx, req.ExpectedRevision)
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
 	if err := s.uc.DeleteAlertRule(ctx, req.Id); err != nil {
-		return nil, err
+		return nil, monitorMutationError(err)
 	}
 	return &monitorv1.DeleteAlertRuleResponse{Success: true}, nil
 }
@@ -148,6 +163,7 @@ func alertRuleToProto(rule *biz.AlertRule) (*monitorv1.AlertRuleItem, error) {
 	}
 	return &monitorv1.AlertRuleItem{
 		Id:          rule.ID,
+		Revision:    rule.Revision,
 		Name:        rule.Name,
 		ServiceName: rule.ServiceName,
 		Metric:      rule.Metric,
@@ -236,13 +252,15 @@ func (s *MonitorService) HandleCreateAlertRule(w http.ResponseWriter, r *http.Re
 		return
 	}
 	var body struct {
-		Name        string  `json:"name"`
-		ServiceName string  `json:"service_name"`
-		Metric      string  `json:"metric"`
-		Threshold   float64 `json:"threshold"`
-		Operator    string  `json:"operator"`
-		Duration    int     `json:"duration"`
-		Enabled     bool    `json:"enabled"`
+		Name             string  `json:"name"`
+		ServiceName      string  `json:"service_name"`
+		Metric           string  `json:"metric"`
+		Threshold        float64 `json:"threshold"`
+		Operator         string  `json:"operator"`
+		Duration         int     `json:"duration"`
+		Enabled          bool    `json:"enabled"`
+		ExpectedRevision string  `json:"expected_revision"`
+		Reason           string  `json:"reason"`
 	}
 	if err := jsonx.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -252,7 +270,12 @@ func (s *MonitorService) HandleCreateAlertRule(w http.ResponseWriter, r *http.Re
 		Name: body.Name, ServiceName: body.ServiceName, Metric: body.Metric,
 		Threshold: body.Threshold, Operator: body.Operator, Duration: body.Duration, Enabled: body.Enabled,
 	}
-	if err := s.uc.CreateAlertRule(r.Context(), rule); err != nil {
+	ctx, err := monitorMutationContext(r.Context(), body.ExpectedRevision, body.Reason)
+	if err != nil {
+		writeMonitorError(w, err)
+		return
+	}
+	if err := s.uc.CreateAlertRule(ctx, rule); err != nil {
 		if err == biz.ErrInvalidAlertRule {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -292,13 +315,15 @@ func (s *MonitorService) HandleUpdateAlertRule(w http.ResponseWriter, r *http.Re
 		return
 	}
 	var body struct {
-		Name        string  `json:"name"`
-		ServiceName string  `json:"service_name"`
-		Metric      string  `json:"metric"`
-		Threshold   float64 `json:"threshold"`
-		Operator    string  `json:"operator"`
-		Duration    int     `json:"duration"`
-		Enabled     *bool   `json:"enabled"`
+		Name             string  `json:"name"`
+		ServiceName      string  `json:"service_name"`
+		Metric           string  `json:"metric"`
+		Threshold        float64 `json:"threshold"`
+		Operator         string  `json:"operator"`
+		Duration         int     `json:"duration"`
+		Enabled          *bool   `json:"enabled"`
+		ExpectedRevision string  `json:"expected_revision"`
+		Reason           string  `json:"reason"`
 	}
 	if err := jsonx.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -312,7 +337,12 @@ func (s *MonitorService) HandleUpdateAlertRule(w http.ResponseWriter, r *http.Re
 		ID: id, Name: body.Name, ServiceName: body.ServiceName, Metric: body.Metric,
 		Threshold: body.Threshold, Operator: body.Operator, Duration: body.Duration, Enabled: enabled,
 	}
-	if err := s.uc.UpdateAlertRule(r.Context(), rule); err != nil {
+	ctx, err := monitorMutationContext(r.Context(), body.ExpectedRevision, body.Reason)
+	if err != nil {
+		writeMonitorError(w, err)
+		return
+	}
+	if err := s.uc.UpdateAlertRule(ctx, rule); err != nil {
 		writeMonitorError(w, err)
 		return
 	}
@@ -329,7 +359,12 @@ func (s *MonitorService) HandleDeleteAlertRule(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusBadRequest, "invalid alert rule id")
 		return
 	}
-	if err := s.uc.DeleteAlertRule(r.Context(), id); err != nil {
+	ctx, err := monitorMutationContext(r.Context(), r.URL.Query().Get("expected_revision"), r.URL.Query().Get("reason"))
+	if err != nil {
+		writeMonitorError(w, err)
+		return
+	}
+	if err := s.uc.DeleteAlertRule(ctx, id); err != nil {
 		writeMonitorError(w, err)
 		return
 	}
@@ -346,7 +381,7 @@ func alertRuleToMap(rule *biz.AlertRule) map[string]any {
 	return map[string]any{
 		"id": rule.ID, "name": rule.Name, "service_name": rule.ServiceName,
 		"metric": rule.Metric, "threshold": rule.Threshold, "operator": rule.Operator,
-		"duration": rule.Duration, "enabled": rule.Enabled, "created_at": rule.CreatedAt,
+		"duration": rule.Duration, "enabled": rule.Enabled, "created_at": rule.CreatedAt, "revision": strconv.FormatUint(rule.Revision, 10),
 	}
 }
 
@@ -370,6 +405,7 @@ func (s *MonitorService) OwnerAuthorizationClient() *authz.Client { return s.own
 
 // Preserve domain HTTP errors while retaining owner authorization statuses.
 func writeMonitorError(w http.ResponseWriter, err error) {
+	err = monitorMutationError(err)
 	switch err {
 	case biz.ErrAlertRuleNotFound:
 		writeError(w, http.StatusNotFound, err.Error())
@@ -378,4 +414,46 @@ func writeMonitorError(w http.ResponseWriter, err error) {
 	default:
 		authz.WriteHTTPError(w, err)
 	}
+}
+
+func (s *MonitorService) HandleLatestHealthCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	name := r.URL.Query().Get("service_name")
+	if name == "" {
+		writeError(w, 400, "service_name is required")
+		return
+	}
+	check, err := s.uc.GetLatestHealth(r.Context(), name)
+	if err != nil {
+		writeMonitorError(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"id": check.ID, "service_name": check.ServiceName, "status": check.Status, "response_time": check.ResponseTime, "checked_at": check.CheckedAt.Unix()})
+}
+
+func monitorMutationContext(ctx context.Context, expected, reason string) (context.Context, error) {
+	if expected == "" {
+		expected = "0"
+	}
+	revision, err := strconv.ParseUint(expected, 10, 64)
+	if err != nil {
+		return ctx, status.Error(codes.InvalidArgument, "invalid expected_revision")
+	}
+	ctx = authorization.WithExpectedResourceRevision(ctx, revision)
+	if reason != "" {
+		ctx = authorization.WithWriteReason(ctx, reason)
+	}
+	return ctx, nil
+}
+func monitorMutationError(err error) error {
+	switch {
+	case errors.Is(err, biz.ErrAlertRuleRevisionConflict):
+		return status.Error(codes.Aborted, err.Error())
+	case errors.Is(err, biz.ErrAlertRuleMutationRequired):
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+	return err
 }

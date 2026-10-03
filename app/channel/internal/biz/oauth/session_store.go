@@ -8,12 +8,14 @@ import (
 const defaultSessionTTL = 5 * time.Minute
 
 type Session struct {
-	ID           string
-	Platform     string
-	State        string
-	CodeVerifier string
-	RedirectURI  string
-	CreatedAt    time.Time
+	CredentialDigest string
+	Group            string
+	ID               string
+	Platform         string
+	State            string
+	CodeVerifier     string
+	RedirectURI      string
+	CreatedAt        time.Time
 }
 
 type SessionStore struct {

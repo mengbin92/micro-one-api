@@ -41,6 +41,7 @@ type UsageSemanticBlock struct {
 	BlockedUntil         time.Time
 	LastVerifiedAt       time.Time
 	UpdatedAt            time.Time
+	Revision             int64
 }
 
 // UsageSemanticVerdict is the relay-reported parse verdict of a final
@@ -133,6 +134,15 @@ func (uc *ChannelUsecase) RecordUsageSemanticVerdict(ctx context.Context, verdic
 // operator confirms the adapter is fixed; the persisted block is cleared and
 // the selector cache is invalidated.
 func (uc *ChannelUsecase) ResolveUsageSemanticBlock(ctx context.Context, sourceKind string, sourceID int64, upstreamModelID, adapterProtocol string) (bool, error) {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.semantic_blocks", "channel.usage_semantic_block.resolve")
+	if authErr != nil {
+		err := authErr
+		return false, err
+	}
+	if err := requireManagedWriteIntent(ctx, "channel.usage_semantic_block.resolve"); err != nil {
+		return false, err
+	}
 	repo, ok := uc.repo.(usageSemanticBlockRepo)
 	if !ok {
 		return false, nil
@@ -149,6 +159,12 @@ func (uc *ChannelUsecase) ResolveUsageSemanticBlock(ctx context.Context, sourceK
 
 // ListUsageSemanticBlocks returns quarantine rows for the admin surface.
 func (uc *ChannelUsecase) ListUsageSemanticBlocks(ctx context.Context, onlyBlocked bool, page, pageSize int32) ([]UsageSemanticBlock, int64, error) {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.semantic_blocks", "channel.usage_semantic_block.list")
+	if authErr != nil {
+		err := authErr
+		return nil, 0, err
+	}
 	repo, ok := uc.repo.(usageSemanticBlockRepo)
 	if !ok {
 		return nil, 0, nil

@@ -51,6 +51,8 @@ type ChannelConfig struct {
 
 // Channel describes the channel snapshot selected for relay.
 type Channel struct {
+	AuthorizationRevision             int64
+	HealthFieldsVisible               bool
 	ID                                int64
 	Type                              int32
 	Name                              string
@@ -285,6 +287,8 @@ type SubscriptionAccountQuotaEventFilter struct {
 }
 
 type SubscriptionAccountQuotaEventAggregate struct {
+	CostFieldsVisible     bool
+	PricingFieldsVisible  bool
 	SubscriptionAccountID int64
 	CostUSD               float64
 	ChargedUSD            float64
@@ -937,10 +941,42 @@ func (uc *ChannelUsecase) RecordSubscriptionAccountQuotaUsage(ctx context.Contex
 }
 
 func (uc *ChannelUsecase) AggregateSubscriptionAccountQuotaEvents(ctx context.Context, filter SubscriptionAccountQuotaEventFilter) ([]*SubscriptionAccountQuotaEventAggregate, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "channel.accounts.list", "channel.account.list")
+	if err != nil {
+		return nil, err
+	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.accounts.cost", "billing.upstream_cost.read")
+	if err != nil {
+		return nil, err
+	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.models.pricing", "billing.pricing.read")
+	if err != nil {
+		return nil, err
+	}
 	if filter.Limit <= 0 {
 		filter.Limit = 5
 	}
-	return uc.repo.AggregateSubscriptionAccountQuotaEvents(ctx, filter)
+	rows, err := uc.repo.AggregateSubscriptionAccountQuotaEvents(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	for i, row := range rows {
+		copy := *row
+		// Legacy quota-event prices lack a stable cost-resource key. Only a
+		// global grant covers them; ID grants apply to canonical owner rows.
+		facts := authorization.ObjectFacts{Context: authorization.Platform()}
+		copy.CostFieldsVisible = authorization.Require(ctx, "billing.upstream_cost.read", facts) == nil
+		copy.PricingFieldsVisible = authorization.Require(ctx, "billing.pricing.read", facts) == nil
+		if !copy.CostFieldsVisible {
+			copy.CostUSD = 0
+		}
+		if !copy.PricingFieldsVisible {
+			copy.ChargedUSD, copy.AverageRateMultiplier = 0, 0
+		}
+		rows[i] = &copy
+	}
+	return rows, nil
 }
 
 func (uc *ChannelUsecase) ResetSubscriptionAccountQuota(ctx context.Context, accountID int64, scope string) error {
@@ -978,6 +1014,10 @@ func (uc *ChannelUsecase) CreateSubscriptionAccount(ctx context.Context, account
 	if err != nil {
 		return err
 	}
+	ctx, err = uc.prepareSourceSideEffects(ctx, true)
+	if err != nil {
+		return err
+	}
 	if account.ModelMapping != "" {
 		ctx, err = uc.authorizeCreate(ctx, "channel.model_mappings", "channel.model_mapping.create", account.Group)
 		if err != nil {
@@ -994,6 +1034,9 @@ func (uc *ChannelUsecase) CreateSubscriptionAccount(ctx context.Context, account
 }
 
 func (uc *ChannelUsecase) UpdateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error {
+	if !authorization.HasExpectedRevision(ctx, "account", account.ID) && account.CredentialRevision > 0 {
+		ctx = authorization.WithExpectedRevision(ctx, "account", account.ID, account.CredentialRevision)
+	}
 	var err error
 	ctx, err = uc.authorizeObject(ctx, "channel.accounts.update", "channel.account.update", account.ID, true)
 	if err != nil {
@@ -1018,6 +1061,10 @@ func (uc *ChannelUsecase) UpdateSubscriptionAccount(ctx context.Context, account
 		}
 	}
 
+	ctx, err = uc.prepareSourceSideEffects(ctx, true)
+	if err != nil {
+		return err
+	}
 	if err := uc.repo.UpdateSubscriptionAccount(ctx, account); err != nil {
 		return err
 	}
@@ -1033,6 +1080,10 @@ func (uc *ChannelUsecase) DeleteSubscriptionAccount(ctx context.Context, account
 		return err
 	}
 	ctx, err = uc.authorizeOptional(ctx, "channel.routing_groups.write", "channel.routing_group.members.update")
+	if err != nil {
+		return err
+	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.model_mappings", "channel.model_mapping.delete")
 	if err != nil {
 		return err
 	}
@@ -1109,6 +1160,10 @@ func (uc *ChannelUsecase) ListChannels(ctx context.Context, page, pageSize int32
 	if err != nil {
 		return nil, 0, err
 	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.health", "monitor.health.channel.read")
+	if err != nil {
+		return nil, 0, err
+	}
 	channels, total, err := uc.repo.ListChannels(ctx, page, pageSize, keyword, group, status, chType)
 	if err != nil {
 		return nil, 0, err
@@ -1132,6 +1187,10 @@ func (uc *ChannelUsecase) CreateChannel(ctx context.Context, channel *Channel) e
 	if err != nil {
 		return err
 	}
+	ctx, err = uc.prepareSourceSideEffects(ctx, false)
+	if err != nil {
+		return err
+	}
 	if channel.ModelMapping != "" {
 		ctx, err = uc.authorizeCreate(ctx, "channel.model_mappings", "channel.model_mapping.create", channel.Group)
 		if err != nil {
@@ -1148,6 +1207,9 @@ func (uc *ChannelUsecase) CreateChannel(ctx context.Context, channel *Channel) e
 }
 
 func (uc *ChannelUsecase) UpdateChannel(ctx context.Context, channel *Channel) error {
+	if !authorization.HasExpectedRevision(ctx, "channel", channel.ID) && channel.AuthorizationRevision > 0 {
+		ctx = authorization.WithExpectedRevision(ctx, "channel", channel.ID, channel.AuthorizationRevision)
+	}
 	var err error
 	ctx, err = uc.authorizeObject(ctx, "channel.channels.update", "channel.channel.update", channel.ID, false)
 	if err != nil {
@@ -1161,8 +1223,15 @@ func (uc *ChannelUsecase) UpdateChannel(ctx context.Context, channel *Channel) e
 	if err != nil {
 		return err
 	}
+	ctx, err = uc.prepareSourceSideEffects(ctx, false)
+	if err != nil {
+		return err
+	}
 	if err := uc.repo.UpdateChannel(ctx, channel); err != nil {
 		return err
+	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "channel.channel.update"); iam {
+		channel.AuthorizationRevision++
 	}
 	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channel)
@@ -1237,6 +1306,10 @@ func (uc *ChannelUsecase) DeleteChannel(ctx context.Context, channelID int64) er
 		return err
 	}
 	ctx, err = uc.authorizeOptional(ctx, "channel.routing_groups.write", "channel.routing_group.members.update")
+	if err != nil {
+		return err
+	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.model_mappings", "channel.model_mapping.delete")
 	if err != nil {
 		return err
 	}

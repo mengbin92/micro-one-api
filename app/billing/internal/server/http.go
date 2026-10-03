@@ -62,12 +62,16 @@ func NewHTTPServer(addr string, svc *service.BillingService) *khttp.Server {
 
 	// Protected reconciliation endpoint
 	srv.HandleFunc("/v1/reconciliation", authz.HTTPContext("/api.billing.v1.BillingService/RunReconciliation", func(w http.ResponseWriter, r *http.Request) {
-		_, err := authorization.Prepare(r.Context(), svc.OwnerAuthorizationClient(), "billing.reconciliation", "billing.reconciliation.run")
+		ctx, err := authorization.Prepare(r.Context(), svc.OwnerAuthorizationClient(), "billing.reconciliation", "billing.reconciliation.run")
 		if err != nil {
 			authz.WriteHTTPError(w, err)
 			return
 		}
-		svc.HandleReconciliation(w, r)
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		svc.HandleReconciliation(w, r.WithContext(ctx))
 	}))
 	srv.HandleFunc("/api/v1/user/payments/alipay/notify", func(w http.ResponseWriter, r *http.Request) {
 		svc.HandleAlipayNotify(w, r)

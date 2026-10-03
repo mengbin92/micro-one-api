@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"micro-one-api/domain/authorization"
+	"strings"
 	"time"
 )
 
@@ -72,6 +73,7 @@ type UsageStat struct {
 }
 
 type DeleteLogsFilter struct {
+	Operation string
 	Level     string
 	Source    string
 	UserID    int64
@@ -255,6 +257,9 @@ func (uc *LogUsecase) DeleteLogs(ctx context.Context, filter DeleteLogsFilter) (
 	ctx, err = uc.authorize(ctx, "log.requests.delete", "log.request.delete")
 	if err != nil {
 		return 0, err
+	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "log.request.delete"); iam && strings.TrimSpace(authorization.WriteReason(ctx)) == "" {
+		return 0, authorization.ErrWritePrecondition
 	}
 	if filter.EndTime.IsZero() {
 		return 0, errors.New("end_time is required")

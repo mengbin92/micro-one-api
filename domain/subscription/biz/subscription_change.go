@@ -79,6 +79,11 @@ type ChangeResult struct {
 // (code-review M6, 2026-08-05). When no runner is wired (memory mode / tests),
 // it falls back to the historical unlocked read-modify-write.
 func (uc *SubscriptionUsecase) ChangeSubscription(ctx context.Context, req ChangeRequest) (*ChangeResult, error) {
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "user_subscriptions", "change")
+	if authErr != nil {
+		return nil, authErr
+	}
 	if uc == nil || uc.repo == nil {
 		return nil, ErrSubscriptionChangeNotConfigured
 	}

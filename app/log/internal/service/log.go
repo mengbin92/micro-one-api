@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"google.golang.org/protobuf/encoding/protojson"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/authz"
 	"net/http"
@@ -281,7 +282,11 @@ func (s *LogService) HandleDeleteLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	deleted, err := s.uc.DeleteLogs(r.Context(), biz.DeleteLogsFilter{
+	ctx := r.Context()
+	if q.Get("reason") != "" {
+		ctx = authorization.WithWriteReason(ctx, q.Get("reason"))
+	}
+	deleted, err := s.uc.DeleteLogs(ctx, biz.DeleteLogsFilter{
 		Level:     q.Get("type"),
 		Source:    q.Get("source"),
 		UserID:    userID,
@@ -289,7 +294,11 @@ func (s *LogService) HandleDeleteLogs(w http.ResponseWriter, r *http.Request) {
 		EndTime:   endTime,
 	})
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		if authz.IsAuthorizationError(err) {
+			authz.WriteHTTPError(w, err)
+		} else {
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
@@ -554,3 +563,71 @@ func (s *LogService) SetAuthorization(r authorization.Resolver) {
 	s.ownerAuthorization, _ = r.(*authz.Client)
 }
 func (s *LogService) OwnerAuthorizationClient() *authz.Client { return s.ownerAuthorization }
+
+func (s *LogService) ExportLogs(ctx context.Context, req *logv1.ExportLogsRequest) (*logv1.ListLogsResponse, error) {
+	rows, total, err := s.uc.ExportLogs(ctx, req.Page, req.PageSize, req.Level, req.Source, req.Keyword)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*logv1.GetLogResponse, len(rows))
+	for i, row := range rows {
+		items[i] = logEntryToProto(row)
+	}
+	return &logv1.ListLogsResponse{Items: items, Total: total}, nil
+}
+func (s *LogService) PurgeLogs(ctx context.Context, req *logv1.PurgeLogsRequest) (*logv1.PurgeLogsResponse, error) {
+	n, err := s.uc.PurgeLogs(ctx, time.Unix(req.Before, 0), req.Reason)
+	if err != nil {
+		return nil, err
+	}
+	return &logv1.PurgeLogsResponse{Deleted: n}, nil
+}
+func (s *LogService) HandleExportLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	page, _ := strconv.ParseInt(r.URL.Query().Get("page"), 10, 32)
+	size, _ := strconv.ParseInt(r.URL.Query().Get("page_size"), 10, 32)
+	rows, total, err := s.uc.ExportLogs(r.Context(), int32(page), int32(size), r.URL.Query().Get("level"), r.URL.Query().Get("source"), r.URL.Query().Get("keyword"))
+	if err != nil {
+		authz.WriteHTTPError(w, err)
+		return
+	}
+	items := make([]*logv1.GetLogResponse, len(rows))
+	for i, row := range rows {
+		items[i] = logEntryToProto(row)
+	}
+	payload, err := protojson.Marshal(&logv1.ListLogsResponse{Items: items, Total: total})
+	if err != nil {
+		authz.WriteHTTPError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, _ = w.Write(payload)
+}
+func (s *LogService) HandlePurgeLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Before int64  `json:"before"`
+		Reason string `json:"reason"`
+	}
+	if jsonx.NewDecoder(r.Body).Decode(&req) != nil {
+		w.WriteHeader(400)
+		return
+	}
+	n, err := s.uc.PurgeLogs(r.Context(), time.Unix(req.Before, 0), req.Reason)
+	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			authz.WriteHTTPError(w, err)
+		} else {
+			writeError(w, 400, err.Error())
+		}
+		return
+	}
+	writeJSON(w, 200, map[string]any{"deleted": n})
+}

@@ -2,6 +2,7 @@ package serviceidentity
 
 import (
 	"context"
+	"micro-one-api/domain/authorization"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -58,4 +59,11 @@ func TestHTTPOnlyPoliciesCannotConferSystemCapability(t *testing.T) {
 	if (Principal{Name: "admin"}).CanCallHTTP(entry) || (Principal{Name: "relay", Dedicated: true}).CanCallHTTP(entry) || admin.CanCallHTTP(entry+"/unknown") {
 		t.Fatal("unverified or unknown HTTP caller allowed")
 	}
+}
+
+func TestUserOperatorNeverReceivesSystemBypass(t *testing.T) {
+	const method = "/api.channel.v1.ChannelService/GetRoutingGroup"
+	ctx := WithRPCMethod(WithPrincipal(context.Background(), Principal{Name: "admin", Dedicated: true}), method)
+	require.True(t, HasSystemCapability(ctx, method))
+	require.False(t, HasSystemCapability(authorization.WithCredential(ctx, "verified-session"), method))
 }

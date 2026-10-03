@@ -78,6 +78,7 @@ type Repository struct {
 }
 
 type channelModel struct {
+	AuthorizationRevision             int64    `gorm:"column:authorization_revision;default:1"`
 	ID                                int64    `gorm:"column:id"`
 	Type                              int32    `gorm:"column:type"`
 	Key                               string   `gorm:"column:key"`
@@ -538,6 +539,9 @@ func (r *Repository) CreateSubscriptionAccount(ctx context.Context, account *biz
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	account.ID = int64(len(r.subAccounts) + 1)
+	if account.CredentialRevision < 1 {
+		account.CredentialRevision = 1
+	}
 	r.subAccounts[account.ID] = account
 	return nil
 }
@@ -759,6 +763,11 @@ func (r *Repository) RecordSubscriptionAccountQuotaUsage(ctx context.Context, us
 }
 
 func (r *Repository) AggregateSubscriptionAccountQuotaEvents(ctx context.Context, filter biz.SubscriptionAccountQuotaEventFilter) ([]*biz.SubscriptionAccountQuotaEventAggregate, error) {
+	if r.db == nil {
+		if _, scoped := authorization.QueryScopeFromContext(ctx, "channel.account.list"); scoped {
+			return nil, authorization.ErrDenied
+		}
+	}
 	if r.db != nil {
 		return r.aggregateSubscriptionAccountQuotaEventsDB(ctx, filter)
 	}
@@ -1185,20 +1194,37 @@ func (r *Repository) listOAuthRefreshCandidatesDB(ctx context.Context, within ti
 
 func (r *Repository) createSubscriptionAccountDB(ctx context.Context, account *biz.SubscriptionAccount) error {
 	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
-		if err := r.checkResourceTx(ctx, tx, 0, account.Group, true, "channel.account.create"); err != nil {
+		if err := r.checkResourceTx(ctx, tx, 0, account.Group, true, "channel.account.create", "channel.account.oauth.bind"); err != nil {
 			return err
 		}
 		if _, iam := authorization.QueryScopeFromContext(ctx, "channel.account.create"); iam && account.RateMultiplier != 0 && account.RateMultiplier != 1 {
-			return authorization.ErrDenied
+			if err := authorization.Require(ctx, "billing.pricing.update", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+				return err
+			}
+			if err := authzquery.AppendWriteAudit(ctx, tx, "billing.pricing.update", 0); err != nil {
+				return err
+			}
+		}
+		if err := r.checkCompatibilityMappingEdit(ctx, tx, 0, account.Group, true, "", account.ModelMapping); err != nil {
+			return err
 		}
 		model, err := r.subscriptionAccountBizToModel(account)
 		if err != nil {
 			return err
 		}
+		if model.CredentialRevision < 1 {
+			model.CredentialRevision = 1
+		}
 		if err := tx.Create(model).Error; err != nil {
 			return err
 		}
 		account.ID = model.ID
+		account.CredentialRevision = model.CredentialRevision
+		for _, op := range []string{"channel.account.create", "channel.account.oauth.bind"} {
+			if err := authzquery.AppendWriteAudit(ctx, tx, op, model.ID); err != nil {
+				return err
+			}
+		}
 		return r.syncSubscriptionAccountAbilitiesTx(tx, account)
 	})
 }
@@ -1224,13 +1250,18 @@ func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *b
 				return err
 			}
 			if current.RateMultiplier != account.RateMultiplier {
-				return authorization.ErrDenied
+				if err := authorization.Require(ctx, "billing.pricing.update", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+					return err
+				}
+				if err := authzquery.AppendWriteAudit(ctx, tx, "billing.pricing.update", account.ID); err != nil {
+					return err
+				}
 			}
 
 			if current.ModelMapping != account.ModelMapping {
-				// Mapping writes remain unbound. Even a supplied mapping
-				// scope cannot authorize a change through this plain update.
-				return authorization.ErrDenied
+				if err := r.checkCompatibilityMappingEdit(ctx, tx, account.ID, account.Group, true, current.ModelMapping, account.ModelMapping); err != nil {
+					return err
+				}
 			}
 
 			if current.Status != account.Status {
@@ -1314,6 +1345,9 @@ func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *b
 func (r *Repository) deleteSubscriptionAccountDB(ctx context.Context, accountID int64) error {
 	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
 		if err := r.checkResourceTx(ctx, tx, accountID, "", true, "channel.account.delete"); err != nil {
+			return err
+		}
+		if err := requireSourceMappingDeletes(tx, r, accountID, true); err != nil {
 			return err
 		}
 		if err := r.syncRoutingMembersTx(tx, routing.Source{Kind: routing.Subscription, ID: accountID}, ""); err != nil {
@@ -1486,11 +1520,19 @@ func (r *Repository) aggregateSubscriptionAccountQuotaEventsDB(ctx context.Conte
 			subscription_account_id,
 			COALESCE(SUM(cost_usd), 0) AS cost_usd,
 			COALESCE(SUM(charged_usd), 0) AS charged_usd,
-			COALESCE(AVG(rate_multiplier), 0) AS average_rate_multiplier,
+			COALESCE(AVG(subscription_account_quota_events.rate_multiplier), 0) AS average_rate_multiplier,
 			COUNT(*) AS count,
 			COALESCE(MAX(occurred_at), 0) AS last_occurred_at`).
 		Group("subscription_account_id").
 		Order("charged_usd DESC")
+	if _, scoped := authorization.QueryScopeFromContext(ctx, "channel.account.list"); scoped {
+		q = q.Joins("JOIN subscription_accounts ON subscription_accounts.id = subscription_account_quota_events.subscription_account_id")
+		var err error
+		q, err = r.subscriptionAccountScope(ctx, q, "subscription_accounts")
+		if err != nil {
+			return nil, err
+		}
+	}
 	if filter.AccountID > 0 {
 		q = q.Where("subscription_account_id = ?", filter.AccountID)
 	}
@@ -1647,6 +1689,7 @@ func (r *Repository) findByIDDB(ctx context.Context, channelID int64) (*biz.Chan
 	}
 	return &biz.Channel{
 		ID:                                model.ID,
+		AuthorizationRevision:             model.AuthorizationRevision,
 		Type:                              model.Type,
 		Name:                              model.Name,
 		Status:                            model.Status,
@@ -2177,6 +2220,10 @@ func (r *Repository) createChannelDB(ctx context.Context, channel *biz.Channel) 
 			return err
 		}
 		channel.ID = model.ID
+		channel.AuthorizationRevision = model.AuthorizationRevision
+		if err := authzquery.AppendWriteAudit(ctx, tx, "channel.channel.create", model.ID); err != nil {
+			return err
+		}
 		if err := r.syncAbilitiesTx(tx, channel); err != nil {
 			return err
 		}
@@ -2201,7 +2248,9 @@ func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) 
 				return authorization.ErrDenied
 			}
 			if current.ModelMapping != channel.ModelMapping {
-				return authorization.ErrDenied
+				if err := r.checkCompatibilityMappingEdit(ctx, tx, channel.ID, channel.Group, false, current.ModelMapping, channel.ModelMapping); err != nil {
+					return err
+				}
 			}
 
 			if current.Key != channel.Key {
@@ -2251,6 +2300,9 @@ func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) 
 func (r *Repository) deleteChannelDB(ctx context.Context, channelID int64) error {
 	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
 		if err := r.checkResourceTx(ctx, tx, channelID, "", false, "channel.channel.delete"); err != nil {
+			return err
+		}
+		if err := requireSourceMappingDeletes(tx, r, channelID, false); err != nil {
 			return err
 		}
 		if err := r.syncRoutingMembersTx(tx, routing.Source{Kind: routing.Channel, ID: channelID}, ""); err != nil {
@@ -2372,7 +2424,9 @@ func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channe
 		if len(missing) > 0 {
 			for _, operation := range []string{"channel.channel.create", "channel.channel.update"} {
 				if _, iam := authorization.QueryScopeFromContext(tx.Statement.Context, operation); iam {
-					return authorization.ErrDenied
+					if err := authorization.Require(tx.Statement.Context, "channel.model.create", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+						return err
+					}
 				}
 			}
 
@@ -2419,7 +2473,16 @@ func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channe
 	}
 	for _, operation := range []string{"channel.channel.create", "channel.channel.update"} {
 		if _, iam := authorization.QueryScopeFromContext(tx.Statement.Context, operation); iam && (len(managedToDelete) > 0 || len(managedToUpdate) > 0) {
-			return authorization.ErrDenied
+			for _, id := range managedToDelete {
+				if err := requireSourceMappingEffect(tx, r, channel.ID, id, "channel.model_mapping.delete"); err != nil {
+					return err
+				}
+			}
+			for _, id := range managedToUpdate {
+				if err := requireSourceMappingEffect(tx, r, channel.ID, id, "channel.model_mapping.update"); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	if len(managedToDelete) > 0 {
@@ -2449,7 +2512,9 @@ func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channe
 	if len(missingMappings) > 0 {
 		for _, operation := range []string{"channel.channel.create", "channel.channel.update"} {
 			if _, iam := authorization.QueryScopeFromContext(tx.Statement.Context, operation); iam {
-				return authorization.ErrDenied
+				if err := requireSourceMappingEffect(tx, r, channel.ID, 0, "channel.model_mapping.create"); err != nil {
+					return err
+				}
 			}
 		}
 		if err := tx.CreateInBatches(&missingMappings, len(missingMappings)).Error; err != nil {
@@ -2472,7 +2537,9 @@ func ensureModelRegistryRowTx(tx *gorm.DB, canonicalID string) (int64, error) {
 	}
 	for _, operation := range []string{"channel.channel.create", "channel.channel.update", "channel.account.create", "channel.account.update"} {
 		if _, iam := authorization.QueryScopeFromContext(tx.Statement.Context, operation); iam {
-			return 0, authorization.ErrDenied
+			if err := authorization.Require(tx.Statement.Context, "channel.model.create", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+				return 0, err
+			}
 		}
 	}
 
@@ -2597,6 +2664,7 @@ func (r *Repository) modelToChannel(m *channelModel) *biz.Channel {
 	}
 	return &biz.Channel{
 		ID:                                m.ID,
+		AuthorizationRevision:             m.AuthorizationRevision,
 		Type:                              m.Type,
 		Name:                              m.Name,
 		Status:                            m.Status,
@@ -2634,6 +2702,7 @@ func (r *Repository) channelToModel(ch *biz.Channel) (*channelModel, error) {
 		return nil, err
 	}
 	return &channelModel{
+		AuthorizationRevision:             ch.AuthorizationRevision,
 		ID:                                ch.ID,
 		Type:                              ch.Type,
 		Name:                              ch.Name,
