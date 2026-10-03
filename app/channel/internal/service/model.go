@@ -293,6 +293,7 @@ func (s *ChannelService) UpdateModel(ctx context.Context, req *channelv1.UpdateM
 	}
 	model := &biz.Model{
 		ID:               req.ModelPk,
+		PreservePricing:  req.PreservePricing,
 		DisplayName:      req.DisplayName,
 		Description:      req.Description,
 		Provider:         req.Provider,

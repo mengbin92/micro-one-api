@@ -37,7 +37,8 @@ import { MobileNav } from '@/components/MobileNav';
 import { NotificationPanel } from '@/components/NotificationPanel';
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { canAccessAdmin } from '@/lib/admin-access';
+import { useAuthorization } from '@/lib/authorization';
+import { adminPages, firstAdminPage, menuRoutes } from '@/lib/admin-permissions';
 import { formatUSD } from '@/lib/amount';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/i18n';
@@ -71,6 +72,7 @@ const userLinks: NavItem[] = [
 ];
 
 const secondaryUserLinks: SecondaryNavItem[] = [
+  { label: '我的会话角色', icon: Users, to: '/session-roles' },
   { label: '个人资料', icon: UserCircle, to: '/profile' },
   { label: '模型价格', icon: Database, to: '/pricing' },
   { label: '我的订阅', icon: ScrollText, to: '/subscriptions' },
@@ -88,6 +90,16 @@ const adminSystemLink: NavItem[] = [
 ];
 
 const adminNavGroups: AdminNavGroup[] = [
+  { label: '权限管理', items: [
+    { to: '/admin/iam/permissions', label: '权限目录', icon: KeyRound },
+    { to: '/admin/iam/roles', label: '角色与继承', icon: Users },
+    { to: '/admin/iam/assignments', label: '用户角色', icon: IdCard },
+    { to: '/admin/iam/delegations', label: '授权委派', icon: BadgeCheck },
+    { to: '/admin/iam/constraints', label: '职责分离', icon: Scale },
+    { to: '/admin/iam/menus', label: '菜单管理', icon: Layers },
+    { to: '/admin/iam/explain', label: '有效权限与模拟', icon: FlaskConical },
+    { to: '/admin/iam/audits', label: '授权审计', icon: ScrollText },
+  ] },
   {
     label: '资源与路由',
     items: [
@@ -129,6 +141,15 @@ const adminNavGroups: AdminNavGroup[] = [
 ];
 
 const routeTitles: Record<string, string> = {
+  '/session-roles': '我的会话角色',
+  '/admin/iam/permissions': '权限目录',
+  '/admin/iam/roles': '角色与继承',
+  '/admin/iam/assignments': '用户角色',
+  '/admin/iam/delegations': '授权委派',
+  '/admin/iam/constraints': '职责分离',
+  '/admin/iam/menus': '菜单管理',
+  '/admin/iam/explain': '有效权限与模拟',
+  '/admin/iam/audits': '授权审计',
   '/dashboard': '仪表盘',
   '/tokens': 'API 密钥',
   '/playground': '在线调试',
@@ -175,9 +196,11 @@ function NavigationLinks({
   onNavigate?: () => void;
   compact?: boolean;
 }) {
+  const auth = useAuthorization();
+  const visible = items.filter(item => !item.to.startsWith('/admin') || auth.can(adminPages[item.to] ?? ''));
   return (
     <div className="space-y-2">
-      {items.map((link) => {
+      {visible.map((link) => {
         const Icon = link.icon;
         return (
           <NavLink
@@ -266,15 +289,12 @@ export function AppNavigation() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
-  const [storedRole] = useState<number | null>(() => {
-    const stored = localStorage.getItem('userRole');
-    return stored != null && stored !== '' ? Number(stored) : null;
-  });
-  const { data: user } = useQuery(userSelfQueryOptions);
-  const { data: account } = useQuery(accountDashboardQueryOptions);
-  const role = typeof user?.role === 'number' ? user.role : storedRole;
+  const auth = useAuthorization();
+  const sessionActive = auth.snapshot?.authorization_mode === 'legacy' || auth.snapshot?.session?.activation_state === 'active';
+  const { data: user } = useQuery({ ...userSelfQueryOptions, enabled: sessionActive });
+  const { data: account } = useQuery({ ...accountDashboardQueryOptions, enabled: sessionActive });
   const isWide = useMediaQuery('(min-width: 1024px)');
-  const isAdmin = canAccessAdmin({ role });
+  const isAdmin = auth.can('admin.console.enter');
   const isAdminRoute = location.pathname === '/admin' || location.pathname.startsWith('/admin/');
   const activeAdminGroup = adminNavGroups.find((group) => group.items.some((item) => (
     location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
@@ -318,7 +338,7 @@ export function AppNavigation() {
 
   const adminControl = isAdmin ? (
     <Link
-      to={isAdminRoute ? '/dashboard' : '/admin'}
+      to={isAdminRoute ? '/dashboard' : firstAdminPage(auth.can)}
       aria-label={t(isAdminRoute ? '返回控制台' : '进入管理')}
       className={buttonVariants({ variant: 'outline', size: 'sm' })}
       onMouseEnter={() => preloadRoute(isAdminRoute ? '/dashboard' : '/admin')}
@@ -347,7 +367,7 @@ export function AppNavigation() {
             <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('管理工作台')}</p>
             <NavigationLinks items={adminOverviewLink} compact onNavigate={() => setMobileOpen(false)} />
             <div className="mt-4 space-y-1">
-              {adminNavGroups.map((group) => {
+              {adminNavGroups.filter(group => group.items.some(item => auth.can(adminPages[item.to]))).map((group) => {
                 const expanded = expandedAdminGroup === group.label;
                 return (
                   <section key={group.label}>
@@ -366,7 +386,7 @@ export function AppNavigation() {
               })}
             </div>
             <div className="mt-4 border-t border-border pt-4">
-              <NavigationLinks items={adminSystemLink} compact onNavigate={() => setMobileOpen(false)} />
+              <NavigationLinks items={[...adminSystemLink, ...(auth.snapshot?.menus ?? []).filter(menu => menuRoutes[menu.route_key ?? '']).map(menu => ({ to: menuRoutes[menu.route_key!], label: menu.name ?? menu.route_key!, icon: Layers }))]} compact onNavigate={() => setMobileOpen(false)} />
             </div>
           </>
         ) : (
@@ -427,7 +447,7 @@ export function AppNavigation() {
             <div className="hidden md:block">
               <ThemeToggle />
             </div>
-            {isAdmin && <NotificationPanel open={notificationOpen} onOpenChange={setNotificationOpen} />}
+            {auth.can('notify.notification.list') && <NotificationPanel open={notificationOpen} onOpenChange={setNotificationOpen} />}
             {adminControl}
             <button
               type="button"

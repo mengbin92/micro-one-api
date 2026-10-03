@@ -583,6 +583,11 @@ func (r *Repository) UpdateModel(ctx context.Context, do *biz.Model) error {
 		"metadata":           po.Metadata,
 		"updated_at":         po.UpdatedAt,
 	}
+	if do.PreservePricing {
+		delete(updates, "pricing_input")
+		delete(updates, "pricing_output")
+		delete(updates, "pricing_cache_read")
+	}
 	res := r.db.WithContext(ctx).Model(&modelModel{}).Where("id = ?", do.ID).Updates(updates)
 	if res.Error != nil {
 		return res.Error
@@ -1293,9 +1298,11 @@ func (r *Repository) updateModelMemory(do *biz.Model) error {
 	existing.Provider = do.Provider
 	existing.ModelType = do.ModelType
 	existing.ContextWindow = do.ContextWindow
-	existing.PricingInput = do.PricingInput
-	existing.PricingOutput = do.PricingOutput
-	existing.PricingCacheRead = do.PricingCacheRead
+	if !do.PreservePricing {
+		existing.PricingInput = do.PricingInput
+		existing.PricingOutput = do.PricingOutput
+		existing.PricingCacheRead = do.PricingCacheRead
+	}
 	existing.IsPublic = do.IsPublic
 	existing.Capabilities = append([]string(nil), do.Capabilities...)
 	existing.Tags = append([]string(nil), do.Tags...)

@@ -1,11 +1,11 @@
+import { useAuthorizedQuery } from '@/lib/authorization';
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { adminApiClient } from '@/lib/api';
 import { toast } from 'sonner';
 import { unwrapApiData, ensureApiSuccess } from '@/lib/api-response';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { t } from '@/lib/i18n';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RoutingBillingEditor } from '@/components/admin/RoutingBillingEditor';
@@ -31,8 +31,8 @@ export function AdminRoutingGroupsPage() {
   const [selected, setSelected] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const token = pages[pages.length - 1];
-  const groups = useQuery({
-    queryKey: ['admin-routing-groups', key, token],
+  const groups = useAuthorizedQuery({
+    permission: 'channel.routing_group.list', queryKey: ['admin-routing-groups', key, token],
     queryFn: async () => {
       const res = await adminApiClient.get('/v1/admin/routing-groups', { params: {
         page_size: 50, page_token: token, order_by: 'sort_order asc,key asc',
@@ -41,15 +41,15 @@ export function AdminRoutingGroupsPage() {
       return unwrapApiData<GroupList>(res.data, t('分组加载失败'));
     },
   });
-  const detail = useQuery({
-    queryKey: ['admin-routing-group', selected], enabled: selected !== null,
+  const detail = useAuthorizedQuery({
+    permission: 'channel.routing_group.read', queryKey: ['admin-routing-group', selected], enabled: selected !== null,
     queryFn: async () => {
       const res = await adminApiClient.get(`/v1/admin/routing-groups/${selected}`);
       return unwrapApiData<GroupDetail>(res.data, t('分组详情加载失败'));
     },
   });
-  const billingPolicy = useQuery({
-    queryKey: ['routing-billing', selected], enabled: selected !== null, retry: false,
+  const billingPolicy = useAuthorizedQuery({
+    permission: 'billing.routing_policy.read', queryKey: ['routing-billing', selected], enabled: selected !== null, retry: false,
     queryFn: async () => unwrapApiData<{ version: number; billing_mode: string; price_ratio: number }>((await adminApiClient.get(`/v1/admin/routing-groups/${selected}/billing`)).data),
   });
   const [overrideDrafts, setOverrideDrafts] = useState<Record<string, { priority: string; weight: string }>>({});
@@ -131,7 +131,7 @@ export function AdminRoutingGroupsPage() {
           <h3 className="font-medium">{t('新建分组')}</h3>
           <p className="text-sm text-muted-foreground">{t('新建分组固定为停用：先加成员并启用分组，再授权用户；启用的组才会进入选路。')}</p>
         </div>
-        <Button type="button" variant="outline" aria-expanded={createOpen} onClick={() => setCreateOpen((open) => !open)}>{createOpen ? t('收起') : t('新建分组')}</Button>
+        <Button permission="channel.routing_group.create" type="button" variant="outline" aria-expanded={createOpen} onClick={() => setCreateOpen((open) => !open)}>{createOpen ? t('收起') : t('新建分组')}</Button>
       </div>
       {createOpen && <form className="grid gap-3 sm:grid-cols-2" onSubmit={createGroup}>
         <div className="space-y-2"><Label htmlFor="new-routing-group-key">{t('分组键（必填）')}</Label>
@@ -146,7 +146,7 @@ export function AdminRoutingGroupsPage() {
             <option value="restricted">{t('专属分组')}</option><option value="public">{t('公开分组')}</option>
           </select></div>
         <div className="flex items-end gap-2 sm:col-span-2">
-          <Button type="submit" disabled={creating || !createDraft.key.trim()}>{creating ? t('创建中...') : t('创建分组')}</Button>
+          <Button permission="channel.routing_group.create" type="submit" disabled={creating || !createDraft.key.trim()}>{creating ? t('创建中...') : t('创建分组')}</Button>
           <Button type="button" variant="ghost" disabled={creating} onClick={() => setCreateOpen(false)}>{t('取消')}</Button>
         </div>
       </form>}
@@ -165,7 +165,7 @@ export function AdminRoutingGroupsPage() {
       </TableRow></TableHeader><TableBody>{groups.data.groups.map((group) => <TableRow key={group.id}>
         <TableCell><div className="font-medium">{group.display_name || group.key}</div><code>{group.key}</code></TableCell>
         <TableCell>{statusLabel(group.status)}</TableCell><TableCell>{group.access_mode === 'public' ? t('公开') : t('需授权')}</TableCell>
-        <TableCell><Button size="sm" variant="outline" onClick={() => selectGroup(group.id)} aria-label={t('查看分组 {name}', { name: group.key })}>{t('查看详情')}</Button></TableCell>
+        <TableCell><Button permission="channel.routing_group.read" size="sm" variant="outline" onClick={() => selectGroup(group.id)} aria-label={t('查看分组 {name}', { name: group.key })}>{t('查看详情')}</Button></TableCell>
       </TableRow>)}</TableBody></Table></div>}
     <div className="flex gap-2">
       <Button variant="outline" disabled={pages.length === 1 || groups.isFetching} onClick={() => { setPages((p) => p.slice(0, -1)); selectGroup(null); }}>{t('上一页')}</Button>
@@ -186,7 +186,7 @@ export function AdminRoutingGroupsPage() {
         </section>}
         {detail.data.group.status !== 'archived' && <div className="space-y-2">
           <p className="text-sm text-muted-foreground">{t('停用后拒绝新调用，已接受的请求按原价格结算；切换为专属后仅显式授权用户可用。')}</p>
-          <div className="flex gap-2"><Button disabled={saving} variant={detail.data.group.status === 'enabled' ? 'destructive' : 'outline'} onClick={() => changeState(detail.data.group.status === 'enabled' ? 'disabled' : 'enabled', detail.data.group.access_mode)}>{detail.data.group.status === 'enabled' ? t('停用分组') : t('启用分组')}</Button>
+          <div className="flex gap-2"><Button permission={detail.data.group.status === 'enabled' ? 'channel.routing_group.disable' : 'channel.routing_group.enable'} disabled={saving} variant={detail.data.group.status === 'enabled' ? 'destructive' : 'outline'} onClick={() => changeState(detail.data.group.status === 'enabled' ? 'disabled' : 'enabled', detail.data.group.access_mode)}>{detail.data.group.status === 'enabled' ? t('停用分组') : t('启用分组')}</Button>
           <select aria-label={t('使用资格')} disabled={saving} value={detail.data.group.access_mode} onChange={(e) => changeState(detail.data.group.status, e.target.value)} className="rounded-md border bg-background px-2"><option value="restricted">{t('专属分组')}</option><option value="public">{t('公开分组')}</option></select></div>
         </div>}
         <RoutingBillingEditor key={selected} id={selected} />
@@ -195,7 +195,7 @@ export function AdminRoutingGroupsPage() {
         {!detail.data.resources.length ? <p>{t('暂无资源成员')}</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>{t('资源类型')}</TableHead><TableHead>ID</TableHead><TableHead>{t('优先级')}</TableHead><TableHead>{t('权重')}</TableHead><TableHead>{t('组内覆盖（空=继承）')}</TableHead><TableHead>{t('操作')}</TableHead></TableRow></TableHeader><TableBody>
           {detail.data.resources.map((r) => { const key = `${r.source_kind}:${r.source_id}`; const draft = overrideDrafts[key] || { priority: r.priority_override?.toString() ?? '', weight: r.weight_override?.toString() ?? '' }; return <TableRow key={key}><TableCell>{r.source_kind === 'channel' ? t('API 渠道') : t('上游订阅账号')}</TableCell><TableCell>{r.source_id}</TableCell><TableCell>{r.priority}{r.priority_override != null ? `（覆盖 ${r.priority_override}）` : ''}</TableCell><TableCell>{r.weight}{r.weight_override != null ? `（覆盖 ${r.weight_override}）` : ''}</TableCell>
             <TableCell><div className="flex gap-1"><Input aria-label="优先级覆盖" className="w-20" placeholder="继承" value={draft.priority} onChange={(e) => setOverrideDrafts((d) => ({ ...d, [key]: { ...draft, priority: e.target.value } }))} /><Input aria-label="权重覆盖" className="w-20" placeholder="继承" value={draft.weight} onChange={(e) => setOverrideDrafts((d) => ({ ...d, [key]: { ...draft, weight: e.target.value } }))} /></div></TableCell>
-            <TableCell><Button size="sm" variant="outline" disabled={saving || detail.data.group.status === 'archived'} onClick={() => saveOverrides(r.source_kind, r.source_id)}>{t('保存覆盖')}</Button></TableCell></TableRow>; })}
+            <TableCell><Button permission="channel.routing_group.resource_override.update" size="sm" variant="outline" disabled={saving || detail.data.group.status === 'archived'} onClick={() => saveOverrides(r.source_kind, r.source_id)}>{t('保存覆盖')}</Button></TableCell></TableRow>; })}
         </TableBody></Table></div>}
         <h4 className="font-medium">{t('账号模型授权')}</h4>
         <p className="text-sm text-muted-foreground">{t('模型级额外授权仅覆盖列出的模型，不授予该账号的其他模型。')}</p>

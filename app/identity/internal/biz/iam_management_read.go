@@ -99,6 +99,27 @@ func (uc *IAMGovernanceUsecase) read(ctx context.Context, tx IAMTx, v iamManagem
 				})
 			}
 		}
+		if method == "GetRolePermissions" && out.Roles[0].Status == "enabled" {
+			sources, err := IAMSources(req.Context, func() map[int64]IAMRole {
+				roles := map[int64]IAMRole{}
+				for _, role := range v.state.Roles {
+					roles[role.ID] = role
+				}
+				return roles
+			}(), []IAMAssignment{{ID: 1, UserID: v.actor.UserID, RoleID: req.ID, Context: req.Context, Boundary: authorization.Scope{Clauses: []authorization.Clause{{All: true}}}, Validity: authorization.Interval{StartsAt: v.now}}}, []int64{req.ID})
+			if err != nil {
+				return out, err
+			}
+			for _, source := range sources {
+				i := slices.IndexFunc(v.state.Roles, func(r IAMRole) bool { return r.ID == source.RoleID })
+				if i >= 0 && visibleRole(v.state.Roles[i], "iam.role.permissions.read") {
+					// This is a role projection, not a real user assignment.
+					source.AssignmentID = 0
+					out.Sources = append(out.Sources, source)
+				}
+			}
+		}
+
 	case "GetUserRoles":
 		if req.UserID <= 0 {
 			return out, ErrIAMInvalidRelation
@@ -206,6 +227,11 @@ func (uc *IAMGovernanceUsecase) read(ctx context.Context, tx IAMTx, v iamManagem
 			}
 		}
 		if method == "ListUserSessions" {
+			targetRevision, err := uc.repo.UserRevision(ctx, tx, req.UserID)
+			if err != nil {
+				return out, err
+			}
+			out.TargetRevision = targetRevision
 			for _, s := range v.state.Sessions {
 				if s.UserID == req.UserID {
 					out.Sessions = append(out.Sessions, s)

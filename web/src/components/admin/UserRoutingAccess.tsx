@@ -1,11 +1,12 @@
+import { useAuthorization, useAuthorizedQuery } from '@/lib/authorization';
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
 import { unwrapApiData, ensureApiSuccess } from '@/lib/api-response';
 import { t } from '@/lib/i18n';
 import type { AvailableGroup, AvailableGroups, RoutingFacts, RoutingGrant } from '@/lib/routing-groups';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 const sourceLabel = (source: RoutingGrant) => {
@@ -28,6 +29,7 @@ const billingModeLabel = (mode: string) => ({
 }[mode] ?? mode);
 
 export function UserRoutingAccess({ userId }: { userId: string }) {
+  const auth = useAuthorization();
   const [open, setOpen] = useState(false);
   const [groupId, setGroupId] = useState('');
   const [expires, setExpires] = useState('');
@@ -35,14 +37,14 @@ export function UserRoutingAccess({ userId }: { userId: string }) {
   const [priceRatio, setPriceRatio] = useState('');
   const [saving, setSaving] = useState(false);
   const queryClient = useQueryClient();
-  const facts = useQuery({ queryKey: ['user-routing-access', userId], enabled: open, retry: false, queryFn: async () => unwrapApiData<RoutingFacts>((await adminApiClient.get(`/v1/admin/routing-access/${userId}`)).data) });
-  const groups = useQuery({ queryKey: ['admin-routing-access-groups'], enabled: open, queryFn: async () => {
+  const facts = useAuthorizedQuery({ permission: 'identity.routing_access.read', queryKey: ['user-routing-access', userId], enabled: open, retry: false, queryFn: async () => unwrapApiData<RoutingFacts>((await adminApiClient.get(`/v1/admin/routing-access/${userId}`)).data) });
+  const groups = useAuthorizedQuery({ permission: 'channel.routing_group.list', queryKey: ['admin-routing-access-groups'], enabled: open, queryFn: async () => {
     const all: { id: number; key: string; display_name: string; status: string }[] = [];
     let token = '';
     do { const page = unwrapApiData<{ groups: typeof all; next_page_token: string }>((await adminApiClient.get('/v1/admin/routing-groups', { params: { page_size: 200, page_token: token } })).data); all.push(...page.groups); token = page.next_page_token; } while (token);
     return all;
   } });
-  const available = useQuery({ queryKey: ['admin-user-routing-available', userId], enabled: open, retry: false, queryFn: async () => {
+  const available = useAuthorizedQuery({ permission: 'identity.routing_access.read', queryKey: ['admin-user-routing-available', userId], enabled: open, retry: false, queryFn: async () => {
     const all: AvailableGroup[] = [];
     let token = '';
     do {
@@ -73,7 +75,7 @@ export function UserRoutingAccess({ userId }: { userId: string }) {
     }
     setSaving(true);
     try {
-      const res = await adminApiClient.put(`/v1/admin/routing-groups/${priceGroupId}/user-price/${userId}`, { price_ratio: ratio });
+      const res = await adminApiClient.put(`/v1/admin/routing-groups/${priceGroupId}/user-price/${userId}`, { price_ratio: ratio, expected_version: String(available.data?.find(group => String(group.id) === priceGroupId)?.user_price_version ?? 0) });
       ensureApiSuccess(res.data, t('设置用户倍率失败'));
       await available.refetch();
       toast.success(t('用户倍率已更新，仅影响之后建立的预扣'));
@@ -85,7 +87,7 @@ export function UserRoutingAccess({ userId }: { userId: string }) {
     if (!priceGroupId) return;
     setSaving(true);
     try {
-      const res = await adminApiClient.delete(`/v1/admin/routing-groups/${priceGroupId}/user-price/${userId}`);
+      const res = await adminApiClient.delete(`/v1/admin/routing-groups/${priceGroupId}/user-price/${userId}`, { params: { expected_version: String(available.data?.find(group => String(group.id) === priceGroupId)?.user_price_version ?? 0) } });
       ensureApiSuccess(res.data, t('清除用户倍率失败'));
       await available.refetch();
       toast.success(t('用户倍率已清除'));
@@ -93,15 +95,15 @@ export function UserRoutingAccess({ userId }: { userId: string }) {
     finally { setSaving(false); }
   };
   return <>
-    <Button variant="outline" size="sm" onClick={() => setOpen(true)}>{t('分组授权')}</Button>
+    <Button permission="identity.routing_access.read" variant="outline" size="sm" onClick={() => setOpen(true)}>{t('分组授权')}</Button>
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[85vh] overflow-y-auto"><DialogHeader><DialogTitle>{t('默认分组与分组授权')}</DialogTitle><DialogDescription>{t('默认分组只影响跟随默认的 Key；撤销一项授权后，其他有效来源仍可提供访问资格。')}</DialogDescription></DialogHeader>
       {(facts.isError || groups.isError || available.isError) && <p role="alert">{t('分组设置暂不可用')}</p>}
       {facts.data && <div className="space-y-4">
         <p>{t('默认分组：')}{groups.data?.find((g) => g.id === facts.data.default_routing_group_id)?.key || `#${facts.data.default_routing_group_id}`}</p>
-        <label className="block">{t('公开组访问')}<select aria-label={t('公开组访问')} disabled={saving} className="ml-2 rounded border p-1" value={facts.data.public_group_access} onChange={(e) => change({ operation: 'public_access', public_group_access: e.target.value })}><option value="explicit_only">{t('仅显式授权')}</option><option value="all">{t('允许所有公开组')}</option></select></label>
+        <label className="block">{t('公开组访问')}<select aria-label={t('公开组访问')} disabled={saving || !auth.can('identity.routing_access.public.update')} className="ml-2 rounded border p-1" value={facts.data.public_group_access} onChange={(e) => change({ operation: 'public_access', public_group_access: e.target.value })}><option value="explicit_only">{t('仅显式授权')}</option><option value="all">{t('允许所有公开组')}</option></select></label>
         <label className="block">{t('目标分组')}<select aria-label={t('目标分组')} className="ml-2 rounded border p-1" value={groupId} onChange={(e) => setGroupId(e.target.value)}><option value="">{t('请选择')}</option>{groups.data?.filter((g) => g.status === 'enabled').map((g) => <option key={g.id} value={g.id}>{g.display_name || g.key}</option>)}</select></label>
         <label className="block">{t('授权到期时间（留空为永久）')}<input aria-label={t('授权到期时间（留空为永久）')} type="datetime-local" value={expires} onChange={(e) => setExpires(e.target.value)} className="block rounded border p-1" /></label>
-        <div className="flex gap-2"><Button disabled={saving || !groupId} onClick={() => change({ operation: 'grant', routing_group_id: Number(groupId), source_type: 'admin', source_ref: 'manual', expires_at: expires ? Math.floor(new Date(expires).getTime() / 1000) : 0 })}>{t('授予访问')}</Button><Button variant="outline" disabled={saving || !groupId} onClick={() => change({ operation: 'default', routing_group_id: Number(groupId) })}>{t('设为默认')}</Button></div>
+        <div className="flex gap-2"><Button permission="identity.routing_access.grant" disabled={saving || !groupId} onClick={() => change({ operation: 'grant', routing_group_id: Number(groupId), source_type: 'admin', source_ref: 'manual', expires_at: expires ? Math.floor(new Date(expires).getTime() / 1000) : 0 })}>{t('授予访问')}</Button><Button permission="identity.routing_access.default.update" variant="outline" disabled={saving || !groupId} onClick={() => change({ operation: 'default', routing_group_id: Number(groupId) })}>{t('设为默认')}</Button></div>
         <section className="space-y-3 border-t pt-3" aria-label={t('当前可用分组与有效价格')}>
           <h3 className="text-sm font-semibold">{t('当前可用分组与有效价格')}</h3>
           <p className="text-sm text-muted-foreground">{t('报价是读取时结果；实际扣费以请求预扣时冻结的快照为准。')}</p>
@@ -118,8 +120,8 @@ export function UserRoutingAccess({ userId }: { userId: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <select aria-label={t('倍率目标分组')} className="rounded border p-1" value={priceGroupId} onChange={(e) => setPriceGroupId(e.target.value)}><option value="">{t('请选择分组')}</option>{groups.data?.filter((g) => g.status !== 'archived').map((g) => <option key={g.id} value={g.id}>{g.display_name || g.key}</option>)}</select>
             <input aria-label={t('用户倍率')} className="w-24 rounded border p-1" placeholder={t('如 0.8')} value={priceRatio} onChange={(e) => setPriceRatio(e.target.value)} />
-            <Button size="sm" disabled={saving || !priceGroupId} onClick={setUserPrice}>{t('设置倍率')}</Button>
-            <Button size="sm" variant="outline" disabled={saving || !priceGroupId} onClick={clearUserPrice}>{t('清除倍率')}</Button>
+            <Button permission="billing.routing_policy.user_override.update" size="sm" disabled={saving || !priceGroupId} onClick={setUserPrice}>{t('设置倍率')}</Button>
+            <Button permission="billing.routing_policy.user_override.delete" size="sm" variant="outline" disabled={saving || !priceGroupId} onClick={clearUserPrice}>{t('清除倍率')}</Button>
           </div>
         </div>
         {facts.data.grants.map((g) => <div key={`${g.routing_group_id}/${g.source_type}/${g.source_ref}`} className="border-t pt-2 text-sm">
@@ -127,7 +129,7 @@ export function UserRoutingAccess({ userId }: { userId: string }) {
           <p>{g.expires_at ? t('有效至 {time}', { time: new Date(g.expires_at * 1000).toLocaleString() }) : t('永久授权')}</p>
           <p>{t('关联 Key：')}{facts.data.tokens?.filter((token) => token.mode === 'fixed' ? token.group_id === g.routing_group_id : facts.data.default_routing_group_id === g.routing_group_id).map((token) => token.name).join('、') || t('无')}</p>
           {g.source_type === 'subscription' && <p>{t('此来源由订阅管理；撤销订阅或到期后自动失效。')}</p>}
-          {g.status === 'active' && g.source_type !== 'subscription' && <Button size="sm" variant="destructive" disabled={saving} onClick={() => change({ operation: 'revoke', ...g })}>{t('撤销此来源')}</Button>}
+          {g.status === 'active' && g.source_type !== 'subscription' && <Button permission="identity.routing_access.revoke" size="sm" variant="destructive" disabled={saving} onClick={() => change({ operation: 'revoke', ...g })}>{t('撤销此来源')}</Button>}
         </div>)}
       </div>}
     </DialogContent></Dialog>

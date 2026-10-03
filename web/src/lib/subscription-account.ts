@@ -14,6 +14,7 @@
  */
 
 export interface SubscriptionAccountSummary {
+ permittedActions?: string[]; credentialRevision?: string;
   id: number;
   name?: string;
   platform?: string;
@@ -109,6 +110,8 @@ export type RawSubscriptionAccount = Partial<
 export function normalizeSubscriptionAccount(raw: RawSubscriptionAccount): SubscriptionAccountSummary {
   return {
     id: raw.id ?? 0,
+    permittedActions: raw.permittedActions ?? (raw as { permitted_actions?: string[] }).permitted_actions,
+    credentialRevision: raw.credentialRevision ?? (raw as { credential_revision?: string }).credential_revision,
     name: raw.name,
     platform: raw.platform,
     accountType: raw.accountType ?? raw.account_type,

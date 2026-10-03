@@ -23,6 +23,7 @@ const vendorChunks = [
 ];
 
 export default defineConfig({
+  server: process.env.RBAC_C_BACKEND ? { proxy: { '/api': process.env.RBAC_C_BACKEND } } : undefined,
   plugins: [tailwindcss(), react()],
   resolve: {
     alias: {

@@ -149,6 +149,10 @@ type Request struct {
 	Object                                                       authorization.ObjectFacts
 }
 type Response struct {
+	TargetRevision                   uint64
+	AuthorizationMode                string
+	LegacyAdmin                      bool
+	PermittedOperations              []string
 	Impacts                          []Impact
 	Sessions                         []Session
 	Roles                            []Role

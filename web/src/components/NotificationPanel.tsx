@@ -1,3 +1,4 @@
+import { useAuthorizedQuery } from '@/lib/authorization';
 /**
  * Notification Panel Component
  * Displays notification history with status filtering.
@@ -8,7 +9,6 @@
 
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useQuery } from '@tanstack/react-query';
 import {
   Bell,
   CheckCircle2,
@@ -144,8 +144,8 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const canUsePortal = typeof document !== 'undefined';
 
-  const unreadQuery = useQuery<NotificationListResponse>({
-    queryKey: ['admin', 'notifications', 'pending-count'],
+  const unreadQuery = useAuthorizedQuery<NotificationListResponse>({
+    permission: 'notify.notification.list', queryKey: ['admin', 'notifications', 'pending-count'],
     queryFn: async () => {
       const params = new URLSearchParams({ page: '1', page_size: '1', status: 'pending' });
       const response = await adminApiClient.get(`/admin/notifications?${params}`);
@@ -155,8 +155,8 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
     meta: { suppressErrorToast: true },
   });
 
-  const notificationsQuery = useQuery<NotificationListResponse>({
-    queryKey: ['admin', 'notifications', statusFilter],
+  const notificationsQuery = useAuthorizedQuery<NotificationListResponse>({
+    permission: 'notify.notification.list', queryKey: ['admin', 'notifications', statusFilter],
     queryFn: async () => {
       const params = new URLSearchParams({ page: '1', page_size: '50' });
       if (statusFilter !== 'all') params.append('status', statusFilter);

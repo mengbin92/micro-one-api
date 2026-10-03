@@ -234,6 +234,7 @@ func toSubscriptionAccountInfoWithSecrets(account *biz.SubscriptionAccount, incl
 		refreshToken = account.RefreshToken
 	}
 	return &commonv1.SubscriptionAccountInfo{
+		PermittedActions:         account.PermittedActions,
 		CredentialRefreshPending: account.CredentialRefreshPending,
 
 		CredentialRevision:     account.CredentialRevision,
@@ -291,6 +292,7 @@ func toSubscriptionAccountSummary(account *biz.SubscriptionAccount) *commonv1.Su
 		weeklyUsed, _ = account.RollFixedQuotaWindow(account.QuotaWeeklyUsedUSD, account.QuotaWeeklyWindowStart, now, "weekly")
 	}
 	return &commonv1.SubscriptionAccountSummary{
+		PermittedActions: account.PermittedActions, CredentialRevision: account.CredentialRevision,
 		Id:                              account.ID,
 		Name:                            account.Name,
 		Platform:                        account.Platform,
@@ -346,6 +348,7 @@ func toChannelInfo(channel *biz.Channel) *commonv1.ChannelInfo {
 		return nil
 	}
 	return &commonv1.ChannelInfo{
+		PermittedActions:                  channel.PermittedActions,
 		HealthFieldsVisible:               channel.HealthFieldsVisible,
 		AuthorizationRevision:             channel.AuthorizationRevision,
 		Id:                                channel.ID,
@@ -391,6 +394,7 @@ func toChannelSummary(channel *biz.Channel) *commonv1.ChannelSummary {
 		return nil
 	}
 	return &commonv1.ChannelSummary{
+		PermittedActions:      channel.PermittedActions,
 		HealthFieldsVisible:   channel.HealthFieldsVisible,
 		AuthorizationRevision: channel.AuthorizationRevision,
 		Id:                    channel.ID,

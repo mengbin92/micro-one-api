@@ -1,9 +1,12 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router';
+import { useAuthorization } from '@/lib/authorization';
+import { useAuthorizedQuery } from '@/lib/authorization';
+import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { UserRoutingAccess } from '@/components/admin/UserRoutingAccess';
 import { useMemo } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
 import { AdminPagination } from '@/components/admin/AdminPagination';
@@ -90,6 +93,7 @@ export function AdminUsersPage() {
     filters: ['status', 'group'],
   });
   const queryClient = useQueryClient();
+  const auth = useAuthorization();
   const sort = { key: sortKey as keyof User | null, direction: sortDirection } satisfies SortState<User>;
   const statusFilter = filters.status ?? '';
   const groupFilter = filters.group ?? '';
@@ -97,8 +101,8 @@ export function AdminUsersPage() {
   exportParams.set('format', 'csv');
   const exportHref = `/user/export?${exportParams}`;
 
-  const { data: users, isLoading } = useQuery({
-    queryKey: ['admin-users', page, pageSize, search, sortKey, sortDirection, filters],
+  const { data: users, isLoading } = useAuthorizedQuery({
+    permission: 'identity.user.list', queryKey: ['admin-users', page, pageSize, search, sortKey, sortDirection, filters],
     queryFn: async () => {
       const params = buildAdminListParams({
         page,
@@ -129,20 +133,6 @@ export function AdminUsersPage() {
     },
   });
 
-  const setRoleMutation = useMutation({
-    mutationFn: async ({ username, action }: { username: string; action: 'promote' | 'demote' }) => {
-      const res = await adminApiClient.post('/user/manage', { username, action });
-      ensureApiSuccess(res.data, t('更新角色失败'));
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
-      toast.success(variables.action === 'promote' ? t('用户已提升为管理员') : t('管理员已降级为用户'));
-    },
-    onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : t('更新角色失败');
-      toast.error(message);
-    },
-  });
 
   function formatAmount(q: string) {
     return formatAmountUnits(q);
@@ -165,7 +155,7 @@ export function AdminUsersPage() {
         onSearchChange={setSearch}
         onClear={clearSearch}
         actions={
-          <ExportButton
+          <ExportButton permission="identity.user.export"
             filename="admin-users.csv"
             href={exportHref}
             rows={visibleUsers}
@@ -243,26 +233,22 @@ export function AdminUsersPage() {
               </TableHeader>
               <TableBody>
                 {visibleUsers.map((user) => {
-                  const isRoot = user.role >= ROLE_ROOT;
-                  const isAdmin = user.role >= ROLE_ADMIN && user.role < ROLE_ROOT;
-                  const roleAction: 'promote' | 'demote' = isAdmin ? 'demote' : 'promote';
-                  const roleActionLabel = isAdmin ? t('降级') : t('提升');
                   return (
                     <TableRow key={user.id}>
                       <TableCell className="font-mono text-sm">{user.id}</TableCell>
                       <TableCell className="font-medium">{user.username}</TableCell>
                       <TableCell className="hidden lg:table-cell">{user.displayName || '—'}</TableCell>
-                      <TableCell className="max-w-56 truncate">{user.email || '—'}</TableCell>
+                      <TableCell className="max-w-56 truncate">{user.email || (auth.snapshot?.authorization_mode === 'iam' ? t('受限') : '—')}</TableCell>
                       <TableCell>{user.group}</TableCell>
                       <TableCell>
                         <span
                           className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${roleBadgeClass(user.role)}`}
                         >
-                          {roleLabel(user.role)}
+                          {auth.snapshot?.authorization_mode === 'legacy' ? roleLabel(user.role) : t('IAM 多角色')}
                         </span>
                       </TableCell>
-                      <TableCell>{formatAmount(user.balance)}</TableCell>
-                      <TableCell>{formatAmount(user.usedAmount)}</TableCell>
+                      <TableCell>{user.balance === undefined ? t('受限') : formatAmount(user.balance)}</TableCell>
+                      <TableCell>{user.usedAmount === undefined ? t('受限') : formatAmount(user.usedAmount)}</TableCell>
                       <TableCell>
                         <span
                           className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
@@ -277,18 +263,9 @@ export function AdminUsersPage() {
                       <TableCell className="text-right">
  <UserRoutingAccess userId={user.id} />
                         <div className="flex justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              setRoleMutation.mutate({ username: user.username, action: roleAction })
-                            }
-                            disabled={isRoot || setRoleMutation.isPending}
-                            title={isRoot ? t('无法在此修改超级管理员角色') : undefined}
-                          >
-                            {roleActionLabel}
-                          </Button>
-                          <Button
+                          {auth.can('identity.user_role.read') && <Link className="rounded border px-3 py-1 text-sm" to={`/admin/iam/assignments?user_id=${user.id}`}>{t('管理角色')}</Link>}
+
+                          <Button permission={user.status === 1 ? 'identity.user.disable' : 'identity.user.enable'}
                             variant="outline"
                             size="sm"
                             onClick={() =>

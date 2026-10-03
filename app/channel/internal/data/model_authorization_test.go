@@ -208,3 +208,34 @@ func TestIAMB2OAuthSessionBindsActorAndTarget(t *testing.T) {
 	_, err = svc.Exchange(authztest.Context(), "codex", oauthbiz.ExchangeRequest{SessionID: pending.SessionID, State: pending.State, Code: "unused", Group: "first"})
 	require.Error(t, err)
 }
+
+// A model operator editing a redacted DTO must never clear stored prices or
+// need price authority merely to update the model's nonfinancial fields.
+func TestIAMCRedactedModelUpdatePreservesPrices(t *testing.T) {
+	db := dbtest.RoutingContextDB(t, "sqlite")
+	repo := &Repository{db: db}
+	stored := &biz.Model{ModelID: "c-priced", DisplayName: "Priced", PricingInput: 7, PricingOutput: 9, PricingCacheRead: 2, Status: 1}
+	require.NoError(t, repo.CreateModel(context.Background(), stored))
+	policy := &authztest.Resolver{ActorID: 1, Scopes: map[string]authorization.QueryScope{"channel.model.read": authztest.Resources(stored.ID), "channel.model.update": authztest.Resources(stored.ID)}}
+	uc := biz.NewModelUsecase(repo)
+	uc.SetAuthorization(policy)
+	request := authztest.Context()
+	redacted, _, _, _, err := uc.GetModel(request, stored.ID)
+	require.NoError(t, err)
+	require.False(t, redacted.PriceFieldsVisible)
+	redacted.DisplayName = "Edited without finance"
+	redacted.PreservePricing = true
+	require.NoError(t, uc.UpdateModel(request, redacted))
+	actual, err := repo.GetModel(context.Background(), stored.ID)
+	require.NoError(t, err)
+	require.Equal(t, "Edited without finance", actual.DisplayName)
+	require.EqualValues(t, 7, actual.PricingInput)
+	require.EqualValues(t, 9, actual.PricingOutput)
+	require.EqualValues(t, 2, actual.PricingCacheRead)
+	redacted.PreservePricing = false
+	redacted.AuthorizationRevision = actual.AuthorizationRevision
+	require.Error(t, uc.UpdateModel(request, redacted), "clearing a real price still requires finance permission")
+	request = authorization.WithExpectedRevision(request, "model", actual.ID, actual.AuthorizationRevision-1)
+	redacted.PreservePricing = true
+	require.ErrorIs(t, uc.UpdateModel(request, redacted), authorization.ErrWriteConflict)
+}

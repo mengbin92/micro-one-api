@@ -67,6 +67,7 @@ message UserInfo {
 // ========== 渠道摘要 ==========
 
 message ChannelSummary {
+ repeated string permitted_actions = 24;
   int64 id = 1;
   string name = 2;
   int32 type = 3;
@@ -105,6 +106,7 @@ message ChannelConfig {
 // ========== 渠道完整信息 ==========
 
 message ChannelInfo {
+ repeated string permitted_actions = 32;
   int64 id = 1;
   int32 type = 2;
   string name = 3;
@@ -141,6 +143,7 @@ message ChannelInfo {
 // ========== 订阅账号 ==========
 
 message SubscriptionAccountInfo {
+ repeated string permitted_actions = 40;
   int64 credential_revision = 38; // CAS fencing for OAuth writes
   bool credential_refresh_pending = 39; // An OAuth rotation may be in flight; never replay it.
   int64 id = 1;
@@ -183,6 +186,8 @@ message SubscriptionAccountInfo {
 }
 
 message SubscriptionAccountSummary {
+ repeated string permitted_actions = 48;
+ int64 credential_revision = 49;
   int64 id = 1;
   string name = 2;
   string platform = 3;

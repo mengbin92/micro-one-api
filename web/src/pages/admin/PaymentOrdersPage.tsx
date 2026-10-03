@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useAuthorizedQuery } from '@/lib/authorization';
 import { CreditCard } from 'lucide-react';
 import { useMemo } from 'react';
 import { EmptyState } from '@/components/EmptyState';
@@ -154,8 +154,8 @@ export function AdminPaymentOrdersPage() {
   const userIDFilter = filters.user_id ?? '';
   const sort = { key: sortKey as keyof PaymentOrder | null, direction: sortDirection } satisfies SortState<PaymentOrder>;
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-payment-orders', page, pageSize, search, sortKey, sortDirection, filters],
+  const { data, isLoading } = useAuthorizedQuery({
+    permission: 'billing.payment.list', queryKey: ['admin-payment-orders', page, pageSize, search, sortKey, sortDirection, filters],
     queryFn: async () => {
       const params = buildAdminListParams({
         page,

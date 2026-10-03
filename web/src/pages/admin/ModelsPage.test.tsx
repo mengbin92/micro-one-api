@@ -168,7 +168,7 @@ describe('AdminModelsPage', () => {
       expect(screen.getByText('暂无模型')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText('新建模型'));
+    await user.click(await screen.findByText('新建模型'));
     await user.type(screen.getByPlaceholderText('如 gpt-4o, claude-3-5-sonnet'), 'claude-3-5-sonnet');
     await user.type(screen.getByPlaceholderText('如 GPT-4o'), 'Claude 3.5 Sonnet');
     await user.type(screen.getByLabelText('大模型厂商'), 'StepFun');
@@ -228,6 +228,30 @@ describe('AdminModelsPage', () => {
     expect(screen.getByDisplayValue('2.5')).toBeInTheDocument();
     expect(screen.getByDisplayValue('10')).toBeInTheDocument();
     expect(screen.getByDisplayValue('0.25')).toBeInTheDocument();
+  });
+
+  it('preserves hidden prices even when pricing update is present for other objects', async () => {
+    let body: Record<string, unknown> | undefined;
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({ authorization_mode: 'iam', session: { activation_state: 'active' }, permitted_operations: ['channel.model.list', 'channel.model.read', 'channel.model.update', 'billing.pricing.update'] })),
+      http.get('/api/admin/models', () => HttpResponse.json({ models: [{ ...model, price_fields_visible: false }], total: 1 })),
+      http.get('/api/admin/models/1', () => HttpResponse.json({ ...fullModel, model: { ...fullModel.model, price_fields_visible: false, pricing_input: 0, pricing_output: 0, pricing_cache_read: 0 } })),
+      http.put('/api/admin/models', async ({ request }) => { body = await request.json() as Record<string, unknown>; return HttpResponse.json({ success: true }); }),
+    );
+    const { userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+    renderWithQuery(<MemoryRouter><AdminModelsPage /></MemoryRouter>);
+    await screen.findByText('gpt-4o');
+    await user.click(screen.getByText('编辑'));
+    await screen.findByDisplayValue('Most capable model');
+    expect(screen.getByLabelText('输入价格 ($/1M tokens)')).toBeDisabled();
+    expect(screen.getByLabelText('输入价格 ($/1M tokens)')).toHaveDisplayValue('');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect(body?.preserve_pricing).toBe(true);
+    expect(body).not.toHaveProperty('pricing_input');
+    expect(body).not.toHaveProperty('pricing_output');
+    expect(body).not.toHaveProperty('pricing_cache_read');
   });
 
   it('deletes a model via confirm dialog', async () => {

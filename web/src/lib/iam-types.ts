@@ -1,0 +1,15 @@
+import type { components } from '@/types/api';
+type Snake<S extends string> = S extends `${infer H}${infer T}` ? H extends Lowercase<H> ? `${H}${Snake<T>}` : `_${Lowercase<H>}${Snake<T>}` : S;
+type Wire<T> = T extends readonly (infer U)[] ? Wire<U>[] : T extends object ? { [K in keyof T as K extends string ? Snake<K> : K]: Wire<T[K]> } : T;
+export type IAMReply = Wire<components['schemas']['api.identity.v1.IAMReply']>;
+export type IAMRequest = Wire<components['schemas']['api.identity.v1.IAMRequest']>;
+export type IAMRole = Wire<components['schemas']['api.identity.v1.IAMRole']>;
+export type IAMGrant = Wire<components['schemas']['api.identity.v1.IAMGrant']>;
+export type IAMAssignment = Wire<components['schemas']['api.identity.v1.IAMAssignment']>;
+export type IAMPermission = Wire<components['schemas']['api.identity.v1.IAMPermission']>;
+export type IAMDelegation = Wire<components['schemas']['api.identity.v1.IAMDelegation']>;
+export type IAMConstraint = Wire<components['schemas']['api.identity.v1.IAMConstraint']>;
+export type IAMMenu = Wire<components['schemas']['api.identity.v1.IAMMenu']>;
+export type IAMSource = Wire<components['schemas']['api.common.v1.AuthorizationGrantSource']>;
+export type IAMScope = Wire<components['schemas']['api.common.v1.AuthorizationScope']>;
+export const platformContext = { context_type: 'platform', context_key: 'platform', organization_id: '0' };

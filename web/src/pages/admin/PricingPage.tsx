@@ -1,10 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuthorizedQuery } from '@/lib/authorization';
+import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { Plus, Save, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -249,15 +250,15 @@ export function AdminPricingPage() {
   const queryClient = useQueryClient();
   const [draftRows, setDraftRows] = useState<PricingRow[] | null>(null);
 
-  const { data: options, isLoading } = useQuery({
-    queryKey: ['admin-options'],
+  const { data: options, isLoading } = useAuthorizedQuery({
+    permission: 'system.option.read', queryKey: ['admin-options'],
     queryFn: async () => {
       const res = await adminApiClient.get('/option/');
       return unwrapApiData<OptionItem[]>(res.data);
     },
   });
-  const { data: publicModels, isLoading: areModelsLoading } = useQuery({
-    queryKey: ['admin-models', 'pricing'],
+  const { data: publicModels, isLoading: areModelsLoading } = useAuthorizedQuery({
+    permission: 'channel.model.list', queryKey: ['admin-models', 'pricing'],
     queryFn: async () => {
       const response = await listModels({ page: 1, page_size: 500, public_only: true });
       return response.models ?? [];
@@ -352,9 +353,9 @@ export function AdminPricingPage() {
           <p className="mt-1 text-sm text-muted-foreground">{t("按用户请求的公开模型 ID 配置每 1M tokens 价格；同一模型的渠道、订阅账号和上游模型 ID 共用一份售价。")}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={addRow}>
+          <Button permission="billing.pricing.update" variant="outline" onClick={addRow}>
             <Plus className="size-4" />{t("添加模型")}</Button>
-          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+          <Button permission={['system.option.update', 'system.option.pricing.update', 'billing.pricing.update']} onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
             <Save className="size-4" />
             {saveMutation.isPending ? t("保存中...") : t("保存价格")}
           </Button>
@@ -372,7 +373,7 @@ export function AdminPricingPage() {
           ) : rows.length === 0 ? (
             <div className="space-y-4">
               <EmptyState title={t("暂无模型价格")} description={t("添加模型后会保存输入、输出和缓存读取价格。")} />
-              <Button variant="outline" onClick={addRow}>
+              <Button permission="billing.pricing.update" variant="outline" onClick={addRow}>
                 <Plus className="size-4" />{t("添加模型")}</Button>
             </div>
           ) : (
@@ -440,7 +441,7 @@ export function AdminPricingPage() {
                         />
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
+                        <Button permission="billing.pricing.update"
                           type="button"
                           variant="ghost"
                           size="icon-sm"

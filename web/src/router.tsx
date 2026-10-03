@@ -84,6 +84,9 @@ const AdminUpstreamCostsPage = lazy(() =>
   routeLoaders['/admin/upstream-costs']().then((m) => ({ default: m.AdminUpstreamCostsPage }))
 );
 
+const SessionRolesPage = lazy(() => import('@/pages/SessionRolesPage').then(m => ({ default: m.SessionRolesPage })));
+const IAMPage = lazy(() => import('@/pages/admin/IAMPage').then(m => ({ default: m.IAMPage })));
+
 function withSuspense(element: React.ReactNode) {
   return <Suspense fallback={<PageLoading />}>{element}</Suspense>;
 }
@@ -155,6 +158,10 @@ export const router = createBrowserRouter([
         element: withSuspense(<OrdersPage />),
       },
       {
+        path: 'session-roles',
+        element: withSuspense(<SessionRolesPage />),
+      },
+      {
         path: 'profile',
         element: withSuspense(<ProfilePage />),
       },
@@ -166,6 +173,7 @@ export const router = createBrowserRouter([
         path: 'admin',
         element: <AdminRoute />,
         children: [
+          ...['permissions', 'roles', 'assignments', 'delegations', 'constraints', 'menus', 'explain', 'audits'].map(section => ({ path: `iam/${section}`, element: withSuspense(<IAMPage />) })),
           {
             index: true,
             element: withSuspense(<AdminOverviewPage />),

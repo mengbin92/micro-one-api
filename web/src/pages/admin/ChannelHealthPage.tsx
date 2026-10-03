@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useAuthorizedQuery } from '@/lib/authorization';
 import {
   Activity,
   AlertCircle,
@@ -147,8 +147,8 @@ export function ChannelHealthPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const navigate = useNavigate();
 
-  const { data: channels, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['admin-channels-health'],
+  const { data: channels, isLoading, refetch, isFetching } = useAuthorizedQuery({
+    permission: ['monitor.health.channel.read', 'channel.channel.list'], queryKey: ['admin-channels-health'],
     queryFn: async () => {
       // Fetch all channels without status filter to show complete health monitoring
       const params = new URLSearchParams({ page: '1', page_size: '1000' });
@@ -567,8 +567,8 @@ function SubscriptionQuotaSummary({ account, now }: { account: SubscriptionAccou
 }
 
 function SubscriptionAccountHealth({ autoRefresh }: { autoRefresh: boolean }) {
-  const { data: accounts, isLoading, dataUpdatedAt } = useQuery({
-    queryKey: ['admin-subscription-accounts-health'],
+  const { data: accounts, isLoading, dataUpdatedAt } = useAuthorizedQuery({
+    permission: ['monitor.health.channel.read', 'channel.account.list'], queryKey: ['admin-subscription-accounts-health'],
     queryFn: async () => {
       // The list endpoint is /api/subscription-accounts (plural, alias of
       // /v1/subscription-accounts). It returns { accounts, total } directly —
