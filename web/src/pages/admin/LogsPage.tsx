@@ -1,9 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuthorizedQuery } from '@/lib/authorization';
+import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { Eye, ListFilter, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import {
   Dialog,
   DialogContent,
@@ -186,8 +187,8 @@ export function AdminLogsPage() {
   exportParams.set('format', 'csv');
   const exportHref = `/log/export?${exportParams}`;
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-logs', page, pageSize, userId, type, startTime, endTime, sortKey, sortDirection],
+  const { data, isLoading } = useAuthorizedQuery({
+    permission: 'log.request.list', queryKey: ['admin-logs', page, pageSize, userId, type, startTime, endTime, sortKey, sortDirection],
     queryFn: async () => {
       const params = buildAdminListParams({
         page,
@@ -204,8 +205,8 @@ export function AdminLogsPage() {
     },
   });
 
-  const { data: selectedLog, isLoading: isDetailLoading } = useQuery({
-    queryKey: ['admin-log-detail', selectedLogId],
+  const { data: selectedLog, isLoading: isDetailLoading } = useAuthorizedQuery({
+    permission: 'log.request.read', queryKey: ['admin-log-detail', selectedLogId],
     enabled: selectedLogId !== null,
     queryFn: async () => {
       const res = await adminApiClient.get(`/log/${selectedLogId}`);
@@ -292,11 +293,11 @@ export function AdminLogsPage() {
             <ListFilter className="size-4" />
             {t('筛选')}
           </Button>
-          <Button type="button" variant="destructive" onClick={() => setIsCleanOpen(true)}>
+          <Button permission="log.request.delete" type="button" variant="destructive" onClick={() => setIsCleanOpen(true)}>
             <Trash2 className="size-4" />
             {t('清理')}
           </Button>
-          <ExportButton
+          <ExportButton permission="log.request.export"
             filename="admin-billing-logs.csv"
             href={exportHref}
             rows={visibleLogs}
@@ -430,7 +431,7 @@ export function AdminLogsPage() {
                       {new Date(parseInt(log.createdAt) * 1000).toLocaleString(locale())}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
+                      <Button permission="log.request.read"
                         type="button"
                         variant="outline"
                         size="icon-sm"
@@ -523,7 +524,7 @@ export function AdminLogsPage() {
             <Button type="button" variant="outline" onClick={() => setIsCleanOpen(false)}>
               {t('取消')}
             </Button>
-            <Button
+            <Button permission="log.request.delete"
               type="button"
               variant="destructive"
               disabled={!cleanEndTime || cleanMutation.isPending}

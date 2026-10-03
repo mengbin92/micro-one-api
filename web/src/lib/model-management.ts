@@ -7,6 +7,8 @@ import { adminApiClient } from '@/lib/api';
 // ── Response types ────────────────────────────────────────────────────────
 
 export interface ModelSummary {
+  revision?: string;
+  price_fields_visible?: boolean;
   id: number;
   model_id: string;
   display_name: string;
@@ -27,6 +29,8 @@ export interface ModelSummary {
 }
 
 export interface ModelInfo {
+  revision?: string;
+  price_fields_visible?: boolean;
   id: number;
   model_id: string;
   display_name: string;
@@ -150,6 +154,7 @@ export interface CreateModelPayload {
 }
 
 export interface UpdateModelPayload {
+  preserve_pricing?: boolean;
   model_pk: number;
   display_name: string;
   description?: string;

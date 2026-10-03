@@ -83,6 +83,10 @@ func (uc *ChannelUsecase) ReadChannel(ctx context.Context, id int64) (*Channel, 
 	if err != nil {
 		return nil, err
 	}
+	ctx, err = uc.prepareDisplayActions(ctx, false)
+	if err != nil {
+		return nil, err
+	}
 	return uc.redactChannel(ctx, channel)
 }
 func (uc *ChannelUsecase) redactChannel(ctx context.Context, channel *Channel) (*Channel, error) {
@@ -92,6 +96,11 @@ func (uc *ChannelUsecase) redactChannel(ctx context.Context, channel *Channel) (
 		return &copy, nil
 	}
 	copy.ModelMapping = ""
+	var err error
+	copy.PermittedActions, err = uc.displayActions(ctx, channel.ID, false)
+	if err != nil {
+		return nil, err
+	}
 	facts, err := uc.facts(ctx, channel.ID, false)
 	if err != nil {
 		return nil, err

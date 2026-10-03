@@ -318,6 +318,9 @@ func (uc *IdentityUsecase) mutateLegacyAccountChecked(ctx context.Context, id in
 // IAMAuthorizationSnapshot preserves independent grant paths and forced denies.
 // It is a request-local view; callers must obtain a new one for a new decision.
 type IAMAuthorizationSnapshot struct {
+	Roles                            []m.Role
+	Menus                            []m.Menu
+	PermittedOperations              []string
 	Actor                            authorization.Actor
 	User                             User
 	Policy                           authorization.PolicyState
@@ -327,6 +330,11 @@ type IAMAuthorizationSnapshot struct {
 	Sources                          []authorization.GrantSource
 	Versions                         authorization.Versions
 	ValidUntil                       time.Time
+}
+
+// IsLegacyAdmin reports only the authoritative user in this primary snapshot.
+func (snapshot *IAMAuthorizationSnapshot) IsLegacyAdmin() bool {
+	return snapshot.Policy.Mode == "legacy" && snapshot.Policy.Cutover == "idle" && snapshot.User.Role >= RoleAdminUser
 }
 
 func iamAuthorizedRoles(now time.Time, state IAMConstraintState, uid int64) ([]int64, error) {
@@ -433,7 +441,8 @@ func (uc *IdentityUsecase) readIAMAuthorization(ctx context.Context, a authoriza
 		if err != nil {
 			return err
 		}
-		if p.Mode != "iam" || p.Cutover != "complete" {
+		legacy := p.Mode == "legacy" && p.Cutover == "idle"
+		if !legacy && (p.Mode != "iam" || p.Cutover != "complete") {
 			return ErrIAMCutoverBlocked
 		}
 		u, err := uc.iam.User(ctx, tx, a.UserID)
@@ -445,6 +454,18 @@ func (uc *IdentityUsecase) readIAMAuthorization(ctx context.Context, a authoriza
 		}
 		if err = checkIAMIdentity(a, u, now); err != nil {
 			return err
+		}
+		if legacy {
+			revision, err := uc.iam.UserRevision(ctx, tx, u.ID)
+			if err != nil {
+				return err
+			}
+			// Legacy display is read-only and follows the verified database user;
+			// JWT role claims and candidate IAM assignments cannot grant access.
+			out = &IAMAuthorizationSnapshot{Actor: a, User: u, Context: c, Policy: p,
+				Versions:   authorization.Versions{User: revision, Policy: p.PolicyRevision, Catalog: p.CatalogRevision},
+				ValidUntil: a.ExpiresAt}
+			return nil
 		}
 		s, err := uc.iam.Session(ctx, tx, a.SessionID, c)
 		if err != nil {
@@ -519,7 +540,7 @@ func (uc *IdentityUsecase) readIAMAuthorization(ctx context.Context, a authoriza
 		// Never return password hashes in a cross-service authorization view.
 		u.PasswordHash = ""
 		out = &IAMAuthorizationSnapshot{Actor: a, User: u, Policy: p, Context: c, Session: s, AuthorizedRoleIDs: authorized, ActiveRoleIDs: active, Sources: sources, ValidUntil: validUntil, Versions: authorization.Versions{User: rev, Policy: p.PolicyRevision, Catalog: p.CatalogRevision, Session: s.SessionRevision, SessionContext: s.Revision}}
-		return nil
+		return uc.projectSessionAuthorization(ctx, tx, out, state, now)
 	})
 	return out, err
 }

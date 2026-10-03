@@ -1372,6 +1372,7 @@ export interface components {
             unitRevision?: string;
         };
         "api.common.v1.ChannelSummary": {
+            permittedActions?: string[];
             id?: string;
             name?: string;
             /** Format: int32 */
@@ -1402,6 +1403,8 @@ export interface components {
             authorizationRevision?: string;
         };
         "api.common.v1.SubscriptionAccountSummary": {
+            permittedActions?: string[];
+            credentialRevision?: string;
             id?: string;
             name?: string;
             platform?: string;
@@ -1647,6 +1650,12 @@ export interface components {
             userId?: string;
         };
         "api.identity.v1.IAMReply": {
+            /** @description Display summaries only. Owners still authorize each object and action. */
+            authorizationMode?: string;
+            legacyAdmin?: boolean;
+            permittedOperations?: string[];
+            /** @description CAS of a visible management target; separate from the actor versions. */
+            targetRevision?: string;
             impacts?: components["schemas"]["api.identity.v1.IAMImpact"][];
             sessions?: components["schemas"]["api.identity.v1.IAMSession"][];
             roles?: components["schemas"]["api.identity.v1.IAMRole"][];

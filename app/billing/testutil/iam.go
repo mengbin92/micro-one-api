@@ -7,6 +7,8 @@ import (
 	"micro-one-api/app/billing/internal/data"
 	"micro-one-api/app/billing/internal/server"
 	"micro-one-api/app/billing/internal/service"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
+	subscriptiondata "micro-one-api/domain/subscription/data"
 	"micro-one-api/platform/authz"
 )
 
@@ -19,5 +21,9 @@ func NewIAMStack(db *gorm.DB, resolver *authz.Client) *kgrpc.Server {
 	payment.SetAuthorization(resolver)
 	svc := service.NewBillingService(uc, nil, payment, nil)
 	svc.SetOwnerAuthorization(resolver)
+	subscriptions := subscriptiondata.NewRepository(db, nil)
+	refund := biz.NewRefundUsecase(d.PaymentRepo(), d.AccountRepo(), d.LedgerRepo(), subscriptionbiz.NewSubscriptionUsecase(subscriptions, subscriptions))
+	refund.SetAuthorization(resolver)
+	svc.SetRefundUsecase(refund)
 	return server.NewGRPCServer(":0", svc)
 }

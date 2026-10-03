@@ -65,7 +65,7 @@ func (r *Repository) authorizedModelWrite(ctx context.Context, ids []int64, next
 					}
 				}
 			}
-			if next != nil && (next.PricingInput != old.PricingInput || next.PricingOutput != old.PricingOutput || next.PricingCacheRead != old.PricingCacheRead) {
+			if next != nil && !next.PreservePricing && (next.PricingInput != old.PricingInput || next.PricingOutput != old.PricingOutput || next.PricingCacheRead != old.PricingCacheRead) {
 				if err := authorization.Require(current, "billing.pricing.update", facts); err != nil {
 					return err
 				}

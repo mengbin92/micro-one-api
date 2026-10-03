@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useAuthorizedQuery } from '@/lib/authorization';
 import { GitBranch, Search } from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
@@ -6,7 +6,7 @@ import { adminApiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
 import { locale, t } from '@/lib/i18n';
 import { formatUSD } from '@/lib/amount';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -61,8 +61,8 @@ export function RoutingAuditDialog({ defaultUserID = '' }: { defaultUserID?: str
   const [query, setQuery] = useState<{ userID: string; rootID: string } | null>(null);
   const [page, setPage] = useState(1);
 
-  const audit = useQuery({
-    queryKey: ['routing-audit', query?.userID, query?.rootID, page],
+  const audit = useAuthorizedQuery({
+    permission: 'log.selection_event.list', queryKey: ['routing-audit', query?.userID, query?.rootID, page],
     enabled: open && query !== null,
     queryFn: async () => unwrapApiData<RoutingAudit>((await adminApiClient.get('/log/routing-audit', {
       params: { user_id: query?.userID, root_request_id: query?.rootID, page, page_size: 100 },
@@ -87,7 +87,7 @@ export function RoutingAuditDialog({ defaultUserID = '' }: { defaultUserID?: str
 
   return (
     <>
-      <Button type="button" variant="outline" onClick={() => { if (defaultUserID) setUserID(defaultUserID); setOpen(true); }}>
+      <Button permission="log.selection_event.list" type="button" variant="outline" onClick={() => { if (defaultUserID) setUserID(defaultUserID); setOpen(true); }}>
         <GitBranch className="size-4" />{t('选路审计')}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>

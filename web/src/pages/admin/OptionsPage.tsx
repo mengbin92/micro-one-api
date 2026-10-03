@@ -1,10 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuthorizedQuery } from '@/lib/authorization';
+import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { Save } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { adminApiClient } from '@/lib/api';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { amountUnitsToCurrencyUnits, currencyUnitsToAmountUnits } from '@/lib/amount';
+import { configWritePermission } from '@/lib/admin-permissions';
 import { t } from '@/lib/i18n';
 
 interface OptionItem {
@@ -89,8 +91,8 @@ export function AdminOptionsPage() {
   const [customKey, setCustomKey] = useState('');
   const [customValue, setCustomValue] = useState('');
 
-  const { data: options, isLoading } = useQuery({
-    queryKey: ['admin-options'],
+  const { data: options, isLoading } = useAuthorizedQuery({
+    permission: 'system.option.read', queryKey: ['admin-options'],
     queryFn: async () => {
       const res = await adminApiClient.get('/option/');
       return unwrapApiData<OptionItem[]>(res.data);
@@ -210,7 +212,7 @@ export function AdminOptionsPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
+                        <Button permission={configWritePermission(option.key)}
                           variant="outline"
                           size="sm"
                           disabled={updateMutation.isPending}
@@ -242,7 +244,7 @@ export function AdminOptionsPage() {
               <Label htmlFor="option-value">{t("选项值")}</Label>
               <Input id="option-value" value={customValue} onChange={(event) => setCustomValue(event.target.value)} />
             </div>
-            <Button onClick={handleCustomSave} disabled={updateMutation.isPending}>
+            <Button permission={configWritePermission(customKey)} onClick={handleCustomSave} disabled={updateMutation.isPending}>
               Save Option
             </Button>
           </div>

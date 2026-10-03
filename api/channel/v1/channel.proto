@@ -819,6 +819,9 @@ message UpdateModelRequest {
   double pricing_cache_read = 17;
   int64 expected_revision = 18;
   string reason = 19;
+  // Preserve owner-stored prices when editing a redacted model. False keeps
+  // the existing full-update contract; true never writes pricing fields.
+  bool preserve_pricing = 20;
 }
 
 message UpdateModelResponse {

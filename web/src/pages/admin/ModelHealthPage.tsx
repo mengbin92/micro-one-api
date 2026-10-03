@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useAuthorizedQuery } from '@/lib/authorization';
 import { Activity, AlertCircle, AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -46,8 +46,8 @@ export function ModelHealthPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
-  const query = useQuery({
-    queryKey: ['admin-model-health', keyword, sourceKind, status, page, pageSize],
+  const query = useAuthorizedQuery({
+    permission: 'monitor.health.model.read', queryKey: ['admin-model-health', keyword, sourceKind, status, page, pageSize],
     queryFn: () => listModelHealth({ page, page_size: pageSize, keyword: keyword || undefined, source_kind: sourceKind || undefined, status: status || undefined }),
     refetchInterval: autoRefresh ? 30_000 : false,
   });

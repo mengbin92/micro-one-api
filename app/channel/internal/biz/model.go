@@ -44,6 +44,7 @@ func ModelIDEqual(a, b string) bool {
 // Model is the domain object for the independent model registry (方案B).
 // It carries no proto or storage tags — it is the pure biz model owned by biz.
 type Model struct {
+	PreservePricing       bool // Update command: retain locked stored prices, even if DTO fields are redacted.
 	AuthorizationRevision int64
 	ID                    int64
 	ModelID               string // unique identifier, e.g. gpt-4o

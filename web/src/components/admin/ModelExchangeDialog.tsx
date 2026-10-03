@@ -5,7 +5,7 @@
 //   2. Import dry-run — upload a file and preview the create/update/skip/conflict diff.
 //   3. Import apply — after confirming the dry-run, write the batch in one transaction.
 //
-// Prices are gated behind an explicit checkbox and require root role server-side.
+// Prices require independent finance permissions in addition to model exchange.
 // The dialog reuses the existing Dialog/Button/Input components so it matches
 // the rest of the admin UI.
 
@@ -13,7 +13,7 @@ import { Download, Upload, FileJson, AlertTriangle, CheckCircle2, Loader2 } from
 import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import {
   Dialog,
   DialogContent,
@@ -34,6 +34,7 @@ import {
   type ImportModelsResponse,
 } from '@/lib/model-exchange';
 import { t } from '@/lib/i18n';
+import { useAuthorization } from '@/lib/authorization';
 
 type Mode = 'export' | 'import';
 
@@ -45,6 +46,7 @@ interface ModelExchangeDialogProps {
 }
 
 export function ModelExchangeDialog({ open, onOpenChange, onImported }: ModelExchangeDialogProps) {
+  const auth = useAuthorization();
   const [mode, setMode] = useState<Mode>('export');
 
   // Export state
@@ -171,9 +173,9 @@ export function ModelExchangeDialog({ open, onOpenChange, onImported }: ModelExc
 
         {/* Mode tabs */}
         <div className="flex gap-2 border-b pb-3">
-          <Button variant={mode === 'export' ? 'default' : 'outline'} size="sm" onClick={() => handleModeSwitch('export')}>
+          <Button permission="channel.model.export" variant={mode === 'export' ? 'default' : 'outline'} size="sm" onClick={() => handleModeSwitch('export')}>
             <Download className="size-4" />{t("导出")}</Button>
-          <Button variant={mode === 'import' ? 'default' : 'outline'} size="sm" onClick={() => handleModeSwitch('import')}>
+          <Button permission="channel.model.import" variant={mode === 'import' ? 'default' : 'outline'} size="sm" onClick={() => handleModeSwitch('import')}>
             <Upload className="size-4" />{t("导入")}</Button>
         </div>
 
@@ -183,11 +185,11 @@ export function ModelExchangeDialog({ open, onOpenChange, onImported }: ModelExc
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={exportPrices}
+                checked={exportPrices} disabled={!auth.canAll(['billing.pricing.read', 'billing.pricing.export'])}
                 onChange={(e) => setExportPrices(e.target.checked)}
                 className="size-4 rounded border-input"
-              />{t("包含用户售价（需要管理员权限）")}</label>
-            <Button onClick={handleExport} disabled={exporting}>
+              />{t("包含用户售价（需价格读取与导出权限）")}</label>
+            <Button permission={exportPrices ? ['channel.model.export', 'billing.pricing.read', 'billing.pricing.export'] : 'channel.model.export'} onClick={handleExport} disabled={exporting}>
               {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
               {exporting ? t("导出中…") : t("下载导出文件")}
             </Button>
@@ -235,17 +237,17 @@ export function ModelExchangeDialog({ open, onOpenChange, onImported }: ModelExc
               <label className="flex items-end gap-2 text-sm pb-2">
                 <input
                   type="checkbox"
-                  checked={importPrices}
+                  checked={importPrices} disabled={!auth.canAll(['billing.pricing.update', 'billing.pricing.import'])}
                   onChange={(e) => { setImportPrices(e.target.checked); setDryRunResult(null); }}
                   className="size-4 rounded border-input"
-                />{t("导入价格（需要管理员权限）")}</label>
+                />{t("导入价格（需价格更新与导入权限）")}</label>
             </div>
 
             {/* Actions */}
             <div className="flex gap-2">
-              <Button variant="outline" onClick={handleDryRun} disabled={!canDryRun}>
+              <Button permission={importPrices ? ['channel.model.import', 'billing.pricing.update', 'billing.pricing.import'] : 'channel.model.import'} variant="outline" onClick={handleDryRun} disabled={!canDryRun}>
                 {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}{t("预检（dry-run）")}</Button>
-              <Button onClick={handleImport} disabled={!canImport}>
+              <Button permission={importPrices ? ['channel.model.import', 'billing.pricing.update', 'billing.pricing.import'] : 'channel.model.import'} onClick={handleImport} disabled={!canImport}>
                 {busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}{t("确认导入")}</Button>
             </div>
 

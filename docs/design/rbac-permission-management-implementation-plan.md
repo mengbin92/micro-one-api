@@ -1,7 +1,7 @@
 # RBAC 权限管理实施方案
 
 > 日期：2026-09-30
-> 状态：P0、A1–A6、B0–B4 已完成；C1–D1 尚未开始。A2–A6 验证证据见第 9.2–9.6 节；第 9.7–9.8 节保留历史部分交付记录，B 阶段全量闭合与验收见第 9.9 节（2026-10-03）。
+> 状态：P0、A1–A6、B0–B4、C1–C3 已完成；D0–D1 待执行。A2–A6 验证证据见第 9.2–9.6 节；第 9.7–9.8 节保留历史部分交付记录，B 阶段全量闭合见第 9.9 节，C 阶段实现与真实浏览器验收见第 9.10 节（2026-10-03）。
 > 依据：[完整 RBAC 权限管理设计](./rbac-permission-management.md)。本文件细化实现顺序，不改变其授权语义。
 > 规划调查基线：`bf0c7de2`；首批交付复核基线：`951f1686`，工作分支 `codex/rbac-first-delivery`。本批验证记录见第 9 节；2026-10-01 已更新全部生产服务并保持 legacy，见 [生产更新记录](./rbac/a3-legacy-production-deployment.md)，未切换生产授权事实源。
 
@@ -77,9 +77,9 @@ B2/B3/B4 可以在契约稳定后独立推进；C 阶段可并行开发，但不
 | B2 | channel/账号/OAuth/模型/路由/健康查询 | 范围覆盖列表、total、详情、批量、导出、写；敏感字段隔离；relay 凭证路径正确 |
 | B3 | billing/共享 subscription 管理执行链 | 资金/订单/账本/成本/订阅范围一致；复合模型价格权限；系统任务 capability 独立 |
 | B4 | log/config/monitor/notify/system/content | 直接 HTTP/RPC、统计与内容字段、配置键分类、通知动作均有明确绑定 |
-| C1 | authorization 查询、导航/页面判断、我的会话角色 | 缺省首页、角色选择、403 刷新和查询 gate；不再按 localStorage role 推断权限 |
-| C2 | 目录、角色、授权矩阵、继承、用户分配、委派、约束、菜单、解释/模拟、审计查询/导出界面 | 树/矩阵一致；来源、deny、范围、差异与冲突可见；仅能管理委派覆盖对象 |
-| C3 | 既有页面改造与真实入口端到端矩阵 | 按钮、查询、字段、导出、附属轮询与后端拒绝一致；完整角色场景通过 |
+| C1（完成） | authorization 查询、导航/页面判断、我的会话角色 | 缺省首页、角色选择、403 刷新和查询 gate；不再按 localStorage role 推断权限 |
+| C2（完成） | 目录、角色、授权矩阵、继承、用户分配、委派、约束、菜单、解释/模拟、审计查询/导出界面 | 树/矩阵一致；来源、deny、范围、差异与冲突可见；仅能管理委派覆盖对象 |
+| C3（完成） | 既有页面改造与真实入口端到端矩阵 | 按钮、查询、字段、导出、附属轮询与后端拒绝一致；完整角色场景通过 |
 | D0 | 候选迁移、shadow、全量对账工具、停写/恢复演练 | 故障后停写、状态幂等恢复、未知 role 阻断、未活跃用户对账均验证 |
 | D1 | 经部署授权执行生产交接 | blocked → verified/iam → complete；旧写者退出、全部执行链启用后恢复新写 |
 
@@ -405,4 +405,18 @@ A6 交付时，CheckAuthorization 只接受当前实际 IAM owner 方法；业�
 - [x] 823 行入口契约、实际 B1–B4 三库 race、B0–B4 真实 HTTP/gRPC 角色矩阵；MySQL/PostgreSQL fresh/repeat/negative/元数据预检和 SQLite 生命周期门禁。
 - [x] `make all`、`make wire-check`、架构检查、`make migration-check`、`make rbac-contract-check`、`make verify`（前端 197 个测试与 build）及服务身份模板核验。
 
-B 阶段后端交付已闭合。2026-10-03 按用户授权更新全部 9 个线上服务、前端及本次分库迁移，健康、业务链路与 legacy/idle 状态复查通过，见 [生产更新记录](./rbac/b-legacy-production-deployment.md)。随后提交、合并并推送 develop；C1–C3 完整界面和 Playwright、D0–D1 正式生产凭证核验/影子/切换/交接仍未执行，未发布版本或切换 IAM。
+B 阶段后端交付已闭合。2026-10-03 按用户授权更新全部 9 个线上服务、前端及本次分库迁移，健康、业务链路与 legacy/idle 状态复查通过，见 [生产更新记录](./rbac/b-legacy-production-deployment.md)。随后提交、合并并推送 develop；B 交付当时 C/D 尚未执行。C1–C3 后续交付见第 9.10 节，D0–D1 正式生产凭证核验/影子/切换/交接仍待执行；未发布版本或切换 IAM。
+
+
+### 9.10 C1–C3 前端管理与完整角色验收（2026-10-03）
+
+工作分支 `codex/rbac-c-management`，基线 `9d755058`。实现、协议兼容、复验命令及 D 阶段边界见 [C 阶段交付记录](./rbac/c-management-delivery.md)。
+
+- [x] C1：legacy/idle 主库只读兼容（不创建 IAM 会话、切换屏障仍拒绝）、主库授权显示摘要、独立 console/页面/查询/字段 gate、缺省首页、本人会话角色/DSD 选择、403/到期/刷新失败和旧 generation 缓存清理；不按数值 role 推断 IAM 权限。
+- [x] C2：权限目录、角色生命周期/复制、树与资源×操作矩阵/范围/deny、继承、分配/批量、三类委派、SSD/DSD、菜单、有效权限/解释/变更模拟、审计/独立导出与目标会话撤销。
+- [x] C3：全部既有后台页及附属查询/按钮/导出/通知轮询接入；owner permitted_actions、字段受限展示、显示版本 CAS、脱敏模型编辑保留原价格；自助订单不再按旧数值角色选择管理接口。
+- [x] 治理变更同一审阅请求、reason、目标 CAS、策略版本/内容摘要提交；409 要求重新加载/预检，不自动重试。
+- [x] 7 组真实 HTTP → gRPC → biz/data → SQLite Playwright：alice、bob、财务只读、审计只读、member、root 树/矩阵实际提交与 DSD 角色选择；无授权响应 mock。
+- [x] `make all`、`make wire-check`、824 行 `make rbac-contract-check`、`make verify`（架构/迁移治理、57 文件/208 个前端测试、lint/build/预算）、C 定向 race 与真实管理入口回归。
+
+没有新增迁移，本轮未重新运行 MySQL/PostgreSQL fresh/repeat/negative，不计作三库验收。未部署、推送或发布，未修改生产授权状态；生产继续 legacy。D0 影子比较/切换演练和 D1 生产凭证/停写/正式交接仍按原门槛执行。

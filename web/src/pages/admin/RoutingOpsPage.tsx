@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useAuthorizedQuery } from '@/lib/authorization';
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -105,8 +105,8 @@ function alertIcon(severity: string) {
 // ── Page component ─────────────────────────────────────────────────────────
 
 export function RoutingOpsPage() {
-  const { data, isLoading, error, refetch } = useQuery<RoutingOpsView>({
-    queryKey: ['admin', 'routing-ops'],
+  const { data, isLoading, error, refetch } = useAuthorizedQuery<RoutingOpsView>({
+    permission: 'monitor.health.selector.read', queryKey: ['admin', 'routing-ops'],
     queryFn: async () => {
       const res = await adminApiClient.get<RoutingOpsView>('/admin/routing-ops');
       return res.data;

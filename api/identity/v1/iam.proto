@@ -266,6 +266,12 @@ message IAMRequest {
 }
 
 message IAMReply {
+ // Display summaries only. Owners still authorize each object and action.
+ string authorization_mode = 25;
+ bool legacy_admin = 26;
+ repeated string permitted_operations = 27;
+ // CAS of a visible management target; separate from the actor versions.
+ uint64 target_revision = 28;
  repeated IAMImpact impacts = 23;
  repeated IAMSession sessions = 24;
  repeated IAMRole roles = 1;

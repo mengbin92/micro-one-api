@@ -824,6 +824,10 @@ func IAMReplyFrom(p *v.IAMReply) m.Response {
 	d.BasePolicyRevision = p.BasePolicyRevision
 	d.ContentDigest = p.ContentDigest
 	d.NextPageToken = p.NextPageToken
+	d.TargetRevision = p.TargetRevision
+	d.AuthorizationMode = p.AuthorizationMode
+	d.LegacyAdmin = p.LegacyAdmin
+	d.PermittedOperations = p.PermittedOperations
 	d.Total = p.Total
 	return d
 }
@@ -882,6 +886,10 @@ func IAMReplyTo(d m.Response) *v.IAMReply {
 	p.BasePolicyRevision = d.BasePolicyRevision
 	p.ContentDigest = d.ContentDigest
 	p.NextPageToken = d.NextPageToken
+	p.TargetRevision = d.TargetRevision
+	p.AuthorizationMode = d.AuthorizationMode
+	p.LegacyAdmin = d.LegacyAdmin
+	p.PermittedOperations = d.PermittedOperations
 	p.Total = d.Total
 	return p
 }

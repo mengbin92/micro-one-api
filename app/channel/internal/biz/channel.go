@@ -51,6 +51,7 @@ type ChannelConfig struct {
 
 // Channel describes the channel snapshot selected for relay.
 type Channel struct {
+	PermittedActions                  []string
 	AuthorizationRevision             int64
 	HealthFieldsVisible               bool
 	ID                                int64
@@ -89,6 +90,7 @@ type Channel struct {
 // It is selected separately from API-key channels but uses the same group,
 // model and priority semantics for routing.
 type SubscriptionAccount struct {
+	PermittedActions         []string
 	CredentialRefreshPending bool
 
 	CredentialRevision int64
@@ -875,12 +877,20 @@ func (uc *ChannelUsecase) ListSubscriptionAccounts(ctx context.Context, page, pa
 	if len(recoveryPolicy) > 0 && recoveryPolicy[0] != "" {
 		if repo, ok := uc.repo.(SubscriptionAccountRecoveryLister); ok {
 			rows, total, err := repo.ListSubscriptionAccountsByRecovery(ctx, page, pageSize, keyword, group, status, platform, recoveryPolicy[0])
-			return redactAccountMappings(ctx, rows), total, err
+			if err != nil {
+				return nil, 0, err
+			}
+			rows, err = uc.displayAccounts(ctx, rows)
+			return rows, total, err
 		}
 		return nil, 0, fmt.Errorf("recovery filtering is unavailable")
 	}
 	rows, total, err := uc.repo.ListSubscriptionAccounts(ctx, page, pageSize, keyword, group, status, platform)
-	return redactAccountMappings(ctx, rows), total, err
+	if err != nil {
+		return nil, 0, err
+	}
+	rows, err = uc.displayAccounts(ctx, rows)
+	return rows, total, err
 }
 
 func (uc *ChannelUsecase) ListOAuthRefreshCandidates(ctx context.Context, within time.Duration) ([]int64, error) {
@@ -1161,6 +1171,10 @@ func (uc *ChannelUsecase) ListChannels(ctx context.Context, page, pageSize int32
 		return nil, 0, err
 	}
 	ctx, err = uc.authorizeOptional(ctx, "channel.health", "monitor.health.channel.read")
+	if err != nil {
+		return nil, 0, err
+	}
+	ctx, err = uc.prepareDisplayActions(ctx, false)
 	if err != nil {
 		return nil, 0, err
 	}

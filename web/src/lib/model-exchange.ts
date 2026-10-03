@@ -6,7 +6,7 @@
 //
 // The export document is a versioned JSON payload covering models, aliases and
 // channel/subscription mappings. Prices are only included when export_prices
-// is true AND the caller has root role (enforced server-side). The document
+// is true AND the caller has the required pricing read/export permissions (enforced server-side). The document
 // NEVER contains channel API keys or OAuth tokens.
 
 import { adminApiClient } from '@/lib/api';
@@ -108,7 +108,7 @@ export const MODEL_EXCHANGE_SCHEMA_VERSION = '1.2.0';
 /**
  * Export the model registry as a versioned JSON document and trigger a browser
  * download. Prices are only included when exportPrices is true; the server
- * additionally requires root role for price export.
+ * additionally requires pricing read/export permissions in IAM mode.
  */
 export async function exportModels(params: ExportModelsParams = {}): Promise<ModelExportDocument> {
   const searchParams = new URLSearchParams();

@@ -82,7 +82,7 @@ describe('AdminUpstreamCostsPage', () => {
     renderWithQuery(<AdminUpstreamCostsPage />);
     await screen.findByText('暂无上游成本配置');
 
-    await user.click(screen.getByRole('button', { name: '添加上游成本' }));
+    await user.click(await screen.findByRole('button', { name: '添加上游成本' }));
     await user.type(screen.getByLabelText('来源 ID'), '1');
     await user.type(screen.getByLabelText('上游模型 ID'), 'deepseek-v4-flash-0731');
     await user.type(screen.getByLabelText('输入价格（$/1M tokens）'), '0.14');
@@ -114,7 +114,7 @@ describe('AdminUpstreamCostsPage', () => {
     renderWithQuery(<AdminUpstreamCostsPage />);
     await screen.findByText('暂无上游成本配置');
 
-    await user.click(screen.getByRole('button', { name: '添加上游成本' }));
+    await user.click(await screen.findByRole('button', { name: '添加上游成本' }));
     await user.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => {

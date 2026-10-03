@@ -1,9 +1,10 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuthorizedQuery } from '@/lib/authorization';
+import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Pencil, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EmptyState } from '@/components/EmptyState';
@@ -37,6 +38,7 @@ import { ModelMultiSelect } from '@/components/admin/ModelMultiSelect';
 import { locale, t } from '@/lib/i18n';
 
 interface Channel {
+ permittedActions?: string[]; permitted_actions?: string[]; authorizationRevision?: string; authorization_revision?: string;
   id: string;
   type: number;
   name: string;
@@ -149,8 +151,8 @@ export function AdminChannelsPage() {
   exportParams.set('format', 'csv');
   const exportHref = `/channel/export?${exportParams}`;
 
-  const { data: channels, isLoading } = useQuery({
-    queryKey: ['admin-channels', page, pageSize, search, sortKey, sortDirection, filters],
+  const { data: channels, isLoading } = useAuthorizedQuery({
+    permission: 'channel.channel.list', queryKey: ['admin-channels', page, pageSize, search, sortKey, sortDirection, filters],
     queryFn: async () => {
       const params = buildAdminListParams({
         page,
@@ -165,8 +167,8 @@ export function AdminChannelsPage() {
     },
   });
 
-  const { data: healthChannels, refetch: refetchHealthChannels, isFetching: isFetchingHealthChannels } = useQuery({
-    queryKey: ['admin-channels-health'],
+  const { data: healthChannels, refetch: refetchHealthChannels, isFetching: isFetchingHealthChannels } = useAuthorizedQuery({
+    permission: 'monitor.health.channel.read', queryKey: ['admin-channels-health'],
     queryFn: async () => {
       const params = new URLSearchParams({ page: '1', page_size: '1000', status: '1' });
       const res = await adminApiClient.get(`/channel?${params}`);
@@ -365,7 +367,7 @@ export function AdminChannelsPage() {
                   <Input id="channel-weight" type="number" min="1" value={newChannelWeight} onChange={(e) => setNewChannelWeight(e.target.value)} />
                 </div>
               </div>
-              <Button
+              <Button permission="channel.channel.create"
                 onClick={handleCreate}
                 disabled={createMutation.isPending || !newChannelName.trim() || !newChannelBaseUrl.trim() || !newChannelKey.trim() || !newChannelGroup.trim()}
                 className="sm:col-span-2"
@@ -429,7 +431,7 @@ export function AdminChannelsPage() {
                   />
                 </div>
               </div>
-              <Button
+              <Button permission="channel.channel.update"
                 onClick={handleUpdate}
                 disabled={updateMutation.isPending || !editingChannel.name.trim() || !editingChannel.models.trim() || !editingChannel.group.trim()}
                 className="sm:col-span-2"
@@ -448,7 +450,7 @@ export function AdminChannelsPage() {
         onSearchChange={setSearch}
         onClear={clearSearch}
         actions={
-          <ExportButton
+          <ExportButton permission="channel.channel.export"
             filename="admin-channels.csv"
             href={exportHref}
             rows={visibleChannels}
@@ -614,7 +616,7 @@ export function AdminChannelsPage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-right space-x-2">
-                      <Button
+                      <Button permission="channel.channel.update"
                         variant="outline"
                         size="sm"
                         onClick={() => openEdit(ch)}
@@ -622,7 +624,7 @@ export function AdminChannelsPage() {
                         <Pencil className="size-3.5" />
                         {t('编辑')}
                       </Button>
-                      <Button
+                      <Button object={ch} permission="channel.channel.balance.refresh"
                         variant="outline"
                         size="sm"
                         onClick={() => refreshBalanceMutation.mutate(ch.id)}
@@ -631,7 +633,7 @@ export function AdminChannelsPage() {
                         <RefreshCw className="size-3.5" />
                         {t('刷新')}
                       </Button>
-                      <Button
+                      <Button object={ch} permission="channel.channel.test"
                         variant="outline"
                         size="sm"
                         onClick={() => testChannelMutation.mutate(ch.id)}
@@ -639,7 +641,7 @@ export function AdminChannelsPage() {
                       >
                         {t('测试')}
                       </Button>
-                      <Button
+                      <Button object={ch} permission={ch.status === 1 ? 'channel.channel.disable' : 'channel.channel.enable'}
                         variant="outline"
                         size="sm"
                         onClick={() =>
@@ -649,7 +651,7 @@ export function AdminChannelsPage() {
                       >
                         {ch.status === 1 ? t('禁用') : t('启用')}
                       </Button>
-                      <Button
+                      <Button object={ch} permission="channel.channel.delete"
                         variant="outline"
                         size="sm"
                         onClick={() => {

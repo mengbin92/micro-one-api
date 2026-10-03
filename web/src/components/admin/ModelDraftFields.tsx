@@ -9,17 +9,21 @@ import {
   validateMetadata,
   type ModelDraft,
 } from '@/lib/model-draft';
+import { useAuthorization } from '@/lib/authorization';
 import { t } from '@/lib/i18n';
 
 export function ModelDraftFields({
   draft,
   onChange,
   isEdit,
+  pricesVisible = true,
 }: {
   draft: ModelDraft;
   onChange: (patch: Partial<ModelDraft>) => void;
   isEdit?: boolean;
+  pricesVisible?: boolean;
 }) {
+  const auth = useAuthorization();
   const metadataError = validateMetadata(draft.metadata);
   const providerListId = isEdit ? 'model-provider-options-edit' : 'model-provider-options-create';
   return (
@@ -118,37 +122,37 @@ export function ModelDraftFields({
         <div className="grid gap-2">
           <Label htmlFor="pricing-input">{t("输入价格 ($/1M tokens)")}</Label>
           <Input
-            id="pricing-input"
+            id="pricing-input" disabled={!pricesVisible || !auth.can('billing.pricing.update')}
             type="number"
             min="0"
             step="0.000001"
-            value={draft.pricingInput}
+            value={pricesVisible ? draft.pricingInput : ''}
             onChange={(e) => onChange({ pricingInput: e.target.value })}
-            placeholder={t("如 2.5")}
+            placeholder={t(pricesVisible ? "如 2.5" : "受限")}
           />
         </div>
         <div className="grid gap-2">
           <Label htmlFor="pricing-output">{t("输出价格 ($/1M tokens)")}</Label>
           <Input
-            id="pricing-output"
+            id="pricing-output" disabled={!pricesVisible || !auth.can('billing.pricing.update')}
             type="number"
             min="0"
             step="0.000001"
-            value={draft.pricingOutput}
+            value={pricesVisible ? draft.pricingOutput : ''}
             onChange={(e) => onChange({ pricingOutput: e.target.value })}
-            placeholder={t("如 10")}
+            placeholder={t(pricesVisible ? "如 10" : "受限")}
           />
         </div>
         <div className="grid gap-2">
           <Label htmlFor="pricing-cache-read">{t("缓存读取价格 ($/1M tokens)")}</Label>
           <Input
-            id="pricing-cache-read"
+            id="pricing-cache-read" disabled={!pricesVisible || !auth.can('billing.pricing.update')}
             type="number"
             min="0"
             step="0.000001"
-            value={draft.pricingCacheRead}
+            value={pricesVisible ? draft.pricingCacheRead : ''}
             onChange={(e) => onChange({ pricingCacheRead: e.target.value })}
-            placeholder={t("如 0.25")}
+            placeholder={t(pricesVisible ? "如 0.25" : "受限")}
           />
         </div>
       </div>

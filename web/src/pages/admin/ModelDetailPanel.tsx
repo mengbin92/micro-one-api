@@ -1,9 +1,10 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuthorization, useAuthorizedQuery } from '@/lib/authorization';
+import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -45,19 +46,20 @@ interface ModelDetailPanelProps {
 }
 
 export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
+  const auth = useAuthorization();
   const queryClient = useQueryClient();
   const [newAlias, setNewAlias] = useState('');
   const [newAliasPrimary, setNewAliasPrimary] = useState(false);
   const [confirmDeleteAlias, setConfirmDeleteAlias] = useState<ModelAlias | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-model-detail', modelPk],
+  const { data, isLoading } = useAuthorizedQuery({
+    permission: 'channel.model.read', queryKey: ['admin-model-detail', modelPk],
     queryFn: () => getModel(modelPk!),
     enabled: modelPk != null,
   });
 
-  const { data: usageData } = useQuery({
-    queryKey: ['admin-model-usage-stats', modelPk],
+  const { data: usageData } = useAuthorizedQuery({
+    permission: 'channel.model_usage.read', queryKey: ['admin-model-usage-stats', modelPk],
     queryFn: () => listModelUsageStats(modelPk!, { page: 1, page_size: 10 }),
     enabled: modelPk != null,
   });
@@ -167,15 +169,15 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("输入价格")}</p>
-                <p>{formatPricing(model.pricing_input)}</p>
+                <p>{auth.snapshot?.authorization_mode === 'iam' && !model.price_fields_visible ? t('受限') : formatPricing(model.pricing_input)}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("输出价格")}</p>
-                <p>{formatPricing(model.pricing_output)}</p>
+                <p>{auth.snapshot?.authorization_mode === 'iam' && !model.price_fields_visible ? t('受限') : formatPricing(model.pricing_output)}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("缓存读取价格")}</p>
-                <p>{formatPricing(model.pricing_cache_read)}</p>
+                <p>{auth.snapshot?.authorization_mode === 'iam' && !model.price_fields_visible ? t('受限') : formatPricing(model.pricing_cache_read)}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("公开显示")}</p>
@@ -241,7 +243,7 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                     onChange={(e) => setNewAliasPrimary(e.target.checked)}
                     className="size-4 rounded border-input"
                   />{t("主别名")}</label>
-                <Button
+                <Button permission="channel.model_alias.create"
                   size="sm"
                   onClick={handleCreateAlias}
                   disabled={createAliasMutation.isPending}
@@ -264,7 +266,7 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                           <TableCell className="font-mono text-sm">{a.alias}</TableCell>
                           <TableCell>{a.is_primary ? t("是") : t("否")}</TableCell>
                           <TableCell className="text-right">
-                            <Button
+                            <Button permission="channel.model_alias.delete"
                               variant="outline"
                               size="sm"
                               onClick={() => setConfirmDeleteAlias(a)}
@@ -386,7 +388,7 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmDeleteAlias(null)}>{t("取消")}</Button>
-            <Button
+            <Button permission="channel.model_alias.delete"
               variant="destructive"
               onClick={() => {
                 if (confirmDeleteAlias) deleteAliasMutation.mutate(confirmDeleteAlias.id);

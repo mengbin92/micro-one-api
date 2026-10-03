@@ -20,6 +20,7 @@ function renderAdminRoute() {
 
 function mockSelfRole(role: number) {
   server.use(
+    http.get('/api/user/authorization', () => HttpResponse.json({ authorization_mode: 'legacy', legacy_admin: role >= 10 })),
     http.get('/api/user/self', () =>
       HttpResponse.json({
         success: true,

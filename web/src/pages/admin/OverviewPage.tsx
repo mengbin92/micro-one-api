@@ -1,6 +1,6 @@
+import { useAuthorizedQuery } from '@/lib/authorization';
 import { useMemo } from 'react';
 import { Tabs } from '@base-ui/react/tabs';
-import { useQuery } from '@tanstack/react-query';
 import { Activity, AlertTriangle, CheckCircle2, CreditCard, Database, KeyRound, LineChart, Scale, TrendingUp, Users } from 'lucide-react';
 
 import { Link } from 'react-router';
@@ -528,8 +528,8 @@ function UnavailableSection({ restricted = false }: { restricted?: boolean }) {
 }
 
 export function AdminOverviewPage() {
-  const { data, isLoading, isError, isFetching, refetch, dataUpdatedAt } = useQuery({
-    queryKey: ['admin-summary'],
+  const { data, isLoading, isError, isFetching, refetch, dataUpdatedAt } = useAuthorizedQuery({
+    permission: 'admin.overview.read', queryKey: ['admin-summary'],
     queryFn: async ({ signal }) => {
       const res = await adminApiClient.get('/admin/summary', { signal, timeout: 10_000 });
       return unwrapApiData<AdminSummary>(res.data);

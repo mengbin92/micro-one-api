@@ -1,12 +1,13 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OrdersPage } from './OrdersPage';
 import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 
 describe('OrdersPage', () => {
+  beforeEach(() => server.use(http.get('/api/user/authorization', () => HttpResponse.json({ authorization_mode: 'legacy', legacy_admin: false }))));
   it('ignores a stale admin token for a normal user session', async () => {
     localStorage.setItem('adminToken', 'stale');
     let adminCalls = 0;
@@ -21,6 +22,21 @@ describe('OrdersPage', () => {
     renderWithQuery(<OrdersPage />);
     await screen.findByText('暂无订单记录');
     expect(userCalls).toBe(1);
+    expect(adminCalls).toBe(0);
+  });
+
+  it('uses self order endpoints in IAM despite a forged local admin role', async () => {
+    localStorage.setItem('userRole', '100');
+    let adminCalls = 0;
+    let selfCalls = 0;
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({ authorization_mode: 'iam', session: { activation_state: 'active' }, permitted_operations: [] })),
+      http.get('/api/payment/orders', () => { adminCalls++; return HttpResponse.json({ success: true, data: { orders: [] } }); }),
+      http.get('/api/user/payment/orders', () => { selfCalls++; return HttpResponse.json({ success: true, data: { orders: [] } }); }),
+      http.get('/api/user/logs', () => HttpResponse.json({ success: true, data: { logs: [] } })),
+    );
+    renderWithQuery(<OrdersPage />);
+    await waitFor(() => expect(selfCalls).toBe(1));
     expect(adminCalls).toBe(0);
   });
 

@@ -1,10 +1,11 @@
+import { useAuthorizedQuery } from '@/lib/authorization';
 import { CoverageEditor, ContractSummary, type RoutingCoverage, type SubscriptionContract } from '@/components/SubscriptionContract';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { Package, Pencil, Save, ShoppingCart } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EmptyState } from '@/components/EmptyState';
@@ -85,8 +86,8 @@ export function AdminSubscriptionPlansPage() {
   const [keyword, setKeyword] = useState('');
   const [editing, setEditing] = useState<PlanPayload | null>(null);
 
-  const { data: plans, isLoading } = useQuery({
-    queryKey: ['admin', 'subscription-plans', saleFilter],
+  const { data: plans, isLoading } = useAuthorizedQuery({
+    permission: 'monitor.health.selector.read', queryKey: ['admin', 'subscription-plans', saleFilter],
     queryFn: async () => {
       const forSale = saleFilterParam(saleFilter);
       const params = forSale ? { for_sale: forSale } : {};
@@ -164,7 +165,7 @@ export function AdminSubscriptionPlansPage() {
             <Package className="h-5 w-5" />{t("订阅套餐")}</h1>
           <p className="text-sm text-muted-foreground">{t("套餐上下架、在售状态审计与用户侧展示收敛。")}</p>
         </div>
-        <Button onClick={() => setEditing({ ...emptyPayload })}>
+        <Button permission="subscription.plan.create" onClick={() => setEditing({ ...emptyPayload })}>
           <ShoppingCart className="mr-1 h-4 w-4" />{t("新建套餐")}</Button>
       </div>
 
@@ -225,17 +226,17 @@ export function AdminSubscriptionPlansPage() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => startEdit(p)}>
+                    <Button permission="subscription.plan.update" variant="ghost" size="sm" onClick={() => startEdit(p)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
                     {p.for_sale ? (
-                      <Button
+                      <Button permission="subscription.plan.unpublish"
                         variant="outline"
                         size="sm"
                         onClick={() => toggleForSale.mutate({ id: p.id, forSale: false })}
                       >{t("下架")}</Button>
                     ) : (
-                      <Button
+                      <Button permission="subscription.plan.publish"
                         variant="default"
                         size="sm"
                         onClick={() => toggleForSale.mutate({ id: p.id, forSale: true })}
@@ -356,7 +357,7 @@ function PlanEditForm({
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="outline" onClick={onCancel}>{t("取消")}</Button>
-        <Button type="submit" disabled={saving}>
+        <Button permission={form.id ? 'subscription.plan.update' : 'subscription.plan.create'} type="submit" disabled={saving}>
           <Save className="mr-1 h-4 w-4" />{t("保存")}</Button>
       </div>
     </form>

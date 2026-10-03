@@ -68,7 +68,7 @@ func (s *IAMService) execute(ctx context.Context, method string, p *v.IAMRequest
 		if snapshot == nil {
 			return &v.IAMReply{}, nil
 		}
-		out := m.Response{Versions: snapshot.Versions, Session: &snapshot.Session, Sources: snapshot.Sources, AuthorizedRoleIDs: snapshot.AuthorizedRoleIDs, ActiveRoleIDs: snapshot.ActiveRoleIDs, ValidUntil: &snapshot.ValidUntil, BasePolicyRevision: snapshot.Policy.PolicyRevision}
+		out := m.Response{AuthorizationMode: snapshot.Policy.Mode, LegacyAdmin: snapshot.IsLegacyAdmin(), PermittedOperations: snapshot.PermittedOperations, Roles: snapshot.Roles, Menus: snapshot.Menus, Versions: snapshot.Versions, Session: &snapshot.Session, Sources: snapshot.Sources, AuthorizedRoleIDs: snapshot.AuthorizedRoleIDs, ActiveRoleIDs: snapshot.ActiveRoleIDs, ValidUntil: &snapshot.ValidUntil, BasePolicyRevision: snapshot.Policy.PolicyRevision}
 		return iamdto.IAMReplyTo(out), nil
 	}
 	out, err := s.uc.Execute(ctx, credential, method, iamdto.IAMRequestFrom(p))

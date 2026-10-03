@@ -1,10 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuthorizedQuery } from '@/lib/authorization';
+import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
@@ -119,8 +120,8 @@ export function AdminUpstreamCostsPage() {
   const [migrationPlan, setMigrationPlan] = useState<MigrationPlan | null>(null);
   const [confirmKey, setConfirmKey] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery<UpstreamCostView>({
-    queryKey: ['admin-upstream-costs'],
+  const { data, isLoading } = useAuthorizedQuery<UpstreamCostView>({
+    permission: 'billing.upstream_cost.read', queryKey: ['admin-upstream-costs'],
     queryFn: async () => {
       const res = await adminApiClient.get<UpstreamCostView>('/admin/upstream-costs');
       return res.data;
@@ -240,14 +241,14 @@ export function AdminUpstreamCostsPage() {
         </div>
         <div className="flex gap-2">
           {legacyKeys.length > 0 && (
-            <Button
+            <Button permission="billing.upstream_cost.migrate"
               variant="outline"
               onClick={() => migrateMutation.mutate(true)}
               disabled={migrateMutation.isPending}
             >
               <Upload className="size-4" />{t("迁移 legacy 键")}</Button>
           )}
-          <Button onClick={openCreate}>
+          <Button permission="billing.upstream_cost.create" onClick={openCreate}>
             <Plus className="size-4" />{t("添加上游成本")}</Button>
         </div>
       </div>
@@ -290,10 +291,10 @@ export function AdminUpstreamCostsPage() {
                       <TableCell>{formatPrice(entry.cache_read_price)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button type="button" variant="ghost" size="icon-sm" aria-label={t(`编辑 ${entry.key}`)} onClick={() => openEdit(entry)}>
+                          <Button permission="billing.upstream_cost.update" type="button" variant="ghost" size="icon-sm" aria-label={t(`编辑 ${entry.key}`)} onClick={() => openEdit(entry)}>
                             <Pencil className="size-4" />
                           </Button>
-                          <Button type="button" variant="ghost" size="icon-sm" aria-label={t(`删除 ${entry.key}`)} onClick={() => setConfirmKey(entry.key)}>
+                          <Button permission="billing.upstream_cost.delete" type="button" variant="ghost" size="icon-sm" aria-label={t(`删除 ${entry.key}`)} onClick={() => setConfirmKey(entry.key)}>
                             <Trash2 className="size-4" />
                           </Button>
                         </div>
@@ -443,7 +444,7 @@ export function AdminUpstreamCostsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>{t("取消")}</Button>
-            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+            <Button permission={editing ? 'billing.upstream_cost.update' : 'billing.upstream_cost.create'} onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
               {saveMutation.isPending ? t("保存中...") : t("保存")}
             </Button>
           </DialogFooter>
@@ -461,7 +462,7 @@ export function AdminUpstreamCostsPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmKey(null)}>{t("取消")}</Button>
-            <Button
+            <Button permission="billing.upstream_cost.delete"
               variant="destructive"
               disabled={deleteMutation.isPending}
               onClick={() => confirmKey && deleteMutation.mutate(confirmKey)}
@@ -501,7 +502,7 @@ export function AdminUpstreamCostsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setMigrationPlan(null)}>{t("关闭")}</Button>
             {migrationPlan && migrationPlan.to_rewrite.length > 0 && (
-              <Button onClick={() => migrateMutation.mutate(false)} disabled={migrateMutation.isPending}>
+              <Button permission="billing.upstream_cost.migrate" onClick={() => migrateMutation.mutate(false)} disabled={migrateMutation.isPending}>
                 {migrateMutation.isPending ? t("执行中...") : t("确认执行迁移")}
               </Button>
             )}

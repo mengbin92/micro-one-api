@@ -1,10 +1,11 @@
+import { useAuthorizedQuery } from '@/lib/authorization';
 import { CoverageEditor, ContractSummary, type RoutingCoverage, type SubscriptionContract } from '@/components/SubscriptionContract';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, Search, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EmptyState } from '@/components/EmptyState';
@@ -100,8 +101,8 @@ export function AdminSubscriptionsPage() {
     queryClient.invalidateQueries({ queryKey: ['admin-subscription-progress'] });
   };
 
-  const { data: subscriptions, isLoading } = useQuery({
-    queryKey: ['admin-subscriptions', filterUserId],
+  const { data: subscriptions, isLoading } = useAuthorizedQuery({
+    permission: 'subscription.user_subscription.list', queryKey: ['admin-subscriptions', filterUserId],
     queryFn: async () => {
       const query = filterUserId != null ? `?user_id=${filterUserId}` : '';
       const res = await adminApiClient.get(`/v1/admin/subscriptions${query}`);
@@ -111,8 +112,8 @@ export function AdminSubscriptionsPage() {
 
   // Progress is per-user and best-effort: only fetched when filtering to a single
   // user; success:false (no active subscription) is surfaced as "no progress".
-  const { data: progress } = useQuery({
-    queryKey: ['admin-subscription-progress', filterUserId],
+  const { data: progress } = useAuthorizedQuery({
+    permission: 'subscription.user_subscription.report.read', queryKey: ['admin-subscription-progress', filterUserId],
     enabled: filterUserId != null && filterUserId > 0,
     queryFn: async () => {
       const res = await adminApiClient.get(`/v1/subscriptions/progress?user_id=${filterUserId}`);
@@ -121,8 +122,8 @@ export function AdminSubscriptionsPage() {
     },
   });
 
-  const { data: groups } = useQuery({
-    queryKey: ['admin-subscription-groups-options'],
+  const { data: groups } = useAuthorizedQuery({
+    permission: 'subscription.quota_policy.list', queryKey: ['admin-subscription-groups-options'],
     queryFn: async () => {
       const res = await adminApiClient.get('/v1/admin/subscription-groups');
       return unwrapApiData<SubscriptionGroupOption[]>(res.data) ?? [];
@@ -343,10 +344,10 @@ export function AdminSubscriptionsPage() {
                     ${sub.daily_usage_usd} / ${sub.weekly_usage_usd} / ${sub.monthly_usage_usd}
                   </TableCell>
                   <TableCell className="text-right space-x-2">
-                    <Button variant="outline" size="sm" onClick={() => handleExtend(sub)}>
+                    <Button permission="subscription.user_subscription.extend" variant="outline" size="sm" onClick={() => handleExtend(sub)}>
                       <CalendarClock className="size-3.5" />{t("延长")}</Button>
-                    <Button variant="outline" size="sm" onClick={() => handleResetQuota(sub)}>{t("重置配额")}</Button>
-                    <Button
+                    <Button permission="subscription.user_subscription.quota.reset" variant="outline" size="sm" onClick={() => handleResetQuota(sub)}>{t("重置配额")}</Button>
+                    <Button permission="subscription.user_subscription.revoke"
                       variant="outline"
                       size="sm"
                       onClick={() => handleRevoke(sub)}
@@ -404,7 +405,7 @@ function ExtendDialog({ open, subscription, pending, onOpenChange, onSubmit }: E
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>{t("取消")}</Button>
-          <Button onClick={handleSubmit} disabled={pending}>
+          <Button permission="subscription.user_subscription.extend" onClick={handleSubmit} disabled={pending}>
             {pending ? t("保存中...") : t("保存到期时间")}
           </Button>
         </DialogFooter>
@@ -527,7 +528,7 @@ function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSu
               onChange={(e) => setMetadata(e.target.value)}
             />
           </div>
-          <Button onClick={handleSubmit} disabled={pending}>
+          <Button permission="subscription.user_subscription.assign" onClick={handleSubmit} disabled={pending}>
             {pending ? t("分配中...") : t("分配")}
           </Button>
         </div>

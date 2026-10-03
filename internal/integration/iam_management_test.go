@@ -136,6 +136,9 @@ func TestIAMA6RealAdminIdentityEndpoints(t *testing.T) {
 	sessions, err := client.ListUserSessions(outgoing("a6-service", rootRaw), &v.IAMRequest{Context: platform, UserId: member.ID})
 	require.NoError(t, err)
 	require.NotEmpty(t, sessions.Sessions)
+	var targetRevision uint64
+	require.NoError(t, db.Table("users").Select("authorization_revision").Where("id = ?", member.ID).Scan(&targetRevision).Error)
+	require.Equal(t, targetRevision, sessions.TargetRevision, "target CAS remains separate from actor authorization versions")
 	// A bodyless DELETE resolves the role and boundary from the assignment row.
 	published, err := client.SetRoleStatus(outgoing("a6-service", rootRaw), &v.IAMRequest{Context: platform, Id: id, Role: &v.IAMRole{Status: "enabled"}, ExpectedRevision: reply.Roles[0].Revision, ExpectedPolicyRevision: reply.BasePolicyRevision, Reason: "enable", RequestId: "a6-enable"})
 	require.NoError(t, err)
