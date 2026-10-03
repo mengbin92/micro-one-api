@@ -142,6 +142,14 @@ func TestSQLiteDialect_FreshInstall(t *testing.T) {
 	require.Contains(t, tables, "iam_policy_state", "110 IAM policy singleton must have applied")
 	require.True(t, sqliteColumnExists(t, db, "iam_policy_state", "max_roles_per_user"), "111 IAM user cardinality must have applied")
 	require.True(t, sqliteColumnExists(t, db, "iam_policy_state", "max_roles_per_session"), "111 IAM session cardinality must have applied")
+	require.Contains(t, tables, "resource_write_audits", "112 durable resource audit must have applied")
+	require.True(t, sqliteColumnExists(t, db, "channels", "authorization_revision"), "118 channel CAS must have applied")
+	require.True(t, sqliteColumnExists(t, db, "models", "authorization_revision"), "118 model CAS must have applied")
+	require.Contains(t, tables, "upstream_cost_resources", "119 stable upstream cost identifiers must have applied")
+	require.True(t, sqliteColumnExists(t, db, "model_routings", "revision"), "120 model routing CAS must have applied")
+	require.True(t, sqliteColumnExists(t, db, "usage_semantic_source_blocks", "revision"), "121 semantic block CAS must have applied")
+	require.True(t, sqliteColumnExists(t, db, "configs", "deleted"), "122 config tombstones must have applied")
+	require.Contains(t, tables, "config_key_locks", "122 configuration key locks must have applied")
 }
 
 // TestSQLiteDialect_IncrementalUpgrade simulates a deployed Lite instance
@@ -160,7 +168,7 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 52, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 63, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
 	// Keep seeded legacy prices before 084 regardless of later appended migrations.
 	cut := sort.SearchStrings(files, "084_add_model_pricing_cache_read.sql")

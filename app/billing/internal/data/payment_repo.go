@@ -352,7 +352,7 @@ func (r *paymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason str
 			if parseErr != nil || userID <= 0 {
 				return authorization.ErrDenied
 			}
-			if err := authorization.Require(ctx, "billing.payment.refund", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: order.ID, OwnerUserID: userID}); err != nil {
+			if err := biz.RequireWrite(ctx, "billing.payment.refund", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: order.ID, OwnerUserID: userID}); err != nil {
 				return err
 			}
 		}
@@ -391,10 +391,10 @@ func (r *paymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason str
 			return err
 		}
 		changed = true
-		return nil
+		return authzquery.AppendWriteAudit(ctx, tx, "billing.payment.refund", order.ID)
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to mark payment order refunded: %w", err)
+		return nil, false, fmt.Errorf("failed to mark payment order refunded: %w", authzquery.RecordWriteFailure(ctx, r.data.db, "billing.payment.refund", 0, err))
 	}
 	return result, changed, nil
 }

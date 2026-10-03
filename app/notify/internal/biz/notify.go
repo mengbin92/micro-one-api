@@ -30,17 +30,20 @@ const (
 
 // Notification represents an outgoing notification.
 type Notification struct {
-	ID           int64
-	Type         string // webhook, email, event
-	Recipient    string
-	Subject      string
-	Content      string
-	Status       string // pending, sent, failed
-	RetryCount   int
-	LastError    string
-	ProcessingAt time.Time
-	CreatedAt    time.Time
-	SentAt       time.Time
+	Revision       uint64
+	AcknowledgedAt time.Time
+	AcknowledgedBy int64
+	ID             int64
+	Type           string // webhook, email, event
+	Recipient      string
+	Subject        string
+	Content        string
+	Status         string // pending, sent, failed
+	RetryCount     int
+	LastError      string
+	ProcessingAt   time.Time
+	CreatedAt      time.Time
+	SentAt         time.Time
 }
 
 // NotifyRepo is the repository interface for notification persistence.

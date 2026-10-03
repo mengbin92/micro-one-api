@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"micro-one-api/domain/authorization"
+	"strings"
 	"time"
 )
 
 var (
-	ErrHealthCheckNotFound = errors.New("health check not found")
-	ErrAlertRuleNotFound   = errors.New("alert rule not found")
-	ErrInvalidAlertRule    = errors.New("invalid alert rule")
+	ErrHealthCheckNotFound       = errors.New("health check not found")
+	ErrAlertRuleNotFound         = errors.New("alert rule not found")
+	ErrInvalidAlertRule          = errors.New("invalid alert rule")
+	ErrAlertRuleRevisionConflict = errors.New("alert rule revision conflict")
+	ErrAlertRuleMutationRequired = errors.New("alert rule expected_revision and reason required")
 )
 
 const (
@@ -30,6 +33,7 @@ type HealthCheck struct {
 
 // AlertRule defines an alerting rule.
 type AlertRule struct {
+	Revision    uint64
 	ID          int64
 	Name        string
 	ServiceName string
@@ -109,6 +113,11 @@ func (uc *MonitorUsecase) CreateAlertRule(ctx context.Context, rule *AlertRule) 
 	if err != nil {
 		return err
 	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "monitor.alert_rule.create"); iam {
+		if expected, ok := authorization.ExpectedResourceRevision(ctx); !ok || expected != 0 || strings.TrimSpace(authorization.WriteReason(ctx)) == "" {
+			return ErrAlertRuleMutationRequired
+		}
+	}
 	if err := authorization.Require(ctx, "monitor.alert_rule.create", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
 		return err
 	}
@@ -152,6 +161,11 @@ func (uc *MonitorUsecase) UpdateAlertRule(ctx context.Context, rule *AlertRule) 
 	if err != nil {
 		return err
 	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "monitor.alert_rule.update"); iam {
+		if _, ok := authorization.ExpectedResourceRevision(ctx); !ok || strings.TrimSpace(authorization.WriteReason(ctx)) == "" {
+			return ErrAlertRuleMutationRequired
+		}
+	}
 	if err := authorization.Require(ctx, "monitor.alert_rule.update", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: rule.ID}); err != nil {
 		return err
 	}
@@ -163,6 +177,11 @@ func (uc *MonitorUsecase) DeleteAlertRule(ctx context.Context, id int64) error {
 	ctx, err = uc.authorize(ctx, "monitor.alert_rules", "monitor.alert_rule.delete")
 	if err != nil {
 		return err
+	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "monitor.alert_rule.delete"); iam {
+		if _, ok := authorization.ExpectedResourceRevision(ctx); !ok || strings.TrimSpace(authorization.WriteReason(ctx)) == "" {
+			return ErrAlertRuleMutationRequired
+		}
 	}
 	if err := authorization.Require(ctx, "monitor.alert_rule.delete", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: id}); err != nil {
 		return err

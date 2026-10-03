@@ -26,7 +26,7 @@ func NewGRPCServer(addr string, svc *service.MonitorService) *kgrpc.Server {
 
 var monitorReadyMethods = []string{
 	"/api.monitor.v1.MonitorService/ListHealthChecks",
-	"/api.monitor.v1.MonitorService/GetLatestHealth",
+	"/api.monitor.v1.MonitorService/GetLatestHealthCheck",
 	"/api.monitor.v1.MonitorService/CreateAlertRule",
 	"/api.monitor.v1.MonitorService/ListAlertRules",
 	"/api.monitor.v1.MonitorService/GetAlertRule",

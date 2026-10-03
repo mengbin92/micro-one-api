@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"micro-one-api/domain/authorization"
 	"strings"
 	"time"
 
@@ -17,6 +18,8 @@ const (
 )
 
 type SubscriptionUsecase struct {
+	authorization authorization.Resolver
+	consumer      string
 	routingGroups ContractGroupReader
 	repo          SubscriptionRepository
 	groupRepo     GroupRepository
@@ -44,6 +47,14 @@ func NewSubscriptionUsecase(repo SubscriptionRepository, groupRepo GroupReposito
 func (uc *SubscriptionUsecase) SetTxRunner(r TxRunner) { uc.txRunner = r }
 
 func (uc *SubscriptionUsecase) Assign(ctx context.Context, req *AssignSubscriptionRequest) (*UserSubscription, error) {
+	if req != nil && req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "user_subscriptions", "assign")
+	if authErr != nil {
+		return nil, authErr
+	}
 	if req == nil {
 		return nil, fmt.Errorf("nil request")
 	}
@@ -150,6 +161,11 @@ func (uc *SubscriptionUsecase) AssignInTx(ctx context.Context, tx Tx, req *Assig
 }
 
 func (uc *SubscriptionUsecase) AssignOrExtend(ctx context.Context, req *AssignSubscriptionRequest) (*UserSubscription, bool, error) {
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "user_subscriptions", "assign")
+	if authErr != nil {
+		return nil, false, authErr
+	}
 	if uc.txRunner != nil && req != nil && (EntitlementsEnabled() || req.Contract != nil) {
 		if _, err := uc.prepareAssignment(ctx, nil, req); err != nil {
 			return nil, false, err
@@ -293,8 +309,19 @@ func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx Tx, req *A
 }
 
 func (uc *SubscriptionUsecase) Revoke(ctx context.Context, id int64, reason string) error {
+	if reason != "" {
+		ctx = authorization.WithWriteReason(ctx, reason)
+	}
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "user_subscriptions", "revoke")
+	if authErr != nil {
+		return authErr
+	}
 	subscription, err := uc.repo.GetSubscriptionByID(ctx, id)
 	if err != nil {
+		return err
+	}
+	if err := authorization.Require(ctx, "subscription.user_subscription.revoke", subscriptionFacts(subscription)); err != nil {
 		return err
 	}
 	if subscription.Status == SubscriptionStatusRevoked {
@@ -321,8 +348,16 @@ func (uc *SubscriptionUsecase) RevokeInTx(ctx context.Context, tx Tx, id int64, 
 }
 
 func (uc *SubscriptionUsecase) Extend(ctx context.Context, id int64, newExpiresAt int64) error {
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "user_subscriptions", "extend")
+	if authErr != nil {
+		return authErr
+	}
 	subscription, err := uc.repo.GetSubscriptionByID(ctx, id)
 	if err != nil {
+		return err
+	}
+	if err := authorization.Require(ctx, "subscription.user_subscription.extend", subscriptionFacts(subscription)); err != nil {
 		return err
 	}
 	if subscription.Status == SubscriptionStatusRevoked {
@@ -392,8 +427,16 @@ func (uc *SubscriptionUsecase) ShortenInTx(ctx context.Context, tx Tx, id int64,
 }
 
 func (uc *SubscriptionUsecase) ResetQuota(ctx context.Context, id int64, scope string) error {
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "user_subscriptions", "quota.reset")
+	if authErr != nil {
+		return authErr
+	}
 	subscription, err := uc.repo.GetSubscriptionByID(ctx, id)
 	if err != nil {
+		return err
+	}
+	if err := authorization.Require(ctx, "subscription.user_subscription.quota.reset", subscriptionFacts(subscription)); err != nil {
 		return err
 	}
 	now := uc.now().Unix()
@@ -492,6 +535,11 @@ func (uc *SubscriptionUsecase) RecordUsageForSubscriptionInTx(ctx context.Contex
 // row id (the same id the dual-track commit pipeline later writes the
 // actual cost to).
 func (uc *SubscriptionUsecase) GetActiveSubscriptionForUser(ctx context.Context, userID int64) (*UserSubscription, error) {
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "user_subscriptions", "read")
+	if authErr != nil {
+		return nil, authErr
+	}
 	return uc.repo.GetActiveSubscriptionByUser(ctx, userID)
 }
 
@@ -548,6 +596,11 @@ func (uc *SubscriptionUsecase) CheckQuota(ctx context.Context, userID int64, est
 }
 
 func (uc *SubscriptionUsecase) GetProgress(ctx context.Context, userID int64) (*SubscriptionProgress, error) {
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "user_subscriptions", "read")
+	if authErr != nil {
+		return nil, authErr
+	}
 	subscription, err := uc.repo.GetActiveSubscriptionByUser(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -611,10 +664,20 @@ func BuildSubscriptionProgress(subscription *UserSubscription, group *Subscripti
 }
 
 func (uc *SubscriptionUsecase) ListByUser(ctx context.Context, userID int64) ([]*UserSubscription, error) {
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "user_subscriptions", "list")
+	if authErr != nil {
+		return nil, authErr
+	}
 	return uc.repo.ListSubscriptionsByUser(ctx, userID)
 }
 
 func (uc *SubscriptionUsecase) List(ctx context.Context) ([]*UserSubscription, error) {
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "user_subscriptions", "list")
+	if authErr != nil {
+		return nil, authErr
+	}
 	return uc.repo.ListAllSubscriptions(ctx)
 }
 

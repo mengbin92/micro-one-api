@@ -3,11 +3,15 @@ syntax = "proto3";
 package api.channel.v1;
 
 import "api/common/v1/common.proto";
+import "api/channel/v1/routing_group_management.proto";
 import "google/protobuf/empty.proto";
 
 option go_package = "micro-one-api/api/channel/v1;channelv1";
 
 service ChannelService {
+ rpc ArchiveRoutingGroup(ArchiveRoutingGroupRequest) returns (RoutingGroupMutationReply);
+ rpc ReplaceRoutingGroupMembers(ReplaceRoutingGroupMembersRequest) returns (RoutingGroupMutationReply);
+ rpc ExecuteChannelAction(ExecuteChannelActionRequest) returns (ExecuteChannelActionReply);
  rpc SetRoutingGroupState(SetRoutingGroupStateRequest) returns (RoutingGroupDetail);
   // Phase B read-only group registry; mutations remain with the resource owners.
   rpc ListRoutingGroups(ListRoutingGroupsRequest) returns (ListRoutingGroupsReply);
@@ -59,6 +63,8 @@ service ChannelService {
   // cross-replica LoadOracle reads zero). acquired=true reserves a slot,
   // false releases it. Relay calls are best-effort and asynchronous.
   rpc RecordSubscriptionAccountSlot(RecordSubscriptionAccountSlotRequest) returns (RecordSubscriptionAccountSlotResponse);
+  rpc BatchDeleteChannels(BatchDeleteChannelsRequest) returns (BatchDeleteChannelsResponse);
+  rpc ExportChannels(ListChannelsRequest) returns (ChannelExportArtifact);
   rpc DeleteChannel(DeleteChannelRequest) returns (DeleteChannelResponse);
   rpc ChangeChannelStatus(ChangeChannelStatusRequest) returns (ChangeChannelStatusResponse);
   // ========== Model management (方案B) ==========
@@ -168,6 +174,8 @@ message RoutingGroupResource {
   optional int64 weight_override = 6;
 }
 message SetRoutingGroupResourceOverridesRequest {
+  int64 expected_revision = 6;
+  string reason = 7;
   int64 routing_group_id = 1;
   string source_kind = 2; // channel | subscription
   int64 source_id = 3;
@@ -299,6 +307,8 @@ message ListOAuthRefreshCandidatesResponse {
 
 message ClearSubscriptionAccountErrorRequest {
   int64 account_id = 1;
+  int64 expected_revision = 2;
+  string reason = 3;
 }
 
 message ClearSubscriptionAccountErrorResponse {
@@ -368,6 +378,7 @@ message CreateSubscriptionAccountRequest {
   string quota_timezone = 29;
   string model_mapping = 30;        // JSON {"src":"dst"} per-account model remap
   int32 weight = 31;               // v0.11.0 Phase 3 §3.1: explicit within-tier WRR weight
+  string reason = 32;
 }
 
 message CreateSubscriptionAccountResponse {
@@ -408,6 +419,8 @@ message UpdateSubscriptionAccountRequest {
   optional string quota_timezone = 29;
   optional string model_mapping = 30; // JSON {"src":"dst"} per-account model remap
   optional int32 weight = 31;        // v0.11.0 Phase 3 §3.1: explicit within-tier WRR weight
+  int64 expected_revision = 32;
+  string reason = 33;
 }
 
 message UpdateSubscriptionAccountResponse {
@@ -417,6 +430,8 @@ message UpdateSubscriptionAccountResponse {
 
 message DeleteSubscriptionAccountRequest {
   int64 account_id = 1;
+  int64 expected_revision = 2;
+  string reason = 3;
 }
 
 message DeleteSubscriptionAccountResponse {
@@ -427,6 +442,8 @@ message DeleteSubscriptionAccountResponse {
 message ChangeSubscriptionAccountStatusRequest {
   int64 account_id = 1;
   int32 status = 2;
+  int64 expected_revision = 3;
+  string reason = 4;
 }
 
 message ChangeSubscriptionAccountStatusResponse {
@@ -476,6 +493,8 @@ message AggregateSubscriptionAccountQuotaEventsRequest {
 }
 
 message SubscriptionAccountQuotaEventAggregate {
+  bool cost_fields_visible = 7;
+  bool pricing_fields_visible = 8;
   int64 subscription_account_id = 1;
   double cost_usd = 2;
   double charged_usd = 3;
@@ -491,6 +510,8 @@ message AggregateSubscriptionAccountQuotaEventsResponse {
 message ResetSubscriptionAccountQuotaRequest {
   int64 account_id = 1;
   string scope = 2; // total / 5h / daily / weekly / all
+  int64 expected_revision = 3;
+  string reason = 4;
 }
 
 message ResetSubscriptionAccountQuotaResponse {
@@ -511,6 +532,7 @@ message CreateChannelRequest {
   string model_mapping = 10;
   string system_prompt = 11;
   optional bool restrict_models = 12;                 // restrict to abilities list: false=allow all models (catch-all), true=require registered model. Optional (proto3 presence) so an omitted field is distinct from an explicit false; service defaults to true (legacy) when unset.
+  string reason = 13;
 }
 
 message CreateChannelResponse {
@@ -540,6 +562,8 @@ message UpdateChannelRequest {
   // (so callers can clear last_error by passing "" and reset the counter by passing 0).
   bool set_balance_refresh_fields = 17;
   optional bool restrict_models = 18;                 // restrict to abilities list. Optional (proto3 presence): only applied when the caller sets it, so balance-refresh / health updates that omit the field never silently flip a restricted channel into a catch-all.
+  int64 expected_revision = 19;
+  string reason = 20;
 }
 
 message UpdateChannelResponse {
@@ -594,6 +618,8 @@ message RecordSubscriptionAccountSlotResponse {
 
 message DeleteChannelRequest {
   int64 channel_id = 1;
+  int64 expected_revision = 2;
+  string reason = 3;
 }
 
 message DeleteChannelResponse {
@@ -604,6 +630,8 @@ message DeleteChannelResponse {
 message ChangeChannelStatusRequest {
   int64 channel_id = 1;
   int32 status = 2;
+  int64 expected_revision = 3;
+  string reason = 4;
 }
 
 message ChangeChannelStatusResponse {
@@ -639,6 +667,9 @@ message ModelInfo {
   repeated string input_modalities = 22;  // text, image, audio, video, file
   repeated string output_modalities = 23; // text, image, audio, video
   double pricing_cache_read = 24;  // per 1M tokens
+  bool price_fields_visible = 25;
+  bool mappings_visible = 26;
+  int64 authorization_revision = 27;
 }
 
 message ModelSummary {
@@ -659,6 +690,9 @@ message ModelSummary {
   double pricing_input = 15;       // per 1M tokens
   double pricing_output = 16;
   double pricing_cache_read = 17;  // per 1M tokens
+  bool price_fields_visible = 18;
+  bool mappings_visible = 19;
+  int64 authorization_revision = 20;
 }
 
 message ModelAlias {
@@ -755,6 +789,7 @@ message CreateModelRequest {
   repeated string input_modalities = 16;
   repeated string output_modalities = 17;
   double pricing_cache_read = 18;
+  string reason = 19;
 }
 
 message CreateModelResponse {
@@ -782,6 +817,8 @@ message UpdateModelRequest {
   repeated string input_modalities = 15;
   repeated string output_modalities = 16;
   double pricing_cache_read = 17;
+  int64 expected_revision = 18;
+  string reason = 19;
 }
 
 message UpdateModelResponse {
@@ -792,6 +829,8 @@ message UpdateModelResponse {
 // ── DeleteModel ───────────────────────────────────────────────────────────
 message DeleteModelRequest {
   int64 model_pk = 1;
+  int64 expected_revision = 2;
+  string reason = 3;
 }
 
 message DeleteModelResponse {
@@ -803,6 +842,8 @@ message DeleteModelResponse {
 message ChangeModelStatusRequest {
   int64 model_pk = 1;
   int32 status = 2;
+  int64 expected_revision = 3;
+  string reason = 4;
 }
 
 message ChangeModelStatusResponse {
@@ -814,6 +855,8 @@ message ChangeModelStatusResponse {
 message BatchModelsRequest {
   string action = 1;            // enable, disable, delete
   repeated int64 model_pks = 2;
+  map<int64, int64> expected_revisions = 3;
+  string reason = 4;
 }
 
 message BatchModelsResponse {
@@ -835,6 +878,8 @@ message CreateModelAliasRequest {
   int64 model_pk = 1;
   string alias = 2;
   bool is_primary = 3;
+  int64 expected_model_revision = 4;
+  string reason = 5;
 }
 
 message CreateModelAliasResponse {
@@ -845,6 +890,9 @@ message CreateModelAliasResponse {
 
 message DeleteModelAliasRequest {
   int64 alias_id = 1;
+  int64 expected_model_revision = 2;
+  string reason = 3;
+  int64 model_pk = 4;
 }
 
 message DeleteModelAliasResponse {
@@ -868,6 +916,8 @@ message UpsertChannelModelMappingRequest {
   int32 priority = 4;
   string config = 5;
   string upstream_model_id = 6;
+  int64 expected_model_revision = 7;
+  string reason = 8;
 }
 
 message UpsertChannelModelMappingResponse {
@@ -878,6 +928,8 @@ message UpsertChannelModelMappingResponse {
 message DeleteChannelModelMappingRequest {
   int64 channel_id = 1;
   int64 model_pk = 2;
+  int64 expected_model_revision = 3;
+  string reason = 4;
 }
 
 message DeleteChannelModelMappingResponse {
@@ -901,6 +953,8 @@ message UpsertSubscriptionModelMappingRequest {
   optional bool enabled = 4;   // Optional (proto3 presence): when unset, enabled is left unchanged on update and defaults to true on insert.
   int32 priority = 5;
   string upstream_model_id = 6;
+  int64 expected_model_revision = 7;
+  string reason = 8;
 }
 
 message UpsertSubscriptionModelMappingResponse {
@@ -912,6 +966,8 @@ message DeleteSubscriptionModelMappingRequest {
   int64 subscription_account_id = 1;
   int64 model_pk = 2;
   string group_name = 3;
+  int64 expected_model_revision = 4;
+  string reason = 5;
 }
 
 message DeleteSubscriptionModelMappingResponse {
@@ -1011,6 +1067,7 @@ message ModelRouting {
   int32 priority = 7;              // within a routed tier, higher wins
   int64 created_at = 8;
   int64 updated_at = 9;
+  int64 revision = 10;
 }
 
 message ListModelRoutingsRequest {
@@ -1030,16 +1087,21 @@ message UpsertModelRoutingRequest {
   int64 subscription_account_id = 4;
   optional bool enabled = 5;   // Optional (proto3 presence): when unset, enabled is left unchanged on update and defaults to true on insert (DB DEFAULT 1).
   int32 priority = 6;
+  uint64 expected_revision = 7; // 0=create, existing updated_at for update
+  string reason = 8;
 }
 
 message UpsertModelRoutingResponse {
   bool success = 1;
   string message = 2;
   int64 id = 3;
+  int64 revision = 4;
 }
 
 message DeleteModelRoutingRequest {
   int64 id = 1;
+  uint64 expected_revision = 2;
+  string reason = 3;
 }
 
 message DeleteModelRoutingResponse {
@@ -1063,6 +1125,7 @@ message DuplicateModelRef {
   // the channel-service preflight returns, so channel biz stays decoupled from
   // pricing storage.
   repeated string price_references = 10;
+  int64 expected_revision = 11;
 }
 
 message DuplicateModelGroup {
@@ -1078,6 +1141,7 @@ message CanonicalModelPreflightResponse {
 
 message MergeCanonicalModelsRequest {
   DuplicateModelGroup group = 1;
+  string reason = 2;
 }
 
 message MergeCanonicalModelsResponse {
@@ -1142,6 +1206,7 @@ message ModelExportModel {
   repeated string input_modalities = 19;
   repeated string output_modalities = 20;
   double pricing_cache_read = 21;  // per 1M tokens; only populated when export_prices=true
+  int64 authorization_revision = 22;
 }
 
 // Channel mapping in export/import context references the channel by its
@@ -1204,6 +1269,7 @@ message ImportModelsRequest {
   // same admin/root role check as export_prices. When false, pricing fields in
   // the document are ignored (status/metadata/etc still apply).
   bool import_prices = 4;
+  string reason = 5;
 }
 
 message ImportRecordResult {
@@ -1269,6 +1335,8 @@ message ResolveUsageSemanticBlockRequest {
   string adapter_protocol = 4;
   string operator_id = 5;  // who confirmed the adapter fix
   string note = 6;
+  uint64 expected_revision = 7; // persisted block revision
+  string reason = 8;
 }
 
 message ResolveUsageSemanticBlockResponse {
@@ -1288,6 +1356,7 @@ message UsageSemanticBlock {
   int64 blocked_until = 10;      // unix millis
   int64 last_verified_at = 11;   // unix millis
   int64 updated_at = 12;         // unix millis
+  int64 revision = 13;
 }
 
 message ListUsageSemanticBlocksRequest {
@@ -1313,7 +1382,7 @@ message CheckRouteReply {
   string upstream_model_id = 2;
 }
 
-message SetRoutingGroupStateRequest { int64 id = 1; int64 expected_revision = 2; string status = 3; string access_mode = 4; }
+message SetRoutingGroupStateRequest { int64 id = 1; int64 expected_revision = 2; string status = 3; string access_mode = 4; string reason = 5; }
 
 // CreateRoutingGroupRequest carries operator input only: status, revision and
 // model access mode are decided by the owner, not by the caller.
@@ -1341,3 +1410,16 @@ message ClaimSubscriptionCredentialRefreshRequest {
   int64 id = 1;
   int64 expected_revision = 2;
 }
+
+// User actions never expose provider secrets in their result.
+message ExecuteChannelActionRequest { int64 channel_id = 1; string action = 2; string reason = 3; int64 expected_revision = 4; }
+message ExecuteChannelActionReply {
+ bool success = 1; bool skipped = 2; int64 channel_id = 3; string message = 4;
+ string provider = 5; string health_status = 6; int64 response_time = 7; int64 status_code = 8;
+ double balance = 9; int64 balance_updated_time = 10; string balance_refresh_last_error = 11;
+ int64 balance_refresh_last_success_time = 12; int32 consecutive_balance_refresh_failures = 13;
+}
+
+message BatchDeleteChannelsRequest { repeated int64 channel_ids = 1; map<int64,int64> expected_revisions = 2; string reason = 3; }
+message BatchDeleteChannelsResponse { bool success = 1; repeated int64 deleted_channel_ids = 2; }
+message ChannelExportArtifact { string content_type = 1; string file_name = 2; bytes body = 3; }

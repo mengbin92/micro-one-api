@@ -30,3 +30,13 @@ func NewIAMUsecase(repo IAMRepo) *IAMUsecase { return &IAMUsecase{repo: repo} }
 func (uc *IAMUsecase) Execute(ctx context.Context, credential, method string, req m.Request) (m.Response, error) {
 	return uc.repo.Execute(ctx, credential, method, req)
 }
+
+func (uc *IAMUsecase) ResourceMode(ctx context.Context, point string) (string, error) {
+	repo, ok := uc.repo.(interface {
+		ResourceMode(context.Context, string) (string, error)
+	})
+	if !ok {
+		return "", ErrIAMResourceUnavailable
+	}
+	return repo.ResourceMode(ctx, point)
+}

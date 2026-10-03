@@ -1561,6 +1561,9 @@ func (uc *BillingUsecase) BatchGetAccountSnapshots(ctx context.Context, userIDs 
 // the client's Idempotency-Key; empty means no idempotency guarantee (the
 // ledger still gets a unique auto key, never colliding with legacy rows).
 func (uc *BillingUsecase) TopUpQuota(ctx context.Context, userID, operatorID string, amount int64, remark, requestId string) (int64, error) {
+	if remark != "" {
+		ctx = authorization.WithWriteReason(ctx, remark)
+	}
 	var authErr error
 	ctx, authErr = uc.authorizeAccount(ctx, "billing.accounts.adjust", "billing.account.balance.adjust", userID)
 	if authErr != nil {
@@ -1783,6 +1786,14 @@ func (uc *BillingUsecase) PurchaseSubscription(ctx context.Context, userID strin
 }
 
 func (uc *BillingUsecase) CreateRedeemCode(ctx context.Context, code, name string, amount int64, count int32, operatorID string) error {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.redemption.write", "billing.redemption.create")
+	if authErr != nil {
+		return authErr
+	}
+	if q, ok := authorization.QueryScopeFromContext(ctx, "billing.redemption.create"); ok {
+		operatorID = strconv.FormatInt(q.ActorID, 10)
+	}
 	redeemCode := &RedeemCode{
 		Code:      code,
 		Name:      name,
@@ -1798,6 +1809,11 @@ func (uc *BillingUsecase) CreateRedeemCode(ctx context.Context, code, name strin
 }
 
 func (uc *BillingUsecase) CreateRedeemCodesBatch(ctx context.Context, name string, amount int64, count, batchSize int32) ([]string, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.redemption.write", "billing.redemption.batch_create")
+	if authErr != nil {
+		return nil, authErr
+	}
 	if count <= 0 || count > 100 {
 		return nil, fmt.Errorf("count must be between 1 and 100")
 	}
@@ -1828,10 +1844,20 @@ func (uc *BillingUsecase) CreateRedeemCodesBatch(ctx context.Context, name strin
 }
 
 func (uc *BillingUsecase) GetRedeemCode(ctx context.Context, code string) (*RedeemCode, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.redemption.read", "billing.redemption.read")
+	if authErr != nil {
+		return nil, authErr
+	}
 	return uc.redeemRepo.GetRedeemCode(ctx, code)
 }
 
 func (uc *BillingUsecase) ListRedeemCodes(ctx context.Context, page, pageSize int32) ([]*RedeemCode, int64, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.redemption.list", "billing.redemption.list")
+	if authErr != nil {
+		return nil, 0, authErr
+	}
 	if page <= 0 {
 		page = 1
 	}
@@ -1842,10 +1868,20 @@ func (uc *BillingUsecase) ListRedeemCodes(ctx context.Context, page, pageSize in
 }
 
 func (uc *BillingUsecase) SearchRedeemCodes(ctx context.Context, keyword string) ([]*RedeemCode, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.redemption.list", "billing.redemption.list")
+	if authErr != nil {
+		return nil, authErr
+	}
 	return uc.redeemRepo.SearchRedeemCodes(ctx, keyword)
 }
 
 func (uc *BillingUsecase) UpdateRedeemCode(ctx context.Context, code, name string, amount int64, status int32) error {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.redemption.write", "billing.redemption.update")
+	if authErr != nil {
+		return authErr
+	}
 	redeemCode := &RedeemCode{Code: code, Name: name, Amount: amount, Status: status}
 	if err := uc.redeemRepo.UpdateRedeemCode(ctx, redeemCode); err != nil {
 		return fmt.Errorf("update redeem code: %w", err)
@@ -1854,6 +1890,11 @@ func (uc *BillingUsecase) UpdateRedeemCode(ctx context.Context, code, name strin
 }
 
 func (uc *BillingUsecase) DeleteRedeemCode(ctx context.Context, code string) error {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.redemption.write", "billing.redemption.delete")
+	if authErr != nil {
+		return authErr
+	}
 	return uc.redeemRepo.DeleteRedeemCode(ctx, code)
 }
 
@@ -2224,7 +2265,6 @@ func (uc *BillingUsecase) ambiguousUserCost(ctx context.Context, price ModelPric
 	applogger.Log.Warn("usage semantics ambiguous: settling user at lower candidate cost",
 		zap.String("model", model),
 		zap.String("source_kind", usage.SourceKind),
-		zap.String("reason", reason),
 		zap.Int64("subset_candidate_cost", subsetFinal),
 		zap.Int64("exclusive_candidate_cost", exclusiveFinal),
 		zap.String("mode", string(mode)),

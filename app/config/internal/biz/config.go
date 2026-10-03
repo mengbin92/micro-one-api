@@ -10,9 +10,11 @@ import (
 )
 
 var (
-	ErrConfigNotFound = errors.New("config not found")
-	ErrConfigExists   = errors.New("config already exists")
-	ErrInvalidKey     = errors.New("invalid config key")
+	ErrConfigNotFound         = errors.New("config not found")
+	ErrConfigExists           = errors.New("config already exists")
+	ErrInvalidKey             = errors.New("invalid config key")
+	ErrConfigRevisionConflict = errors.New("config revision conflict")
+	ErrConfigMutationRequired = errors.New("config expected_revision and reason required")
 )
 
 // ConfigEntry represents a dynamic configuration entry.
@@ -117,6 +119,11 @@ func (uc *ConfigUsecase) setConfig(ctx context.Context, namespace, key, value, c
 	if key == "" {
 		return nil, ErrInvalidKey
 	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, op); iam {
+		if _, ok := authorization.ExpectedResourceRevision(ctx); !ok || strings.TrimSpace(authorization.WriteReason(ctx)) == "" {
+			return nil, ErrConfigMutationRequired
+		}
+	}
 	entry := &ConfigEntry{
 		Namespace: namespace,
 		Key:       key,
@@ -155,6 +162,11 @@ func (uc *ConfigUsecase) DeleteConfig(ctx context.Context, namespace, key string
 	}
 	if key == "" {
 		return ErrInvalidKey
+	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, op); iam {
+		if _, ok := authorization.ExpectedResourceRevision(ctx); !ok || strings.TrimSpace(authorization.WriteReason(ctx)) == "" {
+			return ErrConfigMutationRequired
+		}
 	}
 	if err := uc.repo.Delete(ctx, namespace, key); err != nil {
 		return err

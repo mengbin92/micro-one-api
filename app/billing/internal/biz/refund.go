@@ -135,6 +135,7 @@ func (uc *RefundUsecase) RefundSubscriptionOrder(ctx context.Context, req Refund
 	}
 
 	var authErr error
+	ctx = authorization.WithWriteReason(ctx, req.Reason)
 	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.payments.refund", "billing.payment.refund")
 	if authErr != nil {
 		return nil, authErr

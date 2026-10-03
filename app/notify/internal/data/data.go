@@ -16,24 +16,28 @@ import (
 )
 
 type Repository struct {
-	db  *gorm.DB
-	mu  sync.RWMutex
-	mem map[int64]*biz.Notification
-	seq int64
+	db    *gorm.DB
+	mu    sync.RWMutex
+	mem   map[int64]*biz.Notification
+	seq   int64
+	rules map[int64]*biz.NotificationRule
 }
 
 type notificationModel struct {
-	ID           int64  `gorm:"column:id;primaryKey;autoIncrement"`
-	Type         string `gorm:"column:type;index"`
-	Recipient    string `gorm:"column:recipient"`
-	Subject      string `gorm:"column:subject"`
-	Content      string `gorm:"column:content"`
-	Status       string `gorm:"column:status;index"`
-	RetryCount   int    `gorm:"column:retry_count"`
-	LastError    string `gorm:"column:last_error"`
-	ProcessingAt int64  `gorm:"column:processing_at"`
-	CreatedAt    int64  `gorm:"column:created_at;index"`
-	SentAt       int64  `gorm:"column:sent_at"`
+	Revision       uint64 `gorm:"column:revision"`
+	AcknowledgedAt int64  `gorm:"column:acknowledged_at"`
+	AcknowledgedBy int64  `gorm:"column:acknowledged_by"`
+	ID             int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	Type           string `gorm:"column:type;index"`
+	Recipient      string `gorm:"column:recipient"`
+	Subject        string `gorm:"column:subject"`
+	Content        string `gorm:"column:content"`
+	Status         string `gorm:"column:status;index"`
+	RetryCount     int    `gorm:"column:retry_count"`
+	LastError      string `gorm:"column:last_error"`
+	ProcessingAt   int64  `gorm:"column:processing_at"`
+	CreatedAt      int64  `gorm:"column:created_at;index"`
+	SentAt         int64  `gorm:"column:sent_at"`
 }
 
 func (notificationModel) TableName() string { return "notifications" }
@@ -131,6 +135,7 @@ func (r *Repository) ClaimPending(ctx context.Context, limit int32, maxRetry int
 			if n.Status != biz.NotifyStatusPending || n.RetryCount >= maxRetry || len(items) >= int(limit) {
 				continue
 			}
+			n.Revision++
 			n.Status = biz.NotifyStatusProcessing
 			n.ProcessingAt = time.Now()
 			cloned := *n
@@ -144,7 +149,7 @@ func (r *Repository) ClaimPending(ctx context.Context, limit int32, maxRetry int
 	}
 	items := make([]*biz.Notification, 0, len(candidates))
 	for _, m := range candidates {
-		res := r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ? AND status = ?", m.ID, biz.NotifyStatusPending).Updates(map[string]any{"status": biz.NotifyStatusProcessing, "processing_at": time.Now().Unix()})
+		res := r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ? AND status = ?", m.ID, biz.NotifyStatusPending).Updates(map[string]any{"revision": gorm.Expr("revision + 1"), "status": biz.NotifyStatusProcessing, "processing_at": time.Now().Unix()})
 		if res.Error != nil {
 			return nil, res.Error
 		}
@@ -152,6 +157,7 @@ func (r *Repository) ClaimPending(ctx context.Context, limit int32, maxRetry int
 			continue
 		}
 		m.Status = biz.NotifyStatusProcessing
+		m.Revision++
 		m.ProcessingAt = time.Now().Unix()
 		items = append(items, notificationFromModel(m))
 	}
@@ -164,12 +170,13 @@ func (r *Repository) ClaimPending(ctx context.Context, limit int32, maxRetry int
 func (r *Repository) RecoverProcessing(ctx context.Context) error {
 	if r.db != nil {
 		cutoff := time.Now().Add(-processingLease).Unix()
-		return r.db.WithContext(ctx).Model(&notificationModel{}).Where("status = ? AND (processing_at = 0 OR processing_at < ?)", biz.NotifyStatusProcessing, cutoff).Updates(map[string]any{"status": biz.NotifyStatusPending, "processing_at": 0}).Error
+		return r.db.WithContext(ctx).Model(&notificationModel{}).Where("status = ? AND (processing_at = 0 OR processing_at < ?)", biz.NotifyStatusProcessing, cutoff).Updates(map[string]any{"revision": gorm.Expr("revision + 1"), "status": biz.NotifyStatusPending, "processing_at": 0}).Error
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, n := range r.mem {
 		if n.Status == biz.NotifyStatusProcessing && (n.ProcessingAt.IsZero() || n.ProcessingAt.Before(time.Now().Add(-processingLease))) {
+			n.Revision++
 			n.Status = biz.NotifyStatusPending
 			n.ProcessingAt = time.Time{}
 		}
@@ -203,6 +210,7 @@ func (r *Repository) RecordFailure(ctx context.Context, id int64, maxRetry int, 
 
 func (r *Repository) createDB(ctx context.Context, n *biz.Notification) error {
 	m := notificationModel{
+		Revision:   1,
 		Type:       n.Type,
 		Recipient:  n.Recipient,
 		Subject:    n.Subject,
@@ -216,6 +224,7 @@ func (r *Repository) createDB(ctx context.Context, n *biz.Notification) error {
 		return err
 	}
 	n.ID = m.ID
+	n.Revision = m.Revision
 	return nil
 }
 
@@ -277,6 +286,7 @@ func (r *Repository) listPendingDB(ctx context.Context, limit int32, maxRetry in
 
 func (r *Repository) updateStatusDB(ctx context.Context, id int64, status string) error {
 	updates := map[string]any{
+		"revision":      gorm.Expr("revision + 1"),
 		"status":        status,
 		"processing_at": 0,
 	}
@@ -285,18 +295,34 @@ func (r *Repository) updateStatusDB(ctx context.Context, id int64, status string
 		updates["last_error"] = ""
 		updates["processing_at"] = 0
 	}
-	return r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ?", id).Updates(updates).Error
+	result := r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ?", id).Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return biz.ErrNotificationNotFound
+	}
+	return nil
 }
 
 func (r *Repository) markFailedDB(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ?", id).Updates(map[string]any{
+	result := r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ?", id).Updates(map[string]any{
+		"revision":      gorm.Expr("revision + 1"),
 		"status":        biz.NotifyStatusFailed,
 		"processing_at": 0,
-	}).Error
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return biz.ErrNotificationNotFound
+	}
+	return nil
 }
 
 func (r *Repository) recordFailureDB(ctx context.Context, id int64, maxRetry int, lastError string) error {
 	return r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ?", id).Updates(map[string]any{
+		"revision":      gorm.Expr("revision + 1"),
 		"status":        gorm.Expr("CASE WHEN retry_count + 1 >= ? THEN ? ELSE ? END", maxRetry, biz.NotifyStatusFailed, biz.NotifyStatusPending),
 		"retry_count":   gorm.Expr("retry_count + ?", 1),
 		"last_error":    lastError,
@@ -316,14 +342,17 @@ func (r *Repository) CompleteProcessing(ctx context.Context, id int64, processin
 			return biz.ErrNotificationLeaseLost
 		}
 		if status == biz.NotifyStatusSent {
+			n.Revision++
 			n.Status = biz.NotifyStatusSent
 			n.SentAt = time.Now()
 			n.LastError = ""
 		} else {
 			n.RetryCount++
 			if n.RetryCount >= maxRetry {
+				n.Revision++
 				n.Status = biz.NotifyStatusFailed
 			} else {
+				n.Revision++
 				n.Status = biz.NotifyStatusPending
 			}
 			n.LastError = normalizeLastError(lastError)
@@ -335,7 +364,7 @@ func (r *Repository) CompleteProcessing(ctx context.Context, id int64, processin
 	if status == biz.NotifyStatusSent {
 		result := r.db.WithContext(ctx).Model(&notificationModel{}).
 			Where("id = ? AND status = ? AND processing_at = ?", id, biz.NotifyStatusProcessing, lease).
-			Updates(map[string]any{"status": biz.NotifyStatusSent, "processing_at": 0, "sent_at": time.Now().Unix(), "last_error": ""})
+			Updates(map[string]any{"revision": gorm.Expr("revision + 1"), "status": biz.NotifyStatusSent, "processing_at": 0, "sent_at": time.Now().Unix(), "last_error": ""})
 		if result.Error != nil {
 			return result.Error
 		}
@@ -347,6 +376,7 @@ func (r *Repository) CompleteProcessing(ctx context.Context, id int64, processin
 	result := r.db.WithContext(ctx).Model(&notificationModel{}).
 		Where("id = ? AND status = ? AND processing_at = ?", id, biz.NotifyStatusProcessing, lease).
 		Updates(map[string]any{
+			"revision":      gorm.Expr("revision + 1"),
 			"status":        gorm.Expr("CASE WHEN retry_count + 1 >= ? THEN ? ELSE ? END", maxRetry, biz.NotifyStatusFailed, biz.NotifyStatusPending),
 			"retry_count":   gorm.Expr("retry_count + ?", 1),
 			"last_error":    normalizeLastError(lastError),
@@ -368,6 +398,7 @@ func (r *Repository) createMemory(n *biz.Notification) error {
 	defer r.mu.Unlock()
 	r.seq++
 	n.ID = r.seq
+	n.Revision = 1
 	r.mem[n.ID] = n
 	return nil
 }
@@ -433,6 +464,7 @@ func (r *Repository) updateStatusMemory(id int64, status string) error {
 	if !ok {
 		return biz.ErrNotificationNotFound
 	}
+	n.Revision++
 	n.Status = status
 	if status != biz.NotifyStatusProcessing {
 		n.ProcessingAt = time.Time{}
@@ -453,7 +485,7 @@ func notificationFromModel(m notificationModel) *biz.Notification {
 	if m.SentAt > 0 {
 		sentAt = time.Unix(m.SentAt, 0)
 	}
-	return &biz.Notification{ID: m.ID, Type: m.Type, Recipient: m.Recipient, Subject: m.Subject, Content: m.Content, Status: m.Status, RetryCount: m.RetryCount, LastError: m.LastError, ProcessingAt: processingAt, CreatedAt: time.Unix(m.CreatedAt, 0), SentAt: sentAt}
+	return &biz.Notification{ID: m.ID, Revision: m.Revision, AcknowledgedBy: m.AcknowledgedBy, AcknowledgedAt: time.Unix(m.AcknowledgedAt, 0), Type: m.Type, Recipient: m.Recipient, Subject: m.Subject, Content: m.Content, Status: m.Status, RetryCount: m.RetryCount, LastError: m.LastError, ProcessingAt: processingAt, CreatedAt: time.Unix(m.CreatedAt, 0), SentAt: sentAt}
 }
 
 func sameLease(a, b time.Time) bool {
@@ -467,6 +499,7 @@ func (r *Repository) markFailedMemory(id int64) error {
 	if !ok {
 		return biz.ErrNotificationNotFound
 	}
+	n.Revision++
 	n.Status = biz.NotifyStatusFailed
 	n.ProcessingAt = time.Time{}
 	return nil
@@ -482,8 +515,10 @@ func (r *Repository) recordFailureMemory(id int64, maxRetry int, lastError strin
 	n.RetryCount++
 	n.ProcessingAt = time.Time{}
 	if n.RetryCount >= maxRetry {
+		n.Revision++
 		n.Status = biz.NotifyStatusFailed
 	} else {
+		n.Revision++
 		n.Status = biz.NotifyStatusPending
 	}
 	n.LastError = lastError
@@ -497,3 +532,6 @@ func normalizeLastError(lastError string) string {
 	}
 	return lastError
 }
+
+// NewRepositoryWithDB uses a shared caller-owned storage client.
+func NewRepositoryWithDB(db *gorm.DB) biz.NotifyRepo { return &Repository{db: db} }

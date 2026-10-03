@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"fmt"
+	"micro-one-api/domain/authorization"
 )
 
 // UserPriceOverride is the live per-user routing-group price override. The
@@ -34,6 +35,14 @@ func userPriceVersion(o *UserPriceOverride) string {
 }
 
 func (uc *BillingUsecase) SetUserRoutingPrice(ctx context.Context, userID, groupID int64, ratio float64) (int64, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.routing_policy", "billing.routing_policy.user_override.update")
+	if authErr != nil {
+		return 0, authErr
+	}
+	if authErr = authorization.Require(ctx, "billing.routing_policy.user_override.update", routingPolicyFacts(groupID, userID)); authErr != nil {
+		return 0, authErr
+	}
 	if !uc.RoutingSnapshotsAvailable() || uc.userPriceOverrides == nil {
 		return 0, ErrRequestSnapshotUnavailable
 	}
@@ -51,6 +60,14 @@ func (uc *BillingUsecase) SetUserRoutingPrice(ctx context.Context, userID, group
 }
 
 func (uc *BillingUsecase) ClearUserRoutingPrice(ctx context.Context, userID, groupID int64) error {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.routing_policy", "billing.routing_policy.user_override.delete")
+	if authErr != nil {
+		return authErr
+	}
+	if authErr = authorization.Require(ctx, "billing.routing_policy.user_override.delete", routingPolicyFacts(groupID, userID)); authErr != nil {
+		return authErr
+	}
 	if !uc.RoutingSnapshotsAvailable() || uc.userPriceOverrides == nil {
 		return ErrRequestSnapshotUnavailable
 	}

@@ -1,0 +1,1 @@
+ALTER TABLE model_routings ADD COLUMN revision BIGINT NOT NULL DEFAULT 1;

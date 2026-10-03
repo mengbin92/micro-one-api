@@ -26,9 +26,12 @@ func TestCompletedExecutionDeclarations(t *testing.T) {
 			t.Errorf("delivered routing group operation %s unbound", code)
 		}
 	}
-	for _, code := range []string{"channel.routing_group.archive", "channel.channel.batch_delete", "log.request.purge", "notify.notification.test"} {
-		if ResourceBound(code) {
-			t.Errorf("unfinished %s must remain unbound", code)
+	for _, code := range []string{"channel.routing_group.archive", "channel.channel.batch_delete", "channel.channel.export", "log.request.purge", "notify.notification.test", "notify.notification.acknowledge", "billing.report.export", "channel.account.oauth.bind"} {
+		if !ResourceBound(code) {
+			t.Errorf("delivered B-stage operation %s must be bound", code)
 		}
+	}
+	if ResourceBound("organization.member.invite") {
+		t.Fatal("organization operations must remain unbound")
 	}
 }

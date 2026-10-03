@@ -1,0 +1,1 @@
+ALTER TABLE system_options ADD COLUMN revision BIGINT NOT NULL DEFAULT 1;

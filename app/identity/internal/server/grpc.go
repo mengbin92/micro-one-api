@@ -53,6 +53,10 @@ func serviceTokenUnaryInterceptor(serviceToken string) grpc.UnaryServerIntercept
 			return handler(operatorCredentialContext(service.RescueAuthenticatedContext(ctx)), req)
 		}
 		return identityAuth(ctx, req, info, func(ctx context.Context, req any) (any, error) {
+			md, _ := metadata.FromIncomingContext(ctx)
+			if len(md.Get("x-operator-authorization")) > 1 {
+				return nil, status.Error(codes.Unauthenticated, "ambiguous operator credential")
+			}
 			return handler(operatorCredentialContext(service.ServiceAuthenticatedContext(ctx)), req)
 		})
 	}

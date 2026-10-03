@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"errors"
+	"micro-one-api/domain/authorization"
 	"strconv"
 	"strings"
 	"time"
@@ -423,6 +424,11 @@ func (r *reservationRepo) RequestSnapshots(ctx context.Context, ids []string) (m
 			return nil, err
 		}
 		if v.RequestSnapshot != nil {
+			userID, _ := strconv.ParseInt(v.UserID, 10, 64)
+			facts := authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: userID, OwnerUserID: userID}
+			if authorization.Require(ctx, "billing.account.ledger.read", facts) != nil || authorization.Require(ctx, "billing.account.cost.read", facts) != nil {
+				continue
+			}
 			out[rows[i].ReservationID] = v.RequestSnapshot
 		}
 	}

@@ -17,9 +17,9 @@ func TestCredentialCASFencesReauthorizationAndReplays(t *testing.T) {
 	pending.AccessToken, pending.RefreshToken = "rotated", "rotated-refresh"
 	replay := pending
 	require.NoError(t, repo.StoreSubscriptionCredentials(ctx, &pending))
-	require.EqualValues(t, 1, pending.CredentialRevision)
+	require.EqualValues(t, 2, pending.CredentialRevision)
 	require.NoError(t, repo.StoreSubscriptionCredentials(ctx, &replay))
-	require.EqualValues(t, 1, replay.CredentialRevision)
+	require.EqualValues(t, 2, replay.CredentialRevision)
 	manual, err := repo.FindSubscriptionAccountByID(ctx, account.ID)
 	require.NoError(t, err)
 	stale := *manual

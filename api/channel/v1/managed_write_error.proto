@@ -1,0 +1,8 @@
+syntax = "proto3";
+package api.channel.v1;
+option go_package = "micro-one-api/api/channel/v1;channelv1";
+enum ManagedWriteErrorReason {
+ MANAGED_WRITE_ERROR_UNSPECIFIED = 0;
+ MANAGED_WRITE_REVISION_CONFLICT = 1;
+ MANAGED_WRITE_INTENT_REQUIRED = 2;
+}

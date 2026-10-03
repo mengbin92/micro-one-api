@@ -1,0 +1,26 @@
+syntax = "proto3";
+package api.channel.v1;
+option go_package = "micro-one-api/api/channel/v1;channelv1";
+
+message ArchiveRoutingGroupRequest {
+ int64 id = 1;
+ int64 expected_revision = 2;
+ string reason = 3;
+}
+message RoutingGroupMemberInput {
+ string source_kind = 1; // channel | subscription (account-wide membership)
+ int64 source_id = 2;
+}
+// This replaces account-wide membership. Model-scoped grants are changed only
+// through their independently authorized mapping protocol.
+message ReplaceRoutingGroupMembersRequest {
+ int64 id = 1;
+ int64 expected_revision = 2;
+ repeated RoutingGroupMemberInput members = 3;
+ string reason = 4;
+}
+message RoutingGroupMutationReply {
+ int64 id = 1;
+ int64 revision = 2;
+ string status = 3;
+}

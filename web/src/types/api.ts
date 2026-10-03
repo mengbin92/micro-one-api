@@ -725,6 +725,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/logs/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["LogService_ExportLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/logs/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["LogService_PurgeLogs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/logs/{id}": {
         parameters: {
             query?: never;
@@ -790,6 +822,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/notification-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["NotifyService_ListNotificationRules"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/notification-rules/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["NotifyService_TestNotificationRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/notification-rules/{rule.id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["NotifyService_UpdateNotificationRule"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/notifications": {
         parameters: {
             query?: never;
@@ -816,6 +896,22 @@ export interface paths {
         get: operations["NotifyService_GetNotification"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/notifications/{id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["NotifyService_AcknowledgeNotification"];
         delete?: never;
         options?: never;
         head?: never;
@@ -979,6 +1075,8 @@ export interface components {
             accountId?: string;
             /** Format: int32 */
             status?: number;
+            expectedRevision?: string;
+            reason?: string;
         };
         "api.admin.v1.AdminChangeSubscriptionAccountStatusResponse": {
             success?: boolean;
@@ -1026,6 +1124,7 @@ export interface components {
             quotaResetStrategy?: string;
             quotaTimezone?: string;
             modelMapping?: string;
+            reason?: string;
         };
         "api.admin.v1.AdminCreateSubscriptionAccountResponse": {
             success?: boolean;
@@ -1051,6 +1150,8 @@ export interface components {
         "api.admin.v1.AdminResetSubscriptionAccountQuotaRequest": {
             accountId?: string;
             scope?: string;
+            expectedRevision?: string;
+            reason?: string;
         };
         "api.admin.v1.AdminResetSubscriptionAccountQuotaResponse": {
             success?: boolean;
@@ -1098,6 +1199,8 @@ export interface components {
             quotaResetStrategy?: string;
             quotaTimezone?: string;
             modelMapping?: string;
+            expectedRevision?: string;
+            reason?: string;
         };
         "api.admin.v1.AdminUpdateSubscriptionAccountResponse": {
             success?: boolean;
@@ -1109,6 +1212,9 @@ export interface components {
         };
         "api.admin.v1.GetSystemOptionsResponse": {
             options?: components["schemas"]["api.common.v1.SystemOptions"];
+            revisions?: {
+                [key: string]: string;
+            };
         };
         "api.admin.v1.ListLogsResponse": {
             logs?: components["schemas"]["api.admin.v1.LogEntry"][];
@@ -1153,9 +1259,14 @@ export interface components {
             status?: number;
             createdBy?: string;
             createdAt?: string;
+            revision?: string;
         };
         "api.admin.v1.UpdateSystemOptionsRequest": {
             options?: components["schemas"]["api.common.v1.SystemOptions"];
+            expectedRevisions?: {
+                [key: string]: string;
+            };
+            reason?: string;
         };
         "api.admin.v1.UpdateSystemOptionsResponse": {
             success?: boolean;
@@ -1169,11 +1280,14 @@ export interface components {
             enabled?: boolean;
             /** Format: int32 */
             priority?: number;
+            expectedRevision?: string;
+            reason?: string;
         };
         "api.admin.v1.UpsertModelRoutingResponse": {
             success?: boolean;
             message?: string;
             id?: string;
+            revision?: string;
         };
         "api.common.v1.AccountInfo": {
             userId?: string;
@@ -1284,6 +1398,8 @@ export interface components {
             healthConsecutiveFailures?: number;
             circuitOpenedUntil?: string;
             restrictModels?: boolean;
+            healthFieldsVisible?: boolean;
+            authorizationRevision?: string;
         };
         "api.common.v1.SubscriptionAccountSummary": {
             id?: string;
@@ -1410,6 +1526,8 @@ export interface components {
             key?: string;
             value?: string;
             comment?: string;
+            expectedRevision?: string;
+            reason?: string;
         };
         "api.config.v1.SetConfigResponse": {
             success?: boolean;
@@ -1723,6 +1841,13 @@ export interface components {
             items?: components["schemas"]["api.log.v1.GetLogResponse"][];
             total?: string;
         };
+        "api.log.v1.PurgeLogsRequest": {
+            before?: string;
+            reason?: string;
+        };
+        "api.log.v1.PurgeLogsResponse": {
+            deleted?: string;
+        };
         "api.monitor.v1.AlertRuleItem": {
             id?: string;
             name?: string;
@@ -1735,6 +1860,7 @@ export interface components {
             duration?: number;
             enabled?: boolean;
             createdAt?: string;
+            revision?: string;
         };
         "api.monitor.v1.CreateAlertRuleRequest": {
             name?: string;
@@ -1746,6 +1872,8 @@ export interface components {
             /** Format: int32 */
             duration?: number;
             enabled?: boolean;
+            expectedRevision?: string;
+            reason?: string;
         };
         "api.monitor.v1.CreateAlertRuleResponse": {
             rule?: components["schemas"]["api.monitor.v1.AlertRuleItem"];
@@ -1793,9 +1921,16 @@ export interface components {
             /** Format: int32 */
             duration?: number;
             enabled?: boolean;
+            expectedRevision?: string;
+            reason?: string;
         };
         "api.monitor.v1.UpdateAlertRuleResponse": {
             success?: boolean;
+        };
+        "api.notify.v1.AcknowledgeNotificationRequest": {
+            id?: string;
+            expectedRevision?: string;
+            reason?: string;
         };
         "api.notify.v1.CreateNotificationRequest": {
             type?: string;
@@ -1808,6 +1943,9 @@ export interface components {
         };
         "api.notify.v1.GetNotificationResponse": {
             notification?: components["schemas"]["api.notify.v1.NotificationItem"];
+        };
+        "api.notify.v1.ListNotificationRulesResponse": {
+            items?: components["schemas"]["api.notify.v1.NotificationRule"][];
         };
         "api.notify.v1.ListNotificationsResponse": {
             items?: components["schemas"]["api.notify.v1.NotificationItem"][];
@@ -1825,6 +1963,29 @@ export interface components {
             createdAt?: string;
             sentAt?: string;
             lastError?: string;
+            revision?: string;
+            acknowledgedAt?: string;
+            acknowledgedBy?: string;
+        };
+        "api.notify.v1.NotificationRule": {
+            id?: string;
+            name?: string;
+            event?: string;
+            type?: string;
+            recipient?: string;
+            enabled?: boolean;
+            revision?: string;
+        };
+        "api.notify.v1.TestNotificationRuleRequest": {
+            id?: string;
+            reason?: string;
+        };
+        "api.notify.v1.UpdateNotificationRuleRequest": {
+            rule?: components["schemas"]["api.notify.v1.NotificationRule"];
+            reason?: string;
+        };
+        "api.notify.v1.UpdateNotificationRuleResponse": {
+            rule?: components["schemas"]["api.notify.v1.NotificationRule"];
         };
         "api.notify.v1.UpdateNotificationStatusRequest": {
             id?: string;
@@ -5876,7 +6037,10 @@ export interface operations {
     };
     MonitorService_DeleteAlertRule: {
         parameters: {
-            query?: never;
+            query?: {
+                expectedRevision?: string;
+                reason?: string;
+            };
             header?: never;
             path: {
                 id: string;
@@ -6024,7 +6188,10 @@ export interface operations {
     };
     ConfigService_DeleteConfig: {
         parameters: {
-            query?: never;
+            query?: {
+                expectedRevision?: string;
+                reason?: string;
+            };
             header?: never;
             path: {
                 namespace: string;
@@ -6163,6 +6330,56 @@ export interface operations {
             };
         };
     };
+    LogService_ExportLogs: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+                level?: string;
+                source?: string;
+                keyword?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.log.v1.ListLogsResponse"];
+                };
+            };
+        };
+    };
+    LogService_PurgeLogs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.log.v1.PurgeLogsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.log.v1.PurgeLogsResponse"];
+                };
+            };
+        };
+    };
     LogService_GetLog: {
         parameters: {
             query?: never;
@@ -6235,7 +6452,10 @@ export interface operations {
     };
     AdminService_DeleteModelRouting: {
         parameters: {
-            query?: never;
+            query?: {
+                expectedRevision?: string;
+                reason?: string;
+            };
             header?: never;
             path: {
                 id: string;
@@ -6271,6 +6491,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["api.relay.v1.ListModelsResponse"];
+                };
+            };
+        };
+    };
+    NotifyService_ListNotificationRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.notify.v1.ListNotificationRulesResponse"];
+                };
+            };
+        };
+    };
+    NotifyService_TestNotificationRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.notify.v1.TestNotificationRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.notify.v1.CreateNotificationResponse"];
+                };
+            };
+        };
+    };
+    NotifyService_UpdateNotificationRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                "rule.id": string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.notify.v1.UpdateNotificationRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.notify.v1.UpdateNotificationRuleResponse"];
                 };
             };
         };
@@ -6334,6 +6626,32 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.notify.v1.GetNotificationResponse"];
+                };
+            };
+        };
+    };
+    NotifyService_AcknowledgeNotification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.notify.v1.AcknowledgeNotificationRequest"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -6449,7 +6767,10 @@ export interface operations {
     };
     AdminService_DeleteSubscriptionAccount: {
         parameters: {
-            query?: never;
+            query?: {
+                expectedRevision?: string;
+                reason?: string;
+            };
             header?: never;
             path: {
                 accountId: string;

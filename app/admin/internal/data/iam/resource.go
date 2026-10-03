@@ -43,3 +43,17 @@ func (r *repo) ResourceAuthorization(ctx context.Context, raw string, req author
 	}
 	return out, nil
 }
+
+func (r *repo) ResourceMode(ctx context.Context, point string) (string, error) {
+	if r.client == nil {
+		return "", biz.ErrIAMResourceUnavailable
+	}
+	reply, err := r.client.GetResourceAuthorization(ctx, &v.ResourceAuthorizationRequest{ExecutionPoint: point, ModeOnly: true})
+	if err != nil {
+		return "", err
+	}
+	if reply == nil || (reply.AuthorizationMode != "legacy" && reply.AuthorizationMode != "iam") {
+		return "", biz.ErrIAMResourceUnavailable
+	}
+	return reply.AuthorizationMode, nil
+}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"micro-one-api/platform/authz"
 	"net/http"
 	"net/url"
@@ -13,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"micro-one-api/domain/authorization"
 	"micro-one-api/pkg/jsonx"
 
 	adminv1 "micro-one-api/api/admin/v1"
@@ -28,7 +28,6 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -53,7 +52,7 @@ type AdminService struct {
 type operatorCredentialKey struct{}
 
 func WithOperatorCredential(ctx context.Context, credential string) context.Context {
-	return context.WithValue(ctx, operatorCredentialKey{}, credential)
+	return authorization.WithCredential(context.WithValue(ctx, operatorCredentialKey{}, credential), credential)
 }
 
 func operatorCredential(ctx context.Context) string {
@@ -65,8 +64,9 @@ func operatorCredential(ctx context.Context) string {
 func OperatorCredential(ctx context.Context) string { return operatorCredential(ctx) }
 
 type OneAPIOption struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Key      string `json:"key"`
+	Value    string `json:"value"`
+	Revision string `json:"revision,omitempty"`
 }
 
 // GroupConfig is the legacy /api/group pricing DTO, not a routing-group record.
@@ -82,7 +82,7 @@ func NewAdminService(
 	channelClient channelv1.ChannelServiceClient,
 	systemOptsUc *adminbiz.SystemOptionsUsecase,
 ) *AdminService {
-	return &AdminService{
+	s := &AdminService{
 		billingClient:   billingClient,
 		identityClient:  identityClient,
 		channelClient:   channelClient,
@@ -90,6 +90,10 @@ func NewAdminService(
 		httpClient:      &http.Client{Timeout: 10 * time.Second},
 		providerFactory: relayprovider.NewProviderFactory(10 * time.Second),
 	}
+	if systemOptsUc != nil {
+		systemOptsUc.SetAuthorization(s.ResourceAuthorizer())
+	}
+	return s
 }
 
 // SetSubscriptionUsecases wires optional user-subscription management.
@@ -98,6 +102,15 @@ func (s *AdminService) SetSubscriptionUsecases(subscriptionUc *subscriptionbiz.S
 		return
 	}
 	s.subscriptionUc = subscriptionUc
+	if subscriptionUc != nil {
+		subscriptionUc.SetAuthorization(s.ResourceAuthorizer(), "admin")
+	}
+	if groupUc != nil {
+		groupUc.SetAuthorization(s.ResourceAuthorizer(), "admin")
+	}
+	if len(planUc) > 0 && planUc[0] != nil {
+		planUc[0].SetAuthorization(s.ResourceAuthorizer(), "admin")
+	}
 	s.groupUc = groupUc
 	if len(planUc) > 0 {
 		s.planUc = planUc[0]
@@ -125,7 +138,7 @@ func (s *AdminService) TopUpQuota(ctx context.Context, req *adminv1.TopUpQuotaRe
 		RequestId:  requestID,
 	}
 
-	resp, err := s.billingClient.TopUpQuota(ctx, billingReq)
+	resp, err := s.billingClient.TopUpQuota(operatorRPCContext(ctx), billingReq)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -158,6 +171,7 @@ func (s *AdminService) TopUpQuota(ctx context.Context, req *adminv1.TopUpQuotaRe
 // CreateRedeemCode 创建兑换码
 func (s *AdminService) CreateRedeemCode(ctx context.Context, req *adminv1.CreateRedeemCodeRequest) (*adminv1.CreateRedeemCodeResponse, error) {
 	billingReq := &billingv1.CreateRedeemCodeRequest{
+		Reason:     requestWriteReason(ctx, req.Reason),
 		Code:       req.Code,
 		Name:       req.Name,
 		Amount:     req.Amount,
@@ -165,7 +179,7 @@ func (s *AdminService) CreateRedeemCode(ctx context.Context, req *adminv1.Create
 		OperatorId: req.OperatorId,
 	}
 
-	_, err := s.billingClient.CreateRedeemCode(ctx, billingReq)
+	_, err := s.billingClient.CreateRedeemCode(operatorRPCContext(ctx), billingReq)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -191,6 +205,7 @@ func (s *AdminService) CreateRedeemCode(ctx context.Context, req *adminv1.Create
 // CreateRedeemCodesBatch 批量创建兑换码
 func (s *AdminService) CreateRedeemCodesBatch(ctx context.Context, req *adminv1.CreateRedeemCodesBatchRequest) (*adminv1.CreateRedeemCodesBatchResponse, error) {
 	billingReq := &billingv1.CreateRedeemCodesBatchRequest{
+		Reason:     requestWriteReason(ctx, req.Reason),
 		Name:       req.Name,
 		Amount:     req.Amount,
 		Count:      req.Count,
@@ -198,7 +213,7 @@ func (s *AdminService) CreateRedeemCodesBatch(ctx context.Context, req *adminv1.
 		OperatorId: req.OperatorId,
 	}
 
-	resp, err := s.billingClient.CreateRedeemCodesBatch(ctx, billingReq)
+	resp, err := s.billingClient.CreateRedeemCodesBatch(operatorRPCContext(ctx), billingReq)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -228,7 +243,7 @@ func (s *AdminService) GetRedeemCode(ctx context.Context, req *adminv1.GetRedeem
 		Code: req.Code,
 	}
 
-	resp, err := s.billingClient.GetRedeemCode(ctx, billingReq)
+	resp, err := s.billingClient.GetRedeemCode(operatorRPCContext(ctx), billingReq)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -253,6 +268,7 @@ func (s *AdminService) GetRedeemCode(ctx context.Context, req *adminv1.GetRedeem
 		Status:    resp.RedeemCode.Status,
 		CreatedBy: resp.RedeemCode.CreatedBy,
 		CreatedAt: resp.RedeemCode.CreatedAt.AsTime().Unix(),
+		Revision:  resp.RedeemCode.Revision,
 	}
 
 	return &adminv1.RedeemCodeResponse{
@@ -267,7 +283,7 @@ func (s *AdminService) ListRedeemCodes(ctx context.Context, req *adminv1.ListRed
 		PageSize: req.PageSize,
 	}
 
-	resp, err := s.billingClient.ListRedeemCodes(ctx, billingReq)
+	resp, err := s.billingClient.ListRedeemCodes(operatorRPCContext(ctx), billingReq)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -288,6 +304,7 @@ func (s *AdminService) ListRedeemCodes(ctx context.Context, req *adminv1.ListRed
 			Status:    code.Status,
 			CreatedBy: code.CreatedBy,
 			CreatedAt: code.CreatedAt.AsTime().Unix(),
+			Revision:  code.Revision,
 		}
 	}
 
@@ -303,7 +320,7 @@ func (s *AdminService) SearchRedeemCodes(ctx context.Context, req *adminv1.Searc
 		Keyword: req.Keyword,
 	}
 
-	resp, err := s.billingClient.SearchRedeemCodes(ctx, billingReq)
+	resp, err := s.billingClient.SearchRedeemCodes(operatorRPCContext(ctx), billingReq)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -323,6 +340,7 @@ func (s *AdminService) SearchRedeemCodes(ctx context.Context, req *adminv1.Searc
 			Status:    code.Status,
 			CreatedBy: code.CreatedBy,
 			CreatedAt: code.CreatedAt.AsTime().Unix(),
+			Revision:  code.Revision,
 		}
 	}
 
@@ -334,13 +352,15 @@ func (s *AdminService) SearchRedeemCodes(ctx context.Context, req *adminv1.Searc
 // UpdateRedeemCode 更新兑换码
 func (s *AdminService) UpdateRedeemCode(ctx context.Context, req *adminv1.UpdateRedeemCodeRequest) (*adminv1.UpdateRedeemCodeResponse, error) {
 	billingReq := &billingv1.UpdateRedeemCodeRequest{
-		Code:   req.Code,
-		Name:   req.Name,
-		Amount: req.Amount,
-		Status: req.Status,
+		ExpectedRevision: req.ExpectedRevision,
+		Reason:           requestWriteReason(ctx, req.Reason),
+		Code:             req.Code,
+		Name:             req.Name,
+		Amount:           req.Amount,
+		Status:           req.Status,
 	}
 
-	_, err := s.billingClient.UpdateRedeemCode(ctx, billingReq)
+	_, err := s.billingClient.UpdateRedeemCode(operatorRPCContext(ctx), billingReq)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -366,10 +386,12 @@ func (s *AdminService) UpdateRedeemCode(ctx context.Context, req *adminv1.Update
 // DeleteRedeemCode 删除兑换码
 func (s *AdminService) DeleteRedeemCode(ctx context.Context, req *adminv1.DeleteRedeemCodeRequest) (*adminv1.DeleteRedeemCodeResponse, error) {
 	billingReq := &billingv1.DeleteRedeemCodeRequest{
-		Code: req.Code,
+		ExpectedRevision: req.ExpectedRevision,
+		Reason:           requestWriteReason(ctx, req.Reason),
+		Code:             req.Code,
 	}
 
-	_, err := s.billingClient.DeleteRedeemCode(ctx, billingReq)
+	_, err := s.billingClient.DeleteRedeemCode(operatorRPCContext(ctx), billingReq)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -400,7 +422,7 @@ func (s *AdminService) ListUserLedger(ctx context.Context, req *adminv1.ListUser
 		PageSize: req.PageSize,
 	}
 
-	resp, err := s.billingClient.ListLedger(ctx, billingReq)
+	resp, err := s.billingClient.ListLedger(operatorRPCContext(ctx), billingReq)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -440,7 +462,7 @@ func (s *AdminService) ListUserLedger(ctx context.Context, req *adminv1.ListUser
 
 // GetLedgerEntry returns one complete billing ledger entry for the admin API.
 func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string]any, error) {
-	resp, err := s.billingClient.GetLedgerEntry(ctx, &billingv1.GetLedgerEntryRequest{Id: id})
+	resp, err := s.billingClient.GetLedgerEntry(operatorRPCContext(ctx), &billingv1.GetLedgerEntryRequest{Id: id})
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +484,7 @@ func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string
 		channel = upstream
 	}
 
-	return map[string]any{
+	out := map[string]any{
 		"id":                       entry.GetId(),
 		"userId":                   entry.GetUserId(),
 		"user_id":                  entry.GetUserId(),
@@ -536,7 +558,9 @@ func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string
 		"routingGroupId":         entry.GetRoutingGroupId(), "routingGroupKey": entry.GetRoutingGroupKey(), "requestSnapshotHash": entry.GetRequestSnapshotHash(), "requestSnapshot": entry.GetRequestSnapshotJson(),
 		"pricingConfigHash": entry.GetPricingConfigHash(),
 		"pricingSnapshot":   pricingSnapshotToMap(entry.GetPricingSnapshot()),
-	}, nil
+	}
+	applyLedgerFieldVisibility(ctx, out, entry)
+	return out, nil
 }
 
 // pricingSnapshotToMap flattens the per-bucket unit prices a ledger row was
@@ -564,14 +588,14 @@ func (s *AdminService) ListPaymentOrders(ctx context.Context, req *billingv1.Lis
 	if s.billingClient == nil {
 		return &billingv1.ListPaymentOrdersResponse{}, nil
 	}
-	return s.billingClient.ListPaymentOrders(ctx, req)
+	return s.billingClient.ListPaymentOrders(operatorRPCContext(ctx), req)
 }
 
 func (s *AdminService) GetPaymentOrderByTradeNo(ctx context.Context, req *billingv1.GetPaymentOrderByTradeNoRequest) (*billingv1.PaymentOrderResponse, error) {
 	if s.billingClient == nil {
 		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: "billing service unavailable"}, nil
 	}
-	return s.billingClient.GetPaymentOrderByTradeNo(ctx, req)
+	return s.billingClient.GetPaymentOrderByTradeNo(operatorRPCContext(ctx), req)
 }
 
 // RefundPaymentOrder proxies an admin-initiated refund to the billing service.
@@ -582,7 +606,7 @@ func (s *AdminService) RefundPaymentOrder(ctx context.Context, req *billingv1.Re
 	if s.billingClient == nil {
 		return &billingv1.RefundPaymentOrderResponse{Success: false, ErrorMessage: "billing service unavailable"}, nil
 	}
-	return s.billingClient.RefundPaymentOrder(ctx, req)
+	return s.billingClient.RefundPaymentOrder(operatorRPCContext(ctx), req)
 }
 
 // SubscriptionOperationReport proxies the plan-dimension operational report
@@ -593,7 +617,7 @@ func (s *AdminService) SubscriptionOperationReport(ctx context.Context, req *bil
 	if s.billingClient == nil {
 		return &billingv1.SubscriptionOperationReportResponse{Success: false, ErrorMessage: "billing service unavailable"}, nil
 	}
-	return s.billingClient.SubscriptionOperationReport(ctx, req)
+	return s.billingClient.SubscriptionOperationReport(operatorRPCContext(ctx), req)
 }
 
 // GetAccountSnapshot 获取账户快照
@@ -602,7 +626,7 @@ func (s *AdminService) GetAccountSnapshot(ctx context.Context, req *adminv1.GetA
 		UserId: req.UserId,
 	}
 
-	resp, err := s.billingClient.GetAccountSnapshot(ctx, billingReq)
+	resp, err := s.billingClient.GetAccountSnapshot(operatorRPCContext(ctx), billingReq)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -638,7 +662,7 @@ func (s *AdminService) BatchGetAccountSnapshots(ctx context.Context, userIDs []s
 		return map[string]*commonv1.AccountInfo{}, nil
 	}
 
-	resp, err := s.billingClient.BatchGetAccountSnapshots(ctx, &billingv1.BatchGetAccountSnapshotsRequest{
+	resp, err := s.billingClient.BatchGetAccountSnapshots(operatorRPCContext(ctx), &billingv1.BatchGetAccountSnapshotsRequest{
 		UserIds: userIDs,
 	})
 	if err != nil {
@@ -693,6 +717,10 @@ func (s *AdminService) GetUser(ctx context.Context, userID int64) (*commonv1.Use
 }
 
 func (s *AdminService) CreateUser(ctx context.Context, req *adminv1.AdminCreateUserRequest) (*adminv1.AdminCreateUserResponse, error) {
+	reason := req.Reason
+	if reason == "" {
+		reason = authorization.WriteReason(ctx)
+	}
 	resp, err := s.identityClient.CreateUser(operatorRPCContext(ctx), &identityv1.CreateUserRequest{
 		Username:               req.Username,
 		DisplayName:            req.DisplayName,
@@ -700,7 +728,7 @@ func (s *AdminService) CreateUser(ctx context.Context, req *adminv1.AdminCreateU
 		Password:               req.Password,
 		Group:                  req.Group,
 		Balance:                req.Balance,
-		ExpectedPolicyRevision: req.ExpectedPolicyRevision, Reason: req.Reason,
+		ExpectedPolicyRevision: req.ExpectedPolicyRevision, Reason: reason,
 	})
 	if err != nil {
 		return nil, err
@@ -713,13 +741,17 @@ func (s *AdminService) CreateUser(ctx context.Context, req *adminv1.AdminCreateU
 }
 
 func (s *AdminService) UpdateUser(ctx context.Context, req *adminv1.AdminUpdateUserRequest) (*adminv1.AdminUpdateUserResponse, error) {
+	reason := req.Reason
+	if reason == "" {
+		reason = authorization.WriteReason(ctx)
+	}
 	resp, err := s.identityClient.UpdateUser(operatorRPCContext(ctx), &identityv1.UpdateUserRequest{
 		UserId:      req.UserId,
 		DisplayName: req.DisplayName,
 		Email:       req.Email,
 		Group:       req.Group,
 		Status:      req.Status,
-		UpdateMask:  req.UpdateMask, ExpectedRevision: req.ExpectedRevision, ExpectedPolicyRevision: req.ExpectedPolicyRevision, Reason: req.Reason, Password: req.Password,
+		UpdateMask:  req.UpdateMask, ExpectedRevision: req.ExpectedRevision, ExpectedPolicyRevision: req.ExpectedPolicyRevision, Reason: reason, Password: req.Password,
 	})
 	if err != nil {
 		return nil, err
@@ -728,7 +760,11 @@ func (s *AdminService) UpdateUser(ctx context.Context, req *adminv1.AdminUpdateU
 }
 
 func (s *AdminService) DeleteUser(ctx context.Context, req *adminv1.AdminDeleteUserRequest) (*adminv1.AdminDeleteUserResponse, error) {
-	resp, err := s.identityClient.DeleteUser(operatorRPCContext(ctx), &identityv1.DeleteUserRequest{UserId: req.UserId, ExpectedRevision: req.ExpectedRevision, ExpectedPolicyRevision: req.ExpectedPolicyRevision, Reason: req.Reason})
+	reason := req.Reason
+	if reason == "" {
+		reason = authorization.WriteReason(ctx)
+	}
+	resp, err := s.identityClient.DeleteUser(operatorRPCContext(ctx), &identityv1.DeleteUserRequest{UserId: req.UserId, ExpectedRevision: req.ExpectedRevision, ExpectedPolicyRevision: req.ExpectedPolicyRevision, Reason: reason})
 	if err != nil {
 		return nil, err
 	}
@@ -740,7 +776,7 @@ func (s *AdminService) SetUserRole(ctx context.Context, req *adminv1.AdminSetUse
 	if credential == "" {
 		return &adminv1.AdminSetUserRoleResponse{Success: false, Message: "operator credential required"}, nil
 	}
-	callCtx := metadata.AppendToOutgoingContext(ctx, "x-operator-authorization", "Bearer "+credential)
+	callCtx := operatorRPCContext(ctx)
 	resp, err := s.identityClient.SetUserRole(callCtx, &identityv1.SetUserRoleRequest{
 		UserId:         req.UserId,
 		Role:           req.Role,
@@ -779,7 +815,7 @@ func (s *AdminService) AuthorizeAdminToken(ctx context.Context, token string) (i
 	if s.identityClient == nil {
 		return 0, 0, ErrAdminUnauthorized
 	}
-	vr, err := s.identityClient.ValidateToken(ctx, &identityv1.ValidateTokenRequest{Token: token})
+	vr, err := s.identityClient.ValidateToken(operatorRPCContext(ctx), &identityv1.ValidateTokenRequest{Token: token})
 	if err != nil {
 		return 0, 0, err
 	}
@@ -799,7 +835,7 @@ func (s *AdminService) ValidateToken(ctx context.Context, token string) (bool, e
 	if s.identityClient == nil {
 		return false, fmt.Errorf("identity service not available")
 	}
-	vr, err := s.identityClient.ValidateToken(ctx, &identityv1.ValidateTokenRequest{Token: token})
+	vr, err := s.identityClient.ValidateToken(operatorRPCContext(ctx), &identityv1.ValidateTokenRequest{Token: token})
 	if err != nil {
 		return false, err
 	}
@@ -807,7 +843,7 @@ func (s *AdminService) ValidateToken(ctx context.Context, token string) (bool, e
 }
 
 func (s *AdminService) ResetUserQuota(ctx context.Context, req *adminv1.ResetUserQuotaRequest) (*adminv1.ResetUserQuotaResponse, error) {
-	snapshot, err := s.billingClient.GetAccountSnapshot(ctx, &billingv1.GetAccountSnapshotRequest{
+	snapshot, err := s.billingClient.GetAccountSnapshot(operatorRPCContext(ctx), &billingv1.GetAccountSnapshotRequest{
 		UserId: fmt.Sprintf("%d", req.UserId),
 	})
 	if err != nil {
@@ -824,7 +860,7 @@ func (s *AdminService) ResetUserQuota(ctx context.Context, req *adminv1.ResetUse
 	if delta == 0 {
 		return &adminv1.ResetUserQuotaResponse{Success: true, Message: "ok"}, nil
 	}
-	_, err = s.billingClient.TopUpQuota(ctx, &billingv1.TopUpQuotaRequest{
+	_, err = s.billingClient.TopUpQuota(operatorRPCContext(ctx), &billingv1.TopUpQuotaRequest{
 		UserId:     fmt.Sprintf("%d", req.UserId),
 		Amount:     delta,
 		OperatorId: req.OperatorId,
@@ -840,8 +876,22 @@ func (s *AdminService) ResetUserQuota(ctx context.Context, req *adminv1.ResetUse
 }
 
 func (s *AdminService) TestChannel(ctx context.Context, channelID int64) (map[string]any, error) {
+	mode, err := s.ResourceAuthorizer().(interface {
+		Mode(context.Context, string) (string, error)
+	}).Mode(ctx, "admin.console")
+	if err != nil {
+		return nil, err
+	}
+	if mode == "iam" {
+		reply, err := s.channelClient.ExecuteChannelAction(operatorRPCContext(ctx), &channelv1.ExecuteChannelActionRequest{ChannelId: channelID, Action: "test", ExpectedRevision: authorization.ExpectedRevision(ctx, "channel", channelID), Reason: authorization.WriteReason(ctx)})
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"success": reply.Success, "channel_id": reply.ChannelId, "skipped": reply.Skipped, "message": reply.Message, "health_status": reply.HealthStatus, "response_time": reply.ResponseTime, "status_code": reply.StatusCode}, nil
+	}
+
 	startedAt := time.Now()
-	resp, err := s.channelClient.GetChannel(ctx, &channelv1.GetChannelRequest{ChannelId: channelID})
+	resp, err := s.channelClient.GetChannel(operatorRPCContext(ctx), &channelv1.GetChannelRequest{ChannelId: channelID})
 	if err != nil {
 		return nil, err
 	}
@@ -916,7 +966,7 @@ func (s *AdminService) recordChannelHealth(ctx context.Context, channelID int64,
 	if s.channelClient == nil || channelID <= 0 {
 		return nil
 	}
-	resp, err := s.channelClient.RecordChannelHealth(ctx, &channelv1.RecordChannelHealthRequest{
+	resp, err := s.channelClient.RecordChannelHealth(operatorRPCContext(ctx), &channelv1.RecordChannelHealthRequest{
 		ChannelId:    channelID,
 		Success:      success,
 		Error:        message,
@@ -960,7 +1010,7 @@ func supportsModelsHealthProbe(channelType int32) bool {
 // ========== 渠道管理 ==========
 
 func (s *AdminService) ListChannels(ctx context.Context, req *adminv1.AdminListChannelsRequest) (*adminv1.AdminListChannelsResponse, error) {
-	resp, err := s.channelClient.ListChannels(ctx, &channelv1.ListChannelsRequest{
+	resp, err := s.channelClient.ListChannels(operatorRPCContext(ctx), &channelv1.ListChannelsRequest{
 		Page:     req.Page,
 		PageSize: req.PageSize,
 		Keyword:  req.Keyword,
@@ -984,7 +1034,7 @@ func (s *AdminService) ListChannels(ctx context.Context, req *adminv1.AdminListC
 }
 
 func (s *AdminService) GetChannel(ctx context.Context, channelID int64) (*commonv1.ChannelInfo, error) {
-	resp, err := s.channelClient.GetChannel(ctx, &channelv1.GetChannelRequest{ChannelId: channelID})
+	resp, err := s.channelClient.GetChannel(operatorRPCContext(ctx), &channelv1.GetChannelRequest{ChannelId: channelID})
 	if err != nil {
 		return nil, err
 	}
@@ -995,7 +1045,8 @@ func (s *AdminService) GetChannel(ctx context.Context, channelID int64) (*common
 }
 
 func (s *AdminService) CreateChannel(ctx context.Context, req *adminv1.AdminCreateChannelRequest) (*adminv1.AdminCreateChannelResponse, error) {
-	resp, err := s.channelClient.CreateChannel(ctx, &channelv1.CreateChannelRequest{
+	resp, err := s.channelClient.CreateChannel(operatorRPCContext(ctx), &channelv1.CreateChannelRequest{
+		Reason:         requestWriteReason(ctx, req.Reason),
 		Name:           req.Name,
 		Type:           req.Type,
 		BaseUrl:        req.BaseUrl,
@@ -1023,19 +1074,21 @@ func (s *AdminService) CreateChannel(ctx context.Context, req *adminv1.AdminCrea
 }
 
 func (s *AdminService) UpdateChannel(ctx context.Context, req *adminv1.AdminUpdateChannelRequest) (*adminv1.AdminUpdateChannelResponse, error) {
-	resp, err := s.channelClient.UpdateChannel(ctx, &channelv1.UpdateChannelRequest{
-		ChannelId:      req.ChannelId,
-		Name:           req.Name,
-		BaseUrl:        req.BaseUrl,
-		Key:            req.Key,
-		Models:         req.Models,
-		Group:          req.Group,
-		Priority:       req.Priority,
-		Config:         req.Config,
-		Weight:         req.Weight,
-		ModelMapping:   req.ModelMapping,
-		SystemPrompt:   req.SystemPrompt,
-		RestrictModels: req.RestrictModels,
+	resp, err := s.channelClient.UpdateChannel(operatorRPCContext(ctx), &channelv1.UpdateChannelRequest{
+		Reason:           requestWriteReason(ctx, req.Reason),
+		ExpectedRevision: req.ExpectedRevision,
+		ChannelId:        req.ChannelId,
+		Name:             req.Name,
+		BaseUrl:          req.BaseUrl,
+		Key:              req.Key,
+		Models:           req.Models,
+		Group:            req.Group,
+		Priority:         req.Priority,
+		Config:           req.Config,
+		Weight:           req.Weight,
+		ModelMapping:     req.ModelMapping,
+		SystemPrompt:     req.SystemPrompt,
+		RestrictModels:   req.RestrictModels,
 	})
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
@@ -1050,7 +1103,7 @@ func (s *AdminService) UpdateChannel(ctx context.Context, req *adminv1.AdminUpda
 }
 
 func (s *AdminService) ListSubscriptionAccounts(ctx context.Context, req *adminv1.AdminListSubscriptionAccountsRequest) (*adminv1.AdminListSubscriptionAccountsResponse, error) {
-	resp, err := s.channelClient.ListSubscriptionAccounts(ctx, &channelv1.ListSubscriptionAccountsRequest{
+	resp, err := s.channelClient.ListSubscriptionAccounts(operatorRPCContext(ctx), &channelv1.ListSubscriptionAccountsRequest{
 		RecoveryPolicy: req.RecoveryPolicy,
 		Page:           req.Page,
 		PageSize:       req.PageSize,
@@ -1104,7 +1157,7 @@ func (s *AdminService) FetchSubscriptionAccountSummariesByID(ctx context.Context
 	if len(wanted) == 0 {
 		return result, nil
 	}
-	resp, err := s.channelClient.ListSubscriptionAccounts(ctx, &channelv1.ListSubscriptionAccountsRequest{
+	resp, err := s.channelClient.ListSubscriptionAccounts(operatorRPCContext(ctx), &channelv1.ListSubscriptionAccountsRequest{
 		Page:     1,
 		PageSize: safecast.IntToInt32Saturating(len(wanted)),
 	})
@@ -1145,7 +1198,7 @@ func (s *AdminService) FetchChannelSummariesByID(ctx context.Context, ids []int6
 	if len(wanted) == 0 {
 		return result, nil
 	}
-	resp, err := s.channelClient.ListChannels(ctx, &channelv1.ListChannelsRequest{
+	resp, err := s.channelClient.ListChannels(operatorRPCContext(ctx), &channelv1.ListChannelsRequest{
 		Page:     1,
 		PageSize: safecast.IntToInt32Saturating(len(wanted)),
 	})
@@ -1167,7 +1220,7 @@ func (s *AdminService) FetchChannelSummariesByID(ctx context.Context, ids []int6
 }
 
 func (s *AdminService) GetSubscriptionAccount(ctx context.Context, accountID int64) (*commonv1.SubscriptionAccountInfo, error) {
-	resp, err := s.channelClient.GetSubscriptionAccount(ctx, &channelv1.GetSubscriptionAccountRequest{AccountId: accountID})
+	resp, err := s.channelClient.GetSubscriptionAccount(operatorRPCContext(ctx), &channelv1.GetSubscriptionAccountRequest{AccountId: accountID})
 	if err != nil {
 		return nil, err
 	}
@@ -1178,7 +1231,8 @@ func (s *AdminService) GetSubscriptionAccount(ctx context.Context, accountID int
 }
 
 func (s *AdminService) CreateSubscriptionAccount(ctx context.Context, req *adminv1.AdminCreateSubscriptionAccountRequest) (*adminv1.AdminCreateSubscriptionAccountResponse, error) {
-	resp, err := s.channelClient.CreateSubscriptionAccount(ctx, &channelv1.CreateSubscriptionAccountRequest{
+	resp, err := s.channelClient.CreateSubscriptionAccount(operatorRPCContext(ctx), &channelv1.CreateSubscriptionAccountRequest{
+		Reason:                 requestWriteReason(ctx, req.Reason),
 		Name:                   req.Name,
 		Platform:               req.Platform,
 		AccountType:            req.AccountType,
@@ -1224,7 +1278,9 @@ func (s *AdminService) CreateSubscriptionAccount(ctx context.Context, req *admin
 }
 
 func (s *AdminService) UpdateSubscriptionAccount(ctx context.Context, req *adminv1.AdminUpdateSubscriptionAccountRequest) (*adminv1.AdminUpdateSubscriptionAccountResponse, error) {
-	resp, err := s.channelClient.UpdateSubscriptionAccount(ctx, &channelv1.UpdateSubscriptionAccountRequest{
+	resp, err := s.channelClient.UpdateSubscriptionAccount(operatorRPCContext(ctx), &channelv1.UpdateSubscriptionAccountRequest{
+		Reason:                 requestWriteReason(ctx, req.Reason),
+		ExpectedRevision:       req.ExpectedRevision,
 		Id:                     req.Id,
 		Name:                   req.Name,
 		AccountType:            req.AccountType,
@@ -1269,9 +1325,11 @@ func (s *AdminService) UpdateSubscriptionAccount(ctx context.Context, req *admin
 }
 
 func (s *AdminService) ResetSubscriptionAccountQuota(ctx context.Context, req *adminv1.AdminResetSubscriptionAccountQuotaRequest) (*adminv1.AdminResetSubscriptionAccountQuotaResponse, error) {
-	resp, err := s.channelClient.ResetSubscriptionAccountQuota(ctx, &channelv1.ResetSubscriptionAccountQuotaRequest{
-		AccountId: req.AccountId,
-		Scope:     req.Scope,
+	resp, err := s.channelClient.ResetSubscriptionAccountQuota(operatorRPCContext(ctx), &channelv1.ResetSubscriptionAccountQuotaRequest{
+		Reason:           requestWriteReason(ctx, req.Reason),
+		ExpectedRevision: req.ExpectedRevision,
+		AccountId:        req.AccountId,
+		Scope:            req.Scope,
 	})
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
@@ -1286,7 +1344,9 @@ func (s *AdminService) ResetSubscriptionAccountQuota(ctx context.Context, req *a
 }
 
 func (s *AdminService) DeleteSubscriptionAccount(ctx context.Context, req *adminv1.AdminDeleteSubscriptionAccountRequest) (*adminv1.AdminDeleteSubscriptionAccountResponse, error) {
-	resp, err := s.channelClient.DeleteSubscriptionAccount(ctx, &channelv1.DeleteSubscriptionAccountRequest{AccountId: req.AccountId})
+	resp, err := s.channelClient.DeleteSubscriptionAccount(operatorRPCContext(ctx), &channelv1.DeleteSubscriptionAccountRequest{
+		Reason:           requestWriteReason(ctx, req.Reason),
+		ExpectedRevision: req.ExpectedRevision, AccountId: req.AccountId})
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -1300,9 +1360,11 @@ func (s *AdminService) DeleteSubscriptionAccount(ctx context.Context, req *admin
 }
 
 func (s *AdminService) ChangeSubscriptionAccountStatus(ctx context.Context, req *adminv1.AdminChangeSubscriptionAccountStatusRequest) (*adminv1.AdminChangeSubscriptionAccountStatusResponse, error) {
-	resp, err := s.channelClient.ChangeSubscriptionAccountStatus(ctx, &channelv1.ChangeSubscriptionAccountStatusRequest{
-		AccountId: req.AccountId,
-		Status:    req.Status,
+	resp, err := s.channelClient.ChangeSubscriptionAccountStatus(operatorRPCContext(ctx), &channelv1.ChangeSubscriptionAccountStatusRequest{
+		Reason:           requestWriteReason(ctx, req.Reason),
+		ExpectedRevision: req.ExpectedRevision,
+		AccountId:        req.AccountId,
+		Status:           req.Status,
 	})
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
@@ -1369,6 +1431,7 @@ type ReconciliationDiscrepancyView struct {
 }
 
 type ReconciliationRunView struct {
+	IssuesVisible     bool                            `json:"issues_visible"`
 	RunID             int64                           `json:"run_id"`
 	RunAt             int64                           `json:"run_at"`
 	ExpiredCleaned    int32                           `json:"expired_cleaned"`
@@ -1387,6 +1450,7 @@ type ListReconciliationRunsResult struct {
 }
 
 type UsageAggregateView struct {
+	CostFieldsVisible     bool   `json:"cost_fields_visible"`
 	Key                   string `json:"key"`
 	UserID                string `json:"user_id,omitempty"`
 	ChannelID             int64  `json:"channel_id,omitempty"`
@@ -1419,7 +1483,7 @@ func (s *AdminService) ListReconciliationRuns(ctx context.Context, page, pageSiz
 	if s.billingClient == nil {
 		return &ListReconciliationRunsResult{Runs: []*ReconciliationRunView{}}, nil
 	}
-	resp, err := s.billingClient.ListReconciliationRuns(ctx, &billingv1.ListReconciliationRunsRequest{Page: page, PageSize: pageSize})
+	resp, err := s.billingClient.ListReconciliationRuns(operatorRPCContext(ctx), &billingv1.ListReconciliationRunsRequest{Page: page, PageSize: pageSize})
 	if err != nil {
 		return nil, err
 	}
@@ -1437,12 +1501,15 @@ func (s *AdminService) AggregateSubscriptionAccountQuotaEventsTopN(ctx context.C
 	if limit <= 0 {
 		limit = 5
 	}
-	resp, err := s.channelClient.AggregateSubscriptionAccountQuotaEvents(ctx, &channelv1.AggregateSubscriptionAccountQuotaEventsRequest{Limit: limit})
+	resp, err := s.channelClient.AggregateSubscriptionAccountQuotaEvents(operatorRPCContext(ctx), &channelv1.AggregateSubscriptionAccountQuotaEventsRequest{Limit: limit})
 	if err != nil {
 		return nil, err
 	}
 	items := make([]SubscriptionAccountQuotaEventAggregateView, 0, len(resp.GetItems()))
 	for _, item := range resp.GetItems() {
+		if authorization.External(ctx) && (!item.GetCostFieldsVisible() || !item.GetPricingFieldsVisible()) {
+			return nil, authorization.ErrDenied
+		}
 		items = append(items, SubscriptionAccountQuotaEventAggregateView{
 			SubscriptionAccountID: item.GetSubscriptionAccountId(),
 			CostUSD:               item.GetCostUsd(),
@@ -1470,7 +1537,7 @@ func (s *AdminService) AggregateUsageTopN(ctx context.Context, groupBy string, l
 		// channel ranking instead of being rendered as "deleted channels".
 		requestLimit = 0
 	}
-	resp, err := s.billingClient.AggregateUsage(ctx, &billingv1.AggregateUsageRequest{
+	resp, err := s.billingClient.AggregateUsage(operatorRPCContext(ctx), &billingv1.AggregateUsageRequest{
 		GroupBy: usageAggregateGroupBy(groupBy),
 		Type:    "consume",
 		Limit:   requestLimit,
@@ -1482,6 +1549,9 @@ func (s *AdminService) AggregateUsageTopN(ctx context.Context, groupBy string, l
 	for _, bucket := range resp.GetBuckets() {
 		if groupBy == "channel" && bucket.GetSubscriptionAccountId() > 0 {
 			continue
+		}
+		if authorization.External(ctx) && !bucket.GetCostFieldsVisible() {
+			return nil, authorization.ErrDenied
 		}
 		items = append(items, usageAggregateViewFromBucket(bucket, groupBy))
 	}
@@ -1506,6 +1576,7 @@ func usageAggregateGroupBy(groupBy string) []string {
 
 func usageAggregateViewFromBucket(bucket *billingv1.UsageBucket, groupBy string) UsageAggregateView {
 	view := UsageAggregateView{
+		CostFieldsVisible:     bucket.GetCostFieldsVisible(),
 		UserID:                bucket.GetUserId(),
 		ChannelID:             bucket.GetChannelId(),
 		SubscriptionAccountID: bucket.GetSubscriptionAccountId(),
@@ -1549,7 +1620,7 @@ func (s *AdminService) GetReconciliationRun(ctx context.Context, runID int64) (*
 	if s.billingClient == nil {
 		return nil, nil
 	}
-	resp, err := s.billingClient.GetReconciliationRun(ctx, &billingv1.GetReconciliationRunRequest{RunId: runID})
+	resp, err := s.billingClient.GetReconciliationRun(operatorRPCContext(ctx), &billingv1.GetReconciliationRunRequest{RunId: runID})
 	if err != nil {
 		return nil, err
 	}
@@ -1561,6 +1632,7 @@ func reconciliationRunFromProto(run *billingv1.ReconciliationRun) *Reconciliatio
 		return nil
 	}
 	view := &ReconciliationRunView{
+		IssuesVisible:     run.GetIssuesVisible(),
 		RunID:             run.GetRunId(),
 		RunAt:             run.GetRunAt(),
 		ExpiredCleaned:    run.GetExpiredCleaned(),
@@ -1598,6 +1670,20 @@ func reconciliationRunFromProto(run *billingv1.ReconciliationRun) *Reconciliatio
 }
 
 func (s *AdminService) RefreshChannelBalance(ctx context.Context, channelID int64) (*ChannelBalanceRefreshResult, error) {
+	mode, err := s.ResourceAuthorizer().(interface {
+		Mode(context.Context, string) (string, error)
+	}).Mode(ctx, "admin.console")
+	if err != nil {
+		return nil, err
+	}
+	if mode == "iam" {
+		reply, err := s.channelClient.ExecuteChannelAction(operatorRPCContext(ctx), &channelv1.ExecuteChannelActionRequest{ChannelId: channelID, Action: "balance_refresh", ExpectedRevision: authorization.ExpectedRevision(ctx, "channel", channelID), Reason: authorization.WriteReason(ctx)})
+		if err != nil {
+			return nil, err
+		}
+		return &ChannelBalanceRefreshResult{Success: reply.Success, Skipped: reply.Skipped, ChannelID: reply.ChannelId, Provider: reply.Provider, Message: reply.Message, Balance: reply.Balance, BalanceUpdatedTime: reply.BalanceUpdatedTime, BalanceRefreshLastError: reply.BalanceRefreshLastError, BalanceRefreshLastSuccessTime: reply.BalanceRefreshLastSuccessTime, ConsecutiveBalanceRefreshFailures: reply.ConsecutiveBalanceRefreshFailures}, nil
+	}
+
 	channel, err := s.GetChannel(ctx, channelID)
 	if err != nil {
 		return nil, err
@@ -1606,19 +1692,17 @@ func (s *AdminService) RefreshChannelBalance(ctx context.Context, channelID int6
 }
 
 func (s *AdminService) RefreshAllChannelBalances(ctx context.Context) ([]*ChannelBalanceRefreshResult, error) {
-	resp, err := s.channelClient.ListChannels(ctx, &channelv1.ListChannelsRequest{Page: 1, PageSize: 1000, Status: 1})
+	resp, err := s.channelClient.ListChannels(operatorRPCContext(ctx), &channelv1.ListChannelsRequest{Page: 1, PageSize: 1000, Status: 1})
 	if err != nil {
 		return nil, err
 	}
 	results := make([]*ChannelBalanceRefreshResult, 0, len(resp.GetChannels()))
 	for _, summary := range resp.GetChannels() {
-		channel, err := s.GetChannel(ctx, summary.GetId())
+		result, err := s.RefreshChannelBalance(ctx, summary.GetId())
 		if err != nil {
-			results = append(results, &ChannelBalanceRefreshResult{Success: false, ChannelID: summary.GetId(), Message: err.Error()})
-			continue
-		}
-		result, err := s.refreshChannelBalance(ctx, channel)
-		if err != nil {
+			if authz.IsAuthorizationError(err) {
+				return nil, err
+			}
 			results = append(results, &ChannelBalanceRefreshResult{Success: false, ChannelID: summary.GetId(), Message: err.Error()})
 			continue
 		}
@@ -1654,7 +1738,7 @@ func (s *AdminService) refreshChannelBalance(ctx context.Context, channel *commo
 
 func (s *AdminService) persistBalanceRefreshSuccess(ctx context.Context, channel *commonv1.ChannelInfo, provider string, balance float64) (*ChannelBalanceRefreshResult, error) {
 	now := time.Now().Unix()
-	resp, err := s.channelClient.UpdateChannel(ctx, &channelv1.UpdateChannelRequest{
+	resp, err := s.channelClient.UpdateChannel(operatorRPCContext(ctx), &channelv1.UpdateChannelRequest{
 		ChannelId:                         channel.GetId(),
 		Balance:                           balance,
 		BalanceUpdatedTime:                now,
@@ -1685,7 +1769,7 @@ func (s *AdminService) persistBalanceRefreshSuccess(ctx context.Context, channel
 
 func (s *AdminService) persistBalanceRefreshFailure(ctx context.Context, channel *commonv1.ChannelInfo, provider string, fetchErr error) (*ChannelBalanceRefreshResult, error) {
 	newFailureCount := channel.GetConsecutiveBalanceRefreshFailures() + 1
-	resp, err := s.channelClient.UpdateChannel(ctx, &channelv1.UpdateChannelRequest{
+	resp, err := s.channelClient.UpdateChannel(operatorRPCContext(ctx), &channelv1.UpdateChannelRequest{
 		ChannelId:                         channel.GetId(),
 		BalanceRefreshLastError:           fetchErr.Error(),
 		BalanceRefreshLastSuccessTime:     channel.GetBalanceRefreshLastSuccessTime(),
@@ -1709,7 +1793,7 @@ func (s *AdminService) persistBalanceRefreshFailure(ctx context.Context, channel
 		return result, nil
 	}
 	if channel.GetStatus() == 1 && s.shouldAutoDisableChannel(ctx, newFailureCount) {
-		disableResp, disableErr := s.channelClient.ChangeChannelStatus(ctx, &channelv1.ChangeChannelStatusRequest{
+		disableResp, disableErr := s.channelClient.ChangeChannelStatus(operatorRPCContext(ctx), &channelv1.ChangeChannelStatusRequest{
 			ChannelId: channel.GetId(),
 			Status:    2,
 		})
@@ -1930,8 +2014,10 @@ func floatFromMap(payload map[string]any, key string) (float64, bool) {
 }
 
 func (s *AdminService) DeleteChannel(ctx context.Context, req *adminv1.AdminDeleteChannelRequest) (*adminv1.AdminDeleteChannelResponse, error) {
-	resp, err := s.channelClient.DeleteChannel(ctx, &channelv1.DeleteChannelRequest{
-		ChannelId: req.ChannelId,
+	resp, err := s.channelClient.DeleteChannel(operatorRPCContext(ctx), &channelv1.DeleteChannelRequest{
+		Reason:           requestWriteReason(ctx, req.Reason),
+		ExpectedRevision: req.ExpectedRevision,
+		ChannelId:        req.ChannelId,
 	})
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
@@ -1946,9 +2032,11 @@ func (s *AdminService) DeleteChannel(ctx context.Context, req *adminv1.AdminDele
 }
 
 func (s *AdminService) ChangeChannelStatus(ctx context.Context, req *adminv1.AdminChangeChannelStatusRequest) (*adminv1.AdminChangeChannelStatusResponse, error) {
-	resp, err := s.channelClient.ChangeChannelStatus(ctx, &channelv1.ChangeChannelStatusRequest{
-		ChannelId: req.ChannelId,
-		Status:    req.Status,
+	resp, err := s.channelClient.ChangeChannelStatus(operatorRPCContext(ctx), &channelv1.ChangeChannelStatusRequest{
+		Reason:           requestWriteReason(ctx, req.Reason),
+		ExpectedRevision: req.ExpectedRevision,
+		ChannelId:        req.ChannelId,
+		Status:           req.Status,
 	})
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
@@ -2025,54 +2113,67 @@ var oneAPIOptionLegacyAliases = map[string]string{
 }
 
 func (s *AdminService) ListOneAPIOptions(ctx context.Context) ([]OneAPIOption, error) {
-	values := make(map[string]string, len(oneAPIOptionDefaults))
-	maps.Copy(values, oneAPIOptionDefaults)
-	if s.systemOptsUc != nil {
-		for key := range values {
-			if v, err := s.systemOptsUc.Get(ctx, key); err == nil && v != "" {
-				values[key] = v
-				continue
-			}
-			if legacyKey := oneAPIOptionLegacyAliases[key]; legacyKey != "" {
-				if v, err := s.systemOptsUc.Get(ctx, legacyKey); err == nil && v != "" {
-					values[key] = v
-				}
-			}
+	keys := make([]string, 0, len(oneAPIOptionDefaults))
+	for key := range oneAPIOptionDefaults {
+		if !strings.HasSuffix(key, "Token") && !strings.HasSuffix(key, "Secret") {
+			keys = append(keys, key)
 		}
-		if v, err := s.systemOptsUc.Get(ctx, "site_title"); err == nil && v != "" && values["SystemName"] == oneAPIOptionDefaults["SystemName"] {
-			values["SystemName"] = v
-		}
-		if v, err := s.systemOptsUc.Get(ctx, "registration_enabled"); err == nil && v != "" && values["RegisterEnabled"] == oneAPIOptionDefaults["RegisterEnabled"] {
-			values["RegisterEnabled"] = v
-		}
-	}
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		if strings.HasSuffix(key, "Token") || strings.HasSuffix(key, "Secret") {
-			continue
-		}
-		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	options := make([]OneAPIOption, 0, len(keys))
 	for _, key := range keys {
-		options = append(options, OneAPIOption{Key: key, Value: values[key]})
+		value, err := s.GetOneAPIOption(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		option := OneAPIOption{Key: key, Value: value}
+		if authorization.External(ctx) && s.systemOptsUc != nil {
+			rev, err := s.systemOptsUc.GetRevision(ctx, key)
+			if err != nil {
+				return nil, err
+			}
+			option.Revision = strconv.FormatInt(rev, 10)
+		}
+		options = append(options, option)
 	}
 	return options, nil
 }
-
 func (s *AdminService) GetOneAPIOption(ctx context.Context, key string) (string, error) {
 	if s.systemOptsUc != nil {
-		if v, err := s.systemOptsUc.Get(ctx, key); err == nil && v != "" {
+		v, err := s.systemOptsUc.Get(ctx, key)
+		if err != nil {
+			return "", err
+		}
+		if v != "" {
 			return v, nil
 		}
 		if legacyKey := oneAPIOptionLegacyAliases[key]; legacyKey != "" {
-			if v, err := s.systemOptsUc.Get(ctx, legacyKey); err == nil && v != "" {
+			v, err = s.systemOptsUc.Get(ctx, legacyKey)
+			if err != nil {
+				return "", err
+			}
+			if v != "" {
+				return v, nil
+			}
+		}
+		alias := map[string]string{"SystemName": "site_title", "RegisterEnabled": "registration_enabled"}[key]
+		if alias != "" {
+			v, err = s.systemOptsUc.Get(ctx, alias)
+			if err != nil {
+				return "", err
+			}
+			if v != "" {
 				return v, nil
 			}
 		}
 	}
 	return oneAPIOptionDefaults[key], nil
+}
+func (s *AdminService) PublicContent(ctx context.Context, key string) (string, error) {
+	if s.systemOptsUc == nil {
+		return "", nil
+	}
+	return s.systemOptsUc.PublicContent(ctx, key)
 }
 
 func (s *AdminService) UpdateOneAPIOption(ctx context.Context, key, value string) (*adminv1.UpdateSystemOptionsResponse, error) {
@@ -2100,11 +2201,13 @@ func (s *AdminService) UpdateOneAPIOption(ctx context.Context, key, value string
 			Message: fmt.Sprintf("failed to save %s: %v", key, err),
 		}, nil
 	}
-	switch key {
-	case "SystemName":
-		_ = s.systemOptsUc.Set(ctx, "site_title", value)
-	case "RegisterEnabled":
-		_ = s.systemOptsUc.Set(ctx, "registration_enabled", value)
+	if !authorization.External(ctx) {
+		switch key {
+		case "SystemName":
+			_ = s.systemOptsUc.Set(ctx, "site_title", value)
+		case "RegisterEnabled":
+			_ = s.systemOptsUc.Set(ctx, "registration_enabled", value)
+		}
 	}
 	return &adminv1.UpdateSystemOptionsResponse{
 		Success: true,
@@ -2113,24 +2216,26 @@ func (s *AdminService) UpdateOneAPIOption(ctx context.Context, key, value string
 }
 
 func (s *AdminService) GetSystemOptions(ctx context.Context, req *adminv1.GetSystemOptionsRequest) (*adminv1.GetSystemOptionsResponse, error) {
-	siteTitle := "One-API"
-	registrationEnabled := true
-
-	if s.systemOptsUc != nil {
-		if v, err := s.systemOptsUc.Get(ctx, "site_title"); err == nil && v != "" {
-			siteTitle = v
-		}
-		if v, err := s.systemOptsUc.Get(ctx, "registration_enabled"); err == nil && v != "" {
-			registrationEnabled = v == "true"
+	siteTitle, err := s.GetOneAPIOption(ctx, "SystemName")
+	if err != nil {
+		return nil, err
+	}
+	enabled, err := s.GetOneAPIOption(ctx, "RegisterEnabled")
+	if err != nil {
+		return nil, err
+	}
+	out := &adminv1.GetSystemOptionsResponse{Options: &commonv1.SystemOptions{SiteTitle: siteTitle, RegistrationEnabled: enabled == "true"}}
+	if authorization.External(ctx) && s.systemOptsUc != nil {
+		out.Revisions = map[string]string{}
+		for _, key := range []string{"SystemName", "RegisterEnabled"} {
+			rev, err := s.systemOptsUc.GetRevision(ctx, key)
+			if err != nil {
+				return nil, err
+			}
+			out.Revisions[key] = strconv.FormatInt(rev, 10)
 		}
 	}
-
-	return &adminv1.GetSystemOptionsResponse{
-		Options: &commonv1.SystemOptions{
-			SiteTitle:           siteTitle,
-			RegistrationEnabled: registrationEnabled,
-		},
-	}, nil
+	return out, nil
 }
 
 func (s *AdminService) UpdateSystemOptions(ctx context.Context, req *adminv1.UpdateSystemOptionsRequest) (*adminv1.UpdateSystemOptionsResponse, error) {
@@ -2146,6 +2251,15 @@ func (s *AdminService) UpdateSystemOptions(ctx context.Context, req *adminv1.Upd
 			Success: false,
 			Message: "options is required",
 		}, nil
+	}
+
+	if authorization.External(ctx) {
+		registrationValue := strconv.FormatBool(req.Options.RegistrationEnabled)
+		err := s.UpdateOptionsWithRevisions(authorization.WithWriteReason(ctx, req.Reason), map[string]string{"SystemName": req.Options.SiteTitle, "RegisterEnabled": registrationValue}, req.ExpectedRevisions)
+		if err != nil {
+			return nil, err
+		}
+		return &adminv1.UpdateSystemOptionsResponse{Success: true}, nil
 	}
 
 	if err := s.systemOptsUc.Set(ctx, "site_title", req.Options.SiteTitle); err != nil {
@@ -2212,7 +2326,7 @@ func (s *AdminService) ListLogs(ctx context.Context, req *adminv1.ListLogsReques
 	}
 
 	// Billing service now supports type filtering server-side
-	billingResp, err := s.billingClient.ListLedger(ctx, billingReq)
+	billingResp, err := s.billingClient.ListLedger(operatorRPCContext(ctx), billingReq)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -2269,8 +2383,11 @@ func (s *AdminService) GetLogStats(ctx context.Context, req *adminv1.ListLogsReq
 		aggReq.EndTime = timestamppb.New(time.Unix(req.EndTime, 0))
 	}
 
-	resp, err := s.billingClient.AggregateUsage(ctx, aggReq)
+	resp, err := s.billingClient.AggregateUsage(operatorRPCContext(ctx), aggReq)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		if st, ok := status.FromError(err); ok {
 			return nil, fmt.Errorf("failed to aggregate usage: %s", st.Message())
 		}
@@ -2285,6 +2402,9 @@ func (s *AdminService) GetLogStats(ctx context.Context, req *adminv1.ListLogsReq
 	upstreamCost := int64(0)
 	grossProfit := int64(0)
 	for _, bucket := range resp.GetBuckets() {
+		if authorization.External(ctx) && !bucket.GetCostFieldsVisible() {
+			return nil, authorization.ErrDenied
+		}
 		countByType[bucket.GetType()] = bucket.GetCount()
 		amountByType[bucket.GetType()] = bucket.GetQuota()
 		upstreamCostByType[bucket.GetType()] = bucket.GetUpstreamCost()
@@ -2335,7 +2455,7 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 		billingReq.EndTime = ts
 	}
 
-	billingResp, err := s.billingClient.ListLedger(ctx, billingReq)
+	billingResp, err := s.billingClient.ListLedger(operatorRPCContext(ctx), billingReq)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -2424,6 +2544,7 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 			"ledgerDedupeKey":       entry.GetLedgerDedupeKey(),
 			"username":              entry.GetUsername(),
 		})
+		applyLedgerFieldVisibility(ctx, entries[len(entries)-1], entry)
 	}
 
 	return entries, billingResp.GetTotal(), nil
@@ -2500,7 +2621,7 @@ func (s *AdminService) loadChannelEnrichments(ctx context.Context, entries []*co
 	if len(ids) == 0 {
 		return result
 	}
-	resp, err := s.channelClient.ListChannels(ctx, &channelv1.ListChannelsRequest{
+	resp, err := s.channelClient.ListChannels(operatorRPCContext(ctx), &channelv1.ListChannelsRequest{
 		Page:     1,
 		PageSize: 1000, // best-effort single-page fetch; truncation logged below
 	})
@@ -2572,7 +2693,7 @@ func (s *AdminService) loadSubscriptionAccountEnrichments(ctx context.Context, e
 	if len(ids) == 0 {
 		return result
 	}
-	resp, err := s.channelClient.ListSubscriptionAccounts(ctx, &channelv1.ListSubscriptionAccountsRequest{
+	resp, err := s.channelClient.ListSubscriptionAccounts(operatorRPCContext(ctx), &channelv1.ListSubscriptionAccountsRequest{
 		Page:     1,
 		PageSize: 1000,
 	})
@@ -2716,6 +2837,7 @@ func channelTypeToString(channelType int32) string {
 // by the bucket limit) so the routing ops view can show true totals even when
 // the per-source bucket list is truncated to Top-N (code review #7).
 type UsageAggregateTotals struct {
+	CostFieldsVisible     bool  `json:"cost_fields_visible"`
 	Quota                 int64 `json:"quota"`
 	UpstreamCost          int64 `json:"upstream_cost"`
 	GrossProfit           int64 `json:"gross_profit"`
@@ -2751,7 +2873,7 @@ func (s *AdminService) AggregateUsageGroupedByChannel(ctx context.Context, start
 	if end > 0 {
 		req.EndTime = timestamppb.New(time.Unix(end, 0))
 	}
-	resp, err := s.billingClient.AggregateUsage(ctx, req)
+	resp, err := s.billingClient.AggregateUsage(operatorRPCContext(ctx), req)
 	if err != nil {
 		return nil, empty, err
 	}
@@ -2762,6 +2884,7 @@ func (s *AdminService) AggregateUsageGroupedByChannel(ctx context.Context, start
 	// Extract billing-level totals (not affected by bucket limit).
 	totals := UsageAggregateTotals{}
 	if t := resp.GetTotals(); t != nil {
+		totals.CostFieldsVisible = t.GetCostFieldsVisible()
 		totals.Quota = t.GetQuota()
 		totals.UpstreamCost = t.GetUpstreamCost()
 		totals.GrossProfit = t.GetGrossProfit()
@@ -2781,4 +2904,48 @@ func (s *AdminService) IAMService() *IAMAdminService {
 		return nil
 	}
 	return s.iam
+}
+
+// A restricted owner field is absent data, never a measured zero.
+func applyLedgerFieldVisibility(ctx context.Context, out map[string]any, entry *commonv1.LedgerEntry) {
+	if !authorization.External(ctx) {
+		return
+	}
+	out["cost_fields_visible"] = entry.GetCostFieldsVisible()
+	out["pricing_fields_visible"] = entry.GetPricingFieldsVisible()
+	if !entry.GetCostFieldsVisible() {
+		for _, key := range []string{"costSource", "subscriptionCost", "balanceCost", "promptCost", "completionCost", "cacheReadCost", "cacheCreation5mCost", "cacheCreation1hCost", "shadowCost", "subsetCandidateCost", "exclusiveCandidateCost"} {
+			out[key] = nil
+		}
+	}
+	if !entry.GetPricingFieldsVisible() {
+		for _, key := range []string{"pricingConfigHash", "pricingSnapshot", "requestSnapshotHash", "requestSnapshot"} {
+			out[key] = nil
+		}
+	}
+}
+
+func requestWriteReason(ctx context.Context, reason string) string {
+	if strings.TrimSpace(reason) != "" {
+		return reason
+	}
+	return authorization.WriteReason(ctx)
+}
+func (s *AdminService) UpdateOptionsWithRevisions(ctx context.Context, values map[string]string, revisions map[string]string) error {
+	if s.systemOptsUc == nil {
+		return status.Error(codes.Unavailable, "system options unavailable")
+	}
+	parsed := map[string]int64{}
+	for key := range values {
+		value, ok := revisions[key]
+		if !ok {
+			return status.Error(codes.InvalidArgument, "expected revision required for "+key)
+		}
+		rev, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || rev < 0 {
+			return status.Error(codes.InvalidArgument, "invalid expected revision")
+		}
+		parsed[key] = rev
+	}
+	return s.systemOptsUc.SetMany(ctx, values, parsed)
 }

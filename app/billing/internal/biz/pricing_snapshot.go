@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/security/serviceidentity"
 	"time"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
@@ -131,6 +133,13 @@ func buildPricingSnapshot(modelKey string, price ModelPrice, multiplier float64,
 func (uc *BillingUsecase) GetPricingSnapshot(ctx context.Context, configHash string) (*PricingSnapshot, error) {
 	if uc == nil || uc.pricingSnapshotRepo == nil || configHash == "" {
 		return nil, nil
+	}
+	if authorization.External(ctx) && !serviceidentity.HasSystemCapability(ctx, serviceidentity.RPCMethod(ctx)) {
+		var err error
+		ctx, err = authorization.PrepareOptional(ctx, uc.authorization, "billing.pricing.read", "billing.pricing.read")
+		if err != nil {
+			return nil, err
+		}
 	}
 	return uc.pricingSnapshotRepo.GetPricingSnapshotByHash(ctx, configHash)
 }

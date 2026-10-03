@@ -33,7 +33,10 @@ func NewGRPCServer(addr string, svc *service.ChannelService) *kgrpc.Server {
 
 var channelReadyMethods = func() []string {
 	out := []string{}
-	for _, method := range []string{"GetChannel", "ListChannels", "CreateChannel", "UpdateChannel", "DeleteChannel", "ChangeChannelStatus", "GetSubscriptionAccount", "ListSubscriptionAccounts", "CreateSubscriptionAccount", "UpdateSubscriptionAccount", "DeleteSubscriptionAccount", "ChangeSubscriptionAccountStatus", "ResetSubscriptionAccountQuota", "ClearSubscriptionAccountError", "ListRoutingGroups", "GetRoutingGroup", "CreateRoutingGroup", "SetRoutingGroupState", "SetRoutingGroupResourceOverrides"} {
+	for _, method := range []string{"ListChannelModelMappings", "UpsertChannelModelMapping", "DeleteChannelModelMapping", "ListSubscriptionModelMappings", "UpsertSubscriptionModelMapping", "DeleteSubscriptionModelMapping", "ListModelHealth", "ListUsageSemanticBlocks", "ResolveUsageSemanticBlock", "ListModelRoutings", "UpsertModelRouting", "DeleteModelRouting", "ExportModels", "ImportModels", "DryRunImportModels", "ListModels", "GetModel", "CreateModel", "UpdateModel", "DeleteModel", "ChangeModelStatus", "BatchModels", "ListModelAliases", "CreateModelAlias", "DeleteModelAlias", "ListModelUsageStats", "ExecuteChannelAction", "GetChannel", "ListChannels", "CreateChannel", "UpdateChannel", "DeleteChannel", "BatchDeleteChannels", "ExportChannels", "ChangeChannelStatus", "GetSubscriptionAccount", "ListSubscriptionAccounts", "CreateSubscriptionAccount", "UpdateSubscriptionAccount", "DeleteSubscriptionAccount", "ChangeSubscriptionAccountStatus", "ResetSubscriptionAccountQuota", "ClearSubscriptionAccountError", "ListRoutingGroups", "GetRoutingGroup", "CreateRoutingGroup", "SetRoutingGroupState", "SetRoutingGroupResourceOverrides", "ArchiveRoutingGroup", "ReplaceRoutingGroupMembers"} {
+		out = append(out, "/api.channel.v1.ChannelService/"+method)
+	}
+	for _, method := range []string{"CanonicalModelPreflight", "MergeCanonicalModels", "AggregateSubscriptionAccountQuotaEvents"} {
 		out = append(out, "/api.channel.v1.ChannelService/"+method)
 	}
 	return out

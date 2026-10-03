@@ -184,7 +184,7 @@ func (r *ledgerRepo) ListLedgers(ctx context.Context, userID string, page, pageS
 
 	query := r.data.db.WithContext(ctx).Model(&ledgerModel{})
 	var queryScopeErr error
-	query, queryScopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read")
+	query, queryScopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read", "billing.report.export")
 	if queryScopeErr != nil {
 		return nil, 0, queryScopeErr
 	}
@@ -200,7 +200,7 @@ func (r *ledgerRepo) ListLedgers(ctx context.Context, userID string, page, pageS
 		Select("billing_ledgers.*, users.username AS username").
 		Joins(r.ledgerUserJoin())
 	var fetchQueryScopeErr error
-	fetchQuery, fetchQueryScopeErr = authzquery.ApplyContext(ctx, fetchQuery, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read")
+	fetchQuery, fetchQueryScopeErr = authzquery.ApplyContext(ctx, fetchQuery, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read", "billing.report.export")
 	if fetchQueryScopeErr != nil {
 		return nil, 0, fetchQueryScopeErr
 	}
@@ -235,7 +235,7 @@ func (r *ledgerRepo) ListLedgersWithOptions(ctx context.Context, options biz.Led
 	offset := max(int((options.Page-1)*options.PageSize), 0)
 	query := r.data.db.WithContext(ctx).Model(&ledgerModel{})
 	var queryScopeErr error
-	query, queryScopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read")
+	query, queryScopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read", "billing.report.export")
 	if queryScopeErr != nil {
 		return nil, 0, queryScopeErr
 	}
@@ -292,7 +292,7 @@ func (r *ledgerRepo) listLedgersInternal(ctx context.Context, userID string, pag
 
 	query := r.data.db.WithContext(ctx).Model(&ledgerModel{})
 	var queryScopeErr error
-	query, queryScopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read")
+	query, queryScopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read", "billing.report.export")
 	if queryScopeErr != nil {
 		return nil, 0, queryScopeErr
 	}
@@ -316,7 +316,7 @@ func (r *ledgerRepo) listLedgersInternal(ctx context.Context, userID string, pag
 		Select("billing_ledgers.*, users.username AS username").
 		Joins(r.ledgerUserJoin())
 	var fetchQueryScopeErr error
-	fetchQuery, fetchQueryScopeErr = authzquery.ApplyContext(ctx, fetchQuery, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read")
+	fetchQuery, fetchQueryScopeErr = authzquery.ApplyContext(ctx, fetchQuery, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read", "billing.report.export")
 	if fetchQueryScopeErr != nil {
 		return nil, 0, fetchQueryScopeErr
 	}
@@ -357,7 +357,7 @@ func (r *ledgerRepo) ListLedgersBySubscriptionAccount(ctx context.Context, subsc
 		Where("subscription_account_id = ?", subscriptionAccountID)
 
 	var queryScopeErr error
-	query, queryScopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read")
+	query, queryScopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read", "billing.report.export")
 	if queryScopeErr != nil {
 		return nil, 0, queryScopeErr
 	}
@@ -409,7 +409,7 @@ func (r *ledgerRepo) AggregateLedgerByDate(ctx context.Context, userID string, l
 			COALESCE(SUM(elapsed_time), 0) as elapsed_time`).
 		Where("type = ?", ledgerType)
 	var dailyQueryScopeErr error
-	dailyQuery, dailyQueryScopeErr = authzquery.ApplyContext(ctx, dailyQuery, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read")
+	dailyQuery, dailyQueryScopeErr = authzquery.ApplyContext(ctx, dailyQuery, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read", "billing.report.export")
 	if dailyQueryScopeErr != nil {
 		return nil, nil, dailyQueryScopeErr
 	}
@@ -458,7 +458,7 @@ func (r *ledgerRepo) AggregateLedgerByDate(ctx context.Context, userID string, l
 		Select(`model_name as model, COALESCE(SUM(quota), 0) as tokens`).
 		Where("type = ?", ledgerType)
 	var modelQueryScopeErr error
-	modelQuery, modelQueryScopeErr = authzquery.ApplyContext(ctx, modelQuery, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read")
+	modelQuery, modelQueryScopeErr = authzquery.ApplyContext(ctx, modelQuery, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read", "billing.report.export")
 	if modelQueryScopeErr != nil {
 		return nil, nil, modelQueryScopeErr
 	}
@@ -510,9 +510,15 @@ func (r *ledgerRepo) AggregateUsage(ctx context.Context, filter biz.UsageFilter)
 	selectCols += ", " + visibility + " as cost_fields_visible"
 	q := r.data.db.WithContext(ctx).Model(&ledgerModel{}).Select(selectCols, selectArgs...).Joins(joinSQL)
 	var qScopeErr error
-	q, qScopeErr = authzquery.ApplyContext(ctx, q, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read")
+	q, qScopeErr = authzquery.ApplyContext(ctx, q, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read", "billing.report.export")
 	if qScopeErr != nil {
 		return nil, nil, qScopeErr
+	}
+	if biz.CostExportSelected(ctx) {
+		q, qScopeErr = authzquery.ApplyContext(ctx, q, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.cost.read")
+		if qScopeErr != nil {
+			return nil, nil, qScopeErr
+		}
 	}
 	// Empty Type means "all types". The caller decides whether to
 	// scope the aggregate; we never impose a default.
@@ -733,7 +739,7 @@ func (r *ledgerRepo) SumSubscriptionCostByReservation(ctx context.Context, reser
 		Where("cost_source = ?", biz.CostSourceSubscription).
 		Select("COALESCE(SUM(subscription_cost), 0)")
 	var qScopeErr error
-	q, qScopeErr = authzquery.ApplyContext(ctx, q, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read")
+	q, qScopeErr = authzquery.ApplyContext(ctx, q, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read", "billing.report.export")
 	if qScopeErr != nil {
 		return 0, qScopeErr
 	}

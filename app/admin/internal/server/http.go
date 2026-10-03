@@ -1,14 +1,19 @@
 package server
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/subtle"
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"io"
 	"io/fs"
+	identityv1 "micro-one-api/api/identity/v1"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -19,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"micro-one-api/domain/authorization"
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/iamdto"
 	"micro-one-api/platform/security/serviceidentity"
@@ -39,6 +45,7 @@ import (
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
 // adminWebAssets serves the admin SPA. The frontend is never embedded
@@ -78,7 +85,7 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		guarded := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
-			if !strings.HasPrefix(authHeader, "Bearer ") {
+			if len(r.Header.Values("Authorization")) != 1 || !strings.HasPrefix(authHeader, "Bearer ") {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing or invalid authorization header"})
 				return
 			}
@@ -95,9 +102,10 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 						writeJSON(w, http.StatusForbidden, map[string]string{"error": "authorization denied or execution point unbound"})
 						return
 					}
-					ctx := context.WithValue(iamBusinessContext(r.Context()), adminOperatorContextKey{}, strconv.FormatInt(access.Query.ActorID, 10))
+					ctx := context.WithValue(authorization.WithCredential(authorization.WithExternal(iamBusinessContext(r.Context())), token), adminOperatorContextKey{}, strconv.FormatInt(access.Query.ActorID, 10))
 					ctx = audit.WithActor(ctx, audit.ActorInfo{UserID: access.Query.ActorID})
 					ctx = service.WithOperatorCredential(ctx, token)
+					ctx = authorization.WithWriteReason(ctx, adminRequestReason(r))
 					next(w, r.WithContext(ctx))
 					return
 				}
@@ -114,6 +122,7 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 				// path is a system operator, not a user.
 				ctx = audit.WithActor(ctx, audit.ActorInfo{ServiceName: "admin", Username: "admin-token"})
 				ctx = service.WithOperatorCredential(ctx, token)
+				ctx = authorization.WithWriteReason(ctx, adminRequestReason(r))
 				next(w, r.WithContext(ctx))
 				return
 			}
@@ -126,6 +135,7 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 					// Audit actor: the session-token path is the real admin user.
 					ctx = audit.WithActor(ctx, audit.ActorInfo{UserID: userID, Role: adminRoleName(role)})
 					ctx = service.WithOperatorCredential(ctx, token)
+					ctx = authorization.WithWriteReason(ctx, adminRequestReason(r))
 					next(w, r.WithContext(ctx))
 					return
 				}
@@ -323,8 +333,29 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 			})
 			return
 		}
-		token := strings.TrimPrefix(authHeader, "Bearer ")
 
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		mode, err := svc.ResourceAuthorizer().(interface {
+			Mode(context.Context, string) (string, error)
+		}).Mode(r.Context(), "admin.console")
+		if err != nil {
+			writeServiceResponse(w, nil, err)
+			return
+		}
+		if mode == "iam" {
+			clientIP := xhttp.ClientIP(r, xhttp.TrustedProxyCIDRsFromEnv("ADMIN_TRUSTED_PROXY_CIDRS"))
+			models, err := svc.AvailableModels(r.Context(), token, clientIP)
+			if err != nil {
+				writeServiceResponse(w, nil, err)
+				return
+			}
+			data := make([]map[string]any, 0, len(models))
+			for _, model := range models {
+				data = append(data, map[string]any{"id": model, "object": "model", "created": 1626777600, "owned_by": "system"})
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": data})
+			return
+		}
 		// Validate token with identity service
 		validated, err := svc.ValidateToken(r.Context(), token)
 		if err != nil || !validated {
@@ -664,6 +695,9 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 	srv.HandlePrefix("/api/reconciliation/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleReconciliationRunByID(w, r, svc)
 	}))
+	srv.HandleFunc("/api/v1/admin/reports/cost:export", adminAuth(func(w http.ResponseWriter, r *http.Request) { handleCostReportExport(w, r, svc) }))
+	srv.HandlePrefix("/api/v1/admin/accounts/", adminAuth(func(w http.ResponseWriter, r *http.Request) { handleResetAccountBalance(w, r, svc) }))
+
 	srv.HandleFunc("/api/reconciliation", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleReconciliationRuns(w, r, svc)
 	}))
@@ -747,8 +781,50 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 		handleModelRoutings(w, r, svc)
 	}))
 
+	if target, err := parseReverseProxyTarget(envOrDefault("MONITOR_HTTP_ENDPOINT", "http://monitor-worker:8007")); err == nil {
+		monitorProxy := newOwnerHTTPProxy(target)
+		srv.HandleFunc("/api/admin/service-health", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/v1/health-checks"
+			monitorProxy.ServeHTTP(w, r)
+		}))
+		srv.HandleFunc("/api/admin/service-health/latest", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/v1/health-checks/latest"
+			monitorProxy.ServeHTTP(w, r)
+		}))
+		srv.HandleFunc("/api/admin/alert-rules", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/v1/alert-rules"
+			monitorProxy.ServeHTTP(w, r)
+		}))
+		srv.HandlePrefix("/api/admin/alert-rules/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/v1/alert-rules/" + strings.TrimPrefix(r.URL.Path, "/api/admin/alert-rules/")
+			monitorProxy.ServeHTTP(w, r)
+		}))
+	}
+	if target, err := parseReverseProxyTarget(envOrDefault("CONFIG_HTTP_ENDPOINT", "http://config-service:8005")); err == nil {
+		configProxy := newOwnerHTTPProxy(target)
+		srv.HandlePrefix("/api/admin/configs/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/v1/configs/" + strings.TrimPrefix(r.URL.Path, "/api/admin/configs/")
+			configProxy.ServeHTTP(w, r)
+		}))
+	}
+	if target, err := logServiceURLFromEnv("/"); err == nil {
+		logProxy := newOwnerHTTPProxy(target)
+		srv.HandleFunc("/api/admin/request-logs", adminAuth(func(w http.ResponseWriter, r *http.Request) { r.URL.Path = "/v1/logs"; logProxy.ServeHTTP(w, r) }))
+		srv.HandlePrefix("/api/admin/request-logs/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/v1/logs/" + strings.TrimPrefix(r.URL.Path, "/api/admin/request-logs/")
+			logProxy.ServeHTTP(w, r)
+		}))
+	}
 	// Notification endpoints - proxy to notify-worker
 	if notifyWorkerProxy != nil {
+		srv.HandleFunc("/api/admin/notification-rules", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/v1/notification-rules"
+			notifyWorkerProxy.ServeHTTP(w, r)
+		}))
+		srv.HandlePrefix("/api/admin/notification-rules/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/v1/notification-rules/" + strings.TrimPrefix(r.URL.Path, "/api/admin/notification-rules/")
+			notifyWorkerProxy.ServeHTTP(w, r)
+		}))
 		srv.HandleFunc("/api/admin/notifications", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 			handleNotifyProxy(w, r, notifyWorkerProxy)
 		}))
@@ -1328,7 +1404,7 @@ func handleReadonlyPricing(w http.ResponseWriter, r *http.Request, svc *service.
 	}
 	options, err := svc.ListOneAPIOptions(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	optionMap := optionsByKey(options, "ModelPrice", "ModelRatio", "CompletionRatio", "AmountPerUnit")
@@ -2053,7 +2129,7 @@ func writeOneAPIServiceResponse(w http.ResponseWriter, resp any, err error) {
 func handleContentRoute(adminAuth func(http.HandlerFunc) http.HandlerFunc, svc *service.AdminService, key string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
-			value, err := svc.GetOneAPIOption(r.Context(), key)
+			value, err := svc.PublicContent(r.Context(), key)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, apiResponse(false, sanitizeAdminError(err), nil))
 				return
@@ -2073,8 +2149,10 @@ func handleContentWrite(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		return
 	}
 	var req struct {
-		Content string `json:"content"`
-		Value   string `json:"value"`
+		ExpectedRevision string `json:"expected_revision"`
+		Reason           string `json:"reason"`
+		Content          string `json:"content"`
+		Value            string `json:"value"`
 	}
 	if err := jsonx.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -2084,9 +2162,15 @@ func handleContentWrite(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	if value == "" {
 		value = req.Value
 	}
-	resp, err := svc.UpdateOneAPIOption(r.Context(), key, value)
+	ctx := r.Context()
+	if isIAMBusinessContext(ctx) {
+		err := svc.UpdateOptionsWithRevisions(authorization.WithWriteReason(ctx, req.Reason), map[string]string{key: value}, map[string]string{key: req.ExpectedRevision})
+		writeServiceResponse(w, map[string]any{"success": err == nil}, err)
+		return
+	}
+	resp, err := svc.UpdateOneAPIOption(ctx, key, value)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(resp.GetSuccess(), resp.GetMessage(), nil))
@@ -2097,7 +2181,7 @@ func handleGroupManagement(w http.ResponseWriter, r *http.Request, svc *service.
 	case http.MethodGet:
 		groups, err := svc.ListGroups(r.Context())
 		if err != nil {
-			writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
+			writeServiceResponse(w, nil, err)
 			return
 		}
 		if r.URL.Query().Get("with_ratio") == "true" {
@@ -2124,7 +2208,7 @@ func handleGroupManagement(w http.ResponseWriter, r *http.Request, svc *service.
 		}
 		result, err := svc.UpsertGroup(r.Context(), req.Group, req.Ratio)
 		if err != nil {
-			writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
+			writeServiceResponse(w, nil, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, apiResponse(true, "", result))
@@ -2135,7 +2219,7 @@ func handleGroupManagement(w http.ResponseWriter, r *http.Request, svc *service.
 		}
 		result, err := svc.DeleteGroup(r.Context(), group)
 		if err != nil {
-			writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
+			writeServiceResponse(w, nil, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, apiResponse(true, "", result))
@@ -2145,6 +2229,16 @@ func handleGroupManagement(w http.ResponseWriter, r *http.Request, svc *service.
 }
 
 func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
+	if isIAMBusinessContext(r.Context()) {
+		if message, ok := dst.(proto.Message); ok {
+			data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+			if err != nil || (protojson.UnmarshalOptions{}).Unmarshal(data, message) != nil {
+				writeJSON(w, 400, apiResponse(false, "invalid request body", nil))
+				return false
+			}
+			return true
+		}
+	}
 	if err := jsonx.NewDecoder(r.Body).Decode(dst); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return false
@@ -2251,7 +2345,7 @@ func handleOneAPIUserManage(w http.ResponseWriter, r *http.Request, svc *service
 		Keyword:  req.Username,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	var user *commonv1.UserInfo
@@ -2373,6 +2467,14 @@ func handleOneAPIUserByID(w http.ResponseWriter, r *http.Request, svc *service.A
 		}
 		resp, err := svc.DeleteUser(r.Context(), deletion)
 		writeOneAPIServiceResponse(w, resp, err)
+	case http.MethodPut:
+		var req adminv1.AdminUpdateUserRequest
+		if !decodeManagedUserPatch(w, r, &req) {
+			return
+		}
+		req.UserId = userID
+		resp, err := svc.UpdateUser(r.Context(), &req)
+		writeOneAPIServiceResponse(w, resp, err)
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
@@ -2388,10 +2490,18 @@ func handleOneAPIUserStatusAlias(w http.ResponseWriter, r *http.Request, svc *se
 		writeJSON(w, http.StatusBadRequest, apiResponse(false, "invalid user id", nil))
 		return
 	}
-	resp, err := svc.UpdateUser(r.Context(), &adminv1.AdminUpdateUserRequest{
-		UserId: userID,
-		Status: status,
-	})
+	req := &adminv1.AdminUpdateUserRequest{UserId: userID, Status: status}
+	if isIAMBusinessContext(r.Context()) {
+		request, ok := managedUserDeletionRequest(w, r, userID)
+		if !ok {
+			return
+		}
+		req.UpdateMask = &fieldmaskpb.FieldMask{Paths: []string{"status"}}
+		req.ExpectedRevision = request.ExpectedRevision
+		req.ExpectedPolicyRevision = request.ExpectedPolicyRevision
+		req.Reason = adminRequestReason(r)
+	}
+	resp, err := svc.UpdateUser(r.Context(), req)
 	writeOneAPIServiceResponse(w, resp, err)
 }
 
@@ -2413,6 +2523,18 @@ func handleOneAPIExportUsers(w http.ResponseWriter, r *http.Request, svc *servic
 	if !requireCSVExport(w, r) {
 		return
 	}
+
+	if isIAMBusinessContext(r.Context()) {
+		out, err := svc.ExportUsers(r.Context(), &identityv1.ExportUsersRequest{Query: &identityv1.ListUsersRequest{Page: oneAPIPage(r), PageSize: oneAPIPageSize(r), Keyword: r.URL.Query().Get("keyword"), Group: r.URL.Query().Get("group"), Status: getQueryInt32(r, "status", 0)}})
+		if err != nil {
+			writeServiceResponse(w, nil, err)
+			return
+		}
+		w.Header().Set("Content-Type", out.ContentType)
+		w.Header().Set("Content-Disposition", `attachment; filename="admin-users.csv"`)
+		_, _ = w.Write(out.Body)
+		return
+	}
 	resp, err := svc.ListUsers(r.Context(), &adminv1.AdminListUsersRequest{
 		Page:     oneAPIPage(r),
 		PageSize: oneAPIPageSize(r),
@@ -2421,7 +2543,7 @@ func handleOneAPIExportUsers(w http.ResponseWriter, r *http.Request, svc *servic
 		Status:   getQueryInt32(r, "status", 0),
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	rows := make([][]string, 0, len(resp.GetUsers()))
@@ -2654,6 +2776,29 @@ func handleSubscriptionAccountByID(w http.ResponseWriter, r *http.Request, svc *
 		handleBatchApplySubscriptionAccountQuotaTemplate(w, r, svc)
 		return
 	}
+	if before, ok := strings.CutSuffix(rest, "/clear-error"); ok {
+		accountID, err := strconv.ParseInt(strings.Trim(before, "/"), 10, 64)
+		if err != nil || accountID <= 0 {
+			w.WriteHeader(400)
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.WriteHeader(405)
+			return
+		}
+		var req channelv1.ClearSubscriptionAccountErrorRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		req.AccountId = accountID
+		out, err := svc.ClearSubscriptionAccountError(r.Context(), &req)
+		if err != nil {
+			writeServiceResponse(w, nil, err)
+			return
+		}
+		writeModelResponse(w, r, out)
+		return
+	}
 	if before, ok := strings.CutSuffix(rest, "/reset-quota"); ok {
 		idPart := before
 		accountID, err := strconv.ParseInt(strings.Trim(idPart, "/"), 10, 64)
@@ -2709,7 +2854,7 @@ func handleSubscriptionAccountByID(w http.ResponseWriter, r *http.Request, svc *
 		}
 		writeJSON(w, http.StatusOK, account)
 	case http.MethodDelete:
-		resp, err := svc.DeleteSubscriptionAccount(r.Context(), &adminv1.AdminDeleteSubscriptionAccountRequest{AccountId: accountID})
+		resp, err := svc.DeleteSubscriptionAccount(r.Context(), &adminv1.AdminDeleteSubscriptionAccountRequest{AccountId: accountID, ExpectedRevision: getQueryInt64(r, "expected_revision", 0), Reason: authorization.WriteReason(r.Context())})
 		writeServiceResponse(w, resp, err)
 	case http.MethodPut:
 		var req adminv1.AdminUpdateSubscriptionAccountRequest
@@ -2901,12 +3046,12 @@ func handleOneAPIChannelByID(w http.ResponseWriter, r *http.Request, svc *servic
 	case http.MethodGet:
 		channel, err := svc.GetChannel(r.Context(), channelID)
 		if err != nil {
-			writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
+			writeServiceResponse(w, nil, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, apiResponse(true, "", channel))
 	case http.MethodDelete:
-		resp, err := svc.DeleteChannel(r.Context(), &adminv1.AdminDeleteChannelRequest{ChannelId: channelID})
+		resp, err := svc.DeleteChannel(r.Context(), &adminv1.AdminDeleteChannelRequest{ChannelId: channelID, ExpectedRevision: getQueryInt64(r, "expected_revision", 0), Reason: authorization.WriteReason(r.Context())})
 		writeOneAPIServiceResponse(w, resp, err)
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -2942,7 +3087,7 @@ func handleOneAPIDeleteDisabledChannels(w http.ResponseWriter, r *http.Request, 
 				writeJSON(w, http.StatusOK, apiResponse(false, "disabled channel cleanup made no progress", deleted))
 				return
 			}
-			delResp, delErr := svc.DeleteChannel(r.Context(), &adminv1.AdminDeleteChannelRequest{ChannelId: channelID})
+			delResp, delErr := svc.DeleteChannel(r.Context(), &adminv1.AdminDeleteChannelRequest{ChannelId: channelID, ExpectedRevision: getQueryInt64(r, "expected_revision", 0), Reason: authorization.WriteReason(r.Context())})
 			if delErr != nil {
 				writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(delErr), deleted))
 				return
@@ -2959,6 +3104,37 @@ func handleOneAPIDeleteDisabledChannels(w http.ResponseWriter, r *http.Request, 
 }
 
 func handleOneAPIBatchDeleteChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if isIAMBusinessContext(r.Context()) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(405)
+			return
+		}
+		var body map[string]jsonx.RawMessage
+		if !decodeBody(w, r, &body) {
+			return
+		}
+		if ids, ok := body["ids"]; ok {
+			body["channel_ids"] = ids
+			delete(body, "ids")
+		}
+		raw, err := jsonx.Marshal(body)
+		if err != nil {
+			w.WriteHeader(400)
+			return
+		}
+		var req channelv1.BatchDeleteChannelsRequest
+		if (protojson.UnmarshalOptions{}).Unmarshal(raw, &req) != nil {
+			w.WriteHeader(400)
+			return
+		}
+		out, err := svc.BatchDeleteChannels(r.Context(), &req)
+		if err != nil {
+			writeServiceResponse(w, nil, err)
+			return
+		}
+		writeModelResponse(w, r, out)
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
@@ -3010,7 +3186,7 @@ func handleOneAPIListChannels(w http.ResponseWriter, r *http.Request, svc *servi
 		Type:     getQueryInt32(r, "type", 0),
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", resp.GetChannels()))
@@ -3018,6 +3194,17 @@ func handleOneAPIListChannels(w http.ResponseWriter, r *http.Request, svc *servi
 
 func handleOneAPIExportChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	if !requireCSVExport(w, r) {
+		return
+	}
+	if isIAMBusinessContext(r.Context()) {
+		out, err := svc.ExportChannels(r.Context(), &channelv1.ListChannelsRequest{Page: oneAPIPage(r), PageSize: oneAPIPageSize(r), Keyword: r.URL.Query().Get("keyword"), Group: r.URL.Query().Get("group"), Status: getQueryInt32(r, "status", 0), Type: getQueryInt32(r, "type", 0)})
+		if err != nil {
+			writeServiceResponse(w, nil, err)
+			return
+		}
+		w.Header().Set("Content-Type", out.ContentType)
+		w.Header().Set("Content-Disposition", `attachment; filename="admin-channels.csv"`)
+		_, _ = w.Write(out.Body)
 		return
 	}
 	resp, err := svc.ListChannels(r.Context(), &adminv1.AdminListChannelsRequest{
@@ -3029,7 +3216,7 @@ func handleOneAPIExportChannels(w http.ResponseWriter, r *http.Request, svc *ser
 		Type:     getQueryInt32(r, "type", 0),
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	rows := make([][]string, 0, len(resp.GetChannels()))
@@ -3059,7 +3246,7 @@ func handleOneAPISearchChannels(w http.ResponseWriter, r *http.Request, svc *ser
 		Type:     getQueryInt32(r, "type", 0),
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", resp.GetChannels()))
@@ -3165,7 +3352,7 @@ func handleChannelByID(w http.ResponseWriter, r *http.Request, svc *service.Admi
 	}
 	switch r.Method {
 	case http.MethodDelete:
-		resp, err := svc.DeleteChannel(r.Context(), &adminv1.AdminDeleteChannelRequest{ChannelId: channelID})
+		resp, err := svc.DeleteChannel(r.Context(), &adminv1.AdminDeleteChannelRequest{ChannelId: channelID, ExpectedRevision: getQueryInt64(r, "expected_revision", 0), Reason: authorization.WriteReason(r.Context())})
 		writeServiceResponse(w, resp, err)
 	case http.MethodPut:
 		var req adminv1.AdminUpdateChannelRequest
@@ -3192,7 +3379,7 @@ func handleTestChannels(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		PageSize: pageSize,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	results := make([]map[string]any, 0, len(resp.Channels))
@@ -3221,22 +3408,30 @@ func handleTestChannel(w http.ResponseWriter, r *http.Request, svc *service.Admi
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid channel id"})
 		return
 	}
-	result, err := svc.TestChannel(r.Context(), channelID)
+	result, err := svc.TestChannel(authorization.WithExpectedRevision(r.Context(), "channel", channelID, getQueryInt64(r, "expected_revision", 0)), channelID)
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"success": false, "message": sanitizeAdminError(err)})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "", "data": result})
 }
 
 func handleUpdateChannelBalances(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if isIAMBusinessContext(r.Context()) {
+		revisions, err := decodeExpectedRevisionMap(r.URL.Query().Get("expected_revisions"))
+		if err != nil {
+			writeServiceResponse(w, nil, err)
+			return
+		}
+		r = r.WithContext(authorization.WithExpectedRevisions(r.Context(), "channel", revisions))
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
 	results, err := svc.RefreshAllChannelBalances(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", results))
@@ -3252,15 +3447,20 @@ func handleUpdateChannelBalance(w http.ResponseWriter, r *http.Request, svc *ser
 		writeJSON(w, http.StatusBadRequest, apiResponse(false, "invalid channel id", nil))
 		return
 	}
-	result, err := svc.RefreshChannelBalance(r.Context(), channelID)
+	result, err := svc.RefreshChannelBalance(authorization.WithExpectedRevision(r.Context(), "channel", channelID, getQueryInt64(r, "expected_revision", 0)), channelID)
 	if err != nil {
-		writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(result.Success, result.Message, result))
 }
 
 func handleReconciliationRuns(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method == http.MethodPost {
+		out, err := svc.RunReconciliation(r.Context(), authorization.WriteReason(r.Context()))
+		writeServiceResponse(w, out, err)
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
@@ -3269,7 +3469,7 @@ func handleReconciliationRuns(w http.ResponseWriter, r *http.Request, svc *servi
 	pageSize := getQueryInt32(r, "page_size", 50)
 	result, err := svc.ListReconciliationRuns(r.Context(), page, pageSize)
 	if err != nil {
-		writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", result))
@@ -3287,7 +3487,7 @@ func handleReconciliationRunByID(w http.ResponseWriter, r *http.Request, svc *se
 	}
 	run, err := svc.GetReconciliationRun(r.Context(), runID)
 	if err != nil {
-		writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	if run == nil {
@@ -3308,8 +3508,9 @@ func handleOneAPIChannelStatusAlias(w http.ResponseWriter, r *http.Request, svc 
 		return
 	}
 	resp, err := svc.ChangeChannelStatus(r.Context(), &adminv1.AdminChangeChannelStatusRequest{
-		ChannelId: channelID,
-		Status:    status,
+		ChannelId:        channelID,
+		Status:           status,
+		ExpectedRevision: getQueryInt64(r, "expected_revision", 0), Reason: authorization.WriteReason(r.Context()),
 	})
 	writeOneAPIServiceResponse(w, resp, err)
 }
@@ -3331,7 +3532,7 @@ func handleListChannels(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		Type:     chType,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -3372,7 +3573,7 @@ func handleOneAPIOptions(w http.ResponseWriter, r *http.Request, svc *service.Ad
 	case http.MethodGet:
 		options, err := svc.ListOneAPIOptions(r.Context())
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			writeServiceResponse(w, nil, err)
 			return
 		}
 		resp := map[string]any{
@@ -3391,10 +3592,13 @@ func handleOneAPIOptions(w http.ResponseWriter, r *http.Request, svc *service.Ad
 		writeJSON(w, http.StatusOK, resp)
 	case http.MethodPut:
 		var raw struct {
-			Key                 string `json:"key"`
-			Value               string `json:"value"`
-			SiteTitle           string `json:"site_title"`
-			RegistrationEnabled *bool  `json:"registration_enabled"`
+			ExpectedRevision    string            `json:"expected_revision"`
+			ExpectedRevisions   map[string]string `json:"expected_revisions"`
+			Reason              string            `json:"reason"`
+			Key                 string            `json:"key"`
+			Value               string            `json:"value"`
+			SiteTitle           string            `json:"site_title"`
+			RegistrationEnabled *bool             `json:"registration_enabled"`
 			Options             *struct {
 				SiteTitle           string `json:"site_title"`
 				RegistrationEnabled *bool  `json:"registration_enabled"`
@@ -3405,9 +3609,14 @@ func handleOneAPIOptions(w http.ResponseWriter, r *http.Request, svc *service.Ad
 			return
 		}
 		if raw.Key != "" {
+			if isIAMBusinessContext(r.Context()) {
+				err := svc.UpdateOptionsWithRevisions(authorization.WithWriteReason(r.Context(), raw.Reason), map[string]string{raw.Key: raw.Value}, map[string]string{raw.Key: raw.ExpectedRevision})
+				writeServiceResponse(w, map[string]any{"success": err == nil}, err)
+				return
+			}
 			resp, err := svc.UpdateOneAPIOption(r.Context(), raw.Key, raw.Value)
 			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+				writeServiceResponse(w, nil, err)
 				return
 			}
 			out := map[string]any{
@@ -3440,10 +3649,15 @@ func handleOneAPIOptions(w http.ResponseWriter, r *http.Request, svc *service.Ad
 				updates["RegisterEnabled"] = strconv.FormatBool(*raw.Options.RegistrationEnabled)
 			}
 		}
+		if isIAMBusinessContext(r.Context()) {
+			err := svc.UpdateOptionsWithRevisions(authorization.WithWriteReason(r.Context(), raw.Reason), updates, raw.ExpectedRevisions)
+			writeServiceResponse(w, map[string]any{"success": err == nil}, err)
+			return
+		}
 		for key, value := range updates {
 			resp, err := svc.UpdateOneAPIOption(r.Context(), key, value)
 			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+				writeServiceResponse(w, nil, err)
 				return
 			}
 			if !resp.GetSuccess() {
@@ -3485,7 +3699,7 @@ func handleListLogs(w http.ResponseWriter, r *http.Request, svc *service.AdminSe
 		EndTime:   endTime,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 
@@ -3514,7 +3728,7 @@ func handleLogStats(w http.ResponseWriter, r *http.Request, svc *service.AdminSe
 		EndTime:   getQueryInt64(r, "end_time", 0),
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "", "data": stats})
@@ -3566,7 +3780,7 @@ func handleOneAPILogByID(w http.ResponseWriter, r *http.Request, svc *service.Ad
 		page, size := oneAPIPage(r), oneAPIPageSize(r)
 		result, err := svc.ListRequestAttempts(r.Context(), strconv.FormatInt(userID, 10), rootID, int32(page), int32(size))
 		if err != nil {
-			writeJSON(w, http.StatusBadGateway, apiResponse(false, "request attempts unavailable", nil))
+			writeServiceResponse(w, nil, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, apiResponse(true, "", result))
@@ -3608,7 +3822,7 @@ func handleRoutingAudit(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	page, size := oneAPIPage(r), oneAPIPageSize(r)
 	attempts, err := svc.ListRequestAttempts(r.Context(), strconv.FormatInt(userID, 10), rootID, int32(page), int32(size))
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, apiResponse(false, "request attempts unavailable", nil))
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	events, retention, err := listRoutingSelectionEvents(r.Context(), userID, rootID)
@@ -3785,7 +3999,7 @@ func handleOneAPIListLogs(w http.ResponseWriter, r *http.Request, svc *service.A
 		Order:     r.URL.Query().Get("order"),
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{
@@ -3796,6 +4010,23 @@ func handleOneAPIListLogs(w http.ResponseWriter, r *http.Request, svc *service.A
 
 func handleOneAPIExportLogs(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	if !requireCSVExport(w, r) {
+		return
+	}
+
+	if isIAMBusinessContext(r.Context()) {
+		q := &billingv1.ListLedgerRequest{Page: oneAPIPage(r), PageSize: oneAPIPageSize(r), UserId: r.URL.Query().Get("user_id"), Type: r.URL.Query().Get("type"), OrderBy: adminLedgerExportOrder(r.URL.Query().Get("sort"), r.URL.Query().Get("order"))}
+		if start := getQueryInt64(r, "start_time", 0); start > 0 {
+			q.StartTime = timestamppb.New(time.Unix(start, 0))
+		}
+		if end := getQueryInt64(r, "end_time", 0); end > 0 {
+			q.EndTime = timestamppb.New(time.Unix(end, 0))
+		}
+		out, err := svc.ExportLedgerEntries(r.Context(), q)
+		if err != nil {
+			writeServiceResponse(w, nil, err)
+			return
+		}
+		writeBillingExport(w, out)
 		return
 	}
 	resp, err := svc.ListLogs(r.Context(), &adminv1.ListLogsRequest{
@@ -3809,7 +4040,7 @@ func handleOneAPIExportLogs(w http.ResponseWriter, r *http.Request, svc *service
 		Order:     r.URL.Query().Get("order"),
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	rows := make([][]string, 0, len(resp.GetLogs()))
@@ -3848,7 +4079,7 @@ func handleGetAccount(w http.ResponseWriter, r *http.Request, svc *service.Admin
 		UserId: userID,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -3906,7 +4137,7 @@ func handleRedeemCodeByCode(w http.ResponseWriter, r *http.Request, svc *service
 		resp, err := svc.GetRedeemCode(r.Context(), &adminv1.GetRedeemCodeRequest{Code: code})
 		writeServiceResponse(w, resp, err)
 	case http.MethodDelete:
-		resp, err := svc.DeleteRedeemCode(r.Context(), &adminv1.DeleteRedeemCodeRequest{Code: code})
+		resp, err := svc.DeleteRedeemCode(r.Context(), &adminv1.DeleteRedeemCodeRequest{Code: code, ExpectedRevision: optionalRevisionQuery(r), Reason: authorization.WriteReason(r.Context())})
 		writeServiceResponse(w, resp, err)
 	case http.MethodPut:
 		var req adminv1.UpdateRedeemCodeRequest
@@ -3937,7 +4168,7 @@ func handleOneAPIRedemptionByCode(w http.ResponseWriter, r *http.Request, svc *s
 		resp, err := svc.GetRedeemCode(r.Context(), &adminv1.GetRedeemCodeRequest{Code: code})
 		writeServiceResponse(w, resp, err)
 	case http.MethodDelete:
-		resp, err := svc.DeleteRedeemCode(r.Context(), &adminv1.DeleteRedeemCodeRequest{Code: code})
+		resp, err := svc.DeleteRedeemCode(r.Context(), &adminv1.DeleteRedeemCodeRequest{Code: code, ExpectedRevision: optionalRevisionQuery(r), Reason: authorization.WriteReason(r.Context())})
 		writeServiceResponse(w, resp, err)
 	case http.MethodPut:
 		var req adminv1.UpdateRedeemCodeRequest
@@ -3958,7 +4189,7 @@ func handleOneAPIRedemptions(w http.ResponseWriter, r *http.Request, svc *servic
 		if keyword := r.URL.Query().Get("keyword"); keyword != "" {
 			resp, err := svc.SearchRedeemCodes(r.Context(), &adminv1.SearchRedeemCodesRequest{Keyword: keyword})
 			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+				writeServiceResponse(w, nil, err)
 				return
 			}
 			writeJSON(w, http.StatusOK, apiResponse(true, "", resp.GetCodes()))
@@ -3969,7 +4200,7 @@ func handleOneAPIRedemptions(w http.ResponseWriter, r *http.Request, svc *servic
 			PageSize: oneAPIPageSize(r),
 		})
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			writeServiceResponse(w, nil, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, apiResponse(true, "", resp.GetCodes()))
@@ -3996,44 +4227,7 @@ func handleOneAPIRedemptions(w http.ResponseWriter, r *http.Request, svc *servic
 }
 
 func handleOneAPIExportRedemptions(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
-	if !requireCSVExport(w, r) {
-		return
-	}
-	var codes []*adminv1.RedeemCodeInfo
-	if keyword := r.URL.Query().Get("keyword"); keyword != "" {
-		resp, err := svc.SearchRedeemCodes(r.Context(), &adminv1.SearchRedeemCodesRequest{Keyword: keyword})
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
-			return
-		}
-		codes = resp.GetCodes()
-	} else {
-		resp, err := svc.ListRedeemCodes(r.Context(), &adminv1.ListRedeemCodesRequest{
-			Page:     oneAPIPage(r),
-			PageSize: oneAPIPageSize(r),
-		})
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
-			return
-		}
-		codes = resp.GetCodes()
-	}
-	rows := make([][]string, 0, len(codes))
-	for _, code := range codes {
-		if status := getQueryInt32(r, "status", 0); status != 0 && code.GetStatus() != status {
-			continue
-		}
-		rows = append(rows, []string{
-			code.GetCode(),
-			code.GetName(),
-			strconv.FormatInt(code.GetAmount(), 10),
-			strconv.FormatInt(int64(code.GetCount()), 10),
-			strconv.FormatInt(int64(code.GetStatus()), 10),
-			code.GetCreatedBy(),
-			strconv.FormatInt(code.GetCreatedAt(), 10),
-		})
-	}
-	writeCSV(w, "admin-redemptions.csv", []string{"code", "name", "amount", "count", "status", "created_by", "created_at"}, rows)
+	handleAuthorizedRedemptionExport(w, r, svc)
 }
 
 func handleListRedeemCodes(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -4045,7 +4239,7 @@ func handleListRedeemCodes(w http.ResponseWriter, r *http.Request, svc *service.
 		PageSize: pageSize,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -4158,7 +4352,7 @@ func writeServiceResponse(w http.ResponseWriter, resp any, err error) {
 			writeJSON(w, http.StatusConflict, apiResponse(false, sanitizeAdminError(err), nil))
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		writeJSON(w, http.StatusInternalServerError, apiResponse(false, sanitizeAdminError(err), nil))
 		return
 	}
 	// protobuf bool fields carry json:"success,omitempty", so encoding/json
@@ -4186,6 +4380,10 @@ func newOwnerHTTPProxy(target *url.URL) *httputil.ReverseProxy {
 	proxy.Director = func(r *http.Request) {
 		director(r)
 		r.Header.Del("x-operator-authorization")
+		r.Header.Del("x-authorization-reason")
+		if reason := authorization.WriteReason(r.Context()); reason != "" {
+			r.Header.Set("x-authorization-reason", reason)
+		}
 		if raw := service.OperatorCredential(r.Context()); raw != "" {
 			r.Header.Set("x-operator-authorization", "Bearer "+raw)
 		}
@@ -4269,6 +4467,11 @@ func handleNotifyProxyByID(w http.ResponseWriter, r *http.Request, proxy *httput
 
 	// Extract notification ID and optional action (like "status")
 	notificationID := pathParts[4]
+	if len(pathParts) == 6 && pathParts[5] == "acknowledge" && r.Method == http.MethodPost {
+		r.URL.Path = "/v1/notifications/" + notificationID + "/acknowledge"
+		proxy.ServeHTTP(w, r)
+		return
+	}
 	action := ""
 	if len(pathParts) > 5 {
 		action = pathParts[5]
@@ -4305,4 +4508,84 @@ func handleNotifyProxyByID(w http.ResponseWriter, r *http.Request, proxy *httput
 
 	// Proxy the request
 	proxy.ServeHTTP(w, r)
+}
+
+// Justification is an ordinary business input. Preserve the body for its
+// handler while carrying one explicit reason to every cross-service write.
+func adminRequestReason(r *http.Request) string {
+	if value := strings.TrimSpace(r.Header.Get("x-authorization-reason")); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(r.URL.Query().Get("reason")); value != "" {
+		return value
+	}
+	if r.Body == nil || !oneOfMethod(r.Method, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete) {
+		return ""
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, (1<<20)+1))
+	if err != nil {
+		return ""
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	if len(body) > 1<<20 {
+		return ""
+	}
+	var value struct {
+		Reason string `json:"reason"`
+	}
+	if jsonx.Unmarshal(body, &value) != nil {
+		return ""
+	}
+	return strings.TrimSpace(value.Reason)
+}
+
+func envOrDefault(key, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func adminLedgerExportOrder(key, direction string) string {
+	columns := map[string]string{"id": "id", "createdAt": "created_at", "created_at": "created_at", "userId": "user_id", "user_id": "user_id", "amount": "amount", "balanceAfter": "balance_after", "type": "type"}
+	c := columns[key]
+	if c == "" {
+		c = "id"
+	}
+	if strings.ToLower(direction) == "asc" {
+		return c + " asc"
+	}
+	return c + " desc"
+}
+
+func optionalRevisionQuery(r *http.Request) *int64 {
+	value := r.URL.Query().Get("expected_revision")
+	if value == "" {
+		return nil
+	}
+	rev, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || rev < 0 {
+		return nil
+	}
+	return &rev
+}
+
+func decodeExpectedRevisionMap(raw string) (map[int64]int64, error) {
+	var values map[string]string
+	if raw == "" || jsonx.Unmarshal([]byte(raw), &values) != nil {
+		return nil, status.Error(codes.InvalidArgument, "expected_revisions required")
+	}
+	out := map[int64]int64{}
+	for k, v := range values {
+		id, err := strconv.ParseInt(k, 10, 64)
+		if err != nil || id <= 0 {
+			return nil, status.Error(codes.InvalidArgument, "invalid source id")
+		}
+		revision, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || revision <= 0 {
+			return nil, status.Error(codes.InvalidArgument, "invalid source revision")
+		}
+		out[id] = revision
+	}
+	return out, nil
 }

@@ -5,9 +5,10 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"micro-one-api/app/billing/internal/biz"
+	"micro-one-api/domain/authorization"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"micro-one-api/pkg/jsonx"
-	"micro-one-api/platform/database/xdb"
+	"micro-one-api/platform/database/authzquery"
 )
 
 type commerceReceipt struct {
@@ -31,7 +32,13 @@ func (r *subscriptionCommerceRepo) Execute(ctx context.Context, user int64, requ
 	// busy-timeout expiry under cross-service load is the exposure; a failed
 	// attempt commits nothing and the receipt idempotency row lives inside
 	// the transaction, so replaying is safe.
-	runTx := func(db *gorm.DB) error {
+	runTx := func(ctx context.Context, db *gorm.DB) error {
+		if err := authorization.Require(ctx, "billing.account.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: user, OwnerUserID: user}); err != nil {
+			return err
+		}
+		if err := authorization.Require(ctx, "billing.account.balance.adjust", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: user, OwnerUserID: user}); err != nil {
+			return err
+		}
 		row := commerceReceipt{UserID: user, RequestID: request, RequestHash: hash}
 		if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
 			return err
@@ -59,6 +66,6 @@ func (r *subscriptionCommerceRepo) Execute(ctx context.Context, user int64, requ
 		}
 		return db.Model(&commerceReceipt{}).Where("user_id = ? AND request_id = ?", user, request).Update("result", string(raw)).Error
 	}
-	err := xdb.RetryTxOnBusy(ctx, r.data.DB(), 3, runTx)
+	err := authzquery.RunInTx(ctx, r.data.DB(), 3, runTx)
 	return result, err
 }

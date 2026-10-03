@@ -48,6 +48,9 @@ func (s *ChannelService) SetModelUsecase(uc *biz.ModelUsecase) {
 		return
 	}
 	s.modelUC = uc
+	if uc != nil {
+		uc.SetAuthorization(s.authz)
+	}
 	if probe, ok := s.channelModelProbe.(interface{ SetModelUsecase(*biz.ModelUsecase) }); ok {
 		probe.SetModelUsecase(uc)
 	}
@@ -71,6 +74,9 @@ func (s *ChannelService) SetModelRoutingUsecase(uc *biz.ModelRoutingUsecase) {
 		return
 	}
 	s.routingUC = uc
+	if uc != nil {
+		uc.SetAuthorization(s.authz)
+	}
 }
 
 func (s *ChannelService) Usecase() *biz.ChannelUsecase {
@@ -340,6 +346,8 @@ func toChannelInfo(channel *biz.Channel) *commonv1.ChannelInfo {
 		return nil
 	}
 	return &commonv1.ChannelInfo{
+		HealthFieldsVisible:               channel.HealthFieldsVisible,
+		AuthorizationRevision:             channel.AuthorizationRevision,
 		Id:                                channel.ID,
 		Type:                              channel.Type,
 		Name:                              channel.Name,
@@ -383,22 +391,24 @@ func toChannelSummary(channel *biz.Channel) *commonv1.ChannelSummary {
 		return nil
 	}
 	return &commonv1.ChannelSummary{
-		Id:                 channel.ID,
-		Name:               channel.Name,
-		Type:               channel.Type,
-		Group:              channel.Group,
-		Status:             channel.Status,
-		Priority:           channel.Priority,
-		CreatedAt:          channel.CreatedTime,
-		Models:             channel.ModelsCSV(),
-		Weight:             channel.Weight,
-		TestTime:           channel.TestTime,
-		ResponseTime:       channel.ResponseTime,
-		Balance:            channel.Balance,
-		BalanceUpdatedTime: channel.BalanceUpdatedTime,
-		UsedQuota:          channel.UsedQuota,
-		HealthStatus:       channel.HealthStatus,
-		RestrictModels:     channel.RestrictModels,
+		HealthFieldsVisible:   channel.HealthFieldsVisible,
+		AuthorizationRevision: channel.AuthorizationRevision,
+		Id:                    channel.ID,
+		Name:                  channel.Name,
+		Type:                  channel.Type,
+		Group:                 channel.Group,
+		Status:                channel.Status,
+		Priority:              channel.Priority,
+		CreatedAt:             channel.CreatedTime,
+		Models:                channel.ModelsCSV(),
+		Weight:                channel.Weight,
+		TestTime:              channel.TestTime,
+		ResponseTime:          channel.ResponseTime,
+		Balance:               channel.Balance,
+		BalanceUpdatedTime:    channel.BalanceUpdatedTime,
+		UsedQuota:             channel.UsedQuota,
+		HealthStatus:          channel.HealthStatus,
+		RestrictModels:        channel.RestrictModels,
 	}
 }
 
@@ -490,6 +500,9 @@ func (s *ChannelService) ListSubscriptionAccounts(ctx context.Context, req *chan
 }
 
 func (s *ChannelService) ListOAuthRefreshCandidates(ctx context.Context, req *channelv1.ListOAuthRefreshCandidatesRequest) (*channelv1.ListOAuthRefreshCandidatesResponse, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_ListOAuthRefreshCandidates_FullMethodName); err != nil {
+		return nil, err
+	}
 	within := time.Duration(req.GetWithinSeconds()) * time.Second
 	if within <= 0 {
 		within = 24 * time.Hour
@@ -506,6 +519,7 @@ func (s *ChannelService) ListOAuthRefreshCandidates(ctx context.Context, req *ch
 }
 
 func (s *ChannelService) ClearSubscriptionAccountError(ctx context.Context, req *channelv1.ClearSubscriptionAccountErrorRequest) (*channelv1.ClearSubscriptionAccountErrorResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "account", req.AccountId, "expected_revision")
 	if err := s.uc.ClearSubscriptionAccountError(ctx, req.GetAccountId()); err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -516,6 +530,9 @@ func (s *ChannelService) ClearSubscriptionAccountError(ctx context.Context, req 
 }
 
 func (s *ChannelService) SetSubscriptionAccountError(ctx context.Context, req *channelv1.SetSubscriptionAccountErrorRequest) (*channelv1.SetSubscriptionAccountErrorResponse, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_SetSubscriptionAccountError_FullMethodName); err != nil {
+		return nil, err
+	}
 	if err := s.uc.SetSubscriptionAccountError(ctx, req.GetAccountId(), req.GetMessage()); err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -526,6 +543,9 @@ func (s *ChannelService) SetSubscriptionAccountError(ctx context.Context, req *c
 }
 
 func (s *ChannelService) SetTempUnschedulable(ctx context.Context, req *channelv1.SetTempUnschedulableRequest) (*channelv1.SetTempUnschedulableResponse, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_SetTempUnschedulable_FullMethodName); err != nil {
+		return nil, err
+	}
 	if err := s.uc.SetTempUnschedulable(ctx, req.GetAccountId(), time.Unix(req.GetUntil(), 0), req.GetReason()); err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -536,6 +556,9 @@ func (s *ChannelService) SetTempUnschedulable(ctx context.Context, req *channelv
 }
 
 func (s *ChannelService) ClearTempUnschedulable(ctx context.Context, req *channelv1.ClearTempUnschedulableRequest) (*channelv1.ClearTempUnschedulableResponse, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_ClearTempUnschedulable_FullMethodName); err != nil {
+		return nil, err
+	}
 	if err := s.uc.ClearTempUnschedulable(ctx, req.GetAccountId()); err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -550,6 +573,9 @@ func (s *ChannelService) ClearTempUnschedulable(ctx context.Context, req *channe
 // the transport health path: the upstream HTTP call succeeded, so nothing
 // here touches channel health / circuit breakers.
 func (s *ChannelService) RecordUsageSemanticVerdict(ctx context.Context, req *channelv1.RecordUsageSemanticVerdictRequest) (*channelv1.RecordUsageSemanticVerdictResponse, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_RecordUsageSemanticVerdict_FullMethodName); err != nil {
+		return nil, err
+	}
 	blocked, blockedUntil, consecutive, err := s.uc.RecordUsageSemanticVerdict(ctx, biz.UsageSemanticVerdict{
 		SourceKind:      req.GetSourceKind(),
 		SourceID:        req.GetSourceId(),
@@ -574,6 +600,10 @@ func (s *ChannelService) RecordUsageSemanticVerdict(ctx context.Context, req *ch
 // ResolveUsageSemanticBlock is the manual recovery path: an operator clears
 // the persisted block after confirming the adapter was fixed (§5.2 point 6).
 func (s *ChannelService) ResolveUsageSemanticBlock(ctx context.Context, req *channelv1.ResolveUsageSemanticBlockRequest) (*channelv1.ResolveUsageSemanticBlockResponse, error) {
+	ctx = authorization.WithExpectedResourceRevision(ctx, req.ExpectedRevision)
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
 	resolved, err := s.uc.ResolveUsageSemanticBlock(ctx, req.GetSourceKind(), req.GetSourceId(), req.GetUpstreamModelId(), req.GetAdapterProtocol())
 	if err != nil {
 		return nil, err
@@ -601,12 +631,14 @@ func (s *ChannelService) ListUsageSemanticBlocks(ctx context.Context, req *chann
 			BlockedUntil:         b.BlockedUntil.UnixMilli(),
 			LastVerifiedAt:       b.LastVerifiedAt.UnixMilli(),
 			UpdatedAt:            b.UpdatedAt.UnixMilli(),
+			Revision:             b.Revision,
 		}
 	}
 	return &channelv1.ListUsageSemanticBlocksResponse{Blocks: out, Total: total}, nil
 }
 
 func (s *ChannelService) CreateSubscriptionAccount(ctx context.Context, req *channelv1.CreateSubscriptionAccountRequest) (*channelv1.CreateSubscriptionAccountResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "account", 0, "expected_revision")
 	account := &biz.SubscriptionAccount{
 		Name:                   req.Name,
 		Platform:               req.Platform,
@@ -658,6 +690,7 @@ func (s *ChannelService) CreateSubscriptionAccount(ctx context.Context, req *cha
 }
 
 func (s *ChannelService) UpdateSubscriptionAccount(ctx context.Context, req *channelv1.UpdateSubscriptionAccountRequest) (*channelv1.UpdateSubscriptionAccountResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "account", req.Id, "expected_revision")
 	account, err := s.uc.SubscriptionAccountForUpdate(ctx, req.Id)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
@@ -774,6 +807,7 @@ func (s *ChannelService) UpdateSubscriptionAccount(ctx context.Context, req *cha
 }
 
 func (s *ChannelService) DeleteSubscriptionAccount(ctx context.Context, req *channelv1.DeleteSubscriptionAccountRequest) (*channelv1.DeleteSubscriptionAccountResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "account", req.AccountId, "expected_revision")
 	if err := s.uc.DeleteSubscriptionAccount(ctx, req.AccountId); err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -790,6 +824,7 @@ func (s *ChannelService) DeleteSubscriptionAccount(ctx context.Context, req *cha
 }
 
 func (s *ChannelService) ChangeSubscriptionAccountStatus(ctx context.Context, req *channelv1.ChangeSubscriptionAccountStatusRequest) (*channelv1.ChangeSubscriptionAccountStatusResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "account", req.AccountId, "expected_revision")
 	if err := s.uc.ChangeSubscriptionAccountStatus(ctx, req.AccountId, req.Status); err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -806,6 +841,9 @@ func (s *ChannelService) ChangeSubscriptionAccountStatus(ctx context.Context, re
 }
 
 func (s *ChannelService) RecordAccountQuotaSnapshot(ctx context.Context, req *channelv1.RecordAccountQuotaSnapshotRequest) (*channelv1.RecordAccountQuotaSnapshotResponse, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_RecordAccountQuotaSnapshot_FullMethodName); err != nil {
+		return nil, err
+	}
 	snapshot := &biz.AccountQuotaSnapshot{
 		AccountID:      req.GetAccountId(),
 		SnapshotPaused: req.GetSnapshotPaused(),
@@ -851,6 +889,9 @@ func (s *ChannelService) RecordAccountQuotaSnapshot(ctx context.Context, req *ch
 }
 
 func (s *ChannelService) RecordSubscriptionAccountQuotaUsage(ctx context.Context, req *channelv1.RecordSubscriptionAccountQuotaUsageRequest) (*channelv1.RecordSubscriptionAccountQuotaUsageResponse, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_RecordSubscriptionAccountQuotaUsage_FullMethodName); err != nil {
+		return nil, err
+	}
 	occurredAt := time.Time{}
 	if req.GetOccurredAt() > 0 {
 		occurredAt = time.Unix(req.GetOccurredAt(), 0)
@@ -885,6 +926,8 @@ func (s *ChannelService) AggregateSubscriptionAccountQuotaEvents(ctx context.Con
 	resp := &channelv1.AggregateSubscriptionAccountQuotaEventsResponse{Items: make([]*channelv1.SubscriptionAccountQuotaEventAggregate, 0, len(items))}
 	for _, item := range items {
 		resp.Items = append(resp.Items, &channelv1.SubscriptionAccountQuotaEventAggregate{
+			CostFieldsVisible:     item.CostFieldsVisible,
+			PricingFieldsVisible:  item.PricingFieldsVisible,
 			SubscriptionAccountId: item.SubscriptionAccountID,
 			CostUsd:               item.CostUSD,
 			ChargedUsd:            item.ChargedUSD,
@@ -897,6 +940,7 @@ func (s *ChannelService) AggregateSubscriptionAccountQuotaEvents(ctx context.Con
 }
 
 func (s *ChannelService) ResetSubscriptionAccountQuota(ctx context.Context, req *channelv1.ResetSubscriptionAccountQuotaRequest) (*channelv1.ResetSubscriptionAccountQuotaResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "account", req.AccountId, "expected_revision")
 	if err := s.uc.ResetSubscriptionAccountQuota(ctx, req.GetAccountId(), req.GetScope()); err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -907,6 +951,7 @@ func (s *ChannelService) ResetSubscriptionAccountQuota(ctx context.Context, req 
 }
 
 func (s *ChannelService) CreateChannel(ctx context.Context, req *channelv1.CreateChannelRequest) (*channelv1.CreateChannelResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "channel", 0, "expected_revision")
 	// Read config fields by accessors on the pointer rather than copying the
 	// protobuf value (it embeds protoimpl.MessageState which contains a mutex).
 	var apiVersion, region, libraryID, plugin, vertexProjectID string
@@ -970,6 +1015,7 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *channelv1.Creat
 }
 
 func (s *ChannelService) UpdateChannel(ctx context.Context, req *channelv1.UpdateChannelRequest) (*channelv1.UpdateChannelResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "channel", req.ChannelId, "expected_revision")
 	channel, err := s.uc.ChannelForUpdate(ctx, req.ChannelId)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
@@ -1051,6 +1097,9 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *channelv1.Updat
 }
 
 func (s *ChannelService) RecordChannelUsage(ctx context.Context, req *channelv1.RecordChannelUsageRequest) (*channelv1.RecordChannelUsageResponse, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_RecordChannelUsage_FullMethodName); err != nil {
+		return nil, err
+	}
 	if err := s.uc.RecordUsageOnce(ctx, req.ReservationId, req.ChannelId, req.Quota); err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -1067,6 +1116,9 @@ func (s *ChannelService) RecordChannelUsage(ctx context.Context, req *channelv1.
 }
 
 func (s *ChannelService) RecordChannelHealth(ctx context.Context, req *channelv1.RecordChannelHealthRequest) (*channelv1.RecordChannelHealthResponse, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_RecordChannelHealth_FullMethodName); err != nil {
+		return nil, err
+	}
 	event := biz.ChannelHealthEvent{
 		ChannelID:    req.ChannelId,
 		Success:      req.Success,
@@ -1088,7 +1140,10 @@ func (s *ChannelService) RecordChannelHealth(ctx context.Context, req *channelv1
 	}, nil
 }
 
-func (s *ChannelService) RecordSubscriptionAccountHealth(_ context.Context, req *channelv1.RecordSubscriptionAccountHealthRequest) (*channelv1.RecordSubscriptionAccountHealthResponse, error) {
+func (s *ChannelService) RecordSubscriptionAccountHealth(ctx context.Context, req *channelv1.RecordSubscriptionAccountHealthRequest) (*channelv1.RecordSubscriptionAccountHealthResponse, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_RecordSubscriptionAccountHealth_FullMethodName); err != nil {
+		return nil, err
+	}
 	if req.GetAccountId() <= 0 {
 		return &channelv1.RecordSubscriptionAccountHealthResponse{Success: false, Message: "account_id is required"}, nil
 	}
@@ -1100,7 +1155,10 @@ func (s *ChannelService) RecordSubscriptionAccountHealth(_ context.Context, req 
 // selector's per-process inflight counter (weight loop closure). Best-effort:
 // a stale/missing account id is ignored rather than erroring, since relay
 // treats this as fire-and-forget telemetry.
-func (s *ChannelService) RecordSubscriptionAccountSlot(_ context.Context, req *channelv1.RecordSubscriptionAccountSlotRequest) (*channelv1.RecordSubscriptionAccountSlotResponse, error) {
+func (s *ChannelService) RecordSubscriptionAccountSlot(ctx context.Context, req *channelv1.RecordSubscriptionAccountSlotRequest) (*channelv1.RecordSubscriptionAccountSlotResponse, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_RecordSubscriptionAccountSlot_FullMethodName); err != nil {
+		return nil, err
+	}
 	if req.GetAccountId() <= 0 {
 		return &channelv1.RecordSubscriptionAccountSlotResponse{Success: false, Message: "account_id is required"}, nil
 	}
@@ -1109,6 +1167,7 @@ func (s *ChannelService) RecordSubscriptionAccountSlot(_ context.Context, req *c
 }
 
 func (s *ChannelService) DeleteChannel(ctx context.Context, req *channelv1.DeleteChannelRequest) (*channelv1.DeleteChannelResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "channel", req.ChannelId, "expected_revision")
 	if err := s.uc.DeleteChannel(ctx, req.ChannelId); err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -1125,6 +1184,7 @@ func (s *ChannelService) DeleteChannel(ctx context.Context, req *channelv1.Delet
 }
 
 func (s *ChannelService) ChangeChannelStatus(ctx context.Context, req *channelv1.ChangeChannelStatusRequest) (*channelv1.ChangeChannelStatusResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "channel", req.ChannelId, "expected_revision")
 	if err := s.uc.ChangeChannelStatus(ctx, req.ChannelId, req.Status); err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -1141,6 +1201,9 @@ func (s *ChannelService) ChangeChannelStatus(ctx context.Context, req *channelv1
 }
 
 func (s *ChannelService) StoreSubscriptionCredentials(ctx context.Context, req *channelv1.StoreSubscriptionCredentialsRequest) (*channelv1.StoreSubscriptionCredentialsReply, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_StoreSubscriptionCredentials_FullMethodName); err != nil {
+		return nil, err
+	}
 	if req.GetId() <= 0 || req.GetExpectedRevision() < 0 || req.GetAccessToken() == "" {
 		return nil, biz.ErrCredentialConflict
 	}
@@ -1155,6 +1218,9 @@ func (s *ChannelService) StoreSubscriptionCredentials(ctx context.Context, req *
 }
 
 func (s *ChannelService) ClaimSubscriptionCredentialRefresh(ctx context.Context, req *channelv1.ClaimSubscriptionCredentialRefreshRequest) (*channelv1.StoreSubscriptionCredentialsReply, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_ClaimSubscriptionCredentialRefresh_FullMethodName); err != nil {
+		return nil, err
+	}
 	if req.GetId() <= 0 || req.GetExpectedRevision() < 0 {
 		return nil, biz.ErrCredentialConflict
 	}

@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"math"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/security/serviceidentity"
 	"os"
 	"strconv"
 	"strings"
@@ -185,6 +187,42 @@ func (uc *BillingUsecase) GetRequestSnapshot(ctx context.Context, reservationID 
 	}
 	if r == nil {
 		return nil, nil
+	}
+	if authorization.External(ctx) && !serviceidentity.HasSystemCapability(ctx, serviceidentity.RPCMethod(ctx)) {
+		ctx, err = uc.authorizeAccount(ctx, "billing.ledger.read", "billing.account.ledger.read", r.UserID)
+		if err != nil {
+			return nil, err
+		}
+		ctx, err = uc.prepareCost(ctx)
+		if err != nil {
+			return nil, err
+		}
+		facts, err := accountFacts(r.UserID)
+		if err != nil {
+			return nil, err
+		}
+		if authorization.Require(ctx, "billing.account.cost.read", facts) != nil {
+			return nil, nil
+		}
+		ctx, err = authorization.PrepareOptional(ctx, uc.authorization, "billing.pricing.read", "billing.pricing.read")
+		if err != nil {
+			return nil, err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "billing.pricing.read"); iam {
+			reader, ok := uc.pricingSnapshotRepo.(interface {
+				ModelResourceID(context.Context, string) (int64, error)
+			})
+			if !ok {
+				return nil, authorization.ErrDenied
+			}
+			id, err := reader.ModelResourceID(ctx, r.Model)
+			if err != nil {
+				return nil, err
+			}
+			if authorization.Require(ctx, "billing.pricing.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: id}) != nil {
+				return nil, nil
+			}
+		}
 	}
 	return r.RequestSnapshot, nil
 }
@@ -404,9 +442,22 @@ type RequestSnapshotBatchReader interface {
 }
 
 func (uc *BillingUsecase) LedgerRequestSnapshots(ctx context.Context, ledgers []*Ledger) (map[string]*RequestSnapshot, error) {
+	var err error
+	ctx, err = uc.PrepareLedgerPricingVisibility(ctx, ledgers)
+	if err != nil {
+		return nil, err
+	}
+	ctx, err = uc.prepareCost(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ctx, err = prepareBilling(ctx, uc.authorization, "billing.ledger.read", "billing.account.ledger.read")
+	if err != nil {
+		return nil, err
+	}
 	ids := make([]string, 0, len(ledgers))
 	for _, l := range ledgers {
-		if l.ReferenceID != "" {
+		if l.ReferenceID != "" && (!authorization.External(ctx) || (l.CostFieldsVisible && l.PricingFieldsVisible)) {
 			ids = append(ids, l.ReferenceID)
 		}
 	}
@@ -431,4 +482,40 @@ func (uc *BillingUsecase) LedgerRequestSnapshots(ctx context.Context, ledgers []
 		}
 	}
 	return out, nil
+}
+
+// Pricing evidence is independently granted on the authoritative model primary key.
+func (uc *BillingUsecase) PrepareLedgerPricingVisibility(ctx context.Context, ledgers []*Ledger) (context.Context, error) {
+	var err error
+	if authorization.External(ctx) && !serviceidentity.HasSystemCapability(ctx, serviceidentity.RPCMethod(ctx)) {
+		ctx, err = authorization.PrepareOptional(ctx, uc.authorization, "billing.pricing.read", "billing.pricing.read")
+		if err != nil {
+			return ctx, err
+		}
+	}
+	cache := map[string]bool{}
+	for _, ledger := range ledgers {
+		visible, known := cache[ledger.ModelName]
+		if !known {
+			visible = true
+			if _, iam := authorization.QueryScopeFromContext(ctx, "billing.pricing.read"); iam {
+				visible = false
+				if reader, ok := uc.pricingSnapshotRepo.(interface {
+					ModelResourceID(context.Context, string) (int64, error)
+				}); ok {
+					id, lookupErr := reader.ModelResourceID(ctx, ledger.ModelName)
+					if lookupErr != nil {
+						return ctx, lookupErr
+					}
+					visible = authorization.Require(ctx, "billing.pricing.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: id}) == nil
+				}
+			}
+			cache[ledger.ModelName] = visible
+		}
+		ledger.PricingFieldsVisible = visible
+		if !visible {
+			ledger.PricingConfigHash = ""
+		}
+	}
+	return ctx, nil
 }

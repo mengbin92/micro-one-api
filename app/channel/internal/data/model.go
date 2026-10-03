@@ -7,7 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"micro-one-api/domain/authorization"
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/platform/database/authzquery"
 
 	"micro-one-api/app/channel/internal/biz"
 
@@ -21,27 +23,28 @@ import (
 // PO types stay inside data. Driver-specific GORM tags never leave this file.
 
 type modelModel struct {
-	ID               int64   `gorm:"column:id;primaryKey;autoIncrement"`
-	ModelID          string  `gorm:"column:model_id"`
-	DisplayName      string  `gorm:"column:display_name"`
-	Description      *string `gorm:"column:description"`
-	Provider         string  `gorm:"column:provider"`
-	ModelType        string  `gorm:"column:model_type"`
-	ContextWindow    int32   `gorm:"column:context_window"`
-	PricingInput     float64 `gorm:"column:pricing_input"`
-	PricingCacheRead float64 `gorm:"column:pricing_cache_read"`
-	PricingOutput    float64 `gorm:"column:pricing_output"`
-	Status           int32   `gorm:"column:status"`
-	IsPublic         bool    `gorm:"column:is_public"`
-	Capabilities     string  `gorm:"column:capabilities"`      // JSON array
-	InputModalities  string  `gorm:"column:input_modalities"`  // JSON array
-	OutputModalities string  `gorm:"column:output_modalities"` // JSON array
-	Tags             string  `gorm:"column:tags"`              // JSON array
-	Category         string  `gorm:"column:category"`
-	Tier             string  `gorm:"column:tier"`
-	Metadata         *string `gorm:"column:metadata"` // JSON object
-	CreatedAt        int64   `gorm:"column:created_at"`
-	UpdatedAt        int64   `gorm:"column:updated_at"`
+	AuthorizationRevision int64   `gorm:"column:authorization_revision;default:1"`
+	ID                    int64   `gorm:"column:id;primaryKey;autoIncrement"`
+	ModelID               string  `gorm:"column:model_id"`
+	DisplayName           string  `gorm:"column:display_name"`
+	Description           *string `gorm:"column:description"`
+	Provider              string  `gorm:"column:provider"`
+	ModelType             string  `gorm:"column:model_type"`
+	ContextWindow         int32   `gorm:"column:context_window"`
+	PricingInput          float64 `gorm:"column:pricing_input"`
+	PricingCacheRead      float64 `gorm:"column:pricing_cache_read"`
+	PricingOutput         float64 `gorm:"column:pricing_output"`
+	Status                int32   `gorm:"column:status"`
+	IsPublic              bool    `gorm:"column:is_public"`
+	Capabilities          string  `gorm:"column:capabilities"`      // JSON array
+	InputModalities       string  `gorm:"column:input_modalities"`  // JSON array
+	OutputModalities      string  `gorm:"column:output_modalities"` // JSON array
+	Tags                  string  `gorm:"column:tags"`              // JSON array
+	Category              string  `gorm:"column:category"`
+	Tier                  string  `gorm:"column:tier"`
+	Metadata              *string `gorm:"column:metadata"` // JSON object
+	CreatedAt             int64   `gorm:"column:created_at"`
+	UpdatedAt             int64   `gorm:"column:updated_at"`
 }
 
 func (modelModel) TableName() string { return "models" }
@@ -123,25 +126,26 @@ func (modelHealthStateModel) TableName() string { return "model_health_states" }
 
 func newModelPO(do *biz.Model) *modelModel {
 	po := &modelModel{
-		ID:               do.ID,
-		ModelID:          do.ModelID,
-		DisplayName:      do.DisplayName,
-		Provider:         do.Provider,
-		ModelType:        do.ModelType,
-		ContextWindow:    do.ContextWindow,
-		PricingInput:     do.PricingInput,
-		PricingOutput:    do.PricingOutput,
-		PricingCacheRead: do.PricingCacheRead,
-		Status:           do.Status,
-		IsPublic:         do.IsPublic,
-		Capabilities:     jsonStringArray(do.Capabilities),
-		InputModalities:  jsonStringArray(do.InputModalities),
-		OutputModalities: jsonStringArray(do.OutputModalities),
-		Tags:             jsonStringArray(do.Tags),
-		Category:         do.Category,
-		Tier:             do.Tier,
-		CreatedAt:        do.CreatedAt,
-		UpdatedAt:        do.UpdatedAt,
+		AuthorizationRevision: do.AuthorizationRevision,
+		ID:                    do.ID,
+		ModelID:               do.ModelID,
+		DisplayName:           do.DisplayName,
+		Provider:              do.Provider,
+		ModelType:             do.ModelType,
+		ContextWindow:         do.ContextWindow,
+		PricingInput:          do.PricingInput,
+		PricingOutput:         do.PricingOutput,
+		PricingCacheRead:      do.PricingCacheRead,
+		Status:                do.Status,
+		IsPublic:              do.IsPublic,
+		Capabilities:          jsonStringArray(do.Capabilities),
+		InputModalities:       jsonStringArray(do.InputModalities),
+		OutputModalities:      jsonStringArray(do.OutputModalities),
+		Tags:                  jsonStringArray(do.Tags),
+		Category:              do.Category,
+		Tier:                  do.Tier,
+		CreatedAt:             do.CreatedAt,
+		UpdatedAt:             do.UpdatedAt,
 	}
 	if do.Description != "" {
 		d := do.Description
@@ -156,27 +160,28 @@ func newModelPO(do *biz.Model) *modelModel {
 
 func toModelDO(po *modelModel) *biz.Model {
 	return &biz.Model{
-		ID:               po.ID,
-		ModelID:          po.ModelID,
-		DisplayName:      po.DisplayName,
-		Description:      derefString(po.Description),
-		Provider:         po.Provider,
-		ModelType:        po.ModelType,
-		ContextWindow:    po.ContextWindow,
-		PricingInput:     po.PricingInput,
-		PricingOutput:    po.PricingOutput,
-		PricingCacheRead: po.PricingCacheRead,
-		Status:           po.Status,
-		IsPublic:         po.IsPublic,
-		Capabilities:     parseStringArray(po.Capabilities),
-		InputModalities:  parseStringArray(po.InputModalities),
-		OutputModalities: parseStringArray(po.OutputModalities),
-		Tags:             parseStringArray(po.Tags),
-		Category:         po.Category,
-		Tier:             po.Tier,
-		Metadata:         derefString(po.Metadata),
-		CreatedAt:        po.CreatedAt,
-		UpdatedAt:        po.UpdatedAt,
+		AuthorizationRevision: po.AuthorizationRevision,
+		ID:                    po.ID,
+		ModelID:               po.ModelID,
+		DisplayName:           po.DisplayName,
+		Description:           derefString(po.Description),
+		Provider:              po.Provider,
+		ModelType:             po.ModelType,
+		ContextWindow:         po.ContextWindow,
+		PricingInput:          po.PricingInput,
+		PricingOutput:         po.PricingOutput,
+		PricingCacheRead:      po.PricingCacheRead,
+		Status:                po.Status,
+		IsPublic:              po.IsPublic,
+		Capabilities:          parseStringArray(po.Capabilities),
+		InputModalities:       parseStringArray(po.InputModalities),
+		OutputModalities:      parseStringArray(po.OutputModalities),
+		Tags:                  parseStringArray(po.Tags),
+		Category:              po.Category,
+		Tier:                  po.Tier,
+		Metadata:              derefString(po.Metadata),
+		CreatedAt:             po.CreatedAt,
+		UpdatedAt:             po.UpdatedAt,
 	}
 }
 
@@ -341,6 +346,9 @@ var _ biz.ModelRepo = (*Repository)(nil)
 // ListModels returns a page of model summaries (without mappings).
 func (r *Repository) ListModels(ctx context.Context, page, pageSize int32, filter biz.ListModelsFilter) ([]*biz.Model, int64, error) {
 	if r.db == nil {
+		if _, scoped := authorization.QueryScopeFromContext(ctx, "channel.model.list"); scoped {
+			return nil, 0, authorization.ErrDenied
+		}
 		return r.listModelsMemory(page, pageSize, filter)
 	}
 	return r.listModelsDB(ctx, page, pageSize, filter)
@@ -348,6 +356,13 @@ func (r *Repository) ListModels(ctx context.Context, page, pageSize int32, filte
 
 func (r *Repository) listModelsDB(ctx context.Context, page, pageSize int32, filter biz.ListModelsFilter) ([]*biz.Model, int64, error) {
 	query := r.db.WithContext(ctx).Model(&modelModel{})
+	query, scopeErr := modelQuery(ctx, query, "models", "id", "channel.model.list", "channel.model.export", "billing.pricing.export")
+	if _, exporting := authorization.QueryScopeFromContext(ctx, "channel.model.export"); exporting && scopeErr == nil {
+		query, scopeErr = modelQuery(ctx, query, "models", "id", "billing.pricing.read")
+	}
+	if scopeErr != nil {
+		return nil, 0, scopeErr
+	}
 	if filter.Keyword != "" {
 		like := "%" + escapeLike(filter.Keyword) + "%"
 		// v0.11.0 review L6: ESCAPE clause is required for SQLite to honour
@@ -386,7 +401,9 @@ func (r *Repository) listModelsDB(ctx context.Context, page, pageSize int32, fil
 		result = append(result, toModelDO(&pos[i]))
 	}
 	// Batch-fill channel/subscription counts in two queries (not N+1).
-	r.batchFillModelCounts(ctx, result)
+	if err := r.batchFillModelCounts(ctx, result); err != nil {
+		return nil, 0, err
+	}
 	return result, total, nil
 }
 
@@ -394,9 +411,9 @@ func (r *Repository) listModelsDB(ctx context.Context, page, pageSize int32, fil
 // batch of models using two GROUP BY queries instead of 2*N individual
 // COUNT queries. Models with no mappings get count 0 (left join semantics
 // are handled by initialising counts to zero before merging).
-func (r *Repository) batchFillModelCounts(ctx context.Context, models []*biz.Model) {
+func (r *Repository) batchFillModelCounts(ctx context.Context, models []*biz.Model) error {
 	if len(models) == 0 {
-		return
+		return nil
 	}
 	ids := make([]int64, len(models))
 	for i, m := range models {
@@ -412,12 +429,17 @@ func (r *Repository) batchFillModelCounts(ctx context.Context, models []*biz.Mod
 	// Channel counts: join channels so orphaned mappings (parent deleted
 	// without cascade) do not inflate the count.
 	var chRows []countRow
-	_ = r.db.WithContext(ctx).Model(&modelChannelMappingModel{}).
+	channelQuery, err := authzquery.ApplyContext(ctx, r.db.WithContext(ctx).Model(&modelChannelMappingModel{}).Joins("JOIN channels ON channels.id = model_channel_mapping.channel_id"), authzquery.Columns{Resource: "model_channel_mapping.id", Groups: r.groupsSubselect("channel_routing_groups", "channel_id", "channels")}, "channel.model_mapping.read")
+	if err != nil {
+		return err
+	}
+	if err := channelQuery.
 		Select("model_channel_mapping.model_id as model_id, channels.name as source_name, count(*) as count").
-		Joins("JOIN channels ON channels.id = model_channel_mapping.channel_id").
 		Where("model_channel_mapping.model_id IN ? AND model_channel_mapping.enabled = ?", ids, true).
 		Group("model_channel_mapping.model_id, channels.id, channels.name").
-		Scan(&chRows).Error
+		Scan(&chRows).Error; err != nil {
+		return err
+	}
 	chMap := make(map[int64]int64, len(chRows))
 	supplierSets := make(map[int64]map[string]struct{}, len(models))
 	for _, row := range chRows {
@@ -428,12 +450,17 @@ func (r *Repository) batchFillModelCounts(ctx context.Context, models []*biz.Mod
 	// Subscription counts: join subscription_accounts so orphaned mappings
 	// do not inflate the count.
 	var subRows []countRow
-	_ = r.db.WithContext(ctx).Model(&modelSubscriptionMappingModel{}).
+	subQuery, err := authzquery.ApplyContext(ctx, r.db.WithContext(ctx).Model(&modelSubscriptionMappingModel{}).Joins("JOIN subscription_accounts ON subscription_accounts.id = model_subscription_mapping.subscription_account_id"), authzquery.Columns{Resource: "model_subscription_mapping.id", Groups: r.groupsSubselect("account_routing_groups", "subscription_account_id", "subscription_accounts")}, "channel.model_mapping.read")
+	if err != nil {
+		return err
+	}
+	if err := subQuery.
 		Select("model_subscription_mapping.model_id as model_id, subscription_accounts.name as source_name, count(*) as count").
-		Joins("JOIN subscription_accounts ON subscription_accounts.id = model_subscription_mapping.subscription_account_id").
 		Where("model_subscription_mapping.model_id IN ? AND model_subscription_mapping.enabled = ?", ids, true).
 		Group("model_subscription_mapping.model_id, subscription_accounts.id, subscription_accounts.name").
-		Scan(&subRows).Error
+		Scan(&subRows).Error; err != nil {
+		return err
+	}
 	subMap := make(map[int64]int64, len(subRows))
 	for _, row := range subRows {
 		subMap[row.ModelID] += row.Count
@@ -445,6 +472,7 @@ func (r *Repository) batchFillModelCounts(ctx context.Context, models []*biz.Mod
 		m.SubscriptionCount = safecast.Int64ToInt32Saturating(subMap[m.ID])
 		m.Suppliers = sortedSupplierNames(supplierSets[m.ID])
 	}
+	return nil
 }
 
 func addModelSupplier(supplierSets map[int64]map[string]struct{}, modelID int64, name string) {
@@ -481,8 +509,13 @@ func (r *Repository) GetModel(ctx context.Context, modelPK int64) (*biz.Model, e
 		}
 		return nil, err
 	}
+	if err := authorization.Require(ctx, "channel.model.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: po.ID}); err != nil {
+		return nil, err
+	}
 	m := toModelDO(&po)
-	r.batchFillModelCounts(ctx, []*biz.Model{m})
+	if err := r.batchFillModelCounts(ctx, []*biz.Model{m}); err != nil {
+		return nil, err
+	}
 	return m, nil
 }
 
@@ -498,10 +531,16 @@ func (r *Repository) GetModelByID(ctx context.Context, modelID string) (*biz.Mod
 		}
 		return nil, err
 	}
+	if err := authorization.Require(ctx, "channel.model.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: po.ID}); err != nil {
+		return nil, err
+	}
 	return toModelDO(&po), nil
 }
 
 func (r *Repository) CreateModel(ctx context.Context, do *biz.Model) error {
+	if handled, err := r.authorizedModelWrite(ctx, nil, do, []string{"channel.model.create"}, func(current context.Context, owner *Repository) error { return owner.CreateModel(current, do) }); handled {
+		return err
+	}
 	if r.db == nil {
 		return r.createModelMemory(do)
 	}
@@ -513,10 +552,14 @@ func (r *Repository) CreateModel(ctx context.Context, do *biz.Model) error {
 		return err
 	}
 	do.ID = po.ID
+	do.AuthorizationRevision = po.AuthorizationRevision
 	return nil
 }
 
 func (r *Repository) UpdateModel(ctx context.Context, do *biz.Model) error {
+	if handled, err := r.authorizedModelWrite(ctx, []int64{do.ID}, do, []string{"channel.model.update"}, func(current context.Context, owner *Repository) error { return owner.UpdateModel(current, do) }); handled {
+		return err
+	}
 	if r.db == nil {
 		return r.updateModelMemory(do)
 	}
@@ -551,6 +594,9 @@ func (r *Repository) UpdateModel(ctx context.Context, do *biz.Model) error {
 }
 
 func (r *Repository) DeleteModel(ctx context.Context, modelPK int64) error {
+	if handled, err := r.authorizedModelWrite(ctx, []int64{modelPK}, nil, []string{"channel.model.delete"}, func(current context.Context, owner *Repository) error { return owner.DeleteModel(current, modelPK) }); handled {
+		return err
+	}
 	if r.db == nil {
 		return r.deleteModelMemory(modelPK)
 	}
@@ -576,6 +622,11 @@ func (r *Repository) DeleteModel(ctx context.Context, modelPK int64) error {
 }
 
 func (r *Repository) ChangeModelStatus(ctx context.Context, modelPK int64, status int32) error {
+	if handled, err := r.authorizedModelWrite(ctx, []int64{modelPK}, nil, []string{"channel.model.update", modelStatusOperation(status)}, func(current context.Context, owner *Repository) error {
+		return owner.ChangeModelStatus(current, modelPK, status)
+	}); handled {
+		return err
+	}
 	if r.db == nil {
 		return r.changeModelStatusMemory(modelPK, status)
 	}
@@ -591,6 +642,14 @@ func (r *Repository) ChangeModelStatus(ctx context.Context, modelPK int64, statu
 }
 
 func (r *Repository) BatchChangeStatus(ctx context.Context, modelPKs []int64, status int32) (int32, error) {
+	var written int32
+	if handled, err := r.authorizedModelWrite(ctx, modelPKs, nil, []string{"channel.model.batch_update", modelStatusOperation(status)}, func(current context.Context, owner *Repository) error {
+		var err error
+		written, err = owner.BatchChangeStatus(current, modelPKs, status)
+		return err
+	}); handled {
+		return written, err
+	}
 	if r.db == nil {
 		return r.batchChangeStatusMemory(modelPKs, status)
 	}
@@ -603,6 +662,14 @@ func (r *Repository) BatchChangeStatus(ctx context.Context, modelPKs []int64, st
 }
 
 func (r *Repository) BatchDelete(ctx context.Context, modelPKs []int64) (int32, error) {
+	var written int32
+	if handled, err := r.authorizedModelWrite(ctx, modelPKs, nil, []string{"channel.model.batch_update", "channel.model.delete"}, func(current context.Context, owner *Repository) error {
+		var err error
+		written, err = owner.BatchDelete(current, modelPKs)
+		return err
+	}); handled {
+		return written, err
+	}
 	if r.db == nil {
 		return r.batchDeleteMemory(modelPKs)
 	}
@@ -631,10 +698,17 @@ func (r *Repository) BatchDelete(ctx context.Context, modelPKs []int64) (int32, 
 
 func (r *Repository) ListModelAliases(ctx context.Context, modelPK int64) ([]*biz.ModelAlias, error) {
 	if r.db == nil {
+		if _, scoped := authorization.QueryScopeFromContext(ctx, "channel.model_alias.read"); scoped {
+			return nil, authorization.ErrDenied
+		}
 		return r.listModelAliasesMemory(modelPK)
 	}
 	var pos []modelAliasModel
 	q := r.db.WithContext(ctx).Model(&modelAliasModel{})
+	q, scopeErr := modelQuery(ctx, q, "model_aliases", "model_id", "channel.model_alias.read")
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
 	if modelPK > 0 {
 		q = q.Where("model_id = ?", modelPK)
 	}
@@ -649,6 +723,9 @@ func (r *Repository) ListModelAliases(ctx context.Context, modelPK int64) ([]*bi
 }
 
 func (r *Repository) CreateModelAlias(ctx context.Context, do *biz.ModelAlias) error {
+	if handled, err := r.authorizedModelWrite(ctx, []int64{do.ModelPK}, nil, []string{"channel.model_alias.create"}, func(current context.Context, owner *Repository) error { return owner.CreateModelAlias(current, do) }); handled {
+		return err
+	}
 	if r.db == nil {
 		return r.createModelAliasMemory(do)
 	}
@@ -664,6 +741,12 @@ func (r *Repository) CreateModelAlias(ctx context.Context, do *biz.ModelAlias) e
 }
 
 func (r *Repository) DeleteModelAlias(ctx context.Context, aliasID int64) error {
+	if _, scoped := authorization.QueryScopeFromContext(ctx, "channel.model_alias.delete"); scoped && ctx.Value(modelWriteKey{}) == nil {
+		if r.db == nil {
+			return authorization.ErrDenied
+		}
+		return r.deleteAuthorizedAlias(ctx, aliasID)
+	}
 	if r.db == nil {
 		return r.deleteModelAliasMemory(aliasID)
 	}
@@ -681,14 +764,21 @@ func (r *Repository) DeleteModelAlias(ctx context.Context, aliasID int64) error 
 
 func (r *Repository) ListChannelMappings(ctx context.Context, channelID int64) ([]*biz.ModelChannelMapping, error) {
 	if r.db == nil {
+		if _, scoped := authorization.QueryScopeFromContext(ctx, "channel.model_mapping.read"); scoped {
+			return nil, authorization.ErrDenied
+		}
 		return r.listChannelMappingsMemory(channelID)
 	}
 	var pos []modelChannelMappingModel
 	q := r.db.WithContext(ctx).Model(&modelChannelMappingModel{})
+	q, scopeErr := r.mappingReadQuery(ctx, q, "model_channel_mapping", false)
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
 	if channelID > 0 {
 		q = q.Where("channel_id = ?", channelID)
 	}
-	if err := q.Order("priority DESC, id ASC").Find(&pos).Error; err != nil {
+	if err := q.Order("model_channel_mapping.priority DESC, model_channel_mapping.id ASC").Find(&pos).Error; err != nil {
 		return nil, err
 	}
 	result := make([]*biz.ModelChannelMapping, 0, len(pos))
@@ -702,11 +792,17 @@ func (r *Repository) ListChannelMappings(ctx context.Context, channelID int64) (
 // avoiding the need to load all mappings and filter in Go.
 func (r *Repository) ListChannelMappingsByModel(ctx context.Context, modelPK int64) ([]*biz.ModelChannelMapping, error) {
 	if r.db == nil {
+		if _, scoped := authorization.QueryScopeFromContext(ctx, "channel.model_mapping.read"); scoped {
+			return nil, authorization.ErrDenied
+		}
 		return r.listChannelMappingsByModelMemory(modelPK)
 	}
 	var pos []modelChannelMappingModel
-	if err := r.db.WithContext(ctx).Where("model_id = ?", modelPK).
-		Order("priority DESC, id ASC").Find(&pos).Error; err != nil {
+	q, scopeErr := r.mappingReadQuery(ctx, r.db.WithContext(ctx).Model(&modelChannelMappingModel{}), "model_channel_mapping", false)
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
+	if err := q.Where("model_id = ?", modelPK).Order("model_channel_mapping.priority DESC, model_channel_mapping.id ASC").Find(&pos).Error; err != nil {
 		return nil, err
 	}
 	result := make([]*biz.ModelChannelMapping, 0, len(pos))
@@ -717,6 +813,9 @@ func (r *Repository) ListChannelMappingsByModel(ctx context.Context, modelPK int
 }
 
 func (r *Repository) UpsertChannelMapping(ctx context.Context, do *biz.ModelChannelMapping) error {
+	if handled, err := r.authorizedMappingWrite(ctx, do.ChannelID, do.ModelPK, "", false, "", func(current context.Context, owner *Repository) error { return owner.UpsertChannelMapping(current, do) }); handled {
+		return err
+	}
 	if r.db == nil {
 		return r.upsertChannelMappingMemory(do)
 	}
@@ -752,6 +851,11 @@ func (r *Repository) UpsertChannelMapping(ctx context.Context, do *biz.ModelChan
 }
 
 func (r *Repository) DeleteChannelMapping(ctx context.Context, channelID, modelPK int64) error {
+	if handled, err := r.authorizedMappingWrite(ctx, channelID, modelPK, "", false, "channel.model_mapping.delete", func(current context.Context, owner *Repository) error {
+		return owner.DeleteChannelMapping(current, channelID, modelPK)
+	}); handled {
+		return err
+	}
 	if r.db == nil {
 		return r.deleteChannelMappingMemory(channelID, modelPK)
 	}
@@ -770,14 +874,21 @@ func (r *Repository) DeleteChannelMapping(ctx context.Context, channelID, modelP
 
 func (r *Repository) ListSubscriptionMappings(ctx context.Context, accountID int64) ([]*biz.ModelSubscriptionMapping, error) {
 	if r.db == nil {
+		if _, scoped := authorization.QueryScopeFromContext(ctx, "channel.model_mapping.read"); scoped {
+			return nil, authorization.ErrDenied
+		}
 		return r.listSubscriptionMappingsMemory(accountID)
 	}
 	var pos []modelSubscriptionMappingModel
 	q := r.db.WithContext(ctx).Model(&modelSubscriptionMappingModel{})
+	q, scopeErr := r.mappingReadQuery(ctx, q, "model_subscription_mapping", true)
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
 	if accountID > 0 {
 		q = q.Where("subscription_account_id = ?", accountID)
 	}
-	if err := q.Order("priority DESC, id ASC").Find(&pos).Error; err != nil {
+	if err := q.Order("model_subscription_mapping.priority DESC, model_subscription_mapping.id ASC").Find(&pos).Error; err != nil {
 		return nil, err
 	}
 	result := make([]*biz.ModelSubscriptionMapping, 0, len(pos))
@@ -791,11 +902,17 @@ func (r *Repository) ListSubscriptionMappings(ctx context.Context, accountID int
 // given model, avoiding the need to load all mappings and filter in Go.
 func (r *Repository) ListSubscriptionMappingsByModel(ctx context.Context, modelPK int64) ([]*biz.ModelSubscriptionMapping, error) {
 	if r.db == nil {
+		if _, scoped := authorization.QueryScopeFromContext(ctx, "channel.model_mapping.read"); scoped {
+			return nil, authorization.ErrDenied
+		}
 		return r.listSubscriptionMappingsByModelMemory(modelPK)
 	}
 	var pos []modelSubscriptionMappingModel
-	if err := r.db.WithContext(ctx).Where("model_id = ?", modelPK).
-		Order("priority DESC, id ASC").Find(&pos).Error; err != nil {
+	q, scopeErr := r.mappingReadQuery(ctx, r.db.WithContext(ctx).Model(&modelSubscriptionMappingModel{}), "model_subscription_mapping", true)
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
+	if err := q.Where("model_id = ?", modelPK).Order("model_subscription_mapping.priority DESC, model_subscription_mapping.id ASC").Find(&pos).Error; err != nil {
 		return nil, err
 	}
 	result := make([]*biz.ModelSubscriptionMapping, 0, len(pos))
@@ -806,6 +923,11 @@ func (r *Repository) ListSubscriptionMappingsByModel(ctx context.Context, modelP
 }
 
 func (r *Repository) UpsertSubscriptionMapping(ctx context.Context, do *biz.ModelSubscriptionMapping) error {
+	if handled, err := r.authorizedMappingWrite(ctx, do.SubscriptionAccountID, do.ModelPK, do.GroupName, true, "", func(current context.Context, owner *Repository) error {
+		return owner.UpsertSubscriptionMapping(current, do)
+	}); handled {
+		return err
+	}
 	if r.db == nil {
 		return r.upsertSubscriptionMappingMemory(do)
 	}
@@ -836,6 +958,11 @@ func (r *Repository) UpsertSubscriptionMapping(ctx context.Context, do *biz.Mode
 }
 
 func (r *Repository) DeleteSubscriptionMapping(ctx context.Context, accountID, modelPK int64, groupName string) error {
+	if handled, err := r.authorizedMappingWrite(ctx, accountID, modelPK, groupName, true, "channel.model_mapping.delete", func(current context.Context, owner *Repository) error {
+		return owner.DeleteSubscriptionMapping(current, accountID, modelPK, groupName)
+	}); handled {
+		return err
+	}
 	if r.db == nil {
 		return r.deleteSubscriptionMappingMemory(accountID, modelPK, groupName)
 	}
@@ -888,9 +1015,16 @@ func (r *Repository) RecordModelUsage(ctx context.Context, modelPK int64, stat *
 
 func (r *Repository) ListModelUsageStats(ctx context.Context, modelPK int64, startDate, endDate string, page, pageSize int32) ([]*biz.ModelUsageStat, int64, error) {
 	if r.db == nil {
+		if _, scoped := authorization.QueryScopeFromContext(ctx, "channel.model_usage.read"); scoped {
+			return nil, 0, authorization.ErrDenied
+		}
 		return r.listModelUsageStatsMemory(modelPK, startDate, endDate, page, pageSize)
 	}
 	query := r.db.WithContext(ctx).Model(&modelUsageStatModel{})
+	query, scopeErr := modelQuery(ctx, query, "model_usage_stats", "model_id", "channel.model_usage.read")
+	if scopeErr != nil {
+		return nil, 0, scopeErr
+	}
 	if modelPK > 0 {
 		query = query.Where("model_id = ?", modelPK)
 	}
@@ -977,9 +1111,16 @@ func (r *Repository) RecordModelHealth(ctx context.Context, outcome *biz.ModelHe
 
 func (r *Repository) ListModelHealth(ctx context.Context, page, pageSize int32, filter biz.ListModelHealthFilter) ([]*biz.ModelHealthState, int64, error) {
 	if r.db == nil {
+		if _, scoped := authorization.QueryScopeFromContext(ctx, "monitor.health.model.read"); scoped {
+			return nil, 0, authorization.ErrDenied
+		}
 		return r.listModelHealthMemory(page, pageSize, filter)
 	}
 	query := r.db.WithContext(ctx).Model(&modelHealthStateModel{})
+	query, scopeErr := r.sourceHealthQuery(ctx, query)
+	if scopeErr != nil {
+		return nil, 0, scopeErr
+	}
 	if filter.Keyword != "" {
 		like := "%" + escapeLike(strings.ToLower(filter.Keyword)) + "%"
 		query = query.Where("LOWER(model_id) LIKE ? ESCAPE '!' OR LOWER(upstream_model_id) LIKE ? ESCAPE '!'", like, like)
@@ -1605,6 +1746,9 @@ func cloneSubscriptionMapping(m *biz.ModelSubscriptionMapping) *biz.ModelSubscri
 // stats) the operator needs to plan the merge. Read-only.
 func (r *Repository) CanonicalModelPreflight(ctx context.Context) (*biz.PreflightReport, error) {
 	if r.db == nil {
+		if _, scoped := authorization.QueryScopeFromContext(ctx, "channel.model.canonical.preflight"); scoped {
+			return nil, authorization.ErrDenied
+		}
 		return r.canonicalPreflightMemory(ctx)
 	}
 	return r.canonicalPreflightDB(ctx)
@@ -1615,13 +1759,18 @@ func (r *Repository) canonicalPreflightDB(ctx context.Context) (*biz.PreflightRe
 	//    canonical ids that have > 1 row. Sorting by id makes the survivor
 	//    selection deterministic.
 	type idRow struct {
-		ID      int64
-		ModelID string
+		ID                    int64
+		ModelID               string
+		AuthorizationRevision int64
 	}
 	var rows []idRow
-	if err := r.db.WithContext(ctx).
+	query, err := modelQuery(ctx, r.db.WithContext(ctx).Model(&modelModel{}), "models", "id", "channel.model.canonical.preflight")
+	if err != nil {
+		return nil, err
+	}
+	if err := query.
 		Model(&modelModel{}).
-		Select("id, model_id").
+		Select("id, model_id, authorization_revision").
 		Order("id ASC").
 		Find(&rows).Error; err != nil {
 		return nil, err
@@ -1645,27 +1794,41 @@ func (r *Repository) canonicalPreflightDB(ctx context.Context) (*biz.PreflightRe
 	statTokTotals := map[int64]int64{}
 	{
 		var xs []depCount
-		_ = r.db.WithContext(ctx).Model(&modelAliasModel{}).
+		q, err := modelQuery(ctx, r.db.WithContext(ctx).Model(&modelAliasModel{}), "model_aliases", "model_id", "channel.model_alias.read")
+		if err != nil {
+			return nil, err
+		}
+		if err := q.
 			Select("model_id as model_pk, count(*) as count").
-			Group("model_id").Scan(&xs).Error
+			Group("model_id").Scan(&xs).Error; err != nil {
+			return nil, err
+		}
 		for _, x := range xs {
 			aliasCounts[x.ModelPK] = x.Count
 		}
 	}
 	{
 		var xs []depCount
-		_ = r.db.WithContext(ctx).Model(&modelChannelMappingModel{}).
-			Select("model_id as model_pk, count(*) as count").
-			Group("model_id").Scan(&xs).Error
+		q, err := r.mappingReadQuery(ctx, r.db.WithContext(ctx).Model(&modelChannelMappingModel{}), "model_channel_mapping", false)
+		if err != nil {
+			return nil, err
+		}
+		if err := q.Select("model_channel_mapping.model_id as model_pk, count(*) as count").Group("model_channel_mapping.model_id").Scan(&xs).Error; err != nil {
+			return nil, err
+		}
 		for _, x := range xs {
 			chCounts[x.ModelPK] = x.Count
 		}
 	}
 	{
 		var xs []depCount
-		_ = r.db.WithContext(ctx).Model(&modelSubscriptionMappingModel{}).
-			Select("model_id as model_pk, count(*) as count").
-			Group("model_id").Scan(&xs).Error
+		q, err := r.mappingReadQuery(ctx, r.db.WithContext(ctx).Model(&modelSubscriptionMappingModel{}), "model_subscription_mapping", true)
+		if err != nil {
+			return nil, err
+		}
+		if err := q.Select("model_subscription_mapping.model_id as model_pk, count(*) as count").Group("model_subscription_mapping.model_id").Scan(&xs).Error; err != nil {
+			return nil, err
+		}
 		for _, x := range xs {
 			subCounts[x.ModelPK] = x.Count
 		}
@@ -1678,9 +1841,15 @@ func (r *Repository) canonicalPreflightDB(ctx context.Context) (*biz.PreflightRe
 			TokenTotal   int64
 		}
 		var xs []statAgg
-		_ = r.db.WithContext(ctx).Model(&modelUsageStatModel{}).
+		q, err := modelQuery(ctx, r.db.WithContext(ctx).Model(&modelUsageStatModel{}), "model_usage_stats", "model_id", "channel.model_usage.read")
+		if err != nil {
+			return nil, err
+		}
+		if err := q.
 			Select("model_id as model_pk, count(*) as days, coalesce(sum(request_count),0) as request_total, coalesce(sum(token_count),0) as token_total").
-			Group("model_id").Scan(&xs).Error
+			Group("model_id").Scan(&xs).Error; err != nil {
+			return nil, err
+		}
 		for _, x := range xs {
 			statCounts[x.ModelPK] = x.Days
 			statReqTotals[x.ModelPK] = x.RequestTotal
@@ -1696,6 +1865,7 @@ func (r *Repository) canonicalPreflightDB(ctx context.Context) (*biz.PreflightRe
 		g := biz.DuplicateModelGroup{CanonicalID: canonical}
 		for _, mrow := range members {
 			g.Members = append(g.Members, biz.DuplicateModelRef{
+				ExpectedRevision:     mrow.AuthorizationRevision,
 				ModelPK:              mrow.ID,
 				ModelID:              mrow.ModelID,
 				IsPrimary:            mrow.ModelID == canonical,
@@ -1731,6 +1901,9 @@ func (r *Repository) canonicalPreflightDB(ctx context.Context) (*biz.PreflightRe
 // registry unchanged. No INSERT IGNORE / ON CONFLICT DO NOTHING: a real key
 // collision is a conflict the operator must resolve explicitly.
 func (r *Repository) MergeCanonicalModels(ctx context.Context, group biz.DuplicateModelGroup) (*biz.MergeResult, error) {
+	if handled, result, err := r.authorizedCanonicalMerge(ctx, group); handled {
+		return result, err
+	}
 	if r.db == nil {
 		return r.mergeCanonicalModelsMemory(ctx, group)
 	}
@@ -1753,6 +1926,9 @@ func (r *Repository) MergeCanonicalModels(ctx context.Context, group biz.Duplica
 
 	res := &biz.MergeResult{CanonicalID: group.CanonicalID, SurvivingPK: survivor, MergedModelPKs: append([]int64{}, losers...)}
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if _, err := validateCanonicalMembers(tx, group); err != nil {
+			return err
+		}
 		// Pre-check alias collisions: an alias string present on two or more
 		// group members cannot be merged without dropping data — abort instead
 		// of silently overwriting. (uk_alias is on alias alone.)

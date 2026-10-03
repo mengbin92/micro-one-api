@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/go-kratos/kratos/v3/errors"
 	billingv1 "micro-one-api/api/billing/v1"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 )
@@ -16,6 +17,14 @@ type RoutingPolicyRepo interface {
 
 func (uc *BillingUsecase) SetRoutingPolicyRepo(repo RoutingPolicyRepo) { uc.routingPolicies = repo }
 func (uc *BillingUsecase) RoutingBillingPolicy(ctx context.Context, id int64) (*routing.BillingPolicy, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.routing_policy", "billing.routing_policy.read")
+	if authErr != nil {
+		return nil, authErr
+	}
+	if authErr = authorization.Require(ctx, "billing.routing_policy.read", routingPolicyFacts(id, 0)); authErr != nil {
+		return nil, authErr
+	}
 	if !uc.RoutingSnapshotsAvailable() || uc.routingPolicies == nil {
 		return nil, ErrRequestSnapshotUnavailable
 	}
@@ -33,6 +42,17 @@ func (uc *BillingUsecase) RoutingBillingPolicy(ctx context.Context, id int64) (*
 	return &routing.BillingPolicy{GroupID: id, BillingMode: routing.SubscriptionFirst, PriceRatio: quote.PriceRatio}, nil
 }
 func (uc *BillingUsecase) PublishRoutingBillingPolicy(ctx context.Context, p *routing.BillingPolicy, expected int64) error {
+	if p == nil {
+		return ErrRoutingContextInvalid
+	}
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.routing_policy", "billing.routing_policy.publish")
+	if authErr != nil {
+		return authErr
+	}
+	if authErr = authorization.Require(ctx, "billing.routing_policy.publish", routingPolicyFacts(p.GroupID, 0)); authErr != nil {
+		return authErr
+	}
 	if !uc.RoutingSnapshotsAvailable() || uc.routingPolicies == nil {
 		return ErrRequestSnapshotUnavailable
 	}

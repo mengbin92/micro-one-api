@@ -26,6 +26,8 @@ func NewGRPCServer(addr string, svc *service.LogService) *kgrpc.Server {
 }
 
 var logReadyMethods = []string{
+	"/api.log.v1.LogService/ExportLogs",
+	"/api.log.v1.LogService/PurgeLogs",
 	"/api.log.v1.LogService/GetLog",
 	"/api.log.v1.LogService/ListLogs",
 }

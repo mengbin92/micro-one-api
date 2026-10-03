@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/subscription/biz"
 	"micro-one-api/platform/database/authzquery"
 
@@ -47,7 +48,20 @@ func NewTxRunner(d *Data) biz.TxRunner {
 // runner: read-then-write callbacks cannot survive a stale WAL snapshot on
 // the shared-file topology, and a rolled-back attempt commits nothing.
 func (r *runner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx biz.Tx) error) error {
-	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+	err := authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
 		return fn(ctx, &gormTx{db: tx})
 	})
+	return recordBillingWriteFailure(ctx, r.db, err)
+}
+
+func recordBillingWriteFailure(ctx context.Context, db *gorm.DB, err error) error {
+	if err == nil {
+		return nil
+	}
+	for _, op := range []string{"billing.account.balance.adjust", "billing.account.balance.reset", "billing.payment.refund", "subscription.user_subscription.assign", "subscription.user_subscription.change"} {
+		if q, iam := authorization.QueryScopeFromContext(ctx, op); iam && len(q.Allow) > 0 {
+			err = authzquery.RecordWriteFailure(ctx, db, op, 0, err)
+		}
+	}
+	return err
 }

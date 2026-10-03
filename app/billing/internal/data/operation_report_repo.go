@@ -3,6 +3,8 @@ package data
 import (
 	"context"
 	"fmt"
+	"gorm.io/gorm"
+	"micro-one-api/platform/database/authzquery"
 	"strings"
 	"time"
 
@@ -61,7 +63,7 @@ func (r *operationReportRepo) AggregatePaymentOrdersByPlan(ctx context.Context, 
 		Where("payment_orders.plan_id > 0").
 		Where("payment_orders.created_at >= ?", startTime).
 		Where("payment_orders.created_at <= ?", endTime).
-		Group("payment_orders.plan_id, payment_orders.group_id")
+		Group("payment_orders.plan_id, payment_orders.group_id, subscription_plans.name")
 	if planID > 0 {
 		q = q.Where("payment_orders.plan_id = ?", planID)
 	}
@@ -70,6 +72,10 @@ func (r *operationReportRepo) AggregatePaymentOrdersByPlan(ctx context.Context, 
 	}
 	if userID != "" {
 		q = q.Where("payment_orders.user_id = ?", userID)
+	}
+	q, scopeErr := reportPaymentsQuery(ctx, q)
+	if scopeErr != nil {
+		return nil, scopeErr
 	}
 	var rows []row
 	if err := q.Scan(&rows).Error; err != nil {
@@ -110,6 +116,10 @@ func (r *operationReportRepo) splitPaidOrdersByPlan(ctx context.Context, startTi
 	if userID != "" {
 		prior = prior.Where("user_id = ?", userID)
 	}
+	prior, scopeErr := reportPaymentsQuery(ctx, prior)
+	if scopeErr != nil {
+		return 0, 0, scopeErr
+	}
 	var priorRows []paidOrder
 	if err := prior.Scan(&priorRows).Error; err != nil {
 		return 0, 0, err
@@ -126,6 +136,10 @@ func (r *operationReportRepo) splitPaidOrdersByPlan(ctx context.Context, startTi
 		Order("created_at ASC, id ASC")
 	if userID != "" {
 		windowQ = windowQ.Where("user_id = ?", userID)
+	}
+	windowQ, scopeErr = reportPaymentsQuery(ctx, windowQ)
+	if scopeErr != nil {
+		return 0, 0, scopeErr
 	}
 	var windowRows []paidOrder
 	if err := windowQ.Scan(&windowRows).Error; err != nil {
@@ -164,6 +178,13 @@ func (r *operationReportRepo) CountSubscriptionsByStatus(ctx context.Context, pl
 		Select("status, group_id, metadata")
 	if groupID > 0 {
 		q = q.Where("group_id = ?", groupID)
+	}
+	q, err = authzquery.ApplyContext(ctx, q, authzquery.Columns{Resource: "id", User: "user_id"}, "subscription.user_subscription.report.read")
+	if err != nil {
+		return active, expired, revoked, err
+	}
+	if user := biz.SubscriptionReportUserFilter(ctx); user != "" {
+		q = q.Where("user_id = ?", user)
 	}
 	var rows []subRow
 	if err := q.Scan(&rows).Error; err != nil {
@@ -233,6 +254,14 @@ func (r *operationReportRepo) AggregateUsageFallbackByPlan(ctx context.Context, 
 	if userID != "" {
 		q = q.Where("l.user_id = ?", userID)
 	}
+	q, err = authzquery.ApplyContext(ctx, q, authzquery.Columns{Resource: "s.id", User: "s.user_id"}, "subscription.user_subscription.report.read")
+	if err != nil {
+		return subscriptionUsage, balanceFallback, err
+	}
+	q, err = authzquery.ApplyContext(ctx, q, authzquery.Columns{Resource: "l.user_id", User: "l.user_id", UserText: true}, "billing.account.ledger.read", "billing.report.export")
+	if err != nil {
+		return subscriptionUsage, balanceFallback, err
+	}
 	var rows []row
 	if err := q.Scan(&rows).Error; err != nil {
 		return subscriptionUsage, balanceFallback, err
@@ -282,8 +311,11 @@ func (r *operationReportRepo) paymentPlanByTradeNo(ctx context.Context, tradeNos
 		PlanID  int64  `gorm:"column:plan_id"`
 	}
 	var rows []row
-	if err := r.data.db.WithContext(ctx).Table("payment_orders").
-		Select("trade_no, plan_id").
+	q, err := reportPaymentsQuery(ctx, r.data.db.WithContext(ctx).Table("payment_orders"))
+	if err != nil {
+		return nil, err
+	}
+	if err := q.Select("trade_no, plan_id").
 		Where("trade_no IN ? AND plan_id > 0", uniqueStrings(tradeNos)).
 		Find(&rows).Error; err != nil {
 		return nil, err
@@ -318,4 +350,17 @@ func planNameOrFallback(name string, planID int64) string {
 		return name
 	}
 	return fmt.Sprintf("plan-%d", planID)
+}
+
+func reportPaymentsQuery(ctx context.Context, q *gorm.DB) (*gorm.DB, error) {
+	var err error
+	q, err = authzquery.ApplyContext(ctx, q, authzquery.Columns{Resource: "payment_orders.subscription_id", User: "payment_orders.user_id", UserText: true}, "subscription.user_subscription.report.read")
+	if err != nil {
+		return nil, err
+	}
+	q, err = authzquery.ApplyContext(ctx, q, authzquery.Columns{Resource: "payment_orders.id", User: "payment_orders.user_id", UserText: true}, "billing.payment.list")
+	if err != nil {
+		return nil, err
+	}
+	return authzquery.ApplyContext(ctx, q, authzquery.Columns{Resource: "payment_orders.user_id", User: "payment_orders.user_id", UserText: true}, "billing.report.export")
 }

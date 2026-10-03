@@ -10,6 +10,12 @@ type ExecutionPoint struct {
 }
 
 var executionPoints = map[string]ExecutionPoint{
+	"admin.subscription.self": {"admin", nil},
+	"admin.upstream_costs":    {"admin", []string{"billing.upstream_cost.read", "billing.upstream_cost.create", "billing.upstream_cost.update", "billing.upstream_cost.delete", "billing.upstream_cost.migrate"}},
+	"admin.system_options":    {"admin", []string{"system.option.read", "system.option.update", "system.option.security.update", "system.option.payment.update", "system.option.pricing.update"}},
+	"admin.content":           {"admin", []string{"system.content.notice.update", "system.content.about.update", "system.content.home.update"}},
+	"admin.routing_policy":    {"admin", []string{"billing.routing_policy.read", "billing.routing_policy.publish"}},
+	"admin.pricing":           {"admin", []string{"billing.pricing.read", "billing.pricing.update", "billing.pricing.import", "billing.pricing.export"}},
 	"billing.self":            {"billing", nil},
 	"log.self":                {"log", nil},
 	"admin.console":           {"admin", []string{"admin.console.enter"}},
@@ -17,6 +23,7 @@ var executionPoints = map[string]ExecutionPoint{
 	"identity.users.create":   {"identity", []string{"identity.user.create", "identity.routing_access.default.update", "identity.routing_access.grant"}},
 	"identity.users.delete":   {"identity", []string{"identity.user.delete"}},
 	"identity.users.list":     {"identity", []string{"identity.user.list", "identity.user.contact.read"}},
+	"identity.users.export":   {"identity", []string{"identity.user.export", "identity.user.contact.read"}},
 	"identity.users.read":     {"identity", []string{"identity.user.read", "identity.user.contact.read"}},
 	"identity.users.update":   {"identity", []string{"identity.user.update", "identity.user.enable", "identity.user.disable", "identity.user.email_binding.update", "identity.user.credential.update", "identity.routing_access.default.update", "identity.routing_access.grant", "identity.routing_access.revoke"}},
 
@@ -40,6 +47,8 @@ var executionPoints = map[string]ExecutionPoint{
 	"channel.accounts.recovery":    {"channel", []string{"channel.account.recovery.clear"}},
 	"channel.accounts.credential":  {"channel", []string{"channel.account.credential.update"}},
 	"channel.accounts.oauth":       {"channel", []string{"channel.account.oauth.bind"}},
+	"channel.accounts.cost":        {"channel", []string{"billing.upstream_cost.read"}},
+	"channel.models.pricing":       {"channel", []string{"billing.pricing.read", "billing.pricing.update", "billing.pricing.import", "billing.pricing.export"}},
 	"channel.models.list":          {"channel", []string{"channel.model.list"}},
 	"channel.models.read":          {"channel", []string{"channel.model.read"}},
 	"channel.models.create":        {"channel", []string{"channel.model.create"}},
@@ -78,6 +87,14 @@ var executionPoints = map[string]ExecutionPoint{
 	"subscription.plans":              {"billing", []string{"subscription.plan.list", "subscription.plan.read", "subscription.plan.create", "subscription.plan.update", "subscription.plan.publish", "subscription.plan.unpublish", "subscription.plan.delete"}},
 	"subscription.user_subscriptions": {"billing", []string{"subscription.user_subscription.list", "subscription.user_subscription.read", "subscription.user_subscription.assign", "subscription.user_subscription.change", "subscription.user_subscription.extend", "subscription.user_subscription.revoke", "subscription.user_subscription.quota.reset", "subscription.user_subscription.report.read"}},
 	"billing.report.export":           {"billing", []string{"billing.report.export"}},
+
+	"admin.subscription.quota_policies":     {"admin", []string{"subscription.quota_policy.list", "subscription.quota_policy.read", "subscription.quota_policy.create", "subscription.quota_policy.update", "subscription.quota_policy.delete"}},
+	"admin.subscription.plans":              {"admin", []string{"subscription.plan.list", "subscription.plan.read", "subscription.plan.create", "subscription.plan.update", "subscription.plan.publish", "subscription.plan.unpublish", "subscription.plan.delete"}},
+	"admin.subscription.user_subscriptions": {"admin", []string{"subscription.user_subscription.list", "subscription.user_subscription.read", "subscription.user_subscription.assign", "subscription.user_subscription.change", "subscription.user_subscription.extend", "subscription.user_subscription.revoke", "subscription.user_subscription.quota.reset", "subscription.user_subscription.report.read"}},
+	"billing.request_attempts":              {"billing", []string{"billing.account.ledger.read", "billing.account.cost.read"}},
+
+	"admin.summary":     {"admin", []string{"identity.user.list", "channel.channel.list", "channel.account.list", "billing.account.ledger.read", "billing.account.cost.read", "billing.payment.list", "billing.reconciliation.read", "system.option.read", "channel.channel.read", "channel.account.read"}},
+	"admin.routing_ops": {"admin", []string{"billing.account.ledger.read", "billing.account.cost.read", "channel.model.list", "billing.pricing.read", "monitor.health.selector.read"}},
 
 	// B4 remaining owners.
 	"log.requests.list":      {"log", []string{"log.request.list", "log.request.stats.read"}},
@@ -126,21 +143,18 @@ type ResourceAuthorization struct {
 var completedResourceOperations = func() map[string]bool {
 	out := map[string]bool{}
 	for _, point := range []string{
-		"admin.console", "identity.routing_access", "identity.users.create", "identity.users.delete", "identity.users.list", "identity.users.read", "identity.users.update",
-		"channel.channels.list", "channel.channels.read", "channel.channels.create", "channel.channels.update", "channel.channels.delete", "channel.channels.secret",
+		"admin.console", "identity.routing_access", "identity.users.create", "identity.users.delete", "identity.users.list", "identity.users.read", "identity.users.update", "identity.users.export",
+		"channel.channels.list", "channel.channels.read", "channel.channels.create", "channel.channels.update", "channel.channels.delete", "channel.channels.export", "channel.channels.secret",
 		"channel.accounts.list", "channel.accounts.read", "channel.accounts.create", "channel.accounts.update", "channel.accounts.delete", "channel.accounts.quota", "channel.accounts.recovery", "channel.accounts.credential",
 		"channel.routing_groups.list", "channel.routing_groups.read", "channel.routing_groups.write",
-		"billing.accounts.read", "billing.accounts.adjust", "billing.ledger.read", "billing.payments.list", "billing.payments.read", "billing.payments.refund",
-		"log.requests.list", "log.requests.read", "log.requests.delete", "log.selection_events", "system.options.read", "system.options.update", "system.content", "monitor.health.service", "monitor.alert_rules", "notify.notifications",
+		"channel.models.list", "channel.models.read", "channel.models.create", "channel.models.update", "channel.models.delete", "channel.models.pricing", "channel.model_aliases", "channel.model_usage", "channel.model_mappings", "channel.accounts.oauth", "channel.health", "channel.channels.test", "channel.channels.balance", "channel.semantic_blocks", "channel.model_routings", "channel.models.exchange", "channel.models.canonical",
+		"admin.subscription.quota_policies", "admin.subscription.plans", "admin.subscription.user_subscriptions", "billing.request_attempts", "admin.upstream_costs", "admin.pricing", "admin.system_options", "admin.content", "admin.routing_policy", "billing.redemption.list", "billing.redemption.read", "billing.redemption.write", "billing.redemption.export", "billing.reconciliation", "billing.routing_policy",
+		"billing.accounts.read", "billing.accounts.adjust", "billing.ledger.read", "billing.payments.list", "billing.payments.read", "billing.payments.refund", "billing.report.export", "billing.pricing.read",
+		"log.requests.list", "log.requests.read", "log.requests.delete", "log.requests.export", "log.selection_events", "system.options.read", "system.options.update", "system.content", "monitor.health.service", "monitor.alert_rules", "notify.notifications",
 	} {
 		for _, op := range executionPoints[point].Operations {
 			out[op] = true
 		}
-	}
-	// No bulk delete, reset, purge, or notification acknowledgement,
-	// test/rule handlers have been delivered by these owner slices.
-	for _, op := range []string{"channel.channel.batch_delete", "channel.routing_group.archive", "billing.account.balance.reset", "log.request.purge", "notify.notification.acknowledge", "notify.notification.test", "notify.notification.rules.update"} {
-		delete(out, op)
 	}
 	return out
 }()

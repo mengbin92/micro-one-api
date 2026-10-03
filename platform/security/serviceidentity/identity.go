@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"micro-one-api/domain/authorization"
 	"micro-one-api/pkg/jsonx"
 )
 
@@ -118,7 +119,7 @@ func RPCMethod(ctx context.Context) string {
 
 // HasSystemCapability checks the exact currently executing RPC.
 func HasSystemCapability(ctx context.Context, method string) bool {
-	return RPCMethod(ctx) == method && FromContext(ctx).SystemCapability(method)
+	return authorization.Credential(ctx) == "" && RPCMethod(ctx) == method && FromContext(ctx).SystemCapability(method)
 }
 
 // HTTP-only owner adapters have explicit fixed caller policies; they do not
@@ -129,6 +130,13 @@ func (p Principal) CanCallHTTP(entry string) bool {
 }
 
 var httpPolicies = map[string]RPCPolicy{
-	"/api.log.v1.LogService/DeleteLogs":         {Owner: "log", UserCallers: []string{"admin"}},
-	"/api.log.v1.LogService/ListSelectionAudit": {Owner: "log", UserCallers: []string{"admin"}},
+	"/api.notify.v1.NotifyService/AcknowledgeNotification": {Owner: "notify", UserCallers: []string{"admin"}},
+	"/api.notify.v1.NotifyService/ListNotificationRules":   {Owner: "notify", UserCallers: []string{"admin"}},
+	"/api.notify.v1.NotifyService/UpdateNotificationRule":  {Owner: "notify", UserCallers: []string{"admin"}},
+	"/api.notify.v1.NotifyService/TestNotificationRule":    {Owner: "notify", UserCallers: []string{"admin"}},
+	"/api.log.v1.LogService/DeleteLogs":                    {Owner: "log", UserCallers: []string{"admin"}},
+	"/api.log.v1.LogService/ListSelectionAudit":            {Owner: "log", UserCallers: []string{"admin"}},
+	"/api.log.v1.LogService/ExportLogs":                    {Owner: "log", UserCallers: []string{"admin"}},
+	"/api.log.v1.LogService/PurgeLogs":                     {Owner: "log", UserCallers: []string{"admin"}},
+	"/api.billing.v1.BillingService/RunReconciliation":     {Owner: "billing", UserCallers: []string{"admin"}},
 }

@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -19,11 +20,7 @@ import (
 // unaffected. Count, pagination and detail reads share the same predicate.
 
 func (r *Repository) channelScope(ctx context.Context, query *gorm.DB, table string) (*gorm.DB, error) {
-	q, ok := authorization.QueryScopeFromContext(ctx, "channel.channel.list")
-	if !ok {
-		return query, nil
-	}
-	return authzquery.Apply(query, q, authzquery.Columns{Resource: table + ".id", Groups: r.groupsSubselect("channel_routing_groups", "channel_id", table)})
+	return authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: table + ".id", Groups: r.groupsSubselect("channel_routing_groups", "channel_id", table)}, "channel.channel.list", "channel.channel.export")
 }
 
 func (r *Repository) subscriptionAccountScope(ctx context.Context, query *gorm.DB, table string) (*gorm.DB, error) {
@@ -221,6 +218,16 @@ func (r *Repository) checkResourceTx(ctx context.Context, tx *gorm.DB, id int64,
 				}
 			}
 		}
+	}
+	if id > 0 {
+		for _, op := range operations {
+			if err := authzquery.AppendWriteAudit(ctx, tx, op, id); err != nil {
+				return err
+			}
+		}
+	}
+	if err := checkSourceWriteRevision(ctx, tx, id, account, operations); err != nil {
+		return fmt.Errorf("check source revision for %v id=%d: %w", operations, id, err)
 	}
 	return nil
 }

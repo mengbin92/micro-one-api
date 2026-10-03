@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/authz"
 
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -19,30 +20,33 @@ func toModelInfo(m *biz.Model) *channelv1.ModelInfo {
 		return nil
 	}
 	return &channelv1.ModelInfo{
-		Id:                m.ID,
-		ModelId:           m.ModelID,
-		DisplayName:       m.DisplayName,
-		Description:       m.Description,
-		Provider:          m.Provider,
-		ModelType:         m.ModelType,
-		ContextWindow:     m.ContextWindow,
-		PricingInput:      m.PricingInput,
-		PricingOutput:     m.PricingOutput,
-		PricingCacheRead:  m.PricingCacheRead,
-		Status:            m.Status,
-		IsPublic:          m.IsPublic,
-		Capabilities:      append([]string(nil), m.Capabilities...),
-		InputModalities:   append([]string(nil), m.InputModalities...),
-		OutputModalities:  append([]string(nil), m.OutputModalities...),
-		Tags:              append([]string(nil), m.Tags...),
-		Category:          m.Category,
-		Tier:              m.Tier,
-		Metadata:          m.Metadata,
-		CreatedAt:         m.CreatedAt,
-		UpdatedAt:         m.UpdatedAt,
-		ChannelCount:      m.ChannelCount,
-		SubscriptionCount: m.SubscriptionCount,
-		Suppliers:         append([]string(nil), m.Suppliers...),
+		Id:                    m.ID,
+		ModelId:               m.ModelID,
+		DisplayName:           m.DisplayName,
+		Description:           m.Description,
+		Provider:              m.Provider,
+		ModelType:             m.ModelType,
+		ContextWindow:         m.ContextWindow,
+		PricingInput:          m.PricingInput,
+		PricingOutput:         m.PricingOutput,
+		PricingCacheRead:      m.PricingCacheRead,
+		PriceFieldsVisible:    m.PriceFieldsVisible,
+		MappingsVisible:       m.MappingsVisible,
+		AuthorizationRevision: m.AuthorizationRevision,
+		Status:                m.Status,
+		IsPublic:              m.IsPublic,
+		Capabilities:          append([]string(nil), m.Capabilities...),
+		InputModalities:       append([]string(nil), m.InputModalities...),
+		OutputModalities:      append([]string(nil), m.OutputModalities...),
+		Tags:                  append([]string(nil), m.Tags...),
+		Category:              m.Category,
+		Tier:                  m.Tier,
+		Metadata:              m.Metadata,
+		CreatedAt:             m.CreatedAt,
+		UpdatedAt:             m.UpdatedAt,
+		ChannelCount:          m.ChannelCount,
+		SubscriptionCount:     m.SubscriptionCount,
+		Suppliers:             append([]string(nil), m.Suppliers...),
 	}
 }
 
@@ -51,23 +55,26 @@ func toModelSummary(m *biz.Model) *channelv1.ModelSummary {
 		return nil
 	}
 	return &channelv1.ModelSummary{
-		Id:                m.ID,
-		ModelId:           m.ModelID,
-		DisplayName:       m.DisplayName,
-		Provider:          m.Provider,
-		ModelType:         m.ModelType,
-		Status:            m.Status,
-		Category:          m.Category,
-		Tier:              m.Tier,
-		IsPublic:          m.IsPublic,
-		ChannelCount:      m.ChannelCount,
-		SubscriptionCount: m.SubscriptionCount,
-		Suppliers:         append([]string(nil), m.Suppliers...),
-		InputModalities:   append([]string(nil), m.InputModalities...),
-		OutputModalities:  append([]string(nil), m.OutputModalities...),
-		PricingInput:      m.PricingInput,
-		PricingOutput:     m.PricingOutput,
-		PricingCacheRead:  m.PricingCacheRead,
+		Id:                    m.ID,
+		ModelId:               m.ModelID,
+		DisplayName:           m.DisplayName,
+		Provider:              m.Provider,
+		ModelType:             m.ModelType,
+		Status:                m.Status,
+		Category:              m.Category,
+		Tier:                  m.Tier,
+		IsPublic:              m.IsPublic,
+		ChannelCount:          m.ChannelCount,
+		SubscriptionCount:     m.SubscriptionCount,
+		Suppliers:             append([]string(nil), m.Suppliers...),
+		InputModalities:       append([]string(nil), m.InputModalities...),
+		OutputModalities:      append([]string(nil), m.OutputModalities...),
+		PricingInput:          m.PricingInput,
+		PricingOutput:         m.PricingOutput,
+		PricingCacheRead:      m.PricingCacheRead,
+		PriceFieldsVisible:    m.PriceFieldsVisible,
+		MappingsVisible:       m.MappingsVisible,
+		AuthorizationRevision: m.AuthorizationRevision,
 	}
 }
 
@@ -240,6 +247,7 @@ func (s *ChannelService) GetModel(ctx context.Context, req *channelv1.GetModelRe
 }
 
 func (s *ChannelService) CreateModel(ctx context.Context, req *channelv1.CreateModelRequest) (*channelv1.CreateModelResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "model", 0, "expected_revision")
 	uc := s.modelUc()
 	if uc == nil {
 		return &channelv1.CreateModelResponse{Success: false, Message: "model management not configured"}, nil
@@ -269,12 +277,16 @@ func (s *ChannelService) CreateModel(ctx context.Context, req *channelv1.CreateM
 		Metadata:         req.Metadata,
 	}
 	if err := uc.CreateModel(ctx, model); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.CreateModelResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.CreateModelResponse{Success: true, Message: "ok", ModelPk: model.ID}, nil
 }
 
 func (s *ChannelService) UpdateModel(ctx context.Context, req *channelv1.UpdateModelRequest) (*channelv1.UpdateModelResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "model", req.ModelPk, "expected_revision")
 	uc := s.modelUc()
 	if uc == nil {
 		return &channelv1.UpdateModelResponse{Success: false, Message: "model management not configured"}, nil
@@ -299,34 +311,47 @@ func (s *ChannelService) UpdateModel(ctx context.Context, req *channelv1.UpdateM
 		Metadata:         req.Metadata,
 	}
 	if err := uc.UpdateModel(ctx, model); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.UpdateModelResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.UpdateModelResponse{Success: true, Message: "ok"}, nil
 }
 
 func (s *ChannelService) DeleteModel(ctx context.Context, req *channelv1.DeleteModelRequest) (*channelv1.DeleteModelResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "model", req.ModelPk, "expected_revision")
 	uc := s.modelUc()
 	if uc == nil {
 		return &channelv1.DeleteModelResponse{Success: false, Message: "model management not configured"}, nil
 	}
 	if err := uc.DeleteModel(ctx, req.ModelPk); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.DeleteModelResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.DeleteModelResponse{Success: true, Message: "ok"}, nil
 }
 
 func (s *ChannelService) ChangeModelStatus(ctx context.Context, req *channelv1.ChangeModelStatusRequest) (*channelv1.ChangeModelStatusResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "model", req.ModelPk, "expected_revision")
 	uc := s.modelUc()
 	if uc == nil {
 		return &channelv1.ChangeModelStatusResponse{Success: false, Message: "model management not configured"}, nil
 	}
 	if err := uc.ChangeModelStatus(ctx, req.ModelPk, req.Status); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.ChangeModelStatusResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.ChangeModelStatusResponse{Success: true, Message: "ok"}, nil
 }
 
 func (s *ChannelService) BatchModels(ctx context.Context, req *channelv1.BatchModelsRequest) (*channelv1.BatchModelsResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "model", 0, "expected_revision")
+	ctx = authorization.WithExpectedRevisions(ctx, "model", req.ExpectedRevisions)
 	uc := s.modelUc()
 	if uc == nil {
 		return &channelv1.BatchModelsResponse{Success: false, Message: "model management not configured"}, nil
@@ -363,6 +388,7 @@ func (s *ChannelService) ListModelAliases(ctx context.Context, req *channelv1.Li
 }
 
 func (s *ChannelService) CreateModelAlias(ctx context.Context, req *channelv1.CreateModelAliasRequest) (*channelv1.CreateModelAliasResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "model", req.ModelPk, "expected_model_revision")
 	uc := s.modelUc()
 	if uc == nil {
 		return &channelv1.CreateModelAliasResponse{Success: false, Message: "model management not configured"}, nil
@@ -373,17 +399,24 @@ func (s *ChannelService) CreateModelAlias(ctx context.Context, req *channelv1.Cr
 		IsPrimary: req.IsPrimary,
 	}
 	if err := uc.CreateModelAlias(ctx, alias); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.CreateModelAliasResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.CreateModelAliasResponse{Success: true, Message: "ok", AliasId: alias.ID}, nil
 }
 
 func (s *ChannelService) DeleteModelAlias(ctx context.Context, req *channelv1.DeleteModelAliasRequest) (*channelv1.DeleteModelAliasResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "model", req.ModelPk, "expected_model_revision")
 	uc := s.modelUc()
 	if uc == nil {
 		return &channelv1.DeleteModelAliasResponse{Success: false, Message: "model management not configured"}, nil
 	}
 	if err := uc.DeleteModelAlias(ctx, req.AliasId); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.DeleteModelAliasResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.DeleteModelAliasResponse{Success: true, Message: "ok"}, nil
@@ -411,6 +444,7 @@ func (s *ChannelService) ListChannelModelMappings(ctx context.Context, req *chan
 }
 
 func (s *ChannelService) UpsertChannelModelMapping(ctx context.Context, req *channelv1.UpsertChannelModelMappingRequest) (*channelv1.UpsertChannelModelMappingResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "model", req.ModelPk, "expected_model_revision")
 	uc := s.modelUc()
 	if uc == nil {
 		return &channelv1.UpsertChannelModelMappingResponse{Success: false, Message: "model management not configured"}, nil
@@ -431,17 +465,24 @@ func (s *ChannelService) UpsertChannelModelMapping(ctx context.Context, req *cha
 		m.EnabledHasValue = true
 	}
 	if err := uc.UpsertChannelMapping(ctx, m); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.UpsertChannelModelMappingResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.UpsertChannelModelMappingResponse{Success: true, Message: "ok"}, nil
 }
 
 func (s *ChannelService) DeleteChannelModelMapping(ctx context.Context, req *channelv1.DeleteChannelModelMappingRequest) (*channelv1.DeleteChannelModelMappingResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "model", req.ModelPk, "expected_model_revision")
 	uc := s.modelUc()
 	if uc == nil {
 		return &channelv1.DeleteChannelModelMappingResponse{Success: false, Message: "model management not configured"}, nil
 	}
 	if err := uc.DeleteChannelMapping(ctx, req.ChannelId, req.ModelPk); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.DeleteChannelModelMappingResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.DeleteChannelModelMappingResponse{Success: true, Message: "ok"}, nil
@@ -469,6 +510,7 @@ func (s *ChannelService) ListSubscriptionModelMappings(ctx context.Context, req 
 }
 
 func (s *ChannelService) UpsertSubscriptionModelMapping(ctx context.Context, req *channelv1.UpsertSubscriptionModelMappingRequest) (*channelv1.UpsertSubscriptionModelMappingResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "model", req.ModelPk, "expected_model_revision")
 	uc := s.modelUc()
 	if uc == nil {
 		return &channelv1.UpsertSubscriptionModelMappingResponse{Success: false, Message: "model management not configured"}, nil
@@ -486,17 +528,24 @@ func (s *ChannelService) UpsertSubscriptionModelMapping(ctx context.Context, req
 		m.EnabledHasValue = true
 	}
 	if err := uc.UpsertSubscriptionMapping(ctx, m); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.UpsertSubscriptionModelMappingResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.UpsertSubscriptionModelMappingResponse{Success: true, Message: "ok"}, nil
 }
 
 func (s *ChannelService) DeleteSubscriptionModelMapping(ctx context.Context, req *channelv1.DeleteSubscriptionModelMappingRequest) (*channelv1.DeleteSubscriptionModelMappingResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "model", req.ModelPk, "expected_model_revision")
 	uc := s.modelUc()
 	if uc == nil {
 		return &channelv1.DeleteSubscriptionModelMappingResponse{Success: false, Message: "model management not configured"}, nil
 	}
 	if err := uc.DeleteSubscriptionMapping(ctx, req.SubscriptionAccountId, req.ModelPk, req.GroupName); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.DeleteSubscriptionModelMappingResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.DeleteSubscriptionModelMappingResponse{Success: true, Message: "ok"}, nil
@@ -518,6 +567,7 @@ func toModelRoutingProto(r *biz.ModelRouting) *channelv1.ModelRouting {
 		Priority:              r.Priority,
 		CreatedAt:             r.CreatedAt,
 		UpdatedAt:             r.UpdatedAt,
+		Revision:              r.Revision,
 	}
 }
 
@@ -538,6 +588,8 @@ func (s *ChannelService) ListModelRoutings(ctx context.Context, req *channelv1.L
 }
 
 func (s *ChannelService) UpsertModelRouting(ctx context.Context, req *channelv1.UpsertModelRoutingRequest) (*channelv1.UpsertModelRoutingResponse, error) {
+	ctx = authorization.WithWriteReason(ctx, req.Reason)
+	ctx = authorization.WithExpectedResourceRevision(ctx, req.ExpectedRevision)
 	uc := s.routingUc()
 	if uc == nil {
 		return &channelv1.UpsertModelRoutingResponse{Success: false, Message: "model routing not configured"}, nil
@@ -555,17 +607,25 @@ func (s *ChannelService) UpsertModelRouting(ctx context.Context, req *channelv1.
 		r.EnabledHasValue = true
 	}
 	if err := uc.UpsertModelRouting(ctx, r); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.UpsertModelRoutingResponse{Success: false, Message: err.Error()}, nil
 	}
-	return &channelv1.UpsertModelRoutingResponse{Success: true, Message: "ok", Id: r.ID}, nil
+	return &channelv1.UpsertModelRoutingResponse{Success: true, Message: "ok", Id: r.ID, Revision: r.Revision}, nil
 }
 
 func (s *ChannelService) DeleteModelRouting(ctx context.Context, req *channelv1.DeleteModelRoutingRequest) (*channelv1.DeleteModelRoutingResponse, error) {
+	ctx = authorization.WithWriteReason(ctx, req.Reason)
+	ctx = authorization.WithExpectedResourceRevision(ctx, req.ExpectedRevision)
 	uc := s.routingUc()
 	if uc == nil {
 		return &channelv1.DeleteModelRoutingResponse{Success: false, Message: "model routing not configured"}, nil
 	}
 	if err := uc.DeleteModelRouting(ctx, req.Id); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.DeleteModelRoutingResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.DeleteModelRoutingResponse{Success: true, Message: "ok"}, nil
@@ -574,6 +634,9 @@ func (s *ChannelService) DeleteModelRouting(ctx context.Context, req *channelv1.
 // ── Sprint 4: Usage statistics ─────────────────────────────────────────────
 
 func (s *ChannelService) RecordModelUsage(ctx context.Context, req *channelv1.RecordModelUsageRequest) (*channelv1.RecordModelUsageResponse, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_RecordModelUsage_FullMethodName); err != nil {
+		return nil, err
+	}
 	uc := s.modelUc()
 	if uc == nil {
 		return &channelv1.RecordModelUsageResponse{Success: false, Message: "model management not configured"}, nil
@@ -583,6 +646,9 @@ func (s *ChannelService) RecordModelUsage(ctx context.Context, req *channelv1.Re
 		requestCount = 1
 	}
 	if err := uc.RecordModelUsage(ctx, req.ModelId, requestCount, req.TokenCount, req.ErrorCount, req.AvgLatency, req.Date); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &channelv1.RecordModelUsageResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.RecordModelUsageResponse{Success: true, Message: "ok"}, nil
@@ -608,6 +674,9 @@ func (s *ChannelService) ListModelUsageStats(ctx context.Context, req *channelv1
 }
 
 func (s *ChannelService) RecordModelHealth(ctx context.Context, req *channelv1.RecordModelHealthRequest) (*channelv1.RecordModelHealthResponse, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_RecordModelHealth_FullMethodName); err != nil {
+		return nil, err
+	}
 	uc := s.modelUc()
 	if uc == nil {
 		return &channelv1.RecordModelHealthResponse{Success: false, Message: "model management not configured"}, nil
@@ -664,6 +733,7 @@ func toDuplicateModelRefProto(r *biz.DuplicateModelRef) *channelv1.DuplicateMode
 		UsageRequestTotal:    r.UsageRequestTotal,
 		UsageTokenTotal:      r.UsageTokenTotal,
 		PriceReferences:      append([]string(nil), r.PriceReferences...),
+		ExpectedRevision:     r.ExpectedRevision,
 	}
 }
 
@@ -705,6 +775,12 @@ func (s *ChannelService) CanonicalModelPreflight(ctx context.Context, req *empty
 }
 
 func (s *ChannelService) MergeCanonicalModels(ctx context.Context, req *channelv1.MergeCanonicalModelsRequest) (*channelv1.MergeCanonicalModelsResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "model", 0, "expected_revision")
+	if group := req.GetGroup(); group != nil {
+		for _, model := range group.Members {
+			ctx = authorization.WithExpectedRevision(ctx, "model", model.ModelPk, model.ExpectedRevision)
+		}
+	}
 	uc := s.modelUc()
 	if uc == nil {
 		return &channelv1.MergeCanonicalModelsResponse{Success: false, Message: "model management not configured"}, nil

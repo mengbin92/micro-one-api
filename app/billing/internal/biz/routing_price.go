@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"micro-one-api/pkg/jsonx"
@@ -21,6 +22,14 @@ type RoutingGroupPrice struct {
 // RoutingGroupPrice exposes the same effective multiplier as reserve. This is
 // a quote at read time; the request snapshot remains the settlement authority.
 func (uc *BillingUsecase) RoutingGroupPrice(ctx context.Context, groupID, userID int64) (*RoutingGroupPrice, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.routing_policy", "billing.routing_policy.read")
+	if authErr != nil {
+		return nil, authErr
+	}
+	if authErr = authorization.Require(ctx, "billing.routing_policy.read", routingPolicyFacts(groupID, 0)); authErr != nil {
+		return nil, authErr
+	}
 	if !RequestSnapshotsEnabled() || uc.routingGroups == nil || groupID <= 0 {
 		return nil, ErrRequestSnapshotUnavailable
 	}
@@ -64,6 +73,13 @@ func (uc *BillingUsecase) RoutingGroupPrice(ctx context.Context, groupID, userID
 		}
 	}
 	if uc.userPriceOverrides != nil && userID > 0 {
+		ctx, err = prepareBilling(ctx, uc.authorization, "billing.routing_policy", "billing.routing_policy.user_override.read")
+		if err != nil {
+			return nil, err
+		}
+		if err = authorization.Require(ctx, "billing.routing_policy.user_override.read", routingPolicyFacts(groupID, userID)); err != nil {
+			return nil, err
+		}
 		override, err := uc.resolveUserPriceOverride(ctx, userID, groupID)
 		if err != nil {
 			return nil, err

@@ -25,6 +25,8 @@ import (
 	identityv1 "micro-one-api/api/identity/v1"
 	adminbiz "micro-one-api/app/admin/internal/biz"
 	"micro-one-api/app/admin/internal/service"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/domain/authorization/management"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	subscriptiondata "micro-one-api/domain/subscription/data"
 
@@ -662,8 +664,23 @@ func newAdminHTTPOptionTestServer(store *adminHTTPSystemOptionsStore) http.Handl
 	return NewHTTPServer(":0", adminSvc, nil)
 }
 
+// These compatibility fixtures explicitly model identity's legacy response;
+// absence of the real authorization dependency must remain a production 503.
+type adminHTTPLegacyIAMRepo struct{}
+
+func (adminHTTPLegacyIAMRepo) Execute(context.Context, string, string, management.Request) (management.Response, error) {
+	return management.Response{Session: &management.Session{UserID: 42}}, nil
+}
+func (adminHTTPLegacyIAMRepo) ResourceMode(context.Context, string) (string, error) {
+	return "legacy", nil
+}
+func (adminHTTPLegacyIAMRepo) ResourceAuthorization(context.Context, string, authorization.ResourceRequest) (authorization.ResourceAuthorization, error) {
+	return authorization.ResourceAuthorization{Mode: "legacy"}, nil
+}
+
 func newAdminHTTPSubscriptionTestServer() http.Handler {
 	adminSvc := service.NewAdminService(nil, nil, nil, nil)
+	adminSvc.SetIAMService(service.NewIAMAdminService(adminbiz.NewIAMUsecase(adminHTTPLegacyIAMRepo{})))
 	repo := subscriptiondata.NewMemoryRepositoryForTest()
 	adminSvc.SetSubscriptionUsecases(
 		subscriptionbiz.NewSubscriptionUsecase(repo, repo),
@@ -675,6 +692,7 @@ func newAdminHTTPSubscriptionTestServer() http.Handler {
 
 func newAdminHTTPSubscriptionPaymentTestServer(identity identityv1.IdentityServiceClient, billing billingv1.BillingServiceClient) http.Handler {
 	adminSvc := service.NewAdminService(billing, identity, nil, nil)
+	adminSvc.SetIAMService(service.NewIAMAdminService(adminbiz.NewIAMUsecase(adminHTTPLegacyIAMRepo{})))
 	repo := subscriptiondata.NewMemoryRepositoryForTest()
 	adminSvc.SetSubscriptionUsecases(
 		subscriptionbiz.NewSubscriptionUsecase(repo, repo),
@@ -686,7 +704,7 @@ func newAdminHTTPSubscriptionPaymentTestServer(identity identityv1.IdentityServi
 
 func TestAdminHTTPSubscriptionManagement(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-token")
-	srv := newAdminHTTPSubscriptionTestServer()
+	srv := newAdminHTTPSubscriptionPaymentTestServer(&adminHTTPIdentityClient{validateValid: true, validateUserID: 42}, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/subscription-groups", strings.NewReader(`{"name":"pro","display_name":"Pro","platform":"openai","daily_limit_usd":10,"status":1}`))
 	req.Header.Set("Authorization", "Bearer admin-token")
@@ -746,6 +764,7 @@ func TestAdminHTTPSubscriptionManagement(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/subscriptions/progress?user_id=42", nil)
+	req.Header.Set("Authorization", "Bearer user-session")
 	rec = httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"remaining_seconds"`) {

@@ -492,7 +492,7 @@ func (r *routingGroupRepo) SetRoutingGroupState(ctx context.Context, id, revisio
 	if r.data.db == nil {
 		return biz.ErrRoutingGroupStorage
 	}
-	return authzquery.RunInTx(ctx, r.data.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+	err := authzquery.RunInTx(ctx, r.data.db, 3, func(ctx context.Context, tx *gorm.DB) error {
 		var old routingGroupModel
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&old, id).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -504,11 +504,13 @@ func (r *routingGroupRepo) SetRoutingGroupState(ctx context.Context, id, revisio
 		if err := authorization.Require(ctx, "channel.routing_group.update", facts); err != nil {
 			return err
 		}
+		ops := []string{"channel.routing_group.update"}
 		if old.Status != status {
 			op := "channel.routing_group.disable"
 			if status == "enabled" {
 				op = "channel.routing_group.enable"
 			}
+			ops = append(ops, op)
 			if err := authorization.Require(ctx, op, facts); err != nil {
 				return err
 			}
@@ -520,8 +522,17 @@ func (r *routingGroupRepo) SetRoutingGroupState(ctx context.Context, id, revisio
 		if result.RowsAffected != 1 {
 			return biz.ErrRoutingGroupBaselineConflict
 		}
-		return routingoutbox.Enqueue(tx, "channel", "group", id, revision+1)
+		if err := routingoutbox.Enqueue(tx, "channel", "group", id, revision+1); err != nil {
+			return err
+		}
+		for _, op := range ops {
+			if err := authzquery.AppendWriteAudit(ctx, tx, op, id); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
+	return authzquery.RecordWriteFailure(ctx, r.data.db, "channel.routing_group.update", id, err)
 }
 
 func bumpRoutingGroupsTx(tx *gorm.DB, ids []int64) error {
@@ -555,7 +566,7 @@ func (r *routingGroupRepo) SetRoutingGroupResourceOverrides(ctx context.Context,
 	if source.Kind == routing.Subscription {
 		table, column = "account_routing_groups", "subscription_account_id"
 	}
-	return authzquery.RunInTx(ctx, r.data.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+	err := authzquery.RunInTx(ctx, r.data.db, 3, func(ctx context.Context, tx *gorm.DB) error {
 		var group routingGroupModel
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&group, groupID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -565,6 +576,12 @@ func (r *routingGroupRepo) SetRoutingGroupResourceOverrides(ctx context.Context,
 		}
 		if err := authorization.Require(ctx, "channel.routing_group.resource_override.update", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: group.ID}); err != nil {
 			return err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "channel.routing_group.resource_override.update"); iam {
+			expected, present := authorization.ExpectedResourceRevision(ctx)
+			if !present || expected != uint64(group.Revision) {
+				return biz.ErrRoutingGroupBaselineConflict
+			}
 		}
 		if group.Status == "archived" {
 			return biz.ErrRoutingGroupInvalid
@@ -587,6 +604,10 @@ func (r *routingGroupRepo) SetRoutingGroupResourceOverrides(ctx context.Context,
 				return biz.ErrRoutingGroupNotFound
 			}
 		}
-		return bumpRoutingGroupsTx(tx, []int64{groupID})
+		if err := bumpRoutingGroupsTx(tx, []int64{groupID}); err != nil {
+			return err
+		}
+		return authzquery.AppendWriteAudit(ctx, tx, "channel.routing_group.resource_override.update", groupID)
 	})
+	return authzquery.RecordWriteFailure(ctx, r.data.db, "channel.routing_group.resource_override.update", groupID, err)
 }

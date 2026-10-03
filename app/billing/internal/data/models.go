@@ -164,6 +164,7 @@ type accountReceivableModel struct {
 func (accountReceivableModel) TableName() string { return "account_receivables" }
 
 type redeemCodeModel struct {
+	Revision  int64     `gorm:"column:revision"`
 	ID        uint      `gorm:"primaryKey;column:id"`
 	Code      string    `gorm:"uniqueIndex;column:code"`
 	Name      *string   `gorm:"column:name"`

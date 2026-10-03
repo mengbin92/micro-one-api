@@ -7,9 +7,11 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"micro-one-api/app/billing/internal/biz"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	subscriptiondata "micro-one-api/domain/subscription/data"
+	"micro-one-api/platform/database/authzquery"
 	applogger "micro-one-api/platform/logging"
 	"time"
 )
@@ -52,7 +54,20 @@ func (r *routingPolicyRepo) Get(ctx context.Context, id int64) (*routing.Billing
 	return &routing.BillingPolicy{GroupID: row.RoutingGroupID, Version: row.Version, BillingMode: row.BillingMode, PriceRatio: row.PriceRatio, EffectiveAt: row.EffectiveAt}, nil
 }
 func (r *routingPolicyRepo) Publish(ctx context.Context, p *routing.BillingPolicy, expected int64) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	writeErr := authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := biz.RequireWrite(ctx, "billing.routing_policy.publish", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: p.GroupID, RoutingGroupIDs: []int64{p.GroupID}}); err != nil {
+			return err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "billing.routing_policy.publish"); iam {
+			var group struct{ Status string }
+			if err := tx.Table("routing_groups").Clauses(clause.Locking{Strength: "UPDATE"}).Select("status").Where("id = ?", p.GroupID).Take(&group).Error; err != nil {
+				return err
+			}
+			if group.Status == "archived" {
+				return biz.ErrRoutingContextInvalid
+			}
+
+		}
 		if err := subscriptiondata.LockContractReferences(tx); err != nil {
 			return err
 		}
@@ -94,10 +109,14 @@ func (r *routingPolicyRepo) Publish(ctx context.Context, p *routing.BillingPolic
 		if result.RowsAffected != 1 {
 			return biz.ErrRoutingContextConflict
 		}
+		if err := authzquery.AppendWriteAudit(ctx, tx, "billing.routing_policy.publish", p.GroupID); err != nil {
+			return err
+		}
 		p.Version = row.Version
 		p.EffectiveAt = row.EffectiveAt
 		return nil
 	})
+	return authzquery.RecordWriteFailure(ctx, r.db, "billing.routing_policy.publish", p.GroupID, writeErr)
 }
 
 // Conservative reference check: legacy contracts may cover any authorized group.

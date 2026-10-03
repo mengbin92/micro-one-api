@@ -1,0 +1,1 @@
+ALTER TABLE subscription_groups ADD COLUMN revision BIGINT NOT NULL DEFAULT 1;

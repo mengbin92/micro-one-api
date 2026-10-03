@@ -63,6 +63,7 @@ func (s *ChannelService) ExportModels(ctx context.Context, req *channelv1.Export
 // ImportModels applies an import document in one transaction. A conflict under
 // the reject strategy aborts the whole batch (no partial writes).
 func (s *ChannelService) ImportModels(ctx context.Context, req *channelv1.ImportModelsRequest) (*channelv1.ImportModelsResponse, error) {
+	ctx = ownerWriteContext(ctx, req, "model", 0, "expected_revision")
 	uc := s.modelUc()
 	if uc == nil {
 		return &channelv1.ImportModelsResponse{Success: false, Message: "model registry not enabled"}, nil
@@ -140,24 +141,25 @@ func exportModelToProto(m *biz.ModelExportModel) *channelv1.ModelExportModel {
 		return nil
 	}
 	out := &channelv1.ModelExportModel{
-		ModelId:          m.ModelID,
-		DisplayName:      m.DisplayName,
-		Description:      m.Description,
-		Provider:         m.Provider,
-		ModelType:        m.ModelType,
-		ContextWindow:    m.ContextWindow,
-		PricingInput:     m.PricingInput,
-		PricingOutput:    m.PricingOutput,
-		PricingCacheRead: m.PricingCacheRead,
-		Status:           m.Status,
-		IsPublic:         m.IsPublic,
-		Capabilities:     append([]string(nil), m.Capabilities...),
-		InputModalities:  append([]string(nil), m.InputModalities...),
-		OutputModalities: append([]string(nil), m.OutputModalities...),
-		Tags:             append([]string(nil), m.Tags...),
-		Category:         m.Category,
-		Tier:             m.Tier,
-		Metadata:         m.Metadata,
+		ModelId:               m.ModelID,
+		AuthorizationRevision: m.AuthorizationRevision,
+		DisplayName:           m.DisplayName,
+		Description:           m.Description,
+		Provider:              m.Provider,
+		ModelType:             m.ModelType,
+		ContextWindow:         m.ContextWindow,
+		PricingInput:          m.PricingInput,
+		PricingOutput:         m.PricingOutput,
+		PricingCacheRead:      m.PricingCacheRead,
+		Status:                m.Status,
+		IsPublic:              m.IsPublic,
+		Capabilities:          append([]string(nil), m.Capabilities...),
+		InputModalities:       append([]string(nil), m.InputModalities...),
+		OutputModalities:      append([]string(nil), m.OutputModalities...),
+		Tags:                  append([]string(nil), m.Tags...),
+		Category:              m.Category,
+		Tier:                  m.Tier,
+		Metadata:              m.Metadata,
 	}
 	for _, a := range m.Aliases {
 		if a != nil {
@@ -199,21 +201,22 @@ func protoToExportModels(in []*channelv1.ModelExportModel, importPrices bool) []
 			continue
 		}
 		do := &biz.ModelExportModel{
-			ModelID:          m.GetModelId(),
-			DisplayName:      m.GetDisplayName(),
-			Description:      m.GetDescription(),
-			Provider:         m.GetProvider(),
-			ModelType:        m.GetModelType(),
-			ContextWindow:    m.GetContextWindow(),
-			Status:           m.GetStatus(),
-			IsPublic:         m.GetIsPublic(),
-			Capabilities:     append([]string(nil), m.GetCapabilities()...),
-			InputModalities:  append([]string(nil), m.GetInputModalities()...),
-			OutputModalities: append([]string(nil), m.GetOutputModalities()...),
-			Tags:             append([]string(nil), m.GetTags()...),
-			Category:         m.GetCategory(),
-			Tier:             m.GetTier(),
-			Metadata:         m.GetMetadata(),
+			ModelID:               m.GetModelId(),
+			AuthorizationRevision: m.GetAuthorizationRevision(),
+			DisplayName:           m.GetDisplayName(),
+			Description:           m.GetDescription(),
+			Provider:              m.GetProvider(),
+			ModelType:             m.GetModelType(),
+			ContextWindow:         m.GetContextWindow(),
+			Status:                m.GetStatus(),
+			IsPublic:              m.GetIsPublic(),
+			Capabilities:          append([]string(nil), m.GetCapabilities()...),
+			InputModalities:       append([]string(nil), m.GetInputModalities()...),
+			OutputModalities:      append([]string(nil), m.GetOutputModalities()...),
+			Tags:                  append([]string(nil), m.GetTags()...),
+			Category:              m.GetCategory(),
+			Tier:                  m.GetTier(),
+			Metadata:              m.GetMetadata(),
 		}
 		if importPrices {
 			do.PricingInput = m.GetPricingInput()

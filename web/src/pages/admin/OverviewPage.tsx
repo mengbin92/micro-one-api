@@ -120,7 +120,7 @@ interface ReconciliationSummary {
 interface AdminSummary {
   partial?: boolean;
   alerts_complete?: boolean;
-  sections?: Record<string, { available: boolean; reason?: 'timeout' | 'canceled' | 'unavailable' }>;
+  sections?: Record<string, { available: boolean; reason?: 'timeout' | 'canceled' | 'unavailable' | 'restricted' }>;
   totals?: AdminTotals;
   recent_users?: AdminUser[] | null;
   channels?: AdminChannel[] | null;
@@ -523,8 +523,8 @@ const summarySectionLabels: Record<string, string> = {
   channel_names: '渠道名称', subscription_account_names: '订阅账号名称',
 };
 
-function UnavailableSection() {
-  return <EmptyState title={t('数据暂不可用')} description={t('部分数据加载失败，请重试。')} />;
+function UnavailableSection({ restricted = false }: { restricted?: boolean }) {
+  return <EmptyState title={t(restricted ? '权限受限' : '数据暂不可用')} description={t(restricted ? '当前账号无权查看此部分数据。' : '部分数据加载失败，请重试。')} />;
 }
 
 export function AdminOverviewPage() {
@@ -538,7 +538,8 @@ export function AdminOverviewPage() {
   });
 
   const unavailable = (...sections: string[]) => sections.some((key) => data?.sections?.[key]?.available === false);
-  const summaryValue = (section: string, value: string) => isLoading ? '—' : unavailable(section) ? t('暂不可用') : value;
+  const restricted = (...sections: string[]) => sections.some((key) => data?.sections?.[key]?.reason === 'restricted');
+  const summaryValue = (section: string, value: string) => isLoading ? '—' : restricted(section) ? t('权限受限') : unavailable(section) ? t('暂不可用') : value;
   const unavailableLabels = Object.entries(data?.sections ?? {})
     .filter(([, state]) => !state.available)
     .map(([key]) => t(summarySectionLabels[key] ?? '数据暂不可用'));
@@ -764,7 +765,7 @@ export function AdminOverviewPage() {
           </CardHeader>
           {rankingTabs.map((tab) => (
             <Tabs.Panel key={tab.key} value={tab.key} className="p-4">
-              {unavailable(...tab.sections) ? <UnavailableSection /> : <TopUsageList
+              {unavailable(...tab.sections) ? <UnavailableSection restricted={restricted(...tab.sections)} /> : <TopUsageList
                 kind={tab.key}
                 items={tab.items}
                 isLoading={isLoading}
@@ -788,7 +789,7 @@ export function AdminOverviewPage() {
                 <TableSkeleton columns={[t("渠道"), t("供应商"), t("模型"), t("状态"), t("余额")]} rows={5} />
               </div>
             ) : unavailable("channels") ? (
-              <UnavailableSection />
+              <UnavailableSection restricted={Object.values(data?.sections ?? {}).some((state) => state.reason === 'restricted')} />
             ) : channels.length === 0 ? (
               <EmptyState title={t("暂无渠道")} description={t("创建上游渠道后会显示在这里。")} />
             ) : (
@@ -830,7 +831,7 @@ export function AdminOverviewPage() {
                 <TableSkeleton columns={[t("名称"), t("平台"), t("路由分组"), t("优先级"), t("过期"), t("状态")]} rows={5} />
               </div>
             ) : unavailable("subscription_accounts") ? (
-              <UnavailableSection />
+              <UnavailableSection restricted={Object.values(data?.sections ?? {}).some((state) => state.reason === 'restricted')} />
             ) : subscriptionAccounts.length === 0 ? (
               <EmptyState title={t("暂无订阅账号")} description={t("新建 Claude / Codex 订阅账号后会显示在这里。")} />
             ) : (
@@ -908,7 +909,7 @@ export function AdminOverviewPage() {
                 <TableSkeleton columns={[t("用户"), t("类型"), t("模型"), t("费用"), t("端点"), t("时间")]} rows={8} />
               </div>
             ) : unavailable("recent_logs") ? (
-              <UnavailableSection />
+              <UnavailableSection restricted={Object.values(data?.sections ?? {}).some((state) => state.reason === 'restricted')} />
             ) : logs.length === 0 ? (
               <EmptyState title={t("暂无流水")} description={t("用户调用、充值、兑换或退款后会显示在这里。")} />
             ) : (
@@ -965,7 +966,7 @@ export function AdminOverviewPage() {
                 <TableSkeleton columns={[t("用户"), t("路由分组"), t("状态")]} rows={5} />
               </div>
             ) : unavailable("users") ? (
-              <UnavailableSection />
+              <UnavailableSection restricted={Object.values(data?.sections ?? {}).some((state) => state.reason === 'restricted')} />
             ) : users.length === 0 ? (
               <EmptyState title={t("暂无用户")} description={t("注册或创建用户后会显示在这里。")} />
             ) : (

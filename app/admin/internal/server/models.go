@@ -13,11 +13,15 @@ import (
 
 	applogger "micro-one-api/platform/logging"
 
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	adminv1 "micro-one-api/api/admin/v1"
 	channelv1 "micro-one-api/api/channel/v1"
+	adminbiz "micro-one-api/app/admin/internal/biz"
 	"micro-one-api/app/admin/internal/service"
+	"micro-one-api/domain/authorization"
 )
 
 // handleModels is the /api/admin/models collection handler.
@@ -60,10 +64,10 @@ func handleListModels(w http.ResponseWriter, r *http.Request, svc *service.Admin
 		PublicOnly: r.URL.Query().Get("public_only") == "true",
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeServiceResponse(w, nil, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeModelResponse(w, r, resp)
 }
 
 func handleCreateModel(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -73,10 +77,10 @@ func handleCreateModel(w http.ResponseWriter, r *http.Request, svc *service.Admi
 	}
 	resp, err := svc.CreateModel(r.Context(), &req)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeServiceResponse(w, nil, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeModelResponse(w, r, resp)
 }
 
 func handleUpdateModel(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -86,10 +90,10 @@ func handleUpdateModel(w http.ResponseWriter, r *http.Request, svc *service.Admi
 	}
 	resp, err := svc.UpdateModel(r.Context(), &req)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeServiceResponse(w, nil, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeModelResponse(w, r, resp)
 }
 
 func handleModelsBatch(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -103,10 +107,10 @@ func handleModelsBatch(w http.ResponseWriter, r *http.Request, svc *service.Admi
 	}
 	resp, err := svc.BatchModels(r.Context(), &req)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeServiceResponse(w, nil, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeModelResponse(w, r, resp)
 }
 
 // handleModelByID handles /api/admin/models/{model_pk}[/{action}].
@@ -133,40 +137,38 @@ func handleModelByID(w http.ResponseWriter, r *http.Request, svc *service.AdminS
 	case action == "" && r.Method == http.MethodGet:
 		resp, err := svc.GetModel(r.Context(), &channelv1.GetModelRequest{ModelPk: modelPK})
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeServiceResponse(w, nil, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, resp)
+		writeModelResponse(w, r, resp)
 	case action == "" && r.Method == http.MethodDelete:
-		resp, err := svc.DeleteModel(r.Context(), &channelv1.DeleteModelRequest{ModelPk: modelPK})
+		resp, err := svc.DeleteModel(r.Context(), &channelv1.DeleteModelRequest{ModelPk: modelPK, ExpectedRevision: getQueryInt64(r, "expected_revision", 0), Reason: authorization.WriteReason(r.Context())})
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeServiceResponse(w, nil, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, resp)
+		writeModelResponse(w, r, resp)
 	case action == "status" && r.Method == http.MethodPatch:
-		var body struct {
-			Status int32 `json:"status"`
-		}
+		var body channelv1.ChangeModelStatusRequest
 		if !decodeBody(w, r, &body) {
 			return
 		}
-		resp, err := svc.ChangeModelStatus(r.Context(), &channelv1.ChangeModelStatusRequest{ModelPk: modelPK, Status: body.Status})
+		resp, err := svc.ChangeModelStatus(r.Context(), &channelv1.ChangeModelStatusRequest{ModelPk: modelPK, Status: body.Status, ExpectedRevision: body.ExpectedRevision, Reason: body.Reason})
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeServiceResponse(w, nil, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, resp)
+		writeModelResponse(w, r, resp)
 	case action == "usage-stats" && r.Method == http.MethodGet:
 		handleModelUsageStats(w, r, svc)
 		return
 	case action == "aliases" && r.Method == http.MethodGet:
 		resp, err := svc.ListModelAliases(r.Context(), &channelv1.ListModelAliasesRequest{ModelPk: modelPK})
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeServiceResponse(w, nil, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, resp)
+		writeModelResponse(w, r, resp)
 	case action == "aliases" && r.Method == http.MethodPost:
 		var req channelv1.CreateModelAliasRequest
 		if !decodeBody(w, r, &req) {
@@ -175,10 +177,10 @@ func handleModelByID(w http.ResponseWriter, r *http.Request, svc *service.AdminS
 		req.ModelPk = modelPK
 		resp, err := svc.CreateModelAlias(r.Context(), &req)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeServiceResponse(w, nil, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, resp)
+		writeModelResponse(w, r, resp)
 	case action == "aliases" && r.Method == http.MethodDelete:
 		// /api/admin/models/{model_pk}/aliases/{alias_id}
 		if len(parts) < 3 {
@@ -190,24 +192,24 @@ func handleModelByID(w http.ResponseWriter, r *http.Request, svc *service.AdminS
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid alias id"})
 			return
 		}
-		resp, err := svc.DeleteModelAlias(r.Context(), &channelv1.DeleteModelAliasRequest{AliasId: aliasID})
+		resp, err := svc.DeleteModelAlias(r.Context(), &channelv1.DeleteModelAliasRequest{AliasId: aliasID, ModelPk: modelPK, ExpectedModelRevision: getQueryInt64(r, "expected_model_revision", 0), Reason: authorization.WriteReason(r.Context())})
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeServiceResponse(w, nil, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, resp)
+		writeModelResponse(w, r, resp)
 	case action == "channels" && r.Method == http.MethodGet:
 		// Use the model-scoped query via GetModel which returns channel mappings.
 		detail, err := svc.GetModel(r.Context(), &channelv1.GetModelRequest{ModelPk: modelPK})
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeServiceResponse(w, nil, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"mappings": detail.GetChannelMappings()})
 	case action == "subscriptions" && r.Method == http.MethodGet:
 		detail, err := svc.GetModel(r.Context(), &channelv1.GetModelRequest{ModelPk: modelPK})
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeServiceResponse(w, nil, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"mappings": detail.GetSubscriptionMappings()})
@@ -229,10 +231,10 @@ func handleChannelModelMappings(w http.ResponseWriter, r *http.Request, svc *ser
 	case http.MethodGet:
 		resp, err := svc.ListChannelModelMappings(r.Context(), &channelv1.ListChannelModelMappingsRequest{ChannelId: channelID})
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeServiceResponse(w, nil, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, resp)
+		writeModelResponse(w, r, resp)
 	case http.MethodPost:
 		var req channelv1.UpsertChannelModelMappingRequest
 		if !decodeBody(w, r, &req) {
@@ -241,10 +243,10 @@ func handleChannelModelMappings(w http.ResponseWriter, r *http.Request, svc *ser
 		req.ChannelId = channelID
 		resp, err := svc.UpsertChannelModelMapping(r.Context(), &req)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeServiceResponse(w, nil, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, resp)
+		writeModelResponse(w, r, resp)
 	case http.MethodDelete:
 		// /api/admin/channels/{channel_id}/models/{model_pk}
 		rest := strings.TrimPrefix(r.URL.Path, "/api/admin/channels/"+strconv.FormatInt(channelID, 10)+"/models/")
@@ -254,12 +256,12 @@ func handleChannelModelMappings(w http.ResponseWriter, r *http.Request, svc *ser
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid model pk"})
 			return
 		}
-		resp, err := svc.DeleteChannelModelMapping(r.Context(), &channelv1.DeleteChannelModelMappingRequest{ChannelId: channelID, ModelPk: modelPK})
+		resp, err := svc.DeleteChannelModelMapping(r.Context(), &channelv1.DeleteChannelModelMappingRequest{ChannelId: channelID, ModelPk: modelPK, ExpectedModelRevision: getQueryInt64(r, "expected_model_revision", 0), Reason: authorization.WriteReason(r.Context())})
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeServiceResponse(w, nil, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, resp)
+		writeModelResponse(w, r, resp)
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
@@ -276,10 +278,10 @@ func handleSubscriptionModelMappings(w http.ResponseWriter, r *http.Request, svc
 	case http.MethodGet:
 		resp, err := svc.ListSubscriptionModelMappings(r.Context(), &channelv1.ListSubscriptionModelMappingsRequest{SubscriptionAccountId: accountID})
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeServiceResponse(w, nil, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, resp)
+		writeModelResponse(w, r, resp)
 	case http.MethodPost:
 		var req channelv1.UpsertSubscriptionModelMappingRequest
 		if !decodeBody(w, r, &req) {
@@ -288,10 +290,10 @@ func handleSubscriptionModelMappings(w http.ResponseWriter, r *http.Request, svc
 		req.SubscriptionAccountId = accountID
 		resp, err := svc.UpsertSubscriptionModelMapping(r.Context(), &req)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeServiceResponse(w, nil, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, resp)
+		writeModelResponse(w, r, resp)
 	case http.MethodDelete:
 		// /api/admin/subscription-accounts/{account_id}/models/{model_pk}[?group_name=...]
 		rest := strings.TrimPrefix(r.URL.Path, "/api/admin/subscription-accounts/"+strconv.FormatInt(accountID, 10)+"/models/")
@@ -303,15 +305,16 @@ func handleSubscriptionModelMappings(w http.ResponseWriter, r *http.Request, svc
 		}
 		groupName := r.URL.Query().Get("group_name")
 		resp, err := svc.DeleteSubscriptionModelMapping(r.Context(), &channelv1.DeleteSubscriptionModelMappingRequest{
+			ExpectedModelRevision: getQueryInt64(r, "expected_model_revision", 0), Reason: authorization.WriteReason(r.Context()),
 			SubscriptionAccountId: accountID,
 			ModelPk:               modelPK,
 			GroupName:             groupName,
 		})
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeServiceResponse(w, nil, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, resp)
+		writeModelResponse(w, r, resp)
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
@@ -346,10 +349,10 @@ func handleModelUsageStats(w http.ResponseWriter, r *http.Request, svc *service.
 		PageSize:  getQueryInt32(r, "page_size", 20),
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeServiceResponse(w, nil, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeModelResponse(w, r, resp)
 }
 
 // handleModelHealth serves the passive per-source model health dashboard.
@@ -364,17 +367,21 @@ func handleModelHealth(w http.ResponseWriter, r *http.Request, svc *service.Admi
 		Status: r.URL.Query().Get("status"),
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeServiceResponse(w, nil, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeModelResponse(w, r, resp)
 }
 
 // parseChannelMappingPathID extracts the {id} segment from a path shaped
 // /prefix/{id}/suffix, returning the numeric id.
 func parseChannelMappingPathID(path, prefix, suffix string) (int64, bool) {
 	rest := strings.TrimPrefix(path, prefix)
-	rest = strings.TrimSuffix(rest, suffix)
+	if index := strings.Index(rest, suffix+"/"); index >= 0 {
+		rest = rest[:index]
+	} else {
+		rest = strings.TrimSuffix(rest, suffix)
+	}
 	rest = strings.Trim(rest, "/")
 	if rest == "" || strings.Contains(rest, "/") {
 		return 0, false
@@ -423,10 +430,10 @@ func handleModelRoutings(w http.ResponseWriter, r *http.Request, svc *service.Ad
 				Platform:  r.URL.Query().Get("platform"),
 			})
 			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				writeServiceResponse(w, nil, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, resp)
+			writeModelResponse(w, r, resp)
 		case http.MethodPost:
 			var req adminv1.UpsertModelRoutingRequest
 			if !decodeBody(w, r, &req) {
@@ -434,10 +441,10 @@ func handleModelRoutings(w http.ResponseWriter, r *http.Request, svc *service.Ad
 			}
 			resp, err := svc.UpsertModelRouting(r.Context(), &req)
 			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				writeServiceResponse(w, nil, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, resp)
+			writeModelResponse(w, r, resp)
 		default:
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		}
@@ -454,12 +461,17 @@ func handleModelRoutings(w http.ResponseWriter, r *http.Request, svc *service.Ad
 	}
 	switch r.Method {
 	case http.MethodDelete:
-		resp, err := svc.DeleteModelRouting(r.Context(), &adminv1.DeleteModelRoutingRequest{Id: id})
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		revision, err := strconv.ParseUint(r.URL.Query().Get("expected_revision"), 10, 64)
+		if err != nil && isIAMBusinessContext(r.Context()) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "expected_revision required"})
 			return
 		}
-		writeJSON(w, http.StatusOK, resp)
+		resp, err := svc.DeleteModelRouting(r.Context(), &adminv1.DeleteModelRoutingRequest{Id: id, ExpectedRevision: revision, Reason: authorization.WriteReason(r.Context())})
+		if err != nil {
+			writeServiceResponse(w, nil, err)
+			return
+		}
+		writeModelResponse(w, r, resp)
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
@@ -490,7 +502,7 @@ func handleCanonicalPreflight(w http.ResponseWriter, r *http.Request, svc *servi
 		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeModelResponse(w, r, resp)
 }
 
 func handleCanonicalMerge(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -511,7 +523,7 @@ func handleCanonicalMerge(w http.ResponseWriter, r *http.Request, svc *service.A
 		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeModelResponse(w, r, resp)
 }
 
 // handleUnpricedRoutedModels serves GET /api/admin/models/unpriced — the
@@ -525,7 +537,7 @@ func handleUnpricedRoutedModels(w http.ResponseWriter, r *http.Request, svc *ser
 	}
 	resp, err := svc.ListUnpricedRoutedModelsWithPricing(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	// v0.11.0 review M5: update the Prometheus gauge via the shared helper so
@@ -535,7 +547,7 @@ func handleUnpricedRoutedModels(w http.ResponseWriter, r *http.Request, svc *ser
 	// the unpriced state; when the admin auditor is not wired we fall back to
 	// the application logger so the event is never lost.
 	logUnpricedRoutedAudit(r, resp)
-	writeJSON(w, http.StatusOK, resp)
+	writeModelResponse(w, r, resp)
 }
 
 // logUnpricedRoutedAudit emits a structured audit log entry for the unpriced
@@ -573,7 +585,7 @@ func handleListUpstreamCosts(w http.ResponseWriter, r *http.Request, svc *servic
 	}
 	view, err := svc.ListUpstreamCosts(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
@@ -589,7 +601,7 @@ func handleSetUpstreamCost(w http.ResponseWriter, r *http.Request, svc *service.
 		return
 	}
 	if err := svc.SetUpstreamCost(r.Context(), entry); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
@@ -601,8 +613,17 @@ func handleDeleteUpstreamCost(w http.ResponseWriter, r *http.Request, svc *servi
 		return
 	}
 	key := r.URL.Query().Get("key")
-	if err := svc.DeleteUpstreamCost(r.Context(), key); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+	ctx := r.Context()
+	if isIAMBusinessContext(ctx) {
+		rev, err := strconv.ParseInt(r.URL.Query().Get("expected_revision"), 10, 64)
+		if err != nil || rev < 0 {
+			writeJSON(w, 400, apiResponse(false, "expected_revision required", nil))
+			return
+		}
+		ctx = adminbiz.WithExpectedOptionRevision(ctx, rev)
+	}
+	if err := svc.DeleteUpstreamCost(ctx, key); err != nil {
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
@@ -617,15 +638,26 @@ func handleMigrateUpstreamCostKeys(w http.ResponseWriter, r *http.Request, svc *
 	// operator must explicitly send {"dry_run": false} to apply.
 	dryRun := true
 	var body struct {
-		DryRun *bool `json:"dry_run"`
+		DryRun           *bool  `json:"dry_run"`
+		ExpectedRevision string `json:"expected_revision"`
+		Reason           string `json:"reason"`
 	}
 	_ = jsonx.NewDecoder(r.Body).Decode(&body)
 	if body.DryRun != nil {
 		dryRun = *body.DryRun
 	}
-	plan, err := svc.MigrateUpstreamCostKeys(r.Context(), dryRun)
+	ctx := r.Context()
+	if isIAMBusinessContext(ctx) && !dryRun {
+		rev, err := strconv.ParseInt(body.ExpectedRevision, 10, 64)
+		if err != nil || rev < 0 {
+			writeJSON(w, 400, apiResponse(false, "expected_revision required", nil))
+			return
+		}
+		ctx = adminbiz.WithExpectedOptionRevision(authorization.WithWriteReason(ctx, body.Reason), rev)
+	}
+	plan, err := svc.MigrateUpstreamCostKeys(ctx, dryRun)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeServiceResponse(w, nil, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, plan)
@@ -645,4 +677,19 @@ func unpricedRoutedCount(ctx context.Context, svc *service.AdminService) int {
 		return -1
 	}
 	return int(resp.GetTotal())
+}
+
+func writeModelResponse(w http.ResponseWriter, r *http.Request, value proto.Message) {
+	if !isIAMBusinessContext(r.Context()) {
+		writeJSON(w, http.StatusOK, value)
+		return
+	}
+	body, err := (protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}).Marshal(value)
+	if err != nil {
+		writeServiceResponse(w, nil, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 }

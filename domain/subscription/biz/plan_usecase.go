@@ -2,10 +2,13 @@ package biz
 
 import (
 	"context"
+	"micro-one-api/domain/authorization"
 	"time"
 )
 
 type PlanUsecase struct {
+	authorization authorization.Resolver
+	consumer      string
 	routingGroups ContractGroupReader
 	repo          PlanRepository
 	groupRepo     GroupRepository
@@ -19,6 +22,14 @@ func NewPlanUsecase(repo PlanRepository, groupRepo GroupRepository) *PlanUsecase
 func (uc *PlanUsecase) SetContractGroupReader(r ContractGroupReader) { uc.routingGroups = r }
 
 func (uc *PlanUsecase) Create(ctx context.Context, plan *SubscriptionPlan) error {
+	if plan != nil && plan.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, plan.Reason)
+	}
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "plans", "create")
+	if authErr != nil {
+		return authErr
+	}
 	if plan == nil {
 		return ErrSubscriptionPlanNotFound
 	}
@@ -26,6 +37,10 @@ func (uc *PlanUsecase) Create(ctx context.Context, plan *SubscriptionPlan) error
 		return ErrSubscriptionRoutingUnavailable
 	}
 	plan.ForSale = true
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "plans", "publish")
+	if authErr != nil {
+		return authErr
+	}
 	if EntitlementsEnabled() && len(plan.Coverage) == 0 {
 		return ErrSubscriptionContractInvalid
 	}
@@ -39,12 +54,30 @@ func (uc *PlanUsecase) Create(ctx context.Context, plan *SubscriptionPlan) error
 }
 
 func (uc *PlanUsecase) Update(ctx context.Context, plan *SubscriptionPlan) error {
+	if plan != nil && plan.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, plan.Reason)
+	}
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "plans", "update")
+	if authErr != nil {
+		return authErr
+	}
 	if plan == nil {
 		return ErrSubscriptionPlanNotFound
 	}
 	previous, err := uc.repo.GetPlanByID(ctx, plan.ID)
 	if err != nil {
 		return err
+	}
+	if previous.ForSale != plan.ForSale {
+		action := "unpublish"
+		if plan.ForSale {
+			action = "publish"
+		}
+		ctx, err = prepareSubscription(ctx, uc.authorization, uc.consumer, "plans", action)
+		if err != nil {
+			return err
+		}
 	}
 	if previous.Contract != nil && len(plan.Coverage) == 0 {
 		return ErrSubscriptionContractInvalid
@@ -57,14 +90,29 @@ func (uc *PlanUsecase) Update(ctx context.Context, plan *SubscriptionPlan) error
 }
 
 func (uc *PlanUsecase) Delete(ctx context.Context, planID int64) error {
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "plans", "delete")
+	if authErr != nil {
+		return authErr
+	}
 	return uc.repo.DeletePlan(ctx, planID)
 }
 
 func (uc *PlanUsecase) Get(ctx context.Context, planID int64) (*SubscriptionPlan, error) {
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "plans", "read")
+	if authErr != nil {
+		return nil, authErr
+	}
 	return uc.repo.GetPlanByID(ctx, planID)
 }
 
 func (uc *PlanUsecase) List(ctx context.Context) ([]*SubscriptionPlan, error) {
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "plans", "list")
+	if authErr != nil {
+		return nil, authErr
+	}
 	return uc.repo.ListPlans(ctx)
 }
 
@@ -76,7 +124,7 @@ func (uc *PlanUsecase) ListForSale(ctx context.Context) ([]*SubscriptionPlan, er
 // Admins use it to audit retired plans without filtering the full list by
 // hand. It is the complement of ListForSale.
 func (uc *PlanUsecase) ListOffSale(ctx context.Context) ([]*SubscriptionPlan, error) {
-	all, err := uc.repo.ListPlans(ctx)
+	all, err := uc.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +143,15 @@ func (uc *PlanUsecase) ListOffSale(ctx context.Context) ([]*SubscriptionPlan, er
 // on/off-shelf path. Returns ErrSubscriptionPlanNotFound when the plan does
 // not exist.
 func (uc *PlanUsecase) SetForSale(ctx context.Context, planID int64, forSale bool) error {
+	action := "unpublish"
+	if forSale {
+		action = "publish"
+	}
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "plans", action)
+	if authErr != nil {
+		return authErr
+	}
 	plan, err := uc.repo.GetPlanByID(ctx, planID)
 	if err != nil {
 		return err
@@ -111,6 +168,11 @@ func (uc *PlanUsecase) SetForSale(ctx context.Context, planID int64, forSale boo
 				return err
 			}
 		}
+	}
+	if expected, supplied := ExpectedRevision(ctx); supplied {
+		plan.Revision = expected
+	} else if _, iam := authorization.QueryScopeFromContext(ctx, "subscription.plan."+action); iam {
+		return ErrSubscriptionContractConflict
 	}
 	plan.ForSale = forSale
 	plan.UpdatedAt = uc.now().Unix()

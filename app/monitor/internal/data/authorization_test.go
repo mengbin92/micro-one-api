@@ -26,7 +26,7 @@ func TestIAMB4MonitorOwnerDialects(t *testing.T) {
 			policy := &authztest.Resolver{ActorID: 1, Scopes: map[string]authorization.QueryScope{"monitor.alert_rule.list": authztest.Resources(one.ID), "monitor.alert_rule.read": authztest.Resources(one.ID), "monitor.alert_rule.update": authztest.Resources(one.ID), "monitor.alert_rule.delete": authztest.Resources(one.ID)}}
 			uc := biz.NewMonitorUsecase(r)
 			uc.SetAuthorization(policy)
-			request := authztest.Context()
+			request := authorization.WithExpectedResourceRevision(authorization.WithWriteReason(authztest.Context(), "monitor owner acceptance"), one.Revision)
 			rows, total, err := uc.ListAlertRules(request, 1, 1)
 			require.NoError(t, err)
 			require.EqualValues(t, 1, total)
@@ -35,7 +35,11 @@ func TestIAMB4MonitorOwnerDialects(t *testing.T) {
 			require.Error(t, err)
 			require.Error(t, uc.UpdateAlertRule(request, two))
 			require.Error(t, uc.DeleteAlertRule(request, two.ID))
-			require.NoError(t, uc.DeleteAlertRule(request, one.ID))
+			if driver == "memory" {
+				require.ErrorIs(t, uc.DeleteAlertRule(request, one.ID), authorization.ErrWriteStorageUnavailable)
+			} else {
+				require.NoError(t, uc.DeleteAlertRule(request, one.ID))
+			}
 			check := &biz.HealthCheck{ServiceName: "worker", Status: "healthy", CheckedAt: time.Now()}
 			require.NoError(t, r.SaveHealthCheck(ctx, check))
 			policy.Scopes["monitor.health.service.read"] = authztest.Resources(check.ID)
@@ -46,6 +50,36 @@ func TestIAMB4MonitorOwnerDialects(t *testing.T) {
 			_, err = uc.GetLatestHealth(request, "worker")
 			require.Error(t, err) // never fall back to an older allowed row
 			require.Error(t, uc.RecordHealthCheck(request, "forged", "healthy", 1))
+		})
+	}
+}
+
+func TestIAMB4MonitorCASAuditDialects(t *testing.T) {
+	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(driver, func(t *testing.T) {
+			r := &Repository{db: dbtest.RoutingContextDB(t, driver)}
+			policy := &authztest.Resolver{ActorID: 1, Scopes: map[string]authorization.QueryScope{"monitor.alert_rule.create": authztest.All(), "monitor.alert_rule.update": authztest.All(), "monitor.alert_rule.delete": authztest.All()}}
+			uc := biz.NewMonitorUsecase(r)
+			uc.SetAuthorization(policy)
+			request := authorization.WithExpectedResourceRevision(authorization.WithWriteReason(authztest.Context(), "CAS acceptance"), 0)
+			rule := &biz.AlertRule{Name: "initial", ServiceName: "relay", Metric: "latency"}
+			require.NoError(t, uc.CreateAlertRule(request, rule))
+			require.EqualValues(t, 1, rule.Revision)
+			rule.Name = "current"
+			require.ErrorIs(t, uc.UpdateAlertRule(request, rule), biz.ErrAlertRuleRevisionConflict)
+			request = authorization.WithExpectedResourceRevision(request, 1)
+			require.NoError(t, uc.UpdateAlertRule(request, rule))
+			current, err := r.GetAlertRule(context.Background(), rule.ID)
+			require.NoError(t, err)
+			require.EqualValues(t, 2, current.Revision)
+			require.ErrorIs(t, uc.DeleteAlertRule(request, rule.ID), biz.ErrAlertRuleRevisionConflict)
+			require.NoError(t, r.db.Exec("DROP TABLE resource_write_audits").Error)
+			request = authorization.WithExpectedResourceRevision(request, 2)
+			require.Error(t, uc.DeleteAlertRule(request, rule.ID))
+			stored, err := r.GetAlertRule(context.Background(), rule.ID)
+			require.NoError(t, err)
+			require.Equal(t, "current", stored.Name)
+			require.EqualValues(t, 2, stored.Revision)
 		})
 	}
 }

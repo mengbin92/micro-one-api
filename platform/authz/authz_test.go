@@ -160,13 +160,55 @@ func TestIAMCoverageRequiresDedicatedCallerAndCompletedMethod(t *testing.T) {
 	_, err = guard(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/api.channel.v1.ChannelService/DeleteChannel"}, next)
 	require.Error(t, err)
 }
+
+type optionalActorIAM struct {
+	v.IAMServiceClient
+	queryErr, modeErr, sessionErr error
+	mode                          string
+}
+
+func (f *optionalActorIAM) GetResourceAuthorization(_ context.Context, p *v.ResourceAuthorizationRequest, _ ...grpc.CallOption) (*v.ResourceAuthorizationReply, error) {
+	if p.ModeOnly {
+		if f.modeErr != nil {
+			return nil, f.modeErr
+		}
+		mode := f.mode
+		if mode == "" {
+			mode = "iam"
+		}
+		return &v.ResourceAuthorizationReply{AuthorizationMode: mode}, nil
+	}
+	return nil, f.queryErr
+}
+func (f *optionalActorIAM) GetSessionAuthorization(_ context.Context, _ *v.IAMRequest, _ ...grpc.CallOption) (*v.IAMReply, error) {
+	if f.sessionErr != nil {
+		return nil, f.sessionErr
+	}
+	return &v.IAMReply{Session: &v.IAMSession{UserId: 42, SessionId: "verified-jti", ExpiresAt: timestamppb.New(time.Now().Add(time.Hour))}}, nil
+}
 func TestDeniedOptionalFieldDoesNotHideDependencyFailure(t *testing.T) {
-	fake := &fakeIAM{err: status.Error(codes.PermissionDenied, "field denied")}
+	fake := &optionalActorIAM{queryErr: status.Error(codes.PermissionDenied, "field denied")}
 	client := authz.NewClient("log", fake)
 	out, err := client.OptionalQuery(context.Background(), "log.requests.read", "log.request.content.read", "user")
 	require.NoError(t, err)
 	require.Empty(t, out.Query.Allow)
-	fake.err = status.Error(codes.Unavailable, "identity down")
+	require.EqualValues(t, 42, out.Query.ActorID)
+	require.False(t, out.Query.ValidUntil.IsZero())
+	fake.queryErr = status.Error(codes.Unavailable, "identity down")
+	_, err = client.OptionalQuery(context.Background(), "log.requests.read", "log.request.content.read", "user")
+	require.Equal(t, codes.Unavailable, status.Code(err))
+	fake.queryErr = status.Error(codes.PermissionDenied, "field denied")
+	for _, code := range []codes.Code{codes.Unavailable, codes.Unauthenticated, codes.PermissionDenied} {
+		fake.sessionErr = status.Error(code, "actor resolution failed")
+		_, err = client.OptionalQuery(context.Background(), "log.requests.read", "log.request.content.read", "user")
+		require.Equal(t, code, status.Code(err))
+	}
+	fake.sessionErr = nil
+	fake.mode = "legacy"
+	_, err = client.OptionalQuery(context.Background(), "log.requests.read", "log.request.content.read", "user")
+	require.Equal(t, codes.PermissionDenied, status.Code(err), "a mode change cannot turn a denied IAM field into a legacy grant")
+	fake.mode = "iam"
+	fake.modeErr = status.Error(codes.Unavailable, "mode lookup down")
 	_, err = client.OptionalQuery(context.Background(), "log.requests.read", "log.request.content.read", "user")
 	require.Equal(t, codes.Unavailable, status.Code(err))
 }

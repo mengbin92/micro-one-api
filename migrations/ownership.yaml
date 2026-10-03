@@ -17,6 +17,7 @@
 
 shared:
   - 022_create_schema_migrations
+  - 112_create_resource_write_audits
 
 services:
   identity:
@@ -41,6 +42,9 @@ services:
     - 111_add_iam_cardinality_limits
 
   channel:
+    - 121_usage_semantic_block_revision
+    - 120_model_routing_revision
+    - 118_channel_resource_revisions
     - 092_create_routing_groups
     - 095_create_routing_change_outbox
     - 100_channel_routing_relation_overrides
@@ -82,6 +86,7 @@ services:
     # subscription_plans / account_quota_snapshots
     - 008_create_billing_reservations
     - 009_create_billing_ledgers
+    - 116_billing_redeem_revision
     - 010_create_billing_redeem_codes
     - 011_create_billing_redeem_records
     - 013_add_redeem_code_indexes
@@ -96,6 +101,7 @@ services:
     - 067_add_cache_creation_token_usage_fields
     - 038_add_subscription_account_id_to_billing_reservations
     - 039_create_user_subscriptions
+    - 115_subscription_quota_policy_revision
     - 040_create_subscription_groups
     - 041_create_account_quota_snapshots
     - 042_add_subscription_group_pricing
@@ -144,6 +150,8 @@ services:
     - 107_add_log_request_trace
 
   admin:
+    - 119_upstream_cost_resource_ids
+    - 117_system_options_revision
     # system_options (007); the rest is owned elsewhere.
     - 007_create_system_options
 
@@ -151,13 +159,16 @@ services:
     # configs table (a subset of 000_create_core_tables).
     - 000_create_core_tables
     - 105_add_config_revision
+    - 122_config_tombstones
 
   notify:
+    - 113_notification_management
     # notifications table (a subset of 000_create_core_tables).
     - 000_create_core_tables
     - 033_add_notification_last_error
     - 104_add_notification_processing_lease
 
   monitor:
+    - 114_alert_rule_revision
     # health_checks + alert_rules (subset of 000_create_core_tables).
     - 000_create_core_tables

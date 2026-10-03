@@ -79,10 +79,15 @@ func (uc *ChannelUsecase) ReadChannel(ctx context.Context, id int64) (*Channel, 
 	if err != nil {
 		return nil, err
 	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.health", "monitor.health.channel.read")
+	if err != nil {
+		return nil, err
+	}
 	return uc.redactChannel(ctx, channel)
 }
 func (uc *ChannelUsecase) redactChannel(ctx context.Context, channel *Channel) (*Channel, error) {
 	copy := *channel
+	copy.HealthFieldsVisible = true
 	if _, iam := authorization.QueryScopeFromContext(ctx, "channel.channel.secret.read"); !iam {
 		return &copy, nil
 	}
@@ -93,6 +98,13 @@ func (uc *ChannelUsecase) redactChannel(ctx context.Context, channel *Channel) (
 	}
 	if authorization.Require(ctx, "channel.channel.secret.read", facts) != nil {
 		copy.Key = ""
+	}
+	copy.HealthFieldsVisible = authorization.Require(ctx, "monitor.health.channel.read", facts) == nil
+	if !copy.HealthFieldsVisible {
+		copy.TestTime, copy.ResponseTime = 0, 0
+		copy.HealthStatus, copy.HealthLastError = "", ""
+		copy.HealthLastSuccessTime, copy.HealthLastFailureTime = 0, 0
+		copy.HealthConsecutiveFailures, copy.CircuitOpenedUntil = 0, 0
 	}
 	return &copy, nil
 }
@@ -149,4 +161,34 @@ func (uc *ChannelUsecase) SubscriptionAccountForUpdate(ctx context.Context, id i
 		return nil, err
 	}
 	return uc.repo.FindSubscriptionAccountByID(ctx, id)
+}
+
+// AuthorizeOAuth binds the staged credential exchange to the target group's
+// authoritative facts. Exchange calls it again before contacting the provider.
+func (uc *ChannelUsecase) AuthorizeOAuth(ctx context.Context, group string) (context.Context, error) {
+	if group == "" {
+		group = "default"
+	}
+	return uc.authorizeCreate(ctx, "channel.accounts.oauth", "channel.account.oauth.bind", group)
+}
+
+func (uc *ChannelUsecase) ReadSelectorStats(ctx context.Context) (map[int64]ChannelStats, error) {
+	ctx, err := uc.authorize(ctx, "channel.health", "monitor.health.selector.read")
+	if err != nil {
+		return nil, err
+	}
+	out := map[int64]ChannelStats{}
+	for id, stats := range uc.SelectorStats() {
+		if _, scoped := authorization.QueryScopeFromContext(ctx, "monitor.health.selector.read"); scoped {
+			facts, err := uc.facts(ctx, id, false)
+			if err != nil {
+				return nil, err
+			}
+			if authorization.Require(ctx, "monitor.health.selector.read", facts) != nil {
+				continue
+			}
+		}
+		out[id] = stats
+	}
+	return out, nil
 }

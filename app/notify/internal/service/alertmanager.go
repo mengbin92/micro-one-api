@@ -48,10 +48,18 @@ func (s *NotifyService) HandleAlertmanager(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid alert group")
 		return
 	}
-	n, err := s.uc.CreateNotification(r.Context(), s.alertmanagerNotifyType, s.alertmanagerRecipient(), fmt.Sprintf("[monitor:%s] %d alerts", payload.Status, len(payload.Alerts)), string(content))
+	notifications, err := s.uc.DispatchEvent(r.Context(), "alertmanager", fmt.Sprintf("[monitor:%s] %d alerts", payload.Status, len(payload.Alerts)), string(content), s.alertmanagerNotifyType, s.alertmanagerRecipient())
 	if err != nil {
 		authz.WriteHTTPError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusAccepted, notificationToMap(n))
+	if len(notifications) == 1 {
+		writeJSON(w, http.StatusAccepted, notificationToMap(notifications[0]))
+		return
+	}
+	items := make([]map[string]any, 0, len(notifications))
+	for _, n := range notifications {
+		items = append(items, notificationToMap(n))
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"items": items})
 }

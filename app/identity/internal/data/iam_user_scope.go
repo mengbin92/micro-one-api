@@ -14,7 +14,10 @@ import (
 )
 
 func userScopeQuery(ctx context.Context, query *gorm.DB) (*gorm.DB, error) {
-	q, ok := authorization.QueryScopeFromContext(ctx, "identity.user.list")
+	q, ok := authorization.QueryScopeFromContext(ctx, "identity.user.export")
+	if !ok {
+		q, ok = authorization.QueryScopeFromContext(ctx, "identity.user.list")
+	}
 	if !ok {
 		return query, nil
 	}
@@ -65,4 +68,14 @@ func (r *iamRepo) UserAuthorizationFactsTx(ctx context.Context, handle biz.IAMTx
 		return authorization.ObjectFacts{}, err
 	}
 	return userAuthorizationFacts(tx.db, id, at)
+}
+
+func (r *Repository) ExportUsers(ctx context.Context, page, size int32, keyword, group string, status int32) ([]*biz.User, int64, error) {
+	if r.db == nil {
+		return nil, 0, biz.ErrIAMDependencyUnavailable
+	}
+	if _, ok := authorization.QueryScopeFromContext(ctx, "identity.user.export"); !ok && authorization.External(ctx) {
+		return nil, 0, authorization.ErrDenied
+	}
+	return r.listUsersDB(ctx, page, size, keyword, group, status)
 }

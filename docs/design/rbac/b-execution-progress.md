@@ -1,108 +1,77 @@
-# B 阶段进展：服务身份、用户与资源所有者执行切片
+# B 阶段闭合：服务身份与资源所有者执行链
 
-2026-10-01 · 第二批源分支 `codex/rbac-b2-b4-execution` · 集成目标 `develop` · **B0–B4 进行中，尚未完成整阶段。**
+2026-10-03 · 工作分支 `codex/rbac-b-full-closure` · 集成目标 `develop` · **B0–B4 已完成全量后端闭合。**
 
-本记录区分已实现的执行链与后续门槛，不代表 B 阶段完整交付。生产配置、生产数据库和授权事实源未变更；本批没有部署、推送或发布。
+本记录对应实施方案第 5 节及 B0–B4 工作包，替代此前两批部分交付的剩余门槛表。代码、协议、迁移、入口矩阵及隔离验收一起交付。2026-10-03 按用户另行授权更新全部 9 个线上服务、前端和分库迁移，验证后提交并合并到 develop，见 [生产更新记录](./b-legacy-production-deployment.md)。C1–C3 的完整管理界面/Playwright、D0–D1 的影子对账、切换演练、正式生产凭证核验与 IAM 交接仍按原阶段推进；未发布版本或切换生产授权事实源。
 
-已实现服务凭证与固定方法清单、资源授权 RPC、范围 SQL 编译器，以及用户 CRUD、联系信息、凭证/路由写与本人账号执行链。本次渠道、账务及 B4 所有者开始使用范围编译器；具体完成切片与限制见下面的第二批记录，不能据此声明 B 阶段全量闭合。
+## 完成清单
 
-## 服务身份与执行契约
+| 工作包 | 已闭合执行链 |
+|---|---|
+| B0 | 专属服务凭证、完整 gRPC 方法 allowlist、固定 owner/user/system capability；所有直接 HTTP、兼容别名及 admin RPC 的外部身份边界；Compose 凭证模板与静态核验脚本 |
+| B1 | 用户 CRUD/导出、联系信息与凭证委派、用户路由资格；本人资料/密码/邮箱/OAuth/恢复/登出/删除；本人订单和订阅由财务所有者重验会话及实际归属 |
+| B2 | 渠道/账号 CRUD、状态/凭证/OAuth/测试/余额/额度/恢复动作、健康；模型/别名/映射/模型路由/价格组合、导入导出与 canonical/语义隔离管理；路由组 archive、全量成员替换/override、原子批量删除及渠道导出 |
+| B3 | 账户/账本/订单/退款、余额重置；兑换码 CRUD/批量/导出；共享 subscription 管理、自购及 quota policy；价格/上游成本、对账、请求尝试/定价证据、财务与经营报告导出 |
+| B4 | 日志详情/列表/统计/选择事件/导出/purge、独立正文权限；配置与内容/安全/支付/价格键；健康/告警规则；通知读取、确认、测试、规则管理；admin 代理及总览/路由 section 预检 |
 
-- 接收方通过 `SERVICE_CALLER_TOKENS` 配置其可信 caller 的独立 opaque 凭证，例如 `{"admin":"<admin专属凭证>","relay":"<relay专属凭证>"}`。只向接收方配置它需要验证的 caller，不把完整凭证集合注入所有进程。
-- caller 通过 `SERVICE_IDENTITY_TOKEN` 发送自己的凭证。未配置时保留 `SERVICE_TOKEN` 兼容认证，但该主体标为 `legacy-shared`，`Dedicated=false`，不能证明某个服务身份或获得 `SystemCapability`。
-- `platform/security/serviceidentity/registry.go` 固定声明完整方法、所有者及 user/system caller。空 caller 清单表示拒绝专属 caller，不能由请求扩大。新增方法缺清单时 RPC 拒绝，入口契约检查和真实 gRPC descriptor 枚举测试失败。
-- `x-service-name`、operator ID 或 JWT service_name 不证明身份。重复/共享的专属凭证、未知 caller 配置拒绝；客户端没有签发其他 caller 身份的共享签名能力。
-- `GetResourceAuthorization` 无公开 HTTP annotation。IAM 模式下请求方必须是 execution point 的实际 owner，并提供独立有效用户 JWT/JTI。admin 不能向该方法提交 identity 用户对象事实；浏览器也不能指定任意 permission 取得 capability。
-- 兼容认证本身不完成 B0：其他资源消费端仍需逐一使用专属 capability 和 IAM 决策，直接 HTTP 仍需固定分类。当前不能切换生产 IAM。
+## 服务身份与入口
 
-## 用户执行切片
+- `SERVICE_IDENTITY_TOKEN` 只证明当前 caller；接收方 `SERVICE_CALLER_TOKENS` 只配置其需要验证的 caller。重复专属凭证、未知 caller 和缺失 full-method 声明拒绝。共享 `SERVICE_TOKEN` 在兼容认证中标记 `legacy-shared`，不能获得专属系统 capability。
+- `platform/security/serviceidentity/registry.go` 与 `domain/authorization/execution.go` 声明固定方法、实际 owner 和精确操作。`GetResourceAuthorization` 没有公开 HTTP annotation；owner 使用自己的连接和独立 operator JWT/JTI 查询，客户端 actor/header/permission 字符串不构成授权事实。
+- admin HTTP 和全部 admin gRPC 请求明确标记 external；缺少 IAM 依赖不能退回内部 legacy 用例。重复 operator/reason 元数据拒绝，独立用户凭证进入纯授权 context。ADMIN_TOKEN 救援与普通 IAM 操作者链独立。
+- 系统采集、结算、摄入、投递和回调仅接受当前完整方法的 system capability；用户 read/list 不能借用 worker 能力。未知 API 返回 404，不进入 SPA。组织等未交付操作保持 draft/unbound。
+- [入口矩阵](./entry-matrix.csv) 有 823 行，经逐项复核 caller、复合动作、字段、范围、事实 owner 和测试契约；检查器同时比较源文件/handler 分支摘要和真实注册。矩阵不生成运行时权限。
+- `scripts/check-service-identities.py` 核验 Compose/.env 模板，另支持对指定的已供应凭证文件检查重复/缺失。此次只运行模板检查；生产实际供应与配置核验属于 D1。
 
-identity service 的用户 CRUD 和路由资格读取独立 operator 凭证。在 IAM 模式下同时要求专属 admin 服务身份；身份来自 JWT/JTI 与数据库复核，数值 role 和 operator ID 不参与 IAM 放行。
+## 资源与事务语义
 
-列表在 identity data 层对 `users` 应用 allow 并集与 mandatory deny，并在 count、分页之前过滤。组关系包含默认组及当前有效 grant；读取允许命中一个组，任一 deny 组命中仍拒绝。联系信息拥有独立 scope，缺少其权限时清空 Email。列表/详情同时返回目标 `authorization_revision` 与 `authorization_policy_revision`，proto JSON 使用字符串。
+列表、total、分页、导出及聚合在 data SQL 查询之前施加 allow 并集与 mandatory deny；单对象详情/写入使用同一纯范围语义。组读取命中任一允许组，整体写覆盖全部原/目标组。资源 ID 来自实际持久化对象，父对象、来源及引用不能由客户端替换。集合查询对越权行返回空结果；单对象拒绝。
 
-更新要求非空 update_mask、reason、目标和 policy 双 CAS。在 identity policy 锁内重读操作者、会话、分配、委派和目标事实，检查每个实际动作后才写账号、版本、会话撤销及成功审计。scope 查询、单对象验证和原子写分别位于 biz/data 的既有边界。
+联系信息、渠道/账号凭证、模型价格、财务成本和日志正文分别检查独立权限。成本/member 可见标志区别受限字段与真实零/空值；正文搜索也受 content scope 限制。派生字段不能依赖隐藏来源，兼容更新按实际副作用叠加状态、凭证、映射、价格、成员等权限。单个渠道删除同样验证被级联删除的映射，权限或审计失败回滚对象、关系和 revision。
 
-- `display_name`、enable/disable、email binding、credential 各检查自己的 operation。
-- 邮箱设置、替换和显式清空使用同一路径；凭证接管要求 `user_credentials` 委派，并检查目标未来最大 allow 与 authority。root 和本人不能通过普通管理接管路径改凭证。
-- 邮箱/密码变化推进 password epoch 并撤销旧 session；审计不包含密码、哈希或联系信息。
-- 旧 group 更新检查原/目标共享组，以及 default/grant/revoke 三种实际效果。独立 routing_access RPC 校验 reason、routing/user/policy 三种 CAS，并复核原/目标共享组；public_access 变更只允许全局范围。本人的 default 只能选择已经有效的授权组。远端组引用在重试事务外核实。
-- 本人资料/密码与已经通过 verification code 检查的邮箱绑定，使用同一 IAM 事务并复核本人 JTI；当前密码检查继续生效，不能以用户 ID 冒充本人。
-- 创建只建立 member 默认分配，不通过请求设置角色或财务字段；创建和删除都要求 reason/CAS，审计失败回滚账号和关系。
-- 本人登出推进 epoch 并撤销会话；本人删除保护 root、保留不可修改的审计。OAuth 绑定复核本人会话和 provider subject，并撤销旧会话。邮箱恢复 proof 绑定挑战发出时的 user ID/password epoch，旧 proof 不能在绑定或凭证变化后重放；root 恢复继续使用专用救援。
+写入要求 reason 和对应 CAS；创建使用明确创建语义。实际持久化 revision 与对象事实在事务内锁定重读，成功审计与业务写同事务。channel/account 使用自身 revision，映射/别名使用父版本，路由组、模型路由、语义隔离块和配置使用持久化版本。配置删除保留 tombstone，重建继续推进版本，旧 incarnation 的 revision 不能修改重建对象；固定 key mutex 串行化并发首次创建。
 
-admin 的 IAM console 检查与用户资源检查独立。当前仅用户 CRUD、完成的用户别名、独立 routing-access GET/PATCH 及 access 查询可通过业务 guard；其他业务路径保持拒绝，A6 IAM 管理 API 继续使用自己的执行链。用户列表别名在 IAM 下不调用账务补充查询，也不以 0 冒充获准读取的资金字段。HTTP revision 使用字符串。未注册的 `/api/*`、`/v1/*` 返回 404，不能落入 SPA。
+每次可重试资源事务开始前刷新身份/授权决策；远端 RPC 不放入可 replay 的数据库回调。撤权、actor/mode 改变、到期及依赖故障中止重试。本人订单/订阅使用实际会话与用户/订单归属；内存实现无法保证持久化审计或 IAM 权威事实时拒绝敏感写。资源与 identity 跨库不宣称全局串行撤权。
+
+OAuth 待完成会话绑定真实 actor、目标来源/组及凭证版本；回调重验授权与归属。通知 ack 使用独立确认状态，不能改投递状态冒充确认；测试发送仅针对获准规则，持久化规则实际影响事件收件人和禁用行为。手动语义隔离 resolve 独立于系统 verdict 写入，模型路由 upsert 区分 create/update 并拒绝陈旧版本。
+
+总览与 routing-ops 在启动 section 查询/RPC 前预检各来源操作，随后仍由每个 owner 过滤。无法表达资源谓词的全局 Prometheus section 要求 all；不能先启动聚合再在响应中过滤。admin HTTP 的 ID/revision 使用字符串，proto 与前端 API 类型按源码生成。
+
+## 迁移与兼容
+
+新增 112–122 三库迁移及 ownership 声明：持久化资源写审计、通知管理、告警规则/订阅 quota policy/兑换码/system options/渠道模型版本、上游成本稳定资源 ID、模型路由/语义隔离块版本、配置 tombstone 与 key mutex。SQLite 全量迁移现为 63 个 runnable 文件；MySQL/PostgreSQL 按各方言实际文件数核验。
+
+历史 bool/数字旗标使用 data 层 `xdb.Flag`，保持 biz 纯模型；配置 key 与 CSV 查询在 data 内处理方言差异。生产保持既有 legacy 配置，新的 IAM 写协议和独立凭证在切换前须随服务及全部迁移交付；不能仅更新 admin 或仅部署前端。
 
 ## 验证
 
-实际 SQLite/MySQL/PostgreSQL 的 `TestIAMB1ManagedUsersDialects` 验证了列表/total/分页、隐藏目标、联系信息、更新 CAS、无凭证委派拒绝、邮箱清空、旧会话撤销、root 保护、审计失败全回滚、本人写及跨用户拒绝。还验证了创建默认分配、创建/删除失败回滚、合法凭证委派及未来 authority 阻断、OAuth/邮箱恢复、self 登出/删除、路由三种 CAS 和 outbox 回滚。首批本人订单入口取消了 IAM 数值 role 扩围；第二批进一步接入 billing 所有者的真实会话与归属复验，完整财务/订阅场景验收仍需补齐。
+2026-10-03 在本机实际 SQLite/MySQL/PostgreSQL 运行 B1–B4 owner race 测试，覆盖用户/路由资格、渠道/模型/映射/组/OAuth/动作/canonical/语义版本/批量导出、账务/订阅、日志/配置/健康/通知。MySQL `13316`、PostgreSQL `15436` 仅监听 localhost；各用例新建隔离库/schema、运行完整迁移与 repeat 后清理，不读取部署 DSN。
 
-本机临时容器只监听 `127.0.0.1`，端口 MySQL `13316`、PostgreSQL `15436`；每个测试创建独立临时库/schema，运行全部迁移及 repeat，并在测试结束删除。未读取部署 DSN。执行方式：
+跨服务 B0/B1、B2、B3、B4 使用真实 identity gRPC/session/biz/data 和真实资源 owner，覆盖 root、审计、渠道/平台运维、财务、member 的适用角色组合、数值 role 伪造、共享 token、owner/header 伪造、JTI/分配撤销、隐藏来源、字段脱敏、复合写、409 和成功审计。B3 另通过真实 admin HTTP → billing gRPC 验证财务范围、独立成本导出权限与余额 CAS。
+
+验证命令（两个外部 DSN 必须明确指向本机临时库；未配置而跳过不算三库通过）：
 
 ```sh
-GROUP_CONTEXT_TEST_MYSQL_DSN='<本机临时 MySQL DSN>' \
-GROUP_CONTEXT_TEST_POSTGRES_DSN='<本机临时 PostgreSQL DSN>' \
-go test -race ./app/identity/internal/data -run TestIAMB1ManagedUsersDialects -count=1 -v
-
-go test -race ./internal/integration -run TestIAMB0B1OwnerAndUserBoundaries -count=1
-go test -race ./platform/security/serviceidentity ./platform/grpc/xgrpc ./platform/database/authzquery
 make all
 make wire-check
 make rbac-contract-check
 make migration-check
 make verify
-```
+python3 scripts/check-service-identities.py
 
-跨服务测试执行真实 admin HTTP → identity gRPC/service/biz/data，包含共享 token、伪造 caller/owner、无 operator、数值 role 伪造、未注册/未绑定入口、资金字段省略、protobuf JSON 字符串 revision/FieldMask、邮箱清空和 409。`TestSQLMatchesPureScope` 将参数化 SQL 结果与纯范围语义逐组对照。
-
-本批无新 DDL；未执行 C3 全角色 Playwright、D0 影子对账/切换故障注入，不计作通过。`make verify` 的生成类型检查以自动生成的 `web/src/types/api.ts` 为预期结果，生成结果与源码一同提交，未手改生成物。
-
-## 第二批：B2–B4 所有者执行切片
-
-此批保留进入任务时的渠道/授权客户端草稿，收紧其专属服务主体豁免：仅当前完整方法的 system capability 可跳过用户决策。其余用户调用由实际 owner 使用自己的专属凭证向 identity 查询，转发独立 operator JWT/JTI。新增 `mode_only` 仅返回授权模式，不返回主体或范围；缺失 identity 连接不推断 legacy。六个 owner 的生产装配和 compose 模板加入 identity 端点，未配置或部署真实专属凭证。
-
-- **渠道/订阅账号**：渠道及账号 CRUD、启停、额度重置/错误清理接入 owner 权限；列表 SQL 在 total/分页前施加范围。组范围读取可命中共享资源的一个组，写入需覆盖原/目标全部组，mandatory deny 优先。事务内锁定并重读归属、凭证和旧状态。普通 update 不能修改 key/token、状态、已用额度或显式模型映射而绕过独立操作；账号价格倍率写和尚未完成的映射操作在 IAM 下拒绝。新建组范围使用目标组事实；不能通过渠道兼容编辑器偷偷新建模型。secret.read 独立脱敏，账号后台 metadata 只返回固定运维键；relay 的精确 capability 仍读取原始凭证。纯内存 channel 不支持 IAM 组事实，拒绝范围查询。
-- **路由组**：列表在分页前按实际 group resource_id 过滤，隐藏详情拒绝。members.read 独立控制成员和模型授权数组，`members_visible` 区分脱敏与真正空组。创建要求全局 create；状态写在 row lock 下检查 update 及实际 enable/disable，revision CAS 与 outbox 同事务。渠道/账号 CSV 的归属增删同时要求 `routing_group.members.update` 覆盖原/目标全部组，关系投影和 legacy CSV 事实路径均检查。override 单独授权并锁定组/核实成员；write-only 返回自身写结果，不要求额外 read。archive 与尚不存在的全量替换协议未绑定。
-- **账务**：账户读取/批量及余额调整、账本详情/列表/统计、订单列表/详情与退款接入 owner。账本的 account resource_id 指用户账户 ID；文本 user_id 在 PostgreSQL 中绑定文本参数。退款在原有 row-lock 事务回调内验证实际订单所有者，已退款幂等重入也检查实际订单归属；资金写将真实 actor 和当次事务授权版本写入现有账本 remark，要求 reason，并在提交边界检查决策期限。IAM 余额调整需要既有事务 runner。`billing.account.cost.read` 独立控制 upstream cost/profit；统计按每个 bucket 的完整覆盖决定是否返回，DTO 的 `cost_fields_visible=false` 明确表示受限，不能当作零成本。
-- **本人路径**：billing 对 identity 本人订单/创建/消费/订阅入口重新验证当前会话，按实际 user_id 或订单归属检查；不能仅凭 identity 服务凭证读取其他用户。log 本人 HTTP 别名使用独立 self 执行链，只查询真实本人；数值 role 不扩大查询范围。
-- **日志**：详情、列表/total/分页、统计、选择事件、按范围删除在 log owner 执行。content.read 独立脱敏 message/usage field shape；对正文搜索同时应用 content scope，不能利用关键词探测隐藏正文。摄入仅精确 worker capability。导出/purge 仍未实现，不绑定。
-- **配置**：直接 HTTP/RPC 均进入 owner；只有 notice/about/home_page_content 的固定 public GET 可绕过管理权限。实际持久化 namespace/key 决定 content、安全、支付、价格操作；option 特殊写叠加普通 update。未知安全键及敏感 key/value 脱敏，内部精确 config read capability 保留原值。写-only 内容操作从已授权写返回 revision，不在提交后追加 read 权限导致“已写入但响应拒绝”。
-- **健康/告警/通知**：monitor 健康/规则、notify 列表/详情的资源范围在 count/分页前生效，最新健康详情不能回退到旧的获准记录。SaveHealthCheck、CreateNotification/UpdateNotificationStatus 与 Alertmanager 回调只接受固定系统 capability；普通 read/list 不授予发送或变更投递状态。不同方法的 capability 不能互相借用。尚无实际 ack/test/rules 管理 handler 的操作仍 unbound。
-
-所有者 gRPC 明确列出已完成方法；IAM 下共享 token、未完成管理方法拒绝。直接 channel OAuth/selector 和 billing reconciliation 已关闭 IAM 旁路，**其完整功能尚未交付**。admin console 的业务 ready 清单仍只开放既有 B1 切片；B2/B3/B4 的完整 admin 代理、复合操作和界面尚未验收，因此不能通过拓宽 guard 假装完成。
-
-三库测试揭示并修复旧数字标志列的 PostgreSQL bool 编码，以及 config `key` 的方言引用。data PO 用 `xdb.Flag` 读取历史 bool/数字列并写数字，biz 保持 bool；无新 DDL。
-
-实际隔离验收：`TestIAMB2ChannelOwnerDialects`、`TestIAMB3BillingOwnerDialects`、`TestIAMB4{Log,Config,Monitor,Notify}OwnerDialects` 均在 SQLite/MySQL/PostgreSQL 下通过 race；B4 另覆盖内存实现。验证包括 total/分页/隐藏详情、强制 deny、共享组读写区别、旧事实写回拒绝、敏感字段、普通更新复合动作拒绝、本人跨用户拒绝、成本标志、配置键组合权限、正文搜索及跨方法 capability 拒绝。数据库容器仅监听 localhost，每个测试运行全部迁移及 repeat、独立建库/schema并清理；未读取部署 DSN。SQL/owner 单元验收不等同于全角色真实跨服务 HTTP 与生产切换验收。
-
-后续复核补齐普通更新的实际副作用检查：余额/状态、账号创建的价格倍率，以及兼容 Models 的映射新增/删除/启用/优先级变化，在独立操作未完成时拒绝；保持不变的普通名称更新仍可执行。普通渠道/账号 DTO 不暴露尚未绑定的原始 mapping JSON。额度重置和错误清理在实际写事务中重新检查归属；配置写直接从本次写 DO 返回 revision，避免提交后读取其他并发写的值。
-
-渠道/账号/路由组、余额调整、退款、配置、告警规则与日志删除在每次数据库事务尝试前通过纯 Resolver seam 重新取得 identity 决策；RPC 不在可 replay 的事务回调内执行。SQLite busy 回滚后再次查询，不重用首次许可；actor/mode 改变、撤权或依赖故障中止。本人订单创建在事务前重新验证当前会话。事务内继续锁定对象事实/核验 CAS 和决策期限；本批不声称 identity 与资源跨库撤销全局串行。
-
-新增 `TestIAMB2RoutingGroupOwnerDialects` 已通过真实三库 race，共七组 owner 三库测试。`TestIAMTransactionRetryRechecksRevocationBeforeReplay` 使用单连接 SQLite，证明决策发生在事务外、首轮写回滚、重试撤权不再进入写回调；另验证 actor/mode 改变与本人 session 撤销。真实 identity RPC 增加 B2–B4 固定 point/operation 的 owner、数值 role、unbound 与 mode-only 测试，防止 fake resolver 接受未注册操作；成本字段独立 operation 的执行声明已核验。admin HTTP 代理转发专属服务凭证和独立已验证 operator，删除客户端伪造 operator header。monitor HTTP 保留业务 400/404 与授权 403，依赖故障返回 503。
-
-本轮验证命令：`make all`、`make wire-check`、`make rbac-contract-check`、`make verify`，以及七组 owner 三库 `go test -race` 和真实 IAM integration 均通过。`go test ./...` 包含未启动服务的 E2E suite，不计作通过；使用仓库默认 `test-unit`/`verify` 门禁。入口矩阵仍有 774 行经复核，完整 B 阶段门槛按下表保留。
-
-第二批定向回归可使用以下命令。实际三库验收需设置前文的两个本机临时 DSN；未设置时 MySQL/PostgreSQL 子测试会跳过，不能记作三库通过。
-
-```sh
-go test -race ./app/channel/internal/data ./app/billing/internal/data \
+go test -race ./app/identity/internal/data ./app/channel/internal/data \
+  ./app/billing/internal/data ./domain/subscription/data \
   ./app/config/internal/data ./app/log/internal/data \
   ./app/monitor/internal/data ./app/notify/internal/data \
-  -run 'TestIAMB[234].*OwnerDialects' -count=1 -v
-go test -race ./internal/integration -run TestIAMB0B1OwnerAndUserBoundaries -count=1
-go test -race ./platform/database/authzquery -run TestIAMTransaction -count=1
-go test -race ./app/admin/internal/server -run TestOwnerProxyUsesIndependentVerifiedCredentials -count=1
+  -run '^TestIAMB|^TestIAMTransaction' -count=1
+
+go test -race ./internal/integration -run '^TestIAMB' -count=1
+scripts/test-migration-smoke.sh mysql
+scripts/test-migration-smoke.sh postgres
 ```
+
+`make verify` 的后端 unit/race、架构、迁移治理及前端 lint/197 个测试/build 通过；`make all` 和 Wire 装配、823 行入口契约、模板检查通过。生成类型以本次自动生成结果为比较基线；本地使用临时 Git index 验证重新生成无漂移，未改变用户暂存区。SQLite 迁移生命周期/失败门禁、MySQL/PostgreSQL fresh/repeat/negative 与历史元数据预检均通过。未启动部署服务的 E2E suite 与 C3 Playwright 不计作本批通过。
 
 ## 剩余门槛
 
-| 工作包 | 尚未完成 |
-|---|---|
-| B0 | 全系统 capability 的资源消费端强制校验；所有直接 HTTP、别名和分支的固定运行时分类；服务专属凭证部署配置核验 |
-| B1 | 本人财务/订阅及订单的完整业务场景验收（基本订单归属和会话链已接入）；所有兼容分支、跨服务 token/路由引用和完整角色场景的执行覆盖核验；完整能力核验前仍不计 B1 完成 |
-| B2 | OAuth/模型/映射/模型路由/渠道健康完整执行链；路由组 archive/全量替换协议；批量/导出与价格组合；全部 admin 代理、后台 DTO 及跨服务提交/角色场景 |
-| B3 | 共享 subscription 管理、兑换码、价格/成本管理、对账、报告导出；附属 request-attempt/定价证据权限；复合模型价格与跨服务不变量 |
-| B4 | 全部 admin 代理与总览 section 预检；日志导出/purge；明确通知 ack/test/rules 管理协议；持久化写审计、完整角色跨服务入口验收 |
-
-本批不把“方法已列清单”当作“所有执行链已授权”，也不把拒绝未实现路径当作该资源的完整功能交付。
+B0–B4 无待闭合项。以下工作保留原阶段：C1–C3 授权导航、IAM 管理界面及全部既有页面/Playwright；D0 影子比较、故障注入与切换演练；D1 实际生产服务凭证、部署/迁移和运营交接。后端验收完成不授权提前切换生产。

@@ -7,6 +7,7 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/app/admin/internal/biz"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"micro-one-api/platform/routingdto"
@@ -89,12 +90,12 @@ func (r *repo) Price(ctx context.Context, group, user int64) (biz.RoutingPrice, 
 }
 
 func (r *repo) SetRoutingGroupResourceOverrides(ctx context.Context, groupID int64, source routing.Source, priority, weight *int64) error {
-	_, err := r.channel.SetRoutingGroupResourceOverrides(ctx, &channelv1.SetRoutingGroupResourceOverridesRequest{RoutingGroupId: groupID, SourceKind: source.Kind, SourceId: source.ID, PriorityOverride: priority, WeightOverride: weight})
+	_, err := r.channel.SetRoutingGroupResourceOverrides(ctx, &channelv1.SetRoutingGroupResourceOverridesRequest{RoutingGroupId: groupID, SourceKind: source.Kind, SourceId: source.ID, PriorityOverride: priority, WeightOverride: weight, ExpectedRevision: routing.ExpectedGroupRevision(ctx), Reason: authorization.WriteReason(ctx)})
 	return err
 }
 
 func (r *repo) SetUserRoutingPrice(ctx context.Context, userID, groupID int64, ratio float64) (int64, error) {
-	reply, err := r.billing.SetUserRoutingPrice(ctx, &billingv1.SetUserRoutingPriceRequest{UserId: userID, RoutingGroupId: groupID, PriceRatio: ratio})
+	reply, err := r.billing.SetUserRoutingPrice(ctx, &billingv1.SetUserRoutingPriceRequest{UserId: userID, RoutingGroupId: groupID, PriceRatio: ratio, ExpectedVersion: routing.ExpectedPriceVersion(ctx), Reason: authorization.WriteReason(ctx)})
 	if err != nil {
 		return 0, err
 	}
@@ -102,7 +103,7 @@ func (r *repo) SetUserRoutingPrice(ctx context.Context, userID, groupID int64, r
 }
 
 func (r *repo) ClearUserRoutingPrice(ctx context.Context, userID, groupID int64) error {
-	_, err := r.billing.ClearUserRoutingPrice(ctx, &billingv1.ClearUserRoutingPriceRequest{UserId: userID, RoutingGroupId: groupID})
+	_, err := r.billing.ClearUserRoutingPrice(ctx, &billingv1.ClearUserRoutingPriceRequest{UserId: userID, RoutingGroupId: groupID, ExpectedVersion: routing.ExpectedPriceVersion(ctx), Reason: authorization.WriteReason(ctx)})
 	return err
 }
 func (r *repo) Models(ctx context.Context, groupID int64, key string) ([]string, error) {
@@ -124,7 +125,7 @@ func (r *repo) CheckCapabilities(ctx context.Context) error {
 }
 
 func (r *repo) SetState(ctx context.Context, id, revision int64, status, access string) error {
-	_, err := r.channel.SetRoutingGroupState(ctx, &channelv1.SetRoutingGroupStateRequest{Id: id, ExpectedRevision: revision, Status: status, AccessMode: access})
+	_, err := r.channel.SetRoutingGroupState(ctx, &channelv1.SetRoutingGroupStateRequest{Id: id, ExpectedRevision: revision, Status: status, AccessMode: access, Reason: authorization.WriteReason(ctx)})
 	return err
 }
 

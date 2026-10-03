@@ -1,6 +1,9 @@
 package biz
 
-import "context"
+import (
+	"context"
+	"micro-one-api/domain/authorization"
+)
 
 // SystemOption is the domain object for a system configuration entry.
 type SystemOption struct {
@@ -20,7 +23,8 @@ type SystemOptionsRepo interface {
 // Business rules (legacy aliases, default merging) live here so the
 // service layer stays a pass-through DTO↔DO converter.
 type SystemOptionsUsecase struct {
-	repo SystemOptionsRepo
+	authorization authorization.Resolver
+	repo          SystemOptionsRepo
 }
 
 // NewSystemOptionsUsecase creates a new usecase.
@@ -40,13 +44,27 @@ func (uc *SystemOptionsUsecase) Get(ctx context.Context, key string) (string, er
 	if uc == nil || uc.repo == nil {
 		return "", nil
 	}
-	return uc.repo.Get(ctx, key)
+	var err error
+	ctx, err = uc.prepareRead(ctx, key)
+	if err != nil {
+		return "", err
+	}
+	raw, err := uc.repo.Get(ctx, key)
+	if authorization.External(ctx) && SensitiveSystemOption(key) {
+		raw = ""
+	}
+	return raw, err
 }
 
 // Set upserts a key-value pair.
 func (uc *SystemOptionsUsecase) Set(ctx context.Context, key, value string) error {
 	if uc == nil || uc.repo == nil {
 		return nil
+	}
+	var err error
+	ctx, err = uc.prepareWrite(ctx, key)
+	if err != nil {
+		return err
 	}
 	return uc.repo.Set(ctx, key, value)
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/metrics"
 )
 
@@ -43,18 +44,21 @@ func ModelIDEqual(a, b string) bool {
 // Model is the domain object for the independent model registry (方案B).
 // It carries no proto or storage tags — it is the pure biz model owned by biz.
 type Model struct {
-	ID            int64
-	ModelID       string // unique identifier, e.g. gpt-4o
-	DisplayName   string
-	Description   string
-	Provider      string
-	ModelType     string
-	ContextWindow int32
+	AuthorizationRevision int64
+	ID                    int64
+	ModelID               string // unique identifier, e.g. gpt-4o
+	DisplayName           string
+	Description           string
+	Provider              string
+	ModelType             string
+	ContextWindow         int32
 	// Registry prices are stored per 1M tokens, matching the unit shown in
 	// pricing management. They are reference defaults; billing charges are
 	// driven by the ModelPrice option.
-	PricingInput  float64
-	PricingOutput float64
+	PriceFieldsVisible bool
+	MappingsVisible    bool
+	PricingInput       float64
+	PricingOutput      float64
 	// PricingCacheRead is the optional cache-read price (per 1M tokens);
 	// zero means "not configured".
 	PricingCacheRead float64
@@ -327,6 +331,7 @@ type ModelsListCacheInvalidator interface {
 
 // ModelUsecase wraps ModelRepo with domain-level operations.
 type ModelUsecase struct {
+	authorization    authorization.Resolver
 	repo             ModelRepo
 	cacheInvalidator ModelsListCacheInvalidator
 	now              func() time.Time
@@ -373,6 +378,21 @@ func (uc *ModelUsecase) timestamp() int64 {
 
 // ListModels returns a page of models matching the filter.
 func (uc *ModelUsecase) ListModels(ctx context.Context, page, pageSize int32, filter ListModelsFilter) ([]*Model, int64, error) {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.models.list", "channel.model.list")
+	if authErr != nil {
+		err := authErr
+		return nil, 0, err
+	}
+	ctx, authErr = uc.authorizeOptional(ctx, "channel.models.pricing", "billing.pricing.read")
+	if authErr != nil {
+		err := authErr
+		return nil, 0, err
+	}
+	ctx, authErr = uc.authorizeOptional(ctx, "channel.model_mappings", "channel.model_mapping.read")
+	if authErr != nil {
+		return nil, 0, authErr
+	}
 	if uc == nil || uc.repo == nil {
 		return nil, 0, nil
 	}
@@ -382,16 +402,46 @@ func (uc *ModelUsecase) ListModels(ctx context.Context, page, pageSize int32, fi
 	if pageSize <= 0 {
 		pageSize = 20
 	}
-	return uc.repo.ListModels(ctx, page, pageSize, filter)
+	rows, total, err := uc.repo.ListModels(ctx, page, pageSize, filter)
+	for i, model := range rows {
+		rows[i] = modelPriceView(ctx, model)
+	}
+	return rows, total, err
 }
 
 // GetModel returns a model by primary key, including its aliases and
 // channel/subscription mappings.
 func (uc *ModelUsecase) GetModel(ctx context.Context, modelPK int64) (*Model, []*ModelAlias, []*ModelChannelMapping, []*ModelSubscriptionMapping, error) {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.models.read", "channel.model.read")
+	if authErr != nil {
+		err := authErr
+		return nil, nil, nil, nil, err
+	}
+	ctx, authErr = uc.authorizeOptional(ctx, "channel.model_mappings", "channel.model_mapping.read")
+	if authErr != nil {
+		return nil, nil, nil, nil, authErr
+	}
+	ctx, authErr = uc.authorizeOptional(ctx, "channel.models.pricing", "billing.pricing.read")
+	if authErr != nil {
+		err := authErr
+		return nil, nil, nil, nil, err
+	}
 	if uc == nil || uc.repo == nil {
 		return nil, nil, nil, nil, ErrModelNotFound
 	}
 	model, err := uc.repo.GetModel(ctx, modelPK)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	if err := authorization.Require(ctx, "channel.model.read", modelFacts(model.ID)); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.model_aliases", "channel.model_alias.read")
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	ctx, err = uc.authorizeOptional(ctx, "channel.model_mappings", "channel.model_mapping.read")
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -407,19 +457,52 @@ func (uc *ModelUsecase) GetModel(ctx context.Context, modelPK int64) (*Model, []
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	return model, aliases, chMappings, subMappings, nil
+	return modelPriceView(ctx, model), aliases, chMappings, subMappings, nil
 }
 
 // GetModelByID returns a model by its unique model_id string.
 func (uc *ModelUsecase) GetModelByID(ctx context.Context, modelID string) (*Model, error) {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.models.read", "channel.model.read")
+	if authErr != nil {
+		err := authErr
+		return nil, err
+	}
+	ctx, authErr = uc.authorizeOptional(ctx, "channel.model_mappings", "channel.model_mapping.read")
+	if authErr != nil {
+		return nil, authErr
+	}
+	ctx, authErr = uc.authorizeOptional(ctx, "channel.models.pricing", "billing.pricing.read")
+	if authErr != nil {
+		err := authErr
+		return nil, err
+	}
 	if uc == nil || uc.repo == nil {
 		return nil, ErrModelNotFound
 	}
-	return uc.repo.GetModelByID(ctx, NormalizeModelID(modelID))
+	model, err := uc.repo.GetModelByID(ctx, NormalizeModelID(modelID))
+	if err != nil {
+		return nil, err
+	}
+	if err := authorization.Require(ctx, "channel.model.read", modelFacts(model.ID)); err != nil {
+		return nil, err
+	}
+	return modelPriceView(ctx, model), nil
 }
 
 // CreateModel creates a new model record.
 func (uc *ModelUsecase) CreateModel(ctx context.Context, model *Model) error {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.models.create", "channel.model.create")
+	if authErr != nil {
+		err := authErr
+		return err
+	}
+	ctx, authErr = uc.authorizeOptional(ctx, "channel.models.pricing", "billing.pricing.update")
+	if authErr != nil {
+		err := authErr
+		return err
+	}
 	if uc == nil || uc.repo == nil {
 		return ErrModelNotFound
 	}
@@ -449,6 +532,17 @@ func (uc *ModelUsecase) CreateModel(ctx context.Context, model *Model) error {
 
 // UpdateModel updates an existing model. model.ID must be set.
 func (uc *ModelUsecase) UpdateModel(ctx context.Context, model *Model) error {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.models.update", "channel.model.update")
+	if authErr != nil {
+		err := authErr
+		return err
+	}
+	ctx, authErr = uc.authorizeOptional(ctx, "channel.models.pricing", "billing.pricing.update")
+	if authErr != nil {
+		err := authErr
+		return err
+	}
 	if uc == nil || uc.repo == nil {
 		return ErrModelNotFound
 	}
@@ -465,6 +559,16 @@ func (uc *ModelUsecase) UpdateModel(ctx context.Context, model *Model) error {
 
 // DeleteModel removes a model and its mappings.
 func (uc *ModelUsecase) DeleteModel(ctx context.Context, modelPK int64) error {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.models.delete", "channel.model.delete")
+	if authErr != nil {
+		err := authErr
+		return err
+	}
+	ctx, authErr = uc.prepareModelDeletion(ctx)
+	if authErr != nil {
+		return authErr
+	}
 	if uc == nil || uc.repo == nil {
 		return ErrModelNotFound
 	}
@@ -477,6 +581,22 @@ func (uc *ModelUsecase) DeleteModel(ctx context.Context, modelPK int64) error {
 
 // ChangeModelStatus sets the status of a single model.
 func (uc *ModelUsecase) ChangeModelStatus(ctx context.Context, modelPK int64, status int32) error {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.models.update", "channel.model.update")
+	if authErr != nil {
+		err := authErr
+		return err
+	}
+	operation, point := "channel.model.disable", "channel.models.update"
+	if status == ModelStatusEnabled {
+		operation = "channel.model.enable"
+	}
+
+	ctx, authErr = uc.authorize(ctx, point, operation)
+	if authErr != nil {
+		err := authErr
+		return err
+	}
 	if uc == nil || uc.repo == nil {
 		return ErrModelNotFound
 	}
@@ -489,6 +609,31 @@ func (uc *ModelUsecase) ChangeModelStatus(ctx context.Context, modelPK int64, st
 
 // BatchModels performs a batch enable/disable/delete on the given model pks.
 func (uc *ModelUsecase) BatchModels(ctx context.Context, action string, modelPKs []int64) (int32, error) {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.models.update", "channel.model.batch_update")
+	if authErr != nil {
+		err := authErr
+		return 0, err
+	}
+	if action == BatchActionDelete {
+		ctx, authErr = uc.prepareModelDeletion(ctx)
+		if authErr != nil {
+			return 0, authErr
+		}
+	}
+	operation, point := "channel.model.disable", "channel.models.update"
+	if action == BatchActionEnable {
+		operation = "channel.model.enable"
+	}
+	if action == BatchActionDelete {
+		operation = "channel.model.delete"
+		point = "channel.models.delete"
+	}
+	ctx, authErr = uc.authorize(ctx, point, operation)
+	if authErr != nil {
+		err := authErr
+		return 0, err
+	}
 	if uc == nil || uc.repo == nil {
 		return 0, nil
 	}
@@ -521,6 +666,12 @@ func (uc *ModelUsecase) BatchModels(ctx context.Context, action string, modelPKs
 
 // ListModelAliases returns aliases for a model.
 func (uc *ModelUsecase) ListModelAliases(ctx context.Context, modelPK int64) ([]*ModelAlias, error) {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.model_aliases", "channel.model_alias.read")
+	if authErr != nil {
+		err := authErr
+		return nil, err
+	}
 	if uc == nil || uc.repo == nil {
 		return nil, nil
 	}
@@ -529,6 +680,12 @@ func (uc *ModelUsecase) ListModelAliases(ctx context.Context, modelPK int64) ([]
 
 // CreateModelAlias adds an alias to a model.
 func (uc *ModelUsecase) CreateModelAlias(ctx context.Context, alias *ModelAlias) error {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.model_aliases", "channel.model_alias.create")
+	if authErr != nil {
+		err := authErr
+		return err
+	}
 	if uc == nil || uc.repo == nil {
 		return ErrModelNotFound
 	}
@@ -548,6 +705,12 @@ func (uc *ModelUsecase) CreateModelAlias(ctx context.Context, alias *ModelAlias)
 
 // DeleteModelAlias removes an alias by id.
 func (uc *ModelUsecase) DeleteModelAlias(ctx context.Context, aliasID int64) error {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.model_aliases", "channel.model_alias.delete")
+	if authErr != nil {
+		err := authErr
+		return err
+	}
 	if uc == nil || uc.repo == nil {
 		return ErrModelNotFound
 	}
@@ -561,6 +724,12 @@ func (uc *ModelUsecase) DeleteModelAlias(ctx context.Context, aliasID int64) err
 // ListChannelMappings returns channel-model mappings for a channel (or all
 // when channelID is 0).
 func (uc *ModelUsecase) ListChannelMappings(ctx context.Context, channelID int64) ([]*ModelChannelMapping, error) {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.model_mappings", "channel.model_mapping.read")
+	if authErr != nil {
+		err := authErr
+		return nil, err
+	}
 	if uc == nil || uc.repo == nil {
 		return nil, nil
 	}
@@ -569,6 +738,12 @@ func (uc *ModelUsecase) ListChannelMappings(ctx context.Context, channelID int64
 
 // UpsertChannelMapping creates or updates a channel-model mapping.
 func (uc *ModelUsecase) UpsertChannelMapping(ctx context.Context, m *ModelChannelMapping) error {
+	var authErr error
+	ctx, authErr = uc.authorizeMappingWrite(ctx)
+	if authErr != nil {
+		err := authErr
+		return err
+	}
 	if uc == nil || uc.repo == nil {
 		return ErrModelNotFound
 	}
@@ -589,6 +764,12 @@ func (uc *ModelUsecase) UpsertChannelMapping(ctx context.Context, m *ModelChanne
 
 // DeleteChannelMapping removes a channel-model mapping.
 func (uc *ModelUsecase) DeleteChannelMapping(ctx context.Context, channelID, modelPK int64) error {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.model_mappings", "channel.model_mapping.delete")
+	if authErr != nil {
+		err := authErr
+		return err
+	}
 	if uc == nil || uc.repo == nil {
 		return ErrModelNotFound
 	}
@@ -602,6 +783,12 @@ func (uc *ModelUsecase) DeleteChannelMapping(ctx context.Context, channelID, mod
 // ListSubscriptionMappings returns subscription-model mappings for an
 // account (or all when accountID is 0).
 func (uc *ModelUsecase) ListSubscriptionMappings(ctx context.Context, accountID int64) ([]*ModelSubscriptionMapping, error) {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.model_mappings", "channel.model_mapping.read")
+	if authErr != nil {
+		err := authErr
+		return nil, err
+	}
 	if uc == nil || uc.repo == nil {
 		return nil, nil
 	}
@@ -610,6 +797,12 @@ func (uc *ModelUsecase) ListSubscriptionMappings(ctx context.Context, accountID 
 
 // UpsertSubscriptionMapping creates or updates a subscription-model mapping.
 func (uc *ModelUsecase) UpsertSubscriptionMapping(ctx context.Context, m *ModelSubscriptionMapping) error {
+	var authErr error
+	ctx, authErr = uc.authorizeMappingWrite(ctx)
+	if authErr != nil {
+		err := authErr
+		return err
+	}
 	if uc == nil || uc.repo == nil {
 		return ErrModelNotFound
 	}
@@ -633,6 +826,12 @@ func (uc *ModelUsecase) UpsertSubscriptionMapping(ctx context.Context, m *ModelS
 
 // DeleteSubscriptionMapping removes a subscription-model mapping.
 func (uc *ModelUsecase) DeleteSubscriptionMapping(ctx context.Context, accountID, modelPK int64, groupName string) error {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.model_mappings", "channel.model_mapping.delete")
+	if authErr != nil {
+		err := authErr
+		return err
+	}
 	if uc == nil || uc.repo == nil {
 		return ErrModelNotFound
 	}
@@ -681,6 +880,12 @@ func (uc *ModelUsecase) RecordModelUsage(ctx context.Context, modelID string, re
 // ListModelUsageStats returns paginated usage statistics for a model (or all
 // models when modelPK is 0) within an optional date range.
 func (uc *ModelUsecase) ListModelUsageStats(ctx context.Context, modelPK int64, startDate, endDate string, page, pageSize int32) ([]*ModelUsageStat, int64, error) {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.model_usage", "channel.model_usage.read")
+	if authErr != nil {
+		err := authErr
+		return nil, 0, err
+	}
 	if uc == nil || uc.repo == nil {
 		return nil, 0, nil
 	}
@@ -729,6 +934,11 @@ func (uc *ModelUsecase) RecordModelHealth(ctx context.Context, outcome *ModelHea
 }
 
 func (uc *ModelUsecase) ListModelHealth(ctx context.Context, page, pageSize int32, filter ListModelHealthFilter) ([]*ModelHealthState, int64, error) {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.health", "monitor.health.model.read")
+	if authErr != nil {
+		return nil, 0, authErr
+	}
 	if uc == nil || uc.repo == nil {
 		return nil, 0, nil
 	}
@@ -762,6 +972,7 @@ func (uc *ModelUsecase) ListModelHealth(ctx context.Context, page, pageSize int3
 // model row, so the operator can pick a safe merge target and review the
 // blast radius before any write.
 type DuplicateModelRef struct {
+	ExpectedRevision     int64
 	ModelPK              int64
 	ModelID              string // original (pre-normalisation) spelling as stored
 	IsPrimary            bool   // true = this row already carries the canonical spelling
@@ -872,6 +1083,17 @@ var ErrCanonicalConflict = errors.New("canonical model id conflict")
 // NO writes and is safe to run at any time. Returns an empty report when the
 // registry is already canonical-clean.
 func (uc *ModelUsecase) CanonicalModelPreflight(ctx context.Context) (*PreflightReport, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "channel.models.canonical", "channel.model.canonical.preflight")
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range []struct{ point, op string }{{"channel.model_aliases", "channel.model_alias.read"}, {"channel.model_mappings", "channel.model_mapping.read"}, {"channel.model_usage", "channel.model_usage.read"}} {
+		ctx, err = uc.authorizeOptional(ctx, entry.point, entry.op)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if uc == nil || uc.repo == nil {
 		return &PreflightReport{}, nil
 	}
@@ -887,6 +1109,22 @@ func (uc *ModelUsecase) CanonicalModelPreflight(ctx context.Context) (*Preflight
 // the transaction is rolled back and ErrCanonicalConflict is returned — no
 // INSERT-IGNORE style silent overwrite.
 func (uc *ModelUsecase) MergeCanonicalModels(ctx context.Context, group DuplicateModelGroup) (*MergeResult, error) {
+	for _, m := range group.Members {
+		if !authorization.HasExpectedRevision(ctx, "model", m.ModelPK) && m.ExpectedRevision > 0 {
+			ctx = authorization.WithExpectedRevision(ctx, "model", m.ModelPK, m.ExpectedRevision)
+		}
+	}
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.models.canonical", "channel.model.canonical.merge")
+	if authErr != nil {
+		return nil, authErr
+	}
+	for _, entry := range []struct{ point, op string }{{"channel.models.update", "channel.model.update"}, {"channel.models.delete", "channel.model.delete"}, {"channel.model_aliases", "channel.model_alias.create"}, {"channel.model_aliases", "channel.model_alias.delete"}, {"channel.model_mappings", "channel.model_mapping.update"}, {"channel.models.pricing", "billing.pricing.update"}, {"channel.model_usage", "channel.model_usage.read"}} {
+		ctx, authErr = uc.authorizeOptional(ctx, entry.point, entry.op)
+		if authErr != nil {
+			return nil, authErr
+		}
+	}
 	if uc == nil || uc.repo == nil {
 		return nil, ErrModelNotFound
 	}
@@ -999,6 +1237,19 @@ func UnpricedRoutedModels(models []*Model, pricedModelIDs map[string]struct{}) [
 // mapping but are NOT in pricedModelIDs. pricedModelIDs must already be
 // canonicalised. This is a read-only query; it never blocks a price save.
 func (uc *ModelUsecase) ListUnpricedRoutedModels(ctx context.Context, pricedModelIDs map[string]struct{}) ([]RoutedModelSummary, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "channel.models.list", "channel.model.list")
+	if err != nil {
+		return nil, err
+	}
+	ctx, err = uc.authorize(ctx, "channel.models.pricing", "billing.pricing.read")
+	if err != nil {
+		return nil, err
+	}
+	ctx, err = uc.authorize(ctx, "channel.model_mappings", "channel.model_mapping.read")
+	if err != nil {
+		return nil, err
+	}
 	if uc == nil || uc.repo == nil {
 		return nil, nil
 	}

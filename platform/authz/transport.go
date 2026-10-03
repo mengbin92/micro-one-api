@@ -24,14 +24,22 @@ func OperatorUnaryInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, next grpc.UnaryHandler) (any, error) {
 		md, _ := metadata.FromIncomingContext(ctx)
 		values := md.Get("x-operator-authorization")
-		if len(values) > 1 {
+		reasons := md.Get("x-authorization-reason")
+		if len(values) > 1 || len(reasons) > 1 {
 			return nil, status.Error(codes.Unauthenticated, "ambiguous operator credential")
 		}
 		raw := ""
 		if len(values) == 1 {
 			raw = values[0]
 		}
-		reply, err := next(authorization.WithCredential(authorization.WithExternal(ctx), raw), req)
+		reason := ""
+		if len(reasons) == 1 {
+			reason = reasons[0]
+		}
+		reply, err := next(authorization.WithWriteReason(authorization.WithCredential(authorization.WithExternal(ctx), raw), reason), req)
+		if errors.Is(err, authorization.ErrWriteStorageUnavailable) {
+			err = status.Error(codes.Unavailable, "durable resource write storage unavailable")
+		}
 		if errors.Is(err, authorization.ErrDenied) {
 			err = status.Error(codes.PermissionDenied, "authorization denied")
 		}
@@ -47,7 +55,7 @@ func HTTPContext(method string, next http.HandlerFunc) http.HandlerFunc {
 	sessions := sessionguard.FromEnvironment()
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := authorization.WithExternal(r.Context())
-		if len(r.Header.Values("Authorization")) != 1 || len(r.Header.Values("x-operator-authorization")) > 1 {
+		if len(r.Header.Values("Authorization")) != 1 || len(r.Header.Values("x-operator-authorization")) > 1 || len(r.Header.Values("x-authorization-reason")) > 1 {
 			WriteHTTPError(w, status.Error(codes.Unauthenticated, "ambiguous credential"))
 			return
 		}
@@ -66,13 +74,19 @@ func HTTPContext(method string, next http.HandlerFunc) http.HandlerFunc {
 			ctx = serviceidentity.WithRPCMethod(serviceidentity.WithPrincipal(ctx, p), method)
 			raw = r.Header.Get("x-operator-authorization")
 		}
-		next(w, r.WithContext(authorization.WithCredential(ctx, raw)))
+		next(w, r.WithContext(authorization.WithWriteReason(authorization.WithCredential(ctx, raw), r.Header.Get("x-authorization-reason"))))
 	}
 }
 
 func WriteHTTPError(w http.ResponseWriter, err error) {
 	code := http.StatusInternalServerError
-	if errors.Is(err, authorization.ErrDenied) {
+	if errors.Is(err, authorization.ErrWriteConflict) {
+		code = http.StatusConflict
+	} else if errors.Is(err, authorization.ErrWritePrecondition) {
+		code = http.StatusBadRequest
+	} else if errors.Is(err, authorization.ErrWriteStorageUnavailable) {
+		code = http.StatusServiceUnavailable
+	} else if errors.Is(err, authorization.ErrDenied) {
 		code = http.StatusForbidden
 	} else {
 		switch status.Code(err) {
@@ -96,6 +110,12 @@ func WriteHTTPError(w http.ResponseWriter, err error) {
 }
 
 func IsAuthorizationError(err error) bool {
+	if errors.Is(err, authorization.ErrWriteConflict) || errors.Is(err, authorization.ErrWritePrecondition) {
+		return true
+	}
+	if errors.Is(err, authorization.ErrWriteStorageUnavailable) {
+		return true
+	}
 	if errors.Is(err, authorization.ErrDenied) {
 		return true
 	}

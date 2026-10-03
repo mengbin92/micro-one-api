@@ -1,0 +1,1 @@
+ALTER TABLE alert_rules ADD COLUMN revision BIGINT NOT NULL DEFAULT 1;
