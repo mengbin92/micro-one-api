@@ -4,12 +4,42 @@ import (
 	"context"
 	"fmt"
 	"github.com/stretchr/testify/require"
+	"math"
 	"micro-one-api/app/config/internal/biz"
 	"micro-one-api/domain/authorization"
 	authztest "micro-one-api/domain/authorization/testutil"
 	dbtest "micro-one-api/platform/database/testutil"
 	"testing"
 )
+
+func TestIAMB4ConfigDeleteRejectsWrappedRevision(t *testing.T) {
+	for _, driver := range []string{"sqlite", "memory"} {
+		t.Run(driver, func(t *testing.T) {
+			r := newMemoryRepository()
+			if driver == "sqlite" {
+				r = &Repository{db: dbtest.RoutingContextDB(t, driver)}
+			}
+			require.NoError(t, r.Set(context.Background(), &biz.ConfigEntry{Namespace: "system", Key: "notice", Value: "keep"}))
+			if driver == "memory" {
+				r.mem["system/notice"].Revision = -1
+			} else {
+				require.NoError(t, r.db.Model(&configModel{}).Where("namespace = ? AND key = ?", "system", "notice").Update("revision", -1).Error)
+			}
+			ctx := authorization.WithQueryScope(authorization.WithWriteReason(context.Background(), "reject corrupted revision"), "system.content.notice.update", authztest.All())
+			ctx = authorization.WithExpectedResourceRevision(ctx, math.MaxUint64)
+			var err error
+			if driver == "memory" {
+				err = r.deleteMemory(ctx, "system", "notice")
+			} else {
+				err = r.Delete(ctx, "system", "notice")
+			}
+			require.ErrorIs(t, err, biz.ErrConfigRevisionConflict)
+			entry, err := r.Get(context.Background(), "system", "notice")
+			require.NoError(t, err)
+			require.Equal(t, "keep", entry.Value)
+		})
+	}
+}
 
 func TestIAMB4ConfigOwnerDialects(t *testing.T) {
 	for _, driver := range []string{"sqlite", "mysql", "postgres", "memory"} {

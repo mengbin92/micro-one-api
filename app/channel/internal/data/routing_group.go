@@ -579,7 +579,7 @@ func (r *routingGroupRepo) SetRoutingGroupResourceOverrides(ctx context.Context,
 		}
 		if _, iam := authorization.QueryScopeFromContext(ctx, "channel.routing_group.resource_override.update"); iam {
 			expected, present := authorization.ExpectedResourceRevision(ctx)
-			if !present || expected != uint64(group.Revision) {
+			if !present || group.Revision <= 0 || expected != uint64(group.Revision) {
 				return biz.ErrRoutingGroupBaselineConflict
 			}
 		}

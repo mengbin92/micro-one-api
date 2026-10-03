@@ -2,6 +2,8 @@ package data
 
 import (
 	"context"
+	"math"
+	"strconv"
 	"testing"
 	"time"
 
@@ -12,6 +14,15 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestRedeemCodeToBizRejectsOverflowID(t *testing.T) {
+	if strconv.IntSize != 64 {
+		t.Skip("uint IDs cannot exceed int64 on this architecture")
+	}
+	overflow := uint64(math.MaxUint64)
+	_, err := redeemCodeToBiz(&redeemCodeModel{ID: uint(overflow)})
+	require.Error(t, err)
+}
 
 func setupRedeemTestDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})

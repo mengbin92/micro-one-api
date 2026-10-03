@@ -1,7 +1,7 @@
 {
-  "captured_at_utc": "2026-10-03T00:15:51.421259+00:00",
-  "source_digest": "7082bdcb48f9ca5f9c8bd9a762100782f08c2d753633bea7bfb897c57ec8b2cc",
-  "revision_label": "rbac-b-7082bdcb",
+  "captured_at_utc": "2026-10-03T00:30:09.292814+00:00",
+  "source_digest": "7cc66b0b07a71a2180936bba75234ae5c38d575289c7520bb4a710aec091e18e",
+  "revision_label": "rbac-b-7cc66b0b",
   "rollback_tag": "rollback-20261003-075314",
   "services": {
     "identity-service": {
@@ -14,7 +14,7 @@
       "startup_error_count": 0
     },
     "channel-service": {
-      "image_id": "sha256:9fe7fbf995b7644f91e17c21d875602a511a2e7fc82048e4151aecca2ad57ef1",
+      "image_id": "sha256:474e53b50305d7c3d1e6d31b8f19ec9da6aace3f80d25df62fa9d88e6beeeb60",
       "previous_image_id": "sha256:bb9c1f509481ba7f5b58b42721017c1f54aad495c9d1f32a5c02d196df15a2c1",
       "healthz": 200,
       "restarts": 0,
@@ -23,7 +23,7 @@
       "startup_error_count": 0
     },
     "billing-service": {
-      "image_id": "sha256:d806c8792414937b759dcb521a302afb2f6a110f99e1a623a45c82a55f569939",
+      "image_id": "sha256:1ee94ec3fbc2290aaac8255950d68c4965470742f6dc028a54dfddff82d27abb",
       "previous_image_id": "sha256:cd486011d43f779731b86308b31465ef165bded53c94287dcbce0c78021d81ab",
       "healthz": 200,
       "restarts": 0,
@@ -32,7 +32,7 @@
       "startup_error_count": 0
     },
     "config-service": {
-      "image_id": "sha256:a78a6c6b39b4359ebcc1dd76960c1921c109722a870a436cb5e02b214c42bef8",
+      "image_id": "sha256:07850ebf2ec4b3e7386f3a0d3ea99578056f92827284b804c7f24e0990a95a3e",
       "previous_image_id": "sha256:aec6062f8da5e02ae6103bd2b6d8b0e298d088ba06e2a9f8d1d1e8e512cbd8f9",
       "healthz": 200,
       "restarts": 0,
@@ -172,6 +172,44 @@
     "assignments": 0,
     "published_or_persistently_bound_permissions": 0
   },
+  "initial_source_digest": "7082bdcb48f9ca5f9c8bd9a762100782f08c2d753633bea7bfb897c57ec8b2cc",
+  "corrected_services": [
+    "channel-service",
+    "billing-service",
+    "config-service"
+  ],
+  "correction_build": {
+    "source_digest": "7cc66b0b07a71a2180936bba75234ae5c38d575289c7520bb4a710aec091e18e",
+    "source_digest_algorithm": "SHA256 of sorted UTF8 path + NUL + SHA256(file bytes); excludes docs/, CHANGELOG.md, README.md",
+    "source_files": 1687,
+    "base_revision": "7e1f109876aae44d5c8a907f149761698904507a",
+    "platform": "linux/amd64",
+    "services": [
+      "channel-service",
+      "billing-service",
+      "config-service"
+    ],
+    "tag": "rbac-b-7cc66b0b",
+    "images": {
+      "channel-service": {
+        "tag": "docker-compose-channel-service:rbac-b-7cc66b0b",
+        "id": "sha256:474e53b50305d7c3d1e6d31b8f19ec9da6aace3f80d25df62fa9d88e6beeeb60",
+        "size": 18523822
+      },
+      "billing-service": {
+        "tag": "docker-compose-billing-service:rbac-b-7cc66b0b",
+        "id": "sha256:1ee94ec3fbc2290aaac8255950d68c4965470742f6dc028a54dfddff82d27abb",
+        "size": 18397909
+      },
+      "config-service": {
+        "tag": "docker-compose-config-service:rbac-b-7cc66b0b",
+        "id": "sha256:07850ebf2ec4b3e7386f3a0d3ea99578056f92827284b804c7f24e0990a95a3e",
+        "size": 17750498
+      }
+    },
+    "archive_sha256": "ebae8ed1b85f287f4448dc4696039c3a825eeda0d06d78b5267ce42baa94917c",
+    "archive_bytes": 44891678
+  },
   "server_configuration_preserved": true,
   "migrations": {
     "identity": {
@@ -287,9 +325,9 @@
       "repeat": "nothing to apply"
     }
   },
-  "build_base_revision": "6296334855a4e78d6ff299027070d0b19ded371e",
   "source_files": 1687,
-  "archive_sha256": "8647d61512005d4cc41db0f4f18170f031f419d65bee1e6b0e7653892fe2fd0b",
+  "source_digest_algorithm": "SHA256 of sorted UTF8 path + NUL + SHA256(file bytes); excludes docs/, CHANGELOG.md, README.md",
+  "build_base_revision": "7e1f109876aae44d5c8a907f149761698904507a",
   "metadata_repair": {
     "schema": "oneapi_admin",
     "column": "schema_migrations.applied_at",
@@ -297,5 +335,26 @@
     "repair": "SET DEFAULT (unix_timestamp())",
     "existing_records_preserved": true,
     "result": "bigint\tNO\tunix_timestamp()"
+  },
+  "initial_deployment": {
+    "captured_at_utc": "2026-10-03T00:15:51.421259+00:00",
+    "source_digest": "7082bdcb48f9ca5f9c8bd9a762100782f08c2d753633bea7bfb897c57ec8b2cc",
+    "build_base_revision": "6296334855a4e78d6ff299027070d0b19ded371e",
+    "archive_sha256": "8647d61512005d4cc41db0f4f18170f031f419d65bee1e6b0e7653892fe2fd0b",
+    "corrected_service_previous_image_ids": {
+      "channel-service": "sha256:9fe7fbf995b7644f91e17c21d875602a511a2e7fc82048e4151aecca2ad57ef1",
+      "billing-service": "sha256:d806c8792414937b759dcb521a302afb2f6a110f99e1a623a45c82a55f569939",
+      "config-service": "sha256:a78a6c6b39b4359ebcc1dd76960c1921c109722a870a436cb5e02b214c42bef8"
+    }
+  },
+  "local_validation": {
+    "affected_data_packages_race": "passed",
+    "overflow_regressions": "failed before fix; passed after fix",
+    "b0_b4_real_http_grpc_role_matrix": "passed",
+    "gosec_full_repository": "passed with zero issues",
+    "rbac_contract_rows": 823,
+    "migration_governance": "passed",
+    "architecture": "passed",
+    "service_identity_templates": "passed"
   }
 }

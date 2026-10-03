@@ -292,7 +292,7 @@ func (r *Repository) deleteDB(ctx context.Context, namespace, key string) error 
 		}
 		if _, iam := authorization.QueryScopeFromContext(ctx, biz.ConfigWriteOperation(namespace, key)); iam {
 			expected, ok := authorization.ExpectedResourceRevision(ctx)
-			if !ok || expected != uint64(current.Revision) {
+			if !ok || current.Revision <= 0 || expected != uint64(current.Revision) {
 				return biz.ErrConfigRevisionConflict
 			}
 		}
@@ -376,7 +376,8 @@ func (r *Repository) deleteMemory(ctx context.Context, namespace, key string) er
 	}
 	if _, iam := authorization.QueryScopeFromContext(ctx, biz.ConfigWriteOperation(namespace, key)); iam {
 		expected, ok := authorization.ExpectedResourceRevision(ctx)
-		if !ok || expected != uint64(r.mem[k].Revision) {
+		revision := r.mem[k].Revision
+		if !ok || revision <= 0 || expected != uint64(revision) {
 			return biz.ErrConfigRevisionConflict
 		}
 	}

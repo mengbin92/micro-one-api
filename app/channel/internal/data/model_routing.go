@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"math"
 	"sort"
 	"strings"
 
@@ -219,7 +220,7 @@ func (r *Repository) UpsertModelRouting(ctx context.Context, do *biz.ModelRoutin
 					if expected != 0 {
 						return authorization.ErrWriteConflict
 					}
-				} else if expected == 0 || int64(expected) != existing.Revision {
+				} else if expected == 0 || expected > math.MaxInt64 || int64(expected) != existing.Revision {
 					return authorization.ErrWriteConflict
 				}
 				if err := owner.UpsertModelRouting(context.WithValue(current, modelWriteKey{}, true), do); err != nil {
@@ -338,7 +339,7 @@ func (r *Repository) DeleteModelRouting(ctx context.Context, id int64) error {
 			if !present || authorization.WriteReason(current) == "" {
 				return authorization.ErrWritePrecondition
 			}
-			if expected == 0 || int64(expected) != existing.Revision {
+			if expected == 0 || expected > math.MaxInt64 || int64(expected) != existing.Revision {
 				return authorization.ErrWriteConflict
 			}
 			if err := tx.Delete(&existing).Error; err != nil {

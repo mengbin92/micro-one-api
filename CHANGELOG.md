@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- RBAC 资源版本与兑换码 ID 的整数转换增加范围校验：拒绝超出 int64 的版本/ID 和异常负版本，避免无符号请求绕回负数后错误匹配；覆盖实际资源写入与配置删除回归，全仓 gosec 检查通过。
+
 ### Added
 
 - RBAC B0–B4 全量后端闭合：服务专属身份与完整入口边界、用户/本人授权、渠道/账号/模型/路由组、资金/订单/共享订阅、日志/配置/健康/通知，以及复合动作、独立字段权限和总览 section 预检。补齐导出、批量、OAuth、archive/全量成员替换、通知确认/测试/规则和持久化资源写审计，见 [B 阶段闭合记录](docs/design/rbac/b-execution-progress.md)。

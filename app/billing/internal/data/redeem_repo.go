@@ -38,7 +38,11 @@ func (r *redeemRepo) CreateRedeemCode(ctx context.Context, code *biz.RedeemCode)
 		if err := tx.Create(model).Error; err != nil {
 			return err
 		}
-		return authzquery.AppendWriteAudit(ctx, tx, "billing.redemption.create", int64(model.ID))
+		id, err := safecast.UintToInt64(model.ID)
+		if err != nil {
+			return err
+		}
+		return authzquery.AppendWriteAudit(ctx, tx, "billing.redemption.create", id)
 	})
 	return authzquery.RecordWriteFailure(ctx, r.data.db, "billing.redemption.create", 0, writeErr)
 }
@@ -66,7 +70,11 @@ func (r *redeemRepo) CreateRedeemCodesBatch(ctx context.Context, codes []*biz.Re
 			return err
 		}
 		for _, row := range models {
-			if err := authzquery.AppendWriteAudit(ctx, tx, "billing.redemption.batch_create", int64(row.ID)); err != nil {
+			id, err := safecast.UintToInt64(row.ID)
+			if err != nil {
+				return err
+			}
+			if err := authzquery.AppendWriteAudit(ctx, tx, "billing.redemption.batch_create", id); err != nil {
 				return err
 			}
 		}
@@ -84,7 +92,11 @@ func (r *redeemRepo) GetRedeemCode(ctx context.Context, code string) (*biz.Redee
 		return nil, err
 	}
 
-	if err := authorization.Require(ctx, "billing.redemption.read", redeemFacts(int64(model.ID))); err != nil {
+	id, err := safecast.UintToInt64(model.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err := authorization.Require(ctx, "billing.redemption.read", redeemFacts(id)); err != nil {
 		return nil, err
 	}
 	return redeemCodeToBiz(&model)
@@ -271,8 +283,12 @@ func redeemCodeToBiz(model *redeemCodeModel) (*biz.RedeemCode, error) {
 	if err != nil {
 		return nil, err
 	}
+	id, err := safecast.UintToInt64(model.ID)
+	if err != nil {
+		return nil, err
+	}
 	return &biz.RedeemCode{
-		ID:        int64(model.ID),
+		ID:        id,
 		Revision:  model.Revision,
 		Code:      model.Code,
 		Name:      stringFromPtr(model.Name),
@@ -304,7 +320,11 @@ func (r *redeemRepo) mutateRedeem(ctx context.Context, code, op string, write fu
 			}
 			return err
 		}
-		if err := biz.RequireWrite(ctx, op, redeemFacts(int64(row.ID))); err != nil {
+		id, err := safecast.UintToInt64(row.ID)
+		if err != nil {
+			return err
+		}
+		if err := biz.RequireWrite(ctx, op, redeemFacts(id)); err != nil {
 			return err
 		}
 		if _, iam := authorization.QueryScopeFromContext(ctx, op); iam {
@@ -321,7 +341,7 @@ func (r *redeemRepo) mutateRedeem(ctx context.Context, code, op string, write fu
 				return err
 			}
 		}
-		return authzquery.AppendWriteAudit(ctx, tx, op, int64(row.ID))
+		return authzquery.AppendWriteAudit(ctx, tx, op, id)
 	})
 	return authzquery.RecordWriteFailure(ctx, r.data.db, op, 0, writeErr)
 }

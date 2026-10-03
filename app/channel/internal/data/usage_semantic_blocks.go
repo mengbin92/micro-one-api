@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"errors"
+	"math"
 	"time"
 
 	"gorm.io/gorm"
@@ -202,7 +203,7 @@ func (r *Repository) ResolveUsageSemanticBlock(ctx context.Context, sourceKind s
 			if !present || authorization.WriteReason(current) == "" {
 				return authorization.ErrWritePrecondition
 			}
-			if expected == 0 || int64(expected) != row.Revision {
+			if expected == 0 || expected > math.MaxInt64 || int64(expected) != row.Revision {
 				return authorization.ErrWriteConflict
 			}
 			if row.Status != biz.UsageSemanticBlockStatusBlocked {
