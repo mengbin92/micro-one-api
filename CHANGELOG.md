@@ -9,16 +9,21 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- IAM 模式的管理 gRPC 入口补齐专属服务 principal、真实 full method 和 fixed caller 校验；共享 service token 携带 root JWT 仍拒绝。root 执行豁免也受本版显式 grant 限定。
+
 - RBAC 资源版本与兑换码 ID 的整数转换增加范围校验：拒绝超出 int64 的版本/ID 和异常负版本，避免无符号请求绕回负数后错误匹配；覆盖实际资源写入与配置删除回归，全仓 gosec 检查通过。
 
 ### Added
+
+- RBAC D0 离线迁移工具、固定历史 grant、全量候选/shadow/对账、root 签名 manifest、原子切换和幂等恢复；完成三库 race、真实 HTTP/gRPC、财务列权限及 7 组浏览器演练，见 [D 阶段交付记录](docs/design/rbac/d-cutover-delivery.md)。
+- D1 生产预检、专属服务凭证草案生成、源码摘要和停写执行手册；三套 Compose 支持各 owner 独立 SQL 通道及默认关闭的救援配置，构建上下文排除运行时环境凭证。
 
 - RBAC B0–B4 全量后端闭合：服务专属身份与完整入口边界、用户/本人授权、渠道/账号/模型/路由组、资金/订单/共享订阅、日志/配置/健康/通知，以及复合动作、独立字段权限和总览 section 预检。补齐导出、批量、OAuth、archive/全量成员替换、通知确认/测试/规则和持久化资源写审计，见 [B 阶段闭合记录](docs/design/rbac/b-execution-progress.md)。
 - 新增 112–122 三库迁移：资源写审计、通知管理与资源 CAS、上游成本稳定 ID、配置 tombstone/key mutex；删除重建不能复用旧版本，并发首次创建不会产生重复配置。
 
 ### Changed
 
-- RBAC 主设计、实施清单及 823 行入口契约同步；真实 B0–B4 HTTP/gRPC 角色矩阵、B1–B4 SQLite/MySQL/PostgreSQL race 和全仓门禁完成。Compose 服务身份模板及静态核验脚本就绪；2026-10-03 已更新全部线上服务、前端和分库迁移，并修复 admin 历史迁移元数据默认值，见 [生产更新记录](docs/design/rbac/b-legacy-production-deployment.md)。生产保持 legacy/idle；C1–D1 界面/Playwright/IAM 切换仍待原阶段交付，未发布版本。
+- RBAC 主设计、实施清单及 823 行入口契约同步；真实 B0–B4 HTTP/gRPC 角色矩阵、B1–B4 SQLite/MySQL/PostgreSQL race 和全仓门禁完成。Compose 服务身份模板及静态核验脚本就绪；2026-10-03 已更新全部线上服务、前端和分库迁移，并修复 admin 历史迁移元数据默认值，见 [生产更新记录](docs/design/rbac/b-legacy-production-deployment.md)。生产保持 legacy/idle；C1–C3 和 D0 已交付；D1 生产停写/IAM 交接仍待部署授权及实际证据，未发布版本。
 
 ## [0.33.6] - 2026-09-30
 

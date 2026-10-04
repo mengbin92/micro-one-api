@@ -81,6 +81,7 @@ services:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${IDENTITY_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - BILLING_CANONICAL_USAGE_MODE=${BILLING_CANONICAL_USAGE_MODE:-observe}
       - BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST=${BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST:-}
       - REDIS_ADDR=redis:6379
@@ -91,6 +92,8 @@ services:
       - SERVICE_CALLER_TOKENS=${IDENTITY_SERVICE_CALLER_TOKENS:-}
       - IDENTITY_TRUSTED_PROXY_CIDRS=${IDENTITY_TRUSTED_PROXY_CIDRS:-172.16.0.0/12}
       - ADMIN_TOKEN=${ADMIN_TOKEN:-}
+      - IAM_RESCUE_ENABLED=${IAM_RESCUE_ENABLED:-false}
+      - IAM_RESCUE_SERVICE_TOKEN=${IAM_RESCUE_SERVICE_TOKEN:-}
       - BILLING_GRPC_ENDPOINT=billing-service:9004
       - RECHARGE_AMOUNT_MULTIPLIER=${RECHARGE_AMOUNT_MULTIPLIER:-10}
       - INITIAL_ADMIN_USERNAME=${INITIAL_ADMIN_USERNAME:-}
@@ -128,6 +131,7 @@ services:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${CHANNEL_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - CHANNEL_ENCRYPTION_KEY=${CHANNEL_ENCRYPTION_KEY:?CHANNEL_ENCRYPTION_KEY is required}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -174,6 +178,7 @@ services:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${BILLING_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
@@ -228,6 +233,7 @@ services:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${CONFIG_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
@@ -263,6 +269,7 @@ services:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${LOG_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
@@ -298,6 +305,7 @@ services:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${MONITOR_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
@@ -333,6 +341,7 @@ services:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${NOTIFY_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
@@ -389,6 +398,7 @@ services:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${RELAY_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - IDENTITY_GRPC_ENDPOINT=identity-service:9001
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002
       - BILLING_GRPC_ENDPOINT=billing-service:9004
@@ -444,6 +454,7 @@ services:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${ADMIN_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}

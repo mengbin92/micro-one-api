@@ -27,6 +27,7 @@ import (
 
 func TestIAMA6RealAdminIdentityEndpoints(t *testing.T) {
 	t.Setenv("SERVICE_TOKEN", "a6-service")
+	t.Setenv("SERVICE_CALLER_TOKENS", `{"admin":"a6-admin"}`)
 	t.Setenv("JWT_SECRET_KEY", "a6-jwt")
 	t.Setenv("INITIAL_ADMIN_PASSWORD", "a6-root-password")
 	t.Setenv("IDENTITY_ROUTING_V2", "false")
@@ -61,7 +62,7 @@ func TestIAMA6RealAdminIdentityEndpoints(t *testing.T) {
 	for _, tt := range []struct {
 		service, operator string
 		code              codes.Code
-	}{{"wrong", rootRaw, codes.Unauthenticated}, {"a6-service", "", codes.Unauthenticated}, {"a6-service", "a6-rescue", codes.Unauthenticated}, {"a6-service", memberRaw, codes.PermissionDenied}} {
+	}{{"wrong", rootRaw, codes.Unauthenticated}, {"a6-admin", "", codes.Unauthenticated}, {"a6-admin", "a6-rescue", codes.Unauthenticated}, {"a6-admin", memberRaw, codes.PermissionDenied}, {"a6-service", rootRaw, codes.PermissionDenied}} {
 		_, err = client.ListRoles(outgoing(tt.service, tt.operator), &v.IAMRequest{Context: platform})
 		require.Equal(t, tt.code, status.Code(err))
 	}
@@ -71,7 +72,7 @@ func TestIAMA6RealAdminIdentityEndpoints(t *testing.T) {
 	authenticatedConn, err := grpc.NewClient("passthrough:///a6-auth", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return listener.Dial() }), grpc.WithUnaryInterceptor(func(ctx context.Context, method string, req, reply any, conn *grpc.ClientConn, invoke grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		md, _ := metadata.FromOutgoingContext(ctx)
 		md = md.Copy()
-		md.Set("authorization", "Bearer a6-service")
+		md.Set("authorization", "Bearer a6-admin")
 		return invoke(metadata.NewOutgoingContext(ctx, md), method, req, reply, conn, opts...)
 	}))
 	require.NoError(t, err)
@@ -94,7 +95,7 @@ func TestIAMA6RealAdminIdentityEndpoints(t *testing.T) {
 		w := call("GET", "/api/v1/admin/iam/roles", "", tt.raw)
 		require.Equal(t, tt.want, w.Code, w.Body.String())
 	}
-	list, err := client.ListRoles(outgoing("a6-service", rootRaw), &v.IAMRequest{Context: platform})
+	list, err := client.ListRoles(outgoing("a6-admin", rootRaw), &v.IAMRequest{Context: platform})
 	require.NoError(t, err)
 	body := fmt.Sprintf(`{"role":{"code":"http-role","name":"HTTP role"},"expectedPolicyRevision":"%d","reason":"acceptance","requestId":"http-create"}`, list.BasePolicyRevision)
 	created := call("POST", "/api/v1/admin/iam/roles", body, rootRaw)
@@ -128,21 +129,21 @@ func TestIAMA6RealAdminIdentityEndpoints(t *testing.T) {
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
 	// A CheckAuthorization selector is an owner endpoint, never a browser-supplied
 	// business permission or object-fact capability.
-	_, err = client.CheckAuthorization(outgoing("a6-service", rootRaw), &v.IAMRequest{Context: platform, Id: id, Operation: "channel.channel.read"})
+	_, err = client.CheckAuthorization(outgoing("a6-admin", rootRaw), &v.IAMRequest{Context: platform, Id: id, Operation: "channel.channel.read"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	decision, err := client.CheckAuthorization(outgoing("a6-service", rootRaw), &v.IAMRequest{Context: platform, Id: id, Operation: "GetRole"})
+	decision, err := client.CheckAuthorization(outgoing("a6-admin", rootRaw), &v.IAMRequest{Context: platform, Id: id, Operation: "GetRole"})
 	require.NoError(t, err)
 	require.True(t, decision.Decision.Allowed)
-	sessions, err := client.ListUserSessions(outgoing("a6-service", rootRaw), &v.IAMRequest{Context: platform, UserId: member.ID})
+	sessions, err := client.ListUserSessions(outgoing("a6-admin", rootRaw), &v.IAMRequest{Context: platform, UserId: member.ID})
 	require.NoError(t, err)
 	require.NotEmpty(t, sessions.Sessions)
 	var targetRevision uint64
 	require.NoError(t, db.Table("users").Select("authorization_revision").Where("id = ?", member.ID).Scan(&targetRevision).Error)
 	require.Equal(t, targetRevision, sessions.TargetRevision, "target CAS remains separate from actor authorization versions")
 	// A bodyless DELETE resolves the role and boundary from the assignment row.
-	published, err := client.SetRoleStatus(outgoing("a6-service", rootRaw), &v.IAMRequest{Context: platform, Id: id, Role: &v.IAMRole{Status: "enabled"}, ExpectedRevision: reply.Roles[0].Revision, ExpectedPolicyRevision: reply.BasePolicyRevision, Reason: "enable", RequestId: "a6-enable"})
+	published, err := client.SetRoleStatus(outgoing("a6-admin", rootRaw), &v.IAMRequest{Context: platform, Id: id, Role: &v.IAMRole{Status: "enabled"}, ExpectedRevision: reply.Roles[0].Revision, ExpectedPolicyRevision: reply.BasePolicyRevision, Reason: "enable", RequestId: "a6-enable"})
 	require.NoError(t, err)
-	assigned, err := client.AssignUserRole(outgoing("a6-service", rootRaw), &v.IAMRequest{Context: platform, UserId: member.ID, Assignment: &v.IAMAssignment{UserId: member.ID, RoleId: id, Boundary: &c.AuthorizationScope{Clauses: []*c.AuthorizationScopeClause{{All: true}}}}, ExpectedPolicyRevision: published.BasePolicyRevision, Reason: "assign", RequestId: "a6-assign"})
+	assigned, err := client.AssignUserRole(outgoing("a6-admin", rootRaw), &v.IAMRequest{Context: platform, UserId: member.ID, Assignment: &v.IAMAssignment{UserId: member.ID, RoleId: id, Boundary: &c.AuthorizationScope{Clauses: []*c.AuthorizationScopeClause{{All: true}}}}, ExpectedPolicyRevision: published.BasePolicyRevision, Reason: "assign", RequestId: "a6-assign"})
 	require.NoError(t, err)
 	require.NotEmpty(t, assigned.Impacts)
 	path := fmt.Sprintf("/api/v1/admin/iam/users/%d/roles/%d?expected_revision=%d&expected_policy_revision=%d&reason=revoke&request_id=a6-revoke", member.ID, assigned.Assignments[0].Id, assigned.Assignments[0].Revision, assigned.BasePolicyRevision)
@@ -163,7 +164,7 @@ func TestIAMA6RealAdminIdentityEndpoints(t *testing.T) {
 	t.Setenv("IAM_RESCUE_ENABLED", "true")
 	_, err = client.RescueRootCredential(outgoing("a6-rescue-service", "a6-rescue"), recovery)
 	require.NoError(t, err)
-	_, err = client.GetSessionAuthorization(outgoing("a6-service", rootRaw), &v.IAMRequest{Context: platform})
+	_, err = client.GetSessionAuthorization(outgoing("a6-admin", rootRaw), &v.IAMRequest{Context: platform})
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
 
 }

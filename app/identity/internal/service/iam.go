@@ -12,6 +12,7 @@ import (
 	"micro-one-api/app/identity/internal/biz"
 	m "micro-one-api/domain/authorization/management"
 	"micro-one-api/platform/iamdto"
+	"micro-one-api/platform/security/serviceidentity"
 )
 
 type IAMService struct {
@@ -40,6 +41,16 @@ func (s *IAMService) execute(ctx context.Context, method string, p *v.IAMRequest
 	}
 	if !httpSelf && !isServiceAuthenticated(ctx) {
 		return nil, status.Error(codes.Unauthenticated, "service authentication required")
+	}
+	if !httpSelf {
+		mode, err := s.identity.AuthorizationMode(ctx)
+		if err != nil {
+			return nil, mapIdentityErrorToGRPC(err)
+		}
+		fullMethod := "/api.identity.v1.IAMService/" + method
+		if mode == "iam" && (serviceidentity.RPCMethod(ctx) != fullMethod || !serviceidentity.FromContext(ctx).CanCall(fullMethod)) {
+			return nil, status.Error(codes.PermissionDenied, "dedicated service caller capability required")
+		}
 	}
 	if credential == "" || system {
 		return nil, status.Error(codes.Unauthenticated, "user session required")
