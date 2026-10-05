@@ -1,0 +1,81 @@
+{
+  "deployment": {
+    "tag": "docker-compose-billing-service:iam-self-usage-af8d42e4",
+    "image": "sha256:6f288ddb119ad051e0535eedd819dfe1864217820464d8d9e6bef109060b7cdb",
+    "source_digest": "af8d42e4158b82f00f9d25dcb5b8b46421ec9f402b483672349b0b96484064e7",
+    "previous_image": "sha256:090e142f4e23c3aa61bed5bfdf2fb0fcdfbacec154811ccc99f38d7d24694226",
+    "rollback_tag": "docker-compose-billing-service:rollback-self-usage-20261005-112621",
+    "health": 200,
+    "restarts": 0,
+    "deployed_at": "2026-10-05T03:26:22Z"
+  },
+  "verification": {
+    "checked_at": "2026-10-05T03:26:43.520006+00:00",
+    "checks": [
+      {
+        "actor": "admin",
+        "path": "/api/user/dashboard",
+        "status": 200,
+        "success": true,
+        "counters_match_database": true,
+        "daily_usage_matches_database": true,
+        "seven_day_has_usage": true
+      },
+      {
+        "actor": "admin",
+        "path": "/api/user/logs?page=1&page_size=20&user_id=99999",
+        "status": 200,
+        "success": true,
+        "returned_rows": 20,
+        "self_scope_verified": true
+      },
+      {
+        "actor": "member",
+        "path": "/api/user/dashboard",
+        "status": 200,
+        "success": true,
+        "counters_match_database": true,
+        "daily_usage_matches_database": true,
+        "seven_day_has_usage": false
+      },
+      {
+        "actor": "member",
+        "path": "/api/user/logs?page=1&page_size=20&user_id=99999",
+        "status": 200,
+        "success": true,
+        "returned_rows": 20,
+        "self_scope_verified": true
+      },
+      {
+        "actor": "anonymous",
+        "path": "/api/user/dashboard",
+        "status": 401
+      },
+      {
+        "actor": "anonymous",
+        "path": "/api/user/logs",
+        "status": 401
+      }
+    ],
+    "all_nine_healthy": true,
+    "iam_mode": "iam",
+    "cutover_state": "complete",
+    "legacy_remote_root_locked": true
+  },
+  "regression": {
+    "test": "TestIAMSelfUsageThroughDedicatedIdentityCaller",
+    "before": "PermissionDenied: caller capability denied",
+    "after": "passed; root and member self usage, counters, own-only ledger, no credential denial, cross-account filtering, no managed report capability",
+    "race": "passed"
+  },
+  "changes": {
+    "user_caller_added": "identity",
+    "methods": [
+      "/api.billing.v1.BillingService/ListLedger",
+      "/api.billing.v1.BillingService/AggregateLedgerByDate"
+    ],
+    "system_capability_added": false,
+    "database_or_iam_fact_changes": false,
+    "frontend_changes": false
+  }
+}
