@@ -1,6 +1,13 @@
 import type { Page } from '@playwright/test';
 
-export async function mockApi(page: Page) {
+export async function mockAuthorization(page: Page, admin = false) {
+  await page.route('**/api/user/authorization?**', (route) => route.fulfill({
+    json: { authorization_mode: 'legacy', legacy_admin: admin },
+  }));
+}
+
+export async function mockApi(page: Page, { admin = false } = {}) {
+  await mockAuthorization(page, admin);
   await page.route('**/api/user/login', async (route) => {
     await route.fulfill({
       json: {

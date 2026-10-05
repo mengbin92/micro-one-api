@@ -1,16 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
-import { mockApi } from './fixtures';
+import { mockApi, mockAuthorization } from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await mockApi(page);
 });
 
-// Seed an admin session. The mocked /user/self fixture (fixtures.ts) returns
-// role:1, and AppNavigation persists that role to localStorage after every
-// page load — which would strip the admin nav. Override /user/self with an
-// admin role here: this route is registered after mockApi(), and Playwright
-// dispatches to the most recently registered matching route first.
+// Seed the server authorization summary independently of the displayed role.
+// Playwright uses the most recently registered matching route first.
 async function seedAdminSession(page: Page) {
+  await mockAuthorization(page, true);
   await page.route('**/api/user/self', async (route) => {
     await route.fulfill({
       json: {
@@ -40,7 +38,10 @@ async function seedAdminSession(page: Page) {
 
 async function openMobileNavIfVisible(page: Page) {
   const openNavigation = page.getByRole('button', { name: /打开导航|open navigation/i });
-  if (await openNavigation.isVisible()) {
+  // Authorization resolves before the shell mounts; a one-shot visibility
+  // check can miss the mobile drawer button while the page is loading.
+  if ((page.viewportSize()?.width ?? 1280) < 1024) {
+    await expect(openNavigation).toBeVisible();
     await openNavigation.click();
   }
 }

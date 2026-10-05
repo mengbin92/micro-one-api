@@ -2,6 +2,9 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
+  // The live IAM suite has its own config and receives RBAC_C_FIXTURE from
+  // the Go integration harness; the shared smoke gate uses mocked APIs.
+  testIgnore: 'rbac-permissions.spec.ts',
   timeout: 30_000,
   expect: {
     timeout: 10_000,
