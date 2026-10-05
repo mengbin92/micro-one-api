@@ -20,7 +20,7 @@ var executionPoints = map[string]ExecutionPoint{
 	"log.self":                {"log", nil},
 	"admin.console":           {"admin", []string{"admin.console.enter"}},
 	"identity.routing_access": {"identity", []string{"identity.routing_access.read", "identity.routing_access.grant", "identity.routing_access.revoke", "identity.routing_access.default.update", "identity.routing_access.public_access.update"}},
-	"identity.users.create":   {"identity", []string{"identity.user.create", "identity.routing_access.default.update", "identity.routing_access.grant"}},
+	"identity.users.create":   {"identity", []string{"identity.user.create", "identity.user.credential.update", "identity.user.email_binding.update", "identity.routing_access.default.update", "identity.routing_access.grant"}},
 	"identity.users.delete":   {"identity", []string{"identity.user.delete"}},
 	"identity.users.list":     {"identity", []string{"identity.user.list", "identity.user.contact.read"}},
 	"identity.users.export":   {"identity", []string{"identity.user.export", "identity.user.contact.read"}},

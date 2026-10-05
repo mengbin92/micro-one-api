@@ -133,10 +133,10 @@ func (uc *IdentityUsecase) runtimeWriteEvent(ctx context.Context, action, target
 // createIAMAccount is the sole persistent creation path, including bootstrap
 // and OAuth binding. Channel facts have already been checked outside retries.
 func (uc *IdentityUsecase) createIAMAccount(ctx context.Context, input User, bootstrap, allowIAM bool) (User, bool, error) {
-	return uc.createIAMAccountChecked(ctx, input, bootstrap, allowIAM, authorization.Actor{ServiceID: "identity-account"}, "account initialization", nil)
+	return uc.createIAMAccountChecked(ctx, input, bootstrap, allowIAM, authorization.Actor{ServiceID: "identity-account"}, "account initialization", nil, nil)
 }
 
-func (uc *IdentityUsecase) createIAMAccountChecked(ctx context.Context, input User, bootstrap, allowIAM bool, actor authorization.Actor, reason string, check func(context.Context, IAMTx, authorization.PolicyState) error) (User, bool, error) {
+func (uc *IdentityUsecase) createIAMAccountChecked(ctx context.Context, input User, bootstrap, allowIAM bool, actor authorization.Actor, reason string, check func(context.Context, IAMTx, authorization.PolicyState) error, checkCreated func(context.Context, IAMTx, User) error) (User, bool, error) {
 	var saved User
 	created := false
 	action, code, origin := "account.create", "member", "default"
@@ -218,6 +218,13 @@ func (uc *IdentityUsecase) createIAMAccountChecked(ctx context.Context, input Us
 		a.ID = 0
 		if _, err = uc.iam.SaveAssignment(ctx, tx, a, 0); err != nil {
 			return err
+		}
+		// Management credential delegation needs the actual new user ID and
+		// default role authority. Failure rolls back user, routing and assignment.
+		if checkCreated != nil {
+			if err := checkCreated(ctx, tx, saved); err != nil {
+				return err
+			}
 		}
 		if input.OAuthProvider != "" || input.OAuthID != "" {
 			if input.OAuthProvider == "" || input.OAuthID == "" {

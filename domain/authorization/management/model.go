@@ -100,6 +100,8 @@ type Permission struct {
 	Protected                                        bool
 	ID, ResourceID                                   int64
 	Code, Name, Category, RiskLevel, Status, Binding string
+	Description                                      string
+	Sort                                             int32
 	Revision                                         uint64
 }
 type Resource struct {

@@ -111,8 +111,7 @@ func (uc *IAMGovernanceUsecase) read(ctx context.Context, tx IAMTx, v iamManagem
 				return out, err
 			}
 			for _, source := range sources {
-				i := slices.IndexFunc(v.state.Roles, func(r IAMRole) bool { return r.ID == source.RoleID })
-				if i >= 0 && visibleRole(v.state.Roles[i], "iam.role.permissions.read") {
+				if v.visibleGrantPath(v.state, source) {
 					// This is a role projection, not a real user assignment.
 					source.AssignmentID = 0
 					out.Sources = append(out.Sources, source)
@@ -260,6 +259,13 @@ func (uc *IAMGovernanceUsecase) read(ctx context.Context, tx IAMTx, v iamManagem
 		if err != nil {
 			return out, err
 		}
+		if req.UserID != v.actor.UserID {
+			for _, source := range out.Sources {
+				if !v.visibleGrantPath(v.state, source) {
+					return m.Response{}, ErrIAMProtected
+				}
+			}
+		}
 		if method == "ExplainAuthorization" {
 			operation, ok := authorization.Lookup(req.Operation)
 			if !ok {
@@ -315,7 +321,7 @@ func iamCollectionPage[T any](items []T, req m.Request, key string, fields []str
 			x, y := describe(a), describe(b)
 			for _, o := range orders {
 				var cmp int
-				if strings.HasSuffix(o.Name, "id") {
+				if strings.HasSuffix(o.Name, "id") || o.Name == "sort" {
 					i, ei := strconv.ParseInt(x[o.Name], 10, 64)
 					j, ej := strconv.ParseInt(y[o.Name], 10, 64)
 					if ei != nil || ej != nil {
@@ -364,8 +370,11 @@ func iamPageResponse(out m.Response, req m.Request, methodKey string) (m.Respons
 			return map[string]string{"id": iamID(r.ID), "code": r.Code, "status": r.Status, "name": r.Name}
 		})
 	case "ListPermissions":
-		out.Permissions, out.Total, out.NextPageToken, err = iamCollectionPage(out.Permissions, req, key, []string{"code", "status", "name"}, func(p m.Permission) map[string]string {
-			return map[string]string{"id": iamID(p.ID), "code": p.Code, "status": p.Status, "name": p.Name}
+		if req.OrderBy == "" {
+			req.OrderBy = "sort,id"
+		}
+		out.Permissions, out.Total, out.NextPageToken, err = iamCollectionPage(out.Permissions, req, key, []string{"code", "status", "name", "category", "risk_level", "sort"}, func(p m.Permission) map[string]string {
+			return map[string]string{"id": iamID(p.ID), "code": p.Code, "status": p.Status, "name": p.Name, "category": p.Category, "risk_level": p.RiskLevel, "sort": strconv.FormatInt(int64(p.Sort), 10)}
 		})
 	case "ListResources":
 		out.Resources, out.Total, out.NextPageToken, err = iamCollectionPage(out.Resources, req, key, []string{"code", "name"}, func(r m.Resource) map[string]string {

@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- RBAC 设计复审修复 deny 分配期限扩权、分配载荷借用撤销权、管理创建凭证委派遗漏、隐藏授权来源读取、非法范围与不兼容分配、归档权限复活，以及 root 摘要、菜单层级和前端读写 gate 差异；记录与回归见 [审查记录](docs/design/rbac/design-review-2026-10-05.md)。已更新线上九服务及前端并应用 123 迁移，模式保持 iam/complete，见 [生产更新](docs/design/rbac/review-production-deployment-2026-10-05.md)。
+
 - IAM 专属服务调用表补齐 identity 对本人账本列表和按日统计的调用权限，修复用户首页／用量统计因内部 403 显示为 0；billing 继续独立验证会话和本人范围，未增加系统豁免。已更新线上 billing，见 [验证记录](docs/design/rbac/self-usage-fix-2026-10-05.md)。
 
 - D1 交接补齐 config/Wire 与仓储的 owner DSN 一致性，保留构建版本文件，保障迁移 CLI 的 JSON stdout，并将控制台请求期限从默认 1 秒调整为 30 秒，避免逐项 IAM 配置读取被取消。
@@ -18,6 +20,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - RBAC 资源版本与兑换码 ID 的整数转换增加范围校验：拒绝超出 int64 的版本/ID 和异常负版本，避免无符号请求绕回负数后错误匹配；覆盖实际资源写入与配置删除回归，全仓 gosec 检查通过。
 
 ### Added
+
+- IAM 权限目录说明/排序的 DTO、持久化、过滤排序与编辑界面；新增 identity 所属 `123_add_iam_permission_metadata` 三库迁移，展示元数据不改变固定执行资格或授权范围。
 
 - RBAC D0 离线迁移工具、固定历史 grant、全量候选/shadow/对账、root 签名 manifest、原子切换和幂等恢复；完成三库 race、真实 HTTP/gRPC、财务列权限及 7 组浏览器演练，见 [D 阶段交付记录](docs/design/rbac/d-cutover-delivery.md)。
 - D1 生产预检、专属服务凭证草案生成、源码摘要和停写执行手册；三套 Compose 支持各 owner 独立 SQL 通道及默认关闭的救援配置，构建上下文排除运行时环境凭证。

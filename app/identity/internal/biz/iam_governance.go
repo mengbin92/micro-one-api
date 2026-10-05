@@ -511,6 +511,26 @@ func iamRoleHasDeny(state IAMConstraintState, id int64) bool {
 	return false
 }
 
+// A deny is mandatory for its entire assignment window. Postponing its start
+// or bringing its end forward exposes other grants just like revocation.
+// Assignment boundaries affect allow only and cannot shrink the deny.
+func iamAssignmentRemovesDeny(state IAMConstraintState, next IAMAssignment, now time.Time) bool {
+	if !iamRoleHasDeny(state, next.RoleID) {
+		return false
+	}
+	for _, old := range state.Assignments {
+		if old.ID != next.ID || old.Revoked || (old.Validity.ExpiresAt != nil && !old.Validity.ExpiresAt.After(now)) {
+			continue
+		}
+		remaining := old.Validity
+		if remaining.StartsAt.Before(now) {
+			remaining.StartsAt = now
+		}
+		return next.Revoked || !iamIntervalContained(remaining, next.Validity)
+	}
+	return false
+}
+
 // Scoped list admission uses the same object check as every returned record.
 // There is no presence-only allow check, and root still needs a bound, enabled
 // operation. An empty authorized result remains possible after domain filters.
@@ -627,7 +647,7 @@ func (uc *IAMGovernanceUsecase) AuthorizeIAMChanges(ctx context.Context, tx IAMT
 			if err = v.manageRole(proposed, a.RoleID, action, a.UserID, interval, a.Boundary); err != nil {
 				return err
 			}
-			if a.Revoked && iamRoleHasDeny(state, a.RoleID) {
+			if iamAssignmentRemovesDeny(state, *a, v.now) {
 				if err = v.expandedUserCeiling(proposed, a.RoleID, a.UserID, action); err != nil {
 					return err
 				}
@@ -728,6 +748,19 @@ func (v iamManagementView) visibleAssignment(state IAMConstraintState, a IAMAssi
 	})
 }
 
+func (v iamManagementView) visibleGrantPath(state IAMConstraintState, source authorization.GrantSource) bool {
+	if v.root {
+		return true
+	}
+	for _, id := range source.InheritancePath {
+		i := slices.IndexFunc(state.Roles, func(r IAMRole) bool { return r.ID == id })
+		if i < 0 || !v.visibleRole(state.Roles[i], "iam.role.permissions.read") {
+			return false
+		}
+	}
+	return true
+}
+
 // Impacts are an informational response, not additional read authority. A
 // manager's valid change to one role must not reveal another assignment or
 // an inherited role's hidden grants in the same target user's source list.
@@ -744,13 +777,7 @@ func (v iamManagementView) permissionImpacts(before, after IAMConstraintState, u
 		if i < 0 || !v.visibleAssignment(state, state.Assignments[i], "identity.user_role.read") {
 			return false
 		}
-		for _, id := range s.InheritancePath {
-			i := slices.IndexFunc(state.Roles, func(r IAMRole) bool { return r.ID == id })
-			if i < 0 || !v.visibleRole(state.Roles[i], "iam.role.permissions.read") {
-				return false
-			}
-		}
-		return true
+		return v.visibleGrantPath(state, s)
 	}
 	for i := range impacts {
 		impacts[i].Before = slices.DeleteFunc(impacts[i].Before, func(s authorization.GrantSource) bool { return !visible(before, s) })

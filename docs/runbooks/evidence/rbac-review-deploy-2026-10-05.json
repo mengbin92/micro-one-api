@@ -1,0 +1,215 @@
+{
+  "source_commit": "7969a3cb",
+  "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741",
+  "image_tag": "rbac-review-42b21ad4",
+  "rollback_tag": "rollback-rbac-review-20261005-102938",
+  "migration": {
+    "applied": [
+      "123_add_iam_permission_metadata"
+    ],
+    "repeat": "nothing to apply",
+    "permission_facts_preserved": true,
+    "temporary_ddl_identity_removed": true,
+    "image": "sha256:f64409ee902fa1888857164f49dedfc017876916a2ce8b6e71d2f1e7ea4cb0b2",
+    "verified_at": "2026-10-05T10:21:47.021495+00:00"
+  },
+  "frontend": {
+    "files_verified": 173,
+    "index_sha256": "cf60778ffd3803b16d22509202e812f0af4c0d9f7f30ee0a284b709532f62773",
+    "backup": "/opt/web/dist.bak.rbac-review-20261005-103040",
+    "old_hashed_assets_retained": true,
+    "published_at": "2026-10-05T10:30:40.668986+00:00"
+  },
+  "verification": {
+    "checks": [
+      {
+        "check": "root authorization",
+        "status": 200,
+        "passed": true
+      },
+      {
+        "check": "permission metadata and numeric sort",
+        "status": 200,
+        "passed": true
+      },
+      {
+        "check": "nonzero metadata through read-only owner preview",
+        "status": 200,
+        "passed": true,
+        "committed": false
+      },
+      {
+        "check": "root roles",
+        "status": 200,
+        "passed": true
+      },
+      {
+        "check": "root users",
+        "status": 200,
+        "passed": true
+      },
+      {
+        "check": "root channels",
+        "status": 200,
+        "passed": true
+      },
+      {
+        "check": "root models",
+        "status": 200,
+        "passed": true
+      },
+      {
+        "check": "root options",
+        "status": 200,
+        "passed": true
+      },
+      {
+        "check": "root routing groups",
+        "status": 200,
+        "passed": true
+      },
+      {
+        "check": "member authorization with numeric-root JWT",
+        "status": 200,
+        "passed": true
+      },
+      {
+        "check": "member numeric-root IAM management",
+        "status": 403,
+        "passed": true
+      },
+      {
+        "check": "anonymous IAM management",
+        "status": 401,
+        "passed": true
+      },
+      {
+        "check": "static ADMIN_TOKEN management",
+        "status": 401,
+        "passed": true
+      },
+      {
+        "check": "rbac-user-usage-probe",
+        "passed": true
+      },
+      {
+        "check": "rbac-user-usage-verify",
+        "passed": true
+      }
+    ],
+    "grpc_checks": [
+      {
+        "actor": "root dedicated",
+        "result": "OK"
+      },
+      {
+        "actor": "member numeric root spoof",
+        "result": "PermissionDenied"
+      },
+      {
+        "actor": "shared root",
+        "result": "PermissionDenied"
+      },
+      {
+        "actor": "dedicated no operator",
+        "result": "Unauthenticated"
+      },
+      {
+        "actor": "wrong caller root",
+        "result": "PermissionDenied"
+      }
+    ],
+    "policy": {
+      "mode": "iam",
+      "cutover": "complete",
+      "policy_revision": 7,
+      "catalog_revision": 2
+    },
+    "permission_facts_preserved": true,
+    "shared_root_locked": true,
+    "temporary_ddl_identity_removed": true,
+    "rescue_disabled": true,
+    "services": [
+      {
+        "service": "identity-service",
+        "image": "sha256:069154d82935acb2cecff111efd47afb2c9112f58b696c1d6c105ea3c5783f83",
+        "restart_count": 0,
+        "environment_unchanged": true,
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741"
+      },
+      {
+        "service": "channel-service",
+        "image": "sha256:176f5c18738f217f30feb17bf670842902816bcf619fdbe333d155e252f5f6ca",
+        "restart_count": 0,
+        "environment_unchanged": true,
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741"
+      },
+      {
+        "service": "billing-service",
+        "image": "sha256:49708c1a84db77e9b1087fd4ed8115116e930dd1060c9673479cc0542eb00f2b",
+        "restart_count": 0,
+        "environment_unchanged": true,
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741"
+      },
+      {
+        "service": "config-service",
+        "image": "sha256:9ab5521df6526ed00ac529f7e9c689b0cf41e41c5dfe7d199db3fdee5ae7a98f",
+        "restart_count": 0,
+        "environment_unchanged": true,
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741"
+      },
+      {
+        "service": "log-service",
+        "image": "sha256:3da9944c8fa8a07a3a0d6263071d3be87a974b2a0394b7ec70c2e1d3bad98287",
+        "restart_count": 0,
+        "environment_unchanged": true,
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741"
+      },
+      {
+        "service": "monitor-worker",
+        "image": "sha256:5e3e45b49edb62f5bfdff07799195f4d70adcad541657aef0a98812726f8a04d",
+        "restart_count": 0,
+        "environment_unchanged": true,
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741"
+      },
+      {
+        "service": "notify-worker",
+        "image": "sha256:f42c1172ab1be4df04176440d71200421aaf25ac8be947aa4d90486fc4cf659c",
+        "restart_count": 0,
+        "environment_unchanged": true,
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741"
+      },
+      {
+        "service": "relay-gateway",
+        "image": "sha256:63864dc9e220beeb59c35943d304b33555f57f5a802cf548aaa5056b26410470",
+        "restart_count": 0,
+        "environment_unchanged": true,
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741"
+      },
+      {
+        "service": "admin-api",
+        "image": "sha256:bf305f430a0a49f31a7f26880068088bf72fad913b0aa3d4f0c0d2a3ff3c5dd4",
+        "restart_count": 0,
+        "environment_unchanged": true,
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741"
+      }
+    ],
+    "verified_at": "2026-10-05T10:37:23.020715+00:00"
+  },
+  "identity_backup": {
+    "sha256": "7582de5070b3baba9f8c7af0fcdd25cb749b93ebc83489891b882d1341214492",
+    "bytes": 18963
+  },
+  "transport_sha256": {
+    "service_images": "a44c05d68b5b40e60124d204bbf7bd0fc280102ffc3c5b8f14a2dfed0d349caf",
+    "migration_image": "cc652d93708780676172c223650432174906a3d85c9b827d206d6d46d0cca64d",
+    "frontend": "75f4d9757f7bb42a14a378efb922a00ace1efd222956c57092a624e136c46c85"
+  },
+  "live_preflight": {
+    "ready": true,
+    "instances": 9,
+    "blockers": []
+  },
+  "runtime_credentials_unchanged": true,
+  "iam_permission_facts_unchanged": true
+}

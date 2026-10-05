@@ -34,9 +34,6 @@ func (uc *IdentityUsecase) projectSessionAuthorization(ctx context.Context, tx I
 	if err != nil {
 		return err
 	}
-	root := slices.ContainsFunc(out.Roles, func(r m.Role) bool {
-		return r.Builtin && r.Code == "root" && slices.Contains(out.ActiveRoleIDs, r.ID)
-	})
 	for _, permission := range permissions {
 		op, registered := authorization.Lookup(permission.Code)
 		if !registered || !IAMExecutionBound(op.Code) || permission.Status != "enabled" {
@@ -46,7 +43,9 @@ func (uc *IdentityUsecase) projectSessionAuthorization(ctx context.Context, tx I
 		if err != nil {
 			return ErrIAMInvalidRelation
 		}
-		present := root
+		// Root is also a finite set of explicit grants. Catalog publication must
+		// not advertise newly enabled operations absent from its release manifest.
+		present := false
 		deny := authorization.Scope{}
 		for _, scope := range q.Deny {
 			deny.Clauses = append(deny.Clauses, scope.Clauses...)
@@ -58,7 +57,7 @@ func (uc *IdentityUsecase) projectSessionAuthorization(ctx context.Context, tx I
 		}
 		// Global operations have an exact decision. For object-scoped actions
 		// presence says nothing about a particular object's permitted actions.
-		if !root && len(op.Scopes) == 1 && op.Scopes[0] == authorization.All {
+		if len(op.Scopes) == 1 && op.Scopes[0] == authorization.All {
 			present = q.Matches(authorization.ObjectFacts{Context: out.Context}, false)
 		}
 		if present {
@@ -70,6 +69,11 @@ func (uc *IdentityUsecase) projectSessionAuthorization(ctx context.Context, tx I
 	if err != nil {
 		return err
 	}
+	menuByID := map[int64]m.Menu{}
+	for _, menu := range menus {
+		menuByID[menu.ID] = menu
+	}
+	visibleMenus := map[int64]bool{}
 	for _, menu := range menus {
 		if !menu.Enabled || len(out.PermittedOperations) == 0 {
 			continue
@@ -83,6 +87,36 @@ func (uc *IdentityUsecase) projectSessionAuthorization(ctx context.Context, tx I
 			any = any || slices.Contains(out.PermittedOperations, code)
 		}
 		if all && any {
+			// Ancestors are presentation only. Their presence never adds their
+			// route's operation to the summary, and disabled subtrees stay hidden.
+			path := map[int64]bool{}
+			current := menu
+			valid := true
+			for {
+				if !current.Enabled || path[current.ID] {
+					valid = false
+					break
+				}
+				path[current.ID] = true
+				if current.ParentID == 0 {
+					break
+				}
+				var ok bool
+				current, ok = menuByID[current.ParentID]
+				if !ok {
+					valid = false
+					break
+				}
+			}
+			if valid {
+				for id := range path {
+					visibleMenus[id] = true
+				}
+			}
+		}
+	}
+	for _, menu := range menus {
+		if visibleMenus[menu.ID] {
 			out.Menus = append(out.Menus, menu)
 		}
 	}

@@ -40,6 +40,7 @@ services:
     - 103_create_identity_token_quota_dedupe
     - 110_create_identity_iam
     - 111_add_iam_cardinality_limits
+    - 123_add_iam_permission_metadata
 
   channel:
     - 121_usage_semantic_block_revision

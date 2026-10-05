@@ -1643,6 +1643,9 @@ export interface components {
             status?: string;
             binding?: string;
             revision?: string;
+            description?: string;
+            /** Format: int32 */
+            sort?: number;
         };
         "api.identity.v1.IAMReference": {
             kind?: string;
@@ -2091,6 +2094,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -2208,6 +2213,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -2325,6 +2332,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -2466,6 +2475,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -2582,6 +2593,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -2701,6 +2714,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -2890,6 +2905,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -3056,6 +3073,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -3175,6 +3194,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -3315,6 +3336,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -3460,6 +3483,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -3600,6 +3625,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -3745,6 +3772,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -3885,6 +3914,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -4003,6 +4034,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -4147,6 +4180,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -4292,6 +4327,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -4409,6 +4446,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -4549,6 +4588,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -4667,6 +4708,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -4837,6 +4880,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -4955,6 +5000,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -5125,6 +5172,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -5319,6 +5368,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -5437,6 +5488,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -5580,6 +5633,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -5725,6 +5780,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
@@ -5843,6 +5900,8 @@ export interface operations {
                 "permission.status"?: string;
                 "permission.binding"?: string;
                 "permission.revision"?: string;
+                "permission.description"?: string;
+                "permission.sort"?: number;
                 "delegation.id"?: string;
                 "delegation.managerRoleId"?: string;
                 "delegation.targetRoleId"?: string;
