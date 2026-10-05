@@ -58,7 +58,7 @@ func (v iamManagementView) buildResourceQuery(o authorization.Operation) (author
 	if err != nil {
 		return q, ErrIAMInvalidRelation
 	}
-	if v.root {
+	if v.rootOperation(o.Code) {
 		q.Allow = []authorization.Scope{{Clauses: []authorization.Clause{{All: true}}}}
 	}
 	if len(q.Allow) == 0 {

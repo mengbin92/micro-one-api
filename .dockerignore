@@ -3,6 +3,14 @@
 .claude
 .DS_Store
 
+# Runtime credentials and private migration evidence are never build inputs.
+.env
+.env.*
+**/.env
+**/.env.*
+**/*.env
+!scripts/tool-versions.env
+
 bin
 logs
 coverage

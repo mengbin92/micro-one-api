@@ -164,11 +164,25 @@ func (v iamManagementView) permit(op string, id, uid int64) error {
 	// Even root requires an explicitly enabled operation. D0's trusted setup
 	// must enable the recovery catalog before IAM cutover; ordinary lifecycle
 	// APIs cannot disable protected entries or alter their code-owned binding.
-	if v.root && enabled {
+	if v.rootOperation(op) && enabled {
 		return nil
 	}
 	d := authorization.Decide(authorization.Input{Actor: v.actor, Context: v.state.Context, Operation: code, Object: authorization.ObjectFacts{Context: v.state.Context, ResourceID: id, OwnerUserID: uid}, Sources: v.sources, Now: v.now, IdentityValid: true, SessionValid: v.session.ActivationState == "active", ConstraintsPass: true, BusinessRulesPass: true, OperationEnabled: enabled})
 	return IAMDecisionError(d)
+}
+
+// Root's release manifest explicitly enumerates operations. Enabling metadata
+// for a newly registered code must not silently add it to historical root.
+func (v iamManagementView) rootOperation(operation string) bool {
+	if !v.root {
+		return false
+	}
+	for _, r := range v.state.Roles {
+		if r.Builtin && r.Code == "root" && r.Status == "enabled" && slices.Contains(v.active, r.ID) {
+			return slices.ContainsFunc(r.Grants, func(g IAMGrant) bool { return g.Operation == operation && g.Effect == authorization.Allow })
+		}
+	}
+	return false
 }
 func IAMExecutionBound(op string) bool {
 	if authorization.ResourceBound(op) {

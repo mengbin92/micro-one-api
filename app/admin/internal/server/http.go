@@ -235,6 +235,9 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 	srv := xhttp.NewServer(
 		khttp.RequestDecoder(iamdto.DecodeRequest), khttp.ResponseEncoder(iamdto.EncodeResponse),
 		khttp.Address(addr),
+		// Options and overview reads resolve several independent IAM decisions.
+		// Kratos defaults to one second, which cancels valid console requests.
+		khttp.Timeout(30*time.Second),
 		khttp.NotFoundHandler(http.HandlerFunc(handlePage)),
 	)
 	adminAuth := newAdminGuard(svc)

@@ -66,7 +66,7 @@ func inventory(root string) ([][]string, error) {
 		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") || strings.HasSuffix(rel, ".pb.go") || strings.HasSuffix(rel, "wire_gen.go") {
 			return nil
 		}
-		if !strings.HasPrefix(rel, "app/") && !strings.HasPrefix(rel, "internal/server/") && !strings.HasPrefix(rel, "cmd/admin-reset/") {
+		if !strings.HasPrefix(rel, "app/") && !strings.HasPrefix(rel, "internal/server/") && !(strings.HasPrefix(rel, "cmd/admin-reset/") || strings.HasPrefix(rel, "app/identity/cmd/iam-migrate/")) {
 			return nil
 		}
 		data, err := repo.ReadFile(rel)
@@ -81,12 +81,12 @@ func inventory(root string) ([][]string, error) {
 		if strings.HasPrefix(rel, "app/") {
 			service = strings.Split(rel, "/")[1]
 		}
-		if strings.HasPrefix(rel, "cmd/admin-reset/") {
+		if strings.HasPrefix(rel, "cmd/admin-reset/") || strings.HasPrefix(rel, "app/identity/cmd/iam-migrate/") {
 			service = "identity"
 		}
 		// Hash package source as well as registration: helper branch changes must
 		// prompt matrix review even when the outer route declaration is unchanged.
-		writer := strings.HasPrefix(rel, "app/identity/internal/biz/") || strings.HasPrefix(rel, "app/identity/internal/data/") || rel == "app/billing/internal/data/account_repo.go" || strings.HasPrefix(rel, "cmd/admin-reset/")
+		writer := strings.HasPrefix(rel, "app/identity/internal/biz/") || strings.HasPrefix(rel, "app/identity/internal/data/") || rel == "app/billing/internal/data/account_repo.go" || (strings.HasPrefix(rel, "cmd/admin-reset/") || strings.HasPrefix(rel, "app/identity/cmd/iam-migrate/"))
 		if strings.Contains(rel, "/server/") || strings.Contains(rel, "/service/") || strings.HasSuffix(rel, "admin_helpers.go") || writer {
 			digest := fmt.Sprintf("%x", sha256.Sum256([]byte(render(fset, f))))
 			rows = append(rows, []string{"SOURCE", service, rel, rel, "package", digest})
