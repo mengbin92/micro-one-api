@@ -3,7 +3,7 @@ import { mockApi } from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ json: { success: true, data: [] } }));
-  await mockApi(page);
+  await mockApi(page, { admin: true });
   await page.route('**/api/user/self', (route) => route.fulfill({ json: { success: true, data: { id: 42, display_name: 'Operator', role: 10 } } }));
   await page.addInitScript(() => {
     localStorage.setItem('token', 'test-user-token');
