@@ -162,7 +162,13 @@ def main():
             base["services"]["relay-peer"]["environment"].update(values)
         save()
     def helper(binary, *cmd, check=True, input=None):
-        return run("run", "--rm", "-T", "--no-deps", "--entrypoint", "/out/"+binary, "test-runner", *cmd, input=input, check=check)
+        identity = ()
+        if binary == "routing-backfill":
+            # Identity is intentionally stopped for this offline write. Its
+            # dedicated caller can still read channel facts through the fixed
+            # system capability without a live identity-mode RPC dependency.
+            identity = ("-e", "SERVICE_IDENTITY_TOKEN="+settings["IDENTITY_SERVICE_IDENTITY_TOKEN"])
+        return run("run", "--rm", "-T", "--no-deps", *identity, "--entrypoint", "/out/"+binary, "test-runner", *cmd, input=input, check=check)
     def test(phase):
         result = run("run", "--rm", "-T", "--no-deps", "-e", "ROUTING_PHASE="+phase, "test-runner", "-test.v", "-test.timeout=5m", check=False)
         with (scratch / "acceptance.log").open("a") as log:
