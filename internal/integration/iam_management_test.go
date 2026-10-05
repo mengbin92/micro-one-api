@@ -168,3 +168,58 @@ func TestIAMA6RealAdminIdentityEndpoints(t *testing.T) {
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
 
 }
+
+// The routing legacy phase reaches admin's actual self-purchase handler. A
+// verified legacy principal must survive identity RPC and DTO conversion even
+// though it has no persisted IAM activation or management grants yet.
+func TestLegacySelfPurchaseAuthenticatesThroughIAMReply(t *testing.T) {
+	t.Setenv("SERVICE_TOKEN", "legacy-self-fixture")
+	t.Setenv("SERVICE_CALLER_TOKENS", "")
+	t.Setenv("JWT_SECRET_KEY", "test")
+	t.Setenv("IDENTITY_ROUTING_V2", "false")
+	db := dbtest.RoutingContextDB(t, "sqlite")
+	identity, server, _ := identitytest.NewIAMStack(db)
+	user, err := identity.Register(context.Background(), "legacy-buyer", "password123", "buyer@example.com", "default")
+	require.NoError(t, err)
+	_, raw, err := identity.Login(context.Background(), "legacy-buyer", "password123", "127.0.0.1")
+	require.NoError(t, err)
+	listener := bufconn.Listen(1 << 20)
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(func() { server.Server.Stop(); _ = listener.Close() })
+	conn, err := grpc.NewClient("passthrough:///legacy-self", grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return listener.Dial() }),
+		grpc.WithUnaryInterceptor(func(ctx context.Context, method string, req, reply any, conn *grpc.ClientConn, invoke grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+			md, _ := metadata.FromOutgoingContext(ctx)
+			md = md.Copy()
+			md.Set("authorization", "Bearer legacy-self-fixture")
+			return invoke(metadata.NewOutgoingContext(ctx, md), method, req, reply, conn, opts...)
+		}))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	handler := admintest.NewIAMHTTP(v.NewIAMServiceClient(conn))
+	purchase := func(token string) int {
+		r := httptest.NewRequest("POST", "/api/v1/subscriptions/purchase", strings.NewReader(`{}`))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w.Code
+	}
+	// An empty purchase reaches input validation (400), rather than rejecting
+	// the valid principal (401), without invoking any billing mutation.
+	require.Equal(t, 400, purchase(raw))
+	req := httptest.NewRequest("GET", "/api/user/authorization", nil)
+	req.Header.Set("Authorization", "Bearer "+raw)
+	out := httptest.NewRecorder()
+	handler.ServeHTTP(out, req)
+	require.Equal(t, 200, out.Code)
+	var reply v.IAMReply
+	require.NoError(t, protojson.Unmarshal(out.Body.Bytes(), &reply))
+	require.Equal(t, "legacy", reply.AuthorizationMode)
+	require.Equal(t, user.ID, reply.GetSession().GetUserId())
+	require.NotEmpty(t, reply.GetSession().GetSessionId())
+	require.Empty(t, reply.PermittedOperations)
+	require.Equal(t, 401, purchase("invalid-session"))
+	require.NoError(t, db.Table("users").Where("id = ?", user.ID).Update("password_changed_at", time.Now().Unix()+1).Error)
+	require.Equal(t, 401, purchase(raw), "password epoch revocation still applies before IAM cutover")
+}

@@ -38,6 +38,28 @@ func (iamSnapshotRunner) RunIAMWrite(context.Context, func(context.Context, IAMT
 	return ErrIAMProtected
 }
 
+func TestLegacyIAMSnapshotPreservesVerifiedSessionPrincipal(t *testing.T) {
+	at := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+	actor := authorization.Actor{UserID: 42, SessionID: "legacy-user-jti", ExpiresAt: at.Add(time.Hour)}
+	fake := &iamSnapshotFake{user: User{ID: 42, Status: UserStatusEnabled, Role: RoleCommonUser},
+		policy: authorization.PolicyState{Mode: "legacy", Cutover: "idle", PolicyRevision: 1, CatalogRevision: 1}}
+	uc := NewIdentityUsecase(&mockIdentityRepo{}, nil)
+	uc.SetIAMRuntime(fake, iamSnapshotRunner{})
+	uc.now = func() time.Time { return at }
+	snapshot, err := uc.readIAMAuthorization(context.Background(), actor, authorization.Platform())
+	require.NoError(t, err)
+	// Admin self-purchase authenticates the reply's session principal in both
+	// modes. Legacy does not persist an IAM session or confer IAM activation.
+	require.Equal(t, actor.UserID, snapshot.Session.UserID)
+	require.Equal(t, actor.SessionID, snapshot.Session.SessionID)
+	require.Equal(t, actor.ExpiresAt, snapshot.Session.ExpiresAt)
+	require.Equal(t, authorization.Platform(), snapshot.Session.Context)
+	require.Empty(t, snapshot.Session.ActivationState)
+	require.Empty(t, snapshot.ActiveRoleIDs)
+	require.Empty(t, snapshot.Sources)
+	require.False(t, snapshot.IsLegacyAdmin())
+}
+
 func TestIAMSnapshotExpiryWithoutCleanup(t *testing.T) {
 	at := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	end := at.Add(time.Minute)
