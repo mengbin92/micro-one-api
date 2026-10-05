@@ -79,7 +79,7 @@ var rpcPolicies = map[string]RPCPolicy{
 	"/api.identity.v1.IdentityService/SetUserRole":                           {Owner: "identity", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.identity.v1.IdentityService/ConsumeTokenQuota":                     {Owner: "identity", UserCallers: []string{}, SystemCallers: []string{"relay", "billing"}},
 	"/api.channel.v1.ChannelService/SetRoutingGroupState":                    {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{}},
-	"/api.channel.v1.ChannelService/ListRoutingGroups":                       {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{"identity"}},
+	"/api.channel.v1.ChannelService/ListRoutingGroups":                       {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{"identity", "relay"}},
 	"/api.channel.v1.ChannelService/GetRoutingGroup":                         {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{"relay", "identity", "billing", "admin"}},
 	"/api.channel.v1.ChannelService/CreateRoutingGroup":                      {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.channel.v1.ChannelService/CheckRoute":                              {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{"relay"}},
