@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"micro-one-api/app/identity/internal/biz"
 	"micro-one-api/pkg/jsonx"
+	dbtest "micro-one-api/platform/database/testutil"
 )
 
 func TestIAMMigrationEvidenceSignature(t *testing.T) {
@@ -69,6 +71,36 @@ func TestIAMMigrationManifestDigestOffline(t *testing.T) {
 	require.Equal(t, biz.IAMMigrationDigest(biz.IAMMigrationManifest{}), strings.TrimSpace(out.String()))
 	require.NoError(t, os.WriteFile(path, []byte(`{"unknown":true}`), 0600))
 	require.Error(t, run([]string{"manifest-digest", "-manifest", path}, &bytes.Buffer{}))
+}
+
+func TestIAMMigrationCLIJSONStdout(t *testing.T) {
+	if os.Getenv("IAM_MIGRATION_JSON_HELPER") == "1" {
+		if err := run([]string{"apply", "-batch", "stdout-test", "-request-id", "stdout-apply", "-reason", "stdout regression", "-expected-policy-revision", "1"}, os.Stdout); err != nil {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+	db := dbtest.RoutingContextDB(t, "sqlite")
+	require.NoError(t, db.Table("users").Create(map[string]any{"id": 71, "username": "stdout-root", "aff_code": "stdout-root", "password_hash": "unused", "role": 100, "status": 1}).Error)
+	var files []struct{ Name, File string }
+	require.NoError(t, db.Raw("PRAGMA database_list").Scan(&files).Error)
+	var path string
+	for _, f := range files {
+		if f.Name == "main" {
+			path = f.File
+		}
+	}
+	require.NotEmpty(t, path)
+	binary, err := os.Executable()
+	require.NoError(t, err)
+	command := exec.Command(binary, "-test.run=^TestIAMMigrationCLIJSONStdout$")
+	command.Env = append(os.Environ(), "IAM_MIGRATION_JSON_HELPER=1", "IAM_MIGRATION_DSN="+path, "IAM_MIGRATION_DRIVER=sqlite3", "IAM_MIGRATION_SCHEMA=")
+	raw, err := command.Output()
+	require.NoError(t, err)
+	var report biz.IAMMigrationReport
+	require.NoError(t, decodeStrict(raw, &report), "CLI stdout must contain exactly one JSON report")
+	require.True(t, report.Verified)
+	require.Equal(t, "apply", report.Command)
 }
 
 func TestIAMMigrationApprovalCommands(t *testing.T) {

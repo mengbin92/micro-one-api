@@ -35,7 +35,8 @@ for c in items:
   for caller,token in callers.items():
    (correct if caller in tokens and tokens[caller] and token==tokens[caller] else incorrect).append(caller)
  token=env.get('SERVICE_IDENTITY_TOKEN',''); dsn=env.get('SQL_DSN','')
- result.append({'service':svc,'image':c['Image'],'state':c['State']['Status'],'dedicated_outbound':bool(token),'distinct_from_shared':bool(token) and token!=env.get('SERVICE_TOKEN'), 'outbound_fingerprint':hashlib.sha256(token.encode()).hexdigest() if token else None,'caller_map_valid':valid,'correct_callers':correct,'incorrect_callers':incorrect,'sql_username':dsn.split(':',1)[0] if '@tcp(' in dsn else None,'source_digest':(c['Config'].get('Labels') or {}).get('micro-one-api.source.digest','')})
+ configured_dsn_consistent=bool(dsn) and dsn==env.get('DATABASE_DSN',dsn)
+ result.append({'service':svc,'image':c['Image'],'state':c['State']['Status'],'dedicated_outbound':bool(token),'distinct_from_shared':bool(token) and token!=env.get('SERVICE_TOKEN'), 'outbound_fingerprint':hashlib.sha256(token.encode()).hexdigest() if token else None,'caller_map_valid':valid,'correct_callers':correct,'incorrect_callers':incorrect,'sql_username':dsn.split(':',1)[0] if '@tcp(' in dsn else None,'configured_dsn_consistent':configured_dsn_consistent,'source_digest':(c['Config'].get('Labels') or {}).get('micro-one-api.source.digest','')})
 print(json.dumps(result))
 ''' % (list(SERVICES), SERVICES)
 
@@ -74,6 +75,8 @@ def assess(snapshot, source_digest):
             blockers.append(service + ': fixed-method receiver trust incomplete')
         if row.get('sql_username') in (None, '', 'root'):
             blockers.append(service + ': least-privilege database channel not verified')
+        if not row.get('configured_dsn_consistent', False):
+            blockers.append(service + ': config and repository database channels differ')
         if row.get('source_digest') != source_digest:
             blockers.append(service + ': IAM capability build digest not verified')
     if len(set(fingerprints)) != len(fingerprints):

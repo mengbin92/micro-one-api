@@ -87,7 +87,7 @@ services:
       - IDENTITY_DEFAULT_ROUTING_GROUP=${IDENTITY_DEFAULT_ROUTING_GROUP:-default}
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${IDENTITY_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - SQL_DSN=${IDENTITY_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -137,7 +137,7 @@ services:
       - CHANNEL_ROUTING_GROUP_DUAL_WRITE=${CHANNEL_ROUTING_GROUP_DUAL_WRITE:-false}
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${CHANNEL_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - SQL_DSN=${CHANNEL_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - CHANNEL_ENCRYPTION_KEY=${CHANNEL_ENCRYPTION_KEY:?CHANNEL_ENCRYPTION_KEY is required}
       - REDIS_ADDR=redis:6379
@@ -185,7 +185,7 @@ services:
       - SUBSCRIPTION_ENTITLEMENTS_V2=${SUBSCRIPTION_ENTITLEMENTS_V2:-false}
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${BILLING_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - SQL_DSN=${BILLING_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -242,7 +242,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${CONFIG_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - SQL_DSN=${CONFIG_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -279,7 +279,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${LOG_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - SQL_DSN=${LOG_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -316,7 +316,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${MONITOR_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - SQL_DSN=${MONITOR_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -353,7 +353,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${NOTIFY_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - SQL_DSN=${NOTIFY_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -411,7 +411,7 @@ services:
       - SUBSCRIPTION_ENTITLEMENTS_V2=${SUBSCRIPTION_ENTITLEMENTS_V2:-false}
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${RELAY_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - SQL_DSN=${RELAY_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - IDENTITY_GRPC_ENDPOINT=identity-service:9001
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002
@@ -470,7 +470,7 @@ services:
       - SUBSCRIPTION_ENTITLEMENTS_V2=${SUBSCRIPTION_ENTITLEMENTS_V2:-false}
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${ADMIN_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - SQL_DSN=${ADMIN_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}

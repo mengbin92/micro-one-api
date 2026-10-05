@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- D1 交接补齐 config/Wire 与仓储的 owner DSN 一致性，保留构建版本文件，保障迁移 CLI 的 JSON stdout，并将控制台请求期限从默认 1 秒调整为 30 秒，避免逐项 IAM 配置读取被取消。
+
 - IAM 模式的管理 gRPC 入口补齐专属服务 principal、真实 full method 和 fixed caller 校验；共享 service token 携带 root JWT 仍拒绝。root 执行豁免也受本版显式 grant 限定。
 
 - RBAC 资源版本与兑换码 ID 的整数转换增加范围校验：拒绝超出 int64 的版本/ID 和异常负版本，避免无符号请求绕回负数后错误匹配；覆盖实际资源写入与配置删除回归，全仓 gosec 检查通过。
@@ -23,7 +25,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- RBAC 主设计、实施清单及 823 行入口契约同步；真实 B0–B4 HTTP/gRPC 角色矩阵、B1–B4 SQLite/MySQL/PostgreSQL race 和全仓门禁完成。Compose 服务身份模板及静态核验脚本就绪；2026-10-03 已更新全部线上服务、前端和分库迁移，并修复 admin 历史迁移元数据默认值，见 [生产更新记录](docs/design/rbac/b-legacy-production-deployment.md)。生产保持 legacy/idle；C1–C3 和 D0 已交付；D1 生产停写/IAM 交接仍待部署授权及实际证据，未发布版本。
+- RBAC 主设计、实施清单及 823 行入口契约同步；真实 B0–B4 HTTP/gRPC 角色矩阵、B1–B4 SQLite/MySQL/PostgreSQL race 和全仓门禁完成。Compose 服务身份模板及静态核验脚本就绪；2026-10-03 已更新全部线上服务、前端和分库迁移，并修复 admin 历史迁移元数据默认值，见 [生产更新记录](docs/design/rbac/b-legacy-production-deployment.md)。C1–C3 和 D0 已交付；2026-10-05 经授权完成 D1 真实停写、旧通道撤权及 IAM 正式交接，线上已为 iam/complete，见 [D1 生产记录](docs/design/rbac/d-iam-production-deployment.md)，未发布版本。
 
 ## [0.33.6] - 2026-09-30
 

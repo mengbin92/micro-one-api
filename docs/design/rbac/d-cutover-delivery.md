@@ -1,7 +1,7 @@
 # D 阶段迁移工具、演练与生产交接
 
 > 2026-10-04 · 基线 `develop@0ab6d69d`；工作分支 `codex/rbac-d-cutover`。
-> D0 本机实现与演练已交付。D1 尚未执行；生产只读预检发现专属服务凭证、旧数据库写通道退出与能力版本证据尚未满足。没有将生产状态改为 IAM，也没有将待执行项标为完成。
+> D0 本机实现与演练已交付；2026-10-05 经授权完成 D1 生产交接，最终为 iam/complete、policy revision 7。实际上线及恢复证据见 [D1 生产记录](d-iam-production-deployment.md)。
 
 ## 实现
 
@@ -33,7 +33,7 @@
 
 详细停写、财务与恢复步骤见 [D1 执行手册](../../runbooks/rbac-iam-cutover.md)。`scripts/rbac-cutover-preflight.py` 只读检查实际 9 个容器，凭证留在远端进程内，输出存在性、指纹、caller 一致性、DB 用户与能力镜像摘要，不输出 token/密码。它只能检查可观测前提，不能替代 DB GRANT 审查或证明外部屏障已经建立。
 
-`scripts/prepare-rbac-service-identities.py` 只创建新的 0600 凭证覆盖文件，不改现有 `.env` 或生产容器。实际运行已生成本机私密草案并通过 `check-service-identities.py --env` 的独立性/接收方清单核验；凭证不进入 Git；`.dockerignore` 排除运行时环境文件，镜像构建不携带这些凭证。三套 Compose 增加各服务 `*_SQL_DSN` 覆盖，以支持不同 DB 凭证；空值保持原连接。救援有独立 token 和默认关闭开关，普通 IAM API 不能开启。
+`scripts/prepare-rbac-service-identities.py` 只创建新的 0600 凭证覆盖文件，不改现有 `.env` 或生产容器。实际运行已生成本机私密草案并通过 `check-service-identities.py --env` 的独立性/接收方清单核验；凭证不进入 Git；`.dockerignore` 排除运行时环境文件，镜像构建不携带这些凭证。三套 Compose 的 `DATABASE_DSN` 和 `SQL_DSN` 同时使用各服务 `*_SQL_DSN` 覆盖，以支持 config/Wire 和仓储一致的独立 DB 凭证；空值保持原连接。救援有独立 token 和默认关闭开关，普通 IAM API 不能开启。
 
 证据由独立 root 审批私钥签署，包含 batch、root 用户、源码 SHA256、数据库通道指纹、manifest 摘要、24 小时内的有效期，以及屏障/排空/旧写者退出/撤权/财务重放/回滚/前端/九类实例/强制回归引用。CLI 同时核对签名、实际 root、已编译源码摘要和所选迁移数据库通道；签名不是普通 IAM 权限或绕过业务规则的凭证。
 
@@ -68,8 +68,8 @@ IAM_C_PLAYWRIGHT=1 go test ./internal/integration \
 
 没有新增 DDL；本轮三库使用既有完整迁移 fresh/repeat 创建 scratch 库。未重新执行独立的 MySQL/PostgreSQL negative/元数据升级脚本，不将其计作本轮新增验收。各 DSN 未设置时测试明确 skip，不能计为三库通过。
 
-## D1 尚未完成的真实门槛
+## D1 从预检到生产交接
 
 2026-10-04 只读清点：生产 policy 为 legacy/idle、policy/catalog revision 均为 1；共 8 个账号（guest 2/member 5/root 1），无未知 role。9 个业务服务仍运行 B 阶段镜像；专属 outbound token 均为空，接收方 caller map 均为空；SQL 连接均为共享 root。[脱敏生产预检](../../runbooks/evidence/rbac-d-preflight-2026-10-04.json) 保留实际镜像与阻断项。实际部署前需要生成并一起安装 9 个专属凭证与 receiver map，配置各 owner 的最小权限 DB 通道，撤销旧进程/脚本通道并排空，准备 IAM 兼容镜像/前端和独立迁移通道，再核准 manifest 与停写窗口。
 
-目前没有生产屏障/退出/撤权/前端能力/完整对账的成功证据，没有签署可执行的生产证据文件，因此不能将 `block/activate/complete` 的本机测试当成生产交接。D1 执行后必须另存实际实例、DB 权限、停写与重放、全量报告、状态推进和恢复结果；本记录不会先行写成生产 IAM 已启用。
+2026-10-05 根据用户部署及替换 legacy 授权，补齐上述门槛，执行 block → rebuild/verify → activate → complete。九服务及前端更新、旧通道撤权、十八项真实 DB 权限探针、财务摘要、十六项 HTTP 与五项 gRPC 检查通过后恢复入口；临时迁移账号随后撤权锁定。实际维护时间、部署修复、状态审计及证据边界见 [D1 生产记录](d-iam-production-deployment.md)。D0/D1 均已完成；没有发布版本或合并 main。

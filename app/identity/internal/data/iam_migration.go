@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	"micro-one-api/app/identity/internal/biz"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/pkg/jsonx"
@@ -45,6 +46,9 @@ func OpenIAMMigrationStorage(config xdb.DatabaseConfig) (biz.IAMMigrationRepo, b
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	// The offline CLI emits one JSON report on stdout. Driver query diagnostics
+	// (including a missing replay receipt) must not corrupt that public stream.
+	db = db.Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)})
 	d := &Data{db: db}
 	close := func() {
 		if sqlDB, e := db.DB(); e == nil {

@@ -71,7 +71,7 @@ services:
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002
       - IDENTITY_DEFAULT_ROUTING_GROUP=${IDENTITY_DEFAULT_ROUTING_GROUP:-default}
       - CONF_PATH=/configs/config.yaml
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${IDENTITY_SQL_DSN:-${DATABASE_DSN}}
       - SQL_DSN=${IDENTITY_SQL_DSN:-${DATABASE_DSN}}
       - IDENTITY_SCHEMA=${IDENTITY_SCHEMA:-}
       # system_options is owned by the admin schema; with schema isolation
@@ -122,7 +122,7 @@ services:
       # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
       - CHANNEL_ROUTING_GROUP_DUAL_WRITE=${CHANNEL_ROUTING_GROUP_DUAL_WRITE:-false}
       - CONF_PATH=/configs/config.yaml
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${CHANNEL_SQL_DSN:-${DATABASE_DSN}}
       - SQL_DSN=${CHANNEL_SQL_DSN:-${DATABASE_DSN}}
       - CHANNEL_SCHEMA=${CHANNEL_SCHEMA:-}
       - CHANNEL_ENCRYPTION_KEY=${CHANNEL_ENCRYPTION_KEY:?CHANNEL_ENCRYPTION_KEY is required}
@@ -170,7 +170,7 @@ services:
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002
       - SUBSCRIPTION_ENTITLEMENTS_V2=${SUBSCRIPTION_ENTITLEMENTS_V2:-false}
       - CONF_PATH=/configs/config.yaml
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${BILLING_SQL_DSN:-${DATABASE_DSN}}
       - SQL_DSN=${BILLING_SQL_DSN:-${DATABASE_DSN}}
       - BILLING_SCHEMA=${BILLING_SCHEMA:-}
       - BILLING_CANONICAL_USAGE_MODE=${BILLING_CANONICAL_USAGE_MODE:-observe}
@@ -240,7 +240,7 @@ services:
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002
       - CHANNEL_HTTP_ENDPOINT=http://channel-service:8002
       - BILLING_GRPC_ENDPOINT=billing-service:9004
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${ADMIN_SQL_DSN:-${DATABASE_DSN}}
       - SQL_DSN=${ADMIN_SQL_DSN:-${DATABASE_DSN}}
       - ADMIN_SCHEMA=${ADMIN_SCHEMA:-}
       - SUBSCRIPTION_SCHEMA=${SUBSCRIPTION_SCHEMA:-}
@@ -298,7 +298,7 @@ services:
     container_name: config-service
     environment:
       - CONF_PATH=/configs/config.yaml
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${CONFIG_SQL_DSN:-${DATABASE_DSN}}
       - SQL_DSN=${CONFIG_SQL_DSN:-${DATABASE_DSN}}
       - CONFIG_SCHEMA=${CONFIG_SCHEMA:-}
       - REDIS_ADDR=redis:6379
@@ -335,7 +335,7 @@ services:
     container_name: log-service
     environment:
       - CONF_PATH=/configs/config.yaml
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${LOG_SQL_DSN:-${DATABASE_DSN}}
       - SQL_DSN=${LOG_SQL_DSN:-${DATABASE_DSN}}
       - LOG_SCHEMA=${LOG_SCHEMA:-}
       - REDIS_ADDR=redis:6379
@@ -372,7 +372,7 @@ services:
     container_name: monitor-worker
     environment:
       - CONF_PATH=/configs/config.yaml
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${MONITOR_SQL_DSN:-${DATABASE_DSN}}
       - SQL_DSN=${MONITOR_SQL_DSN:-${DATABASE_DSN}}
       - MONITOR_SCHEMA=${MONITOR_SCHEMA:-}
       - REDIS_ADDR=redis:6379
@@ -410,7 +410,7 @@ services:
     container_name: notify-worker
     environment:
       - CONF_PATH=/configs/config.yaml
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${NOTIFY_SQL_DSN:-${DATABASE_DSN}}
       - SQL_DSN=${NOTIFY_SQL_DSN:-${DATABASE_DSN}}
       - NOTIFY_SCHEMA=${NOTIFY_SCHEMA:-}
       - REDIS_ADDR=redis:6379
@@ -472,7 +472,7 @@ services:
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002
       - BILLING_GRPC_ENDPOINT=billing-service:9004
       - LOG_GRPC_ENDPOINT=log-service:9006
-      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - DATABASE_DSN=${RELAY_SQL_DSN:-${DATABASE_DSN}}
       - SQL_DSN=${RELAY_SQL_DSN:-${DATABASE_DSN}}
       - SUBSCRIPTION_SCHEMA=${SUBSCRIPTION_SCHEMA:-}
       - REDIS_ADDR=redis:6379

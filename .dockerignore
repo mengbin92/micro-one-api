@@ -9,6 +9,7 @@
 **/.env
 **/.env.*
 **/*.env
+!scripts/tool-versions.env
 
 bin
 logs

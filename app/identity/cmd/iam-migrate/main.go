@@ -47,7 +47,7 @@ func loadEvidence(path, keyPath string) (*biz.IAMCutoverEvidence, error) {
 	if path == "" || keyPath == "" {
 		return nil, fmt.Errorf("signed evidence and provisioned trust key are required")
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 G703 -- Offline operator chooses the signed evidence file; no API request controls this path.
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func loadEvidence(path, keyPath string) (*biz.IAMCutoverEvidence, error) {
 	if err = decodeStrict(raw, &envelope); err != nil {
 		return nil, err
 	}
-	keyRaw, err := os.ReadFile(keyPath)
+	keyRaw, err := os.ReadFile(keyPath) // #nosec G304 G703 -- Trust key path is provisioned by the offline operator, never an API input.
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func run(args []string, stdout io.Writer) error {
 		if *path == "" || len(f.Args()) != 0 {
 			return fmt.Errorf("manifest path required")
 		}
-		raw, err := os.ReadFile(*path)
+		raw, err := os.ReadFile(*path) // #nosec G703 -- Explicit local CLI manifest input; arbitrary operator-selected paths are intentional.
 		if err != nil {
 			return err
 		}
@@ -116,7 +116,7 @@ func run(args []string, stdout io.Writer) error {
 	}
 	req := biz.IAMMigrationRequest{Command: args[0], BatchID: *batch, Reason: *reason, RequestID: *requestID, ExpectedPolicyRevision: *revision}
 	if *manifestFile != "" {
-		raw, err := os.ReadFile(*manifestFile)
+		raw, err := os.ReadFile(*manifestFile) // #nosec G703 -- Explicit local CLI manifest input; no remote request can select files.
 		if err != nil {
 			return err
 		}
@@ -189,7 +189,7 @@ func approvalCommand(args []string, stdout io.Writer) error {
 	if *payloadFile == "" || *output == "" {
 		return fmt.Errorf("payload and output paths required")
 	}
-	keyRaw, err := os.ReadFile(*privateFile)
+	keyRaw, err := os.ReadFile(*privateFile) // #nosec G703 -- Operator-selected signing key; permissions are checked before this read.
 	if err != nil {
 		return err
 	}
@@ -197,7 +197,7 @@ func approvalCommand(args []string, stdout io.Writer) error {
 	if err != nil || len(key) != ed25519.PrivateKeySize {
 		return fmt.Errorf("invalid approval private key")
 	}
-	payload, err := os.ReadFile(*payloadFile)
+	payload, err := os.ReadFile(*payloadFile) // #nosec G703 -- Root operator explicitly selects the reviewed local signing payload.
 	if err != nil {
 		return err
 	}
@@ -223,7 +223,7 @@ func approvalCommand(args []string, stdout io.Writer) error {
 }
 
 func writePrivateFile(path string, value []byte) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600) // #nosec G304 G703 -- Offline operator selects a new private output; O_EXCL rejects existing files and symlinks.
 	if err != nil {
 		return err
 	}

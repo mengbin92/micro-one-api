@@ -13,7 +13,7 @@ class PreflightTest(unittest.TestCase):
                      dedicated_outbound=True, distinct_from_shared=True,
                      outbound_fingerprint=str(i), caller_map_valid=True,
                      correct_callers=list(PREFLIGHT.required_callers()[owner]),
-                     incorrect_callers=[], sql_username=owner, source_digest='a' * 64)
+                     incorrect_callers=[], sql_username=owner, configured_dsn_consistent=True, source_digest='a' * 64)
                 for i, (svc, owner) in enumerate(PREFLIGHT.SERVICES.items())]
 
     def test_verified_instances(self):
@@ -30,6 +30,11 @@ class PreflightTest(unittest.TestCase):
     def test_reused_service_credential_blocks(self):
         rows = self.snapshot()
         rows[1]['outbound_fingerprint'] = rows[0]['outbound_fingerprint']
+        self.assertFalse(PREFLIGHT.assess(rows, 'a' * 64)['ready'])
+
+    def test_config_channel_mismatch_blocks(self):
+        rows = self.snapshot()
+        rows[1]['configured_dsn_consistent'] = False
         self.assertFalse(PREFLIGHT.assess(rows, 'a' * 64)['ready'])
 
 

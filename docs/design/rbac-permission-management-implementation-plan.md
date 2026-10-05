@@ -1,7 +1,7 @@
 # RBAC 权限管理实施方案
 
 > 日期：2026-09-30
-> 状态：P0、A1–A6、B0–B4、C1–C3 已完成；D0 已实现并完成本机演练；D1 待生产部署授权与真实停写交接。A2–A6 验证证据见第 9.2–9.6 节；第 9.7–9.8 节保留历史部分交付记录，B 阶段全量闭合见第 9.9 节，C 阶段实现与真实浏览器验收见第 9.10 节（2026-10-03）。
+> 状态：P0、A1–A6、B0–B4、C1–C3 已完成；D0 已实现并完成本机演练；2026-10-05 D1 生产停写交接完成，线上已替换 legacy 为 iam/complete。A2–A6 验证证据见第 9.2–9.6 节；第 9.7–9.8 节保留历史部分交付记录，B 阶段全量闭合见第 9.9 节，C 阶段实现与真实浏览器验收见第 9.10 节（2026-10-03）。
 > 依据：[完整 RBAC 权限管理设计](./rbac-permission-management.md)。本文件细化实现顺序，不改变其授权语义。
 > 规划调查基线：`bf0c7de2`；首批交付复核基线：`951f1686`，工作分支 `codex/rbac-first-delivery`。本批验证记录见第 9 节；2026-10-01 已更新全部生产服务并保持 legacy，见 [生产更新记录](./rbac/a3-legacy-production-deployment.md)，未切换生产授权事实源。
 
@@ -405,7 +405,7 @@ A6 交付时，CheckAuthorization 只接受当前实际 IAM owner 方法；业�
 - [x] 823 行入口契约、实际 B1–B4 三库 race、B0–B4 真实 HTTP/gRPC 角色矩阵；MySQL/PostgreSQL fresh/repeat/negative/元数据预检和 SQLite 生命周期门禁。
 - [x] `make all`、`make wire-check`、架构检查、`make migration-check`、`make rbac-contract-check`、`make verify`（前端 197 个测试与 build）及服务身份模板核验。
 
-B 阶段后端交付已闭合。2026-10-03 按用户授权更新全部 9 个线上服务、前端及本次分库迁移，健康、业务链路与 legacy/idle 状态复查通过，见 [生产更新记录](./rbac/b-legacy-production-deployment.md)。随后提交、合并并推送 develop；B 交付当时 C/D 尚未执行。C1–C3 后续交付见第 9.10 节，D0 后续实现及演练见第 9.11 节；D1 正式生产凭证核验/影子/切换/交接仍待执行，未发布版本或切换 IAM。
+B 阶段后端交付已闭合。2026-10-03 按用户授权更新全部 9 个线上服务、前端及本次分库迁移，健康、业务链路与 legacy/idle 状态复查通过，见 [生产更新记录](./rbac/b-legacy-production-deployment.md)。随后提交、合并并推送 develop；B 交付当时 C/D 尚未执行。C1–C3 后续交付见第 9.10 节，D0 后续实现及演练见第 9.11 节；B 交付时 D1 正式生产凭证核验/影子/切换/交接尚待执行；2026-10-05 后续完成见第 9.12 节，未发布版本。
 
 
 ### 9.10 C1–C3 前端管理与完整角色验收（2026-10-03）
@@ -430,4 +430,12 @@ B 阶段后端交付已闭合。2026-10-03 按用户授权更新全部 9 个线�
 
 验收：SQLite/MySQL/PostgreSQL 隔离库全量既有迁移 fresh/repeat 后的定向 race；新增/降级/删除/不活跃/未知角色、非候选来源保留、审计失败回滚、重建与丢响应回执幂等、verified 失败保持停写；真实 HTTP/gRPC 完整切换、旧 JTI 及伪造角色/共享凭证反例；MySQL 旧通道撤权和 billing 财务列隔离；CLI 签名与严格 JSON；7 组真实浏览器；生成/Wire、828 行入口契约、全仓 `make verify`。三套 Compose 完成配置渲染；额外全容器构建 smoke 因本机 Docker 内存不足失败，未计为通过。没有新增 DDL，本轮未重跑独立 negative/元数据升级脚本。
 
-详细实现和证据边界见 [D 阶段交付记录](./rbac/d-cutover-delivery.md)，真实生产顺序见 [D1 执行手册](../runbooks/rbac-iam-cutover.md)。生产只读清点仍为 legacy/idle，共 8 个用户（guest 2/member 5/root 1）；9 个服务专属 outbound/receiver map 未安装，SQL 通道均共享 root，尚无生产停写/排空/撤权/前端能力或 root 签署的最终交接证据。因此 **D0 已交付，D1 未完成**；不会将本机 activate/complete 当作生产交接，也没有提前恢复/变更生产写入。
+详细实现和证据边界见 [D 阶段交付记录](./rbac/d-cutover-delivery.md)，真实生产顺序见 [D1 执行手册](../runbooks/rbac-iam-cutover.md)。2026-10-04 D0 交付时生产只读清点为 legacy/idle，共 8 个用户（guest 2/member 5/root 1）；9 个服务专属 outbound/receiver map 未安装，SQL 通道均共享 root，尚无生产停写/排空/撤权/前端能力或 root 签署的最终交接证据。当时 **D0 已交付，D1 未完成**，没有将本机 activate/complete 当作生产交接。2026-10-05 实际 D1 完成及恢复结果见第 9.12 节。
+
+### 9.12 D1 生产 IAM 正式交接（2026-10-05）
+
+经用户授权更新生产、替换 legacy 后，完成独立服务凭证/caller map、owner DB 通道及财务列隔离、真实维护/排空、旧进程退出及共享 root 撤权。核准空自定义 manifest，唯一迁移 CLI 按 CAS 和签名证据推进 blocked → iam/verified → iam/complete；policy revision 7、catalog revision 2，8 个账号全量核验通过，未知/身份/目录差异和约束冲突均为 0。
+
+本机构建并装载九个 linux/amd64 服务及工具镜像，前端独立发布；修复双 DSN 覆盖、构建版本文件排除、CLI JSON 诊断混入和控制台 1 秒期限。线上 16 项 HTTP、5 项 gRPC、18 项 DB 权限探针、九服务健康/restart 0、前端实际摘要及恢复前财务记录一致性通过后，于 09:48:04（Asia/Shanghai）恢复入口。迁移账号已撤权锁定；救援关闭；旧数值角色/共享 token 不提供管理权限。
+
+[D1 生产记录](./rbac/d-iam-production-deployment.md) 记录实际维护时间、成功审计、镜像与源码、注释复审及验收边界；[脱敏证据](../runbooks/evidence/rbac-d-cutover-2026-10-05.json) 保留实际结果。D0/D1 均完成，没有将本机演练当成生产证据。

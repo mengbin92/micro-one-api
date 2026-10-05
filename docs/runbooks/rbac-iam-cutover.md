@@ -8,7 +8,7 @@
 2. 在本机从已验证源码交叉构建全部 9 个服务的 `linux/amd64` 镜像，并为镜像加 `micro-one-api.source.digest=<源码 SHA256>` 标签。运输并先部署兼容 IAM 的 legacy 版本，逐项核对 image ID、digest、服务身份与健康；保留同一完整版本的回滚镜像。服务器不得构建镜像。
 3. 前端单独构建与发布 `/opt/web/dist`，备份并核对实际资源摘要；admin-api 镜像替换不更新前端挂载。
 4. 用 `prepare-rbac-service-identities.py --output <新的私密文件>` 准备 9 个独立 outbound token 与按真实 fixed method 生成的 receiver map。核对 `check-service-identities.py --env <文件>` 后一并安装；不只改 caller 名称，也不继续使用共享 token 当服务身份。
-5. 按 migrations ownership 和实际跨库调用核准各服务的 DB GRANT。配置 `IDENTITY_SQL_DSN`、`BILLING_SQL_DSN` 等 Compose 覆盖。服务账号不能持有全库 root 或 DDL 权限；identity 以外不能写身份授权列。迁移通道独立、限时启用且不注入普通容器。
+5. 按 migrations ownership 和实际跨库调用核准各服务的 DB GRANT。配置 `IDENTITY_SQL_DSN`、`BILLING_SQL_DSN` 等 Compose 覆盖，并确认容器 `DATABASE_DSN` 和 `SQL_DSN` 完全一致，避免 config/Wire 仍用旧连接。服务账号不能持有全库 root 或 DDL 权限；identity 以外不能写身份授权列。迁移通道独立、限时启用且不注入普通容器。
 6. MySQL/PostgreSQL 财务用户仅能更新 users 的 `balance/frozen_amount/used_amount/request_count`，不授予 users INSERT/DELETE 或角色/凭证写；账本、预留、幂等记录等财务表保持其所有者必要权限。实际审查 GRANT，而不是只看账号名称。
 7. SQLite 或共享凭证无法有效列隔离时，暂停 relay 流量、结算/消费/支付回调及相关任务，先排空所有在途预留/事务，记录可重放任务和幂等键。屏障期间持久队列/上游回调必须保留，恢复时按原幂等流程重放；不丢弃财务写。
 8. 运行 `rbac-cutover-preflight.py --remote "$DEPLOY_REMOTE_SERVER" --source-digest "$SOURCE_DIGEST"`，保存脱敏报告；检查实际 GRANT、旧写者退出、直接 HTTP/gRPC/兼容入口拒绝与六组强制回归的独立证据。没有报告或任意能力未核验时不推进。
@@ -61,3 +61,5 @@ iam-migrate sign-evidence -payload <已审查payload.json> \
 - verified 失败：只检查 IAM 关系和执行能力，修复后 `complete/resume`；不要运行旧回填，不重启旧写者。
 - complete 后故障：只回滚到事先验收的 IAM 兼容镜像和前端；保留 IAM 为事实源。回到数值角色模型需要另一次停写、人工映射审查和反向全量对账，本工具不提供自动降级。
 - 签名/身份/源码/通道/CAS/审计/依赖失败：请求拒绝。未经新审查不能修改 expected revision 来重试旧内容，不能伪造签名引用或跳过屏障。
+
+2026-10-05 已执行一次完整生产交接；结果与修复见 [D1 生产记录](../design/rbac/d-iam-production-deployment.md)。恢复后撤销并锁定限时迁移账号，实际验证连接拒绝；普通服务不携带该凭证。
