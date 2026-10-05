@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- IAM 专属服务调用表补齐 identity 对本人账本列表和按日统计的调用权限，修复用户首页／用量统计因内部 403 显示为 0；billing 继续独立验证会话和本人范围，未增加系统豁免。已更新线上 billing，见 [验证记录](docs/design/rbac/self-usage-fix-2026-10-05.md)。
+
 - D1 交接补齐 config/Wire 与仓储的 owner DSN 一致性，保留构建版本文件，保障迁移 CLI 的 JSON stdout，并将控制台请求期限从默认 1 秒调整为 30 秒，避免逐项 IAM 配置读取被取消。
 
 - IAM 模式的管理 gRPC 入口补齐专属服务 principal、真实 full method 和 fixed caller 校验；共享 service token 携带 root JWT 仍拒绝。root 执行豁免也受本版显式 grant 限定。

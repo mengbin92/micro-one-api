@@ -48,3 +48,5 @@ billing 的 users 写限于 `balance/frozen_amount/used_amount/request_count` �
 最终运行源码的 `make verify`、828 行契约、IAM 全专项 race + 真实 Playwright、HTTP 超时回归通过；此前 D0 三库 fresh/repeat/race、切换故障及财务列隔离、七组浏览器证据保留。仅注释复审后补跑 CLI race、入口漂移门禁及 gosec。没有为本轮声称重新执行独立三库 negative/元数据升级脚本。
 
 后续回滚仅使用已验证的 IAM 兼容镜像和前端；IAM 事实、审计及旧 DB 通道撤权保持。旧 B 二进制和 legacy 回填不能作为恢复手段。
+
+2026-10-05 后续用户侧验收发现本人账本调用遗漏，已单独更新 billing 为 `iam-self-usage-af8d42e4`；其他服务仍使用上述切换镜像。修复、真实接口与数据库核对记录见 [用户用量修复](self-usage-fix-2026-10-05.md)。

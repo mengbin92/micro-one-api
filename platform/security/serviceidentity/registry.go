@@ -7,6 +7,8 @@ type RPCPolicy struct {
 	SystemCallers []string
 }
 
+// Identity forwards verified sessions for ListLedger and AggregateLedgerByDate.
+// Their user caller policy preserves billing self scope; it grants no system bypass.
 var rpcPolicies = map[string]RPCPolicy{
 	"/api.channel.v1.ChannelService/BatchDeleteChannels":        {Owner: "channel", UserCallers: []string{"admin"}},
 	"/api.channel.v1.ChannelService/ExportChannels":             {Owner: "channel", UserCallers: []string{"admin"}},
@@ -170,7 +172,7 @@ var rpcPolicies = map[string]RPCPolicy{
 	"/api.billing.v1.BillingService/SearchRedeemCodes":                       {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.billing.v1.BillingService/UpdateRedeemCode":                        {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.billing.v1.BillingService/DeleteRedeemCode":                        {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{}},
-	"/api.billing.v1.BillingService/ListLedger":                              {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{}},
+	"/api.billing.v1.BillingService/ListLedger":                              {Owner: "billing", UserCallers: []string{"admin", "identity"}, SystemCallers: []string{}},
 	"/api.billing.v1.BillingService/GetLedgerEntry":                          {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.billing.v1.BillingService/BatchGetAccountSnapshots":                {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.billing.v1.BillingService/CreatePaymentOrder":                      {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{"identity"}},
@@ -183,7 +185,7 @@ var rpcPolicies = map[string]RPCPolicy{
 	"/api.billing.v1.BillingService/SubscriptionOperationReport":             {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.billing.v1.BillingService/ListReconciliationRuns":                  {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.billing.v1.BillingService/GetReconciliationRun":                    {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{}},
-	"/api.billing.v1.BillingService/AggregateLedgerByDate":                   {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{}},
+	"/api.billing.v1.BillingService/AggregateLedgerByDate":                   {Owner: "billing", UserCallers: []string{"admin", "identity"}, SystemCallers: []string{}},
 	"/api.billing.v1.BillingService/AggregateUsage":                          {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.config.v1.ConfigService/GetConfig":                                 {Owner: "config", UserCallers: []string{"admin"}, SystemCallers: []string{"relay", "identity", "billing", "channel", "notify"}},
 	"/api.config.v1.ConfigService/ListConfigs":                               {Owner: "config", UserCallers: []string{"admin"}, SystemCallers: []string{"relay", "identity", "billing", "channel", "notify"}},
