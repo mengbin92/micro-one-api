@@ -10,3 +10,10 @@ ff55afacb81e41cf6210de1d36ec50932f04ed4c:cmd/relay-gateway/config_loader_test.go
 10f94db099f9e2eedac206fa05baeb8f502bc054:deployments/docker-compose/.env.lite.example:generic-api-key:22
 # Historical routing probe evidence: token_name is a display name, not an API credential.
 4413d3678d23161224aac921cc7111c7a99646e4:docs/runbooks/evidence/data-flow-next-stage-2026-09-21.json:generic-api-key:53
+# Historical IAM integration fixtures: fixed JWT signing strings used only by
+# isolated test servers and their matching test clients, never deployed keys.
+# Keep exact commit/file/rule/line fingerprints so future credentials still scan.
+c8958d1bd82644d63cad0196da0f552c435d378f:internal/integration/iam_b2_owner_test.go:generic-api-key:32
+c8958d1bd82644d63cad0196da0f552c435d378f:internal/integration/iam_b3_owner_test.go:generic-api-key:32
+c8958d1bd82644d63cad0196da0f552c435d378f:internal/integration/iam_b4_owner_test.go:generic-api-key:35
+a133642efe4e238250f4c5d82865b823de984587:internal/integration/iam_resource_test.go:generic-api-key:29
