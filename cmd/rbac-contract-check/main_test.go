@@ -2,12 +2,42 @@ package main
 
 import (
 	"encoding/csv"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
+
+	"micro-one-api/domain/authorization"
 )
+
+func TestFrontendOperationReferencesAreRegistered(t *testing.T) {
+	root := filepath.Join("..", "..", "web", "src")
+	codeRE := regexp.MustCompile(`["']((?:admin|identity|channel|monitor|billing|subscription|log|system|notify|iam|organization)\.[a-z_]+(?:\.[a-z_]+)+)["']`)
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || (!strings.HasSuffix(path, ".ts") && !strings.HasSuffix(path, ".tsx")) || strings.HasSuffix(path, ".test.ts") || strings.HasSuffix(path, ".test.tsx") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, match := range codeRE.FindAllSubmatch(data, -1) {
+			if _, ok := authorization.Lookup(string(match[1])); !ok {
+				t.Errorf("%s references an unregistered operation %s", path, match[1])
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestReviewedSourceAndNegativeDrift(t *testing.T) {
 	root := filepath.Join("..", "..")

@@ -63,6 +63,13 @@ func (uc *IdentityUsecase) CreateManagedUser(ctx context.Context, in ManagedUser
 		if err := v.permitUserResource("identity.user.create", facts); err != nil {
 			return err
 		}
+		// A management create sets a login password and may bind a recovery
+		// email. Creation authority does not include those sensitive operations.
+		for _, op := range managedCreateCredentialOperations(in) {
+			if err := v.permitUserResource(op, facts); err != nil {
+				return err
+			}
+		}
 		if input.DefaultRoutingGroupID > 0 {
 			for _, op := range []string{"identity.routing_access.default.update", "identity.routing_access.grant"} {
 				if err := v.permitUserResource(op, facts); err != nil {
@@ -71,11 +78,30 @@ func (uc *IdentityUsecase) CreateManagedUser(ctx context.Context, in ManagedUser
 			}
 		}
 		return nil
+	}, func(ctx context.Context, tx IAMTx, saved User) error {
+		v, err := governance.view(ctx, tx, snapshot.Actor, authorization.Platform())
+		if err != nil {
+			return err
+		}
+		for _, op := range managedCreateCredentialOperations(in) {
+			if err := v.permitCredentialTarget(saved.ID, op); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &saved, nil
+}
+
+func managedCreateCredentialOperations(in ManagedUserCreate) []string {
+	ops := []string{"identity.user.credential.update"}
+	if in.Email != "" {
+		ops = append(ops, "identity.user.email_binding.update")
+	}
+	return ops
 }
 
 func (uc *IdentityUsecase) DeleteManagedUser(ctx context.Context, id int64, revision, policy uint64, reason string) error {

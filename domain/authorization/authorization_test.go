@@ -5,6 +5,21 @@ import (
 	"time"
 )
 
+func TestInvalidScopeNeverBecomesAllowOrDisappearingDeny(t *testing.T) {
+	all := Scope{Clauses: []Clause{{All: true}}}
+	invalid := Scope{Clauses: []Clause{{}}}
+	object := ObjectFacts{Context: Platform(), ResourceID: 42}
+	if AllowCovers([]Scope{all, invalid}, 7, object, false) {
+		t.Fatal("an earlier all clause must not hide a malformed later allow")
+	}
+	if !DenyMatches([]Scope{invalid}, 7, object) {
+		t.Fatal("malformed mandatory deny must fail closed")
+	}
+	if (QueryScope{ActorID: 7, Allow: []Scope{all}, Deny: []Scope{invalid}}).Matches(object, false) {
+		t.Fatal("object query must not drop malformed deny")
+	}
+}
+
 func TestScopeDecisionCounterexamples(t *testing.T) {
 	now := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
 	all := Scope{Clauses: []Clause{{All: true}}}

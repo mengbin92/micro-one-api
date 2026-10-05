@@ -126,6 +126,26 @@ func IAMCheckConstraints(now time.Time, state IAMConstraintState) ([]IAMConstrai
 	if err != nil {
 		return nil, err
 	}
+	// Scope compatibility is a write invariant too: accepting a boundary that
+	// an inherited operation cannot parse would break the user's next snapshot.
+	// Structural closure checks draft/disabled roles before they can be enabled.
+	for _, a := range state.Assignments {
+		if a.Revoked {
+			continue
+		}
+		roles, err := iamStructuralRoles(state, a.RoleID)
+		if err != nil {
+			return nil, err
+		}
+		for _, role := range roles {
+			for _, grant := range role.Grants {
+				op, ok := authorization.Lookup(grant.Operation)
+				if !ok || a.Boundary.Clauses == nil || a.Boundary.Validate(op.Scopes) != nil {
+					return nil, ErrIAMScopeInvalid
+				}
+			}
+		}
+	}
 	boundaries := []time.Time{now.UTC()}
 	addBoundary := func(t time.Time) {
 		if t.After(now) {

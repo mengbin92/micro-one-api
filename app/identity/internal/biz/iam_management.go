@@ -460,14 +460,19 @@ func (uc *IAMGovernanceUsecase) propose(ctx context.Context, tx IAMTx, v iamMana
 				return fail(err)
 			}
 			interval := &a.Validity
+			action := op
 			if a.Revoked {
 				interval = nil
+				action = "identity.user_role.revoke"
+				if err := v.permit(action, a.RoleID, a.UserID); err != nil {
+					return fail(err)
+				}
 			}
-			if err = v.manageRole(state, a.RoleID, op, a.UserID, interval, a.Boundary); err != nil {
+			if err = v.manageRole(state, a.RoleID, action, a.UserID, interval, a.Boundary); err != nil {
 				return fail(err)
 			}
-			if a.Revoked && iamRoleHasDeny(state, a.RoleID) {
-				if err = v.expandedUserCeiling(state, a.RoleID, a.UserID, op); err != nil {
+			if iamAssignmentRemovesDeny(v.state, a, v.now) {
+				if err = v.expandedUserCeiling(state, a.RoleID, a.UserID, action); err != nil {
 					return fail(err)
 				}
 			}
@@ -639,6 +644,9 @@ func (uc *IAMGovernanceUsecase) propose(ctx context.Context, tx IAMTx, v iamMana
 			if req.ExpectedRevision == 0 || old.Revision != req.ExpectedRevision {
 				return fail(ErrIAMRevisionConflict)
 			}
+			if old.Status == "archived" {
+				return fail(ErrIAMProtected)
+			}
 			p = old
 			switch method {
 			case "UpdatePermission":
@@ -651,6 +659,10 @@ func (uc *IAMGovernanceUsecase) propose(ctx context.Context, tx IAMTx, v iamMana
 						p.Name = req.Permission.Name
 					case "category":
 						p.Category = req.Permission.Category
+					case "description":
+						p.Description = req.Permission.Description
+					case "sort":
+						p.Sort = req.Permission.Sort
 					case "risk_level":
 						p.RiskLevel = req.Permission.RiskLevel
 					default:
@@ -666,7 +678,7 @@ func (uc *IAMGovernanceUsecase) propose(ctx context.Context, tx IAMTx, v iamMana
 				p.Status = "archived"
 			}
 		}
-		if strings.TrimSpace(p.Name) == "" || len(p.Name) > 255 || len(p.Code) > 160 {
+		if strings.TrimSpace(p.Name) == "" || len(p.Name) > 255 || len(p.Code) > 160 || len(p.Description) > 8192 || len(p.Category) > 64 || len(p.RiskLevel) > 16 {
 			return fail(ErrIAMInvalidRelation)
 		}
 		if p.RiskLevel == "" {

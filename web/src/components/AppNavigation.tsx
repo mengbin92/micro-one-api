@@ -38,7 +38,7 @@ import { NotificationPanel } from '@/components/NotificationPanel';
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useAuthorization } from '@/lib/authorization';
-import { adminPages, firstAdminPage, menuRoutes } from '@/lib/admin-permissions';
+import { adminPages, firstAdminPage, configuredMenuItems } from '@/lib/admin-permissions';
 import { formatUSD } from '@/lib/amount';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/i18n';
@@ -62,6 +62,8 @@ interface AdminNavGroup {
   label: string;
   items: NavItem[];
 }
+
+const configuredMenuIcons: Record<string, LucideIcon> = { home: LayoutDashboard, users: Users, server: Database, box: Boxes, route: Route, coins: WalletCards, 'credit-card': CreditCard, calendar: ScrollText, 'file-text': ScrollText, settings: Settings2, shield: BadgeCheck };
 
 const userLinks: NavItem[] = [
   { to: '/dashboard', label: '仪表盘', icon: LayoutDashboard },
@@ -386,7 +388,11 @@ export function AppNavigation() {
               })}
             </div>
             <div className="mt-4 border-t border-border pt-4">
-              <NavigationLinks items={[...adminSystemLink, ...(auth.snapshot?.menus ?? []).filter(menu => menuRoutes[menu.route_key ?? '']).map(menu => ({ to: menuRoutes[menu.route_key!], label: menu.name ?? menu.route_key!, icon: Layers }))]} compact onNavigate={() => setMobileOpen(false)} />
+              <NavigationLinks items={adminSystemLink} compact onNavigate={() => setMobileOpen(false)} />
+              {configuredMenuItems(auth.snapshot?.menus ?? [], auth.can).map(item => {
+                const Icon = configuredMenuIcons[item.iconKey] ?? Layers;
+                return <div key={item.id} style={{ paddingLeft: item.depth * 12 }}>{item.to ? <NavigationLinks items={[{ to: item.to, label: item.label, icon: Icon }]} compact onNavigate={() => setMobileOpen(false)} /> : <div className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-muted-foreground"><Icon className="size-4" /><span>{t(item.label)}</span></div>}</div>;
+              })}
             </div>
           </>
         ) : (

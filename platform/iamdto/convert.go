@@ -407,6 +407,8 @@ func IAMPermissionFrom(p *v.IAMPermission) m.Permission {
 	d.ResourceID = p.ResourceId
 	d.Code = p.Code
 	d.Name = p.Name
+	d.Description = p.Description
+	d.Sort = p.Sort
 	d.Category = p.Category
 	d.RiskLevel = p.RiskLevel
 	d.Status = p.Status
@@ -425,6 +427,8 @@ func IAMPermissionTo(d m.Permission) *v.IAMPermission {
 	p.ResourceId = d.ResourceID
 	p.Code = d.Code
 	p.Name = d.Name
+	p.Description = d.Description
+	p.Sort = d.Sort
 	p.Category = d.Category
 	p.RiskLevel = d.RiskLevel
 	p.Status = d.Status

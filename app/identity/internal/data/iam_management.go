@@ -124,11 +124,13 @@ type iamPermissionModel struct {
 	Code, Action, Name, Category, Status, RiskLevel, SupportedScopes, SupportedContextTypes, BindingState string
 	Protected                                                                                             int32
 	Revision                                                                                              uint64
+	Description                                                                                           string
+	Sort                                                                                                  int32
 }
 
 func (iamPermissionModel) TableName() string { return "iam_permissions" }
 func (p iamPermissionModel) toBiz() m.Permission {
-	d := m.Permission{ID: p.ID, ResourceID: p.ResourceID, Code: p.Code, Name: p.Name, Category: p.Category, RiskLevel: p.RiskLevel, Status: p.Status, Binding: "unbound", Revision: p.Revision}
+	d := m.Permission{ID: p.ID, ResourceID: p.ResourceID, Code: p.Code, Name: p.Name, Description: p.Description, Sort: p.Sort, Category: p.Category, RiskLevel: p.RiskLevel, Status: p.Status, Binding: "unbound", Revision: p.Revision}
 	if op, ok := authorization.Lookup(p.Code); ok {
 		d.SupportedScopes = op.Scopes
 		d.ContextTypes = op.ContextTypes
@@ -181,7 +183,7 @@ func (r *iamRepo) SavePermission(ctx context.Context, h biz.IAMTx, d m.Permissio
 		}
 		scopes, _ := jsonx.Marshal(op.Scopes)
 		contexts, _ := jsonx.Marshal(op.ContextTypes)
-		p = iamPermissionModel{ResourceID: d.ResourceID, Code: d.Code, Action: op.Action, Name: d.Name, Category: d.Category, RiskLevel: d.RiskLevel, Status: "draft", BindingState: "unbound", Protected: boolInt(op.Protected), SupportedScopes: string(scopes), SupportedContextTypes: string(contexts), Revision: 1}
+		p = iamPermissionModel{ResourceID: d.ResourceID, Code: d.Code, Action: op.Action, Name: d.Name, Description: d.Description, Sort: d.Sort, Category: d.Category, RiskLevel: d.RiskLevel, Status: "draft", BindingState: "unbound", Protected: boolInt(op.Protected), SupportedScopes: string(scopes), SupportedContextTypes: string(contexts), Revision: 1}
 		err = tx.db.Create(&p).Error
 	} else {
 		if err = tx.db.First(&p, d.ID).Error; err != nil {
@@ -193,12 +195,13 @@ func (r *iamRepo) SavePermission(ctx context.Context, h biz.IAMTx, d m.Permissio
 		if expected == 0 || p.Revision != expected {
 			return d, biz.ErrIAMRevisionConflict
 		}
-		result := tx.db.Model(&iamPermissionModel{}).Where("id = ? AND revision = ?", d.ID, expected).Updates(map[string]any{"name": d.Name, "category": d.Category, "risk_level": d.RiskLevel, "status": d.Status, "revision": expected + 1})
+		result := tx.db.Model(&iamPermissionModel{}).Where("id = ? AND revision = ?", d.ID, expected).Updates(map[string]any{"name": d.Name, "description": d.Description, "sort": d.Sort, "category": d.Category, "risk_level": d.RiskLevel, "status": d.Status, "revision": expected + 1})
 		err = result.Error
 		if err == nil && result.RowsAffected != 1 {
 			return d, biz.ErrIAMRevisionConflict
 		}
 		p.Name, p.Category, p.RiskLevel, p.Status, p.Revision = d.Name, d.Category, d.RiskLevel, d.Status, expected+1
+		p.Description, p.Sort = d.Description, d.Sort
 	}
 	if err != nil {
 		return d, iamRelationError(tx, err)

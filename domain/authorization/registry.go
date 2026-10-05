@@ -8,8 +8,9 @@ import (
 
 const CatalogRevision uint64 = 1
 
-// Operation declarations are code-owned. Every first-delivery item is unbound;
-// adding metadata cannot publish an execution point or extend its scope/context.
+// Operation declarations are code-owned and start unbound. Runtime execution
+// bindings are registered separately; metadata cannot publish an execution
+// point or extend its scope/context.
 type Operation struct {
 	Code         string
 	Resource     string

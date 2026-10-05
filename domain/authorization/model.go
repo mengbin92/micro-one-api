@@ -1,5 +1,5 @@
 // Package authorization owns the fixed, storage-free authorization contract.
-// These reference semantics are not installed in production entry points yet.
+// Policy decisions and data-owner enforcement share these scope semantics.
 package authorization
 
 import (

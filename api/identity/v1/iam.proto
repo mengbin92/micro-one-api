@@ -151,6 +151,8 @@ message IAMPermission {
  string status = 7;
  string binding = 8;
  uint64 revision = 9;
+ string description = 13;
+ int32 sort = 14;
 }
 
 message IAMResource {

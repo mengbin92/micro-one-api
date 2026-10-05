@@ -113,11 +113,13 @@ func nonGroupMatches(c Clause, userID int64, o ObjectFacts) bool {
 // AllowCovers lets eligible paths jointly cover all affected groups for writes.
 // Reads require one group; ID/all paths remain narrowed by their own boundary.
 func AllowCovers(scopes []Scope, userID int64, o ObjectFacts, wholeObject bool) bool {
-	covered := []int64{}
 	for _, s := range scopes {
 		if s.Validate([]ScopeKind{All, Self, Users, Resources, Groups}) != nil {
 			return false
 		}
+	}
+	covered := []int64{}
+	for _, s := range scopes {
 		for _, c := range s.Clauses {
 			if !nonGroupMatches(c, userID, o) {
 				continue
@@ -142,5 +144,10 @@ func AllowCovers(scopes []Scope, userID int64, o ObjectFacts, wholeObject bool) 
 
 // DenyMatches uses any affected group, for both reads and writes.
 func DenyMatches(scopes []Scope, userID int64, o ObjectFacts) bool {
+	for _, s := range scopes {
+		if s.Validate([]ScopeKind{All, Self, Users, Resources, Groups}) != nil {
+			return true // An unparseable mandatory deny cannot become permission.
+		}
+	}
 	return AllowCovers(scopes, userID, o, false)
 }
