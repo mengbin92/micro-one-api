@@ -55,6 +55,14 @@ def main():
     settings = dict(line.split("=", 1) for line in example.read_text().splitlines() if line and not line.startswith("#") and "=" in line)
     for key in ("JWT_SECRET_KEY", "SERVICE_TOKEN", "ADMIN_TOKEN", "REDIS_PASSWORD", "MYSQL_ROOT_PASSWORD"):
         settings[key] = secrets.token_hex(20)
+    # The owner Mode RPCs and runtime capabilities require independent callers
+    # even while this routing fixture deliberately remains in legacy IAM mode.
+    # Reuse production's fixed receiver maps, with fresh project-only secrets.
+    identities = scratch / "service-identities.env"
+    subprocess.run(["python3", str(ROOT / "scripts/prepare-rbac-service-identities.py"),
+                    "--output", str(identities)], check=True, capture_output=True, text=True)
+    settings.update(dict(line.split("=", 1) for line in identities.read_text().splitlines()
+                         if line and not line.startswith("#") and "=" in line))
     settings.update(CHANNEL_ENCRYPTION_KEY=secrets.token_hex(16), INITIAL_ADMIN_PASSWORD="routing-e2e-password-123456",
                     INITIAL_ADMIN_USERNAME="admin", INITIAL_ADMIN_EMAIL="admin@routing.test", DATABASE_DRIVER=args.driver)
     dsn = f"root:{settings['MYSQL_ROOT_PASSWORD']}@tcp(mysql:3306)/oneapi?charset=utf8mb4&parseTime=True&loc=UTC"
@@ -102,6 +110,7 @@ def main():
     base["services"]["relay-peer"] = copy.deepcopy(base["services"]["relay-gateway"])
     runner_env = {"ROUTING_E2E": "1", "DATABASE_DRIVER": args.driver, "DATABASE_DSN": dsn,
                   "SERVICE_TOKEN": settings["SERVICE_TOKEN"], "ADMIN_TOKEN": settings["ADMIN_TOKEN"],
+                  "RELAY_SERVICE_IDENTITY_TOKEN": settings["RELAY_SERVICE_IDENTITY_TOKEN"],
                   "INITIAL_ADMIN_PASSWORD": settings["INITIAL_ADMIN_PASSWORD"], "ADMIN_HTTP_BASE": "http://admin-api:8000",
                   "RELAY_HTTP_BASE": "http://relay-gateway:8080", "IDENTITY_GRPC_ENDPOINT": "identity-service:9001",
                   "RELAY_PEER_HTTP_BASE": "http://relay-peer:8080",
