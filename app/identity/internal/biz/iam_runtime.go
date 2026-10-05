@@ -470,6 +470,10 @@ func (uc *IdentityUsecase) readIAMAuthorization(ctx context.Context, a authoriza
 			// Legacy display is read-only and follows the verified database user;
 			// JWT role claims and candidate IAM assignments cannot grant access.
 			out = &IAMAuthorizationSnapshot{Actor: a, User: u, Context: c, Policy: p,
+				// Self-service callers need the verified principal in the reply
+				// before cutover too. This read-only projection does not persist
+				// an IAM session, activate roles, or add management grants.
+				Session:    IAMSessionContext{SessionID: a.SessionID, UserID: a.UserID, Context: c, ExpiresAt: a.ExpiresAt},
 				Versions:   authorization.Versions{User: revision, Policy: p.PolicyRevision, Catalog: p.CatalogRevision},
 				ValidUntil: a.ExpiresAt}
 			return nil

@@ -24,6 +24,8 @@ def check_templates():
                 expected = f'{field}=${{{prefix}_{field}:-}}'
                 if body.count(expected) != 1:
                     raise ValueError(f'{name}: {service} must receive its own {field} configuration')
+            if service != 'identity-service' and body.count('IDENTITY_GRPC_ENDPOINT=identity-service:9001') != 1:
+                raise ValueError(f'{name}: {service} must reach identity for owner authorization')
         if found != set(SERVICES):
             raise ValueError(f'{name}: service identity wiring incomplete')
 
