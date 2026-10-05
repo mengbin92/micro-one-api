@@ -2,6 +2,8 @@
 
 2026-10-05 · 基线 `develop@c8bbcd9e` · 工作分支 `codex/rbac-review-fixes`。
 
+后续经用户授权完成线上更新；实际迁移、九服务及前端验收见 [生产更新记录](review-production-deployment-2026-10-05.md)，源码提交 `7969a3cb`。
+
 依据 [主设计](../rbac-permission-management.md) 和 [实施计划](../rbac-permission-management-implementation-plan.md)，复核固定目录/执行点、范围评估及 SQL 编译、IAM 会话/治理/存储、账号写入、管理协议、前端 gate/缓存、菜单和迁移交接。沿用 828 行入口契约与既有 B0–B4/D HTTP/gRPC 角色回归。以下是本轮发现并修复的具体问题；历史交付记录保留当时证据，本轮结果不替代生产交接证据。
 
 ## 发现与修复
@@ -21,7 +23,7 @@
 | 11 | P2 | §3.2/9：按钮绑定固定精确操作。公开组访问控件用了不存在的 `identity.routing_access.public.update`，有权用户仍被禁用。 | 改为 `identity.routing_access.public_access.update`。组件回归验证有权启用；新增前端字面量操作码与固定目录一致性的 CI 测试，防止拼写漂移。 |
 | 12 | P2 | 实施 §6：查询与写按钮各自 gate。会话列表按 revoke 权启动，与实际 GET 的 `iam.authorization.user.read` 不一致。 | 按 read 启动会话查询，撤销按钮单独检查 revoke；只在需要角色选项的页启动附属 role list，切换解释目标重建解释组件清除前一目标结果。`IAMPage.test.tsx` 验证只读用户可读会话且不能撤销。 |
 | 13 | P2 | §3.3：菜单父节点组织可见子节点，不授予父路由/兄弟操作；图标及排序按白名单配置。原菜单投影会漏掉无独立操作权的父节点，导航全部用 Layers 且平铺。 | 服务器保留可见叶子的启用祖先，未知/循环/停用祖先拒绝该分支；前端按层级和数值顺序显示，仅独立 page/menu gate 通过时生成链接，并映射白名单图标。`TestIAMReviewMenuAncestorsDoNotGrantParentOperations` 与菜单 helper 测试验证父标签无授权、兄弟不可见、排序和停用子树。 |
-| 14 | P2 | 设计/实施状态一致。主设计顶部仍称 C/D 未开始和生产 legacy，与实施 §9.12 冲突；共享模型注释也仍称未进入生产。 | 主设计同步引用已有 D1 的 iam/complete 交接记录，明确本轮修复尚未部署；纠正共享模型/目录注释，保留各阶段历史叙述。 |
+| 14 | P2 | 设计/实施状态一致。主设计顶部仍称 C/D 未开始和生产 legacy，与实施 §9.12 冲突；共享模型注释也仍称未进入生产。 | 主设计同步引用已有 D1 的 iam/complete 交接记录，并区分本轮审查与后续获授权部署；纠正共享模型/目录注释，保留各阶段历史叙述。 |
 
 ## 复现与验证
 
@@ -64,4 +66,4 @@ FAIL TestIAMReviewRootDisplayUsesExplicitGrants: actual includes channel.channel
 
 普通管理创建账号现在需要独立的凭证操作及覆盖新账号/默认授权的 `user_credentials` 委派；仅有创建权的主体收到拒绝。本人注册/邀请码/OAuth 的独立身份流程不借用管理接管权。已存不兼容分配不会被自动扩大，涉及它的治理写应明确修正范围，root 通过受保护治理流程处理。
 
-本轮没有提交、推送、部署、生产数据修改或发布；生产交接状态只引用先前 D1 记录。运行测试的临时数据库容器在验证结束后删除。没有构建服务镜像或前端生产 bundle。
+审查阶段没有部署或发布；运行测试的临时数据库容器在验证结束后删除。后续用户明确授权更新生产并合并 develop，已完成 123 迁移、九个 linux/amd64 服务及前端发布，详见生产更新记录。没有再次执行 IAM 事实源切换或修改权限分配，也没有新增版本发布。

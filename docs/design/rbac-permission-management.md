@@ -1,7 +1,7 @@
 # 完整 RBAC 权限管理设计
 
 > 日期：2026-09-30
-> 状态更新：2026-10-05，P0、A1–A6、B0–B4、C1–C3、D0–D1 已交付；D1 生产交接记录为 iam/complete，见 [实施方案第 9.9–9.12 节](./rbac-permission-management-implementation-plan.md#99-b0b4-全量闭合2026-10-03)。本轮对照设计的代码审查与修复见 [审查记录](./rbac/design-review-2026-10-05.md)，修复尚未部署。
+> 状态更新：2026-10-05，P0、A1–A6、B0–B4、C1–C3、D0–D1 已交付；D1 生产交接记录为 iam/complete，见 [实施方案第 9.9–9.12 节](./rbac-permission-management-implementation-plan.md#99-b0b4-全量闭合2026-10-03)。本轮对照设计的代码审查与修复见 [审查记录](./rbac/design-review-2026-10-05.md)，已完成 [生产更新](./rbac/review-production-deployment-2026-10-05.md)。
 > 范围：现有平台的用户、后台操作和授权治理，并预留组织、多组织成员、组织内部门及组织域授权。路由使用资格、订阅权益、计费规则继续由各自领域管理。
 
 ## 1. 目标与模型

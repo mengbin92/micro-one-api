@@ -9,7 +9,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- RBAC 设计复审修复 deny 分配期限扩权、分配载荷借用撤销权、管理创建凭证委派遗漏、隐藏授权来源读取、非法范围与不兼容分配、归档权限复活，以及 root 摘要、菜单层级和前端读写 gate 差异；记录与回归见 [审查记录](docs/design/rbac/design-review-2026-10-05.md)。
+- RBAC 设计复审修复 deny 分配期限扩权、分配载荷借用撤销权、管理创建凭证委派遗漏、隐藏授权来源读取、非法范围与不兼容分配、归档权限复活，以及 root 摘要、菜单层级和前端读写 gate 差异；记录与回归见 [审查记录](docs/design/rbac/design-review-2026-10-05.md)。已更新线上九服务及前端并应用 123 迁移，模式保持 iam/complete，见 [生产更新](docs/design/rbac/review-production-deployment-2026-10-05.md)。
 
 - IAM 专属服务调用表补齐 identity 对本人账本列表和按日统计的调用权限，修复用户首页／用量统计因内部 403 显示为 0；billing 继续独立验证会话和本人范围，未增加系统豁免。已更新线上 billing，见 [验证记录](docs/design/rbac/self-usage-fix-2026-10-05.md)。
 
