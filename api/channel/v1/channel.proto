@@ -69,6 +69,9 @@ service ChannelService {
   rpc ChangeChannelStatus(ChangeChannelStatusRequest) returns (ChangeChannelStatusResponse);
   // ========== Model management (方案B) ==========
   rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
+  // Public enabled catalog metadata for the pricing projection. No registry
+  // editing defaults, mappings, or administrative fields are returned.
+  rpc ListPublicModels(ListModelsRequest) returns (ListModelsResponse);
   rpc GetModel(GetModelRequest) returns (GetModelResponse);
   rpc CreateModel(CreateModelRequest) returns (CreateModelResponse);
   rpc UpdateModel(UpdateModelRequest) returns (UpdateModelResponse);

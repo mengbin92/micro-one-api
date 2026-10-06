@@ -1,0 +1,273 @@
+{
+  "source_commit": "6680a7a42b22df75128a7452344acc5f7ddd179c",
+  "deployment": {
+    "version": "v0.34.1",
+    "source_digest": "3d2ef7c965b1790db56e8e9dfb6194b5b55763ff2589b55a5cd32f08223c8d85",
+    "backup_directory": "/opt/micro-one-api/deploy-v0.34.1-20261006-170350",
+    "deployments": [
+      {
+        "service": "billing-service",
+        "image": "sha256:6d5dacb0d23182bb316ced62b33f97d1a53fadc559b2c6dc77119df05d3180c0",
+        "previous_image": "sha256:49708c1a84db77e9b1087fd4ed8115116e930dd1060c9673479cc0542eb00f2b",
+        "rollback_tag": "docker-compose-billing-service:rollback-v0.34.1-20261006-170350",
+        "source_digest": "3d2ef7c965b1790db56e8e9dfb6194b5b55763ff2589b55a5cd32f08223c8d85",
+        "health": 200,
+        "restarts": 0,
+        "environment_preserved": true
+      },
+      {
+        "service": "channel-service",
+        "image": "sha256:c234d03a251d0919a2e002c77ab13ff80df109c194391e73a6120363d0fcca46",
+        "previous_image": "sha256:176f5c18738f217f30feb17bf670842902816bcf619fdbe333d155e252f5f6ca",
+        "rollback_tag": "docker-compose-channel-service:rollback-v0.34.1-20261006-170350",
+        "source_digest": "3d2ef7c965b1790db56e8e9dfb6194b5b55763ff2589b55a5cd32f08223c8d85",
+        "health": 200,
+        "restarts": 0,
+        "environment_preserved": true
+      },
+      {
+        "service": "identity-service",
+        "image": "sha256:9deb67acf25c9555ba2030de01ba696549a6daeb141df2d419f8fac0f6a235e8",
+        "previous_image": "sha256:069154d82935acb2cecff111efd47afb2c9112f58b696c1d6c105ea3c5783f83",
+        "rollback_tag": "docker-compose-identity-service:rollback-v0.34.1-20261006-170350",
+        "source_digest": "3d2ef7c965b1790db56e8e9dfb6194b5b55763ff2589b55a5cd32f08223c8d85",
+        "health": 200,
+        "restarts": 0,
+        "environment_preserved": true
+      },
+      {
+        "service": "admin-api",
+        "image": "sha256:b6df3f3a7542957617b90386fd85a2c17c268933de29821fc20272d5478b0053",
+        "previous_image": "sha256:bf305f430a0a49f31a7f26880068088bf72fad913b0aa3d4f0c0d2a3ff3c5dd4",
+        "rollback_tag": "docker-compose-admin-api:rollback-v0.34.1-20261006-170350",
+        "source_digest": "3d2ef7c965b1790db56e8e9dfb6194b5b55763ff2589b55a5cd32f08223c8d85",
+        "health": 200,
+        "restarts": 0,
+        "environment_preserved": true
+      }
+    ],
+    "frontend": {
+      "files_verified": 173,
+      "index_sha256": "3d712f9c54c507fc0a3081a6c7b004c7d1ca6a2dd84836e22925acbc0e760b63",
+      "backup": "/opt/web/dist.bak.v0.34.1-20261006-170350",
+      "old_hashed_assets_retained": true
+    },
+    "deployed_at": "2026-10-06T09:04:02.726025+00:00"
+  },
+  "before": {
+    "baseline": true,
+    "policy": {
+      "mode": "iam",
+      "cutover": "complete",
+      "policy_revision": "7",
+      "catalog_revision": "2"
+    },
+    "checks": [
+      {
+        "check": "root authorization",
+        "passed": true,
+        "status": 200
+      },
+      {
+        "check": "root user billing fields",
+        "passed": false,
+        "status": 200,
+        "users_checked": 8
+      },
+      {
+        "check": "root contact field visibility",
+        "passed": false,
+        "users_checked": 8
+      },
+      {
+        "check": "pricing excludes disabled private and unregistered models",
+        "passed": false,
+        "status": 200,
+        "models_checked": 13
+      },
+      {
+        "check": "pricing input/output modalities",
+        "passed": false,
+        "models_checked": 13
+      },
+      {
+        "check": "anonymous user management denied",
+        "passed": true,
+        "status": 401
+      },
+      {
+        "check": "anonymous subscription usage denied",
+        "passed": true,
+        "status": 401
+      },
+      {
+        "check": "API-key subscription usage",
+        "passed": false,
+        "status": 502,
+        "has_subscription": false,
+        "user_binding_verified": false
+      },
+      {
+        "check": "temporary verification token removed",
+        "passed": true,
+        "status": 200
+      }
+    ]
+  },
+  "after": {
+    "baseline": false,
+    "policy": {
+      "mode": "iam",
+      "cutover": "complete",
+      "policy_revision": "7",
+      "catalog_revision": "2"
+    },
+    "checks": [
+      {
+        "check": "root authorization",
+        "passed": true,
+        "status": 200
+      },
+      {
+        "check": "root user billing fields",
+        "passed": true,
+        "status": 200,
+        "users_checked": 8
+      },
+      {
+        "check": "root contact field visibility",
+        "passed": true,
+        "users_checked": 8
+      },
+      {
+        "check": "pricing excludes disabled private and unregistered models",
+        "passed": true,
+        "status": 200,
+        "models_checked": 7
+      },
+      {
+        "check": "pricing input/output modalities",
+        "passed": true,
+        "models_checked": 7
+      },
+      {
+        "check": "anonymous user management denied",
+        "passed": true,
+        "status": 401
+      },
+      {
+        "check": "anonymous subscription usage denied",
+        "passed": true,
+        "status": 401
+      },
+      {
+        "check": "API-key subscription usage",
+        "passed": true,
+        "status": 200,
+        "has_subscription": true,
+        "user_binding_verified": true
+      },
+      {
+        "check": "temporary verification token removed",
+        "passed": true,
+        "status": 200
+      }
+    ]
+  },
+  "boundaries": {
+    "checks": [
+      {
+        "check": "health admin-api",
+        "passed": true,
+        "status": 200,
+        "restarts": 0
+      },
+      {
+        "check": "health identity-service",
+        "passed": true,
+        "status": 200,
+        "restarts": 0
+      },
+      {
+        "check": "health channel-service",
+        "passed": true,
+        "status": 200,
+        "restarts": 0
+      },
+      {
+        "check": "health billing-service",
+        "passed": true,
+        "status": 200,
+        "restarts": 0
+      },
+      {
+        "check": "health config-service",
+        "passed": true,
+        "status": 200,
+        "restarts": 0
+      },
+      {
+        "check": "health log-service",
+        "passed": true,
+        "status": 200,
+        "restarts": 0
+      },
+      {
+        "check": "health monitor-worker",
+        "passed": true,
+        "status": 200,
+        "restarts": 0
+      },
+      {
+        "check": "health notify-worker",
+        "passed": true,
+        "status": 200,
+        "restarts": 0
+      },
+      {
+        "check": "health relay-gateway",
+        "passed": true,
+        "status": 200,
+        "restarts": 0
+      },
+      {
+        "check": "relay usage capability",
+        "passed": true,
+        "code": "OK",
+        "usage_source": "billing"
+      },
+      {
+        "check": "unrelated caller usage denied",
+        "passed": true,
+        "code": "PermissionDenied",
+        "usage_source": ""
+      },
+      {
+        "check": "shared credential usage denied",
+        "passed": true,
+        "code": "PermissionDenied",
+        "usage_source": ""
+      },
+      {
+        "check": "dedicated public catalog",
+        "passed": true,
+        "code": "OK",
+        "models": 7,
+        "public_projection": true
+      },
+      {
+        "check": "relay public catalog denied",
+        "passed": true,
+        "code": "PermissionDenied",
+        "models": 0,
+        "public_projection": true
+      }
+    ]
+  },
+  "served_frontend": {
+    "served_index_verified": true,
+    "users_bundle_verified": true,
+    "users_bundle": "UsersPage-D4JvNuid.js"
+  },
+  "iam_policy_preserved": true
+}

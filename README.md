@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.34.0 发布公告](./docs/releases/release-v0.34.0.md)（RBAC 权限管理、IAM 正式交接与发布门禁修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.0)
+> 📣 **最新发布**：[v0.34.1 发布公告](./docs/releases/release-v0.34.1.md)（订阅用量 502、用户字段受限与公开模型价格修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.1)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.34.1
+
+v0.34.1 是 v0.34.0 之后的 **PATCH 修复版本**：恢复 API Key 订阅用量查询和 IAM 用户管理的获准字段，修复价格页的禁用模型过滤和输入/输出模态。**API/proto 兼容性新增，无数据库迁移或新增运行时业务配置**；依次更新 `billing-service`、`channel-service`、`identity-service`、`admin-api` 和前端 `web/dist`。详见 [docs/releases/release-v0.34.1.md](./docs/releases/release-v0.34.1.md)。
 
 ### 升级到 v0.34.0
 

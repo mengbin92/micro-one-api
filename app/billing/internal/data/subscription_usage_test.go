@@ -7,9 +7,25 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"micro-one-api/app/billing/internal/biz"
+	"micro-one-api/domain/authorization"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
+	"micro-one-api/platform/authz"
 	"micro-one-api/platform/database/testutil"
+	"micro-one-api/platform/security/serviceidentity"
 )
+
+func TestSubscriptionUsageDedicatedRelayReadsOwnerSnapshot(t *testing.T) {
+	db := testutil.RoutingContextDB(t, "sqlite")
+	uc, _, _, _, _ := snapshotBillingFixture(t, db, true, 2, 0.5)
+	uc.SetAuthorization(authz.NewClient("billing", nil))
+	ctx := serviceidentity.WithRPCMethod(serviceidentity.WithPrincipal(authorization.WithExternal(context.Background()), serviceidentity.Principal{Name: "relay", Dedicated: true}), "/api.billing.v1.BillingService/GetSubscriptionUsage")
+	progress, err := uc.GetSubscriptionUsage(ctx, 7001)
+	require.NoError(t, err)
+	require.Equal(t, "billing", progress.UsageSource)
+	require.Zero(t, *progress.DailyUsed.Frozen)
+	_, err = uc.GetSubscriptionUsage(serviceidentity.WithPrincipal(ctx, serviceidentity.Principal{Name: "legacy-shared"}), 7001)
+	require.Error(t, err, "shared credentials cannot confer the relay capability")
+}
 
 func TestSubscriptionUsageAuthoritativeWindows(t *testing.T) {
 	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {

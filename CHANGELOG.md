@@ -7,6 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.34.1] - 2026-10-06
+
+v0.34.1 是 v0.34.0 之后的 **PATCH 修复版本**：恢复 API Key 订阅用量查询和 IAM 用户管理的获准字段，修复公开价格页的模型过滤与模态展示。更新 billing、channel、identity、admin 和前端；API/proto 兼容性新增，无数据库迁移或新增运行时业务配置。详见 [release-v0.34.1.md](docs/releases/release-v0.34.1.md)。
+
+### Fixed
+
+- 固定 caller 表补齐 relay 的订阅用量读取能力，修复 `/v1/subscription/usage` 的 `502 subscription service error`，保留 API Key 主体绑定与无关 caller 拒绝。
+- IAM 用户列表从 billing 获取当前管理员获准的余额和已用快照；范围受限账户仍省略财务字段，获准零值正常显示，依赖故障独立标记。
+- 用户联系字段增加明确可见性，区分空邮箱和无查看权限，修复空邮箱误显示“受限”。
+- 公开价格与启用、公开模型目录取交集并返回输入/输出模态；目录错误不再回退到未过滤的价格配置。
+
+### Added
+
+- channel 的专属 admin caller 公开目录 RPC `ListPublicModels`，仅返回公开模型元数据，过滤先于总数与分页；同步回归与 829 行入口契约。
+
 ## [0.34.0] - 2026-10-06
 
 v0.34.0 是 v0.33.6 之后的 **MINOR 权限管理版本**：新增 RBAC 授权治理、管理界面、服务身份和全资源执行边界，完成 IAM 离线迁移及生产正式交接；修复本人用量、设计复审问题和发布门禁。涉及全部九服务、前端、API/proto、三库迁移 110–123 与部署配置；详见 [release-v0.34.0.md](docs/releases/release-v0.34.0.md)。

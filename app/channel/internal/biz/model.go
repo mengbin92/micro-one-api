@@ -10,6 +10,7 @@ import (
 
 	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/metrics"
+	"micro-one-api/platform/security/serviceidentity"
 )
 
 // Model status constants mirroring the `models.status` column.
@@ -375,6 +376,23 @@ func (uc *ModelUsecase) timestamp() int64 {
 		return time.Now().Unix()
 	}
 	return uc.now().Unix()
+}
+
+// ListPublicModels reads the enabled public catalog for a dedicated projection.
+func (uc *ModelUsecase) ListPublicModels(ctx context.Context, page, pageSize int32) ([]*Model, int64, error) {
+	if authorization.External(ctx) && !serviceidentity.HasSystemCapability(ctx, "/api.channel.v1.ChannelService/ListPublicModels") {
+		return nil, 0, authorization.ErrDenied
+	}
+	if uc == nil || uc.repo == nil {
+		return nil, 0, nil
+	}
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 || pageSize > 200 {
+		pageSize = 200
+	}
+	return uc.repo.ListModels(ctx, page, pageSize, ListModelsFilter{PublicOnly: true, Status: ModelStatusEnabled})
 }
 
 // ListModels returns a page of models matching the filter.
