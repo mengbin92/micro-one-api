@@ -7,6 +7,18 @@ import "google/api/annotations.proto";
 option go_package = "micro-one-api/api/notify/v1;notifyv1";
 
 service NotifyService {
+ rpc AcknowledgeNotification(AcknowledgeNotificationRequest) returns (GetNotificationResponse) {
+  option (google.api.http) = { post: "/v1/notifications/{id}/acknowledge" body: "*" };
+ }
+ rpc TestNotificationRule(TestNotificationRuleRequest) returns (CreateNotificationResponse) {
+  option (google.api.http) = { post: "/v1/notification-rules/{id}/test" body: "*" };
+ }
+ rpc ListNotificationRules(ListNotificationRulesRequest) returns (ListNotificationRulesResponse) {
+  option (google.api.http) = { get: "/v1/notification-rules" };
+ }
+ rpc UpdateNotificationRule(UpdateNotificationRuleRequest) returns (UpdateNotificationRuleResponse) {
+  option (google.api.http) = { put: "/v1/notification-rules/{rule.id}" body: "*" };
+ }
   rpc CreateNotification(CreateNotificationRequest) returns (CreateNotificationResponse) {
     option (google.api.http) = {
       post: "/v1/notifications"
@@ -49,6 +61,9 @@ message NotificationItem {
   int64 created_at = 8;
   int64 sent_at = 9;
   string last_error = 10;
+ uint64 revision = 11;
+ int64 acknowledged_at = 12;
+ int64 acknowledged_by = 13;
 }
 
 message CreateNotificationResponse {
@@ -83,3 +98,19 @@ message UpdateNotificationStatusRequest {
 message UpdateNotificationStatusResponse {
   bool success = 1;
 }
+
+message AcknowledgeNotificationRequest { int64 id = 1; uint64 expected_revision = 2; string reason = 3; }
+message TestNotificationRuleRequest { int64 id = 1; string reason = 2; }
+message NotificationRule {
+ int64 id = 1;
+ string name = 2;
+ string event = 3;
+ string type = 4;
+ string recipient = 5;
+ bool enabled = 6;
+ uint64 revision = 7;
+}
+message ListNotificationRulesRequest {}
+message ListNotificationRulesResponse { repeated NotificationRule items = 1; }
+message UpdateNotificationRuleRequest { NotificationRule rule = 1; string reason = 2; }
+message UpdateNotificationRuleResponse { NotificationRule rule = 1; }

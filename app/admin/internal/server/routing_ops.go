@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+
 	"net/http"
 	"os"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/admin/internal/service"
+	"micro-one-api/domain/authorization"
 )
 
 // ── v0.11.0 Phase 3 §3.6: routing operations view ──────────────────────────
@@ -157,8 +159,46 @@ func handleRoutingOps(w http.ResponseWriter, r *http.Request, svc *service.Admin
 		Success: true,
 		Window:  routingOpsWindow{Start: start, End: end},
 	}
-	channelBuckets, billingTotals, err := svc.AggregateUsageGroupedByChannel(r.Context(), start, end)
+	sections := map[string]service.SummarySectionStatus{}
+	sectionFailure := func(name string, err error) {
+		state := service.SummarySectionStatus{Available: false, Reason: "unavailable"}
+		if code, ok := resourceHTTPErrorCode(err); ok && (code == 401 || code == 403) {
+			state.Reason = "restricted"
+		}
+		sections[name] = state
+	}
+
+	sectionCheck := func(name string, global bool, ops ...string) error {
+		err := svc.AuthorizeSection(r.Context(), "admin.routing_ops", global, ops...)
+		state := service.SummarySectionStatus{Available: err == nil}
+		if err != nil {
+			state.Reason = "unavailable"
+			if code, ok := resourceHTTPErrorCode(err); ok && (code == http.StatusForbidden || code == http.StatusUnauthorized) {
+				state.Reason = "restricted"
+			}
+		}
+		sections[name] = state
+		return err
+	}
+	var channelBuckets []service.UsageAggregateView
+	var billingTotals service.UsageAggregateTotals
+	err = sectionCheck("billing", false, "billing.account.ledger.read", "billing.account.cost.read")
+	if err == nil {
+		channelBuckets, billingTotals, err = svc.AggregateUsageGroupedByChannel(r.Context(), start, end)
+	}
+	if err == nil && isIAMBusinessContext(r.Context()) {
+		if !billingTotals.CostFieldsVisible {
+			err = authorization.ErrDenied
+		}
+		for _, bucket := range channelBuckets {
+			if !bucket.CostFieldsVisible {
+				err = authorization.ErrDenied
+				break
+			}
+		}
+	}
 	if err != nil {
+		sectionFailure("billing", err)
 		// Surface the billing dependency failure instead of silently returning
 		// zero-data success (code review #7). The view is still returned so
 		// the frontend can render the error banner, but success=false + the
@@ -223,10 +263,16 @@ func handleRoutingOps(w http.ResponseWriter, r *http.Request, svc *service.Admin
 	// Unpriced routed model count (Phase 2 §2.2) so the ops view surfaces the
 	// pricing gap alongside traffic.
 	var unpricedResp *channelv1.ListUnpricedRoutedModelsResponse
-	if resp, err := svc.ListUnpricedRoutedModelsWithPricing(r.Context()); err == nil && resp != nil {
+	var resp *channelv1.ListUnpricedRoutedModelsResponse
+	err = sectionCheck("unpriced", false, "channel.model.list", "billing.pricing.read")
+	if err == nil {
+		resp, err = svc.ListUnpricedRoutedModelsWithPricing(r.Context())
+	}
+	if err == nil && resp != nil {
 		view.Unpriced.RoutedButUnpriced = resp.GetTotal()
 		unpricedResp = resp
 	} else if err != nil {
+		sectionFailure("unpriced", err)
 		// Surface the channel-service dependency failure (code review #7).
 		view.Partial = true
 		view.Errors = append(view.Errors, "unpriced model query failed: "+err.Error())
@@ -237,9 +283,18 @@ func handleRoutingOps(w http.ResponseWriter, r *http.Request, svc *service.Admin
 	prometheusURL := strings.TrimSpace(os.Getenv("PROMETHEUS_URL"))
 	relayMetricsURL := strings.TrimSpace(os.Getenv("RELAY_METRICS_ENDPOINT"))
 
-	rates, rateErrors := loadRoutingRates(r.Context(), prometheusURL, relayMetricsURL, start, end)
+	var rates routingOpsRates
+	var rateErrors []string
+	if err := sectionCheck("rates", true, "monitor.health.selector.read"); err == nil {
+		rates, rateErrors = loadRoutingRates(r.Context(), prometheusURL, relayMetricsURL, start, end)
+	} else {
+		rateErrors = []string{"routing rates " + sections["rates"].Reason}
+	}
 	view.Rates = rates
 	if rates.Source == "" {
+		if sections["rates"].Available {
+			sectionFailure("rates", fmt.Errorf("metrics unavailable"))
+		}
 		// Both data sources failed (or were unconfigured).
 		view.Partial = true
 		view.Errors = append(view.Errors, rateErrors...)
@@ -253,7 +308,19 @@ func handleRoutingOps(w http.ResponseWriter, r *http.Request, svc *service.Admin
 	// particular, error/fallback alerts depend on the Prometheus rates above.
 	view.Alerts = computeRoutingOpsAlerts(view, unpricedResp)
 
-	writeJSON(w, http.StatusOK, view)
+	body := map[string]any{"success": view.Success, "partial": view.Partial, "errors": view.Errors, "window": view.Window, "sources": view.Sources, "truncated": view.Truncated, "totals": view.Totals, "rates": view.Rates, "unpriced": view.Unpriced, "alerts": view.Alerts, "sections": sections}
+	if !sections["billing"].Available {
+		body["sources"] = nil
+		body["totals"] = nil
+	}
+	if !sections["rates"].Available {
+		body["rates"] = nil
+	}
+	if !sections["unpriced"].Available {
+		body["unpriced"] = nil
+	}
+	body["alerts_complete"] = sections["billing"].Available && sections["rates"].Available && sections["unpriced"].Available
+	writeJSON(w, http.StatusOK, body)
 }
 
 func sourceIDOf(b service.UsageAggregateView) int64 {

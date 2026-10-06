@@ -6,7 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"gorm.io/gorm/clause"
 	"micro-one-api/app/billing/internal/biz"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/database/authzquery"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"micro-one-api/pkg/safecast"
@@ -28,7 +31,20 @@ func (r *redeemRepo) CreateRedeemCode(ctx context.Context, code *biz.RedeemCode)
 		return err
 	}
 
-	return r.data.db.WithContext(ctx).Create(model).Error
+	writeErr := authzquery.RunInTx(ctx, r.data.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := biz.RequireWrite(ctx, "billing.redemption.create", redeemFacts(0)); err != nil {
+			return err
+		}
+		if err := tx.Create(model).Error; err != nil {
+			return err
+		}
+		id, err := safecast.UintToInt64(model.ID)
+		if err != nil {
+			return err
+		}
+		return authzquery.AppendWriteAudit(ctx, tx, "billing.redemption.create", id)
+	})
+	return authzquery.RecordWriteFailure(ctx, r.data.db, "billing.redemption.create", 0, writeErr)
 }
 
 func (r *redeemRepo) CreateRedeemCodesBatch(ctx context.Context, codes []*biz.RedeemCode) error {
@@ -46,7 +62,25 @@ func (r *redeemRepo) CreateRedeemCodesBatch(ctx context.Context, codes []*biz.Re
 		models[i] = *model
 	}
 
-	return r.data.db.WithContext(ctx).Create(&models).Error
+	writeErr := authzquery.RunInTx(ctx, r.data.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := biz.RequireWrite(ctx, "billing.redemption.batch_create", redeemFacts(0)); err != nil {
+			return err
+		}
+		if err := tx.Create(&models).Error; err != nil {
+			return err
+		}
+		for _, row := range models {
+			id, err := safecast.UintToInt64(row.ID)
+			if err != nil {
+				return err
+			}
+			if err := authzquery.AppendWriteAudit(ctx, tx, "billing.redemption.batch_create", id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return authzquery.RecordWriteFailure(ctx, r.data.db, "billing.redemption.batch_create", 0, writeErr)
 }
 
 func (r *redeemRepo) GetRedeemCode(ctx context.Context, code string) (*biz.RedeemCode, error) {
@@ -58,6 +92,13 @@ func (r *redeemRepo) GetRedeemCode(ctx context.Context, code string) (*biz.Redee
 		return nil, err
 	}
 
+	id, err := safecast.UintToInt64(model.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err := authorization.Require(ctx, "billing.redemption.read", redeemFacts(id)); err != nil {
+		return nil, err
+	}
 	return redeemCodeToBiz(&model)
 }
 
@@ -67,14 +108,15 @@ func (r *redeemRepo) ListRedeemCodes(ctx context.Context, page, pageSize int32) 
 
 	offset := (page - 1) * pageSize
 
-	if err := r.data.db.WithContext(ctx).
-		Model(&redeemCodeModel{}).
-		Count(&total).Error; err != nil {
+	query, err := authzquery.ApplyContext(ctx, r.data.db.WithContext(ctx).Model(&redeemCodeModel{}), authzquery.Columns{Resource: "id"}, "billing.redemption.list", "billing.redemption.export")
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	if err := r.data.db.WithContext(ctx).
-		Order("created_at DESC").
+	if err := query.Order("created_at DESC").
 		Limit(int(pageSize)).
 		Offset(int(offset)).
 		Find(&models).Error; err != nil {
@@ -96,8 +138,11 @@ func (r *redeemRepo) ListRedeemCodes(ctx context.Context, page, pageSize int32) 
 func (r *redeemRepo) SearchRedeemCodes(ctx context.Context, keyword string) ([]*biz.RedeemCode, error) {
 	var models []redeemCodeModel
 
-	err := r.data.db.WithContext(ctx).
-		Where("code = ? OR name LIKE ? ESCAPE '!'", keyword, escapeLike(keyword)+"%").
+	query, err := authzquery.ApplyContext(ctx, r.data.db.WithContext(ctx).Model(&redeemCodeModel{}), authzquery.Columns{Resource: "id"}, "billing.redemption.list")
+	if err != nil {
+		return nil, err
+	}
+	err = query.Where("code = ? OR name LIKE ? ESCAPE '!'", keyword, escapeLike(keyword)+"%").
 		Order("created_at DESC").
 		Find(&models).Error
 
@@ -128,14 +173,13 @@ func (r *redeemRepo) UpdateRedeemCode(ctx context.Context, code *biz.RedeemCode)
 	if code.Amount > 0 {
 		updates["amount"] = code.Amount
 	}
-	if code.Status > 0 {
+	if code.Status >= 0 {
 		updates["status"] = code.Status
 	}
 
-	return r.data.db.WithContext(ctx).
-		Model(&redeemCodeModel{}).
-		Where("code = ?", code.Code).
-		Updates(updates).Error
+	return r.mutateRedeem(ctx, code.Code, "billing.redemption.update", func(tx *gorm.DB) error {
+		return tx.Model(&redeemCodeModel{}).Where("code = ?", code.Code).Updates(updates).Error
+	})
 }
 
 // UpdateRedeemCodeCount atomically decrements a redeem code's remaining
@@ -192,9 +236,7 @@ func (r *redeemRepo) UpdateRedeemCodeCountInTx(ctx context.Context, tx subscript
 }
 
 func (r *redeemRepo) DeleteRedeemCode(ctx context.Context, code string) error {
-	return r.data.db.WithContext(ctx).
-		Where("code = ?", code).
-		Delete(&redeemCodeModel{}).Error
+	return r.mutateRedeem(ctx, code, "billing.redemption.delete", func(tx *gorm.DB) error { return tx.Where("code = ?", code).Delete(&redeemCodeModel{}).Error })
 }
 
 func (r *redeemRepo) CreateRedeemRecord(ctx context.Context, record *biz.RedeemRecord) error {
@@ -225,7 +267,7 @@ func redeemCodeModelFromBiz(code *biz.RedeemCode, now time.Time) (*redeemCodeMod
 		return nil, err
 	}
 	return &redeemCodeModel{
-		Code:      code.Code,
+		Revision: 1, Code: code.Code,
 		Name:      stringPtr(code.Name),
 		Amount:    code.Amount,
 		Count:     int(code.Count),
@@ -241,7 +283,13 @@ func redeemCodeToBiz(model *redeemCodeModel) (*biz.RedeemCode, error) {
 	if err != nil {
 		return nil, err
 	}
+	id, err := safecast.UintToInt64(model.ID)
+	if err != nil {
+		return nil, err
+	}
 	return &biz.RedeemCode{
+		ID:        id,
+		Revision:  model.Revision,
 		Code:      model.Code,
 		Name:      stringFromPtr(model.Name),
 		Amount:    model.Amount,
@@ -258,4 +306,42 @@ func escapeLike(s string) string {
 	s = strings.ReplaceAll(s, "%", "!%")
 	s = strings.ReplaceAll(s, "_", "!_")
 	return s
+}
+
+func redeemFacts(id int64) authorization.ObjectFacts {
+	return authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: id}
+}
+func (r *redeemRepo) mutateRedeem(ctx context.Context, code, op string, write func(*gorm.DB) error) error {
+	writeErr := authzquery.RunInTx(ctx, r.data.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		var row redeemCodeModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("code = ?", code).Take(&row).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return biz.ErrRedeemCodeNotFound
+			}
+			return err
+		}
+		id, err := safecast.UintToInt64(row.ID)
+		if err != nil {
+			return err
+		}
+		if err := biz.RequireWrite(ctx, op, redeemFacts(id)); err != nil {
+			return err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, op); iam {
+			expected, supplied := biz.ExpectedWriteVersion(ctx)
+			if !supplied || expected != row.Revision {
+				return biz.ErrRoutingContextConflict
+			}
+		}
+		if err := write(tx); err != nil {
+			return err
+		}
+		if op == "billing.redemption.update" {
+			if err := tx.Model(&redeemCodeModel{}).Where("id = ?", row.ID).Update("revision", row.Revision+1).Error; err != nil {
+				return err
+			}
+		}
+		return authzquery.AppendWriteAudit(ctx, tx, op, id)
+	})
+	return authzquery.RecordWriteFailure(ctx, r.data.db, op, 0, writeErr)
 }

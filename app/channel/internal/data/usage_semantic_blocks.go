@@ -3,12 +3,15 @@ package data
 import (
 	"context"
 	"errors"
+	"math"
 	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"micro-one-api/app/channel/internal/biz"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/database/authzquery"
 )
 
 // usageSemanticSourceBlockModel maps migration 087
@@ -28,6 +31,7 @@ type usageSemanticSourceBlockModel struct {
 	LastVerifiedAt       *time.Time `gorm:"column:last_verified_at"`
 	CreatedAt            time.Time  `gorm:"column:created_at"`
 	UpdatedAt            time.Time  `gorm:"column:updated_at"`
+	Revision             int64      `gorm:"column:revision;default:1"`
 }
 
 func (usageSemanticSourceBlockModel) TableName() string { return "usage_semantic_source_blocks" }
@@ -43,6 +47,7 @@ func usageSemanticBlockToBiz(m *usageSemanticSourceBlockModel) biz.UsageSemantic
 		Reason:               m.Reason,
 		ConsecutiveAmbiguous: m.ConsecutiveAmbiguous,
 		UpdatedAt:            m.UpdatedAt,
+		Revision:             m.Revision,
 	}
 	if m.WindowStartedAt != nil {
 		out.WindowStartedAt = *m.WindowStartedAt
@@ -111,7 +116,7 @@ func (r *Repository) UpsertUsageSemanticVerdict(ctx context.Context, verdict biz
 			return err
 		}
 
-		updates := map[string]any{"updated_at": now}
+		updates := map[string]any{"updated_at": now, "revision": row.Revision + 1}
 		switch verdict.ParseStatus {
 		case "verified":
 			updates["consecutive_ambiguous"] = 0
@@ -177,6 +182,41 @@ func (r *Repository) ListBlockedUsageSemanticBlocks(ctx context.Context, now tim
 // ResolveUsageSemanticBlock clears a block after an operator confirms the
 // adapter fix (§5.2 point 6). Returns false when no matching row exists.
 func (r *Repository) ResolveUsageSemanticBlock(ctx context.Context, sourceKind string, sourceID int64, upstreamModelID, adapterProtocol string, now time.Time) (bool, error) {
+	if _, scoped := authorization.QueryScopeFromContext(ctx, "channel.usage_semantic_block.resolve"); scoped {
+		if r.db == nil {
+			return false, authorization.ErrDenied
+		}
+		written := false
+		err := authzquery.RunInTx(ctx, r.db, 3, func(current context.Context, tx *gorm.DB) error {
+			var row usageSemanticSourceBlockModel
+			err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("source_kind = ? AND source_id = ? AND upstream_model_id = ? AND adapter_protocol = ?", sourceKind, sourceID, upstreamModelID, adapterProtocol).First(&row).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if err := authorization.Require(current, "channel.usage_semantic_block.resolve", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: row.ID}); err != nil {
+				return err
+			}
+			expected, present := authorization.ExpectedResourceRevision(current)
+			if !present || authorization.WriteReason(current) == "" {
+				return authorization.ErrWritePrecondition
+			}
+			if expected == 0 || expected > math.MaxInt64 || int64(expected) != row.Revision {
+				return authorization.ErrWriteConflict
+			}
+			if row.Status != biz.UsageSemanticBlockStatusBlocked {
+				return nil
+			}
+			if err := tx.Model(&row).Updates(map[string]any{"status": biz.UsageSemanticBlockStatusResolved, "consecutive_ambiguous": 0, "window_started_at": nil, "blocked_until": nil, "updated_at": now, "revision": row.Revision + 1}).Error; err != nil {
+				return err
+			}
+			written = true
+			return authzquery.AppendWriteAudit(current, tx, "channel.usage_semantic_block.resolve", row.ID)
+		})
+		return written, err
+	}
 	if r.db == nil {
 		return false, nil
 	}
@@ -189,6 +229,7 @@ func (r *Repository) ResolveUsageSemanticBlock(ctx context.Context, sourceKind s
 			"window_started_at":     nil,
 			"blocked_until":         nil,
 			"updated_at":            now,
+			"revision":              gorm.Expr("revision + 1"),
 		})
 	if res.Error != nil {
 		return false, res.Error
@@ -202,6 +243,10 @@ func (r *Repository) ListUsageSemanticBlocks(ctx context.Context, onlyBlocked bo
 		return nil, 0, nil
 	}
 	query := r.db.WithContext(ctx).Model(&usageSemanticSourceBlockModel{})
+	query, scopeErr := authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "usage_semantic_source_blocks.id"}, "channel.usage_semantic_block.list")
+	if scopeErr != nil {
+		return nil, 0, scopeErr
+	}
 	if onlyBlocked {
 		query = query.Where("status = ?", biz.UsageSemanticBlockStatusBlocked)
 	}

@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
+	"micro-one-api/app/admin/internal/biz"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/authz"
 	"sort"
 	"strings"
 
@@ -33,6 +36,9 @@ func canonicalModelID(id string) string {
 // is grouped by source (channel/subscription) so operators can tell regular
 // channels and subscription accounts apart even when they share a numeric id.
 type UpstreamCostEntry struct {
+	ResourceID           int64    `json:"resource_id"`
+	ExpectedRevision     int64    `json:"expected_revision,omitempty"`
+	Reason               string   `json:"reason,omitempty"`
 	Key                  string   `json:"key"`               // canonical cost key
 	SourceKind           string   `json:"source_kind"`       // channel | subscription | model (legacy default)
 	SourceID             int64    `json:"source_id"`         // 0 for bare-model defaults
@@ -59,6 +65,7 @@ type UpstreamCostEntry struct {
 // using the pre-v0.11.0 <channel_id>:<model> form so operators can see what
 // the migration tool would touch.
 type upstreamCostView struct {
+	Revision   int64               `json:"revision"`
 	Entries    []UpstreamCostEntry `json:"entries"`
 	LegacyKeys []UpstreamCostEntry `json:"legacy_keys"`
 	Total      int                 `json:"total"`
@@ -72,14 +79,30 @@ func (s *AdminService) ListUpstreamCosts(ctx context.Context) (*upstreamCostView
 	if err != nil {
 		return nil, fmt.Errorf("read UpstreamModelPrice: %w", err)
 	}
+	revision, err := s.systemOptsUc.GetRevision(ctx, "UpstreamModelPrice")
+	if err != nil {
+		return nil, err
+	}
 	entries, legacy := parseUpstreamCostEntries(raw)
 	// Best-effort name + public-model resolution. Source names require a
 	// channel/subscription lookup which is only available when the channel
 	// client is wired; when it is nil we leave SourceName empty.
+	for i := range entries {
+		entries[i].ResourceID, err = s.systemOptsUc.CostResourceID(ctx, entries[i].Key)
+		if err != nil {
+			return nil, err
+		}
+	}
+	for i := range legacy {
+		legacy[i].ResourceID, err = s.systemOptsUc.CostResourceID(ctx, legacy[i].Key)
+		if err != nil {
+			return nil, err
+		}
+	}
 	s.enrichUpstreamCostEntries(ctx, entries)
 	s.enrichUpstreamCostEntries(ctx, legacy)
 	return &upstreamCostView{
-		Entries:    entries,
+		Revision: revision, Entries: entries,
 		LegacyKeys: legacy,
 		Total:      len(entries) + len(legacy),
 	}, nil
@@ -92,6 +115,7 @@ func (s *AdminService) ListUpstreamCosts(ctx context.Context) (*upstreamCostView
 // canonical key guarantees the last writer wins per key without clobbering
 // unrelated entries.
 func (s *AdminService) SetUpstreamCost(ctx context.Context, entry UpstreamCostEntry) error {
+	ctx = biz.WithExpectedOptionRevision(authorization.WithWriteReason(ctx, entry.Reason), entry.ExpectedRevision)
 	if err := validateUpstreamCostPrices(entry); err != nil {
 		return err
 	}
@@ -141,8 +165,20 @@ type UpstreamCostMigrationChange struct {
 }
 
 func (s *AdminService) MigrateUpstreamCostKeys(ctx context.Context, dryRun bool) (*UpstreamCostMigrationPlan, error) {
+	if authorization.External(ctx) {
+		var err error
+		ctx, err = s.systemOptsUc.AuthorizeUpstreamCostMigration(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+	}
+	ctx = biz.WithUpstreamCostMigration(ctx)
 	raw, err := s.GetSystemOption(ctx, "UpstreamModelPrice")
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("read UpstreamModelPrice: %w", err)
 	}
 	prices, err := decodeUpstreamCostMap(raw)
@@ -217,27 +253,37 @@ func (s *AdminService) MigrateUpstreamCostKeys(ctx context.Context, dryRun bool)
 	}
 	// Apply: move each value from old key to new key. Done in one
 	// read-modify-write so a partial failure leaves the option unchanged.
+	bindings := make(map[string]string, len(rewrites))
+	for target, rewrite := range rewrites {
+		bindings[target] = rewrite.oldKey
+	}
+	ctx = biz.WithUpstreamCostMigrationBindings(ctx, bindings)
+	var executed int
+	var commitSkipped []UpstreamCostMigrationChange
 	err = s.mutateUpstreamCostsRaw(ctx, func(prices map[string]map[string]any) {
+		executed = 0
+		commitSkipped = nil
 		for newKey, info := range rewrites {
 			if _, exists := prices[newKey]; exists {
-				plan.Skipped = append(plan.Skipped, UpstreamCostMigrationChange{
+				commitSkipped = append(commitSkipped, UpstreamCostMigrationChange{
 					OldKey: info.oldKey, NewKey: newKey, SourceID: info.change.SourceID,
 					PublicModelID: info.change.PublicModelID, UpstreamModelID: info.change.UpstreamModelID,
 					Reason: "target canonical key already exists; legacy key preserved",
 				})
-				plan.Executed--
 				continue
 			}
 			if v, ok := prices[info.oldKey]; ok {
 				prices[newKey] = v
 				delete(prices, info.oldKey)
-				plan.Executed++
+				executed++
 			}
 		}
 	})
 	if err != nil {
 		return nil, err
 	}
+	plan.Executed = executed
+	plan.Skipped = append(plan.Skipped, commitSkipped...)
 	sortMigrationPlan(plan)
 	return plan, nil
 }
@@ -429,20 +475,15 @@ func (s *AdminService) mutateUpstreamCostsRaw(ctx context.Context, fn func(price
 	if s.systemOptsUc == nil {
 		return fmt.Errorf("system options storage not configured")
 	}
-	raw, err := s.systemOptsUc.Get(ctx, "UpstreamModelPrice")
-	if err != nil && !isNotFoundErr(err) {
-		return fmt.Errorf("read UpstreamModelPrice: %w", err)
-	}
-	prices, err := decodeUpstreamCostMap(raw)
-	if err != nil {
-		return err
-	}
-	fn(prices)
-	payload, err := jsonx.Marshal(prices)
-	if err != nil {
-		return fmt.Errorf("encode UpstreamModelPrice: %w", err)
-	}
-	return s.systemOptsUc.Set(ctx, "UpstreamModelPrice", string(payload))
+	return s.systemOptsUc.Mutate(ctx, "UpstreamModelPrice", func(raw string) (string, error) {
+		prices, err := decodeUpstreamCostMap(raw)
+		if err != nil {
+			return "", err
+		}
+		fn(prices)
+		payload, err := jsonx.Marshal(prices)
+		return string(payload), err
+	})
 }
 
 func isNotFoundErr(err error) bool {

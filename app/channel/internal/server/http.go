@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/platform/authz"
 
 	"micro-one-api/app/channel/internal/biz"
 	channeloauth "micro-one-api/app/channel/internal/biz/oauth"
@@ -35,19 +36,31 @@ func NewHTTPServer(addr string, usecases ...*biz.ChannelUsecase) *khttp.Server {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
-	registerOAuthRoutes(srv, oauthSvc)
+	registerOAuthRoutes(srv, oauthSvc, uc)
 	registerSelectorStatsRoute(srv, uc)
 	return srv
 }
 
-func registerOAuthRoutes(srv *khttp.Server, oauthSvc *channeloauth.Service) {
-	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/claude/auth-url", oauthAuthURLHandler(oauthSvc, channeloauth.PlatformClaude))
-	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/claude/exchange", oauthExchangeHandler(oauthSvc, channeloauth.PlatformClaude))
-	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/codex/auth-url", oauthAuthURLHandler(oauthSvc, channeloauth.PlatformCodex))
-	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/codex/exchange", oauthExchangeHandler(oauthSvc, channeloauth.PlatformCodex))
+func registerOAuthRoutes(srv *khttp.Server, oauthSvc *channeloauth.Service, uc *biz.ChannelUsecase) {
+	guard := func(next http.HandlerFunc) http.HandlerFunc {
+		return authz.HTTPContext("/api.channel.v1.ChannelService/CreateSubscriptionAccount", func(w http.ResponseWriter, r *http.Request) {
+			if uc == nil {
+				authz.WriteHTTPError(w, authz.ErrUnavailable)
+				return
+			}
+
+			next(w, r)
+		})
+	}
+
+	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/claude/auth-url", guard(oauthAuthURLHandler(oauthSvc, channeloauth.PlatformClaude)))
+	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/claude/exchange", guard(oauthExchangeHandler(oauthSvc, channeloauth.PlatformClaude)))
+	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/codex/auth-url", guard(oauthAuthURLHandler(oauthSvc, channeloauth.PlatformCodex)))
+	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/codex/exchange", guard(oauthExchangeHandler(oauthSvc, channeloauth.PlatformCodex)))
 }
 
 type oauthAuthURLRequest struct {
+	Group       string `json:"group"`
 	RedirectURI string `json:"redirect_uri"`
 }
 
@@ -76,8 +89,13 @@ func oauthAuthURLHandler(oauthSvc *channeloauth.Service, platform string) http.H
 		}
 		result, err := oauthSvc.AuthURL(r.Context(), platform, channeloauth.AuthURLRequest{
 			RedirectURI: req.RedirectURI,
+			Group:       req.Group,
 		})
 		if err != nil {
+			if authz.IsAuthorizationError(err) {
+				authz.WriteHTTPError(w, err)
+				return
+			}
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
@@ -113,6 +131,10 @@ func oauthExchangeHandler(oauthSvc *channeloauth.Service, platform string) http.
 			Metadata:  req.Metadata,
 		})
 		if err != nil {
+			if authz.IsAuthorizationError(err) {
+				authz.WriteHTTPError(w, err)
+				return
+			}
 			status := http.StatusBadGateway
 			if errors.Is(err, channeloauth.ErrInvalidSession) {
 				status = http.StatusBadRequest
@@ -155,21 +177,22 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 // returns 503 so it cannot be used unauthenticated in misconfigured
 // deployments.
 func registerSelectorStatsRoute(srv *khttp.Server, uc *biz.ChannelUsecase) {
-	srv.HandleFunc("/api/v1/admin/channels/selector/stats", func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/api/v1/admin/channels/selector/stats", authz.HTTPContext("/api.channel.v1.ChannelService/GetChannel", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 			return
 		}
-		if !authorizeAdmin(r) {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid admin credentials"})
-			return
-		}
 		if uc == nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "channel usecase not wired"})
+			authz.WriteHTTPError(w, authz.ErrUnavailable)
 			return
 		}
-		writeJSON(w, http.StatusOK, selectorStatsPayload(uc.SelectorStats()))
-	})
+		stats, err := uc.ReadSelectorStats(r.Context())
+		if err != nil {
+			authz.WriteHTTPError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, selectorStatsPayload(stats))
+	}))
 }
 
 // adminTokenOnce + adminTokenCache memoize the trimmed ADMIN_TOKEN env var.

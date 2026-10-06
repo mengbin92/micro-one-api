@@ -1,9 +1,10 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuthorizedQuery } from '@/lib/authorization';
+import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { KeyRound, Pencil, RotateCcw, Save } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EmptyState } from '@/components/EmptyState';
@@ -521,8 +522,8 @@ export function AdminSubscriptionAccountsPage() {
   const quotaFilter = filters.quota ?? '';
   const recoveryFilter = filters.recovery_policy ?? '';
 
-  const { data: accounts, isLoading, dataUpdatedAt } = useQuery({
-    queryKey: ['admin-subscription-accounts', page, pageSize, search, statusFilter, platformFilter, recoveryFilter, sortKey, sortDirection],
+  const { data: accounts, isLoading, dataUpdatedAt } = useAuthorizedQuery({
+    permission: 'channel.account.list', queryKey: ['admin-subscription-accounts', page, pageSize, search, statusFilter, platformFilter, recoveryFilter, sortKey, sortDirection],
     queryFn: async () => {
       const params = buildAdminListParams({
         page,
@@ -829,7 +830,7 @@ export function AdminSubscriptionAccountsPage() {
               <option value="total">{t("重置总额")}</option>
               <option value="all">{t("重置全部")}</option>
             </select>
-            <Button
+            <Button permission="channel.account.quota.reset"
               variant="outline"
               size="sm"
               onClick={() => {
@@ -840,7 +841,7 @@ export function AdminSubscriptionAccountsPage() {
               disabled={batchResetQuotaMutation.isPending}
             >
               <RotateCcw className="size-3.5" />{t("批量重置")}</Button>
-            <Button variant="outline" size="sm" onClick={() => setIsBatchTemplateOpen(true)}>
+            <Button permission="channel.account.update" variant="outline" size="sm" onClick={() => setIsBatchTemplateOpen(true)}>
               <Save className="size-3.5" />{t("应用额度模板")}</Button>
             <Button variant="ghost" size="sm" onClick={() => setSelectedAccountIDs(new Set())}>{t("取消选择")}</Button>
           </div>
@@ -930,9 +931,9 @@ export function AdminSubscriptionAccountsPage() {
                       <QuotaStatusCell account={account} />
                     </TableCell>
                     <TableCell className="text-right space-x-2">
-                      <Button variant="outline" size="sm" onClick={() => openEdit(account)}>
+                      <Button object={account} permission="channel.account.update" variant="outline" size="sm" onClick={() => openEdit(account)}>
                         <Pencil className="size-3.5" />{t("编辑")}</Button>
-                      <Button
+                      <Button object={account} permission={account.status === 1 ? 'channel.account.disable' : 'channel.account.enable'}
                         variant="outline"
                         size="sm"
                         onClick={() => toggleStatusMutation.mutate({ id: account.id, currentStatus: account.status })}
@@ -940,7 +941,7 @@ export function AdminSubscriptionAccountsPage() {
                       >
                         {account.status === 1 ? t("停用") : t("启用")}
                       </Button>
-                      <Button
+                      <Button object={account} permission="channel.account.quota.reset"
                         variant="outline"
                         size="sm"
                         onClick={() => {
@@ -951,7 +952,7 @@ export function AdminSubscriptionAccountsPage() {
                         disabled={resetQuotaMutation.isPending}
                       >
                         <RotateCcw className="size-3.5" />{t("重置")}</Button>
-                      <Button
+                      <Button object={account} permission="channel.account.delete"
                         variant="outline"
                         size="sm"
                         onClick={() => {
@@ -1041,7 +1042,7 @@ export function AdminSubscriptionAccountsPage() {
               <Label htmlFor="batch-quota-timezone">{t("额度时区")}</Label>
               <Input id="batch-quota-timezone" value={batchTemplate.quotaTimezone} onChange={(e) => setBatchTemplate({ ...batchTemplate, quotaTimezone: e.target.value })} placeholder={t("留空不修改")} />
             </div>
-            <Button
+            <Button permission="channel.account.update"
               onClick={submitBatchTemplate}
               disabled={batchQuotaTemplateMutation.isPending || selectedIDs.length === 0}
               className="sm:col-span-2"
@@ -1425,7 +1426,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
               onChange={(e) => setForm({ ...form, metadata: e.target.value })}
             />
           </div>
-          <Button onClick={handleSubmit} disabled={pending} className="sm:col-span-2">
+          <Button permission="channel.account.create" onClick={handleSubmit} disabled={pending} className="sm:col-span-2">
             {pending ? t("创建中...") : t("创建")}
           </Button>
         </div>
@@ -1697,7 +1698,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
                 onChange={(e) => onDraftChange({ ...draft, metadata: e.target.value })}
               />
             </div>
-            <Button
+            <Button permission="channel.account.update"
               onClick={handleUpdate}
               disabled={pending || !draft.name.trim() || !draft.models.trim() || !draft.group.trim()}
               className="sm:col-span-2"

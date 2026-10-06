@@ -1,8 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuthorization, useAuthorizedQuery } from '@/lib/authorization';
+import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { Download, Eye, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
 import { AdminPagination } from '@/components/admin/AdminPagination';
@@ -166,7 +167,7 @@ export function AdminModelsPage() {
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState<ModelDraft>(emptyDraft);
-  const [editingModel, setEditingModel] = useState<{ pk: number; draft: ModelDraft } | null>(null);
+  const [editingModel, setEditingModel] = useState<{ pk: number; draft: ModelDraft; pricesVisible: boolean } | null>(null);
   const [editLoading, setEditLoading] = useState(false);
   const [detailModelPk, setDetailModelPk] = useState<number | null>(null);
   const [exchangeOpen, setExchangeOpen] = useState(false);
@@ -177,6 +178,7 @@ export function AdminModelsPage() {
     onConfirm: () => void;
   } | null>(null);
 
+  const auth = useAuthorization();
   const queryClient = useQueryClient();
   const invalidateModels = () => queryClient.invalidateQueries({ queryKey: ['admin-models'] });
 
@@ -190,8 +192,8 @@ export function AdminModelsPage() {
   const categoryFilter = filters.category ?? '';
   const tierFilter = filters.tier ?? '';
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-models', page, pageSize, search, sortKey, sortDirection, filters],
+  const { data, isLoading } = useAuthorizedQuery({
+    permission: 'channel.model.list', queryKey: ['admin-models', page, pageSize, search, sortKey, sortDirection, filters],
     queryFn: async () => {
       const params = buildAdminListParams({ page, pageSize, search, sortKey, sortDirection, filters });
       return listModels({
@@ -271,14 +273,18 @@ export function AdminModelsPage() {
     }
     const metadataError = validateMetadata(createDraft.metadata);
     if (metadataError) { toast.error(metadataError); return; }
-    createMutation.mutate(draftToCreatePayload(createDraft));
+    const payload = draftToCreatePayload(createDraft);
+    if (!auth.can('billing.pricing.update')) { delete payload.pricing_input; delete payload.pricing_output; delete payload.pricing_cache_read; }
+    createMutation.mutate(payload);
   };
 
   const handleUpdate = () => {
     if (!editingModel) return;
     const metadataError = validateMetadata(editingModel.draft.metadata);
     if (metadataError) { toast.error(metadataError); return; }
-    updateMutation.mutate(draftToUpdatePayload(editingModel.pk, editingModel.draft));
+    const payload = draftToUpdatePayload(editingModel.pk, editingModel.draft);
+    if (!editingModel.pricesVisible || !auth.can('billing.pricing.update')) { payload.preserve_pricing = true; delete payload.pricing_input; delete payload.pricing_output; delete payload.pricing_cache_read; }
+    updateMutation.mutate(payload);
   };
 
   const handleDelete = (pk: number) => {
@@ -324,10 +330,10 @@ export function AdminModelsPage() {
 
   const openEdit = async (model: ModelSummary) => {
     setEditLoading(true);
-    setEditingModel({ pk: model.id, draft: emptyDraft });
+    setEditingModel({ pk: model.id, draft: emptyDraft, pricesVisible: false });
     try {
       const detail = await getModel(model.id);
-      setEditingModel({ pk: model.id, draft: modelInfoToDraft(detail.model) });
+      setEditingModel({ pk: model.id, draft: modelInfoToDraft(detail.model), pricesVisible: auth.snapshot?.authorization_mode === 'legacy' || detail.model.price_fields_visible === true });
     } catch (err) {
       toast.error((err as Error).message || t("加载模型详情失败"));
       setEditingModel(null);
@@ -347,9 +353,9 @@ export function AdminModelsPage() {
           <p className="text-sm text-muted-foreground">{t("统一管理所有可用模型，支持启用/禁用、分类和映射")}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setExchangeOpen(true)}>
+          <Button permission={['channel.model.import', 'channel.model.export']} any variant="outline" onClick={() => setExchangeOpen(true)}>
             <Download className="size-4" />{t("导入/导出")}</Button>
-          <Button onClick={() => { setCreateDraft(emptyDraft); setIsCreateOpen(true); }}>
+          <Button permission="channel.model.create" onClick={() => { setCreateDraft(emptyDraft); setIsCreateOpen(true); }}>
             <Plus className="size-4" />{t("新建模型")}</Button>
         </div>
       </div>
@@ -418,9 +424,9 @@ export function AdminModelsPage() {
             {selectedPks.size > 0 && (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">{t("已选")}{selectedPks.size}{t("个")}</span>
-                <Button variant="outline" size="sm" onClick={() => handleBatch('enable')}>{t("启用")}</Button>
-                <Button variant="outline" size="sm" onClick={() => handleBatch('disable')}>{t("禁用")}</Button>
-                <Button variant="outline" size="sm" onClick={() => handleBatch('delete')}>
+                <Button permission={['channel.model.batch_update', 'channel.model.update', 'channel.model.enable']} variant="outline" size="sm" onClick={() => handleBatch('enable')}>{t("启用")}</Button>
+                <Button permission={['channel.model.batch_update', 'channel.model.update', 'channel.model.disable']} variant="outline" size="sm" onClick={() => handleBatch('disable')}>{t("禁用")}</Button>
+                <Button permission={['channel.model.batch_update', 'channel.model.delete', 'channel.model_alias.delete', 'channel.model_mapping.delete', 'billing.pricing.update']} variant="outline" size="sm" onClick={() => handleBatch('delete')}>
                   <Trash2 className="size-3.5" />{t("删除")}</Button>
               </div>
             )}
@@ -491,11 +497,11 @@ export function AdminModelsPage() {
                     <TableCell className="hidden lg:table-cell">{m.channel_count}</TableCell>
                     <TableCell className="hidden lg:table-cell">{m.subscription_count}</TableCell>
                     <TableCell className="text-right space-x-2">
-                      <Button variant="outline" size="sm" onClick={() => setDetailModelPk(m.id)}>
+                      <Button permission="channel.model.read" variant="outline" size="sm" onClick={() => setDetailModelPk(m.id)}>
                         <Eye className="size-3.5" />{t("详情")}</Button>
-                      <Button variant="outline" size="sm" onClick={() => openEdit(m)} disabled={editLoading}>
+                      <Button permission={['channel.model.read', 'channel.model.update']} variant="outline" size="sm" onClick={() => openEdit(m)} disabled={editLoading}>
                         <Pencil className="size-3.5" />{t("编辑")}</Button>
-                      <Button
+                      <Button permission={['channel.model.update', m.status === 1 ? 'channel.model.disable' : 'channel.model.enable']}
                         variant="outline"
                         size="sm"
                         onClick={() => toggleStatusMutation.mutate({ pk: m.id, status: m.status === 1 ? 0 : 1 })}
@@ -503,7 +509,7 @@ export function AdminModelsPage() {
                       >
                         {m.status === 1 ? t("禁用") : t("启用")}
                       </Button>
-                      <Button
+                      <Button permission={['channel.model.delete', 'channel.model_alias.delete', 'channel.model_mapping.delete', 'billing.pricing.update']}
                         variant="outline"
                         size="sm"
                         onClick={() => handleDelete(m.id)}
@@ -538,7 +544,7 @@ export function AdminModelsPage() {
           <ModelDraftFields draft={createDraft} onChange={(patch) => setCreateDraft((prev) => ({ ...prev, ...patch }))} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>{t("取消")}</Button>
-            <Button onClick={handleCreate} disabled={createMutation.isPending}>
+            <Button permission="channel.model.create" onClick={handleCreate} disabled={createMutation.isPending}>
               {createMutation.isPending ? t("创建中…") : t("创建")}
             </Button>
           </DialogFooter>
@@ -553,11 +559,11 @@ export function AdminModelsPage() {
             <DialogDescription>{editingModel?.draft.modelId}</DialogDescription>
           </DialogHeader>
           {editingModel && (
-            <ModelDraftFields draft={editingModel.draft} onChange={updateEditDraft} isEdit />
+            <ModelDraftFields draft={editingModel.draft} onChange={updateEditDraft} isEdit pricesVisible={editingModel.pricesVisible} />
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingModel(null)}>{t("取消")}</Button>
-            <Button onClick={handleUpdate} disabled={updateMutation.isPending || editLoading}>
+            <Button permission="channel.model.update" onClick={handleUpdate} disabled={updateMutation.isPending || editLoading}>
               {editLoading ? t("加载中…") : updateMutation.isPending ? t("保存中…") : t("保存")}
             </Button>
           </DialogFooter>

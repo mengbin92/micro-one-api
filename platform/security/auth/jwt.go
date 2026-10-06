@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/rand"
 	"fmt"
+	"micro-one-api/platform/security/serviceidentity"
 	"os"
 	"slices"
 	"strings"
@@ -293,9 +294,9 @@ func LoadServiceAuthConfig() (*ServiceAuthConfig, error) {
 	}
 
 	// Get token — must be provided via environment
-	token := os.Getenv("SERVICE_TOKEN")
+	token := serviceidentity.ClientToken()
 	if token == "" {
-		return nil, fmt.Errorf("SERVICE_TOKEN environment variable is required")
+		return nil, fmt.Errorf("SERVICE_IDENTITY_TOKEN or legacy SERVICE_TOKEN is required")
 	}
 
 	return &ServiceAuthConfig{

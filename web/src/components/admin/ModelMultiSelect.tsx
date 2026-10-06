@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useAuthorizedQuery } from '@/lib/authorization';
 import { Check, Plus, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
@@ -31,8 +31,8 @@ export function ModelMultiSelect({
   const [search, setSearch] = useState('');
 
   // Fetch all enabled models from the registry (page 1, large page size).
-  const { data: registryModels, isLoading } = useQuery({
-    queryKey: ['admin-models', 'select'],
+  const { data: registryModels, isLoading } = useAuthorizedQuery({
+    permission: 'channel.model.list', queryKey: ['admin-models', 'select'],
     queryFn: async () => {
       const resp = await listModels({ page: 1, page_size: 500, status: 1 });
       return resp.models ?? [];

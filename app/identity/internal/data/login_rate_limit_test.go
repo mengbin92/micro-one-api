@@ -11,7 +11,7 @@ import (
 
 func TestRepositoryLoginRateLimiter(t *testing.T) {
 	mr := miniredis.RunT(t)
-	repo := &Repository{redis: redis.NewClient(&redis.Options{Addr: mr.Addr()})}
+	repo := &Repository{Data: &Data{redis: redis.NewClient(&redis.Options{Addr: mr.Addr()})}}
 	t.Cleanup(func() { _ = repo.redis.Close() })
 	ctx := context.Background()
 

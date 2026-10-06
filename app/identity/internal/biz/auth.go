@@ -20,8 +20,10 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/routing"
 	"micro-one-api/platform/audit"
+	sessionauth "micro-one-api/platform/security/auth"
 )
 
 const (
@@ -65,22 +67,23 @@ var (
 )
 
 type User struct {
-	DefaultRoutingGroupID int64
-	RoutingAccessRevision int64
-	PublicGroupAccess     string
-	ID                    int64
-	Username              string
-	DisplayName           string
-	Email                 string
-	Group                 string
-	Status                int32
-	Role                  int32
-	PasswordHash          string
-	OAuthProvider         string
-	OAuthID               string
-	Balance               int64
-	AffCode               string
-	InviterID             int64
+	AuthorizationRevision, AuthorizationPolicyRevision uint64
+	DefaultRoutingGroupID                              int64
+	RoutingAccessRevision                              int64
+	PublicGroupAccess                                  string
+	ID                                                 int64
+	Username                                           string
+	DisplayName                                        string
+	Email                                              string
+	Group                                              string
+	Status                                             int32
+	Role                                               int32
+	PasswordHash                                       string
+	OAuthProvider                                      string
+	OAuthID                                            string
+	Balance                                            int64
+	AffCode                                            string
+	InviterID                                          int64
 	// PasswordChangedAt is the unix epoch (milliseconds) of the most recent
 	// password change. It is embedded in session JWTs as `pwd_epoch`; any
 	// session token whose epoch predates this value is rejected on
@@ -150,17 +153,7 @@ type AuthSnapshot struct {
 	TokenEnabled  bool
 }
 
-type UserSessionClaims struct {
-	UserID    int64  `json:"user_id"`
-	Username  string `json:"username"`
-	Role      int32  `json:"role"`
-	TokenType string `json:"token_type"`
-	// PwdEpoch carries the user's PasswordChangedAt (Unix ms) at signing time. The
-	// validator rejects tokens whose PwdEpoch is older than the stored
-	// PasswordChangedAt, so a password change revokes outstanding sessions.
-	PwdEpoch int64 `json:"pwd_epoch,omitempty"`
-	jwt.RegisteredClaims
-}
+type UserSessionClaims = sessionauth.UserSessionClaims
 
 type IdentityRepo interface {
 	FindTokenByKey(ctx context.Context, key string) (*Token, error)
@@ -213,6 +206,8 @@ type LoginRateLimiter interface {
 }
 
 type IdentityUsecase struct {
+	iam                     IAMRuntimeRepo
+	iamRunner               IAMTxRunner
 	routingGroups           RoutingGroupReader
 	repo                    IdentityRepo
 	auditor                 *audit.Auditor
@@ -360,40 +355,51 @@ func (uc *IdentityUsecase) GetAuthSnapshot(ctx context.Context, key, clientIP st
 	}, nil
 }
 
-func (uc *IdentityUsecase) ValidateSessionToken(ctx context.Context, tokenString string) (*User, error) {
-	tokenString = strings.TrimSpace(strings.TrimPrefix(tokenString, "Bearer "))
-	if tokenString == "" {
-		return nil, ErrInvalidToken
-	}
-	parser := jwt.NewParser(
-		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name}),
-		jwt.WithIssuer(uc.sessionIssuer),
-		jwt.WithAudience("micro-one-api-web"),
-	)
-	token, err := parser.ParseWithClaims(tokenString, &UserSessionClaims{}, func(token *jwt.Token) (any, error) {
-		return uc.sessionSecret, nil
-	})
-	if err != nil {
-		return nil, ErrInvalidToken
-	}
-	claims, ok := token.Claims.(*UserSessionClaims)
-	if !ok || !token.Valid || claims.TokenType != "user_session" || claims.UserID <= 0 {
-		return nil, ErrInvalidToken
-	}
-	user, err := uc.repo.FindUserByID(ctx, claims.UserID)
+func (uc *IdentityUsecase) ValidateSessionToken(ctx context.Context, raw string) (*User, error) {
+	a, err := uc.authenticateSession(raw)
 	if err != nil {
 		return nil, err
 	}
-	if user.Status != UserStatusEnabled {
-		return nil, ErrUserDisabled
+	if uc.iam != nil {
+		var user User
+		var mode string
+		err = uc.iamRunner.ReadIAMSnapshot(ctx, func(ctx context.Context, tx IAMTx) error {
+			p, e := uc.iam.Policy(ctx, tx)
+			if e != nil {
+				return e
+			}
+			mode = p.Mode
+			if p.Cutover == "blocked" || p.Cutover == "verified" {
+				return ErrIAMCutoverBlocked
+			}
+			user, e = uc.iam.User(ctx, tx, a.UserID)
+			if e != nil {
+				return e
+			}
+			return checkIAMIdentity(a, user, uc.now())
+		})
+		if err != nil {
+			return nil, err
+		}
+		if mode == "iam" {
+			snap, e := uc.GetSessionAuthorization(ctx, raw, authorization.Platform())
+			if e != nil {
+				return nil, e
+			}
+			if snap.Session.ActivationState != "active" {
+				return nil, ErrIAMConstraintsViolated
+			}
+			user = snap.User
+			user.Role = RoleGuestUser
+		}
+		return &user, nil
 	}
-	// M6: reject sessions issued before the most recent password change /
-	// forced logout. A non-zero PasswordChangedAt acts as a token epoch:
-	// any session token whose embedded PwdEpoch is strictly older is
-	// considered revoked. A zero PasswordChangedAt (migration / never set)
-	// imposes no constraint so existing sessions keep working.
-	if user.PasswordChangedAt > 0 && claims.PwdEpoch < user.PasswordChangedAt {
-		return nil, ErrSessionRevoked
+	user, err := uc.repo.FindUserByID(ctx, a.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if err = checkIAMIdentity(a, *user, uc.now()); err != nil {
+		return nil, err
 	}
 	return user, nil
 }
@@ -704,8 +710,14 @@ func (uc *IdentityUsecase) GetOrCreateAffCode(ctx context.Context, userID int64)
 	if err != nil {
 		return "", err
 	}
-	user.AffCode = code
-	if err := uc.repo.UpdateUser(ctx, user); err != nil {
+	if err := uc.mutateLegacyAccount(ctx, userID, "account.self.aff_code", []string{"aff_code"}, func(u *User) error {
+		if u.AffCode != "" {
+			code = u.AffCode
+		} else {
+			u.AffCode = code
+		}
+		return nil
+	}); err != nil {
 		return "", err
 	}
 	return code, nil
@@ -977,31 +989,37 @@ func (uc *IdentityUsecase) CreateUser(ctx context.Context, username, displayName
 		}
 		user.PasswordHash = string(hash)
 	}
-	if err := uc.createUser(ctx, user); err != nil {
+	if err := uc.createAccount(ctx, user, false); err != nil {
 		return nil, err
 	}
 	return user, nil
 }
 
 func (uc *IdentityUsecase) UpdateUser(ctx context.Context, userID int64, displayName, email, group string, status int32) error {
-	user, err := uc.repo.FindUserByID(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if displayName != "" {
-		user.DisplayName = displayName
-	}
-	if email != "" {
-		user.Email = email
-	}
+	// Owner facts for a routing change are resolved before the replayable callback.
+	target := User{Group: group}
 	if group != "" {
-		user.Group = group
-		if err := uc.bindLegacyGroup(ctx, user); err != nil {
+		if err := uc.bindLegacyGroup(ctx, &target); err != nil {
 			return err
 		}
 	}
-	user.Status = status
-	return uc.repo.UpdateUser(ctx, user)
+	return uc.mutateLegacyAccount(ctx, userID, "account.update", []string{"display_name", "email", "group", "status"}, func(user *User) error {
+		if user.IsRoot() && status != UserStatusEnabled {
+			return ErrIAMProtected
+		}
+		if displayName != "" {
+			user.DisplayName = displayName
+		}
+		if email != "" {
+			user.Email = email
+		}
+		if group != "" {
+			user.Group = group
+			user.DefaultRoutingGroupID = target.DefaultRoutingGroupID
+		}
+		user.Status = status
+		return nil
+	})
 }
 
 var (
@@ -1028,9 +1046,9 @@ var (
 //   - new role must be strictly below operator's role (you cannot promote
 //     someone to your own level or above)
 //
-// Passing operator == nil represents a system-level call (e.g. bootstrap,
-// admin-reset CLI) and skips operator-vs-target comparisons. The
-// root-protection and invalid-role checks still apply.
+// The persistent A4 runtime requires a verified, authoritative operator for
+// this legacy role mutation. Nil remains a compatibility seam for explicit
+// memory development/tests; credential rescue uses its dedicated usecase.
 func (uc *IdentityUsecase) SetRole(ctx context.Context, operator *User, userID int64, role int32) (*User, error) {
 	switch role {
 	case RoleGuestUser, RoleCommonUser, RoleAdminUser:
@@ -1048,24 +1066,42 @@ func (uc *IdentityUsecase) SetRole(ctx context.Context, operator *User, userID i
 			return nil, ErrCannotOutrankOperator
 		}
 	}
-	user, err := uc.repo.FindUserByID(ctx, userID)
+	var result *User
+	verify := func(ctx context.Context, tx IAMTx) error {
+		if operator == nil {
+			return ErrOperatorNotAdmin
+		}
+		authoritative, err := uc.iam.User(ctx, tx, operator.ID)
+		if err != nil {
+			return err
+		}
+		if authoritative.Status != UserStatusEnabled || !authoritative.IsAdmin() {
+			return ErrOperatorNotAdmin
+		}
+		if role >= authoritative.Role {
+			return ErrCannotOutrankOperator
+		}
+		operator = &authoritative
+		return nil
+	}
+	err := uc.mutateLegacyAccountChecked(ctx, userID, "account.role", []string{"role"}, verify, func(user *User) error {
+		if user.IsRoot() {
+			return ErrCannotChangeRootRole
+		}
+		if operator != nil {
+			if user.Role >= operator.Role {
+				return ErrCannotOutrankOperator
+			}
+		}
+		user.Role = role
+		copy := *user
+		result = &copy
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if user.IsRoot() {
-		return nil, ErrCannotChangeRootRole
-	}
-	if operator != nil && user.Role >= operator.Role {
-		return nil, ErrCannotOutrankOperator
-	}
-	if user.Role == role {
-		return user, nil
-	}
-	user.Role = role
-	if err := uc.repo.UpdateUser(ctx, user); err != nil {
-		return nil, err
-	}
-	return user, nil
+	return result, nil
 }
 
 // ErrCurrentPasswordRequired is returned when UpdateSelf attempts a
@@ -1075,78 +1111,101 @@ func (uc *IdentityUsecase) SetRole(ctx context.Context, operator *User, userID i
 var ErrCurrentPasswordRequired = errors.New("current password is required to change username or password")
 
 func (uc *IdentityUsecase) UpdateSelf(ctx context.Context, userID int64, username, displayName, password, currentPassword string, updateDisplayName bool) error {
-	user, err := uc.repo.FindUserByID(ctx, userID)
-	if err != nil {
-		return err
-	}
-	// M7: changing username or password is a sensitive mutation. Require
-	// the current password (verified against the stored bcrypt hash) so a
-	// stolen/unattended session cannot lock out the real owner. Display
-	// name edits are cosmetic and stay session-gated only.
-	sensitiveChange := (username != "" && username != user.Username) || password != ""
-	if sensitiveChange {
-		if currentPassword == "" {
-			return ErrCurrentPasswordRequired
-		}
-		if user.PasswordHash == "" {
-			return ErrInvalidPassword
-		}
-		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword)); err != nil {
-			return ErrInvalidPassword
-		}
-	}
-	if username != "" && username != user.Username {
-		existing, err := uc.repo.FindUserByUsername(ctx, username)
-		if err == nil && existing != nil && existing.ID != userID {
-			return ErrUserExists
-		}
-		if err != nil && !errors.Is(err, ErrUserNotFound) {
-			return err
-		}
-		user.Username = username
-	}
-	if updateDisplayName {
-		user.DisplayName = displayName
-	}
+	var passwordHash string
 	if password != "" {
-		if len(password) < 8 {
-			return fmt.Errorf("password must be at least 8 characters")
-		}
-		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 		if err != nil {
 			return err
 		}
-		user.PasswordHash = string(hash)
-		// M6: a password change revokes all previously-issued sessions by
-		// advancing the stored epoch past the PwdEpoch stamped in any
-		// outstanding JWT.
-		user.PasswordChangedAt = nextPasswordEpoch(user.PasswordChangedAt, uc.now())
+		passwordHash = string(h)
 	}
-	return uc.repo.UpdateUser(ctx, user)
+	return uc.mutateLegacyAccount(ctx, userID, "account.self.update", []string{"username", "display_name", "password"}, func(user *User) error {
+		// M7: changing username or password is a sensitive mutation. Require
+		// the current password (verified against the stored bcrypt hash) so a
+		// stolen/unattended session cannot lock out the real owner. Display
+		// name edits are cosmetic and stay session-gated only.
+		sensitiveChange := (username != "" && username != user.Username) || password != ""
+		if sensitiveChange {
+			if currentPassword == "" {
+				return ErrCurrentPasswordRequired
+			}
+			if user.PasswordHash == "" {
+				return ErrInvalidPassword
+			}
+			if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword)); err != nil {
+				return ErrInvalidPassword
+			}
+		}
+		if username != "" && username != user.Username {
+			if uc.iam == nil {
+				existing, err := uc.repo.FindUserByUsername(ctx, username)
+				if err == nil && existing != nil && existing.ID != userID {
+					return ErrUserExists
+				}
+				if err != nil && !errors.Is(err, ErrUserNotFound) {
+					return err
+				}
+			} // Persistent uniqueness is enforced by the same transaction's write.
+			user.Username = username
+		}
+		if updateDisplayName {
+			user.DisplayName = displayName
+		}
+		if password != "" {
+			if len(password) < 8 {
+				return fmt.Errorf("password must be at least 8 characters")
+			}
+			user.PasswordHash = passwordHash
+			// M6: a password change revokes all previously-issued sessions by
+			// advancing the stored epoch past the PwdEpoch stamped in any
+			// outstanding JWT.
+			user.PasswordChangedAt = nextPasswordEpoch(user.PasswordChangedAt, uc.now())
+		}
+		return nil
+	})
 }
 
 func (uc *IdentityUsecase) UpdateSelfEmail(ctx context.Context, userID int64, email string) error {
 	if strings.TrimSpace(email) == "" {
 		return fmt.Errorf("email is required")
 	}
-	user, err := uc.repo.FindUserByID(ctx, userID)
+	return uc.mutateLegacyAccount(ctx, userID, "account.self.email", []string{"email"}, func(user *User) error { user.Email = email; return nil })
+}
+func (uc *IdentityUsecase) DeleteUser(ctx context.Context, userID int64) error {
+	if uc.iam == nil {
+		return uc.repo.DeleteUser(ctx, userID)
+	}
+	return uc.runtimeWrite(ctx, "account.delete", strconv.FormatInt(userID, 10), "legacy account deletion", authorization.Actor{ServiceID: "identity-legacy-account"}, func(ctx context.Context, tx IAMTx) error {
+		p, err := uc.iam.Policy(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if p.CheckWrite(authorization.LegacyAccountWrite, false) != nil {
+			return ErrIAMCutoverBlocked
+		}
+		u, err := uc.iam.User(ctx, tx, userID)
+		if err != nil {
+			return err
+		}
+		if u.IsRoot() {
+			return ErrIAMProtected
+		}
+		if err = uc.iam.DeleteAccount(ctx, tx, userID); err != nil {
+			return err
+		}
+		return uc.iam.AdvancePolicy(ctx, tx, p.PolicyRevision, false)
+	})
+}
+func (uc *IdentityUsecase) ResetPasswordByEmail(ctx context.Context, email, password string) error {
+	mode, err := uc.AuthorizationMode(ctx)
 	if err != nil {
 		return err
 	}
-	user.Email = email
-	return uc.repo.UpdateUser(ctx, user)
-}
-
-func (uc *IdentityUsecase) DeleteUser(ctx context.Context, userID int64) error {
-	return uc.repo.DeleteUser(ctx, userID)
-}
-
-func (uc *IdentityUsecase) ResetPasswordByEmail(ctx context.Context, email, password string) error {
-	if email == "" || password == "" {
-		return ErrInvalidPassword
+	if mode == "iam" {
+		return uc.resetIAMPasswordByEmail(ctx, email, password)
 	}
-	if len(password) < 8 {
-		return fmt.Errorf("password must be at least 8 characters")
+	if email == "" || len(password) < 8 {
+		return ErrInvalidPassword
 	}
 	user, err := uc.repo.FindUserByEmail(ctx, email)
 	if err != nil {
@@ -1156,25 +1215,20 @@ func (uc *IdentityUsecase) ResetPasswordByEmail(ctx context.Context, email, pass
 	if err != nil {
 		return err
 	}
-	user.PasswordHash = string(hash)
-	// M6: revoke all prior sessions for this user (a reset should not leave
-	// pre-reset tokens valid).
-	user.PasswordChangedAt = nextPasswordEpoch(user.PasswordChangedAt, uc.now())
-	return uc.repo.UpdateUser(ctx, user)
+	return uc.mutateLegacyAccount(ctx, user.ID, "account.password.reset", []string{"password"}, func(u *User) error {
+		if u.Email != email {
+			return ErrIAMRevisionConflict
+		}
+		u.PasswordHash = string(hash)
+		u.PasswordChangedAt = nextPasswordEpoch(u.PasswordChangedAt, uc.now())
+		return nil
+	})
 }
-
-// InvalidateAllSessions revokes every outstanding session token for the user
-// by advancing the password epoch past the PwdEpoch of any currently-issued
-// JWT (review M6). It is the server-side primitive behind logout-all /
-// forced-sign-out: unlike per-token JTI blacklists it needs no distributed
-// revocation store.
 func (uc *IdentityUsecase) InvalidateAllSessions(ctx context.Context, userID int64) error {
-	user, err := uc.repo.FindUserByID(ctx, userID)
-	if err != nil {
-		return err
-	}
-	user.PasswordChangedAt = nextPasswordEpoch(user.PasswordChangedAt, uc.now())
-	return uc.repo.UpdateUser(ctx, user)
+	return uc.mutateLegacyAccount(ctx, userID, "account.self.logout.all", []string{"password_epoch"}, func(u *User) error {
+		u.PasswordChangedAt = nextPasswordEpoch(u.PasswordChangedAt, uc.now())
+		return nil
+	})
 }
 
 func (uc *IdentityUsecase) generateToken() string {
@@ -1293,7 +1347,7 @@ func (uc *IdentityUsecase) OAuthLogin(ctx context.Context, provider, oauthID, us
 		}
 		created = true
 		_, identityErr := uc.repo.FindOAuthIdentity(ctx, provider, oauthID)
-		if errors.Is(identityErr, ErrOAuthUserNotFound) {
+		if errors.Is(identityErr, ErrOAuthUserNotFound) && uc.iam == nil {
 			now := uc.now().Unix()
 			if err := uc.repo.CreateOAuthIdentity(ctx, &OAuthIdentity{
 				UserID:     user.ID,
@@ -1326,6 +1380,9 @@ func (uc *IdentityUsecase) BindOAuthIdentity(ctx context.Context, userID int64, 
 	oauthID = strings.TrimSpace(oauthID)
 	if provider == "" || oauthID == "" {
 		return nil, ErrOAuthUserNotFound
+	}
+	if uc.iam != nil {
+		return uc.bindIAMOAuthIdentity(ctx, userID, provider, oauthID)
 	}
 	user, err := uc.repo.FindUserByID(ctx, userID)
 	if err != nil {

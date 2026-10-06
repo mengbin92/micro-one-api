@@ -3,12 +3,15 @@ package biz
 import (
 	"context"
 	"errors"
+	"micro-one-api/domain/authorization"
 	"time"
 )
 
 type GroupUsecase struct {
-	repo GroupRepository
-	now  func() time.Time
+	authorization authorization.Resolver
+	consumer      string
+	repo          GroupRepository
+	now           func() time.Time
 }
 
 func NewGroupUsecase(repo GroupRepository) *GroupUsecase {
@@ -16,6 +19,14 @@ func NewGroupUsecase(repo GroupRepository) *GroupUsecase {
 }
 
 func (uc *GroupUsecase) Create(ctx context.Context, group *SubscriptionGroup) error {
+	if group != nil && group.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, group.Reason)
+	}
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "quota_policies", "create")
+	if authErr != nil {
+		return authErr
+	}
 	if group == nil {
 		return ErrSubscriptionGroupNotFound
 	}
@@ -44,6 +55,14 @@ func (uc *GroupUsecase) Create(ctx context.Context, group *SubscriptionGroup) er
 }
 
 func (uc *GroupUsecase) Update(ctx context.Context, group *SubscriptionGroup) error {
+	if group != nil && group.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, group.Reason)
+	}
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "quota_policies", "update")
+	if authErr != nil {
+		return authErr
+	}
 	if group == nil {
 		return ErrSubscriptionGroupNotFound
 	}
@@ -52,13 +71,42 @@ func (uc *GroupUsecase) Update(ctx context.Context, group *SubscriptionGroup) er
 }
 
 func (uc *GroupUsecase) Delete(ctx context.Context, groupID int64) error {
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "quota_policies", "delete")
+	if authErr != nil {
+		return authErr
+	}
 	return uc.repo.DeleteGroup(ctx, groupID)
 }
 
 func (uc *GroupUsecase) Get(ctx context.Context, groupID int64) (*SubscriptionGroup, error) {
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "quota_policies", "read")
+	if authErr != nil {
+		return nil, authErr
+	}
 	return uc.repo.GetGroupByID(ctx, groupID)
 }
 
 func (uc *GroupUsecase) List(ctx context.Context) ([]*SubscriptionGroup, error) {
+	var authErr error
+	ctx, authErr = prepareSubscription(ctx, uc.authorization, uc.consumer, "quota_policies", "list")
+	if authErr != nil {
+		return nil, authErr
+	}
 	return uc.repo.ListGroups(ctx)
+}
+
+func (uc *GroupUsecase) ListForPurchase(ctx context.Context) ([]*SubscriptionGroup, error) {
+	groups, err := uc.repo.ListGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*SubscriptionGroup, 0, len(groups))
+	for _, g := range groups {
+		if g.Status == SubscriptionGroupStatusEnabled && g.PriceQuota > 0 && g.DurationDays > 0 {
+			out = append(out, g)
+		}
+	}
+	return out, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/subscription/biz"
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/routingoutbox"
@@ -57,14 +58,50 @@ func syncContractCoverage(tx *gorm.DB, table, column string, id int64, c *biz.Su
 }
 
 func subscriptionMutation(ctx context.Context, db *gorm.DB, s *biz.UserSubscription, write func(*gorm.DB) error) error {
-	if !biz.EntitlementsEnabled() && s.Contract == nil {
+	iam := false
+	for _, op := range subscriptionWriteOps {
+		if _, ok := authorization.QueryScopeFromContext(ctx, op); ok {
+			iam = true
+		}
+	}
+	if !biz.EntitlementsEnabled() && s.Contract == nil && !iam {
 		return write(db.WithContext(ctx))
 	}
 	var revision int64
-	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := runSubscriptionTx(ctx, db, func(ctx context.Context, tx *gorm.DB) error {
 		var current subscriptionModel
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, s.ID).Error; err != nil {
 			return err
+		}
+		if err := requireOperations(ctx, current.ID, current.UserID, subscriptionWriteOps...); err != nil {
+			return err
+		}
+		if err := requireOperations(ctx, s.ID, s.UserID, subscriptionWriteOps...); err != nil {
+			return err
+		}
+		for _, operation := range []string{"subscription.user_subscription.assign", "subscription.user_subscription.change"} {
+			if _, iam := authorization.QueryScopeFromContext(ctx, operation); iam {
+				if err := validateEnabledQuotaPolicy(tx, s.GroupID); err != nil {
+					return err
+				}
+				break
+			}
+		}
+		if iam && s.EntitlementRevision != current.EntitlementRevision {
+			return biz.ErrSubscriptionContractConflict
+		}
+		if expected, supplied := biz.ExpectedRevision(ctx); iam && supplied && expected != current.EntitlementRevision {
+			return biz.ErrSubscriptionContractConflict
+		}
+		if !biz.EntitlementsEnabled() && s.Contract == nil {
+			if err := write(tx); err != nil {
+				return err
+			}
+			revision = current.EntitlementRevision + 1
+			if err := tx.Model(&subscriptionModel{}).Where("id = ?", s.ID).Update("entitlement_revision", revision).Error; err != nil {
+				return err
+			}
+			return auditOperations(ctx, tx, s.ID, subscriptionWriteOps...)
 		}
 		if s.EntitlementRevision > 0 && s.EntitlementRevision != current.EntitlementRevision {
 			return biz.ErrSubscriptionContractConflict
@@ -94,7 +131,10 @@ func subscriptionMutation(ctx context.Context, db *gorm.DB, s *biz.UserSubscript
 		if err := syncContractCoverage(tx, "subscription_routing_entitlements", "subscription_id", s.ID, s.Contract); err != nil {
 			return err
 		}
-		return routingoutbox.Enqueue(tx, "subscription", "subscription", s.ID, revision)
+		if err := routingoutbox.Enqueue(tx, "subscription", "subscription", s.ID, revision); err != nil {
+			return err
+		}
+		return auditOperations(ctx, tx, s.ID, subscriptionWriteOps...)
 	})
 	if err == nil {
 		s.EntitlementRevision = revision
@@ -121,6 +161,22 @@ func ValidateContractBillingModes(tx *gorm.DB, c *biz.SubscriptionContract) erro
 	ids := make([]int64, 0, len(c.Coverage))
 	for _, g := range c.Coverage {
 		ids = append(ids, g.GroupID)
+	}
+	iamReferences := false
+	for _, op := range []string{"subscription.plan.create", "subscription.plan.update", "subscription.plan.publish", "subscription.user_subscription.assign", "subscription.user_subscription.change", "billing.account.read"} {
+		if _, ok := authorization.QueryScopeFromContext(tx.Statement.Context, op); ok {
+			iamReferences = true
+		}
+	}
+	if iamReferences {
+		var validGroups int64
+		if err := tx.Table("routing_groups").Where("id IN ? AND status = ?", ids, "enabled").Count(&validGroups).Error; err != nil {
+			return err
+		}
+		if validGroups != int64(len(ids)) {
+			return biz.ErrSubscriptionContractInvalid
+		}
+
 	}
 	var n int64
 	if err := tx.Table("routing_billing_policies p").Joins("JOIN routing_billing_policy_heads h ON h.routing_group_id=p.routing_group_id AND h.version=p.version").Where("p.routing_group_id IN ? AND p.billing_mode = ?", ids, "wallet_only").Count(&n).Error; err != nil {

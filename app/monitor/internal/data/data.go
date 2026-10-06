@@ -3,6 +3,8 @@ package data
 import (
 	"context"
 	"errors"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/database/authzquery"
 	"os"
 	"sync"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"micro-one-api/platform/database/xdb"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Repository struct {
@@ -33,15 +36,16 @@ type healthCheckModel struct {
 func (healthCheckModel) TableName() string { return "health_checks" }
 
 type alertRuleModel struct {
-	ID          int64   `gorm:"column:id;primaryKey;autoIncrement"`
-	Name        string  `gorm:"column:name"`
-	ServiceName string  `gorm:"column:service_name"`
-	Metric      string  `gorm:"column:metric"`
-	Threshold   float64 `gorm:"column:threshold"`
-	Operator    string  `gorm:"column:operator"`
-	Duration    int     `gorm:"column:duration"`
-	Enabled     bool    `gorm:"column:enabled"`
-	CreatedAt   int64   `gorm:"column:created_at"`
+	Revision    uint64   `gorm:"column:revision"`
+	ID          int64    `gorm:"column:id;primaryKey;autoIncrement"`
+	Name        string   `gorm:"column:name"`
+	ServiceName string   `gorm:"column:service_name"`
+	Metric      string   `gorm:"column:metric"`
+	Threshold   float64  `gorm:"column:threshold"`
+	Operator    string   `gorm:"column:operator"`
+	Duration    int      `gorm:"column:duration"`
+	Enabled     xdb.Flag `gorm:"column:enabled"`
+	CreatedAt   int64    `gorm:"column:created_at"`
 }
 
 func (alertRuleModel) TableName() string { return "alert_rules" }
@@ -102,21 +106,31 @@ func (r *Repository) ListHealthChecks(ctx context.Context, serviceName string, p
 	if r.db != nil {
 		return r.listHealthChecksDB(ctx, serviceName, page, pageSize)
 	}
-	return r.listHealthChecksMemory(serviceName, page, pageSize)
+	return r.listHealthChecksMemory(ctx, serviceName, page, pageSize)
 }
 
 func (r *Repository) GetLatestHealthCheck(ctx context.Context, serviceName string) (*biz.HealthCheck, error) {
 	if r.db != nil {
 		return r.getLatestHealthCheckDB(ctx, serviceName)
 	}
-	return r.getLatestHealthCheckMemory(serviceName)
+	return r.getLatestHealthCheckMemory(ctx, serviceName)
 }
 
 // Alert rule methods
 
 func (r *Repository) CreateAlertRule(ctx context.Context, rule *biz.AlertRule) error {
 	if r.db != nil {
-		return r.createAlertRuleDB(ctx, rule)
+		return authzquery.RecordWriteFailure(ctx, r.db, "monitor.alert_rule.create", rule.ID, r.createAlertRuleDB(ctx, rule))
+	}
+	if err := authorization.RequireDurableWrite(ctx, "monitor.alert_rule.create"); err != nil {
+		return err
+	}
+	ctx, err := authorization.Refresh(ctx)
+	if err != nil {
+		return err
+	}
+	if err = authorization.Require(ctx, "monitor.alert_rule.create", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+		return err
 	}
 	return r.createAlertRuleMemory(rule)
 }
@@ -132,21 +146,41 @@ func (r *Repository) ListAlertRules(ctx context.Context, page, pageSize int32) (
 	if r.db != nil {
 		return r.listAlertRulesDB(ctx, page, pageSize)
 	}
-	return r.listAlertRulesMemory(page, pageSize)
+	return r.listAlertRulesMemory(ctx, page, pageSize)
 }
 
 func (r *Repository) UpdateAlertRule(ctx context.Context, rule *biz.AlertRule) error {
 	if r.db != nil {
-		return r.updateAlertRuleDB(ctx, rule)
+		return authzquery.RecordWriteFailure(ctx, r.db, "monitor.alert_rule.update", rule.ID, r.updateAlertRuleDB(ctx, rule))
 	}
-	return r.updateAlertRuleMemory(rule)
+	if err := authorization.RequireDurableWrite(ctx, "monitor.alert_rule.update"); err != nil {
+		return err
+	}
+	ctx, err := authorization.Refresh(ctx)
+	if err != nil {
+		return err
+	}
+	if err = authorization.Require(ctx, "monitor.alert_rule.update", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: rule.ID}); err != nil {
+		return err
+	}
+	return r.updateAlertRuleMemory(ctx, rule)
 }
 
 func (r *Repository) DeleteAlertRule(ctx context.Context, id int64) error {
 	if r.db != nil {
-		return r.deleteAlertRuleDB(ctx, id)
+		return authzquery.RecordWriteFailure(ctx, r.db, "monitor.alert_rule.delete", id, r.deleteAlertRuleDB(ctx, id))
 	}
-	return r.deleteAlertRuleMemory(id)
+	if err := authorization.RequireDurableWrite(ctx, "monitor.alert_rule.delete"); err != nil {
+		return err
+	}
+	ctx, err := authorization.Refresh(ctx)
+	if err != nil {
+		return err
+	}
+	if err = authorization.Require(ctx, "monitor.alert_rule.delete", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: id}); err != nil {
+		return err
+	}
+	return r.deleteAlertRuleMemory(ctx, id)
 }
 
 // DB implementations - health checks
@@ -167,6 +201,11 @@ func (r *Repository) saveHealthCheckDB(ctx context.Context, check *biz.HealthChe
 
 func (r *Repository) listHealthChecksDB(ctx context.Context, serviceName string, page, pageSize int32) ([]*biz.HealthCheck, int64, error) {
 	query := r.db.WithContext(ctx).Model(&healthCheckModel{})
+	var scopeErr error
+	query, scopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "id"}, "monitor.health.service.read")
+	if scopeErr != nil {
+		return nil, 0, scopeErr
+	}
 	if serviceName != "" {
 		query = query.Where("service_name = ?", serviceName)
 	}
@@ -200,6 +239,9 @@ func (r *Repository) getLatestHealthCheckDB(ctx context.Context, serviceName str
 		}
 		return nil, err
 	}
+	if err := authorization.Require(ctx, "monitor.health.service.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: m.ID}); err != nil {
+		return nil, err
+	}
 	return &biz.HealthCheck{
 		ID:           m.ID,
 		ServiceName:  m.ServiceName,
@@ -213,19 +255,35 @@ func (r *Repository) getLatestHealthCheckDB(ctx context.Context, serviceName str
 
 func (r *Repository) createAlertRuleDB(ctx context.Context, rule *biz.AlertRule) error {
 	m := alertRuleModel{
+		Revision:    1,
 		Name:        rule.Name,
 		ServiceName: rule.ServiceName,
 		Metric:      rule.Metric,
 		Threshold:   rule.Threshold,
 		Operator:    rule.Operator,
 		Duration:    rule.Duration,
-		Enabled:     rule.Enabled,
+		Enabled:     xdb.BoolInt(rule.Enabled),
 		CreatedAt:   rule.CreatedAt.Unix(),
 	}
-	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
+	if err := authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := authorization.Require(ctx, "monitor.alert_rule.create", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+			return err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "monitor.alert_rule.create"); iam {
+			expected, ok := authorization.ExpectedResourceRevision(ctx)
+			if !ok || expected != 0 {
+				return biz.ErrAlertRuleRevisionConflict
+			}
+		}
+		if err := tx.Create(&m).Error; err != nil {
+			return err
+		}
+		return authzquery.AppendWriteAudit(ctx, tx, "monitor.alert_rule.create", m.ID)
+	}); err != nil {
 		return err
 	}
 	rule.ID = m.ID
+	rule.Revision = m.Revision
 	return nil
 }
 
@@ -239,19 +297,25 @@ func (r *Repository) getAlertRuleDB(ctx context.Context, id int64) (*biz.AlertRu
 	}
 	return &biz.AlertRule{
 		ID:          m.ID,
+		Revision:    m.Revision,
 		Name:        m.Name,
 		ServiceName: m.ServiceName,
 		Metric:      m.Metric,
 		Threshold:   m.Threshold,
 		Operator:    m.Operator,
 		Duration:    m.Duration,
-		Enabled:     m.Enabled,
+		Enabled:     m.Enabled != 0,
 		CreatedAt:   time.Unix(m.CreatedAt, 0),
 	}, nil
 }
 
 func (r *Repository) listAlertRulesDB(ctx context.Context, page, pageSize int32) ([]*biz.AlertRule, int64, error) {
 	query := r.db.WithContext(ctx).Model(&alertRuleModel{})
+	var scopeErr error
+	query, scopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "id"}, "monitor.alert_rule.list")
+	if scopeErr != nil {
+		return nil, 0, scopeErr
+	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -265,13 +329,14 @@ func (r *Repository) listAlertRulesDB(ctx context.Context, page, pageSize int32)
 	for i, m := range models {
 		rules[i] = &biz.AlertRule{
 			ID:          m.ID,
+			Revision:    m.Revision,
 			Name:        m.Name,
 			ServiceName: m.ServiceName,
 			Metric:      m.Metric,
 			Threshold:   m.Threshold,
 			Operator:    m.Operator,
 			Duration:    m.Duration,
-			Enabled:     m.Enabled,
+			Enabled:     m.Enabled != 0,
 			CreatedAt:   time.Unix(m.CreatedAt, 0),
 		}
 	}
@@ -279,19 +344,68 @@ func (r *Repository) listAlertRulesDB(ctx context.Context, page, pageSize int32)
 }
 
 func (r *Repository) updateAlertRuleDB(ctx context.Context, rule *biz.AlertRule) error {
-	return r.db.WithContext(ctx).Model(&alertRuleModel{}).Where("id = ?", rule.ID).Updates(map[string]any{
-		"name":         rule.Name,
-		"service_name": rule.ServiceName,
-		"metric":       rule.Metric,
-		"threshold":    rule.Threshold,
-		"operator":     rule.Operator,
-		"duration":     rule.Duration,
-		"enabled":      rule.Enabled,
-	}).Error
+	var revision uint64
+	err := authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		var current alertRuleModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, rule.ID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return biz.ErrAlertRuleNotFound
+			}
+			return err
+		}
+		if err := authorization.Require(ctx, "monitor.alert_rule.update", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: current.ID}); err != nil {
+			return err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "monitor.alert_rule.update"); iam {
+			expected, ok := authorization.ExpectedResourceRevision(ctx)
+			if !ok || expected != current.Revision {
+				return biz.ErrAlertRuleRevisionConflict
+			}
+		}
+		if err := tx.Model(&alertRuleModel{}).Where("id = ?", rule.ID).Updates(map[string]any{
+			"revision":     current.Revision + 1,
+			"name":         rule.Name,
+			"service_name": rule.ServiceName,
+			"metric":       rule.Metric,
+			"threshold":    rule.Threshold,
+			"operator":     rule.Operator,
+			"duration":     rule.Duration,
+			"enabled":      xdb.BoolInt(rule.Enabled),
+		}).Error; err != nil {
+			return err
+		}
+		revision = current.Revision + 1
+		return authzquery.AppendWriteAudit(ctx, tx, "monitor.alert_rule.update", rule.ID)
+	})
+	if err == nil {
+		rule.Revision = revision
+	}
+	return err
 }
 
 func (r *Repository) deleteAlertRuleDB(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&alertRuleModel{}).Error
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		var current alertRuleModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return biz.ErrAlertRuleNotFound
+			}
+			return err
+		}
+		if err := authorization.Require(ctx, "monitor.alert_rule.delete", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: current.ID}); err != nil {
+			return err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "monitor.alert_rule.delete"); iam {
+			expected, ok := authorization.ExpectedResourceRevision(ctx)
+			if !ok || expected != current.Revision {
+				return biz.ErrAlertRuleRevisionConflict
+			}
+		}
+		if err := tx.Where("id = ?", id).Delete(&alertRuleModel{}).Error; err != nil {
+			return err
+		}
+		return authzquery.AppendWriteAudit(ctx, tx, "monitor.alert_rule.delete", id)
+	})
 }
 
 // Memory implementations - health checks
@@ -305,12 +419,15 @@ func (r *Repository) saveHealthCheckMemory(check *biz.HealthCheck) error {
 	return nil
 }
 
-func (r *Repository) listHealthChecksMemory(serviceName string, page, pageSize int32) ([]*biz.HealthCheck, int64, error) {
+func (r *Repository) listHealthChecksMemory(ctx context.Context, serviceName string, page, pageSize int32) ([]*biz.HealthCheck, int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var all []*biz.HealthCheck
 	for _, check := range r.checks {
 		if serviceName != "" && check.ServiceName != serviceName {
+			continue
+		}
+		if authorization.Require(ctx, "monitor.health.service.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: check.ID}) != nil {
 			continue
 		}
 		cloned := *check
@@ -325,7 +442,7 @@ func (r *Repository) listHealthChecksMemory(serviceName string, page, pageSize i
 	return all[start:end], total, nil
 }
 
-func (r *Repository) getLatestHealthCheckMemory(serviceName string) (*biz.HealthCheck, error) {
+func (r *Repository) getLatestHealthCheckMemory(ctx context.Context, serviceName string) (*biz.HealthCheck, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var latest *biz.HealthCheck
@@ -340,6 +457,9 @@ func (r *Repository) getLatestHealthCheckMemory(serviceName string) (*biz.Health
 	if latest == nil {
 		return nil, biz.ErrHealthCheckNotFound
 	}
+	if err := authorization.Require(ctx, "monitor.health.service.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: latest.ID}); err != nil {
+		return nil, err
+	}
 	cloned := *latest
 	return &cloned, nil
 }
@@ -351,6 +471,7 @@ func (r *Repository) createAlertRuleMemory(rule *biz.AlertRule) error {
 	defer r.mu.Unlock()
 	r.ruleSeq++
 	rule.ID = r.ruleSeq
+	rule.Revision = 1
 	r.rules[rule.ID] = rule
 	return nil
 }
@@ -366,11 +487,14 @@ func (r *Repository) getAlertRuleMemory(id int64) (*biz.AlertRule, error) {
 	return &cloned, nil
 }
 
-func (r *Repository) listAlertRulesMemory(page, pageSize int32) ([]*biz.AlertRule, int64, error) {
+func (r *Repository) listAlertRulesMemory(ctx context.Context, page, pageSize int32) ([]*biz.AlertRule, int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var all []*biz.AlertRule
 	for _, rule := range r.rules {
+		if authorization.Require(ctx, "monitor.alert_rule.list", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: rule.ID}) != nil {
+			continue
+		}
 		cloned := *rule
 		all = append(all, &cloned)
 	}
@@ -383,22 +507,38 @@ func (r *Repository) listAlertRulesMemory(page, pageSize int32) ([]*biz.AlertRul
 	return all[start:end], total, nil
 }
 
-func (r *Repository) updateAlertRuleMemory(rule *biz.AlertRule) error {
+func (r *Repository) updateAlertRuleMemory(ctx context.Context, rule *biz.AlertRule) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.rules[rule.ID]; !ok {
 		return biz.ErrAlertRuleNotFound
 	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "monitor.alert_rule.update"); iam {
+		expected, ok := authorization.ExpectedResourceRevision(ctx)
+		if !ok || expected != r.rules[rule.ID].Revision {
+			return biz.ErrAlertRuleRevisionConflict
+		}
+	}
+	rule.Revision = r.rules[rule.ID].Revision + 1
 	r.rules[rule.ID] = rule
 	return nil
 }
 
-func (r *Repository) deleteAlertRuleMemory(id int64) error {
+func (r *Repository) deleteAlertRuleMemory(ctx context.Context, id int64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.rules[id]; !ok {
 		return biz.ErrAlertRuleNotFound
 	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "monitor.alert_rule.delete"); iam {
+		expected, ok := authorization.ExpectedResourceRevision(ctx)
+		if !ok || expected != r.rules[id].Revision {
+			return biz.ErrAlertRuleRevisionConflict
+		}
+	}
 	delete(r.rules, id)
 	return nil
 }
+
+// NewRepositoryWithDB uses a shared caller-owned storage client.
+func NewRepositoryWithDB(db *gorm.DB) biz.MonitorRepo { return &Repository{db: db} }

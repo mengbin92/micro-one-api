@@ -16,9 +16,11 @@ import (
 	commonv1 "micro-one-api/api/common/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/app/identity/internal/biz"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/pkg/errors"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/routingdto"
+	"micro-one-api/platform/security/serviceidentity"
 )
 
 // IdentityService is the transport layer entry for identity-service.
@@ -34,7 +36,7 @@ type operatorCredentialKey struct{}
 // authenticated admin-api path and is never accepted from a public request
 // field.
 func WithOperatorCredential(ctx context.Context, credential string, system bool) context.Context {
-	return context.WithValue(context.WithValue(ctx, operatorCredentialKey{}, credential), operatorSystemKey{}, system)
+	return authorization.WithCredential(context.WithValue(context.WithValue(ctx, operatorCredentialKey{}, credential), operatorSystemKey{}, system), credential)
 }
 
 type operatorSystemKey struct{}
@@ -62,6 +64,13 @@ func (s *IdentityService) GetUserModel(ctx context.Context, userID int64) (*biz.
 }
 
 func (s *IdentityService) ValidateToken(ctx context.Context, req *identityv1.ValidateTokenRequest) (*identityv1.ValidateTokenReply, error) {
+	mode, err := s.uc.AuthorizationMode(ctx)
+	if err != nil {
+		return nil, mapIdentityErrorToGRPC(err)
+	}
+	if mode == "iam" && !serviceidentity.HasSystemCapability(ctx, identityv1.IdentityService_ValidateToken_FullMethodName) {
+		return nil, status.Error(codes.PermissionDenied, "dedicated token verification capability required")
+	}
 	user, err := s.uc.ValidateSessionToken(ctx, req.Token)
 	if err != nil {
 		return nil, mapIdentityErrorToGRPC(err)
@@ -75,6 +84,13 @@ func (s *IdentityService) ValidateToken(ctx context.Context, req *identityv1.Val
 }
 
 func (s *IdentityService) GetAuthSnapshot(ctx context.Context, req *identityv1.GetAuthSnapshotRequest) (*identityv1.GetAuthSnapshotReply, error) {
+	mode, err := s.uc.AuthorizationMode(ctx)
+	if err != nil {
+		return nil, mapIdentityErrorToGRPC(err)
+	}
+	if mode == "iam" && !serviceidentity.HasSystemCapability(ctx, identityv1.IdentityService_GetAuthSnapshot_FullMethodName) {
+		return nil, status.Error(codes.PermissionDenied, "dedicated token verification capability required")
+	}
 	snapshot, err := s.uc.GetAuthSnapshot(ctx, req.Token, req.ClientIp)
 	if err != nil {
 		return nil, mapIdentityErrorToGRPC(err)
@@ -100,19 +116,24 @@ func routingFactsVersion(present bool) int32 {
 }
 
 func (s *IdentityService) GetUser(ctx context.Context, req *identityv1.GetUserRequest) (*identityv1.GetUserReply, error) {
-	user, err := s.uc.GetUser(ctx, req.UserId)
+	ctx, err := s.managedIdentityContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	user, err := s.uc.GetManagedUser(ctx, req.UserId)
 	if err != nil {
 		return nil, mapIdentityErrorToGRPC(err)
 	}
 	return &identityv1.GetUserReply{
 		User: &commonv1.UserInfo{
-			Id:          user.ID,
-			Username:    user.Username,
-			DisplayName: user.DisplayName,
-			Email:       user.Email,
-			Group:       user.Group,
-			Status:      user.Status,
-			Role:        user.Role,
+			Id:                    user.ID,
+			Username:              user.Username,
+			DisplayName:           user.DisplayName,
+			Email:                 user.Email,
+			Group:                 user.Group,
+			Status:                user.Status,
+			Role:                  user.Role,
+			AuthorizationRevision: user.AuthorizationRevision, AuthorizationPolicyRevision: user.AuthorizationPolicyRevision,
 		},
 	}, nil
 }
@@ -173,6 +194,9 @@ func (s *IdentityService) Register(ctx context.Context, req *identityv1.Register
 }
 
 func (s *IdentityService) CreateAccessToken(ctx context.Context, req *identityv1.CreateAccessTokenRequest) (*identityv1.CreateAccessTokenResponse, error) {
+	if err := s.intrinsicUserContext(ctx, req.UserId); err != nil {
+		return nil, err
+	}
 	token, err := s.uc.CreateAccessToken(ctx, req.UserId, req.Name, req.Models, req.ExpireAt, biz.CreateAccessTokenOptions{UnlimitedQuota: true, RoutingMode: req.RoutingMode, RoutingGroupID: req.RoutingGroupId, RoutingGroupIDs: req.RoutingGroupIds})
 	if err != nil {
 		return &identityv1.CreateAccessTokenResponse{
@@ -189,20 +213,25 @@ func (s *IdentityService) CreateAccessToken(ctx context.Context, req *identityv1
 }
 
 func (s *IdentityService) ListUsers(ctx context.Context, req *identityv1.ListUsersRequest) (*identityv1.ListUsersResponse, error) {
-	users, total, err := s.uc.ListUsers(ctx, req.Page, req.PageSize, req.Keyword, req.Group, req.Status)
+	ctx, err := s.managedIdentityContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	users, total, err := s.uc.ListManagedUsers(ctx, req.Page, req.PageSize, req.Keyword, req.Group, req.Status)
 	if err != nil {
 		return nil, mapIdentityErrorToGRPC(err)
 	}
 	result := make([]*commonv1.UserInfo, len(users))
 	for i, u := range users {
 		result[i] = &commonv1.UserInfo{
-			Id:          u.ID,
-			Username:    u.Username,
-			DisplayName: u.DisplayName,
-			Email:       u.Email,
-			Group:       u.Group,
-			Status:      u.Status,
-			Role:        u.Role,
+			Id:                    u.ID,
+			Username:              u.Username,
+			DisplayName:           u.DisplayName,
+			Email:                 u.Email,
+			Group:                 u.Group,
+			Status:                u.Status,
+			Role:                  u.Role,
+			AuthorizationRevision: u.AuthorizationRevision, AuthorizationPolicyRevision: u.AuthorizationPolicyRevision,
 		}
 	}
 	return &identityv1.ListUsersResponse{
@@ -212,13 +241,14 @@ func (s *IdentityService) ListUsers(ctx context.Context, req *identityv1.ListUse
 }
 
 func (s *IdentityService) CreateUser(ctx context.Context, req *identityv1.CreateUserRequest) (*identityv1.CreateUserResponse, error) {
-	user, err := s.uc.CreateUser(ctx, req.Username, req.DisplayName, req.Email, req.Password, req.Group, 0)
+	ctx, err := s.managedIdentityContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	user, err := s.uc.CreateManagedUser(ctx, biz.ManagedUserCreate{Username: req.Username, DisplayName: req.DisplayName, Email: req.Email, Password: req.Password, Group: req.Group, ExpectedPolicyRevision: req.ExpectedPolicyRevision, Reason: req.Reason})
 	if err != nil {
 		applogger.Log.Warn("CreateUser failed", zap.Error(err))
-		return &identityv1.CreateUserResponse{
-			Success: false,
-			Message: "user creation failed",
-		}, nil
+		return nil, mapIdentityErrorToGRPC(err)
 	}
 	return &identityv1.CreateUserResponse{
 		Success: true,
@@ -228,13 +258,18 @@ func (s *IdentityService) CreateUser(ctx context.Context, req *identityv1.Create
 }
 
 func (s *IdentityService) UpdateUser(ctx context.Context, req *identityv1.UpdateUserRequest) (*identityv1.UpdateUserResponse, error) {
-	err := s.uc.UpdateUser(ctx, req.UserId, req.DisplayName, req.Email, req.Group, req.Status)
+	ctx, err := s.managedIdentityContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	patch := biz.ManagedUserPatch{DisplayName: req.DisplayName, Email: req.Email, Group: req.Group, Status: req.Status, Password: req.Password, ExpectedRevision: req.ExpectedRevision, ExpectedPolicyRevision: req.ExpectedPolicyRevision, Reason: req.Reason}
+	if req.UpdateMask != nil {
+		patch.Fields = req.UpdateMask.Paths
+	}
+	err = s.uc.UpdateManagedUser(ctx, req.UserId, patch)
 	if err != nil {
 		applogger.Log.Warn("UpdateUser failed", zap.Error(err))
-		return &identityv1.UpdateUserResponse{
-			Success: false,
-			Message: "user update failed",
-		}, nil
+		return nil, mapIdentityErrorToGRPC(err)
 	}
 	return &identityv1.UpdateUserResponse{
 		Success: true,
@@ -243,13 +278,14 @@ func (s *IdentityService) UpdateUser(ctx context.Context, req *identityv1.Update
 }
 
 func (s *IdentityService) DeleteUser(ctx context.Context, req *identityv1.DeleteUserRequest) (*identityv1.DeleteUserResponse, error) {
-	err := s.uc.DeleteUser(ctx, req.UserId)
+	ctx, err := s.managedIdentityContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	err = s.uc.DeleteManagedUser(ctx, req.UserId, req.ExpectedRevision, req.ExpectedPolicyRevision, req.Reason)
 	if err != nil {
 		applogger.Log.Warn("DeleteUser failed", zap.Error(err))
-		return &identityv1.DeleteUserResponse{
-			Success: false,
-			Message: "user deletion failed",
-		}, nil
+		return nil, mapIdentityErrorToGRPC(err)
 	}
 	return &identityv1.DeleteUserResponse{
 		Success: true,
@@ -320,9 +356,9 @@ func (s *IdentityService) SetUserRole(ctx context.Context, req *identityv1.SetUs
 	}
 	// operator == nil is only reachable here when the caller is
 	// service-authenticated, the ADMIN_TOKEN was independently validated, and
-	// OperatorUserId == 0. This represents a legitimate system-level
-	// call; SetRole applies its root-protection checks but skips the
-	// operator-vs-target rank comparison.
+	// OperatorUserId == 0. The persistent A4 runtime rejects this legacy
+	// system-level role mutation; credential rescue has a dedicated usecase.
+	// Explicit memory development mode keeps its compatibility behavior.
 	user, err := s.uc.SetRole(ctx, operator, req.UserId, req.Role)
 	if err != nil {
 		applogger.Log.Warn("SetUserRole failed", zap.Error(err))
@@ -342,6 +378,13 @@ func (s *IdentityService) SetUserRole(ctx context.Context, req *identityv1.SetUs
 // and marks it exhausted when it reaches zero. Called by relay-gateway after
 // billing settles so per-key quota limits are enforced (review High #5).
 func (s *IdentityService) ConsumeTokenQuota(ctx context.Context, req *identityv1.ConsumeTokenQuotaRequest) (*identityv1.ConsumeTokenQuotaReply, error) {
+	mode, err := s.uc.AuthorizationMode(ctx)
+	if err != nil {
+		return nil, mapIdentityErrorToGRPC(err)
+	}
+	if mode == "iam" && !serviceidentity.HasSystemCapability(ctx, identityv1.IdentityService_ConsumeTokenQuota_FullMethodName) {
+		return nil, status.Error(codes.PermissionDenied, "dedicated quota settlement capability required")
+	}
 	if !isServiceAuthenticated(ctx) {
 		return nil, ErrUnauthenticatedService
 	}
@@ -369,6 +412,9 @@ func (s *IdentityService) ConsumeTokenQuota(ctx context.Context, req *identityv1
 func mapIdentityErrorToGRPC(err error) error {
 	if err == nil {
 		return nil
+	}
+	if stderrors.Is(err, biz.ErrSessionRevoked) {
+		return biz.IAMDecisionError(authorization.Decision{Reason: "SESSION_INVALID"})
 	}
 	// New domain errors already implement GRPCStatus with their typed reason.
 	// Preserve those details instead of flattening migration/capability errors.

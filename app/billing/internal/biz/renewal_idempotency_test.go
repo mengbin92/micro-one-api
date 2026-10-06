@@ -104,7 +104,7 @@ func (r *inMemoryPaymentRepoForRenewal) MarkOrderPaid(ctx context.Context, trade
 func (r *inMemoryPaymentRepoForRenewal) MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error) {
 	return nil, false, nil
 }
-func (r *inMemoryPaymentRepoForRenewal) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error) {
+func (r *inMemoryPaymentRepoForRenewal) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(context.Context, *PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error) {
 	return nil, false, nil
 }
 func (r *inMemoryPaymentRepoForRenewal) MarkOrderAssetIssued(ctx context.Context, tradeNo, userID string) (*PaymentOrder, bool, error) {

@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"micro-one-api/platform/authz"
 	"strconv"
 
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/channel/internal/biz"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/routing"
 	"micro-one-api/pkg/filtering"
 	"micro-one-api/pkg/ordering"
@@ -17,7 +19,12 @@ type routingGroupUsecase interface {
 	Get(context.Context, int64) (*biz.RoutingGroupDetail, error)
 }
 
-func (s *ChannelService) SetRoutingGroupUsecase(uc routingGroupUsecase) { s.routingGroupUC = uc }
+func (s *ChannelService) SetRoutingGroupUsecase(uc routingGroupUsecase) {
+	s.routingGroupUC = uc
+	if concrete, ok := uc.(*biz.RoutingGroupUsecase); ok {
+		concrete.SetAuthorization(s.authz)
+	}
+}
 
 func (s *ChannelService) validateRoutingGroupPair(ctx context.Context, id int64, key string) error {
 	if id == 0 {
@@ -48,15 +55,24 @@ func (s *ChannelService) ListRoutingGroups(ctx context.Context, req *channelv1.L
 	}
 	filter, err := filtering.Equalities(req.Filter, "key", "status", "access_mode")
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, biz.ErrRoutingGroupInvalid
 	}
 	order, err := ordering.Parse(req.OrderBy, "id", "key", "sort_order")
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, biz.ErrRoutingGroupInvalid
 	}
 	query := req.Filter + "\x00" + req.OrderBy + "\x00" + strconv.Itoa(limit)
 	offset, err := pagination.Offset(req.PageToken, query)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, biz.ErrRoutingGroupInvalid
 	}
 	groups, err := s.routingGroupUC.List(ctx, biz.RoutingGroupListOptions{Filter: filter, OrderBy: order, Offset: offset, Limit: limit + 1})
@@ -109,7 +125,7 @@ func (s *ChannelService) CreateRoutingGroup(ctx context.Context, req *channelv1.
 
 func routingGroupDetailReply(detail *biz.RoutingGroupDetail) *channelv1.RoutingGroupDetail {
 	g := detail.Group
-	reply := &channelv1.RoutingGroupDetail{Group: &channelv1.RoutingGroup{Id: g.ID, Key: g.Key, DisplayName: g.DisplayName, Description: g.Description, Status: g.Status, AccessMode: g.AccessMode, ModelAccessMode: g.ModelAccessMode, SortOrder: g.SortOrder, Revision: g.Revision, CreatedAt: g.CreatedAt, UpdatedAt: g.UpdatedAt}, Resources: []*channelv1.RoutingGroupResource{}, ModelGrants: []*channelv1.RoutingGroupModelGrant{}}
+	reply := &channelv1.RoutingGroupDetail{MembersVisible: detail.MembersVisible, Group: &channelv1.RoutingGroup{Id: g.ID, Key: g.Key, DisplayName: g.DisplayName, Description: g.Description, Status: g.Status, AccessMode: g.AccessMode, ModelAccessMode: g.ModelAccessMode, SortOrder: g.SortOrder, Revision: g.Revision, CreatedAt: g.CreatedAt, UpdatedAt: g.UpdatedAt}, Resources: []*channelv1.RoutingGroupResource{}, ModelGrants: []*channelv1.RoutingGroupModelGrant{}}
 	for _, r := range detail.Resources {
 		reply.Resources = append(reply.Resources, &channelv1.RoutingGroupResource{SourceKind: r.Source.Kind, SourceId: r.Source.ID, Priority: r.Priority, Weight: r.Weight, PriorityOverride: r.PriorityOverride, WeightOverride: r.WeightOverride})
 	}
@@ -126,10 +142,17 @@ func (s *ChannelService) SetRoutingGroupState(ctx context.Context, req *channelv
 	if !ok {
 		return nil, biz.ErrRoutingGroupStorage
 	}
-	if _, err := uc.SetState(ctx, req.Id, req.ExpectedRevision, req.Status, req.AccessMode); err != nil {
+	if req == nil {
+		return nil, biz.ErrRoutingGroupInvalid
+	}
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
+	detail, err := uc.SetState(ctx, req.Id, req.ExpectedRevision, req.Status, req.AccessMode)
+	if err != nil {
 		return nil, err
 	}
-	return s.GetRoutingGroup(ctx, &channelv1.GetRoutingGroupRequest{Id: req.Id})
+	return routingGroupDetailReply(detail), nil
 }
 
 func (s *ChannelService) SetRoutingGroupResourceOverrides(ctx context.Context, req *channelv1.SetRoutingGroupResourceOverridesRequest) (*channelv1.SetRoutingGroupResourceOverridesReply, error) {
@@ -141,6 +164,12 @@ func (s *ChannelService) SetRoutingGroupResourceOverrides(ctx context.Context, r
 	}
 	if req == nil || req.RoutingGroupId <= 0 || req.SourceId <= 0 || (req.SourceKind != "channel" && req.SourceKind != "subscription") {
 		return nil, biz.ErrRoutingGroupInvalid
+	}
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
+	if req.ExpectedRevision > 0 {
+		ctx = authorization.WithExpectedResourceRevision(ctx, uint64(req.ExpectedRevision))
 	}
 	if _, err := uc.SetResourceOverrides(ctx, req.RoutingGroupId, routing.Source{Kind: req.SourceKind, ID: req.SourceId}, req.PriorityOverride, req.WeightOverride); err != nil {
 		return nil, err

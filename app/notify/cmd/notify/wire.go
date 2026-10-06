@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	authz "micro-one-api/platform/authz"
 	"time"
 
 	"github.com/go-kratos/kratos/v3"
@@ -58,6 +59,8 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 }
 
 func newApp(cfg *Config, uc *biz.NotifyUsecase, svc *service.NotifyService, reg registrarResult) (*kratos.App, func()) {
+	ownerAuth, _ := authz.FromEnvironment("notify")
+	svc.SetAuthorization(ownerAuth)
 	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc)
 
@@ -101,5 +104,5 @@ func newApp(cfg *Config, uc *biz.NotifyUsecase, svc *service.NotifyService, reg 
 		opts = append(opts, kratos.Registrar(reg.Registrar))
 	}
 	app := kratos.New(opts...)
-	return app, stopDispatcher
+	return app, func() { stopDispatcher(); _ = ownerAuth.Close() }
 }

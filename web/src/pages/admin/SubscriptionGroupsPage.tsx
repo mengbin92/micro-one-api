@@ -1,9 +1,10 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuthorizedQuery } from '@/lib/authorization';
+import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { Layers, Pencil, Save } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EmptyState } from '@/components/EmptyState';
@@ -179,8 +180,8 @@ export function AdminSubscriptionGroupsPage() {
     direction: sortDirection,
   } satisfies SortState<SubscriptionGroup>;
 
-  const { data: groups, isLoading } = useQuery({
-    queryKey: ['admin-subscription-groups'],
+  const { data: groups, isLoading } = useAuthorizedQuery({
+    permission: 'subscription.quota_policy.list', queryKey: ['admin-subscription-groups'],
     queryFn: async () => {
       const res = await adminApiClient.get('/v1/admin/subscription-groups');
       return unwrapApiData<SubscriptionGroup[]>(res.data) ?? [];
@@ -314,9 +315,9 @@ export function AdminSubscriptionGroupsPage() {
                     </span>
                   </TableCell>
                   <TableCell className="text-right space-x-2">
-                    <Button variant="outline" size="sm" onClick={() => setEditingDraft(toDraft(group))}>
+                    <Button permission="subscription.quota_policy.update" variant="outline" size="sm" onClick={() => setEditingDraft(toDraft(group))}>
                       <Pencil className="size-3.5" />{t("编辑")}</Button>
-                    <Button
+                    <Button permission="subscription.quota_policy.delete"
                       variant="outline"
                       size="sm"
                       onClick={() => {
@@ -495,7 +496,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
             <option value="2">{t("停用")}</option>
           </select>
         </div>
-        <Button onClick={handleSubmit} disabled={pending} className="sm:col-span-2">
+        <Button permission={mode === 'create' ? 'subscription.quota_policy.create' : 'subscription.quota_policy.update'} onClick={handleSubmit} disabled={pending} className="sm:col-span-2">
           <Save className="size-4" />
           {pending ? t("保存中...") : mode === 'create' ? t("创建") : t("保存配置")}
         </Button>

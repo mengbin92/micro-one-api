@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"fmt"
+	"micro-one-api/domain/authorization"
 	"time"
 )
 
@@ -61,8 +62,9 @@ type OperationReportRepo interface {
 // subscription aggregation so the dashboard never depends on front-end
 // sampling.
 type SubscriptionReportUsecase struct {
-	repo OperationReportRepo
-	now  func() time.Time
+	authorization authorization.Resolver
+	repo          OperationReportRepo
+	now           func() time.Time
 }
 
 func NewSubscriptionReportUsecase(repo OperationReportRepo) *SubscriptionReportUsecase {
@@ -72,6 +74,20 @@ func NewSubscriptionReportUsecase(repo OperationReportRepo) *SubscriptionReportU
 // BuildReport aggregates the plan-dimension report. When startTime/endTime
 // are zero the window defaults to the last 30 days.
 func (uc *SubscriptionReportUsecase) BuildReport(ctx context.Context, startTime, endTime time.Time, planID, groupID int64, userID string) (*SubscriptionOperationReport, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "subscription.user_subscriptions", "subscription.user_subscription.report.read")
+	if authErr != nil {
+		return nil, authErr
+	}
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.payments.list", "billing.payment.list")
+	if authErr != nil {
+		return nil, authErr
+	}
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.ledger.read", "billing.account.ledger.read")
+	if authErr != nil {
+		return nil, authErr
+	}
+	ctx = context.WithValue(ctx, subscriptionReportFilterKey{}, userID)
 	if uc == nil || uc.repo == nil {
 		return nil, fmt.Errorf("subscription report usecase is not configured")
 	}
@@ -115,4 +131,11 @@ func (uc *SubscriptionReportUsecase) BuildReport(ctx context.Context, startTime,
 		report.TotalRefundedQuota += r.RefundedQuota
 	}
 	return report, nil
+}
+
+type subscriptionReportFilterKey struct{}
+
+func SubscriptionReportUserFilter(ctx context.Context) string {
+	v, _ := ctx.Value(subscriptionReportFilterKey{}).(string)
+	return v
 }

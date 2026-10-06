@@ -5,7 +5,7 @@ test.use({ colorScheme: 'light', reducedMotion: 'reduce' });
 
 async function seedLayoutPage(page: Page, language = 'en-US') {
   await page.route('**/api/**', (route) => route.fulfill({ json: { success: true, data: [] } }));
-  await mockApi(page);
+  await mockApi(page, { admin: true });
   await page.route('**/api/user/self', (route) => route.fulfill({ json: {
     success: true, data: { id: 1, display_name: 'Long Administrator Name', role: 10 },
   } }));

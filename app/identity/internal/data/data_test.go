@@ -31,6 +31,7 @@ func TestNewRepositoryFromEnvRequiresDSNUnlessMemoryModeEnabled(t *testing.T) {
 // newTestRepo creates an in-memory repository for testing.
 func newTestRepo() *Repository {
 	return &Repository{
+		Data:                &Data{},
 		usersByID:           make(map[int64]*biz.User),
 		tokensByHash:        make(map[string]*biz.Token),
 		oauthIdentities:     make(map[string]*biz.OAuthIdentity),

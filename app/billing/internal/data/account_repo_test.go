@@ -128,7 +128,8 @@ func setupTestDB(t *testing.T) *gorm.DB {
 			status INTEGER,
 			created_by TEXT,
 			created_at DATETIME,
-			updated_at DATETIME
+			updated_at DATETIME,
+                revision INTEGER NOT NULL DEFAULT 1
 		)
 	`).Error
 	require.NoError(t, err)

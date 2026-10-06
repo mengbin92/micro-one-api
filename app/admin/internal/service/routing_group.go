@@ -49,12 +49,14 @@ type RoutingGroupModelGrant struct {
 	ExtraAuthorization bool   `json:"extra_authorization"`
 }
 type RoutingGroupDetail struct {
-	Group       RoutingGroup             `json:"group"`
-	Resources   []RoutingGroupResource   `json:"resources"`
-	ModelGrants []RoutingGroupModelGrant `json:"model_grants"`
+	MembersVisible bool                     `json:"members_visible"`
+	Group          RoutingGroup             `json:"group"`
+	Resources      []RoutingGroupResource   `json:"resources"`
+	ModelGrants    []RoutingGroupModelGrant `json:"model_grants"`
 }
 
 func (s *AdminService) ListRoutingGroups(ctx context.Context, size int32, token, filter, order string) (*RoutingGroupList, error) {
+	ctx = operatorRPCContext(ctx)
 	if s.routingGroupUc == nil {
 		return nil, biz.ErrRoutingGroupUnavailable
 	}
@@ -78,6 +80,7 @@ func (s *AdminService) ListRoutingGroups(ctx context.Context, size int32, token,
 	return reply, nil
 }
 func (s *AdminService) GetRoutingGroup(ctx context.Context, id int64) (*RoutingGroupDetail, error) {
+	ctx = operatorRPCContext(ctx)
 	if s.routingGroupUc == nil {
 		return nil, biz.ErrRoutingGroupUnavailable
 	}
@@ -104,6 +107,7 @@ type RoutingGroupCreateRequest struct {
 // restricted, so members are attached through resource CSVs and enabling runs
 // the existing capability and price gates.
 func (s *AdminService) CreateRoutingGroup(ctx context.Context, r RoutingGroupCreateRequest) (*RoutingGroupDetail, error) {
+	ctx = operatorRPCContext(ctx)
 	uc, ok := s.routingAccessUc.(interface {
 		CreateGroup(context.Context, string, string, string, string) (*routing.Group, error)
 	})
@@ -119,7 +123,7 @@ func (s *AdminService) CreateRoutingGroup(ctx context.Context, r RoutingGroupCre
 
 func routingGroupDetailReply(result *routing.GroupDetail) *RoutingGroupDetail {
 	g := result.Group
-	reply := &RoutingGroupDetail{Group: RoutingGroup{ID: g.ID, Key: g.Key, DisplayName: g.DisplayName, Description: g.Description, Status: g.Status, AccessMode: g.AccessMode, ModelAccessMode: g.ModelAccessMode, SortOrder: g.SortOrder, Revision: g.Revision}, Resources: []RoutingGroupResource{}, ModelGrants: []RoutingGroupModelGrant{}}
+	reply := &RoutingGroupDetail{MembersVisible: result.MembersVisible, Group: RoutingGroup{ID: g.ID, Key: g.Key, DisplayName: g.DisplayName, Description: g.Description, Status: g.Status, AccessMode: g.AccessMode, ModelAccessMode: g.ModelAccessMode, SortOrder: g.SortOrder, Revision: g.Revision}, Resources: []RoutingGroupResource{}, ModelGrants: []RoutingGroupModelGrant{}}
 	for _, r := range result.Resources {
 		reply.Resources = append(reply.Resources, RoutingGroupResource{SourceKind: r.Source.Kind, SourceID: r.Source.ID, Priority: r.Priority, Weight: r.Weight, PriorityOverride: r.PriorityOverride, WeightOverride: r.WeightOverride})
 	}

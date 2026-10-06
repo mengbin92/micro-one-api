@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useAuthorizedQuery } from '@/lib/authorization';
 import {
   ArrowDownCircle,
   ArrowUpCircle,
@@ -27,7 +27,7 @@ const CHART_COLORS = [
 ];
 
 interface AdminSummary {
-  sections?: Record<string, { available?: boolean }>;
+  sections?: Record<string, { available?: boolean; reason?: 'restricted' | 'timeout' | 'canceled' | 'unavailable' }>;
   totals?: {
     users?: number;
     active_users?: number;
@@ -98,18 +98,6 @@ interface AdminSummary {
   }>;
 }
 
-interface CostExportRow {
-  dimension: string;
-  name: string;
-  platform: string;
-  revenue_usd: number;
-  upstream_cost_usd: number;
-  gross_profit_usd: number;
-  request_count: number;
-  charged_usd: number | '';
-  raw_usd: number | '';
-  average_rate_multiplier: number | '';
-}
 
 function formatMoney(q: number, digits = 4) {
   return formatUSD(q, digits);
@@ -168,13 +156,16 @@ function MetricCard({
 }
 
 export function CostAnalysisPage() {
-  const { data: summary, isLoading } = useQuery({
-    queryKey: ['admin-summary'],
+  const { data: summary, isLoading, isRestricted, isError } = useAuthorizedQuery({
+    permission: ['billing.account.ledger.read', 'billing.account.cost.read'], queryKey: ['admin-summary'],
     queryFn: async () => {
       const res = await adminApiClient.get('/admin/summary');
       return unwrapApiData<AdminSummary>(res.data);
     },
   });
+
+  const restricted = isRestricted || Object.values(summary?.sections ?? {}).some(section => section.reason === 'restricted');
+  const unavailable = isError || Object.values(summary?.sections ?? {}).some(section => section.available === false && section.reason !== 'restricted');
 
   const costMetrics = useMemo(() => {
     const totals = summary?.totals ?? {};
@@ -268,25 +259,7 @@ export function CostAnalysisPage() {
     }));
   }, [topModels]);
 
-  const exportRows = useMemo<CostExportRow[]>(() => [
-    {
-      dimension: 'total', name: 'all', platform: '',
-      revenue_usd: amountUnitsToCurrencyUnits(costMetrics.revenue),
-      upstream_cost_usd: amountUnitsToCurrencyUnits(costMetrics.upstreamCost),
-      gross_profit_usd: amountUnitsToCurrencyUnits(costMetrics.grossProfit),
-      request_count: Number(summary?.totals?.request_count ?? 0),
-      charged_usd: '', raw_usd: '', average_rate_multiplier: '',
-    },
-    ...topModels.map((item) => ({ dimension: 'model', name: item.model, platform: '', revenue_usd: item.quota, upstream_cost_usd: item.cost, gross_profit_usd: item.profit, request_count: item.count, charged_usd: '' as const, raw_usd: '' as const, average_rate_multiplier: '' as const })),
-    ...topChannels.map((item) => ({ dimension: 'channel', name: item.name, platform: '', revenue_usd: item.quota, upstream_cost_usd: item.cost, gross_profit_usd: item.profit, request_count: item.count, charged_usd: '' as const, raw_usd: '' as const, average_rate_multiplier: '' as const })),
-    ...topSubscriptionAccounts.map((item) => ({ dimension: 'subscription_account', name: item.name, platform: item.platform, revenue_usd: item.quota, upstream_cost_usd: item.cost, gross_profit_usd: item.profit, request_count: item.count, charged_usd: item.accountEventChargedUsd, raw_usd: '' as const, average_rate_multiplier: item.accountEventRateMultiplier })),
-    ...topSubscriptionAccountQuotaEvents.map((item) => ({ dimension: 'subscription_quota_event', name: item.name, platform: item.platform, revenue_usd: item.ledgerQuota, upstream_cost_usd: item.ledgerCost, gross_profit_usd: item.ledgerProfit, request_count: item.count, charged_usd: item.chargedUsd, raw_usd: item.rawUsd, average_rate_multiplier: item.averageRateMultiplier })),
-  ], [costMetrics, summary, topModels, topChannels, topSubscriptionAccounts, topSubscriptionAccountQuotaEvents]);
-
-  const exportAvailable = Boolean(summary) && ['usage_stats', 'top_models', 'top_channels', 'top_subscription_accounts']
-    .every((section) => summary?.sections?.[section]?.available !== false);
-
-  const hasData = costMetrics.revenue > 0 || costMetrics.upstreamCost > 0 || costMetrics.grossProfit > 0 || topSubscriptionAccountQuotaEvents.length > 0;
+  const hasData = !restricted && !unavailable && (costMetrics.revenue > 0 || costMetrics.upstreamCost > 0 || costMetrics.grossProfit > 0 || topSubscriptionAccountQuotaEvents.length > 0);
 
   return (
     <div className="space-y-6">
@@ -299,14 +272,8 @@ export function CostAnalysisPage() {
           <ExportButton
             filename="cost-analysis.csv"
             label={t('导出报表')}
-            rows={exportAvailable && !isLoading ? exportRows : []}
-            columns={[
-              { key: 'dimension', label: 'dimension' }, { key: 'name', label: 'name' },
-              { key: 'platform', label: 'platform' }, { key: 'revenue_usd', label: 'revenue_usd' },
-              { key: 'upstream_cost_usd', label: 'upstream_cost_usd' }, { key: 'gross_profit_usd', label: 'gross_profit_usd' },
-              { key: 'request_count', label: 'request_count' }, { key: 'charged_usd', label: 'charged_usd' },
-              { key: 'raw_usd', label: 'raw_usd' }, { key: 'average_rate_multiplier', label: 'average_rate_multiplier' },
-            ]}
+            permission={['billing.report.export', 'billing.account.ledger.read', 'billing.account.cost.read']}
+            href="/v1/admin/reports/cost:export"
           />
         </div>
       </div>
@@ -314,6 +281,8 @@ export function CostAnalysisPage() {
       {/* Cost Metrics */}
       {isLoading ? (
         <MetricCardsSkeleton />
+      ) : restricted || unavailable ? (
+        <EmptyState title={t(restricted ? '权限受限' : '数据暂不可用')} description={t(restricted ? '当前账号无权查看此部分数据。' : '部分数据加载失败，请重试。')} />
       ) : !hasData ? (
         <EmptyState
           title={t("暂无成本数据")}

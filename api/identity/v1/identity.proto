@@ -3,6 +3,7 @@ syntax = "proto3";
 package api.identity.v1;
 
 import "api/common/v1/common.proto";
+import "google/protobuf/field_mask.proto";
 
 option go_package = "micro-one-api/api/identity/v1;identityv1";
 
@@ -17,6 +18,7 @@ service IdentityService {
   rpc Register(RegisterRequest) returns (RegisterResponse);
   rpc CreateAccessToken(CreateAccessTokenRequest) returns (CreateAccessTokenResponse);
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc ExportUsers(ExportUsersRequest) returns (ExportUsersReply);
   rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
   rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
   rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
@@ -133,6 +135,8 @@ message CreateUserRequest {
   string password = 4;
   string group = 5;
   int64 balance = 6;
+  uint64 expected_policy_revision = 7;
+  string reason = 8;
 }
 
 message CreateUserResponse {
@@ -147,6 +151,11 @@ message UpdateUserRequest {
   string email = 3;
   string group = 4;
   int32 status = 5;
+  google.protobuf.FieldMask update_mask = 6;
+  uint64 expected_revision = 7;
+  uint64 expected_policy_revision = 8;
+  string reason = 9;
+  string password = 10;
 }
 
 message UpdateUserResponse {
@@ -156,6 +165,9 @@ message UpdateUserResponse {
 
 message DeleteUserRequest {
   int64 user_id = 1;
+  uint64 expected_revision = 2;
+  uint64 expected_policy_revision = 3;
+  string reason = 4;
 }
 
 message DeleteUserResponse {
@@ -198,7 +210,7 @@ message ConsumeTokenQuotaReply {
 
 // Trusted internal writes: admin biz validates channel facts and user eligibility.
 message GetUserRoutingFactsRequest { int64 user_id = 1; }
-message GetUserRoutingFactsReply { common.v1.RoutingSubjectFacts facts = 1; repeated RoutingTokenReference tokens = 2; }
+message GetUserRoutingFactsReply { common.v1.RoutingSubjectFacts facts = 1; repeated RoutingTokenReference tokens = 2; uint64 authorization_revision = 3; uint64 authorization_policy_revision = 4; }
 message RoutingTokenReference { int64 id = 1; string name = 2; string mode = 3; int64 group_id = 4; int64 revision = 5; repeated int64 group_ids = 6; }
 message UpdateUserRoutingAccessRequest {
  int64 user_id = 1;
@@ -211,6 +223,9 @@ message UpdateUserRoutingAccessRequest {
  int64 starts_at = 8;
  int64 expires_at = 9;
  string public_group_access = 10;
+ uint64 expected_user_revision = 11;
+ uint64 expected_policy_revision = 12;
+ string reason = 13;
 }
 message SetTokenRoutingRequest {
  int64 user_id = 1;
@@ -221,3 +236,6 @@ message SetTokenRoutingRequest {
  repeated int64 routing_group_ids = 6;
 }
 message SetTokenRoutingReply { int64 revision = 1; }
+
+message ExportUsersRequest { ListUsersRequest query = 1; }
+message ExportUsersReply { string content_type = 1; string file_name = 2; bytes body = 3; }

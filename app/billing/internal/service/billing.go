@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
+	"micro-one-api/platform/authz"
 	"net/http"
 	"time"
 
@@ -32,6 +34,7 @@ import (
 )
 
 type BillingService struct {
+	ownerAuth  *authz.Client
 	commerceUc *biz.SubscriptionCommerce
 	billingv1.UnimplementedBillingServiceServer
 	uc             *biz.BillingUsecase
@@ -82,6 +85,9 @@ func (s *BillingService) SetSubscriptionReportUsecase(uc *biz.SubscriptionReport
 		return
 	}
 	s.reportUc = uc
+	if uc != nil {
+		uc.SetAuthorization(s.ownerAuth)
+	}
 }
 
 // SetAsyncBillingUsecase wires the async billing coordinator. When set, the
@@ -129,6 +135,9 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 	ctx = requesttrace.WithAttempt(ctx, trace)
 	reservation, err := s.uc.ReserveQuota(ctx, req.UserId, req.RequestId, req.EstimatedTokens, req.Model, req.ChannelId, req.SubscriptionAccountId, routingdto.ContextFromProto(req.RoutingContext))
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		if req.RoutingContext != nil || errors.Is(err, biz.ErrRoutingContextConflict) {
 			return nil, err
 		}
@@ -181,6 +190,12 @@ func (s *BillingService) GetRoutingCapabilities(context.Context, *billingv1.GetR
 }
 
 func (s *BillingService) SetUserRoutingPrice(ctx context.Context, req *billingv1.SetUserRoutingPriceRequest) (*billingv1.SetUserRoutingPriceReply, error) {
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
+	if req.ExpectedVersion != nil {
+		ctx = biz.WithExpectedWriteVersion(ctx, *req.ExpectedVersion)
+	}
 	version, err := s.uc.SetUserRoutingPrice(ctx, req.GetUserId(), req.GetRoutingGroupId(), req.GetPriceRatio())
 	if err != nil {
 		return nil, err
@@ -189,7 +204,16 @@ func (s *BillingService) SetUserRoutingPrice(ctx context.Context, req *billingv1
 }
 
 func (s *BillingService) ClearUserRoutingPrice(ctx context.Context, req *billingv1.ClearUserRoutingPriceRequest) (*billingv1.ClearUserRoutingPriceReply, error) {
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
+	if req.ExpectedVersion != nil {
+		ctx = biz.WithExpectedWriteVersion(ctx, *req.ExpectedVersion)
+	}
 	if err := s.uc.ClearUserRoutingPrice(ctx, req.GetUserId(), req.GetRoutingGroupId()); err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return nil, err
 	}
 	return &billingv1.ClearUserRoutingPriceReply{}, nil
@@ -284,6 +308,9 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 		metrics.BillingCommitDuration.WithLabelValues("sync").Observe(time.Since(commitStart).Seconds())
 	}
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &billingv1.CommitQuotaResponse{
 			Success:      false,
 			ErrorMessage: err.Error(),
@@ -307,6 +334,9 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 func (s *BillingService) ReleaseQuota(ctx context.Context, req *billingv1.ReleaseQuotaRequest) (*billingv1.ReleaseQuotaResponse, error) {
 	err := s.uc.ReleaseQuota(ctx, req.ReservationId, req.Reason)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &billingv1.ReleaseQuotaResponse{
 			Success:      false,
 			ErrorMessage: err.Error(),
@@ -364,6 +394,9 @@ func (s *BillingService) BatchGetAccountSnapshots(ctx context.Context, req *bill
 func (s *BillingService) TopUpQuota(ctx context.Context, req *billingv1.TopUpQuotaRequest) (*billingv1.TopUpQuotaResponse, error) {
 	newQuota, err := s.uc.TopUpQuota(ctx, req.UserId, req.OperatorId, req.Amount, req.Remark, req.RequestId)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		// Idempotency conflict must surface as a gRPC AlreadyExists error so
 		// the caller (admin-api) can map it to HTTP 409 Conflict instead of a
 		// business failure (v0.18 P0 design §5.4). Swallowing it into
@@ -386,6 +419,9 @@ func (s *BillingService) TopUpQuota(ctx context.Context, req *billingv1.TopUpQuo
 func (s *BillingService) PurchaseSubscription(ctx context.Context, req *billingv1.PurchaseSubscriptionRequest) (*billingv1.PurchaseSubscriptionResponse, error) {
 	newQuota, err := s.uc.PurchaseSubscription(ctx, req.UserId, req.PriceAmount, req.GroupId, req.Remark, req.RequestId)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		// Same as TopUpQuota: surface the idempotency conflict as gRPC
 		// AlreadyExists so the caller maps it to HTTP 409 (v0.18 P0 §5.4).
 		if errors.Is(err, biz.ErrDuplicateRequest) {
@@ -404,8 +440,14 @@ func (s *BillingService) PurchaseSubscription(ctx context.Context, req *billingv
 }
 
 func (s *BillingService) CreateRedeemCode(ctx context.Context, req *billingv1.CreateRedeemCodeRequest) (*billingv1.CreateRedeemCodeResponse, error) {
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
 	err := s.uc.CreateRedeemCode(ctx, req.Code, req.Name, req.Amount, req.Count, req.OperatorId)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &billingv1.CreateRedeemCodeResponse{
 			Success:      false,
 			ErrorMessage: err.Error(),
@@ -418,8 +460,14 @@ func (s *BillingService) CreateRedeemCode(ctx context.Context, req *billingv1.Cr
 }
 
 func (s *BillingService) CreateRedeemCodesBatch(ctx context.Context, req *billingv1.CreateRedeemCodesBatchRequest) (*billingv1.CreateRedeemCodesBatchResponse, error) {
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
 	codes, err := s.uc.CreateRedeemCodesBatch(ctx, req.Name, req.Amount, req.Count, req.BatchSize)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &billingv1.CreateRedeemCodesBatchResponse{
 			Success:      false,
 			ErrorMessage: err.Error(),
@@ -435,13 +483,16 @@ func (s *BillingService) CreateRedeemCodesBatch(ctx context.Context, req *billin
 func (s *BillingService) GetRedeemCode(ctx context.Context, req *billingv1.GetRedeemCodeRequest) (*billingv1.GetRedeemCodeResponse, error) {
 	code, err := s.uc.GetRedeemCode(ctx, req.Code)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &billingv1.GetRedeemCodeResponse{
 			ErrorMessage: err.Error(),
 		}, nil
 	}
 
 	return &billingv1.GetRedeemCodeResponse{
-		RedeemCode: &commonv1.RedeemCode{
+		RedeemCode: &commonv1.RedeemCode{Revision: code.Revision,
 			Code:      code.Code,
 			Name:      code.Name,
 			Amount:    code.Amount,
@@ -462,7 +513,7 @@ func (s *BillingService) ListRedeemCodes(ctx context.Context, req *billingv1.Lis
 
 	redeemCodes := make([]*commonv1.RedeemCode, len(codes))
 	for i, code := range codes {
-		redeemCodes[i] = &commonv1.RedeemCode{
+		redeemCodes[i] = &commonv1.RedeemCode{Revision: code.Revision,
 			Code:      code.Code,
 			Name:      code.Name,
 			Amount:    code.Amount,
@@ -488,7 +539,7 @@ func (s *BillingService) SearchRedeemCodes(ctx context.Context, req *billingv1.S
 
 	redeemCodes := make([]*commonv1.RedeemCode, len(codes))
 	for i, code := range codes {
-		redeemCodes[i] = &commonv1.RedeemCode{
+		redeemCodes[i] = &commonv1.RedeemCode{Revision: code.Revision,
 			Code:      code.Code,
 			Name:      code.Name,
 			Amount:    code.Amount,
@@ -506,8 +557,17 @@ func (s *BillingService) SearchRedeemCodes(ctx context.Context, req *billingv1.S
 }
 
 func (s *BillingService) UpdateRedeemCode(ctx context.Context, req *billingv1.UpdateRedeemCodeRequest) (*billingv1.UpdateRedeemCodeResponse, error) {
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
+	if req.ExpectedRevision != nil {
+		ctx = biz.WithExpectedWriteVersion(ctx, *req.ExpectedRevision)
+	}
 	err := s.uc.UpdateRedeemCode(ctx, req.Code, req.Name, req.Amount, req.Status)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &billingv1.UpdateRedeemCodeResponse{
 			Success:      false,
 			ErrorMessage: err.Error(),
@@ -520,8 +580,17 @@ func (s *BillingService) UpdateRedeemCode(ctx context.Context, req *billingv1.Up
 }
 
 func (s *BillingService) DeleteRedeemCode(ctx context.Context, req *billingv1.DeleteRedeemCodeRequest) (*billingv1.DeleteRedeemCodeResponse, error) {
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
+	if req.ExpectedRevision != nil {
+		ctx = biz.WithExpectedWriteVersion(ctx, *req.ExpectedRevision)
+	}
 	err := s.uc.DeleteRedeemCode(ctx, req.Code)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &billingv1.DeleteRedeemCodeResponse{
 			Success:      false,
 			ErrorMessage: err.Error(),
@@ -536,6 +605,9 @@ func (s *BillingService) DeleteRedeemCode(ctx context.Context, req *billingv1.De
 func (s *BillingService) RedeemCode(ctx context.Context, req *billingv1.RedeemCodeRequest) (*billingv1.RedeemCodeResponse, error) {
 	amount, newQuota, err := s.uc.RedeemCode(ctx, req.UserId, req.Code)
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &billingv1.RedeemCodeResponse{
 			Success:      false,
 			ErrorMessage: err.Error(),
@@ -609,7 +681,9 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 			}
 		}
 		entries[i] = &commonv1.LedgerEntry{
-			RoutingGroupId: groupID, RoutingGroupKey: groupKey, RequestSnapshotHash: hash,
+			CostFieldsVisible:    ledger.CostFieldsVisible,
+			PricingFieldsVisible: ledger.PricingFieldsVisible,
+			RoutingGroupId:       groupID, RoutingGroupKey: groupKey, RequestSnapshotHash: hash,
 			Id:                     fmt.Sprintf("%d", ledger.ID),
 			UserId:                 ledger.UserID,
 			Amount:                 ledger.Amount,
@@ -687,6 +761,9 @@ func normalizeLedgerOrder(value string) (string, string, error) {
 func (s *BillingService) GetLedgerEntry(ctx context.Context, req *billingv1.GetLedgerEntryRequest) (*billingv1.GetLedgerEntryResponse, error) {
 	ledger, err := s.uc.GetLedgerByID(ctx, req.GetId())
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		if errors.Is(err, biz.ErrLedgerNotFound) {
 			return nil, status.Errorf(codes.NotFound, "ledger entry not found")
 		}
@@ -698,8 +775,12 @@ func (s *BillingService) GetLedgerEntry(ctx context.Context, req *billingv1.GetL
 	// "prices"). A missing snapshot for a pre-088 hash is not an error — the
 	// row simply predates the evidence table — but a genuine lookup failure
 	// must be visible: it is an audit-coverage gap, not a rendering detail.
+	ctx, err = s.uc.PrepareLedgerPricingVisibility(ctx, []*biz.Ledger{ledger})
+	if err != nil {
+		return nil, err
+	}
 	var pricingSnapshot *commonv1.PricingSnapshot
-	if ledger.PricingConfigHash != "" {
+	if ledger.PricingFieldsVisible && ledger.PricingConfigHash != "" {
 		snap, snapErr := s.uc.GetPricingSnapshot(ctx, ledger.PricingConfigHash)
 		if snapErr == nil && snap != nil {
 			pricingSnapshot = pricingSnapshotToProto(snap)
@@ -718,7 +799,7 @@ func (s *BillingService) GetLedgerEntry(ctx context.Context, req *billingv1.GetL
 	}
 	var snapshotHash, snapshotJSON, groupKey string
 	var groupID int64
-	if requestSnapshot != nil {
+	if ledger.CostFieldsVisible && requestSnapshot != nil {
 		snapshotHash, err = requestSnapshot.Digest()
 		if err != nil {
 			return nil, err
@@ -734,6 +815,8 @@ func (s *BillingService) GetLedgerEntry(ctx context.Context, req *billingv1.GetL
 	}
 	return &billingv1.GetLedgerEntryResponse{
 		Entry: &commonv1.LedgerEntry{
+			CostFieldsVisible:      ledger.CostFieldsVisible,
+			PricingFieldsVisible:   ledger.PricingFieldsVisible,
 			RoutingGroupId:         groupID,
 			RoutingGroupKey:        groupKey,
 			RequestSnapshotHash:    snapshotHash,
@@ -904,6 +987,7 @@ func (s *BillingService) AggregateUsage(ctx context.Context, req *billingv1.Aggr
 			Day:                    b.Day,
 			Hour:                   b.Hour,
 			Quota:                  b.Quota,
+			CostFieldsVisible:      b.CostFieldsVisible,
 			UpstreamCost:           b.UpstreamCost,
 			GrossProfit:            b.GrossProfit,
 			PromptTokens:           b.PromptTokens,
@@ -923,6 +1007,7 @@ func (s *BillingService) AggregateUsage(ctx context.Context, req *billingv1.Aggr
 		Buckets: bucketsProto,
 		Totals: &billingv1.UsageTotals{
 			Quota:                  totals.Quota,
+			CostFieldsVisible:      totals.CostFieldsVisible,
 			UpstreamCost:           totals.UpstreamCost,
 			GrossProfit:            totals.GrossProfit,
 			PromptTokens:           totals.PromptTokens,
@@ -961,6 +1046,9 @@ func (s *BillingService) CreatePaymentOrder(ctx context.Context, req *billingv1.
 		PlanID:      req.GetPlanId(),
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 	return &billingv1.PaymentOrderResponse{Success: true, Order: toProtoPaymentOrder(order)}, nil
@@ -972,6 +1060,9 @@ func (s *BillingService) GetPaymentOrderByTradeNo(ctx context.Context, req *bill
 	}
 	order, err := s.paymentUc.GetOrderByTradeNo(ctx, req.GetTradeNo())
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 	if order == nil {
@@ -986,6 +1077,9 @@ func (s *BillingService) MarkPaymentOrderPaid(ctx context.Context, req *billingv
 	}
 	order, err := s.paymentUc.MarkOrderPaid(ctx, req.GetTradeNo(), req.GetProviderTradeNo())
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 	return &billingv1.PaymentOrderResponse{Success: true, Order: toProtoPaymentOrder(order)}, nil
@@ -1004,6 +1098,9 @@ func (s *BillingService) MarkPaymentOrderAssetIssued(ctx context.Context, req *b
 	}
 	order, claimed, err := s.paymentUc.MarkOrderAssetIssued(ctx, req.GetTradeNo(), req.GetUserId())
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 	if order == nil {
@@ -1021,6 +1118,9 @@ func (s *BillingService) UnmarkPaymentOrderAssetIssued(ctx context.Context, req 
 	}
 	order, _, err := s.paymentUc.UnmarkOrderAssetIssued(ctx, req.GetTradeNo())
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 	if order == nil {
@@ -1146,6 +1246,9 @@ func (s *BillingService) RefundPaymentOrder(ctx context.Context, req *billingv1.
 		Operator: req.GetOperatorId(),
 	})
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &billingv1.RefundPaymentOrderResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 	return &billingv1.RefundPaymentOrderResponse{
@@ -1172,6 +1275,9 @@ func (s *BillingService) SubscriptionOperationReport(ctx context.Context, req *b
 	}
 	report, err := s.reportUc.BuildReport(ctx, startTime, endTime, req.GetPlanId(), req.GetGroupId(), req.GetUserId())
 	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			return nil, err
+		}
 		return &billingv1.SubscriptionOperationReportResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 	resp := &billingv1.SubscriptionOperationReportResponse{
@@ -1355,7 +1461,7 @@ func reconciliationRunToProto(run *biz.ReconciliationResult) (*billingv1.Reconci
 	if err != nil {
 		return nil, err
 	}
-	out := &billingv1.ReconciliationRun{
+	out := &billingv1.ReconciliationRun{IssuesVisible: run.IssuesVisible,
 		RunId:             run.RunID,
 		RunAt:             run.RunAt.Unix(),
 		ExpiredCleaned:    expiredCleaned,
@@ -1412,3 +1518,14 @@ func reconciliationRunToProto(run *biz.ReconciliationResult) (*billingv1.Reconci
 	}
 	return out, nil
 }
+
+func (s *BillingService) SetOwnerAuthorization(c *authz.Client) {
+	s.ownerAuth = c
+	if s.reconUc != nil {
+		s.reconUc.SetAuthorization(c)
+	}
+	if s.reportUc != nil {
+		s.reportUc.SetAuthorization(c)
+	}
+}
+func (s *BillingService) OwnerAuthorizationClient() *authz.Client { return s.ownerAuth }

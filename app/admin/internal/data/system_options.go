@@ -4,10 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
-	"time"
-
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 	"micro-one-api/app/admin/internal/biz"
+	"micro-one-api/domain/authorization"
+	"strings"
 )
 
 // Compile-time assertion: SystemOptionsRepo implements biz.SystemOptionsRepo.
@@ -22,6 +25,7 @@ type SystemOption struct {
 // SystemOptionsRepo provides CRUD for system_options table.
 type SystemOptionsRepo struct {
 	db     *sql.DB
+	gdb    *gorm.DB
 	driver string // canonical driver name; used by Set to pick upsert dialect
 	pgBind bool   // true when driver is Postgres; rebind ? → $N
 }
@@ -43,7 +47,16 @@ func NewSystemOptionsRepo(db *sql.DB) *SystemOptionsRepo {
 func NewSystemOptionsRepoWithDriver(db *sql.DB, driver string) *SystemOptionsRepo {
 	d := strings.ToLower(strings.TrimSpace(driver))
 	pg := d == "postgres" || d == "postgresql" || d == "pgx"
-	return &SystemOptionsRepo{db: db, driver: d, pgBind: pg}
+	var dial gorm.Dialector
+	if pg {
+		dial = postgres.New(postgres.Config{Conn: db})
+	} else if d == "sqlite" || d == "sqlite3" {
+		dial = sqlite.New(sqlite.Config{Conn: db})
+	} else {
+		dial = mysql.New(mysql.Config{Conn: db, SkipInitializeWithVersion: true})
+	}
+	gdb, _ := gorm.Open(dial, &gorm.Config{})
+	return &SystemOptionsRepo{db: db, gdb: gdb, driver: d, pgBind: pg}
 }
 
 // Get returns the value for a given key, or empty string if not found.
@@ -61,6 +74,9 @@ func (r *SystemOptionsRepo) Get(ctx context.Context, key string) (string, error)
 	if err != nil {
 		return "", fmt.Errorf("get system option %s: %w", key, err)
 	}
+	if biz.IsPricingOption(key) && !biz.IsPublicOptionContext(ctx) {
+		return r.priceView(ctx, key, value)
+	}
 	return value, nil
 }
 
@@ -70,6 +86,12 @@ func (r *SystemOptionsRepo) Get(ctx context.Context, key string) (string, error)
 // SQLite3:  INSERT ... ON CONFLICT (option_key) DO UPDATE SET ...
 // Postgres: INSERT ... ON CONFLICT (option_key) DO UPDATE SET ...
 func (r *SystemOptionsRepo) Set(ctx context.Context, key, value string) error {
+	if _, iam := authorization.QueryScopeFromContext(ctx, "system.option.update"); iam {
+		return r.Mutate(ctx, key, func(string) (string, error) { return value, nil })
+	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, biz.SystemOptionWriteOperation(key)); iam {
+		return r.Mutate(ctx, key, func(string) (string, error) { return value, nil })
+	}
 	var query string
 	if r.pgBind {
 		query = `INSERT INTO system_options (option_key, option_value, updated_at)
@@ -89,7 +111,7 @@ func (r *SystemOptionsRepo) Set(ctx context.Context, key, value string) error {
 		         ON DUPLICATE KEY UPDATE option_value = VALUES(option_value),
 		                             updated_at = VALUES(updated_at)`
 	}
-	_, err := r.db.ExecContext(ctx, query, key, value, time.Now())
+	_, err := r.db.ExecContext(ctx, query, key, value, r.optionUpdatedAt())
 	if err != nil {
 		return fmt.Errorf("set system option %s: %w", key, err)
 	}

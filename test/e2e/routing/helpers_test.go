@@ -13,10 +13,13 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	billingv1 "micro-one-api/api/billing/v1"
 	"micro-one-api/pkg/jsonx"
 )
@@ -74,13 +77,18 @@ func newSuite(t *testing.T) *suite {
 	// A capability outage must be tested against a reachable service, not a
 	// socket that is still restarting after Compose changed its gate.
 	ctx, conn := s.conn("BILLING_GRPC_ENDPOINT")
+	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer "+os.Getenv("RELAY_SERVICE_IDENTITY_TOKEN")))
 	version := int32(2)
 	if phase := os.Getenv("ROUTING_PHASE"); phase == "legacy" || phase == "stream-reliability" || phase == "missing-capability" || phase == "legacy-redis-down" || phase == "legacy-redis-recovered" {
 		version = 0
 	}
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
 		reply, err := billingv1.NewBillingServiceClient(conn).GetRoutingCapabilities(ctx, &billingv1.GetRoutingCapabilitiesRequest{})
-		return err == nil && reply.RequestSnapshotVersion == version
+		// Report only the status code; transport errors can include credentials.
+		if !assert.Equal(collect, codes.OK, status.Code(err), "billing capability RPC status") {
+			return
+		}
+		assert.Equal(collect, version, reply.RequestSnapshotVersion)
 	}, 10*time.Second, 100*time.Millisecond, "billing capability readiness")
 	return s
 }

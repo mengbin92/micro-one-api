@@ -25,11 +25,13 @@ import (
 	"micro-one-api/app/billing/internal/service"
 	biz2 "micro-one-api/domain/subscription/biz"
 	data2 "micro-one-api/domain/subscription/data"
+	"micro-one-api/platform/authz"
 	grpc2 "micro-one-api/platform/grpc"
 	"micro-one-api/platform/grpc/xgrpc"
 	"micro-one-api/platform/logging"
 	registry2 "micro-one-api/platform/registry"
 	"micro-one-api/platform/routingclient"
+	"micro-one-api/platform/security/serviceidentity"
 	"os"
 	"os/signal"
 	"syscall"
@@ -167,11 +169,16 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	} else {
 		alipayVerifier = biz.NewAlipayPaymentProvider(biz.AlipayConfig{})
 	}
+	ownerAuth, _ := authz.FromEnvironment("billing")
+	uc.SetAuthorization(ownerAuth)
+	paymentUc.SetAuthorization(ownerAuth)
 	svc := service.NewBillingService(uc, reconUc, paymentUc, alipayVerifier)
 
+	svc.SetOwnerAuthorization(ownerAuth)
 	svc.SetExpectedAlipayAppID(configuredAlipayAppID)
 
 	refundUc := biz.NewRefundUsecase(d.PaymentRepo(), d.AccountRepo(), d.LedgerRepo(), subscriptionUc)
+	refundUc.SetAuthorization(ownerAuth)
 	svc.SetRefundUsecase(refundUc)
 	reportUc := biz.NewSubscriptionReportUsecase(data.NewOperationReportRepo(d))
 	svc.SetSubscriptionReportUsecase(reportUc)
@@ -183,7 +190,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	var channelConn *grpc.ClientConn
 	if cfg.Bootstrap.Clients != nil && cfg.Bootstrap.Clients.Channel != nil && cfg.Bootstrap.Clients.Channel.Endpoint != "" {
 		var err error
-		channelConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Channel.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpc2.NewInsecureTokenAuth(os.Getenv("SERVICE_TOKEN"))))
+		channelConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Channel.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpc2.NewInsecureTokenAuth(serviceidentity.ClientToken())))
 		if err != nil {
 			logger.Log.
 				Error("dial channel endpoint", zap.Error(err))
@@ -210,7 +217,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		}
 		if cfg.Bootstrap.Clients != nil && cfg.Bootstrap.Clients.Notify != nil && cfg.Bootstrap.Clients.Notify.Endpoint != "" {
 			var err error
-			notifyConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Notify.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpc2.NewInsecureTokenAuth(os.Getenv("SERVICE_TOKEN"))), grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))
+			notifyConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Notify.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpc2.NewInsecureTokenAuth(serviceidentity.ClientToken())), grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))
 			if err != nil {
 				logger.Log.
 					Error("dial notify endpoint", zap.Error(err))
@@ -287,6 +294,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 
 	_ = fmt.Sprintf
 	return app, func() {
+		_ = ownerAuth.Close()
 		cancel()
 
 		if asyncBilling != nil {

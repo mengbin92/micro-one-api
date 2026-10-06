@@ -7,6 +7,42 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-10-06
+
+v0.34.0 是 v0.33.6 之后的 **MINOR 权限管理版本**：新增 RBAC 授权治理、管理界面、服务身份和全资源执行边界，完成 IAM 离线迁移及生产正式交接；修复本人用量、设计复审问题和发布门禁。涉及全部九服务、前端、API/proto、三库迁移 110–123 与部署配置；详见 [release-v0.34.0.md](docs/releases/release-v0.34.0.md)。
+
+### Fixed
+
+- 固定 caller 表补齐 Relay 读取路由事实的系统能力，恢复 Responses/SSE/WebSocket 绑定源复验；源撤权及无关 caller 仍拒绝。
+
+- legacy 会话摘要投影已验证本人，修复订阅购买 401，并保持无效/密码撤销会话拒绝；Lite/PostgreSQL 补齐六个 owner 的 identity 地址，避免 localhost 回退造成 503。
+
+- 定时全历史密钥扫描仅豁免四条已核对的历史 IAM 测试签名指纹；通用浏览器 smoke 分离真实 IAM 专用场景并补齐服务端授权摘要及手机等待；路由验收安装隔离专属服务身份和固定 receiver map。
+
+- RBAC 设计复审修复 deny 分配期限扩权、分配载荷借用撤销权、管理创建凭证委派遗漏、隐藏授权来源读取、非法范围与不兼容分配、归档权限复活，以及 root 摘要、菜单层级和前端读写 gate 差异；记录与回归见 [审查记录](docs/design/rbac/design-review-2026-10-05.md)。已更新线上九服务及前端并应用 123 迁移，模式保持 iam/complete，见 [生产更新](docs/design/rbac/review-production-deployment-2026-10-05.md)。
+
+- IAM 专属服务调用表补齐 identity 对本人账本列表和按日统计的调用权限，修复用户首页／用量统计因内部 403 显示为 0；billing 继续独立验证会话和本人范围，未增加系统豁免。已更新线上 billing，见 [验证记录](docs/design/rbac/self-usage-fix-2026-10-05.md)。
+
+- D1 交接补齐 config/Wire 与仓储的 owner DSN 一致性，保留构建版本文件，保障迁移 CLI 的 JSON stdout，并将控制台请求期限从默认 1 秒调整为 30 秒，避免逐项 IAM 配置读取被取消。
+
+- IAM 模式的管理 gRPC 入口补齐专属服务 principal、真实 full method 和 fixed caller 校验；共享 service token 携带 root JWT 仍拒绝。root 执行豁免也受本版显式 grant 限定。
+
+- RBAC 资源版本与兑换码 ID 的整数转换增加范围校验：拒绝超出 int64 的版本/ID 和异常负版本，避免无符号请求绕回负数后错误匹配；覆盖实际资源写入与配置删除回归，全仓 gosec 检查通过。
+
+### Added
+
+- IAM 权限目录说明/排序的 DTO、持久化、过滤排序与编辑界面；新增 identity 所属 `123_add_iam_permission_metadata` 三库迁移，展示元数据不改变固定执行资格或授权范围。
+
+- RBAC D0 离线迁移工具、固定历史 grant、全量候选/shadow/对账、root 签名 manifest、原子切换和幂等恢复；完成三库 race、真实 HTTP/gRPC、财务列权限及 7 组浏览器演练，见 [D 阶段交付记录](docs/design/rbac/d-cutover-delivery.md)。
+- D1 生产预检、专属服务凭证草案生成、源码摘要和停写执行手册；三套 Compose 支持各 owner 独立 SQL 通道及默认关闭的救援配置，构建上下文排除运行时环境凭证。
+
+- RBAC B0–B4 全量后端闭合：服务专属身份与完整入口边界、用户/本人授权、渠道/账号/模型/路由组、资金/订单/共享订阅、日志/配置/健康/通知，以及复合动作、独立字段权限和总览 section 预检。补齐导出、批量、OAuth、archive/全量成员替换、通知确认/测试/规则和持久化资源写审计，见 [B 阶段闭合记录](docs/design/rbac/b-execution-progress.md)。
+- 新增 112–122 三库迁移：资源写审计、通知管理与资源 CAS、上游成本稳定 ID、配置 tombstone/key mutex；删除重建不能复用旧版本，并发首次创建不会产生重复配置。
+
+### Changed
+
+- RBAC 主设计、实施清单及 823 行入口契约同步；真实 B0–B4 HTTP/gRPC 角色矩阵、B1–B4 SQLite/MySQL/PostgreSQL race 和全仓门禁完成。Compose 服务身份模板及静态核验脚本就绪；2026-10-03 已更新全部线上服务、前端和分库迁移，并修复 admin 历史迁移元数据默认值，见 [生产更新记录](docs/design/rbac/b-legacy-production-deployment.md)。C1–C3 和 D0 已交付；2026-10-05 经授权完成 D1 真实停写、旧通道撤权及 IAM 正式交接，线上已为 iam/complete，见 [D1 生产记录](docs/design/rbac/d-iam-production-deployment.md)，现纳入 v0.34.0 发布。
+
 ## [0.33.6] - 2026-09-30
 
 v0.33.6 是 v0.33.5 之后的 **PATCH 支付观测与控制台体验版本**：支付宝异步回调增加脱敏成功受理回执，Playground 支持编辑重用历史用户消息，并更新前端间接依赖。无公共 API/proto、迁移或新增配置；更新 `billing-service` 和前端 `web/dist`。详见 [release-v0.33.6.md](docs/releases/release-v0.33.6.md)。

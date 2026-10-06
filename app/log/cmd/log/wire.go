@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	authz "micro-one-api/platform/authz"
 	"time"
 
 	"github.com/go-kratos/kratos/v3"
@@ -57,6 +58,8 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 }
 
 func newApp(cfg *Config, repo *data.Repository, uc *biz.LogUsecase, svc *service.LogService, reg registrarResult) (*kratos.App, func()) {
+	ownerAuth, _ := authz.FromEnvironment("log")
+	svc.SetAuthorization(ownerAuth)
 	// Parse retention days with fallback to 30.
 	retentionDays := 30
 	if cfg.Bootstrap.LogSvc != nil && cfg.Bootstrap.LogSvc.RetentionDays > 0 {
@@ -109,6 +112,7 @@ func newApp(cfg *Config, repo *data.Repository, uc *biz.LogUsecase, svc *service
 	}
 	app := kratos.New(opts...)
 	return app, func() {
+		_ = ownerAuth.Close()
 		cleanupRetention()
 		partitionCancel()
 		if partitionStop != nil {

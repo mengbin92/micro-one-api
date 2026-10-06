@@ -44,8 +44,9 @@ func WithEntitlements(f *SubjectFacts, e *EntitlementFacts) *SubjectFacts {
 }
 
 type SubjectFacts struct {
-	SubscriptionID                 int64 `json:",omitempty"`
-	SubscriptionEntitlementVersion int64
+	AuthorizationRevision, AuthorizationPolicyRevision uint64
+	SubscriptionID                                     int64 `json:",omitempty"`
+	SubscriptionEntitlementVersion                     int64
 	// TokenReferences are returned only by the administrative facts query.
 	TokenReferences   []TokenReference
 	DefaultGroupID    int64

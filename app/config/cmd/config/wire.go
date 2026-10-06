@@ -7,6 +7,7 @@ import (
 	"github.com/go-kratos/kratos/v3"
 	"github.com/go-kratos/kratos/v3/registry"
 	"github.com/google/wire"
+	authz "micro-one-api/platform/authz"
 
 	"micro-one-api/app/config/internal/biz"
 	"micro-one-api/app/config/internal/data"
@@ -59,6 +60,8 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 }
 
 func newApp(cfg *Config, svc *service.ConfigService, reg registrarResult) (*kratos.App, func()) {
+	ownerAuth, _ := authz.FromEnvironment("config")
+	svc.SetAuthorization(ownerAuth)
 	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc)
 	opts := []kratos.Option{
@@ -69,5 +72,7 @@ func newApp(cfg *Config, svc *service.ConfigService, reg registrarResult) (*krat
 		opts = append(opts, kratos.Registrar(reg.Registrar))
 	}
 	app := kratos.New(opts...)
-	return app, func() {}
+	return app, func() {
+		_ = ownerAuth.Close()
+	}
 }

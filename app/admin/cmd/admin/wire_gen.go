@@ -17,6 +17,7 @@ import (
 	"micro-one-api/api/identity/v1"
 	"micro-one-api/app/admin/internal/biz"
 	"micro-one-api/app/admin/internal/data/channelclient"
+	"micro-one-api/app/admin/internal/data/iam"
 	"micro-one-api/app/admin/internal/data/routingaccess"
 	"micro-one-api/app/admin/internal/server"
 	"micro-one-api/app/admin/internal/service"
@@ -43,13 +44,17 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	mainSystemOptionsResult := newSystemOptionsRepo(config)
 	systemOptionsUsecase := newSystemOptionsUsecase(mainSystemOptionsResult)
 	adminService := service.NewAdminService(billingServiceClient, identityServiceClient, channelServiceClient, systemOptionsUsecase)
+	iamServiceClient := provideIAMClient(mainClientsResult)
+	iamRepo := iam.NewRepo(iamServiceClient)
+	iamUsecase := biz.NewIAMUsecase(iamRepo)
+	iamAdminService := service.NewIAMAdminService(iamUsecase)
 	routingGroupReader := channelclient.NewRoutingGroupReader(channelServiceClient)
 	routingGroupUsecase := biz.NewRoutingGroupUsecase(routingGroupReader)
 	routingAccessRepo := routingaccess.NewRepo(identityServiceClient, channelServiceClient, billingServiceClient)
 	routingAccessUsecase := biz.NewRoutingAccessUsecase(routingGroupReader, routingAccessRepo)
 	auditor := newAuditAuditor()
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup := newApp(config, mainClientsResult, mainSubscriptionResult, adminService, routingGroupUsecase, routingAccessUsecase, auditor, mainRegistrarResult)
+	app, cleanup := newApp(config, mainClientsResult, mainSubscriptionResult, adminService, iamAdminService, routingGroupUsecase, routingAccessUsecase, auditor, mainRegistrarResult)
 	return app, func() {
 		cleanup()
 	}, nil
@@ -63,7 +68,7 @@ var ProviderSet = wire.NewSet(
 	newSystemOptionsUsecase,
 	newSubscriptionUsecases,
 	provideIdentityClient,
-	provideChannelClient,
+	provideIAMClient, iam.NewRepo, biz.NewIAMUsecase, service.NewIAMAdminService, provideChannelClient,
 	provideBillingClient,
 	newAuditAuditor, channelclient.NewRoutingGroupReader, biz.NewRoutingGroupUsecase, routingaccess.NewRepo, biz.NewRoutingAccessUsecase, service.NewAdminService, provideRegistrar,
 )
@@ -105,12 +110,13 @@ func newApp(
 	cfg *Config,
 	clients *clientsResult,
 	sub subscriptionResult,
-	svc *service.AdminService,
+	svc *service.AdminService, iam2 *service.IAMAdminService,
 	routingGroups *biz.RoutingGroupUsecase,
 	routingAccess *biz.RoutingAccessUsecase,
 	auditor *audit.Auditor,
 	reg registrarResult,
 ) (*kratos.App, func()) {
+	svc.SetIAMService(iam2)
 	svc.SetRoutingGroupUsecase(routingGroups)
 	svc.SetRoutingAccessUsecase(routingAccess)
 
@@ -156,4 +162,8 @@ func newApp(
 			clients.billingConn.Close()
 		}
 	}
+}
+
+func provideIAMClient(c *clientsResult) identityv1.IAMServiceClient {
+	return identityv1.NewIAMServiceClient(c.identityConn)
 }

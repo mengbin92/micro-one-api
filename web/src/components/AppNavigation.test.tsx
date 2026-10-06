@@ -25,6 +25,7 @@ function SharedAccountQueryProbe() {
 
 function mockSelf(role: number, id = 7) {
   server.use(
+    http.get('/api/user/authorization', () => HttpResponse.json({ authorization_mode: 'legacy', legacy_admin: role >= 10 })),
     http.get('/api/user/self', () =>
       HttpResponse.json({ success: true, data: { id, username: 'alice', display_name: 'Alice', role } }),
     ),
@@ -116,8 +117,8 @@ describe('AppNavigation', () => {
     renderNavigation();
 
     expect(await screen.findByRole('link', { name: '进入管理' })).toBeInTheDocument();
-    expect(window.localStorage.getItem('userRole')).toBe('10');
-    expect(window.localStorage.getItem('userId')).toBe('42');
+    await waitFor(() => expect(window.localStorage.getItem('userRole')).toBe('10'));
+    await waitFor(() => expect(window.localStorage.getItem('userId')).toBe('42'));
   });
 
   it('deduplicates account requests shared with page queries', async () => {

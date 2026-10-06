@@ -1,9 +1,10 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuthorizedQuery } from '@/lib/authorization';
+import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { locale, t } from '@/lib/i18n';
 import { adminApiClient } from '@/lib/api';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EmptyState } from '@/components/EmptyState';
@@ -84,8 +85,8 @@ export function AdminRedemptionsPage() {
   exportParams.set('format', 'csv');
   const exportHref = `/redemption/export?${exportParams}`;
 
-  const { data: codes, isLoading } = useQuery({
-    queryKey: ['admin-redemptions', page, pageSize, search, statusFilter, sortKey, sortDirection],
+  const { data: codes, isLoading } = useAuthorizedQuery({
+    permission: 'billing.redemption.list', queryKey: ['admin-redemptions', page, pageSize, search, statusFilter, sortKey, sortDirection],
     queryFn: async () => {
       const params = buildAdminListParams({
         page,
@@ -196,7 +197,7 @@ export function AdminRedemptionsPage() {
                   onChange={(e) => setNewCodeCount(e.target.value)}
                 />
               </div>
-              <Button
+              <Button permission="billing.redemption.create"
                 onClick={handleCreate}
                 disabled={createMutation.isPending || !newCodeName.trim() || !newCodeAmount}
                 className="w-full"
@@ -229,7 +230,7 @@ export function AdminRedemptionsPage() {
           {t('清除')}
         </Button>
         <div className="ml-auto">
-          <ExportButton
+          <ExportButton permission="billing.redemption.export"
             filename="admin-redemptions.csv"
             href={exportHref}
             rows={visibleCodes}
@@ -314,7 +315,7 @@ export function AdminRedemptionsPage() {
                       {new Date(parseInt(code.createdAt) * 1000).toLocaleDateString(locale())}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
+                      <Button permission="billing.redemption.delete"
                         variant="destructive"
                         size="sm"
                         onClick={() => deleteMutation.mutate(code.code)}

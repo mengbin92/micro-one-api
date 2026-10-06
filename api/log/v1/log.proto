@@ -7,6 +7,12 @@ import "google/api/annotations.proto";
 option go_package = "micro-one-api/api/log/v1;logv1";
 
 service LogService {
+  rpc ExportLogs(ExportLogsRequest) returns (ListLogsResponse) {
+    option (google.api.http) = { get: "/v1/logs/export" };
+  }
+  rpc PurgeLogs(PurgeLogsRequest) returns (PurgeLogsResponse) {
+    option (google.api.http) = { post: "/v1/logs/purge" body: "*" };
+  }
   rpc GetLog(GetLogRequest) returns (GetLogResponse) {
     option (google.api.http) = {
       get: "/v1/logs/{id}"
@@ -131,3 +137,13 @@ message IngestLogRequest {
 message IngestLogResponse {
   int64 id = 1;
 }
+
+message ExportLogsRequest {
+ int32 page = 1;
+ int32 page_size = 2;
+ string level = 3;
+ string source = 4;
+ string keyword = 5;
+}
+message PurgeLogsRequest { int64 before = 1; string reason = 2; }
+message PurgeLogsResponse { int64 deleted = 1; }

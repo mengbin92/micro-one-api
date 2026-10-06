@@ -18,23 +18,11 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// NewGRPCServer wires gRPC transport for identity-service.
-//
-// H1 hardening: the previously-unauthenticated gRPC server exposed every
-// Identity RPC (CreateUser, SetUserRole, CreateAccessToken, DeleteUser,
-// ListUsers) to any network-reachable caller. We now require a service
-// token in the `authorization: Bearer <SERVICE_TOKEN>` metadata, validated
-// with a constant-time compare against the shared SERVICE_TOKEN env var
-// (the same scheme the billing HTTP layer uses). When SERVICE_TOKEN is
-// unset the server fails closed (every RPC is denied) rather than running
-// open — this is deliberate to force operators to configure the shared
-// secret before exposing the gRPC port.
-//
-// On successful service-token validation the interceptor stamps the context
-// and forwards the separate operator credential. SetUserRole validates that
-// credential as either the identified user's session or ADMIN_TOKEN; the
-// request's operator_user_id never authenticates the caller by itself.
-func NewGRPCServer(addr string, svc *service.IdentityService) *kgrpc.Server {
+// NewGRPCServer authenticates independent opaque service credentials and fixed
+// full-method caller policies. The shared token remains a legacy compatibility
+// principal; IAM user operations additionally verify the operator JWT/JTI.
+// Root rescue uses its separate, explicitly enabled credential path.
+func NewGRPCServer(addr string, svc *service.IdentityService, iam ...*service.IAMService) *kgrpc.Server {
 	serviceToken := os.Getenv("SERVICE_TOKEN")
 	srv := kgrpc.NewServer(
 		kgrpc.Address(addr),
@@ -49,36 +37,33 @@ func NewGRPCServer(addr string, svc *service.IdentityService) *kgrpc.Server {
 		kgrpc.StreamInterceptor(serviceTokenStreamInterceptor(serviceToken)),
 	)
 	identityv1.RegisterIdentityServiceServer(srv, svc)
+	if len(iam) > 0 && iam[0] != nil {
+		identityv1.RegisterIAMServiceServer(srv, iam[0])
+	}
 	return srv
 }
 
 func serviceTokenUnaryInterceptor(serviceToken string) grpc.UnaryServerInterceptor {
+	identityAuth := xgrpc.ServiceTokenUnaryInterceptor(serviceToken)
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		if err := validateServiceToken(ctx, serviceToken); err != nil {
-			return nil, err
+		if info.FullMethod == identityv1.IAMService_RescueRootCredential_FullMethodName {
+			if err := validateServiceToken(ctx, os.Getenv("IAM_RESCUE_SERVICE_TOKEN")); err != nil {
+				return nil, err
+			}
+			return handler(operatorCredentialContext(service.RescueAuthenticatedContext(ctx)), req)
 		}
-		return handler(operatorCredentialContext(service.ServiceAuthenticatedContext(ctx)), req)
+		return identityAuth(ctx, req, info, func(ctx context.Context, req any) (any, error) {
+			md, _ := metadata.FromIncomingContext(ctx)
+			if len(md.Get("x-operator-authorization")) > 1 {
+				return nil, status.Error(codes.Unauthenticated, "ambiguous operator credential")
+			}
+			return handler(operatorCredentialContext(service.ServiceAuthenticatedContext(ctx)), req)
+		})
 	}
 }
 
 func serviceTokenStreamInterceptor(serviceToken string) grpc.StreamServerInterceptor {
-	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		if err := validateServiceToken(ss.Context(), serviceToken); err != nil {
-			return err
-		}
-		return handler(srv, &serviceAuthenticatedStream{ServerStream: ss})
-	}
-}
-
-// serviceAuthenticatedStream wraps a gRPC ServerStream so the context
-// carries the service-authenticated marker (serviceCallerKey) for stream
-// RPCs, mirroring the unary interceptor.
-type serviceAuthenticatedStream struct {
-	grpc.ServerStream
-}
-
-func (s *serviceAuthenticatedStream) Context() context.Context {
-	return operatorCredentialContext(service.ServiceAuthenticatedContext(s.ServerStream.Context()))
+	return xgrpc.ServiceTokenStreamInterceptor(serviceToken)
 }
 
 func validateServiceToken(ctx context.Context, serviceToken string) error {
@@ -92,7 +77,7 @@ func validateServiceToken(ctx context.Context, serviceToken string) error {
 		return status.Error(codes.Unauthenticated, "missing metadata")
 	}
 	values := md.Get("authorization")
-	if len(values) == 0 || !strings.HasPrefix(values[0], "Bearer ") {
+	if len(values) != 1 || !strings.HasPrefix(values[0], "Bearer ") {
 		return status.Error(codes.Unauthenticated, "missing or invalid authorization header")
 	}
 	token := strings.TrimPrefix(values[0], "Bearer ")
@@ -105,7 +90,7 @@ func validateServiceToken(ctx context.Context, serviceToken string) error {
 func operatorCredentialContext(ctx context.Context) context.Context {
 	md, _ := metadata.FromIncomingContext(ctx)
 	values := md.Get("x-operator-authorization")
-	if len(values) == 0 {
+	if len(values) != 1 {
 		return ctx
 	}
 	credential := strings.TrimSpace(values[0])

@@ -8,6 +8,7 @@ const { getMock } = vi.hoisted(() => ({ getMock: vi.fn() }));
 
 vi.mock('@/lib/api', () => ({
   adminApiClient: { get: getMock },
+  apiClient: { get: async () => ({ data: { authorization_mode: 'legacy', legacy_admin: true } }) },
 }));
 
 describe('NotificationPanel', () => {

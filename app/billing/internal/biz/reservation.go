@@ -20,6 +20,7 @@ const (
 // and the subscription usage counters, so the new "subscription priority"
 // deduction flow is safe to retry.
 type Reservation struct {
+	CostFieldsVisible         bool
 	RequestSnapshot           *RequestSnapshot
 	SubscriptionAccountingUSD *float64
 	ReservationID             string

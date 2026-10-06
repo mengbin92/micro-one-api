@@ -4,8 +4,11 @@ import (
 	"context"
 	billingv1 "micro-one-api/api/billing/v1"
 	"micro-one-api/app/billing/internal/biz"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/routing"
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/platform/security/serviceidentity"
+	"strconv"
 )
 
 func (s *BillingService) GetRoutingGroupPrice(ctx context.Context, req *billingv1.GetRoutingGroupPriceRequest) (*billingv1.GetRoutingGroupPriceReply, error) {
@@ -29,6 +32,9 @@ func (s *BillingService) GetRoutingBillingPolicy(ctx context.Context, req *billi
 	return &billingv1.RoutingBillingPolicy{RoutingGroupId: p.GroupID, Version: p.Version, BillingMode: p.BillingMode, PriceRatio: p.PriceRatio, EffectiveAt: p.EffectiveAt}, nil
 }
 func (s *BillingService) PublishRoutingBillingPolicy(ctx context.Context, req *billingv1.PublishRoutingBillingPolicyRequest) (*billingv1.RoutingBillingPolicy, error) {
+	if req.Reason != "" {
+		ctx = authorization.WithWriteReason(ctx, req.Reason)
+	}
 	p := &routing.BillingPolicy{GroupID: req.RoutingGroupId, BillingMode: req.BillingMode, PriceRatio: req.PriceRatio}
 	if err := s.uc.PublishRoutingBillingPolicy(ctx, p, req.ExpectedVersion); err != nil {
 		return nil, err
@@ -38,6 +44,13 @@ func (s *BillingService) PublishRoutingBillingPolicy(ctx context.Context, req *b
 
 func (s *BillingService) SetSubscriptionCommerce(uc *biz.SubscriptionCommerce) { s.commerceUc = uc }
 func (s *BillingService) ExecuteSubscriptionCommerce(ctx context.Context, req *billingv1.SubscriptionCommerceRequest) (*billingv1.SubscriptionCommerceReply, error) {
+	if serviceidentity.FromContext(ctx).Name == "identity" {
+		var err error
+		ctx, err = s.uc.AuthorizeSelf(ctx, strconv.FormatInt(req.UserId, 10))
+		if err != nil {
+			return nil, err
+		}
+	}
 	if s.commerceUc == nil {
 		return nil, biz.ErrRequestSnapshotUnavailable
 	}

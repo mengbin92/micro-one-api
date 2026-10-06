@@ -3,6 +3,8 @@ package data
 import (
 	"context"
 	"errors"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/database/authzquery"
 	"strconv"
 
 	"micro-one-api/app/billing/internal/biz"
@@ -90,6 +92,15 @@ func (r *accountRepo) UpdateBalanceInTx(ctx context.Context, tx subscriptionbiz.
 	if err := db.Table("users").Where("id = ?", userID).Update("balance", newBalance).Error; err != nil {
 		return 0, err
 	}
+	for _, op := range []string{"billing.account.balance.adjust", "billing.account.balance.reset"} {
+		id, _ := strconv.ParseInt(userID, 10, 64)
+		if err := biz.RequireWrite(ctx, op, authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: id, OwnerUserID: id}); err != nil {
+			return 0, err
+		}
+		if err := authzquery.AppendWriteAudit(ctx, db, op, id); err != nil {
+			return 0, err
+		}
+	}
 	return newBalance, nil
 }
 
@@ -111,6 +122,15 @@ func (r *accountRepo) IncrementBalanceInTx(ctx context.Context, tx subscriptionb
 	}
 	if err := db.WithContext(ctx).Table("users").Select("balance").Where("id = ?", userID).Scan(&row).Error; err != nil {
 		return 0, err
+	}
+	for _, op := range []string{"billing.account.balance.adjust", "billing.account.balance.reset"} {
+		id, _ := strconv.ParseInt(userID, 10, 64)
+		if err := biz.RequireWrite(ctx, op, authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: id, OwnerUserID: id}); err != nil {
+			return 0, err
+		}
+		if err := authzquery.AppendWriteAudit(ctx, db, op, id); err != nil {
+			return 0, err
+		}
 	}
 	return row.Balance, nil
 }

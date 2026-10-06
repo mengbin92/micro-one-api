@@ -25,6 +25,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	"micro-one-api/domain/authorization"
 
 	"micro-one-api/platform/database/xdb"
 )
@@ -37,12 +39,18 @@ const userStatusEnabled = 1
 
 func main() {
 	var (
-		username = flag.String("username", "admin", "username to reset (created if missing)")
-		password = flag.String("password", "", "new password; if empty, a random 16-char hex password is generated")
-		passFile = flag.String("generated-password-file", "", "file to write the generated password when -password is empty; created with mode 0600")
-		email    = flag.String("email", "", "email to set when creating a new user (ignored on reset unless -role is also set)")
-		quota    = flag.Int64("quota", 1_000_000, "quota to set when creating a new user (ignored on reset)")
-		role     = flag.Int("role", -1, "role to set (0=guest, 1=user, 10=admin, 100=root); negative means leave unchanged on reset, default to 100 on create")
+		rescue         = flag.Bool("iam-rescue", false, "recover enabled IAM root credentials via identity RPC; never writes SQL")
+		endpoint       = flag.String("identity-grpc-endpoint", os.Getenv("IDENTITY_GRPC_ENDPOINT"), "dedicated rescue RPC endpoint")
+		target         = flag.Int64("user-id", 0, "IAM rescue target root ID")
+		reason         = flag.String("reason", "", "IAM rescue audit reason")
+		userRevision   = flag.Uint64("expected-revision", 0, "IAM rescue user CAS revision")
+		policyRevision = flag.Uint64("expected-policy-revision", 0, "IAM rescue policy CAS revision")
+		username       = flag.String("username", "admin", "username to reset (created if missing)")
+		password       = flag.String("password", "", "new password; if empty, a random 16-char hex password is generated")
+		passFile       = flag.String("generated-password-file", "", "file to write the generated password when -password is empty; created with mode 0600")
+		email          = flag.String("email", "", "email to set when creating a new user (ignored on reset unless -role is also set)")
+		quota          = flag.Int64("quota", 1_000_000, "quota to set when creating a new user (ignored on reset)")
+		role           = flag.Int("role", -1, "role to set (0=guest, 1=user, 10=admin, 100=root); negative means leave unchanged on reset, default to 100 on create")
 	)
 	flag.Parse()
 
@@ -53,7 +61,7 @@ func main() {
 	}
 
 	dsn := pickDSN()
-	if dsn == "" {
+	if dsn == "" && !*rescue {
 		fmt.Fprintln(os.Stderr, "error: ADMIN_RESET_DSN, IDENTITY_SQL_DSN, or SQL_DSN must be set")
 		os.Exit(2)
 	}
@@ -73,6 +81,25 @@ func main() {
 		}
 		plain = hex.EncodeToString(buf)
 		generated = true
+	}
+
+	if *rescue {
+		if *role >= 0 || *email != "" {
+			fmt.Fprintln(os.Stderr, "error: IAM rescue cannot change role or email")
+			os.Exit(2)
+		}
+		if err := rescueIAMCredential(*endpoint, *target, plain, *reason, *userRevision, *policyRevision); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		if generated {
+			if err := writeGeneratedPasswordFile(outputFile, plain); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+		}
+		fmt.Println("IAM root credential recovered; sessions revoked")
+		return
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)
@@ -159,12 +186,52 @@ func pickDSN() string {
 // enabled admin row if none exists. When role >= 0 the role column is also
 // updated/set. Returns created=true when a new row was inserted.
 func upsertPassword(ctx context.Context, db *gorm.DB, username, hash, email string, quota int64, role int) (bool, error) {
+	var created bool
+	err := xdb.RetryTxOnBusy(ctx, db, 5, func(tx *gorm.DB) error {
+		// Same lock as identity cutover. A preflight outside this transaction would
+		// let a CLI race a mode switch and perform a legacy credential/role write.
+		if tx.Dialector.Name() == "sqlite" {
+			if err := tx.Exec("UPDATE iam_policy_state SET policy_revision = policy_revision WHERE id = 1").Error; err != nil {
+				return err
+			}
+		}
+		var p struct {
+			AuthorizationMode, CutoverState, CutoverBatchID string
+			CutoverVerifiedAt                               *int64
+		}
+		query := tx.Table("iam_policy_state").Where("id = 1")
+		if tx.Dialector.Name() != "sqlite" {
+			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+		if err := query.Take(&p).Error; err != nil {
+			return fmt.Errorf("read authorization state (migrations required): %w", err)
+		}
+		state := authorization.PolicyState{Mode: p.AuthorizationMode, Cutover: p.CutoverState, BatchID: p.CutoverBatchID}
+		if p.CutoverVerifiedAt != nil {
+			at := time.UnixMilli(*p.CutoverVerifiedAt)
+			state.VerifiedAt = &at
+		}
+		if state.CheckWrite(authorization.LegacyAccountWrite, false) != nil {
+			return fmt.Errorf("legacy admin-reset disabled in %s/%s; use the protected identity credential rescue usecase", state.Mode, state.Cutover)
+		}
+		var err error
+		created, err = upsertLegacyPassword(ctx, tx, username, hash, email, quota, role)
+		return err
+	})
+	if err != nil {
+		return false, err
+	}
+	return created, nil
+}
+
+func upsertLegacyPassword(ctx context.Context, db *gorm.DB, username, hash, email string, quota int64, role int) (bool, error) {
+
 	var count int64
 	if err := db.WithContext(ctx).Table("users").Where("username = ?", username).Count(&count).Error; err != nil {
 		return false, fmt.Errorf("query user: %w", err)
 	}
 	if count > 0 {
-		updates := map[string]any{"password_hash": hash}
+		updates := map[string]any{"password_hash": hash, "password_changed_at": gorm.Expr("CASE WHEN password_changed_at >= ? THEN password_changed_at + 1 ELSE ? END", time.Now().UnixMilli(), time.Now().UnixMilli())}
 		if role >= 0 {
 			updates["role"] = role
 		}

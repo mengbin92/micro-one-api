@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { toast } from 'sonner';
+import { protectedSignal, refreshAuthorization, prepareAdminRequest } from '@/lib/authorization-events';
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -48,6 +49,7 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401 && isSessionAuthPath(requestPath(error))) {
       clearUserSession();
+      refreshAuthorization();
       toast.error('Session expired. Please sign in again.');
       window.location.href = '/login';
     }
@@ -55,9 +57,7 @@ apiClient.interceptors.response.use(
   }
 );
 
-// Admin API client: admin endpoints now accept the signed-in user's session
-// token (backend authorises by role >= admin). The shared ADMIN_TOKEN remains
-// a backend-only backdoor and is no longer entered from the UI.
+// Admin endpoints authenticate the user's session and authorize at the owner.
 export const adminApiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -71,11 +71,8 @@ adminApiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    const operatorId = localStorage.getItem('userId');
-    if (operatorId && operatorId !== '0') {
-      config.headers['X-Operator-User-Id'] = operatorId;
-    }
-    return config;
+    config.signal ??= protectedSignal();
+    return prepareAdminRequest(config);
   },
   (error) => Promise.reject(error)
 );
@@ -83,9 +80,14 @@ adminApiClient.interceptors.request.use(
 adminApiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.response?.status === 403) {
+      refreshAuthorization();
+    }
     if (error.response?.status === 401) {
+      clearUserSession();
       clearAdminSession();
-      toast.error('Admin permission is required.');
+      refreshAuthorization();
+      toast.error('Session expired. Please sign in again.');
     }
     return Promise.reject(error);
   }

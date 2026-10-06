@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"micro-one-api/platform/security/serviceidentity"
 	"os"
 	"path/filepath"
 	"strings"
@@ -178,9 +179,9 @@ func newBillingClient(cfg *Config) (billingv1.BillingServiceClient, *grpc.Client
 	if cfg.Bootstrap.Clients.Billing.Endpoint == "" {
 		return nil, nil, nil
 	}
-	serviceToken := os.Getenv("SERVICE_TOKEN")
+	serviceToken := serviceidentity.ClientToken()
 	if serviceToken == "" {
-		return nil, nil, fmt.Errorf("SERVICE_TOKEN environment variable is required")
+		return nil, nil, fmt.Errorf("SERVICE_IDENTITY_TOKEN or legacy SERVICE_TOKEN is required")
 	}
 	conn, err := grpc.NewClient(
 		cfg.Bootstrap.Clients.Billing.Endpoint,

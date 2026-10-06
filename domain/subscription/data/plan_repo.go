@@ -8,6 +8,8 @@ import (
 	"micro-one-api/domain/subscription/biz"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	"micro-one-api/domain/authorization"
 )
 
 type planModel struct {
@@ -105,9 +107,20 @@ func (r *Repository) ListPlansForSale(ctx context.Context) ([]*biz.SubscriptionP
 func (r *Repository) createPlanDB(ctx context.Context, plan *biz.SubscriptionPlan) error {
 	plan.Revision = 1
 	model := planToModel(plan)
-	if err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	if err := runSubscriptionTx(ctx, r.db, func(ctx context.Context, tx *gorm.DB) error {
+		if err := requireOperations(ctx, 0, 0, "subscription.plan.create", "subscription.plan.publish"); err != nil {
+			return err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "subscription.plan.create"); iam {
+			if err := validateEnabledQuotaPolicy(tx, plan.GroupID); err != nil {
+				return err
+			}
+		}
 		if !biz.EntitlementsEnabled() && plan.Contract == nil {
-			return tx.Omit("ContractSnapshot", "Revision").Create(&model).Error
+			if err := tx.Omit("ContractSnapshot", "Revision").Create(&model).Error; err != nil {
+				return err
+			}
+			return auditOperations(ctx, tx, model.ID, "subscription.plan.create", "subscription.plan.publish")
 		}
 		if err := LockContractReferences(tx); err != nil {
 			return err
@@ -118,7 +131,10 @@ func (r *Repository) createPlanDB(ctx context.Context, plan *biz.SubscriptionPla
 		if err := tx.Create(&model).Error; err != nil {
 			return err
 		}
-		return syncContractCoverage(tx, "subscription_plan_routing_groups", "plan_id", model.ID, plan.Contract)
+		if err := syncContractCoverage(tx, "subscription_plan_routing_groups", "plan_id", model.ID, plan.Contract); err != nil {
+			return err
+		}
+		return auditOperations(ctx, tx, model.ID, "subscription.plan.create", "subscription.plan.publish")
 	}); err != nil {
 		return err
 	}
@@ -142,10 +158,53 @@ func (r *Repository) updatePlanDB(ctx context.Context, plan *biz.SubscriptionPla
 		"sort_order":     model.SortOrder,
 		"updated_at":     model.UpdatedAt,
 	}
-	if !biz.EntitlementsEnabled() && plan.Contract == nil {
-		return r.db.WithContext(ctx).Model(&planModel{}).Where("id = ?", plan.ID).Updates(updates).Error
-	}
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := runSubscriptionTx(ctx, r.db, func(ctx context.Context, tx *gorm.DB) error {
+		var old planModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&old, plan.ID).Error; err != nil {
+			return err
+		}
+		if err := requireOperations(ctx, plan.ID, 0, "subscription.plan.update", "subscription.plan.publish", "subscription.plan.unpublish"); err != nil {
+			return err
+		}
+		if old.ForSale != plan.ForSale {
+			action := "subscription.plan.unpublish"
+			if plan.ForSale {
+				action = "subscription.plan.publish"
+			}
+			if _, iam := authorization.QueryScopeFromContext(ctx, "subscription.plan.update"); iam {
+				if _, ok := authorization.QueryScopeFromContext(ctx, action); !ok {
+					return authorization.ErrDenied
+				}
+			}
+			if err := requireOperations(ctx, plan.ID, 0, action); err != nil {
+				return err
+			}
+		}
+		_, iam := authorization.QueryScopeFromContext(ctx, "subscription.plan.update")
+		if !iam {
+			_, iam = authorization.QueryScopeFromContext(ctx, "subscription.plan.publish")
+		}
+		if !iam {
+			_, iam = authorization.QueryScopeFromContext(ctx, "subscription.plan.unpublish")
+		}
+		if iam {
+			if err := validateEnabledQuotaPolicy(tx, plan.GroupID); err != nil {
+				return err
+			}
+		}
+		if iam && plan.Revision != old.Revision {
+			return biz.ErrSubscriptionContractConflict
+		}
+		if !biz.EntitlementsEnabled() && plan.Contract == nil {
+			if iam {
+				updates["revision"] = old.Revision + 1
+			}
+			if err := tx.Model(&planModel{}).Where("id = ?", plan.ID).Updates(updates).Error; err != nil {
+				return err
+			}
+			return auditOperations(ctx, tx, plan.ID, "subscription.plan.update", "subscription.plan.publish", "subscription.plan.unpublish")
+		}
+
 		if err := LockContractReferences(tx); err != nil {
 			return err
 		}
@@ -163,7 +222,10 @@ func (r *Repository) updatePlanDB(ctx context.Context, plan *biz.SubscriptionPla
 		if result.RowsAffected != 1 {
 			return biz.ErrSubscriptionContractConflict
 		}
-		return syncContractCoverage(tx, "subscription_plan_routing_groups", "plan_id", plan.ID, plan.Contract)
+		if err := syncContractCoverage(tx, "subscription_plan_routing_groups", "plan_id", plan.ID, plan.Contract); err != nil {
+			return err
+		}
+		return auditOperations(ctx, tx, plan.ID, "subscription.plan.update", "subscription.plan.publish", "subscription.plan.unpublish")
 	})
 	if err == nil {
 		plan.Revision++
@@ -172,12 +234,34 @@ func (r *Repository) updatePlanDB(ctx context.Context, plan *biz.SubscriptionPla
 }
 
 func (r *Repository) deletePlanDB(ctx context.Context, planID int64) error {
-	return r.db.WithContext(ctx).Delete(&planModel{}, planID).Error
+	return runSubscriptionTx(ctx, r.db, func(ctx context.Context, tx *gorm.DB) error {
+		var old planModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&old, planID).Error; err != nil {
+			return err
+		}
+		if err := requireOperations(ctx, planID, 0, "subscription.plan.delete"); err != nil {
+			return err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "subscription.plan.delete"); iam {
+			expected, ok := biz.ExpectedRevision(ctx)
+			if !ok || expected != old.Revision {
+				return biz.ErrSubscriptionContractConflict
+			}
+		}
+		if err := tx.Delete(&planModel{}, planID).Error; err != nil {
+			return err
+		}
+		return auditOperations(ctx, tx, planID, "subscription.plan.delete")
+	})
 }
 
 func (r *Repository) getPlanByIDDB(ctx context.Context, planID int64) (*biz.SubscriptionPlan, error) {
+	scoped, scopeErr := planQuery(ctx, r.db.WithContext(ctx))
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
 	var model planModel
-	if err := r.db.WithContext(ctx).Where("id = ?", planID).First(&model).Error; err != nil {
+	if err := scoped.Where("id = ?", planID).First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, biz.ErrSubscriptionPlanNotFound
 		}
@@ -189,7 +273,11 @@ func (r *Repository) getPlanByIDDB(ctx context.Context, planID int64) (*biz.Subs
 }
 
 func (r *Repository) listPlansDB(ctx context.Context, saleOnly bool) ([]*biz.SubscriptionPlan, error) {
-	query := r.db.WithContext(ctx).Order("sort_order ASC").Order("id ASC")
+	scoped, scopeErr := planQuery(ctx, r.db.WithContext(ctx))
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
+	query := scoped.Order("sort_order ASC").Order("id ASC")
 	if saleOnly {
 		query = query.Where("for_sale = ?", true)
 	}
@@ -262,6 +350,9 @@ func planFromModel(model *planModel) biz.SubscriptionPlan {
 }
 
 func (r *Repository) createPlanMemory(ctx context.Context, plan *biz.SubscriptionPlan) error {
+	if err := authorization.RequireDurableWrite(ctx, "subscription.plan.create", "subscription.plan.publish"); err != nil {
+		return err
+	}
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	plan.ID = r.nextPlanID
@@ -271,6 +362,9 @@ func (r *Repository) createPlanMemory(ctx context.Context, plan *biz.Subscriptio
 }
 
 func (r *Repository) updatePlanMemory(ctx context.Context, plan *biz.SubscriptionPlan) error {
+	if err := authorization.RequireDurableWrite(ctx, "subscription.plan.update", "subscription.plan.publish", "subscription.plan.unpublish"); err != nil {
+		return err
+	}
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	r.plans[plan.ID] = clonePlan(plan)
@@ -278,6 +372,9 @@ func (r *Repository) updatePlanMemory(ctx context.Context, plan *biz.Subscriptio
 }
 
 func (r *Repository) deletePlanMemory(ctx context.Context, planID int64) error {
+	if err := authorization.RequireDurableWrite(ctx, "subscription.plan.delete"); err != nil {
+		return err
+	}
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	delete(r.plans, planID)
@@ -288,7 +385,7 @@ func (r *Repository) getPlanByIDMemory(ctx context.Context, planID int64) (*biz.
 	r.lock.RLock()
 	plan, ok := r.plans[planID]
 	r.lock.RUnlock()
-	if !ok {
+	if !ok || !memoryVisible(ctx, planID, 0, "subscription.plan.read", "subscription.plan.list") {
 		return nil, biz.ErrSubscriptionPlanNotFound
 	}
 	cloned := clonePlan(plan)
@@ -302,6 +399,9 @@ func (r *Repository) listPlansMemory(ctx context.Context, saleOnly bool) ([]*biz
 	r.lock.RLock()
 	result := make([]*biz.SubscriptionPlan, 0, len(r.plans))
 	for _, plan := range r.plans {
+		if !memoryVisible(ctx, plan.ID, 0, "subscription.plan.read", "subscription.plan.list") {
+			continue
+		}
 		if saleOnly && !plan.ForSale {
 			continue
 		}
@@ -334,4 +434,15 @@ func clonePlan(plan *biz.SubscriptionPlan) *biz.SubscriptionPlan {
 		cloned.Group = &group
 	}
 	return &cloned
+}
+
+func validateEnabledQuotaPolicy(tx *gorm.DB, id int64) error {
+	var group groupModel
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "status").Where("id = ?", id).Take(&group).Error; err != nil {
+		return err
+	}
+	if group.Status != biz.SubscriptionGroupStatusEnabled {
+		return biz.ErrSubscriptionGroupDisabled
+	}
+	return nil
 }

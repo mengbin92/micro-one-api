@@ -58,6 +58,16 @@ func (r *Repository) UserRoutingFacts(ctx context.Context, userID int64) (*routi
 	}
 	var f *routing.SubjectFacts
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		f, err = loadUserRoutingFacts(tx, userID)
+		return err
+	}, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	return f, err
+}
+
+func loadUserRoutingFacts(tx *gorm.DB, userID int64) (*routing.SubjectFacts, error) {
+	var f *routing.SubjectFacts
+	err := func() error {
 		var u userModel
 		if err := tx.First(&u, userID).Error; err != nil {
 			return biz.ErrUserNotFound
@@ -97,10 +107,14 @@ func (r *Repository) UserRoutingFacts(ctx context.Context, userID int64) (*routi
 			f.Grants = append(f.Grants, routing.UserGroupGrant{GroupID: g.RoutingGroupID, SourceType: g.SourceType, SourceRef: g.SourceRef, StartsAt: g.StartsAt, ExpiresAt: g.ExpiresAt, Status: g.Status})
 		}
 		return nil
-	}, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	}()
 	return f, err
 }
-func (r *Repository) UpdateRoutingAccess(ctx context.Context, c biz.RoutingAccessChange) error {
+
+func (r *Repository) UpdateRoutingAccess(context.Context, biz.RoutingAccessChange) error {
+	return biz.ErrIAMProtected // Runtime writes join the caller's policy transaction.
+}
+func (r *Repository) updateRoutingAccessDB(ctx context.Context, c biz.RoutingAccessChange) error {
 	if r.db == nil {
 		return biz.ErrRoutingFactsUnavailable
 	}
@@ -118,67 +132,71 @@ func (r *Repository) UpdateRoutingAccess(ctx context.Context, c biz.RoutingAcces
 	// concurrent commit afterwards fails the first write with
 	// SQLITE_BUSY_SNAPSHOT — exactly the window the retry replays.
 	return xdb.RetryTxOnBusy(ctx, r.db, 3, func(tx *gorm.DB) error {
-		// A revoke targeting a grant that is not active is a no-op: it must not
-		// mint a dead 'revoked' row, bump the revision, or emit an outbox event.
-		//
-		// Probe read-only on purpose. Flipping the status here would take the
-		// grant row before the user row, while the grant/revoke upsert below
-		// takes the user row first — opposite lock orders that can deadlock when
-		// the same user is concurrently granted and revoked. The status change
-		// itself is applied by that upsert.
-		if c.Operation == "revoke" {
-			var active int64
-			if err := tx.Model(&routingGrantModel{}).Where("user_id = ? AND routing_group_id = ? AND source_type = ? AND source_ref = ? AND status = ?", c.UserID, c.GroupID, c.SourceType, c.SourceRef, "active").Count(&active).Error; err != nil {
-				return err
-			}
-			if active == 0 {
-				return nil
-			}
-		} else {
-			// Grant/default/public_access have no read of their own, but the
-			// snapshot must still be pinned before the first write — a
-			// write-first transaction would hit plain SQLITE_BUSY on the CAS
-			// instead, which busy_timeout resolves silently and the retry
-			// never sees (it would mask a lost-update: the revision CAS below
-			// is the only guard against a concurrently committed access
-			// change, and reading first keeps it authoritative).
-			var noop int64
-			if err := tx.Model(&routingGrantModel{}).Where("user_id = ?", c.UserID).Limit(1).Count(&noop).Error; err != nil {
-				return err
-			}
-		}
-		// CAS is also a write lock on SQLite. Every grant mutation shares this row.
-		updates := map[string]any{"routing_access_revision": c.ExpectedRevision + 1}
-		if c.Operation == "default" {
-			updates["default_routing_group_id"] = c.GroupID
-			updates["group"] = c.GroupKey
-		}
-		if c.Operation == "public_access" {
-			updates["public_group_access"] = c.PublicGroupAccess
-		}
-		result := tx.Model(&userModel{}).Where("id = ? AND routing_access_revision = ? AND status = ?", c.UserID, c.ExpectedRevision, biz.UserStatusEnabled).Updates(updates)
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected != 1 {
-			return biz.ErrRoutingAccessConflict
-		}
-		// The v2 default command changes preference only. Moving a migration
-		// grant would turn temporary or subscription access into permanent
-		// access; that legacy behavior belongs only to updateRoutingUserDB.
-		if c.Operation == "grant" || c.Operation == "revoke" {
-			status := "active"
-			if c.Operation == "revoke" {
-				status = "revoked"
-			}
-			g := routingGrantModel{UserID: c.UserID, RoutingGroupID: c.GroupID, SourceType: c.SourceType, SourceRef: c.SourceRef, StartsAt: c.StartsAt, ExpiresAt: c.ExpiresAt, Status: status}
-			if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "user_id"}, {Name: "routing_group_id"}, {Name: "source_type"}, {Name: "source_ref"}}, DoUpdates: clause.AssignmentColumns([]string{"starts_at", "expires_at", "status"})}).Create(&g).Error; err != nil {
-				return err
-			}
-		}
-		return routingoutbox.Enqueue(tx, "identity", "user", c.UserID, c.ExpectedRevision+1)
+		return applyRoutingAccess(tx, c)
 	})
 }
+func applyRoutingAccess(tx *gorm.DB, c biz.RoutingAccessChange) error {
+	// A revoke targeting a grant that is not active is a no-op: it must not
+	// mint a dead 'revoked' row, bump the revision, or emit an outbox event.
+	//
+	// Probe read-only on purpose. Flipping the status here would take the
+	// grant row before the user row, while the grant/revoke upsert below
+	// takes the user row first — opposite lock orders that can deadlock when
+	// the same user is concurrently granted and revoked. The status change
+	// itself is applied by that upsert.
+	if c.Operation == "revoke" {
+		var active int64
+		if err := tx.Model(&routingGrantModel{}).Where("user_id = ? AND routing_group_id = ? AND source_type = ? AND source_ref = ? AND status = ?", c.UserID, c.GroupID, c.SourceType, c.SourceRef, "active").Count(&active).Error; err != nil {
+			return err
+		}
+		if active == 0 {
+			return nil
+		}
+	} else {
+		// Grant/default/public_access have no read of their own, but the
+		// snapshot must still be pinned before the first write — a
+		// write-first transaction would hit plain SQLITE_BUSY on the CAS
+		// instead, which busy_timeout resolves silently and the retry
+		// never sees (it would mask a lost-update: the revision CAS below
+		// is the only guard against a concurrently committed access
+		// change, and reading first keeps it authoritative).
+		var noop int64
+		if err := tx.Model(&routingGrantModel{}).Where("user_id = ?", c.UserID).Limit(1).Count(&noop).Error; err != nil {
+			return err
+		}
+	}
+	// CAS is also a write lock on SQLite. Every grant mutation shares this row.
+	updates := map[string]any{"routing_access_revision": c.ExpectedRevision + 1}
+	if c.Operation == "default" {
+		updates["default_routing_group_id"] = c.GroupID
+		updates["group"] = c.GroupKey
+	}
+	if c.Operation == "public_access" {
+		updates["public_group_access"] = c.PublicGroupAccess
+	}
+	result := tx.Model(&userModel{}).Where("id = ? AND routing_access_revision = ? AND status = ?", c.UserID, c.ExpectedRevision, biz.UserStatusEnabled).Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return biz.ErrRoutingAccessConflict
+	}
+	// The v2 default command changes preference only. Moving a migration
+	// grant would turn temporary or subscription access into permanent
+	// access; that legacy behavior belongs only to updateRoutingUserDB.
+	if c.Operation == "grant" || c.Operation == "revoke" {
+		status := "active"
+		if c.Operation == "revoke" {
+			status = "revoked"
+		}
+		g := routingGrantModel{UserID: c.UserID, RoutingGroupID: c.GroupID, SourceType: c.SourceType, SourceRef: c.SourceRef, StartsAt: c.StartsAt, ExpiresAt: c.ExpiresAt, Status: status}
+		if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "user_id"}, {Name: "routing_group_id"}, {Name: "source_type"}, {Name: "source_ref"}}, DoUpdates: clause.AssignmentColumns([]string{"starts_at", "expires_at", "status"})}).Create(&g).Error; err != nil {
+			return err
+		}
+	}
+	return routingoutbox.Enqueue(tx, "identity", "user", c.UserID, c.ExpectedRevision+1)
+}
+
 func (r *Repository) SetTokenRouting(ctx context.Context, userID, tokenID int64, mode string, groupID, revision int64, groupIDs []int64) (int64, error) {
 	if r.db == nil {
 		return 0, biz.ErrRoutingFactsUnavailable
@@ -204,4 +222,12 @@ func (r *Repository) SetTokenRouting(ctx context.Context, userID, tokenID int64,
 		return 0, err
 	}
 	return revision + 1, nil
+}
+
+func (r *iamRepo) UserRoutingFactsTx(ctx context.Context, handle biz.IAMTx, userID int64) (*routing.SubjectFacts, error) {
+	tx, err := iamDB(ctx, r.data, handle, false)
+	if err != nil {
+		return nil, err
+	}
+	return loadUserRoutingFacts(tx.db, userID)
 }

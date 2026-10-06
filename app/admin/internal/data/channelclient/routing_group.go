@@ -48,7 +48,7 @@ func (r *routingGroupReader) Get(ctx context.Context, id int64) (*routing.GroupD
 	if reply == nil || reply.Group == nil {
 		return nil, biz.ErrRoutingGroupUnavailable
 	}
-	result := &routing.GroupDetail{Group: groupFromRPC(reply.Group), Resources: []routing.GroupResource{}, ModelGrants: []routing.GroupModelGrant{}}
+	result := &routing.GroupDetail{MembersVisible: reply.MembersVisible, Group: groupFromRPC(reply.Group), Resources: []routing.GroupResource{}, ModelGrants: []routing.GroupModelGrant{}}
 	for _, v := range reply.Resources {
 		if v == nil {
 			return nil, biz.ErrRoutingGroupUnavailable

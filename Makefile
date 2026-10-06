@@ -378,6 +378,11 @@ verify:
 migration-check:
 	go run ./cmd/migrate-check -dir ./migrations
 
+.PHONY: rbac-contract-check
+# P0: reject unreviewed HTTP/RPC registrations, helper drift and unknown codes.
+rbac-contract-check:
+	go run ./cmd/rbac-contract-check
+
 .PHONY: migration-smoke-mysql
 # v0.21 P1: execute all MySQL migrations against a scratch database, verify a
 # repeat apply is a no-op, audit schema_migrations, and prove an invalid SQL

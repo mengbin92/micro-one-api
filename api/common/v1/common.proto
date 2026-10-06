@@ -59,11 +59,15 @@ message UserInfo {
   int64 last_login_at = 11;
   // 0=guest, 1=common, 10=admin, 100=root. See biz.Role* constants.
   int32 role = 12;
+  // IAM owner CAS values; protobuf JSON encodes them as decimal strings.
+  uint64 authorization_revision = 13;
+  uint64 authorization_policy_revision = 14;
 }
 
 // ========== 渠道摘要 ==========
 
 message ChannelSummary {
+ repeated string permitted_actions = 24;
   int64 id = 1;
   string name = 2;
   int32 type = 3;
@@ -85,6 +89,8 @@ message ChannelSummary {
   int32 health_consecutive_failures = 19;
   int64 circuit_opened_until = 20;
   bool restrict_models = 21;                          // restrict to abilities list: false=allow all models (catch-all), true=require registered model
+  bool health_fields_visible = 22;
+  int64 authorization_revision = 23;
 }
 
 // ========== 渠道配置 ==========
@@ -100,6 +106,7 @@ message ChannelConfig {
 // ========== 渠道完整信息 ==========
 
 message ChannelInfo {
+ repeated string permitted_actions = 32;
   int64 id = 1;
   int32 type = 2;
   string name = 3;
@@ -129,11 +136,14 @@ message ChannelInfo {
   int64 circuit_opened_until = 27;
   bool restrict_models = 28;                          // restrict to abilities list: false=allow all models (catch-all), true=require registered model
   string upstream_model_id = 29;                      // selected route's exact provider model identifier
+  bool health_fields_visible = 30;
+  int64 authorization_revision = 31;
 }
 
 // ========== 订阅账号 ==========
 
 message SubscriptionAccountInfo {
+ repeated string permitted_actions = 40;
   int64 credential_revision = 38; // CAS fencing for OAuth writes
   bool credential_refresh_pending = 39; // An OAuth rotation may be in flight; never replay it.
   int64 id = 1;
@@ -176,6 +186,8 @@ message SubscriptionAccountInfo {
 }
 
 message SubscriptionAccountSummary {
+ repeated string permitted_actions = 48;
+ int64 credential_revision = 49;
   int64 id = 1;
   string name = 2;
   string platform = 3;
@@ -254,6 +266,7 @@ message AccountInfo {
 // ========== 兑换码 ==========
 
 message RedeemCode {
+ int64 revision = 9;
   string code = 1;
   string name = 2;
   int64 amount = 3;
@@ -267,6 +280,7 @@ message RedeemCode {
 // ========== 兑换码信息（管理端视图）==========
 
 message RedeemCodeInfo {
+ int64 revision = 8;
   string code = 1;
   string name = 2;
   int64 amount = 3;
@@ -345,6 +359,8 @@ message LedgerEntry {
   string routing_group_key = 49;
   string request_snapshot_hash = 50;
   string request_snapshot_json = 51;
+  bool cost_fields_visible = 52; // false means restricted, not a zero cost.
+  bool pricing_fields_visible = 53;
 }
 
 // PricingSnapshot is the immutable per-request pricing evidence stored in

@@ -5,8 +5,10 @@ import (
 	"strings"
 
 	channelv1 "micro-one-api/api/channel/v1"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/routing"
 	"micro-one-api/pkg/ordering"
+	"micro-one-api/platform/security/serviceidentity"
 
 	"github.com/go-kratos/kratos/v3/errors"
 )
@@ -35,7 +37,31 @@ type RoutingGroupListOptions struct {
 	Limit   int
 }
 
-type RoutingGroupUsecase struct{ repo RoutingGroupRepo }
+type RoutingGroupUsecase struct {
+	repo          RoutingGroupRepo
+	authorization authorization.Resolver
+}
+
+func (uc *RoutingGroupUsecase) SetAuthorization(r authorization.Resolver) { uc.authorization = r }
+func (uc *RoutingGroupUsecase) authorize(ctx context.Context, op string) (context.Context, error) {
+	if !authorization.External(ctx) || serviceidentity.HasSystemCapability(ctx, serviceidentity.RPCMethod(ctx)) {
+		return ctx, nil
+	}
+	point := "channel.routing_groups.write"
+	if op == "channel.routing_group.list" {
+		point = "channel.routing_groups.list"
+	}
+	if op == "channel.routing_group.read" {
+		point = "channel.routing_groups.read"
+	}
+	return authorization.Prepare(ctx, uc.authorization, point, op)
+}
+func (uc *RoutingGroupUsecase) members(ctx context.Context) (context.Context, error) {
+	if !authorization.External(ctx) || serviceidentity.HasSystemCapability(ctx, serviceidentity.RPCMethod(ctx)) {
+		return ctx, nil
+	}
+	return authorization.PrepareOptional(ctx, uc.authorization, "channel.routing_groups.read", "channel.routing_group.members.read")
+}
 
 func NewRoutingGroupUsecase(repo RoutingGroupRepo) *RoutingGroupUsecase {
 	return &RoutingGroupUsecase{repo: repo}
@@ -44,11 +70,23 @@ func (uc *RoutingGroupUsecase) List(ctx context.Context, options RoutingGroupLis
 	if options.Offset < 0 || options.Limit < 1 || options.Limit > 201 {
 		return nil, ErrRoutingGroupInvalid
 	}
+	ctx, err := uc.authorize(ctx, "channel.routing_group.list")
+	if err != nil {
+		return nil, err
+	}
 	return uc.repo.ListRoutingGroups(ctx, options)
 }
 func (uc *RoutingGroupUsecase) Get(ctx context.Context, id int64) (*RoutingGroupDetail, error) {
 	if id <= 0 {
 		return nil, ErrRoutingGroupInvalid
+	}
+	ctx, err := uc.authorize(ctx, "channel.routing_group.read")
+	if err != nil {
+		return nil, err
+	}
+	ctx, err = uc.members(ctx)
+	if err != nil {
+		return nil, err
 	}
 	return uc.repo.GetRoutingGroup(ctx, id)
 }
@@ -84,6 +122,13 @@ func (uc *RoutingGroupUsecase) Create(ctx context.Context, key, displayName, des
 	if !ok {
 		return nil, ErrRoutingGroupStorage
 	}
+	ctx, err := uc.authorize(ctx, "channel.routing_group.create")
+	if err != nil {
+		return nil, err
+	}
+	if err = authorization.Require(ctx, "channel.routing_group.create", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+		return nil, err
+	}
 	created, err := repo.CreateRoutingGroup(ctx, &RoutingGroup{
 		Key:             key,
 		DisplayName:     displayName,
@@ -96,7 +141,7 @@ func (uc *RoutingGroupUsecase) Create(ctx context.Context, key, displayName, des
 	if err != nil {
 		return nil, err
 	}
-	return uc.Get(ctx, created.ID)
+	return &RoutingGroupDetail{Group: created, MembersVisible: true, Resources: []routing.GroupResource{}, ModelGrants: []routing.GroupModelGrant{}}, nil
 }
 
 // maxGroupTextBytes bounds the free-text metadata columns (TEXT in MySQL) so a
@@ -165,10 +210,29 @@ func (uc *RoutingGroupUsecase) SetState(ctx context.Context, id, revision int64,
 	if !ok {
 		return nil, ErrRoutingGroupStorage
 	}
+	ctx, err := uc.authorize(ctx, "channel.routing_group.update")
+	if err != nil {
+		return nil, err
+	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "channel.routing_group.update"); iam && strings.TrimSpace(authorization.WriteReason(ctx)) == "" {
+		return nil, ErrRoutingGroupInvalid
+	}
+	if authorization.External(ctx) && !serviceidentity.HasSystemCapability(ctx, serviceidentity.RPCMethod(ctx)) {
+		for _, op := range []string{"channel.routing_group.enable", "channel.routing_group.disable"} {
+			ctx, err = authorization.PrepareOptional(ctx, uc.authorization, "channel.routing_groups.write", op)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	ctx, err = uc.members(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if err := r.SetRoutingGroupState(ctx, id, revision, status, access); err != nil {
 		return nil, err
 	}
-	return uc.Get(ctx, id)
+	return uc.repo.GetRoutingGroup(ctx, id)
 }
 
 // GroupResourceOverridesRepo is implemented by the data layer over the 098
@@ -190,7 +254,21 @@ func (uc *RoutingGroupUsecase) SetResourceOverrides(ctx context.Context, groupID
 	if weight != nil && *weight < 0 {
 		return nil, ErrRoutingGroupInvalid
 	}
-	detail, err := uc.Get(ctx, groupID)
+	ctx, err := uc.authorize(ctx, "channel.routing_group.resource_override.update")
+	if err != nil {
+		return nil, err
+	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "channel.routing_group.resource_override.update"); iam {
+		expected, present := authorization.ExpectedResourceRevision(ctx)
+		if !present || expected == 0 || strings.TrimSpace(authorization.WriteReason(ctx)) == "" {
+			return nil, ErrRoutingGroupInvalid
+		}
+	}
+	if err = authorization.Require(ctx, "channel.routing_group.resource_override.update", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: groupID}); err != nil {
+		return nil, err
+	}
+	// Membership existence is an owner write precondition, not an extra read grant.
+	detail, err := uc.repo.GetRoutingGroup(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -211,8 +289,12 @@ func (uc *RoutingGroupUsecase) SetResourceOverrides(ctx context.Context, groupID
 	if !ok {
 		return nil, ErrRoutingGroupStorage
 	}
+	ctx, err = uc.members(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if err := r.SetRoutingGroupResourceOverrides(ctx, groupID, source, priority, weight); err != nil {
 		return nil, err
 	}
-	return uc.Get(ctx, groupID)
+	return uc.repo.GetRoutingGroup(ctx, groupID)
 }

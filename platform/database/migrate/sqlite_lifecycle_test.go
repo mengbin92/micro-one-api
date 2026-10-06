@@ -138,6 +138,20 @@ func TestSQLiteDialect_FreshInstall(t *testing.T) {
 		"091 model health snapshots must retain total latency for exact averages")
 	require.True(t, sqliteColumnExists(t, db, "subscription_accounts", "credential_refresh_pending"),
 		"109 credential refresh pending mirror must have applied")
+	require.True(t, sqliteColumnExists(t, db, "users", "authorization_revision"), "110 IAM user version must have applied")
+	require.Contains(t, tables, "iam_policy_state", "110 IAM policy singleton must have applied")
+	require.True(t, sqliteColumnExists(t, db, "iam_policy_state", "max_roles_per_user"), "111 IAM user cardinality must have applied")
+	require.True(t, sqliteColumnExists(t, db, "iam_policy_state", "max_roles_per_session"), "111 IAM session cardinality must have applied")
+	require.Contains(t, tables, "resource_write_audits", "112 durable resource audit must have applied")
+	require.True(t, sqliteColumnExists(t, db, "channels", "authorization_revision"), "118 channel CAS must have applied")
+	require.True(t, sqliteColumnExists(t, db, "models", "authorization_revision"), "118 model CAS must have applied")
+	require.Contains(t, tables, "upstream_cost_resources", "119 stable upstream cost identifiers must have applied")
+	require.True(t, sqliteColumnExists(t, db, "model_routings", "revision"), "120 model routing CAS must have applied")
+	require.True(t, sqliteColumnExists(t, db, "usage_semantic_source_blocks", "revision"), "121 semantic block CAS must have applied")
+	require.True(t, sqliteColumnExists(t, db, "configs", "deleted"), "122 config tombstones must have applied")
+	require.Contains(t, tables, "config_key_locks", "122 configuration key locks must have applied")
+	require.True(t, sqliteColumnExists(t, db, "iam_permissions", "description"), "123 permission descriptions must have applied")
+	require.True(t, sqliteColumnExists(t, db, "iam_permissions", "sort"), "123 permission ordering must have applied")
 }
 
 // TestSQLiteDialect_IncrementalUpgrade simulates a deployed Lite instance
@@ -156,7 +170,7 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 50, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 64, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
 	// Keep seeded legacy prices before 084 regardless of later appended migrations.
 	cut := sort.SearchStrings(files, "084_add_model_pricing_cache_read.sql")
@@ -219,6 +233,39 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 	require.InDelta(t, 5, inputPrice, 1e-12, "input price must migrate from per-1K to per-1M")
 	require.InDelta(t, 15, outputPrice, 1e-12, "output price must migrate from per-1K to per-1M")
 	require.Zero(t, cacheReadPrice, "existing models receive the cache-read default")
+}
+
+func TestSQLiteDialect_IAMPermissionMetadataUpgradePreservesPolicy(t *testing.T) {
+	dir := sqliteDialectDir(t)
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	var previous []string
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) == ".sql" && !strings.HasPrefix(e.Name(), "123_") {
+			previous = append(previous, e.Name())
+		}
+	}
+	db := openScratchSqlite(t)
+	_, err = NewWithDriver(db, tempDirWithFiles(t, previous, dir), "sqlite3").Apply(context.Background())
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE iam_permissions SET name = 'existing label', revision = 17, status = 'disabled' WHERE code = 'channel.channel.read'`)
+	require.NoError(t, err)
+	runner := NewWithDriver(db, dir, "sqlite3")
+	applied, err := runner.Apply(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []string{"123_add_iam_permission_metadata"}, applied)
+	var name, status, description string
+	var revision, order int64
+	err = db.QueryRow(`SELECT name, status, revision, description, sort FROM iam_permissions WHERE code = 'channel.channel.read'`).Scan(&name, &status, &revision, &description, &order)
+	require.NoError(t, err)
+	require.Equal(t, "existing label", name)
+	require.Equal(t, "disabled", status)
+	require.EqualValues(t, 17, revision)
+	require.Empty(t, description)
+	require.Zero(t, order)
+	applied, err = runner.Apply(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, applied)
 }
 
 func TestSQLiteDialect_BalanceAmountMigrationBackfillsLegacyColumn(t *testing.T) {

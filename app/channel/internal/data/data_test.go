@@ -136,6 +136,7 @@ func setupChannelTestDB(t *testing.T) *Repository {
 	require.NoError(t, db.Exec(`
 		CREATE TABLE channels (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			authorization_revision INTEGER NOT NULL DEFAULT 1,
 			type INTEGER DEFAULT 0,
 			`+"`key`"+` TEXT,
 			status INTEGER DEFAULT 0,
@@ -188,6 +189,8 @@ func setupChannelTestDB(t *testing.T) *Repository {
 
 	require.NoError(t, db.Exec(`
 		CREATE TABLE subscription_accounts (
+			credential_revision INTEGER NOT NULL DEFAULT 1,
+			credential_refresh_pending INTEGER NOT NULL DEFAULT 0,
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL DEFAULT '',
 			platform TEXT NOT NULL,
@@ -201,8 +204,6 @@ func setupChannelTestDB(t *testing.T) *Repository {
 			access_token TEXT,
 			refresh_token TEXT,
 			expires_at INTEGER DEFAULT 0,
- credential_revision BIGINT NOT NULL DEFAULT 0,
- credential_refresh_pending BOOLEAN NOT NULL DEFAULT FALSE,
 			account_id TEXT DEFAULT '',
 			fingerprint TEXT,
 			metadata TEXT,
@@ -288,18 +289,39 @@ func setupChannelTestDB(t *testing.T) *Repository {
 			enabled INTEGER DEFAULT 1,
 			priority INTEGER NOT NULL DEFAULT 0,
 			created_at INTEGER NOT NULL DEFAULT 0,
-			updated_at INTEGER NOT NULL DEFAULT 0
+			updated_at INTEGER NOT NULL DEFAULT 0,
+			revision INTEGER NOT NULL DEFAULT 1
 		)
 	`).Error)
 	require.NoError(t, db.Exec(`
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_model_routings_group_model_account
 		ON model_routings(group_name, model, platform, subscription_account_id)
 	`).Error)
+	require.NoError(t, db.Exec(`
+		CREATE TABLE IF NOT EXISTS usage_semantic_source_blocks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			source_kind TEXT NOT NULL,
+			source_id INTEGER NOT NULL,
+			upstream_model_id TEXT NOT NULL,
+			adapter_protocol TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT '',
+			reason TEXT NOT NULL DEFAULT '',
+			window_started_at DATETIME,
+			consecutive_ambiguous INTEGER NOT NULL DEFAULT 0,
+			blocked_until DATETIME,
+			last_verified_at DATETIME,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			revision INTEGER NOT NULL DEFAULT 1,
+			UNIQUE(source_kind, source_id, upstream_model_id, adapter_protocol)
+		)
+	`).Error)
 
 	// Model registry + channel mappings (used by the registry list path).
 	require.NoError(t, db.Exec(`
 		CREATE TABLE models (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			authorization_revision INTEGER NOT NULL DEFAULT 1,
 			model_id TEXT NOT NULL,
 			display_name TEXT NOT NULL DEFAULT '',
 			description TEXT,
@@ -395,7 +417,7 @@ func TestCreateChannel_PopulatesAbilities(t *testing.T) {
 		_, expected := wantPairs[key]
 		require.True(t, expected, "unexpected ability row %s", key)
 		wantPairs[key] = true
-		assert.True(t, r.Enabled, "enabled should be true for enabled channel")
+		assert.True(t, r.Enabled != 0, "enabled should be true for enabled channel")
 		require.NotNil(t, r.Priority)
 		assert.EqualValues(t, 100, *r.Priority)
 		assert.Equal(t, ch.ID, r.ChannelID)
@@ -419,7 +441,7 @@ func TestCreateChannel_DisabledChannel_AbilitiesDisabled(t *testing.T) {
 
 	rows := loadAbilities(t, repo, ch.ID)
 	require.Len(t, rows, 1)
-	assert.False(t, rows[0].Enabled, "ability.enabled should be false when channel.status != 1")
+	assert.False(t, rows[0].Enabled != 0, "ability.enabled should be false when channel.status != 1")
 }
 
 func TestCreateChannel_SkipsEmptyGroupOrModel(t *testing.T) {
@@ -558,20 +580,20 @@ func TestChangeStatus_UpdatesAbilitiesEnabled(t *testing.T) {
 	}
 	require.NoError(t, repo.CreateChannel(ctx, ch))
 	rows := loadAbilities(t, repo, ch.ID)
-	require.True(t, rows[0].Enabled)
+	require.True(t, rows[0].Enabled != 0)
 
 	// Disable the channel.
 	require.NoError(t, repo.ChangeStatus(ctx, ch.ID, 2))
 
 	rows = loadAbilities(t, repo, ch.ID)
 	require.Len(t, rows, 1)
-	assert.False(t, rows[0].Enabled, "ability.enabled should be false after disabling channel")
+	assert.False(t, rows[0].Enabled != 0, "ability.enabled should be false after disabling channel")
 
 	// Re-enable.
 	require.NoError(t, repo.ChangeStatus(ctx, ch.ID, biz.ChannelStatusEnabled))
 
 	rows = loadAbilities(t, repo, ch.ID)
-	assert.True(t, rows[0].Enabled, "ability.enabled should be true after re-enabling channel")
+	assert.True(t, rows[0].Enabled != 0, "ability.enabled should be true after re-enabling channel")
 }
 
 func TestCreateSubscriptionAccount_PopulatesAbilities(t *testing.T) {
@@ -595,7 +617,7 @@ func TestCreateSubscriptionAccount_PopulatesAbilities(t *testing.T) {
 	rows := loadSubscriptionAbilities(t, repo, account.ID)
 	assert.Len(t, rows, 4)
 	for _, r := range rows {
-		assert.True(t, r.Enabled)
+		assert.True(t, r.Enabled != 0)
 		require.NotNil(t, r.Priority)
 		assert.EqualValues(t, 30, *r.Priority)
 		assert.Equal(t, "codex", r.Platform)

@@ -41,6 +41,8 @@ type AvailableRoutingGroups struct {
 	CreationEnabled  bool
 }
 type RoutingAccessChange struct {
+	ExpectedUserRevision, ExpectedPolicyRevision                  uint64
+	Reason                                                        string
 	UserID, ExpectedRevision, GroupID                             int64
 	Operation, GroupKey, SourceType, SourceRef, PublicGroupAccess string
 	StartsAt, ExpiresAt                                           int64
@@ -158,6 +160,7 @@ func (uc *RoutingAccessUsecase) Change(ctx context.Context, c RoutingAccessChang
 		if d == nil || d.Group.Status != "enabled" {
 			return nil, ErrRoutingAccessDenied
 		}
+		c.GroupKey = d.Group.Key
 	}
 	return uc.repo.Change(ctx, c)
 }

@@ -21,7 +21,7 @@ func newTokenHashTestRepo(t *testing.T) *Repository {
 	if err := db.AutoMigrate(&tokenModel{}); err != nil {
 		t.Fatalf("automigrate: %v", err)
 	}
-	return &Repository{db: db}
+	return &Repository{Data: &Data{db: db}}
 }
 
 // TestTokenHash_KeyNeverStoredAsPlaintext proves the L6 security property:

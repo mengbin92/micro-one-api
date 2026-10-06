@@ -20,6 +20,7 @@ import (
 )
 
 func TestAlertmanagerDeliveryAndRecovery(t *testing.T) {
+	t.Setenv("SERVICE_CALLER_TOKENS", `{"monitor":"test-monitor-token"}`)
 	t.Setenv("NOTIFY_SQL_DSN", "")
 	t.Setenv("SQL_DSN", "")
 	repo, err := data.NewRepositoryFromEnv("sqlite3")
@@ -40,7 +41,9 @@ func TestAlertmanagerDeliveryAndRecovery(t *testing.T) {
 	for _, state := range []string{"firing", "resolved"} {
 		body := `{"status":"` + state + `","alerts":[{"status":"` + state + `","labels":{"alertname":"CredentialPersistenceDelayed"},"annotations":{"summary":"credential persistence"}}]}`
 		rec := httptest.NewRecorder()
-		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/alerts/alertmanager", strings.NewReader(body)))
+		req := httptest.NewRequest(http.MethodPost, "/v1/alerts/alertmanager", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer test-monitor-token")
+		srv.ServeHTTP(rec, req)
 		require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
 		var created struct {
 			ID int64 `json:"id"`
@@ -63,6 +66,7 @@ func TestAlertmanagerDeliveryAndRecovery(t *testing.T) {
 }
 
 func TestAlertmanagerNotifyTypeConfigurable(t *testing.T) {
+	t.Setenv("SERVICE_CALLER_TOKENS", `{"monitor":"test-monitor-token"}`)
 	t.Setenv("NOTIFY_SQL_DSN", "")
 	t.Setenv("SQL_DSN", "")
 	repo, err := data.NewRepositoryFromEnv("sqlite3")
@@ -81,7 +85,9 @@ func TestAlertmanagerNotifyTypeConfigurable(t *testing.T) {
 	for _, state := range []string{"firing", "resolved"} {
 		body := `{"status":"` + state + `","alerts":[{"status":"` + state + `","labels":{"alertname":"Probe"},"annotations":{}}]}`
 		rec := httptest.NewRecorder()
-		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/alerts/alertmanager", strings.NewReader(body)))
+		req := httptest.NewRequest(http.MethodPost, "/v1/alerts/alertmanager", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer test-monitor-token")
+		srv.ServeHTTP(rec, req)
 		require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
 		var created struct {
 			ID int64 `json:"id"`
@@ -183,6 +189,7 @@ func (s *fakeSMTPServer) handle(conn net.Conn) {
 }
 
 func TestAlertmanagerEmailDelivery(t *testing.T) {
+	t.Setenv("SERVICE_CALLER_TOKENS", `{"monitor":"test-monitor-token"}`)
 	t.Setenv("NOTIFY_SQL_DSN", "")
 	t.Setenv("SQL_DSN", "")
 	repo, err := data.NewRepositoryFromEnv("sqlite3")
@@ -206,7 +213,9 @@ func TestAlertmanagerEmailDelivery(t *testing.T) {
 	for _, state := range []string{"firing", "resolved"} {
 		body := `{"status":"` + state + `","alerts":[{"status":"` + state + `","labels":{"alertname":"RedisOutboxBacklog"},"annotations":{"summary":"outbox backlog"}}]}`
 		rec := httptest.NewRecorder()
-		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/alerts/alertmanager", strings.NewReader(body)))
+		req := httptest.NewRequest(http.MethodPost, "/v1/alerts/alertmanager", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer test-monitor-token")
+		srv.ServeHTTP(rec, req)
 		require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
 		var created struct {
 			ID int64 `json:"id"`

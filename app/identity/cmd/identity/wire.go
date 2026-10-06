@@ -25,12 +25,24 @@ import (
 var ProviderSet = wire.NewSet(
 	newRepo,
 	newAuditAuditor,
-	biz.NewIdentityUsecase,
+	newIdentityUsecase,
 	service.NewIdentityService,
+	newIAMGovernanceUsecase,
+	service.NewIAMService,
 	server.NewGRPCServer,
 	provideRegistrar,
 	wire.Bind(new(biz.IdentityRepo), new(*data.Repository)),
 )
+
+// newIdentityUsecase connects the persistent runtime before any bootstrap or
+// transport starts. Memory mode is an explicit development-only legacy path.
+func newIdentityUsecase(repo *data.Repository, auditor *audit.Auditor) *biz.IdentityUsecase {
+	uc := biz.NewIdentityUsecase(repo, auditor)
+	if repo.HasPersistentStorage() {
+		uc.SetIAMRuntime(data.NewIAMRuntimeRepo(repo.Data), data.NewIAMTxRunner(repo.Data))
+	}
+	return uc
+}
 
 // newAuditAuditor provides the audit sink for identity-service login/logout
 // events. Unconditionally enabled; events go to the structured application log.
@@ -85,6 +97,7 @@ func newApp(
 	repo *data.Repository,
 	uc *biz.IdentityUsecase,
 	svc *service.IdentityService,
+	iam *service.IAMService,
 	oauthRegistry *oauth.ProviderRegistry,
 	reg registrarResult,
 ) (*kratos.App, func()) {
@@ -100,7 +113,7 @@ func newApp(
 		closeRouting = cleanup
 	}
 	bootstrapAdmin(uc)
-	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
+	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc, iam)
 	billingClient, billingConn, _ := newBillingClient(cfg)
 	httpSrv := server.NewHTTPServerWithRegistrationPolicy(
 		cfg.Bootstrap.Server.Http.Addr, uc, oauthRegistry,
@@ -121,4 +134,8 @@ func newApp(
 			billingConn.Close()
 		}
 	}
+}
+
+func newIAMGovernanceUsecase(repo *data.Repository, identity *biz.IdentityUsecase) *biz.IAMGovernanceUsecase {
+	return biz.NewIAMGovernanceUsecase(data.NewIAMManagementRepo(repo.Data), data.NewIAMTxRunner(repo.Data), identity)
 }

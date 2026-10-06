@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { mockApi } from './fixtures';
 
 test('admin routing group details preserve resource and model grant distinctions', async ({ page }) => {
-  await mockApi(page);
+  await mockApi(page, { admin: true });
   await page.addInitScript(() => {
     localStorage.setItem('token', 'test-user-token');
     localStorage.setItem('userId', '1');

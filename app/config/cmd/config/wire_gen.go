@@ -14,6 +14,7 @@ import (
 	"micro-one-api/app/config/internal/data"
 	"micro-one-api/app/config/internal/server"
 	"micro-one-api/app/config/internal/service"
+	"micro-one-api/platform/authz"
 	registry2 "micro-one-api/platform/registry"
 )
 
@@ -68,6 +69,8 @@ func provideRegistrar(cfg *Config) registrarResult {
 }
 
 func newApp(cfg *Config, svc *service.ConfigService, reg registrarResult) (*kratos.App, func()) {
+	ownerAuth, _ := authz.FromEnvironment("config")
+	svc.SetAuthorization(ownerAuth)
 	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc)
 	opts := []kratos.Option{kratos.Name("config-service"), kratos.Server(grpcSrv, httpSrv)}
@@ -75,5 +78,7 @@ func newApp(cfg *Config, svc *service.ConfigService, reg registrarResult) (*krat
 		opts = append(opts, kratos.Registrar(reg.Registrar))
 	}
 	app := kratos.New(opts...)
-	return app, func() {}
+	return app, func() {
+		_ = ownerAuth.Close()
+	}
 }

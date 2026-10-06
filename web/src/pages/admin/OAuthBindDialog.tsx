@@ -3,7 +3,7 @@ import { Copy, ExternalLink, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
-import { Button } from '@/components/ui/button';
+import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -160,7 +160,7 @@ export function OAuthBindDialog({ onBound }: OAuthBindDialogProps) {
           </div>
 
           {!session ? (
-            <Button onClick={() => authUrlMutation.mutate()} disabled={authUrlMutation.isPending}>
+            <Button permission="channel.account.oauth.bind" onClick={() => authUrlMutation.mutate()} disabled={authUrlMutation.isPending}>
               <ExternalLink className="size-4" />
               {authUrlMutation.isPending ? t("生成中...") : t("生成授权链接并打开")}
             </Button>
@@ -224,10 +224,10 @@ export function OAuthBindDialog({ onBound }: OAuthBindDialogProps) {
               </div>
 
               <div className="flex items-center gap-2">
-                <Button onClick={() => exchangeMutation.mutate()} disabled={exchangeMutation.isPending} className="flex-1">
+                <Button permission="channel.account.oauth.bind" onClick={() => exchangeMutation.mutate()} disabled={exchangeMutation.isPending} className="flex-1">
                   {exchangeMutation.isPending ? t("绑定中...") : t("完成绑定")}
                 </Button>
-                <Button
+                <Button permission="channel.account.oauth.bind"
                   type="button"
                   variant="outline"
                   onClick={() => authUrlMutation.mutate()}

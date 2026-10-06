@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useAuthorizedQuery } from '@/lib/authorization';
 import { ScaleIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -149,8 +149,8 @@ export function AdminReconciliationPage() {
   const [pageSize, setPageSize] = useState(20);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-reconciliation', page, pageSize],
+  const { data, isLoading } = useAuthorizedQuery({
+    permission: 'billing.reconciliation.read', queryKey: ['admin-reconciliation', page, pageSize],
     queryFn: async () => {
       const res = await adminApiClient.get(`/reconciliation?page=${page}&page_size=${pageSize}`);
       return unwrapApiData<ReconciliationRunsPayload>(res.data);
@@ -159,8 +159,8 @@ export function AdminReconciliationPage() {
 
   const runs = useMemo(() => data?.runs ?? [], [data?.runs]);
 
-  const { data: selectedRun, isLoading: isDetailLoading } = useQuery({
-    queryKey: ['admin-reconciliation-run', selectedRunId],
+  const { data: selectedRun, isLoading: isDetailLoading } = useAuthorizedQuery({
+    permission: 'billing.reconciliation.read', queryKey: ['admin-reconciliation-run', selectedRunId],
     enabled: selectedRunId !== null,
     queryFn: async () => {
       const res = await adminApiClient.get(`/reconciliation/${selectedRunId}`);

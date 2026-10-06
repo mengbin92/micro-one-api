@@ -15,6 +15,7 @@ import (
 	"micro-one-api/app/channel/internal/data"
 	"micro-one-api/app/channel/internal/server"
 	"micro-one-api/app/channel/internal/service"
+	"micro-one-api/platform/authz"
 	"micro-one-api/platform/events"
 	registry2 "micro-one-api/platform/registry"
 	"os"
@@ -84,6 +85,8 @@ func newApp(
 	svc *service.ChannelService,
 	reg registrarResult,
 ) (*kratos.App, func()) {
+	ownerAuth, _ := authz.FromEnvironment("channel")
+	svc.SetResourceAuthorization(ownerAuth)
 	closeOutbox := func() {}
 	if os.Getenv("CHANNEL_ROUTING_GROUP_DUAL_WRITE") == "true" {
 		closeOutbox = repo.StartRoutingOutbox()
@@ -133,6 +136,7 @@ func newApp(
 	app := kratos.New(opts...)
 
 	return app, func() {
+		_ = ownerAuth.Close()
 		closeOutbox()
 		if stopOpsAutomation != nil {
 			stopOpsAutomation()

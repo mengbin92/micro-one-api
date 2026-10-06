@@ -97,6 +97,8 @@ message CreateAlertRuleRequest {
   string operator = 5;
   int32 duration = 6;
   bool enabled = 7;
+ uint64 expected_revision = 8;
+ string reason = 9;
 }
 
 message AlertRuleItem {
@@ -109,6 +111,7 @@ message AlertRuleItem {
   int32 duration = 7;
   bool enabled = 8;
   int64 created_at = 9;
+ uint64 revision = 10;
 }
 
 message CreateAlertRuleResponse {
@@ -142,6 +145,8 @@ message UpdateAlertRuleRequest {
   string operator = 6;
   int32 duration = 7;
   bool enabled = 8;
+ uint64 expected_revision = 9;
+ string reason = 10;
 }
 
 message UpdateAlertRuleResponse {
@@ -150,6 +155,8 @@ message UpdateAlertRuleResponse {
 
 message DeleteAlertRuleRequest {
   int64 id = 1;
+ uint64 expected_revision = 2;
+ string reason = 3;
 }
 
 message DeleteAlertRuleResponse {

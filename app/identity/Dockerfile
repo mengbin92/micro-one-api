@@ -82,8 +82,9 @@ RUN make proto
 # platform, Go's host detection yields the correct GOOS/GOARCH and the
 # platform-native gcc is used — no manual CC/CXX selection is needed.
 ARG SERVICE_PATH
+ARG BUILD_EXTRA_LDFLAGS=""
 RUN CGO_ENABLED=1 go build \
-      -ldflags='-s -w -extldflags "-static"' \
+      -ldflags="-s -w -extldflags \"-static\" ${BUILD_EXTRA_LDFLAGS}" \
       -o /app/bin/service ${SERVICE_PATH}
 
 # ---------------------------------------------------------------------------

@@ -10,6 +10,9 @@ import (
 	"micro-one-api/app/channel/internal/biz"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/database/authzquery"
 )
 
 // ── Model import/export data layer (v0.11.0 Phase 4) ──────────────────────
@@ -24,6 +27,9 @@ import (
 // ExportAllModels implements biz.ModelExchangeRepo.
 func (r *Repository) ExportAllModels(ctx context.Context, filter biz.ListModelsFilter) ([]*biz.ModelExportModel, error) {
 	if r.db == nil {
+		if _, scoped := authorization.QueryScopeFromContext(ctx, "channel.model.export"); scoped {
+			return nil, authorization.ErrDenied
+		}
 		return r.exportAllModelsMemory(filter)
 	}
 	// Page through the whole registry. The model count is bounded (hundreds),
@@ -70,27 +76,28 @@ func (r *Repository) ExportAllModels(ctx context.Context, filter biz.ListModelsF
 			continue
 		}
 		out = append(out, &biz.ModelExportModel{
-			ModelID:              m.ModelID,
-			DisplayName:          m.DisplayName,
-			Description:          m.Description,
-			Provider:             m.Provider,
-			ModelType:            m.ModelType,
-			ContextWindow:        m.ContextWindow,
-			PricingInput:         m.PricingInput,
-			PricingOutput:        m.PricingOutput,
-			PricingCacheRead:     m.PricingCacheRead,
-			Status:               m.Status,
-			IsPublic:             m.IsPublic,
-			Capabilities:         append([]string(nil), m.Capabilities...),
-			InputModalities:      append([]string(nil), m.InputModalities...),
-			OutputModalities:     append([]string(nil), m.OutputModalities...),
-			Tags:                 append([]string(nil), m.Tags...),
-			Category:             m.Category,
-			Tier:                 m.Tier,
-			Metadata:             m.Metadata,
-			Aliases:              aliasByModel[m.ID],
-			ChannelMappings:      channelByModel[m.ID],
-			SubscriptionMappings: subByModel[m.ID],
+			AuthorizationRevision: m.AuthorizationRevision,
+			ModelID:               m.ModelID,
+			DisplayName:           m.DisplayName,
+			Description:           m.Description,
+			Provider:              m.Provider,
+			ModelType:             m.ModelType,
+			ContextWindow:         m.ContextWindow,
+			PricingInput:          m.PricingInput,
+			PricingOutput:         m.PricingOutput,
+			PricingCacheRead:      m.PricingCacheRead,
+			Status:                m.Status,
+			IsPublic:              m.IsPublic,
+			Capabilities:          append([]string(nil), m.Capabilities...),
+			InputModalities:       append([]string(nil), m.InputModalities...),
+			OutputModalities:      append([]string(nil), m.OutputModalities...),
+			Tags:                  append([]string(nil), m.Tags...),
+			Category:              m.Category,
+			Tier:                  m.Tier,
+			Metadata:              m.Metadata,
+			Aliases:               aliasByModel[m.ID],
+			ChannelMappings:       channelByModel[m.ID],
+			SubscriptionMappings:  subByModel[m.ID],
 		})
 	}
 	return out, nil
@@ -101,7 +108,11 @@ func (r *Repository) batchLoadAliasesByModel(ctx context.Context, pks []int64) (
 		return nil, nil
 	}
 	var pos []modelAliasModel
-	if err := r.db.WithContext(ctx).Where("model_id IN ?", pks).Order("model_id ASC, id ASC").Find(&pos).Error; err != nil {
+	query, scopeErr := modelQuery(ctx, r.db.WithContext(ctx).Model(&modelAliasModel{}), "model_aliases", "model_id", "channel.model_alias.read")
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
+	if err := query.Where("model_aliases.model_id IN ?", pks).Order("model_aliases.model_id ASC, model_aliases.id ASC").Find(&pos).Error; err != nil {
 		return nil, err
 	}
 	out := make(map[int64][]*biz.ModelAlias, len(pks))
@@ -116,7 +127,11 @@ func (r *Repository) batchLoadChannelMappingsByModel(ctx context.Context, pks []
 		return nil, nil
 	}
 	var pos []modelChannelMappingModel
-	if err := r.db.WithContext(ctx).Where("model_id IN ?", pks).Order("model_id ASC, priority DESC, id ASC").Find(&pos).Error; err != nil {
+	query, scopeErr := r.mappingReadQuery(ctx, r.db.WithContext(ctx).Model(&modelChannelMappingModel{}), "model_channel_mapping", false)
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
+	if err := query.Where("model_channel_mapping.model_id IN ?", pks).Order("model_channel_mapping.model_id ASC, model_channel_mapping.priority DESC, model_channel_mapping.id ASC").Find(&pos).Error; err != nil {
 		return nil, err
 	}
 	out := make(map[int64][]*biz.ModelChannelMapping, len(pks))
@@ -131,7 +146,11 @@ func (r *Repository) batchLoadSubscriptionMappingsByModel(ctx context.Context, p
 		return nil, nil
 	}
 	var pos []modelSubscriptionMappingModel
-	if err := r.db.WithContext(ctx).Where("model_id IN ?", pks).Order("model_id ASC, priority DESC, id ASC").Find(&pos).Error; err != nil {
+	query, scopeErr := r.mappingReadQuery(ctx, r.db.WithContext(ctx).Model(&modelSubscriptionMappingModel{}), "model_subscription_mapping", true)
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
+	if err := query.Where("model_subscription_mapping.model_id IN ?", pks).Order("model_subscription_mapping.model_id ASC, model_subscription_mapping.priority DESC, model_subscription_mapping.id ASC").Find(&pos).Error; err != nil {
 		return nil, err
 	}
 	out := make(map[int64][]*biz.ModelSubscriptionMapping, len(pks))
@@ -145,6 +164,54 @@ func (r *Repository) batchLoadSubscriptionMappingsByModel(ctx context.Context, p
 // transaction; a failure at any model rolls back every prior model in the
 // batch so the registry is left untouched.
 func (r *Repository) ImportModels(ctx context.Context, models []*biz.ModelExportModel, options biz.ImportOptions) (*biz.ImportSummary, error) {
+	if _, scoped := authorization.QueryScopeFromContext(ctx, "channel.model.import"); scoped && ctx.Value(modelWriteKey{}) == nil {
+		if r.db == nil {
+			return nil, authorization.ErrDenied
+		}
+		var summary *biz.ImportSummary
+		err := authzquery.RunInTx(ctx, r.db, 3, func(current context.Context, tx *gorm.DB) error {
+			owner := &Repository{db: tx, encKey: r.encKey, routingGroupRelations: r.routingGroupRelations, routingGroupDualWrite: r.routingGroupDualWrite}
+			for _, em := range models {
+				var row modelModel
+				err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("LOWER(model_id) = ?", biz.NormalizeModelID(em.ModelID)).First(&row).Error
+				if err != nil && !isGormNotFound(err) {
+					return err
+				}
+				var existing *existingModelView
+				if err == nil {
+					views, err := owner.loadExistingExportViewByModelID(current, []*biz.ModelExportModel{em})
+					if err != nil {
+						return err
+					}
+					existing = views[biz.NormalizeModelID(em.ModelID)]
+				}
+				if err := owner.checkImportActions(current, em, existing, options); err != nil {
+					return err
+				}
+			}
+			var err error
+			summary, err = owner.ImportModels(context.WithValue(current, modelWriteKey{}, true), models, options)
+			if err != nil {
+				return err
+			}
+			if !options.DryRun {
+				for _, em := range models {
+					var row modelModel
+					if err := tx.Where("LOWER(model_id) = ?", biz.NormalizeModelID(em.ModelID)).First(&row).Error; err != nil {
+						return err
+					}
+					if err := authzquery.AppendWriteAudit(current, tx, "channel.model.import", row.ID); err != nil {
+						return err
+					}
+					if err := tx.Model(&modelModel{}).Where("id = ?", row.ID).Update("authorization_revision", gorm.Expr("authorization_revision + 1")).Error; err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		})
+		return summary, err
+	}
 	if r.db == nil {
 		return r.importModelsMemory(models, options)
 	}

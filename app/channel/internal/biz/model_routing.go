@@ -6,7 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"micro-one-api/domain/authorization"
 	"micro-one-api/pkg/wildcard"
+	"micro-one-api/platform/security/serviceidentity"
 )
 
 // Model routing (P2 #3): model→specified subscription account routing.
@@ -34,6 +36,7 @@ type ModelRouting struct {
 	Priority              int32 // within a routed tier, higher wins
 	CreatedAt             int64
 	UpdatedAt             int64
+	Revision              int64
 }
 
 var ErrModelRoutingNotFound = errors.New("model routing not found")
@@ -55,6 +58,7 @@ type ModelRoutingRepo interface {
 
 // ModelRoutingUsecase wraps ModelRoutingRepo with domain-level operations.
 type ModelRoutingUsecase struct {
+	authorization    authorization.Resolver
 	repo             ModelRoutingRepo
 	now              func() time.Time
 	cacheInvalidator ModelsListCacheInvalidator
@@ -78,6 +82,12 @@ func (uc *ModelRoutingUsecase) timestamp() int64 {
 
 // ListModelRoutings returns routing rows matching the optional filters.
 func (uc *ModelRoutingUsecase) ListModelRoutings(ctx context.Context, group, model, platform string) ([]*ModelRouting, error) {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.model_routing.read", false)
+	if authErr != nil {
+		err := authErr
+		return nil, err
+	}
 	if uc == nil || uc.repo == nil {
 		return nil, nil
 	}
@@ -87,8 +97,20 @@ func (uc *ModelRoutingUsecase) ListModelRoutings(ctx context.Context, group, mod
 // UpsertModelRouting creates or updates a routing row. group/model/account
 // are required; platform defaults to "" (any platform).
 func (uc *ModelRoutingUsecase) UpsertModelRouting(ctx context.Context, r *ModelRouting) error {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.model_routing.create", true)
+	if authErr == nil {
+		ctx, authErr = uc.authorize(ctx, "channel.model_routing.update", true)
+	}
+	if authErr != nil {
+		err := authErr
+		return err
+	}
 	if uc == nil || uc.repo == nil {
 		return errors.New("model routing usecase not configured")
+	}
+	if err := requireManagedWriteIntent(ctx, "channel.model_routing.create", "channel.model_routing.update"); err != nil {
+		return err
 	}
 	if r.GroupName == "" {
 		r.GroupName = "default"
@@ -115,8 +137,17 @@ func (uc *ModelRoutingUsecase) UpsertModelRouting(ctx context.Context, r *ModelR
 
 // DeleteModelRouting removes a routing row by id.
 func (uc *ModelRoutingUsecase) DeleteModelRouting(ctx context.Context, id int64) error {
+	var authErr error
+	ctx, authErr = uc.authorize(ctx, "channel.model_routing.delete", false)
+	if authErr != nil {
+		err := authErr
+		return err
+	}
 	if uc == nil || uc.repo == nil {
 		return ErrModelRoutingNotFound
+	}
+	if err := requireManagedWriteIntent(ctx, "channel.model_routing.delete"); err != nil {
+		return err
 	}
 	if id <= 0 {
 		return ErrModelRoutingNotFound
@@ -181,4 +212,19 @@ func RoutingMatchForSelect(rows []*ModelRouting, model string) []*ModelRouting {
 		return matched
 	}
 	return catchAll
+}
+
+func (uc *ModelRoutingUsecase) SetAuthorization(r authorization.Resolver) {
+	if uc != nil {
+		uc.authorization = r
+	}
+}
+func (uc *ModelRoutingUsecase) authorize(ctx context.Context, operation string, optional bool) (context.Context, error) {
+	if !authorization.External(ctx) || serviceidentity.HasSystemCapability(ctx, serviceidentity.RPCMethod(ctx)) {
+		return ctx, nil
+	}
+	if optional {
+		return authorization.PrepareOptional(ctx, uc.authorization, "channel.model_routings", operation)
+	}
+	return authorization.Prepare(ctx, uc.authorization, "channel.model_routings", operation)
 }

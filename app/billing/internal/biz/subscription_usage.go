@@ -2,14 +2,26 @@ package biz
 
 import (
 	"context"
+	"micro-one-api/domain/authorization"
 	"strconv"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 )
 
+type selfSubscriptionUsageKey struct{}
+
+func WithSelfSubscriptionUsage(ctx context.Context) context.Context {
+	return context.WithValue(ctx, selfSubscriptionUsageKey{}, true)
+}
+
 // GetSubscriptionUsage reads settled counters and reservation sums under the
 // subscription row lock also used by admission and settlement.
 func (uc *BillingUsecase) GetSubscriptionUsage(ctx context.Context, userID int64) (*subscriptionbiz.SubscriptionProgress, error) {
+	var authErr error
+	ctx, authErr = prepareBilling(ctx, uc.authorization, "subscription.user_subscriptions", "subscription.user_subscription.read")
+	if authErr != nil {
+		return nil, authErr
+	}
 	if uc.subscription == nil {
 		return nil, subscriptionbiz.ErrSubscriptionNotFound
 	}
@@ -22,6 +34,9 @@ func (uc *BillingUsecase) GetSubscriptionUsage(ctx context.Context, userID int64
 	err := runner.RunInTx(ctx, func(ctx context.Context, tx subscriptionbiz.Tx) error {
 		sub, err := uc.subscription.GetActiveSubscriptionForUserInTx(ctx, tx, userID)
 		if err != nil {
+			return err
+		}
+		if err := authorization.Require(ctx, "subscription.user_subscription.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: sub.ID, OwnerUserID: sub.UserID}); err != nil {
 			return err
 		}
 		group, err := uc.subscription.GetGroupForSubscriptionInTx(ctx, tx, sub)

@@ -4,6 +4,7 @@ import (
 	"github.com/go-kratos/kratos/v3/errors"
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/admin/internal/service"
+	"micro-one-api/domain/routing"
 	"micro-one-api/pkg/jsonx"
 	"net/http"
 	"strconv"
@@ -13,9 +14,14 @@ import (
 func routingGroupError(w http.ResponseWriter, err error) {
 	e := errors.FromError(err)
 	code, message := int(e.Code), "分组服务暂不可用"
+	if mapped, ok := resourceHTTPErrorCode(err); ok {
+		code = mapped
+	}
 	switch code {
 	case http.StatusBadRequest:
 		message = "无效的分组查询"
+	case http.StatusUnauthorized:
+		message = "需要重新登录"
 	case http.StatusForbidden:
 		message = "无权使用此分组"
 	case http.StatusConflict:
@@ -75,6 +81,16 @@ func handleRoutingGroupList(w http.ResponseWriter, r *http.Request, svc *service
 }
 func handleRoutingGroupByID(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/routing-groups/")
+	if parts := strings.Split(path, "/"); len(parts) == 2 && (parts[1] == "archive" || parts[1] == "members") {
+		id, err := strconv.ParseInt(parts[0], 10, 64)
+		if err != nil || id <= 0 {
+			w.WriteHeader(400)
+			return
+		}
+		handleRoutingGroupManagement(w, r, svc, id, parts[1])
+		return
+	}
+
 	billing := strings.HasSuffix(path, "/billing")
 	if billing {
 		path = strings.TrimSuffix(path, "/billing")
@@ -113,6 +129,15 @@ func handleRoutingGroupByID(w http.ResponseWriter, r *http.Request, svc *service
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
+		if isIAMBusinessContext(r.Context()) {
+			out, err := svc.MutateRoutingGroupState(r.Context(), id, body)
+			if err != nil {
+				routingGroupError(w, err)
+				return
+			}
+			writeModelResponse(w, r, out)
+			return
+		}
 		err := svc.SetRoutingGroupState(r.Context(), id, body)
 		routingMutationAudit(r, 0, "routing_group", strconv.FormatInt(id, 10), "state", err)
 		if err != nil {
@@ -147,7 +172,16 @@ func handleRoutingGroupUserPrice(w http.ResponseWriter, r *http.Request, svc *se
 		}
 		writeJSON(w, http.StatusOK, apiResponse(true, "", result))
 	case http.MethodDelete:
-		err := svc.ClearRoutingGroupUserPrice(r.Context(), id, userID)
+		ctx := r.Context()
+		if isIAMBusinessContext(ctx) {
+			v, err := strconv.ParseInt(r.URL.Query().Get("expected_version"), 10, 64)
+			if err != nil || v < 0 {
+				w.WriteHeader(400)
+				return
+			}
+			ctx = routing.WithExpectedPriceVersion(ctx, v)
+		}
+		err := svc.ClearRoutingGroupUserPrice(ctx, id, userID)
 		routingMutationAudit(r, userID, "routing_group", strconv.FormatInt(id, 10), "user_price_clear", err)
 		if err != nil {
 			routingGroupError(w, err)

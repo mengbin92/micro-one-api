@@ -1,0 +1,360 @@
+{
+  "captured_at_utc": "2026-10-03T00:30:09.292814+00:00",
+  "source_digest": "7cc66b0b07a71a2180936bba75234ae5c38d575289c7520bb4a710aec091e18e",
+  "revision_label": "rbac-b-7cc66b0b",
+  "rollback_tag": "rollback-20261003-075314",
+  "services": {
+    "identity-service": {
+      "image_id": "sha256:ae300b6a1fdfb4f001acf4d1a5f8f29770a982fba168e8ed23d0785bd005b91a",
+      "previous_image_id": "sha256:79439866f7635b53754a8a8bb4c950438b38220bd4fb5073bb28357049200142",
+      "healthz": 200,
+      "restarts": 0,
+      "architecture": "amd64",
+      "environment_preserved": true,
+      "startup_error_count": 0
+    },
+    "channel-service": {
+      "image_id": "sha256:474e53b50305d7c3d1e6d31b8f19ec9da6aace3f80d25df62fa9d88e6beeeb60",
+      "previous_image_id": "sha256:bb9c1f509481ba7f5b58b42721017c1f54aad495c9d1f32a5c02d196df15a2c1",
+      "healthz": 200,
+      "restarts": 0,
+      "architecture": "amd64",
+      "environment_preserved": true,
+      "startup_error_count": 0
+    },
+    "billing-service": {
+      "image_id": "sha256:1ee94ec3fbc2290aaac8255950d68c4965470742f6dc028a54dfddff82d27abb",
+      "previous_image_id": "sha256:cd486011d43f779731b86308b31465ef165bded53c94287dcbce0c78021d81ab",
+      "healthz": 200,
+      "restarts": 0,
+      "architecture": "amd64",
+      "environment_preserved": true,
+      "startup_error_count": 0
+    },
+    "config-service": {
+      "image_id": "sha256:07850ebf2ec4b3e7386f3a0d3ea99578056f92827284b804c7f24e0990a95a3e",
+      "previous_image_id": "sha256:aec6062f8da5e02ae6103bd2b6d8b0e298d088ba06e2a9f8d1d1e8e512cbd8f9",
+      "healthz": 200,
+      "restarts": 0,
+      "architecture": "amd64",
+      "environment_preserved": true,
+      "startup_error_count": 0
+    },
+    "log-service": {
+      "image_id": "sha256:3842ff48d33d9a70cd83fc47bd76686d63bc469a283796e6f6a44850177efe3d",
+      "previous_image_id": "sha256:29a386fcfca2bb42838e5cf2ccdefa25e6736f9b6b8030bc911025d666d1270a",
+      "healthz": 200,
+      "restarts": 0,
+      "architecture": "amd64",
+      "environment_preserved": true,
+      "startup_error_count": 0
+    },
+    "monitor-worker": {
+      "image_id": "sha256:197ee28e2acb0029e3df6ae1a38e658f6663461e3b924fbbb67a2e626f8cb1f7",
+      "previous_image_id": "sha256:8aad61f2b68851b1cc963ad3756094a8ca082d9a2ce02f0c13b3b4b569795af4",
+      "healthz": 200,
+      "restarts": 0,
+      "architecture": "amd64",
+      "environment_preserved": true,
+      "startup_error_count": 0
+    },
+    "notify-worker": {
+      "image_id": "sha256:48eff92947627ab6adc37be97af97021c6490f0a0432b20cfc4a9bbcca388761",
+      "previous_image_id": "sha256:34a43a2f69266aada1af1346d67217d517d078266102c4a01e3aedd30f46b87f",
+      "healthz": 200,
+      "restarts": 0,
+      "architecture": "amd64",
+      "environment_preserved": true,
+      "startup_error_count": 0
+    },
+    "admin-api": {
+      "image_id": "sha256:e6e2883128a553966ef9efdf0d644103282ff2680935fbab18fc0667240a5874",
+      "previous_image_id": "sha256:191aca1557a9ac1c122eec23db6c02cd58826aca438d03deb44796d0c1c930c0",
+      "healthz": 200,
+      "restarts": 0,
+      "architecture": "amd64",
+      "environment_preserved": true,
+      "startup_error_count": 0
+    },
+    "relay-gateway": {
+      "image_id": "sha256:a81aea55dc648c591ef54f69f953ffe5da5110036eff0e6b347dbd73a78dcd93",
+      "previous_image_id": "sha256:67eafc951a8c6b7358c4ad6786742be24531e4f3a91bb3080407de07d2e28f78",
+      "healthz": 200,
+      "restarts": 0,
+      "architecture": "amd64",
+      "environment_preserved": true,
+      "startup_error_count": 0
+    }
+  },
+  "checks": [
+    {
+      "path": "/api/status",
+      "authenticated": true,
+      "status": 200
+    },
+    {
+      "path": "/api/admin/access",
+      "authenticated": true,
+      "status": 200
+    },
+    {
+      "path": "/api/user/?page_size=1",
+      "authenticated": true,
+      "status": 200
+    },
+    {
+      "path": "/v1/channels?page_size=1",
+      "authenticated": true,
+      "status": 200
+    },
+    {
+      "path": "/api/option",
+      "authenticated": true,
+      "status": 200
+    },
+    {
+      "path": "/api/v1/admin/subscription-groups",
+      "authenticated": true,
+      "status": 200
+    },
+    {
+      "path": "/api/payment/orders?page_size=1",
+      "authenticated": true,
+      "status": 200
+    },
+    {
+      "path": "/api/admin/models?page_size=1",
+      "authenticated": true,
+      "status": 200
+    },
+    {
+      "path": "/api/admin/model-health?page_size=1",
+      "authenticated": true,
+      "status": 200
+    },
+    {
+      "path": "/api/user/",
+      "authenticated": false,
+      "status": 401
+    },
+    {
+      "path": "/api/user/self",
+      "authenticated": false,
+      "status": 401
+    },
+    {
+      "path": "/api/v1/admin/iam/roles",
+      "authenticated": false,
+      "status": 401
+    },
+    {
+      "path": "/v1/models",
+      "authenticated": false,
+      "status": 401
+    },
+    {
+      "path": "/api/v1/admin/iam/roles",
+      "static_admin_token": true,
+      "status": 401
+    }
+  ],
+  "frontend": {
+    "artifacts_verified": 169,
+    "index_sha256": "918c3a938d08bd1fb334b41373ecd3043e152bc14214407803a932553cea1124",
+    "served_index_matches": true,
+    "old_chunks_retained": true
+  },
+  "authorization": {
+    "mode": "legacy",
+    "cutover_state": "idle",
+    "policy_revision": 1,
+    "catalog_revision": 1,
+    "assignments": 0,
+    "published_or_persistently_bound_permissions": 0
+  },
+  "initial_source_digest": "7082bdcb48f9ca5f9c8bd9a762100782f08c2d753633bea7bfb897c57ec8b2cc",
+  "corrected_services": [
+    "channel-service",
+    "billing-service",
+    "config-service"
+  ],
+  "correction_build": {
+    "source_digest": "7cc66b0b07a71a2180936bba75234ae5c38d575289c7520bb4a710aec091e18e",
+    "source_digest_algorithm": "SHA256 of sorted UTF8 path + NUL + SHA256(file bytes); excludes docs/, CHANGELOG.md, README.md",
+    "source_files": 1687,
+    "base_revision": "7e1f109876aae44d5c8a907f149761698904507a",
+    "platform": "linux/amd64",
+    "services": [
+      "channel-service",
+      "billing-service",
+      "config-service"
+    ],
+    "tag": "rbac-b-7cc66b0b",
+    "images": {
+      "channel-service": {
+        "tag": "docker-compose-channel-service:rbac-b-7cc66b0b",
+        "id": "sha256:474e53b50305d7c3d1e6d31b8f19ec9da6aace3f80d25df62fa9d88e6beeeb60",
+        "size": 18523822
+      },
+      "billing-service": {
+        "tag": "docker-compose-billing-service:rbac-b-7cc66b0b",
+        "id": "sha256:1ee94ec3fbc2290aaac8255950d68c4965470742f6dc028a54dfddff82d27abb",
+        "size": 18397909
+      },
+      "config-service": {
+        "tag": "docker-compose-config-service:rbac-b-7cc66b0b",
+        "id": "sha256:07850ebf2ec4b3e7386f3a0d3ea99578056f92827284b804c7f24e0990a95a3e",
+        "size": 17750498
+      }
+    },
+    "archive_sha256": "ebae8ed1b85f287f4448dc4696039c3a825eeda0d06d78b5267ce42baa94917c",
+    "archive_bytes": 44891678
+  },
+  "server_configuration_preserved": true,
+  "migrations": {
+    "identity": {
+      "schema": "oneapi_identity",
+      "pending": [
+        "112_create_resource_write_audits"
+      ],
+      "remaining_before_resume": [],
+      "applied": [
+        "112_create_resource_write_audits"
+      ],
+      "repeat": "nothing to apply"
+    },
+    "channel": {
+      "schema": "oneapi_channel",
+      "pending": [
+        "112_create_resource_write_audits",
+        "118_channel_resource_revisions",
+        "120_model_routing_revision",
+        "121_usage_semantic_block_revision"
+      ],
+      "remaining_before_resume": [],
+      "applied": [
+        "112_create_resource_write_audits",
+        "118_channel_resource_revisions",
+        "120_model_routing_revision",
+        "121_usage_semantic_block_revision"
+      ],
+      "repeat": "nothing to apply"
+    },
+    "billing": {
+      "schema": "oneapi_billing",
+      "pending": [
+        "112_create_resource_write_audits",
+        "115_subscription_quota_policy_revision",
+        "116_billing_redeem_revision"
+      ],
+      "remaining_before_resume": [],
+      "applied": [
+        "112_create_resource_write_audits",
+        "115_subscription_quota_policy_revision",
+        "116_billing_redeem_revision"
+      ],
+      "repeat": "nothing to apply"
+    },
+    "config": {
+      "schema": "oneapi_config",
+      "pending": [
+        "112_create_resource_write_audits",
+        "122_config_tombstones"
+      ],
+      "remaining_before_resume": [],
+      "applied": [
+        "112_create_resource_write_audits",
+        "122_config_tombstones"
+      ],
+      "repeat": "nothing to apply"
+    },
+    "log": {
+      "schema": "oneapi_log",
+      "pending": [
+        "112_create_resource_write_audits"
+      ],
+      "remaining_before_resume": [],
+      "applied": [
+        "112_create_resource_write_audits"
+      ],
+      "repeat": "nothing to apply"
+    },
+    "monitor": {
+      "schema": "oneapi_monitor",
+      "pending": [
+        "112_create_resource_write_audits",
+        "114_alert_rule_revision"
+      ],
+      "remaining_before_resume": [],
+      "applied": [
+        "112_create_resource_write_audits",
+        "114_alert_rule_revision"
+      ],
+      "repeat": "nothing to apply"
+    },
+    "notify": {
+      "schema": "oneapi_notify",
+      "pending": [
+        "112_create_resource_write_audits",
+        "113_notification_management"
+      ],
+      "remaining_before_resume": [],
+      "applied": [
+        "112_create_resource_write_audits",
+        "113_notification_management"
+      ],
+      "repeat": "nothing to apply"
+    },
+    "admin": {
+      "schema": "oneapi_admin",
+      "pending": [
+        "112_create_resource_write_audits",
+        "117_system_options_revision",
+        "119_upstream_cost_resource_ids"
+      ],
+      "remaining_before_resume": [
+        "112_create_resource_write_audits",
+        "117_system_options_revision",
+        "119_upstream_cost_resource_ids"
+      ],
+      "applied": [
+        "112_create_resource_write_audits",
+        "117_system_options_revision",
+        "119_upstream_cost_resource_ids"
+      ],
+      "repeat": "nothing to apply"
+    }
+  },
+  "source_files": 1687,
+  "source_digest_algorithm": "SHA256 of sorted UTF8 path + NUL + SHA256(file bytes); excludes docs/, CHANGELOG.md, README.md",
+  "build_base_revision": "7e1f109876aae44d5c8a907f149761698904507a",
+  "metadata_repair": {
+    "schema": "oneapi_admin",
+    "column": "schema_migrations.applied_at",
+    "type": "bigint",
+    "repair": "SET DEFAULT (unix_timestamp())",
+    "existing_records_preserved": true,
+    "result": "bigint\tNO\tunix_timestamp()"
+  },
+  "initial_deployment": {
+    "captured_at_utc": "2026-10-03T00:15:51.421259+00:00",
+    "source_digest": "7082bdcb48f9ca5f9c8bd9a762100782f08c2d753633bea7bfb897c57ec8b2cc",
+    "build_base_revision": "6296334855a4e78d6ff299027070d0b19ded371e",
+    "archive_sha256": "8647d61512005d4cc41db0f4f18170f031f419d65bee1e6b0e7653892fe2fd0b",
+    "corrected_service_previous_image_ids": {
+      "channel-service": "sha256:9fe7fbf995b7644f91e17c21d875602a511a2e7fc82048e4151aecca2ad57ef1",
+      "billing-service": "sha256:d806c8792414937b759dcb521a302afb2f6a110f99e1a623a45c82a55f569939",
+      "config-service": "sha256:a78a6c6b39b4359ebcc1dd76960c1921c109722a870a436cb5e02b214c42bef8"
+    }
+  },
+  "local_validation": {
+    "affected_data_packages_race": "passed",
+    "overflow_regressions": "failed before fix; passed after fix",
+    "b0_b4_real_http_grpc_role_matrix": "passed",
+    "gosec_full_repository": "passed with zero issues",
+    "rbac_contract_rows": 823,
+    "migration_governance": "passed",
+    "architecture": "passed",
+    "service_identity_templates": "passed"
+  }
+}

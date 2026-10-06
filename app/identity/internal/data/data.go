@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"micro-one-api/app/identity/internal/biz"
+	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/database/xdb"
 	applogger "micro-one-api/platform/logging"
 
@@ -19,9 +20,15 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// Data owns the long-lived identity clients shared by account and IAM repositories.
+// IAM constructors never open a second pool.
+type Data struct {
+	db    *gorm.DB
+	redis *redis.Client
+}
+
 type Repository struct {
-	db                  *gorm.DB
-	redis               *redis.Client
+	*Data
 	usersByID           map[int64]*biz.User
 	tokensByHash        map[string]*biz.Token
 	oauthIdentities     map[string]*biz.OAuthIdentity
@@ -135,7 +142,7 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 				zap.String("component", "identity.data"), zap.Error(pingErr))
 		}
 	}
-	rep := &Repository{db: db, redis: rdb}
+	rep := NewRepository(&Data{db: db, redis: rdb})
 	// L6: hash any pre-migration plaintext keys into key_hash and truncate the
 	// stored key to a display prefix, erasing plaintext from disk. Runs once;
 	// subsequent boots find zero pending rows.
@@ -148,14 +155,20 @@ func allowMemoryRepository() bool {
 	return allowed
 }
 
-func newMemoryRepository() *Repository {
+func NewRepository(d *Data) *Repository {
+	if d == nil {
+		d = &Data{}
+	}
 	return &Repository{
+		Data:                d,
 		usersByID:           make(map[int64]*biz.User),
 		tokensByHash:        make(map[string]*biz.Token),
 		oauthIdentities:     make(map[string]*biz.OAuthIdentity),
 		nextOAuthIdentityID: 1,
 	}
 }
+
+func newMemoryRepository() *Repository { return NewRepository(&Data{}) }
 
 func NewMemoryRepositoryForTest() *Repository {
 	return newMemoryRepository()
@@ -266,8 +279,8 @@ func (r *Repository) FindOAuthIdentityByUserProvider(ctx context.Context, userID
 
 func (r *Repository) CreateOAuthIdentity(ctx context.Context, identity *biz.OAuthIdentity) error {
 	if r.db != nil {
-		return r.createOAuthIdentityDB(ctx, identity)
-	}
+		return biz.ErrIAMProtected
+	} // Persistent writes require the policy-locked account usecase.
 	r.identityLock.Lock()
 	defer r.identityLock.Unlock()
 	if r.oauthIdentities == nil {
@@ -295,8 +308,8 @@ func (r *Repository) CreateOAuthIdentity(ctx context.Context, identity *biz.OAut
 
 func (r *Repository) CreateUser(ctx context.Context, user *biz.User) error {
 	if r.db != nil {
-		return r.createUserDB(ctx, user)
-	}
+		return biz.ErrIAMProtected
+	} // Persistent writes require the policy-locked account usecase.
 	r.identityLock.Lock()
 	defer r.identityLock.Unlock()
 	user.ID = int64(len(r.usersByID) + 1)
@@ -306,8 +319,8 @@ func (r *Repository) CreateUser(ctx context.Context, user *biz.User) error {
 
 func (r *Repository) UpdateUser(ctx context.Context, user *biz.User) error {
 	if r.db != nil {
-		return r.updateUserDB(ctx, user)
-	}
+		return biz.ErrIAMProtected
+	} // Persistent writes require the policy-locked account usecase.
 	r.identityLock.Lock()
 	defer r.identityLock.Unlock()
 	if _, ok := r.usersByID[user.ID]; !ok {
@@ -319,8 +332,8 @@ func (r *Repository) UpdateUser(ctx context.Context, user *biz.User) error {
 
 func (r *Repository) DeleteUser(ctx context.Context, userID int64) error {
 	if r.db != nil {
-		return r.deleteUserDB(ctx, userID)
-	}
+		return biz.ErrIAMProtected
+	} // Persistent writes require the policy-locked account usecase.
 	r.identityLock.Lock()
 	defer r.identityLock.Unlock()
 	if _, ok := r.usersByID[userID]; !ok {
@@ -605,6 +618,9 @@ func (r *Repository) ListUsers(ctx context.Context, page, pageSize int32, keywor
 	if r.db != nil {
 		return r.listUsersDB(ctx, page, pageSize, keyword, group, status)
 	}
+	if _, scoped := authorization.QueryScopeFromContext(ctx, "identity.user.list"); scoped {
+		return nil, 0, biz.ErrIAMDependencyUnavailable
+	}
 	r.identityLock.RLock()
 	defer r.identityLock.RUnlock()
 	var users []*biz.User
@@ -768,27 +784,6 @@ func (r *Repository) createUserDB(ctx context.Context, user *biz.User) error {
 	return nil
 }
 
-func (r *Repository) updateUserDB(ctx context.Context, user *biz.User) error {
-	updates := map[string]any{
-		"username":            user.Username,
-		"display_name":        user.DisplayName,
-		"email":               user.Email,
-		"group":               user.Group,
-		"status":              user.Status,
-		"role":                user.Role,
-		"password_hash":       user.PasswordHash,
-		"oauth_provider":      user.OAuthProvider,
-		"oauth_id":            user.OAuthID,
-		"aff_code":            user.AffCode,
-		"inviter_id":          user.InviterID,
-		"password_changed_at": user.PasswordChangedAt,
-	}
-	if biz.RoutingV2Enabled() {
-		return r.updateRoutingUserDB(ctx, user, updates)
-	}
-	return r.db.WithContext(ctx).Model(&userModel{}).Where("id = ?", user.ID).Updates(updates).Error
-}
-
 func (r *Repository) increaseUserBalanceDB(ctx context.Context, userID int64, amount int64) error {
 	result := r.db.WithContext(ctx).Model(&userModel{}).
 		Where("id = ?", userID).
@@ -800,10 +795,6 @@ func (r *Repository) increaseUserBalanceDB(ctx context.Context, userID int64, am
 		return biz.ErrUserNotFound
 	}
 	return nil
-}
-
-func (r *Repository) deleteUserDB(ctx context.Context, userID int64) error {
-	return r.db.WithContext(ctx).Where("id = ?", userID).Delete(&userModel{}).Error
 }
 
 func (r *Repository) createTokenDB(ctx context.Context, token *biz.Token) error {
@@ -1023,11 +1014,17 @@ func oauthIdentityModelToBiz(model oauthIdentityModel) *biz.OAuthIdentity {
 func (r *Repository) listUsersDB(ctx context.Context, page, pageSize int32, keyword, group string, status int32) ([]*biz.User, int64, error) {
 	var models []userModel
 	query := r.db.WithContext(ctx).Model(&userModel{})
+	var scopeErr error
+	query, scopeErr = userScopeQuery(ctx, query)
+	if scopeErr != nil {
+		return nil, 0, scopeErr
+	}
+
 	if keyword != "" {
 		query = query.Where("username LIKE ? ESCAPE '!'", "%"+escapeLike(keyword)+"%")
 	}
 	if group != "" {
-		query = query.Where("`group` = ?", group)
+		query = query.Where(clause.Eq{Column: "group", Value: group})
 	}
 	if status != 0 {
 		query = query.Where("status = ?", status)

@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -7,6 +7,16 @@ import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 
 describe('UserRoutingAccess', () => {
+  it('enables public group access using the registered IAM operation', async () => {
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({ authorization_mode: 'iam', permitted_operations: ['identity.routing_access.read', 'identity.routing_access.public_access.update'], session: { activation_state: 'active' }, versions: { policy_revision: '1' }, valid_until: new Date(Date.now() + 60_000).toISOString() })),
+      http.get('/api/v1/admin/routing-access/9', () => HttpResponse.json({ success: true, data: { default_routing_group_id: 2, revision: 4, public_group_access: 'explicit_only', grants: [] } })),
+      http.get('/api/v1/admin/routing-access/9/available', () => HttpResponse.json({ success: true, data: { groups: [], next_page_token: '' } })),
+    );
+    renderWithQuery(<UserRoutingAccess userId="9" />);
+    await userEvent.click(await screen.findByRole('button', { name: '分组授权' }));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: '公开组访问' })).toBeEnabled());
+  });
   it('explains the target user’s access sources and effective price', async () => {
     server.use(
       http.get('/api/v1/admin/routing-access/9', () => HttpResponse.json({

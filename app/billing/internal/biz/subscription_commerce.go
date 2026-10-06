@@ -3,7 +3,9 @@ package biz
 import (
 	"context"
 	"fmt"
+	"micro-one-api/domain/authorization"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
+	"micro-one-api/platform/security/serviceidentity"
 	"strconv"
 	"time"
 )
@@ -37,6 +39,41 @@ func NewSubscriptionCommerce(b *BillingUsecase, s *subscriptionbiz.SubscriptionU
 	return &SubscriptionCommerce{b, s, p, r}
 }
 func (uc *SubscriptionCommerce) Execute(ctx context.Context, req SubscriptionCommerceRequest) (*SubscriptionCommerceResult, error) {
+	if authorization.External(ctx) {
+		var err error
+		actorResolver, ok := uc.billing.authorization.(authorization.ActorResolver)
+		if !ok {
+			return nil, authorization.ErrDenied
+		}
+		actor, mode, err := actorResolver.ResolveActor(ctx, "billing.self", authorization.Credential(ctx))
+		if err != nil {
+			return nil, err
+		}
+		if mode == "iam" {
+			if actor.UserID == req.UserID || serviceidentity.FromContext(ctx).Name == "identity" {
+				ctx, err = uc.billing.AuthorizeSelf(ctx, strconv.FormatInt(req.UserID, 10))
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				action := "assign"
+				if req.FromSubscriptionID > 0 {
+					action = "change"
+				}
+				ctx, err = prepareBilling(ctx, uc.billing.authorization, "subscription.user_subscriptions", "subscription.user_subscription."+action)
+				if err != nil {
+					return nil, err
+				}
+				if err = authorization.Require(ctx, "subscription.user_subscription."+action, authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: req.FromSubscriptionID, OwnerUserID: req.UserID}); err != nil {
+					return nil, err
+				}
+				ctx, err = uc.billing.authorizeAccount(ctx, "billing.accounts.adjust", "billing.account.balance.adjust", strconv.FormatInt(req.UserID, 10))
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
 	if !subscriptionbiz.EntitlementsEnabled() || req.UserID <= 0 || req.PlanID <= 0 || req.RequestID == "" || len(req.RequestID) > 128 {
 		return nil, ErrRoutingContextInvalid
 	}
@@ -55,11 +92,6 @@ func (uc *SubscriptionCommerce) Execute(ctx context.Context, req SubscriptionCom
 		if plan.Contract != nil {
 			if plan.Contract.Validate() != nil {
 				return nil, subscriptionbiz.ErrSubscriptionContractInvalid
-			}
-			for _, g := range plan.Contract.Coverage {
-				if _, err := uc.billing.validateSubscriptionGroup(ctx, tx, g.GroupID); err != nil {
-					return nil, err
-				}
 			}
 		}
 		now := time.Now().Unix()

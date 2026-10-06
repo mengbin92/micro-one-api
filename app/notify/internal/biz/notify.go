@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"errors"
+	"micro-one-api/domain/authorization"
 	"time"
 )
 
@@ -29,17 +30,20 @@ const (
 
 // Notification represents an outgoing notification.
 type Notification struct {
-	ID           int64
-	Type         string // webhook, email, event
-	Recipient    string
-	Subject      string
-	Content      string
-	Status       string // pending, sent, failed
-	RetryCount   int
-	LastError    string
-	ProcessingAt time.Time
-	CreatedAt    time.Time
-	SentAt       time.Time
+	Revision       uint64
+	AcknowledgedAt time.Time
+	AcknowledgedBy int64
+	ID             int64
+	Type           string // webhook, email, event
+	Recipient      string
+	Subject        string
+	Content        string
+	Status         string // pending, sent, failed
+	RetryCount     int
+	LastError      string
+	ProcessingAt   time.Time
+	CreatedAt      time.Time
+	SentAt         time.Time
 }
 
 // NotifyRepo is the repository interface for notification persistence.
@@ -71,7 +75,8 @@ type NotificationLeaseCompleter interface {
 
 // NotifyUsecase implements business logic for notify-worker.
 type NotifyUsecase struct {
-	repo NotifyRepo
+	authorization authorization.Resolver
+	repo          NotifyRepo
 }
 
 func NewNotifyUsecase(repo NotifyRepo) *NotifyUsecase {
@@ -79,6 +84,9 @@ func NewNotifyUsecase(repo NotifyRepo) *NotifyUsecase {
 }
 
 func (uc *NotifyUsecase) CreateNotification(ctx context.Context, notifyType, recipient, subject, content string) (*Notification, error) {
+	if err := uc.authorizeSystem(ctx, "/api.notify.v1.NotifyService/CreateNotification", "notify.notifications", "notify.notification.read"); err != nil {
+		return nil, err
+	}
 	if notifyType == "" {
 		return nil, ErrInvalidNotification
 	}
@@ -100,10 +108,23 @@ func (uc *NotifyUsecase) CreateNotification(ctx context.Context, notifyType, rec
 }
 
 func (uc *NotifyUsecase) GetNotification(ctx context.Context, id int64) (*Notification, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "notify.notifications", "notify.notification.read")
+	if err != nil {
+		return nil, err
+	}
+	if err := authorization.Require(ctx, "notify.notification.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: id}); err != nil {
+		return nil, err
+	}
 	return uc.repo.Get(ctx, id)
 }
 
 func (uc *NotifyUsecase) ListNotifications(ctx context.Context, page, pageSize int32, notifyType, status string) ([]*Notification, int64, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "notify.notifications", "notify.notification.list")
+	if err != nil {
+		return nil, 0, err
+	}
 	if page < 1 {
 		page = 1
 	}
@@ -114,10 +135,16 @@ func (uc *NotifyUsecase) ListNotifications(ctx context.Context, page, pageSize i
 }
 
 func (uc *NotifyUsecase) MarkSent(ctx context.Context, id int64) error {
+	if err := uc.authorizeSystem(ctx, "/api.notify.v1.NotifyService/UpdateNotificationStatus", "notify.notifications", "notify.notification.read"); err != nil {
+		return err
+	}
 	return uc.repo.UpdateStatus(ctx, id, NotifyStatusSent)
 }
 
 func (uc *NotifyUsecase) MarkFailed(ctx context.Context, id int64) error {
+	if err := uc.authorizeSystem(ctx, "/api.notify.v1.NotifyService/UpdateNotificationStatus", "notify.notifications", "notify.notification.read"); err != nil {
+		return err
+	}
 	return uc.repo.MarkFailed(ctx, id)
 }
 

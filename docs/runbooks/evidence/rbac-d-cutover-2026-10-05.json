@@ -1,0 +1,498 @@
+{
+  "captured_at": "2026-10-05T01:49:51.351670+00:00",
+  "cutover_source_digest": "48b4f9162fff60a5726988f39166fbd5e5a0c05e43edc0fc7335c2f6f6436e09",
+  "deployed_source_digest": "f510db75f115da8b7180166c3c48a51b26c938096349e3552cfb52aa633aa9b9",
+  "policy": {
+    "mode": "iam",
+    "cutover": "complete",
+    "policy_revision": 7,
+    "catalog_revision": 2,
+    "batch": "rbac-d-7ff6fec0-20261005"
+  },
+  "maintenance_started": "2026-10-05T00:28:40.214206+00:00",
+  "flow_resumed": {
+    "captured_at": "2026-10-05T01:48:04.587136+00:00",
+    "mode": "iam",
+    "cutover": "complete",
+    "policy_revision": 7,
+    "maintenance_process_stopped": true,
+    "published_ports": [
+      3000,
+      8080
+    ],
+    "public_frontend_sha256": "1a602745b00a9180e1c1966097b7d1bb3f58878df87da76af89eded8ce29b87c",
+    "old_root_locked": true
+  },
+  "instances": [
+    {
+      "service": "admin-api",
+      "image": "sha256:3122be31c9c779ac5cccb18b87883eac85227b40e474b96e6a077af4f92e023e",
+      "source_digest": "f510db75f115da8b7180166c3c48a51b26c938096349e3552cfb52aa633aa9b9",
+      "running": true,
+      "restarts": 0,
+      "dedicated_db_channel": true,
+      "migration_credential_absent": true
+    },
+    {
+      "service": "identity-service",
+      "image": "sha256:075fb3821e8a687e4c56c48002628fff954cb85768d716e1618bdec39ec116fb",
+      "source_digest": "f510db75f115da8b7180166c3c48a51b26c938096349e3552cfb52aa633aa9b9",
+      "running": true,
+      "restarts": 0,
+      "dedicated_db_channel": true,
+      "migration_credential_absent": true
+    },
+    {
+      "service": "channel-service",
+      "image": "sha256:85947d26699c43420859884b8978d4247df642e7e9d7c9ba21f1963ae98bbb8f",
+      "source_digest": "f510db75f115da8b7180166c3c48a51b26c938096349e3552cfb52aa633aa9b9",
+      "running": true,
+      "restarts": 0,
+      "dedicated_db_channel": true,
+      "migration_credential_absent": true
+    },
+    {
+      "service": "billing-service",
+      "image": "sha256:090e142f4e23c3aa61bed5bfdf2fb0fcdfbacec154811ccc99f38d7d24694226",
+      "source_digest": "f510db75f115da8b7180166c3c48a51b26c938096349e3552cfb52aa633aa9b9",
+      "running": true,
+      "restarts": 0,
+      "dedicated_db_channel": true,
+      "migration_credential_absent": true
+    },
+    {
+      "service": "config-service",
+      "image": "sha256:535adf03fffc0878004bbd2569ed7646a012ffbd1b1837c72c78985277ce2e82",
+      "source_digest": "f510db75f115da8b7180166c3c48a51b26c938096349e3552cfb52aa633aa9b9",
+      "running": true,
+      "restarts": 0,
+      "dedicated_db_channel": true,
+      "migration_credential_absent": true
+    },
+    {
+      "service": "log-service",
+      "image": "sha256:829b7263fdd6ddc41f6773d5139ab702a4ed51529f3335fb8a3402ccd38e20b7",
+      "source_digest": "f510db75f115da8b7180166c3c48a51b26c938096349e3552cfb52aa633aa9b9",
+      "running": true,
+      "restarts": 0,
+      "dedicated_db_channel": true,
+      "migration_credential_absent": true
+    },
+    {
+      "service": "monitor-worker",
+      "image": "sha256:29145afdd943c4b52afeecc9545d5cfa068982c7f1fcbb12bdcc18a876e635fb",
+      "source_digest": "f510db75f115da8b7180166c3c48a51b26c938096349e3552cfb52aa633aa9b9",
+      "running": true,
+      "restarts": 0,
+      "dedicated_db_channel": true,
+      "migration_credential_absent": true
+    },
+    {
+      "service": "notify-worker",
+      "image": "sha256:99a46288d4efe2c359afaa016cb48b35a4b3960f5cdfb482f89f3e7437e76690",
+      "source_digest": "f510db75f115da8b7180166c3c48a51b26c938096349e3552cfb52aa633aa9b9",
+      "running": true,
+      "restarts": 0,
+      "dedicated_db_channel": true,
+      "migration_credential_absent": true
+    },
+    {
+      "service": "relay-gateway",
+      "image": "sha256:836296498f475f6a836b1ed8e062feb52aa787316c41efed78c41dde1ec50d70",
+      "source_digest": "f510db75f115da8b7180166c3c48a51b26c938096349e3552cfb52aa633aa9b9",
+      "running": true,
+      "restarts": 0,
+      "dedicated_db_channel": true,
+      "migration_credential_absent": true
+    }
+  ],
+  "state_reports": [
+    {
+      "command": "block",
+      "mode": "legacy",
+      "cutover": "blocked",
+      "policy_revision": 4,
+      "verified": false,
+      "users": 0,
+      "unknown": 0,
+      "mismatches": 0,
+      "conflicts": 0,
+      "catalog_mismatches": 0,
+      "report_sha256": "d84c3b55aa88900c7ec104b5173ac23edd97b4171f18686330470879c18fab03"
+    },
+    {
+      "command": "rebuild",
+      "mode": "legacy",
+      "cutover": "blocked",
+      "policy_revision": 5,
+      "verified": true,
+      "users": 8,
+      "unknown": 0,
+      "mismatches": 0,
+      "conflicts": 0,
+      "catalog_mismatches": 0,
+      "report_sha256": "382aeea7fa4968fb8b27ce8b5cd4d8c3ca9739622ff511ee2e5be4423c9fa41b"
+    },
+    {
+      "command": "activate",
+      "mode": "iam",
+      "cutover": "verified",
+      "policy_revision": 6,
+      "verified": true,
+      "users": 8,
+      "unknown": 0,
+      "mismatches": 0,
+      "conflicts": 0,
+      "catalog_mismatches": 0,
+      "report_sha256": "30afe9fe9335a42fd2486ac69e6818b8fd6234658e020faad15c81594f88e7f7"
+    },
+    {
+      "command": "complete",
+      "mode": "iam",
+      "cutover": "complete",
+      "policy_revision": 7,
+      "verified": true,
+      "users": 8,
+      "unknown": 0,
+      "mismatches": 0,
+      "conflicts": 0,
+      "catalog_mismatches": 0,
+      "report_sha256": "599466456c563bf445ded2ae6960f3c83f05b0f090b3d4a154520980d37d4c4e"
+    },
+    {
+      "command": "verify",
+      "mode": "iam",
+      "cutover": "complete",
+      "policy_revision": 7,
+      "verified": true,
+      "users": 8,
+      "unknown": 0,
+      "mismatches": 0,
+      "conflicts": 0,
+      "catalog_mismatches": 0,
+      "report_sha256": "4a2a3b86d5d5ba93b56889c486ee1fee082abb7a906408ffcf5407c66082ccef"
+    }
+  ],
+  "audit_receipts": [
+    {
+      "action": "iam.migration.apply",
+      "result": "success",
+      "request_id": "rbac-d-7ff6fec0-20261005-apply",
+      "event_id": "rbac-d-7ff6fec0-20261005-apply"
+    },
+    {
+      "action": "iam.migration.block",
+      "result": "success",
+      "request_id": "rbac-d-7ff6fec0-20261005-block",
+      "event_id": "rbac-d-7ff6fec0-20261005-block"
+    },
+    {
+      "action": "iam.migration.rebuild",
+      "result": "success",
+      "request_id": "rbac-d-7ff6fec0-20261005-rebuild",
+      "event_id": "rbac-d-7ff6fec0-20261005-rebuild"
+    },
+    {
+      "action": "iam.migration.activate",
+      "result": "success",
+      "request_id": "rbac-d-7ff6fec0-20261005-activate",
+      "event_id": "rbac-d-7ff6fec0-20261005-activate"
+    },
+    {
+      "action": "iam.migration.complete",
+      "result": "success",
+      "request_id": "rbac-d-7ff6fec0-20261005-complete",
+      "event_id": "rbac-d-7ff6fec0-20261005-complete"
+    }
+  ],
+  "http_checks": [
+    {
+      "actor": "root",
+      "path": "/api/user/authorization",
+      "status": 200,
+      "body_sha256": "a1d1e10eb9d8c6288652d6ba4ef37b2044e9c7320ff921bfad2b647cb8edfdf0"
+    },
+    {
+      "actor": "root",
+      "path": "/api/v1/admin/iam/resources?context.context_type=platform&context.context_key=platform",
+      "status": 200,
+      "body_sha256": "c11d320526eb6cdfa73a62a22635fa6ec9faf6d34a1bec9a1519c6542e3b610e"
+    },
+    {
+      "actor": "root",
+      "path": "/api/v1/admin/iam/permissions?context.context_type=platform&context.context_key=platform",
+      "status": 200,
+      "body_sha256": "2c5f3b2be5e31077c09289e02375e7558a4a75b0b2d24968006921e1c81afc43"
+    },
+    {
+      "actor": "root",
+      "path": "/api/v1/admin/iam/roles?context.context_type=platform&context.context_key=platform",
+      "status": 200,
+      "body_sha256": "53fbe238cd213974f43104adb603147551934f35d22b952560ac0dceb095c701"
+    },
+    {
+      "actor": "root",
+      "path": "/api/user/?p=0",
+      "status": 200,
+      "body_sha256": "54ac22f941c3ee4d6749168a6eb787ec71f88785535797bcdfd1dcddff05d2fc"
+    },
+    {
+      "actor": "root",
+      "path": "/api/channel/?p=0",
+      "status": 200,
+      "body_sha256": "0d957e116c3b72e4f348a3c0c6cc0753353323e092ea6c68f190ae8623d95e32"
+    },
+    {
+      "actor": "root",
+      "path": "/api/admin/models",
+      "status": 200,
+      "body_sha256": "0534d51e6f09224d6225252c6e2a708ea546667af56b5bff03d42a5b13b1eb6e"
+    },
+    {
+      "actor": "root",
+      "path": "/api/v1/admin/routing-groups",
+      "status": 200,
+      "body_sha256": "cf7d736fbe1df66250a1ec57b35ef50076905a7eb20355a92508d223c85832b3"
+    },
+    {
+      "actor": "root",
+      "path": "/api/option/",
+      "status": 200,
+      "body_sha256": "6b0108a426bb31c4486b42940cd5aa36d5a13d24760e8cceba56309609ee077b"
+    },
+    {
+      "actor": "root",
+      "path": "/api/v1/admin/subscriptions",
+      "status": 200,
+      "body_sha256": "c90dd99b97ef3946248940ecb086142533b19f0d1a88a201e9a9e75f68444a91"
+    },
+    {
+      "actor": "root",
+      "path": "/api/v1/admin/subscription-groups",
+      "status": 200,
+      "body_sha256": "758c4e7dd6185dad2e06e824459ba1f2ee03b393a333b8f97002464eb58ae1d6"
+    },
+    {
+      "actor": "root",
+      "path": "/api/status",
+      "status": 200,
+      "body_sha256": "ce56b2512277d55e9663ec0c9a5f60b19f29ed5207358b0a55a10e5fdf0f53e1"
+    },
+    {
+      "actor": "member with forged numeric root claim",
+      "path": "/api/user/authorization",
+      "status": 200
+    },
+    {
+      "actor": "anonymous",
+      "path": "/api/v1/admin/iam/roles?context.context_type=platform&context.context_key=platform",
+      "status": 401
+    },
+    {
+      "actor": "member with forged numeric root claim",
+      "path": "/api/v1/admin/iam/roles?context.context_type=platform&context.context_key=platform",
+      "status": 403
+    },
+    {
+      "actor": "static admin token",
+      "path": "/api/v1/admin/iam/roles?context.context_type=platform&context.context_key=platform",
+      "status": 401
+    }
+  ],
+  "grpc_checks": [
+    {
+      "actor": "root dedicated",
+      "result": "OK"
+    },
+    {
+      "actor": "member numeric root spoof",
+      "result": "PermissionDenied"
+    },
+    {
+      "actor": "shared root",
+      "result": "PermissionDenied"
+    },
+    {
+      "actor": "dedicated no operator",
+      "result": "Unauthenticated"
+    },
+    {
+      "actor": "wrong caller root",
+      "result": "PermissionDenied"
+    }
+  ],
+  "database_permission_probes": [
+    {
+      "path": "oneapi_billing.users.role",
+      "allowed": false,
+      "observed_allowed": false,
+      "denied_by_privilege": true
+    },
+    {
+      "path": "oneapi_billing.users.status",
+      "allowed": false,
+      "observed_allowed": false,
+      "denied_by_privilege": true
+    },
+    {
+      "path": "oneapi_billing.users.password_hash",
+      "allowed": false,
+      "observed_allowed": false,
+      "denied_by_privilege": true
+    },
+    {
+      "path": "oneapi_identity.users.authorization_revision",
+      "allowed": false,
+      "observed_allowed": false,
+      "denied_by_privilege": true
+    },
+    {
+      "path": "billing.users.balance",
+      "allowed": true,
+      "observed_allowed": true,
+      "denied_by_privilege": false
+    },
+    {
+      "path": "billing.users.frozen_amount",
+      "allowed": true,
+      "observed_allowed": true,
+      "denied_by_privilege": false
+    },
+    {
+      "path": "billing.users.used_amount",
+      "allowed": true,
+      "observed_allowed": true,
+      "denied_by_privilege": false
+    },
+    {
+      "path": "billing.users.request_count",
+      "allowed": true,
+      "observed_allowed": true,
+      "denied_by_privilege": false
+    },
+    {
+      "path": "billing.users.delete",
+      "allowed": false,
+      "observed_allowed": false,
+      "denied_by_privilege": true
+    },
+    {
+      "path": "billing.users.insert",
+      "allowed": false,
+      "observed_allowed": false,
+      "denied_by_privilege": true
+    },
+    {
+      "path": "channel.identity-role",
+      "allowed": false,
+      "observed_allowed": false,
+      "denied_by_privilege": true
+    },
+    {
+      "path": "billing.identity-role",
+      "allowed": false,
+      "observed_allowed": false,
+      "denied_by_privilege": true
+    },
+    {
+      "path": "config.identity-role",
+      "allowed": false,
+      "observed_allowed": false,
+      "denied_by_privilege": true
+    },
+    {
+      "path": "log.identity-role",
+      "allowed": false,
+      "observed_allowed": false,
+      "denied_by_privilege": true
+    },
+    {
+      "path": "monitor.identity-role",
+      "allowed": false,
+      "observed_allowed": false,
+      "denied_by_privilege": true
+    },
+    {
+      "path": "notify.identity-role",
+      "allowed": false,
+      "observed_allowed": false,
+      "denied_by_privilege": true
+    },
+    {
+      "path": "admin.identity-role",
+      "allowed": false,
+      "observed_allowed": false,
+      "denied_by_privilege": true
+    },
+    {
+      "path": "relay.identity-role",
+      "allowed": false,
+      "observed_allowed": false,
+      "denied_by_privilege": true
+    }
+  ],
+  "finance": {
+    "paused_match": true,
+    "sha256": "ec3fe04d0564559372b53d707bcb24a57f2979bdb5421f5553118b558050a0a7",
+    "captured_at": "2026-10-05T01:47:58.888168+00:00",
+    "unfinished_settlements": 0
+  },
+  "frontend": {
+    "index_sha256": "1a602745b00a9180e1c1966097b7d1bb3f58878df87da76af89eded8ce29b87c",
+    "status": 200,
+    "files": 173
+  },
+  "old_remote_root_locked": true,
+  "remote_root_connections": 0,
+  "temporary_migration_account_locked": true,
+  "temporary_migration_credential_denied": true,
+  "rescue_enabled": false,
+  "custom_manifest_reviewed_empty": true,
+  "regressions": {
+    "source_digest": "f510db75f115da8b7180166c3c48a51b26c938096349e3552cfb52aa633aa9b9",
+    "all_passed": true,
+    "logs": [
+      {
+        "name": "rbac-d-recovery-verify.log",
+        "sha256": "958a27c3e8019e5468f87e71901e76e1b29ad9670b80bec8d40be1f996c6a138"
+      },
+      {
+        "name": "rbac-d-recovery-regressions.log",
+        "sha256": "28bc7a08e2bee05e6e5edde3d9e4d5ba6ee780796275030e840301be6fbb200d"
+      },
+      {
+        "name": "rbac-d-three-db-final.log",
+        "sha256": "c4184885c8302297769a7d643565499189e4bce96dc163167c6a84c594264221"
+      },
+      {
+        "name": "rbac-d-browser.log",
+        "sha256": "470bbf8fed764193310fd709f2a65cfd1a3ebf1231fdafd12011b66c6b63201b"
+      },
+      {
+        "name": "rbac-d-timeout-green.log",
+        "sha256": "08404c19ba422c736ef65c36b1781be1aae3842aceb46f2d6c5d38feac6a02d8"
+      },
+      {
+        "name": "rbac-d-cli-stream.log",
+        "sha256": "6e8e12e826754fb7c4d1e76ee9602e72a2341d4935f3b58ad3fdafc009cfb8c8"
+      }
+    ]
+  },
+  "post_deploy_review": {
+    "changed_file": "app/identity/cmd/iam-migrate/main.go",
+    "annotations_only": 7,
+    "runtime_source_unchanged": true,
+    "deployed_file_sha256": "439bceab1c1da95b1445dee980e829587d9f349870bfa9816917be88b58f9ddb",
+    "normalized_reviewed_file_sha256": "439bceab1c1da95b1445dee980e829587d9f349870bfa9816917be88b58f9ddb",
+    "gosec_passed": true
+  },
+  "external_probe": {
+    "url": "https://api.mengbin.top/healthz",
+    "status": 200,
+    "tls_verified": true,
+    "response": {
+      "status": "ok"
+    },
+    "direct_ip_port_3000_probe": "empty reply; host published port 3000 and frontend hashes independently verified"
+  }
+}

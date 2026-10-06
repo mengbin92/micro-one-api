@@ -23,8 +23,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { locale, t } from '@/lib/i18n';
-import { userSelfQueryOptions } from '@/lib/account-queries';
-import { isAdminRole } from '@/lib/admin-access';
+import { useAuthorization } from '@/lib/authorization';
 
 interface LedgerLog {
   id?: string;
@@ -207,14 +206,17 @@ export function OrdersPage() {
   const [type, setType] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<PaymentOrder | null>(null);
   const pageSize = 20;
-  const { data: currentUser, isLoading: isUserLoading } = useQuery(userSelfQueryOptions);
-  const isAdminView = isAdminRole(currentUser?.role);
+  const auth = useAuthorization();
+  const isAdminView = auth.canAll(['admin.console.enter', 'billing.payment.list']);
+  const sessionActive = auth.snapshot?.authorization_mode === 'legacy' || auth.snapshot?.session?.activation_state === 'active';
   const queryClient = useQueryClient();
-  const queryKey = ['user-orders', page, type, isAdminView];
+  const queryKey = ['user-orders', page, type, isAdminView, auth.contextKey, auth.generation];
 
   const { data, isLoading } = useQuery({
     queryKey,
-    enabled: !isUserLoading,
+    enabled: sessionActive,
+    meta: { protected: true },
+    retry: false,
     queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),
@@ -257,6 +259,7 @@ export function OrdersPage() {
 
   const paymentOrderDetail = useMutation({
     mutationFn: async (tradeNo: string) => {
+      if (!sessionActive || (isAdminView && !auth.can('billing.payment.read'))) throw new Error(t('权限受限'));
       const client = isAdminView ? adminApiClient : apiClient;
       const path = isAdminView ? `/payment/orders/${encodeURIComponent(tradeNo)}` : `/user/payment/orders/${encodeURIComponent(tradeNo)}`;
       const res = await client.get(path);
@@ -277,7 +280,7 @@ export function OrdersPage() {
   const canContinuePayment = selectedOrder?.status === 'pending' && selectedPayURL !== '';
 
   const handleOpenPaymentDetail = (row: OrderRow) => {
-    if (!row.paymentOrder) return;
+    if (!row.paymentOrder || (isAdminView && !auth.can('billing.payment.read'))) return;
     setSelectedOrder(row.paymentOrder);
     paymentOrderDetail.mutate(row.reference);
   };
@@ -313,7 +316,7 @@ export function OrdersPage() {
         </select>
       </div>
 
-      {isLoading || isUserLoading ? (
+      {isLoading || auth.isPending || auth.isFetching ? (
         <TableSkeleton columns={[t("类型"), t("金额"), t("到账/余额"), t("关联 ID"), t("备注"), t("时间")]} rows={8} />
       ) : rows.length === 0 ? (
         <EmptyState title={t("暂无订单记录")} description={t("充值、兑换或退款后会显示在这里。")} />
@@ -353,7 +356,7 @@ export function OrdersPage() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          disabled={paymentOrderDetail.isPending}
+                          disabled={paymentOrderDetail.isPending || (isAdminView && !auth.can('billing.payment.read'))}
                           aria-label={t(`查看订单 ${row.reference}`)}
                           onClick={() => handleOpenPaymentDetail(row)}
                         >{t("详情")}</Button>

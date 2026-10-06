@@ -16,6 +16,7 @@ import (
 	"micro-one-api/app/log/internal/data"
 	"micro-one-api/app/log/internal/server"
 	"micro-one-api/app/log/internal/service"
+	"micro-one-api/platform/authz"
 	"micro-one-api/platform/logging"
 	registry2 "micro-one-api/platform/registry"
 	"time"
@@ -64,6 +65,8 @@ func provideRegistrar(cfg *Config) registrarResult {
 }
 
 func newApp(cfg *Config, repo *data.Repository, uc *biz.LogUsecase, svc *service.LogService, reg registrarResult) (*kratos.App, func()) {
+	ownerAuth, _ := authz.FromEnvironment("log")
+	svc.SetAuthorization(ownerAuth)
 
 	retentionDays := 30
 	if cfg.Bootstrap.LogSvc != nil && cfg.Bootstrap.LogSvc.RetentionDays > 0 {
@@ -111,6 +114,7 @@ func newApp(cfg *Config, repo *data.Repository, uc *biz.LogUsecase, svc *service
 	}
 	app := kratos.New(opts...)
 	return app, func() {
+		_ = ownerAuth.Close()
 		cleanupRetention()
 		partitionCancel()
 		if partitionStop != nil {

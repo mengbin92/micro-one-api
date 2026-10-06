@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/database/authzquery"
 	"os"
 	"slices"
 	"sort"
@@ -76,35 +78,36 @@ type Repository struct {
 }
 
 type channelModel struct {
-	ID                                int64   `gorm:"column:id"`
-	Type                              int32   `gorm:"column:type"`
-	Key                               string  `gorm:"column:key"`
-	Status                            int32   `gorm:"column:status"`
-	Name                              string  `gorm:"column:name"`
-	Weight                            *uint   `gorm:"column:weight"`
-	CreatedTime                       int64   `gorm:"column:created_time"`
-	TestTime                          int64   `gorm:"column:test_time"`
-	ResponseTime                      int64   `gorm:"column:response_time"`
-	BaseURL                           *string `gorm:"column:base_url"`
-	Balance                           float64 `gorm:"column:balance"`
-	BalanceUpdatedTime                int64   `gorm:"column:balance_updated_time"`
-	BalanceRefreshLastError           *string `gorm:"column:balance_refresh_last_error"`
-	BalanceRefreshLastSuccessTime     int64   `gorm:"column:balance_refresh_last_success_time"`
-	ConsecutiveBalanceRefreshFailures int32   `gorm:"column:consecutive_balance_refresh_failures"`
-	HealthStatus                      string  `gorm:"column:health_status"`
-	HealthLastError                   *string `gorm:"column:health_last_error"`
-	HealthLastSuccessTime             int64   `gorm:"column:health_last_success_time"`
-	HealthLastFailureTime             int64   `gorm:"column:health_last_failure_time"`
-	HealthConsecutiveFailures         int32   `gorm:"column:health_consecutive_failures"`
-	CircuitOpenedUntil                int64   `gorm:"column:circuit_opened_until"`
-	Models                            string  `gorm:"column:models"`
-	Group                             string  `gorm:"column:group"`
-	UsedQuota                         int64   `gorm:"column:used_quota"`
-	ModelMapping                      *string `gorm:"column:model_mapping"`
-	Priority                          *int64  `gorm:"column:priority"`
-	Config                            string  `gorm:"column:config"`
-	SystemPrompt                      *string `gorm:"column:system_prompt"`
-	RestrictModels                    bool    `gorm:"column:restrict_models"`
+	AuthorizationRevision             int64    `gorm:"column:authorization_revision;default:1"`
+	ID                                int64    `gorm:"column:id"`
+	Type                              int32    `gorm:"column:type"`
+	Key                               string   `gorm:"column:key"`
+	Status                            int32    `gorm:"column:status"`
+	Name                              string   `gorm:"column:name"`
+	Weight                            *uint    `gorm:"column:weight"`
+	CreatedTime                       int64    `gorm:"column:created_time"`
+	TestTime                          int64    `gorm:"column:test_time"`
+	ResponseTime                      int64    `gorm:"column:response_time"`
+	BaseURL                           *string  `gorm:"column:base_url"`
+	Balance                           float64  `gorm:"column:balance"`
+	BalanceUpdatedTime                int64    `gorm:"column:balance_updated_time"`
+	BalanceRefreshLastError           *string  `gorm:"column:balance_refresh_last_error"`
+	BalanceRefreshLastSuccessTime     int64    `gorm:"column:balance_refresh_last_success_time"`
+	ConsecutiveBalanceRefreshFailures int32    `gorm:"column:consecutive_balance_refresh_failures"`
+	HealthStatus                      string   `gorm:"column:health_status"`
+	HealthLastError                   *string  `gorm:"column:health_last_error"`
+	HealthLastSuccessTime             int64    `gorm:"column:health_last_success_time"`
+	HealthLastFailureTime             int64    `gorm:"column:health_last_failure_time"`
+	HealthConsecutiveFailures         int32    `gorm:"column:health_consecutive_failures"`
+	CircuitOpenedUntil                int64    `gorm:"column:circuit_opened_until"`
+	Models                            string   `gorm:"column:models"`
+	Group                             string   `gorm:"column:group"`
+	UsedQuota                         int64    `gorm:"column:used_quota"`
+	ModelMapping                      *string  `gorm:"column:model_mapping"`
+	Priority                          *int64   `gorm:"column:priority"`
+	Config                            string   `gorm:"column:config"`
+	SystemPrompt                      *string  `gorm:"column:system_prompt"`
+	RestrictModels                    xdb.Flag `gorm:"column:restrict_models"`
 }
 
 type channelUsageEventModel struct {
@@ -119,11 +122,11 @@ func (channelUsageEventModel) TableName() string { return "channel_usage_events"
 func (channelModel) TableName() string { return "channels" }
 
 type abilityModel struct {
-	Group     string `gorm:"column:group"`
-	Model     string `gorm:"column:model"`
-	ChannelID int64  `gorm:"column:channel_id"`
-	Enabled   bool   `gorm:"column:enabled"`
-	Priority  *int64 `gorm:"column:priority"`
+	Group     string   `gorm:"column:group"`
+	Model     string   `gorm:"column:model"`
+	ChannelID int64    `gorm:"column:channel_id"`
+	Enabled   xdb.Flag `gorm:"column:enabled"`
+	Priority  *int64   `gorm:"column:priority"`
 }
 
 func (abilityModel) TableName() string { return "abilities" }
@@ -179,13 +182,13 @@ type subscriptionAccountModel struct {
 func (subscriptionAccountModel) TableName() string { return "subscription_accounts" }
 
 type subscriptionAccountAbilityModel struct {
-	ID        int64  `gorm:"column:id"`
-	Group     string `gorm:"column:group"`
-	Model     string `gorm:"column:model"`
-	Platform  string `gorm:"column:platform"`
-	AccountID int64  `gorm:"column:account_id"`
-	Enabled   bool   `gorm:"column:enabled"`
-	Priority  *int64 `gorm:"column:priority"`
+	ID        int64    `gorm:"column:id"`
+	Group     string   `gorm:"column:group"`
+	Model     string   `gorm:"column:model"`
+	Platform  string   `gorm:"column:platform"`
+	AccountID int64    `gorm:"column:account_id"`
+	Enabled   xdb.Flag `gorm:"column:enabled"`
+	Priority  *int64   `gorm:"column:priority"`
 }
 
 func (subscriptionAccountAbilityModel) TableName() string { return "subscription_account_abilities" }
@@ -376,7 +379,7 @@ func (r *Repository) listUnrestrictedChannelsByGroupDB(ctx context.Context, grou
 	// cross-driver compatible (no FIND_IN_SET in SQLite/Postgres).
 	query = r.csvGroupScope(query, group, "`group`", "id")
 	if err := query.
-		Where("status = ? AND restrict_models = ?", biz.ChannelStatusEnabled, false).
+		Where("status = ? AND restrict_models = ?", biz.ChannelStatusEnabled, 0).
 		Find(&models).Error; err != nil {
 		return nil, err
 	}
@@ -495,6 +498,11 @@ func (r *Repository) ListSubscriptionAccountAbilities(ctx context.Context, group
 }
 
 func (r *Repository) ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*biz.SubscriptionAccount, int64, error) {
+	if r.db == nil {
+		if _, iam := authorization.QueryScopeFromContext(ctx, "channel.account.list"); iam {
+			return nil, 0, authorization.ErrDenied
+		}
+	}
 	if r.db != nil {
 		return r.listSubscriptionAccountsDB(ctx, page, pageSize, keyword, group, status, platform)
 	}
@@ -531,6 +539,9 @@ func (r *Repository) CreateSubscriptionAccount(ctx context.Context, account *biz
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	account.ID = int64(len(r.subAccounts) + 1)
+	if account.CredentialRevision < 1 {
+		account.CredentialRevision = 1
+	}
 	r.subAccounts[account.ID] = account
 	return nil
 }
@@ -752,6 +763,11 @@ func (r *Repository) RecordSubscriptionAccountQuotaUsage(ctx context.Context, us
 }
 
 func (r *Repository) AggregateSubscriptionAccountQuotaEvents(ctx context.Context, filter biz.SubscriptionAccountQuotaEventFilter) ([]*biz.SubscriptionAccountQuotaEventAggregate, error) {
+	if r.db == nil {
+		if _, scoped := authorization.QueryScopeFromContext(ctx, "channel.account.list"); scoped {
+			return nil, authorization.ErrDenied
+		}
+	}
 	if r.db != nil {
 		return r.aggregateSubscriptionAccountQuotaEventsDB(ctx, filter)
 	}
@@ -853,6 +869,11 @@ func (r *Repository) ListAvailableModels(ctx context.Context, group string) ([]s
 }
 
 func (r *Repository) ListChannels(ctx context.Context, page, pageSize int32, keyword, group string, status, chType int32) ([]*biz.Channel, int64, error) {
+	if r.db == nil {
+		if _, iam := authorization.QueryScopeFromContext(ctx, "channel.channel.list"); iam {
+			return nil, 0, authorization.ErrDenied
+		}
+	}
 	if r.db != nil {
 		return r.listChannelsDB(ctx, page, pageSize, keyword, group, status, chType)
 	}
@@ -1079,7 +1100,7 @@ func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, gro
 			Model:     row.Model,
 			Platform:  row.Platform,
 			AccountID: row.AccountID,
-			Enabled:   row.Enabled,
+			Enabled:   row.Enabled != 0,
 			Priority:  priority,
 			Weight:    weight,
 		})
@@ -1089,6 +1110,10 @@ func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, gro
 
 func (r *Repository) listSubscriptionAccountsDB(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*biz.SubscriptionAccount, int64, error) {
 	query := r.db.WithContext(ctx).Model(&subscriptionAccountModel{})
+	var err error
+	if query, err = r.subscriptionAccountScope(ctx, query, "subscription_accounts"); err != nil {
+		return nil, 0, err
+	}
 	if keyword != "" {
 		query = query.Where("name LIKE ? ESCAPE '!' OR account_id LIKE ? ESCAPE '!'", "%"+escapeLike(keyword)+"%", "%"+escapeLike(keyword)+"%")
 	}
@@ -1168,15 +1193,38 @@ func (r *Repository) listOAuthRefreshCandidatesDB(ctx context.Context, within ti
 }
 
 func (r *Repository) createSubscriptionAccountDB(ctx context.Context, account *biz.SubscriptionAccount) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := r.checkResourceTx(ctx, tx, 0, account.Group, true, "channel.account.create", "channel.account.oauth.bind"); err != nil {
+			return err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "channel.account.create"); iam && account.RateMultiplier != 0 && account.RateMultiplier != 1 {
+			if err := authorization.Require(ctx, "billing.pricing.update", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+				return err
+			}
+			if err := authzquery.AppendWriteAudit(ctx, tx, "billing.pricing.update", 0); err != nil {
+				return err
+			}
+		}
+		if err := r.checkCompatibilityMappingEdit(ctx, tx, 0, account.Group, true, "", account.ModelMapping); err != nil {
+			return err
+		}
 		model, err := r.subscriptionAccountBizToModel(account)
 		if err != nil {
 			return err
+		}
+		if model.CredentialRevision < 1 {
+			model.CredentialRevision = 1
 		}
 		if err := tx.Create(model).Error; err != nil {
 			return err
 		}
 		account.ID = model.ID
+		account.CredentialRevision = model.CredentialRevision
+		for _, op := range []string{"channel.account.create", "channel.account.oauth.bind"} {
+			if err := authzquery.AppendWriteAudit(ctx, tx, op, model.ID); err != nil {
+				return err
+			}
+		}
 		return r.syncSubscriptionAccountAbilitiesTx(tx, account)
 	})
 }
@@ -1191,7 +1239,53 @@ func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *b
 	if old.CredentialRevision != account.CredentialRevision || (old.CredentialRefreshPending && old.RefreshToken == account.RefreshToken) {
 		return biz.ErrCredentialConflict
 	}
-	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := r.checkResourceTx(ctx, tx, account.ID, account.Group, true, "channel.account.update"); err != nil {
+			return err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "channel.account.update"); iam {
+			owner := &Repository{db: tx, encKey: r.encKey}
+			current, err := owner.FindSubscriptionAccountByID(ctx, account.ID)
+			if err != nil {
+				return err
+			}
+			if current.RateMultiplier != account.RateMultiplier {
+				if err := authorization.Require(ctx, "billing.pricing.update", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+					return err
+				}
+				if err := authzquery.AppendWriteAudit(ctx, tx, "billing.pricing.update", account.ID); err != nil {
+					return err
+				}
+			}
+
+			if current.ModelMapping != account.ModelMapping {
+				if err := r.checkCompatibilityMappingEdit(ctx, tx, account.ID, account.Group, true, current.ModelMapping, account.ModelMapping); err != nil {
+					return err
+				}
+			}
+
+			if current.Status != account.Status {
+				operation := "channel.account.disable"
+				if account.Status == 1 {
+					operation = "channel.account.enable"
+				}
+				if err := r.checkResourceTx(ctx, tx, account.ID, account.Group, true, operation); err != nil {
+					return err
+				}
+			}
+			if current.QuotaUsedUSD != account.QuotaUsedUSD || current.Quota5hUsedUSD != account.Quota5hUsedUSD || current.QuotaDailyUsedUSD != account.QuotaDailyUsedUSD || current.QuotaWeeklyUsedUSD != account.QuotaWeeklyUsedUSD {
+				if err := r.checkResourceTx(ctx, tx, account.ID, account.Group, true, "channel.account.quota.reset"); err != nil {
+					return err
+				}
+			}
+
+			if current.AccessToken != account.AccessToken || current.RefreshToken != account.RefreshToken || current.Fingerprint != account.Fingerprint || current.Metadata != account.Metadata {
+				if err := r.checkResourceTx(ctx, tx, account.ID, account.Group, true, "channel.account.credential.update"); err != nil {
+					return err
+				}
+			}
+		}
+
 		model, err := r.subscriptionAccountBizToModel(account)
 		if err != nil {
 			return err
@@ -1249,7 +1343,13 @@ func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *b
 }
 
 func (r *Repository) deleteSubscriptionAccountDB(ctx context.Context, accountID int64) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := r.checkResourceTx(ctx, tx, accountID, "", true, "channel.account.delete"); err != nil {
+			return err
+		}
+		if err := requireSourceMappingDeletes(tx, r, accountID, true); err != nil {
+			return err
+		}
 		if err := r.syncRoutingMembersTx(tx, routing.Source{Kind: routing.Subscription, ID: accountID}, ""); err != nil {
 			return err
 		}
@@ -1267,25 +1367,35 @@ func (r *Repository) deleteSubscriptionAccountDB(ctx context.Context, accountID 
 }
 
 func (r *Repository) changeSubscriptionAccountStatusDB(ctx context.Context, accountID int64, status int32) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := r.checkResourceTx(ctx, tx, accountID, "", true, "channel.account.enable", "channel.account.disable"); err != nil {
+			return err
+		}
 		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Update("status", status).Error; err != nil {
 			return err
 		}
 		enabled := status == biz.ChannelStatusEnabled
-		return tx.Model(&subscriptionAccountAbilityModel{}).Where("account_id = ?", accountID).Update("enabled", enabled).Error
+		return tx.Model(&subscriptionAccountAbilityModel{}).Where("account_id = ?", accountID).Update("enabled", xdb.BoolInt(enabled)).Error
 	})
 }
 
 func (r *Repository) setSubscriptionAccountErrorDB(ctx context.Context, accountID int64, message string) error {
-	account, err := r.findSubscriptionAccountByIDDB(ctx, accountID)
-	if err != nil {
-		return err
-	}
-	metadata := setSubscriptionAccountMetadataValue(account.Metadata, "last_error", message)
-	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]any{
-		"metadata":   new(metadata),
-		"updated_at": now(),
-	}).Error
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := r.checkResourceTx(ctx, tx, accountID, "", true, "channel.account.recovery.clear"); err != nil {
+			return err
+		}
+		var row subscriptionAccountModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&row, accountID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return biz.ErrSubscriptionAccountNotFound
+			}
+			return err
+		}
+		metadata := setSubscriptionAccountMetadataValue(r.subscriptionAccountModelToBiz(&row).Metadata, "last_error", message)
+		return tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]any{
+			"metadata": new(metadata), "updated_at": now(),
+		}).Error
+	})
 }
 
 func (r *Repository) setTempUnschedulableDB(ctx context.Context, accountID int64, until time.Time, reason string) error {
@@ -1410,11 +1520,19 @@ func (r *Repository) aggregateSubscriptionAccountQuotaEventsDB(ctx context.Conte
 			subscription_account_id,
 			COALESCE(SUM(cost_usd), 0) AS cost_usd,
 			COALESCE(SUM(charged_usd), 0) AS charged_usd,
-			COALESCE(AVG(rate_multiplier), 0) AS average_rate_multiplier,
+			COALESCE(AVG(subscription_account_quota_events.rate_multiplier), 0) AS average_rate_multiplier,
 			COUNT(*) AS count,
 			COALESCE(MAX(occurred_at), 0) AS last_occurred_at`).
 		Group("subscription_account_id").
 		Order("charged_usd DESC")
+	if _, scoped := authorization.QueryScopeFromContext(ctx, "channel.account.list"); scoped {
+		q = q.Joins("JOIN subscription_accounts ON subscription_accounts.id = subscription_account_quota_events.subscription_account_id")
+		var err error
+		q, err = r.subscriptionAccountScope(ctx, q, "subscription_accounts")
+		if err != nil {
+			return nil, err
+		}
+	}
 	if filter.AccountID > 0 {
 		q = q.Where("subscription_account_id = ?", filter.AccountID)
 	}
@@ -1451,14 +1569,26 @@ func (r *Repository) resetSubscriptionAccountQuotaDB(ctx context.Context, accoun
 		return nil
 	}
 	updates["updated_at"] = now()
-	result := r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(updates)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return biz.ErrSubscriptionAccountNotFound
-	}
-	return nil
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := r.checkResourceTx(ctx, tx, accountID, "", true, "channel.account.quota.reset"); err != nil {
+			return err
+		}
+		result := tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+		// MySQL returns zero for an identical reset; prove existence under lock.
+		if result.RowsAffected == 0 {
+			var row subscriptionAccountModel
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&row, accountID).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return biz.ErrSubscriptionAccountNotFound
+				}
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (r *Repository) autoPauseAccountDB(ctx context.Context, accountID int64, reason string) error {
@@ -1488,7 +1618,7 @@ func (r *Repository) autoPauseAccountDB(ctx context.Context, accountID int64, re
 		}).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&subscriptionAccountAbilityModel{}).Where("account_id = ?", accountID).Update("enabled", abilityEnabled).Error; err != nil {
+		if err := tx.Model(&subscriptionAccountAbilityModel{}).Where("account_id = ?", accountID).Update("enabled", xdb.BoolInt(abilityEnabled)).Error; err != nil {
 			return err
 		}
 		return tx.Model(&accountQuotaSnapshotModel{}).Where("account_id = ?", accountID).Updates(map[string]any{
@@ -1559,6 +1689,7 @@ func (r *Repository) findByIDDB(ctx context.Context, channelID int64) (*biz.Chan
 	}
 	return &biz.Channel{
 		ID:                                model.ID,
+		AuthorizationRevision:             model.AuthorizationRevision,
 		Type:                              model.Type,
 		Name:                              model.Name,
 		Status:                            model.Status,
@@ -1655,7 +1786,7 @@ func (r *Repository) listAbilitiesByGroupAndModelDB(ctx context.Context, group, 
 			Group:     row.Group,
 			Model:     row.Model,
 			ChannelID: row.ChannelID,
-			Enabled:   row.Enabled,
+			Enabled:   row.Enabled != 0,
 			Priority:  priority,
 			Weight:    weight,
 		})
@@ -2044,6 +2175,10 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 
 func (r *Repository) listChannelsDB(ctx context.Context, page, pageSize int32, keyword, group string, status, chType int32) ([]*biz.Channel, int64, error) {
 	query := r.db.WithContext(ctx).Model(&channelModel{})
+	var err error
+	if query, err = r.channelScope(ctx, query, "channels"); err != nil {
+		return nil, 0, err
+	}
 	if keyword != "" {
 		query = query.Where("name LIKE ? ESCAPE '!'", "%"+escapeLike(keyword)+"%")
 	}
@@ -2073,7 +2208,10 @@ func (r *Repository) listChannelsDB(ctx context.Context, page, pageSize int32, k
 }
 
 func (r *Repository) createChannelDB(ctx context.Context, channel *biz.Channel) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := r.checkResourceTx(ctx, tx, 0, channel.Group, false, "channel.channel.create"); err != nil {
+			return err
+		}
 		model, err := r.channelToModel(channel)
 		if err != nil {
 			return err
@@ -2082,6 +2220,10 @@ func (r *Repository) createChannelDB(ctx context.Context, channel *biz.Channel) 
 			return err
 		}
 		channel.ID = model.ID
+		channel.AuthorizationRevision = model.AuthorizationRevision
+		if err := authzquery.AppendWriteAudit(ctx, tx, "channel.channel.create", model.ID); err != nil {
+			return err
+		}
 		if err := r.syncAbilitiesTx(tx, channel); err != nil {
 			return err
 		}
@@ -2090,7 +2232,34 @@ func (r *Repository) createChannelDB(ctx context.Context, channel *biz.Channel) 
 }
 
 func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := r.checkResourceTx(ctx, tx, channel.ID, channel.Group, false, "channel.channel.update"); err != nil {
+			return err
+		}
+		if _, iam := authorization.QueryScopeFromContext(ctx, "channel.channel.update"); iam {
+			owner := &Repository{db: tx, encKey: r.encKey}
+			current, err := owner.FindByID(ctx, channel.ID)
+			if err != nil {
+				return err
+			}
+			if current.Status != channel.Status || current.Balance != channel.Balance || current.BalanceUpdatedTime != channel.BalanceUpdatedTime || current.BalanceRefreshLastError != channel.BalanceRefreshLastError || current.BalanceRefreshLastSuccessTime != channel.BalanceRefreshLastSuccessTime || current.ConsecutiveBalanceRefreshFailures != channel.ConsecutiveBalanceRefreshFailures {
+				// Plain update cannot perform the unfinished balance action or
+				// smuggle status into the ability projection.
+				return authorization.ErrDenied
+			}
+			if current.ModelMapping != channel.ModelMapping {
+				if err := r.checkCompatibilityMappingEdit(ctx, tx, channel.ID, channel.Group, false, current.ModelMapping, channel.ModelMapping); err != nil {
+					return err
+				}
+			}
+
+			if current.Key != channel.Key {
+				if err := r.checkResourceTx(ctx, tx, channel.ID, channel.Group, false, "channel.channel.secret.rotate"); err != nil {
+					return err
+				}
+			}
+		}
+
 		model, err := r.channelToModel(channel)
 		if err != nil {
 			return err
@@ -2129,7 +2298,13 @@ func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) 
 }
 
 func (r *Repository) deleteChannelDB(ctx context.Context, channelID int64) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := r.checkResourceTx(ctx, tx, channelID, "", false, "channel.channel.delete"); err != nil {
+			return err
+		}
+		if err := requireSourceMappingDeletes(tx, r, channelID, false); err != nil {
+			return err
+		}
 		if err := r.syncRoutingMembersTx(tx, routing.Source{Kind: routing.Channel, ID: channelID}, ""); err != nil {
 			return err
 		}
@@ -2144,12 +2319,15 @@ func (r *Repository) deleteChannelDB(ctx context.Context, channelID int64) error
 }
 
 func (r *Repository) changeStatusDB(ctx context.Context, channelID int64, status int32) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := r.checkResourceTx(ctx, tx, channelID, "", false, "channel.channel.enable", "channel.channel.disable"); err != nil {
+			return err
+		}
 		if err := tx.Model(&channelModel{}).Where("id = ?", channelID).Update("status", status).Error; err != nil {
 			return err
 		}
 		enabled := status == biz.ChannelStatusEnabled
-		return tx.Model(&abilityModel{}).Where("channel_id = ?", channelID).Update("enabled", enabled).Error
+		return tx.Model(&abilityModel{}).Where("channel_id = ?", channelID).Update("enabled", xdb.BoolInt(enabled)).Error
 	})
 }
 
@@ -2178,7 +2356,7 @@ func (r *Repository) syncAbilitiesTx(tx *gorm.DB, channel *biz.Channel) error {
 				Group:     group,
 				Model:     model,
 				ChannelID: channel.ID,
-				Enabled:   enabled,
+				Enabled:   xdb.BoolInt(enabled),
 				Priority:  &priority,
 			})
 		}
@@ -2244,6 +2422,14 @@ func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channe
 			})
 		}
 		if len(missing) > 0 {
+			for _, operation := range []string{"channel.channel.create", "channel.channel.update"} {
+				if _, iam := authorization.QueryScopeFromContext(tx.Statement.Context, operation); iam {
+					if err := authorization.Require(tx.Statement.Context, "channel.model.create", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+						return err
+					}
+				}
+			}
+
 			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(&missing, len(missing)).Error; err != nil {
 				return err
 			}
@@ -2281,8 +2467,22 @@ func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channe
 		}
 		if _, ok := wanted[row.ModelPK]; !ok {
 			managedToDelete = append(managedToDelete, row.ID)
-		} else {
+		} else if !row.Enabled || row.Priority != priority {
 			managedToUpdate = append(managedToUpdate, row.ID)
+		}
+	}
+	for _, operation := range []string{"channel.channel.create", "channel.channel.update"} {
+		if _, iam := authorization.QueryScopeFromContext(tx.Statement.Context, operation); iam && (len(managedToDelete) > 0 || len(managedToUpdate) > 0) {
+			for _, id := range managedToDelete {
+				if err := requireSourceMappingEffect(tx, r, channel.ID, id, "channel.model_mapping.delete"); err != nil {
+					return err
+				}
+			}
+			for _, id := range managedToUpdate {
+				if err := requireSourceMappingEffect(tx, r, channel.ID, id, "channel.model_mapping.update"); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	if len(managedToDelete) > 0 {
@@ -2310,6 +2510,13 @@ func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channe
 		})
 	}
 	if len(missingMappings) > 0 {
+		for _, operation := range []string{"channel.channel.create", "channel.channel.update"} {
+			if _, iam := authorization.QueryScopeFromContext(tx.Statement.Context, operation); iam {
+				if err := requireSourceMappingEffect(tx, r, channel.ID, 0, "channel.model_mapping.create"); err != nil {
+					return err
+				}
+			}
+		}
 		if err := tx.CreateInBatches(&missingMappings, len(missingMappings)).Error; err != nil {
 			return err
 		}
@@ -2328,6 +2535,14 @@ func ensureModelRegistryRowTx(tx *gorm.DB, canonicalID string) (int64, error) {
 	if !isGormNotFound(err) {
 		return 0, err
 	}
+	for _, operation := range []string{"channel.channel.create", "channel.channel.update", "channel.account.create", "channel.account.update"} {
+		if _, iam := authorization.QueryScopeFromContext(tx.Statement.Context, operation); iam {
+			if err := authorization.Require(tx.Statement.Context, "channel.model.create", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+				return 0, err
+			}
+		}
+	}
+
 	now := now()
 	po = modelModel{
 		ModelID:     canonicalID,
@@ -2397,7 +2612,7 @@ func (r *Repository) syncSubscriptionAccountAbilitiesTx(tx *gorm.DB, account *bi
 				Model:     model,
 				Platform:  account.Platform,
 				AccountID: account.ID,
-				Enabled:   enabled,
+				Enabled:   xdb.BoolInt(enabled),
 				Priority:  &priority,
 			})
 		}
@@ -2449,6 +2664,7 @@ func (r *Repository) modelToChannel(m *channelModel) *biz.Channel {
 	}
 	return &biz.Channel{
 		ID:                                m.ID,
+		AuthorizationRevision:             m.AuthorizationRevision,
 		Type:                              m.Type,
 		Name:                              m.Name,
 		Status:                            m.Status,
@@ -2475,7 +2691,7 @@ func (r *Repository) modelToChannel(m *channelModel) *biz.Channel {
 		UsedQuota:                         m.UsedQuota,
 		ModelMapping:                      derefString(m.ModelMapping),
 		SystemPrompt:                      derefString(m.SystemPrompt),
-		RestrictModels:                    m.RestrictModels,
+		RestrictModels:                    m.RestrictModels != 0,
 		Config:                            biz.DecodeChannelConfig(m.Config),
 	}
 }
@@ -2486,6 +2702,7 @@ func (r *Repository) channelToModel(ch *biz.Channel) (*channelModel, error) {
 		return nil, err
 	}
 	return &channelModel{
+		AuthorizationRevision:             ch.AuthorizationRevision,
 		ID:                                ch.ID,
 		Type:                              ch.Type,
 		Name:                              ch.Name,
@@ -2514,7 +2731,7 @@ func (r *Repository) channelToModel(ch *biz.Channel) (*channelModel, error) {
 		Key:                               key,
 		Config:                            "{}",
 		SystemPrompt:                      new(ch.SystemPrompt),
-		RestrictModels:                    ch.RestrictModels,
+		RestrictModels:                    xdb.BoolInt(ch.RestrictModels),
 	}, nil
 }
 
@@ -3128,32 +3345,34 @@ func (r *Repository) ClearRecoveryMarkers(ctx context.Context, accountID int64, 
 }
 
 func (r *Repository) clearRecoveryMarkersDB(ctx context.Context, accountID int64, clearTemp, clearError, clearMeta bool) error {
-	account, err := r.findSubscriptionAccountByIDDB(ctx, accountID)
-	if err != nil {
-		return err
-	}
-	metadata := account.Metadata
-	updates := map[string]any{
-		"updated_at": now(),
-	}
-	if clearTemp {
-		updates["rate_limited_until"] = 0
-	}
-	if clearError {
-		metadata = setSubscriptionAccountMetadataValue(metadata, "last_error", "")
-	}
-	if clearMeta {
-		metadata = clearSubscriptionAccountRecoveryMetadata(metadata)
-	}
-	updates["metadata"] = new(metadata)
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		if err := r.checkResourceTx(ctx, tx, accountID, "", true, "channel.account.recovery.clear"); err != nil {
+			return err
+		}
+		// Re-read metadata under the same lock as the write, so concurrent
+		// credential or worker updates are neither overwritten nor reused.
+		owner := &Repository{db: tx, encKey: r.encKey}
+		account, err := owner.findSubscriptionAccountByIDDB(ctx, accountID)
+		if err != nil {
+			return err
+		}
+		metadata := account.Metadata
+		updates := map[string]any{"updated_at": now()}
+		if clearTemp {
+			updates["rate_limited_until"] = 0
+		}
+		if clearError {
+			metadata = setSubscriptionAccountMetadataValue(metadata, "last_error", "")
+		}
+		if clearMeta {
+			metadata = clearSubscriptionAccountRecoveryMetadata(metadata)
+		}
+		updates["metadata"] = new(metadata)
 		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(updates).Error; err != nil {
 			return err
 		}
 		if clearTemp {
-			if err := tx.Model(&subscriptionAccountAbilityModel{}).Where("account_id = ?", accountID).Update("enabled", true).Error; err != nil {
-				return err
-			}
+			return tx.Model(&subscriptionAccountAbilityModel{}).Where("account_id = ?", accountID).Update("enabled", xdb.BoolInt(true)).Error
 		}
 		return nil
 	})

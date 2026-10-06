@@ -21,98 +21,98 @@ func (s *AdminService) ListModels(ctx context.Context, req *channelv1.ListModels
 	if s == nil || s.channelClient == nil {
 		return &channelv1.ListModelsResponse{}, nil
 	}
-	return s.channelClient.ListModels(ctx, req)
+	return s.channelClient.ListModels(operatorRPCContext(ctx), req)
 }
 
 // GetModel retrieves a model by pk or model_id.
 func (s *AdminService) GetModel(ctx context.Context, req *channelv1.GetModelRequest) (*channelv1.GetModelResponse, error) {
-	return s.channelClient.GetModel(ctx, req)
+	return s.channelClient.GetModel(operatorRPCContext(ctx), req)
 }
 
 // CreateModel creates a new model.
 func (s *AdminService) CreateModel(ctx context.Context, req *channelv1.CreateModelRequest) (*channelv1.CreateModelResponse, error) {
-	return s.channelClient.CreateModel(ctx, req)
+	return s.channelClient.CreateModel(operatorRPCContext(ctx), req)
 }
 
 // UpdateModel updates an existing model.
 func (s *AdminService) UpdateModel(ctx context.Context, req *channelv1.UpdateModelRequest) (*channelv1.UpdateModelResponse, error) {
-	return s.channelClient.UpdateModel(ctx, req)
+	return s.channelClient.UpdateModel(operatorRPCContext(ctx), req)
 }
 
 // DeleteModel deletes a model.
 func (s *AdminService) DeleteModel(ctx context.Context, req *channelv1.DeleteModelRequest) (*channelv1.DeleteModelResponse, error) {
-	return s.channelClient.DeleteModel(ctx, req)
+	return s.channelClient.DeleteModel(operatorRPCContext(ctx), req)
 }
 
 // ChangeModelStatus changes a model's status.
 func (s *AdminService) ChangeModelStatus(ctx context.Context, req *channelv1.ChangeModelStatusRequest) (*channelv1.ChangeModelStatusResponse, error) {
-	return s.channelClient.ChangeModelStatus(ctx, req)
+	return s.channelClient.ChangeModelStatus(operatorRPCContext(ctx), req)
 }
 
 // BatchModels performs a batch action on models.
 func (s *AdminService) BatchModels(ctx context.Context, req *channelv1.BatchModelsRequest) (*channelv1.BatchModelsResponse, error) {
-	return s.channelClient.BatchModels(ctx, req)
+	return s.channelClient.BatchModels(operatorRPCContext(ctx), req)
 }
 
 // ListModelAliases lists aliases for a model.
 func (s *AdminService) ListModelAliases(ctx context.Context, req *channelv1.ListModelAliasesRequest) (*channelv1.ListModelAliasesResponse, error) {
-	return s.channelClient.ListModelAliases(ctx, req)
+	return s.channelClient.ListModelAliases(operatorRPCContext(ctx), req)
 }
 
 // CreateModelAlias adds an alias.
 func (s *AdminService) CreateModelAlias(ctx context.Context, req *channelv1.CreateModelAliasRequest) (*channelv1.CreateModelAliasResponse, error) {
-	return s.channelClient.CreateModelAlias(ctx, req)
+	return s.channelClient.CreateModelAlias(operatorRPCContext(ctx), req)
 }
 
 // DeleteModelAlias removes an alias.
 func (s *AdminService) DeleteModelAlias(ctx context.Context, req *channelv1.DeleteModelAliasRequest) (*channelv1.DeleteModelAliasResponse, error) {
-	return s.channelClient.DeleteModelAlias(ctx, req)
+	return s.channelClient.DeleteModelAlias(operatorRPCContext(ctx), req)
 }
 
 // ListChannelModelMappings lists channel-model mappings.
 func (s *AdminService) ListChannelModelMappings(ctx context.Context, req *channelv1.ListChannelModelMappingsRequest) (*channelv1.ListChannelModelMappingsResponse, error) {
-	return s.channelClient.ListChannelModelMappings(ctx, req)
+	return s.channelClient.ListChannelModelMappings(operatorRPCContext(ctx), req)
 }
 
 // UpsertChannelModelMapping creates or updates a channel-model mapping.
 func (s *AdminService) UpsertChannelModelMapping(ctx context.Context, req *channelv1.UpsertChannelModelMappingRequest) (*channelv1.UpsertChannelModelMappingResponse, error) {
-	return s.channelClient.UpsertChannelModelMapping(ctx, req)
+	return s.channelClient.UpsertChannelModelMapping(operatorRPCContext(ctx), req)
 }
 
 // DeleteChannelModelMapping removes a channel-model mapping.
 func (s *AdminService) DeleteChannelModelMapping(ctx context.Context, req *channelv1.DeleteChannelModelMappingRequest) (*channelv1.DeleteChannelModelMappingResponse, error) {
-	return s.channelClient.DeleteChannelModelMapping(ctx, req)
+	return s.channelClient.DeleteChannelModelMapping(operatorRPCContext(ctx), req)
 }
 
 // ListSubscriptionModelMappings lists subscription-model mappings.
 func (s *AdminService) ListSubscriptionModelMappings(ctx context.Context, req *channelv1.ListSubscriptionModelMappingsRequest) (*channelv1.ListSubscriptionModelMappingsResponse, error) {
-	return s.channelClient.ListSubscriptionModelMappings(ctx, req)
+	return s.channelClient.ListSubscriptionModelMappings(operatorRPCContext(ctx), req)
 }
 
 // UpsertSubscriptionModelMapping creates or updates a subscription-model mapping.
 func (s *AdminService) UpsertSubscriptionModelMapping(ctx context.Context, req *channelv1.UpsertSubscriptionModelMappingRequest) (*channelv1.UpsertSubscriptionModelMappingResponse, error) {
-	return s.channelClient.UpsertSubscriptionModelMapping(ctx, req)
+	return s.channelClient.UpsertSubscriptionModelMapping(operatorRPCContext(ctx), req)
 }
 
 // DeleteSubscriptionModelMapping removes a subscription-model mapping.
 func (s *AdminService) DeleteSubscriptionModelMapping(ctx context.Context, req *channelv1.DeleteSubscriptionModelMappingRequest) (*channelv1.DeleteSubscriptionModelMappingResponse, error) {
-	return s.channelClient.DeleteSubscriptionModelMapping(ctx, req)
+	return s.channelClient.DeleteSubscriptionModelMapping(operatorRPCContext(ctx), req)
 }
 
 // ── Sprint 4: Usage statistics ─────────────────────────────────────────────
 
 // RecordModelUsage records a usage event for a model.
 func (s *AdminService) RecordModelUsage(ctx context.Context, req *channelv1.RecordModelUsageRequest) (*channelv1.RecordModelUsageResponse, error) {
-	return s.channelClient.RecordModelUsage(ctx, req)
+	return s.channelClient.RecordModelUsage(operatorRPCContext(ctx), req)
 }
 
 // ListModelUsageStats lists usage statistics for models.
 func (s *AdminService) ListModelUsageStats(ctx context.Context, req *channelv1.ListModelUsageStatsRequest) (*channelv1.ListModelUsageStatsResponse, error) {
-	return s.channelClient.ListModelUsageStats(ctx, req)
+	return s.channelClient.ListModelUsageStats(operatorRPCContext(ctx), req)
 }
 
 func (s *AdminService) ListModelHealth(ctx context.Context, req *channelv1.ListModelHealthRequest) (*channelv1.ListModelHealthResponse, error) {
-	return s.channelClient.ListModelHealth(ctx, req)
+	return s.channelClient.ListModelHealth(operatorRPCContext(ctx), req)
 }
 
 // ── Model routing (P2 #3, passthrough channel-service) ────────────────────
@@ -123,7 +123,7 @@ func (s *AdminService) ListModelHealth(ctx context.Context, req *channelv1.ListM
 
 // ListModelRoutings lists model→account routing overrides.
 func (s *AdminService) ListModelRoutings(ctx context.Context, req *adminv1.ListModelRoutingsRequest) (*adminv1.ListModelRoutingsResponse, error) {
-	resp, err := s.channelClient.ListModelRoutings(ctx, &channelv1.ListModelRoutingsRequest{
+	resp, err := s.channelClient.ListModelRoutings(operatorRPCContext(ctx), &channelv1.ListModelRoutingsRequest{
 		GroupName: req.GroupName,
 		Model:     req.Model,
 		Platform:  req.Platform,
@@ -143,13 +143,15 @@ func (s *AdminService) ListModelRoutings(ctx context.Context, req *adminv1.ListM
 
 // UpsertModelRouting creates or updates a routing override.
 func (s *AdminService) UpsertModelRouting(ctx context.Context, req *adminv1.UpsertModelRoutingRequest) (*adminv1.UpsertModelRoutingResponse, error) {
-	resp, err := s.channelClient.UpsertModelRouting(ctx, &channelv1.UpsertModelRoutingRequest{
+	resp, err := s.channelClient.UpsertModelRouting(operatorRPCContext(ctx), &channelv1.UpsertModelRoutingRequest{
 		GroupName:             req.GroupName,
 		Model:                 req.Model,
 		Platform:              req.Platform,
 		SubscriptionAccountId: req.SubscriptionAccountId,
 		Enabled:               req.Enabled, // admin.proto UpsertModelRoutingRequest.enabled is optional bool; pointer threaded through.
 		Priority:              req.Priority,
+		ExpectedRevision:      req.ExpectedRevision,
+		Reason:                req.Reason,
 	})
 	if err != nil {
 		return nil, err
@@ -158,15 +160,16 @@ func (s *AdminService) UpsertModelRouting(ctx context.Context, req *adminv1.Upse
 		return &adminv1.UpsertModelRoutingResponse{}, nil
 	}
 	return &adminv1.UpsertModelRoutingResponse{
-		Success: resp.GetSuccess(),
-		Message: resp.GetMessage(),
-		Id:      resp.GetId(),
+		Success:  resp.GetSuccess(),
+		Message:  resp.GetMessage(),
+		Id:       resp.GetId(),
+		Revision: resp.GetRevision(),
 	}, nil
 }
 
 // DeleteModelRouting removes a routing override.
 func (s *AdminService) DeleteModelRouting(ctx context.Context, req *adminv1.DeleteModelRoutingRequest) (*adminv1.DeleteModelRoutingResponse, error) {
-	resp, err := s.channelClient.DeleteModelRouting(ctx, &channelv1.DeleteModelRoutingRequest{Id: req.Id})
+	resp, err := s.channelClient.DeleteModelRouting(operatorRPCContext(ctx), &channelv1.DeleteModelRoutingRequest{Id: req.Id, ExpectedRevision: req.ExpectedRevision, Reason: req.Reason})
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +211,7 @@ func channelToAdminModelRouting(r *channelv1.ModelRouting) *adminv1.ModelRouting
 // references afterwards so channel biz stays decoupled from pricing storage
 // (v0.11.0 Phase 2 §2.1).
 func (s *AdminService) CanonicalModelPreflight(ctx context.Context, in *emptypb.Empty) (*channelv1.CanonicalModelPreflightResponse, error) {
-	resp, err := s.channelClient.CanonicalModelPreflight(ctx, in)
+	resp, err := s.channelClient.CanonicalModelPreflight(operatorRPCContext(ctx), in)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +289,7 @@ func matchingPriceKeys(modelID string, priceKeys map[string]struct{}) []string {
 
 // MergeCanonicalModels merges a duplicate group onto a survivor.
 func (s *AdminService) MergeCanonicalModels(ctx context.Context, req *channelv1.MergeCanonicalModelsRequest) (*channelv1.MergeCanonicalModelsResponse, error) {
-	return s.channelClient.MergeCanonicalModels(ctx, req)
+	return s.channelClient.MergeCanonicalModels(operatorRPCContext(ctx), req)
 }
 
 // ListUnpricedRoutedModels returns the routed-but-unpriced audit. The admin
@@ -294,7 +297,7 @@ func (s *AdminService) MergeCanonicalModels(ctx context.Context, req *channelv1.
 // keys, and passing them as priced_model_ids; channel-service owns the model
 // registry and computes the diff.
 func (s *AdminService) ListUnpricedRoutedModels(ctx context.Context, req *channelv1.ListUnpricedRoutedModelsRequest) (*channelv1.ListUnpricedRoutedModelsResponse, error) {
-	return s.channelClient.ListUnpricedRoutedModels(ctx, req)
+	return s.channelClient.ListUnpricedRoutedModels(operatorRPCContext(ctx), req)
 }
 
 // GetSystemOption reads a single system_options value by key. Returns "" when
@@ -315,15 +318,15 @@ func (s *AdminService) GetSystemOption(ctx context.Context, key string) (string,
 
 // ExportModels exports the model registry as a versioned document.
 func (s *AdminService) ExportModels(ctx context.Context, req *channelv1.ExportModelsRequest) (*channelv1.ExportModelsResponse, error) {
-	return s.channelClient.ExportModels(ctx, req)
+	return s.channelClient.ExportModels(operatorRPCContext(ctx), req)
 }
 
 // ImportModels applies an import document in one transaction.
 func (s *AdminService) ImportModels(ctx context.Context, req *channelv1.ImportModelsRequest) (*channelv1.ImportModelsResponse, error) {
-	return s.channelClient.ImportModels(ctx, req)
+	return s.channelClient.ImportModels(operatorRPCContext(ctx), req)
 }
 
 // DryRunImportModels previews an import without writing.
 func (s *AdminService) DryRunImportModels(ctx context.Context, req *channelv1.ImportModelsRequest) (*channelv1.ImportModelsDryRunResponse, error) {
-	return s.channelClient.DryRunImportModels(ctx, req)
+	return s.channelClient.DryRunImportModels(operatorRPCContext(ctx), req)
 }

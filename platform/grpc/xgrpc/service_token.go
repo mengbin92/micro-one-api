@@ -3,6 +3,7 @@ package xgrpc
 import (
 	"context"
 	"crypto/subtle"
+	"micro-one-api/platform/security/serviceidentity"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -22,7 +23,7 @@ func ValidateServiceToken(ctx context.Context, serviceToken string) error {
 		return status.Error(codes.Unauthenticated, "missing metadata")
 	}
 	values := md.Get("authorization")
-	if len(values) == 0 || !strings.HasPrefix(values[0], "Bearer ") {
+	if len(values) != 1 || !strings.HasPrefix(values[0], "Bearer ") {
 		return status.Error(codes.Unauthenticated, "missing or invalid authorization header")
 	}
 	token := strings.TrimPrefix(values[0], "Bearer ")
@@ -32,24 +33,41 @@ func ValidateServiceToken(ctx context.Context, serviceToken string) error {
 	return nil
 }
 
-// ServiceTokenUnaryInterceptor authenticates internal unary RPCs with the
-// shared service token.
+// ServiceTokenUnaryInterceptor authenticates dedicated opaque callers and
+// the legacy shared compatibility principal against fixed full-method policies.
 func ServiceTokenUnaryInterceptor(serviceToken string) grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		if err := ValidateServiceToken(ctx, serviceToken); err != nil {
-			return nil, err
+	return ServiceIdentityUnaryInterceptor(serviceidentity.FromEnvironment(serviceToken))
+}
+
+func ServiceIdentityUnaryInterceptor(verifier *serviceidentity.Verifier) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		if _, ok := serviceidentity.Lookup(info.FullMethod); !ok {
+			return nil, status.Error(codes.PermissionDenied, "unclassified RPC")
 		}
+		md, _ := metadata.FromIncomingContext(ctx)
+		values := md.Get("authorization")
+		if len(values) != 1 || !strings.HasPrefix(values[0], "Bearer ") {
+			return nil, status.Error(codes.Unauthenticated, "service credential required")
+		}
+		principal, err := verifier.Authenticate(strings.TrimPrefix(values[0], "Bearer "))
+		if err != nil {
+			return nil, status.Error(codes.Unauthenticated, "invalid service credential")
+		}
+		if principal.Dedicated && !principal.CanCall(info.FullMethod) {
+			return nil, status.Error(codes.PermissionDenied, "caller capability denied")
+		}
+		ctx = serviceidentity.WithRPCMethod(serviceidentity.WithPrincipal(ctx, principal), info.FullMethod)
 		return handler(ctx, req)
 	}
 }
 
-// ServiceTokenStreamInterceptor authenticates internal streaming RPCs with
-// the shared service token.
+// No service currently declares a streaming capability. Streaming additions
+// must supply a separate fixed policy before an implementation is reachable.
 func ServiceTokenStreamInterceptor(serviceToken string) grpc.StreamServerInterceptor {
-	return func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		if err := ValidateServiceToken(ss.Context(), serviceToken); err != nil {
 			return err
 		}
-		return handler(srv, ss)
+		return status.Error(codes.PermissionDenied, "stream capability not registered")
 	}
 }

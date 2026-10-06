@@ -97,6 +97,8 @@ func runSummaryTasks(ctx context.Context, timeout time.Duration, tasks []summary
 					results[i].Reason = "timeout"
 				case errors.Is(err, context.Canceled), status.Code(err) == codes.Canceled:
 					results[i].Reason = "canceled"
+				case status.Code(err) == codes.PermissionDenied, status.Code(err) == codes.Unauthenticated:
+					results[i].Reason = "restricted"
 				case err != nil:
 					results[i].Reason = "unavailable"
 				}
@@ -118,7 +120,7 @@ func (s *AdminService) LoadSummary(parent context.Context) *AdminSummaryData {
 	ctx, cancel := context.WithTimeout(parent, summaryTimeout)
 	defer cancel()
 	out := &AdminSummaryData{}
-	out.Sections = runSummaryTasks(ctx, summarySectionTimeout, []summaryTask{
+	out.Sections = s.runAuthorizedSummaryTasks(ctx, []summaryTask{
 		summaryFetch("users", &out.Users, func(ctx context.Context) (*adminv1.AdminListUsersResponse, error) {
 			return s.ListUsers(ctx, &adminv1.AdminListUsersRequest{Page: 1, PageSize: 5})
 		}),
@@ -182,7 +184,7 @@ func (s *AdminService) LoadSummary(parent context.Context) *AdminSummaryData {
 			accountIDs = append(accountIDs, item.SubscriptionAccountID)
 		}
 	}
-	enrichment := runSummaryTasks(ctx, summarySectionTimeout, []summaryTask{
+	enrichment := s.runAuthorizedSummaryTasks(ctx, []summaryTask{
 		summaryFetch("channel_names", &out.EnrichmentChannels, func(ctx context.Context) (map[int64]*commonv1.ChannelSummary, error) {
 			return s.FetchChannelSummariesByID(ctx, channelIDs)
 		}),
@@ -222,4 +224,68 @@ func (s *AdminService) summaryPricingOptions(ctx context.Context) ([]OneAPIOptio
 		out = append(out, OneAPIOption{Key: key, Value: value})
 	}
 	return out, nil
+}
+
+// Resolve permissions before queueing any section. Owner queries continue to
+// apply the exact same predicate to totals, rankings and resource rows.
+func (s *AdminService) runAuthorizedSummaryTasks(ctx context.Context, tasks []summaryTask) map[string]SummarySectionStatus {
+	accepted := make([]summaryTask, 0, len(tasks))
+	states := make(map[string]SummarySectionStatus, len(tasks))
+	for _, task := range tasks {
+		operations, global := summarySectionOperations(task.name)
+		var err error
+		if len(operations) == 0 {
+			err = status.Error(codes.PermissionDenied, "section execution point unbound")
+		} else {
+			err = s.AuthorizeSection(ctx, "admin.summary", global, operations...)
+		}
+		if err != nil {
+			reason := "unavailable"
+			if status.Code(err) == codes.PermissionDenied || status.Code(err) == codes.Unauthenticated {
+				reason = "restricted"
+			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				reason = "timeout"
+			}
+			if errors.Is(err, context.Canceled) {
+				reason = "canceled"
+			}
+			states[task.name] = SummarySectionStatus{Reason: reason}
+			continue
+		}
+		accepted = append(accepted, task)
+	}
+	for key, value := range runSummaryTasks(ctx, summarySectionTimeout, accepted) {
+		states[key] = value
+	}
+	return states
+}
+
+func summarySectionOperations(name string) ([]string, bool) {
+	switch name {
+	case "users", "active_users":
+		return []string{"identity.user.list"}, false
+	case "channels", "active_channels":
+		return []string{"channel.channel.list"}, false
+	case "subscription_accounts", "active_subscription_accounts":
+		return []string{"channel.account.list"}, false
+	case "payment_orders":
+		return []string{"billing.payment.list"}, false
+	case "reconciliation":
+		return []string{"billing.reconciliation.read"}, false
+	case "pricing_options":
+		return []string{"system.option.read"}, true
+	case "usage_stats", "top_models", "top_channels", "top_users", "top_tokens", "top_subscription_accounts":
+		return []string{"billing.account.ledger.read", "billing.account.cost.read"}, false
+	case "recent_logs":
+		return []string{"billing.account.ledger.read"}, false
+	case "top_subscription_account_quota_events":
+		return []string{"channel.account.read", "billing.account.cost.read"}, false
+	case "channel_names":
+		return []string{"channel.channel.read"}, false
+	case "subscription_account_names":
+		return []string{"channel.account.read"}, false
+	default:
+		return nil, false
+	}
 }

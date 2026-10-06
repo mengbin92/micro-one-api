@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"errors"
+	"micro-one-api/domain/authorization"
+	"strings"
 	"time"
 )
 
@@ -71,6 +73,7 @@ type UsageStat struct {
 }
 
 type DeleteLogsFilter struct {
+	Operation string
 	Level     string
 	Source    string
 	UserID    int64
@@ -104,8 +107,9 @@ type LogRepoBatch interface {
 
 // LogUsecase implements business logic for log-service.
 type LogUsecase struct {
-	repo        LogRepo
-	batchWriter *BatchLogWriter // optional; nil = synchronous path
+	authorization authorization.Resolver
+	repo          LogRepo
+	batchWriter   *BatchLogWriter // optional; nil = synchronous path
 }
 
 func NewLogUsecase(repo LogRepo) *LogUsecase {
@@ -124,30 +128,71 @@ func (uc *LogUsecase) SetBatchWriter(w *BatchLogWriter) {
 }
 
 func (uc *LogUsecase) GetLog(ctx context.Context, id int64) (*LogEntry, error) {
-	return uc.repo.Get(ctx, id)
+	var err error
+	ctx, err = uc.authorize(ctx, "log.requests.read", "log.request.read")
+	if err != nil {
+		return nil, err
+	}
+	ctx, err = uc.authorizeContent(ctx)
+	if err != nil {
+		return nil, err
+	}
+	entry, err := uc.repo.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := authorization.Require(ctx, "log.request.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: entry.ID, OwnerUserID: entry.UserID}); err != nil {
+		return nil, err
+	}
+	return redactLog(ctx, entry), nil
 }
 
 func (uc *LogUsecase) ListLogs(ctx context.Context, page, pageSize int32, level, source, keyword string) ([]*LogEntry, int64, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "log.requests.list", "log.request.list")
+	if err != nil {
+		return nil, 0, err
+	}
 	if page < 1 {
 		page = 1
 	}
 	if pageSize < 1 || pageSize > 200 {
 		pageSize = 50
 	}
-	return uc.repo.List(ctx, page, pageSize, level, source, keyword)
+	ctx, err = uc.authorizeContent(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	entries, total, err := uc.repo.List(ctx, page, pageSize, level, source, keyword)
+	return redactLogs(ctx, entries), total, err
 }
 
 func (uc *LogUsecase) ListUserLogs(ctx context.Context, userID int64, page, pageSize int32, level, keyword string) ([]*LogEntry, int64, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "log.requests.list", "log.request.list")
+	if err != nil {
+		return nil, 0, err
+	}
 	if page < 1 {
 		page = 1
 	}
 	if pageSize < 1 || pageSize > 200 {
 		pageSize = 50
 	}
-	return uc.repo.ListByUser(ctx, userID, page, pageSize, level, keyword)
+	ctx, err = uc.authorizeContent(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	entries, total, err := uc.repo.ListByUser(ctx, userID, page, pageSize, level, keyword)
+	return redactLogs(ctx, entries), total, err
 }
 
 func (uc *LogUsecase) ListSelectionAudit(ctx context.Context, userID int64, rootRequestID string) ([]*LogEntry, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "log.selection_events", "log.selection_event.list")
+	if err != nil {
+		return nil, err
+	}
 	if userID <= 0 || rootRequestID == "" {
 		return nil, errors.New("user_id and root_request_id are required")
 	}
@@ -155,14 +200,27 @@ func (uc *LogUsecase) ListSelectionAudit(ctx context.Context, userID int64, root
 	if !ok {
 		return nil, errors.New("selection audit query is unavailable")
 	}
-	return repo.ListSelectionAudit(ctx, userID, rootRequestID)
+	ctx, err = uc.authorizeContent(ctx)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := repo.ListSelectionAudit(ctx, userID, rootRequestID)
+	return redactLogs(ctx, entries), err
 }
 
 func (uc *LogUsecase) UserUsageStats(ctx context.Context, userID int64, startTime, endTime time.Time) ([]*UsageStat, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "log.requests.list", "log.request.stats.read")
+	if err != nil {
+		return nil, err
+	}
 	return uc.repo.UsageByUser(ctx, userID, startTime, endTime)
 }
 
 func (uc *LogUsecase) IngestLog(ctx context.Context, entry *LogEntry) error {
+	if err := uc.authorizeSystem(ctx, "/api.log.v1.LogService/IngestLog", "log.requests.read", "log.request.read"); err != nil {
+		return err
+	}
 	if entry.CreatedAt.IsZero() {
 		entry.CreatedAt = time.Now()
 	}
@@ -195,6 +253,14 @@ func (uc *LogUsecase) CleanupExpiredLogs(ctx context.Context, retentionDays int,
 }
 
 func (uc *LogUsecase) DeleteLogs(ctx context.Context, filter DeleteLogsFilter) (int64, error) {
+	var err error
+	ctx, err = uc.authorize(ctx, "log.requests.delete", "log.request.delete")
+	if err != nil {
+		return 0, err
+	}
+	if _, iam := authorization.QueryScopeFromContext(ctx, "log.request.delete"); iam && strings.TrimSpace(authorization.WriteReason(ctx)) == "" {
+		return 0, authorization.ErrWritePrecondition
+	}
 	if filter.EndTime.IsZero() {
 		return 0, errors.New("end_time is required")
 	}

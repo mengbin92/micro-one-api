@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"micro-one-api/domain/authorization"
 	"net/http"
 	"strconv"
 	"strings"
@@ -21,9 +22,12 @@ func handleCurrentSubscriptionProgress(w http.ResponseWriter, r *http.Request, s
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-	userID := getQueryInt64(r, "user_id", 0)
-	if userID <= 0 {
-		writeJSON(w, http.StatusBadRequest, apiResponse(false, "user_id is required", nil))
+	userID, ok := authenticatedUserID(w, r, svc)
+	if !ok {
+		return
+	}
+	if requested := getQueryInt64(r, "user_id", 0); requested > 0 && requested != userID {
+		writeJSON(w, http.StatusForbidden, apiResponse(false, "foreign subscription progress denied", nil))
 		return
 	}
 	progress, err := svc.GetSubscriptionProgress(r.Context(), userID)
@@ -99,7 +103,9 @@ func authenticatedUserID(w http.ResponseWriter, r *http.Request, svc *service.Ad
 		return 0, false
 	}
 	token := strings.TrimPrefix(authHeader, "Bearer ")
-	userID, err := svc.ResolveUserIDFromToken(r.Context(), token)
+	ctx := authorization.WithCredential(authorization.WithExternal(r.Context()), token)
+	userID, err := svc.AuthenticateSelf(ctx, token)
+	*r = *r.WithContext(subscriptionbiz.WithSelfRequest(ctx))
 	if err != nil || userID <= 0 {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return 0, false
@@ -156,21 +162,26 @@ func handleSubscriptionByID(w http.ResponseWriter, r *http.Request, svc *service
 	switch parts[1] {
 	case "revoke":
 		var req struct {
-			Reason string `json:"reason"`
+			Reason           string `json:"reason"`
+			ExpectedRevision int64  `json:"expected_revision"`
 		}
 		_ = jsonx.NewDecoder(r.Body).Decode(&req)
-		writeSubscriptionResponse(w, nil, svc.RevokeSubscription(r.Context(), id, req.Reason))
+		writeSubscriptionResponse(w, nil, svc.RevokeSubscription(subscriptionbiz.WithExpectedRevision(r.Context(), req.ExpectedRevision), id, req.Reason))
 	case "extend":
 		var req struct {
-			ExpiresAt int64 `json:"expires_at"`
+			ExpiresAt        int64  `json:"expires_at"`
+			Reason           string `json:"reason"`
+			ExpectedRevision int64  `json:"expected_revision"`
 		}
 		if !decodeBody(w, r, &req) {
 			return
 		}
-		writeSubscriptionResponse(w, nil, svc.ExtendSubscription(r.Context(), id, req.ExpiresAt))
+		writeSubscriptionResponse(w, nil, svc.ExtendSubscription(subscriptionbiz.WithExpectedRevision(authorization.WithWriteReason(r.Context(), req.Reason), req.ExpectedRevision), id, req.ExpiresAt))
 	case "reset-quota":
 		var req struct {
-			Scope string `json:"scope"`
+			Scope            string `json:"scope"`
+			Reason           string `json:"reason"`
+			ExpectedRevision int64  `json:"expected_revision"`
 		}
 		if !decodeBody(w, r, &req) {
 			return
@@ -178,7 +189,7 @@ func handleSubscriptionByID(w http.ResponseWriter, r *http.Request, svc *service
 		if req.Scope == "" {
 			req.Scope = "all"
 		}
-		writeSubscriptionResponse(w, nil, svc.ResetSubscriptionQuota(r.Context(), id, req.Scope))
+		writeSubscriptionResponse(w, nil, svc.ResetSubscriptionQuota(subscriptionbiz.WithExpectedRevision(authorization.WithWriteReason(r.Context(), req.Reason), req.ExpectedRevision), id, req.Scope))
 	default:
 		writeJSON(w, http.StatusNotFound, apiResponse(false, "not found", nil))
 	}
@@ -222,7 +233,7 @@ func handleSubscriptionGroupByID(w http.ResponseWriter, r *http.Request, svc *se
 		err := svc.UpdateSubscriptionGroup(r.Context(), &group)
 		writeSubscriptionResponse(w, &group, err)
 	case http.MethodDelete:
-		writeSubscriptionResponse(w, nil, svc.DeleteSubscriptionGroup(r.Context(), id))
+		writeSubscriptionResponse(w, nil, svc.DeleteSubscriptionGroup(subscriptionbiz.WithExpectedRevision(r.Context(), getQueryInt64(r, "expected_revision", 0)), id))
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
@@ -273,12 +284,14 @@ func handleSubscriptionPlanByID(w http.ResponseWriter, r *http.Request, svc *ser
 			return
 		}
 		var req struct {
-			ForSale bool `json:"for_sale"`
+			ForSale          bool   `json:"for_sale"`
+			Reason           string `json:"reason"`
+			ExpectedRevision int64  `json:"expected_revision"`
 		}
 		if !decodeBody(w, r, &req) {
 			return
 		}
-		writeSubscriptionResponse(w, nil, svc.SetSubscriptionPlanForSale(r.Context(), id, req.ForSale))
+		writeSubscriptionResponse(w, nil, svc.SetSubscriptionPlanForSale(subscriptionbiz.WithExpectedRevision(authorization.WithWriteReason(r.Context(), req.Reason), req.ExpectedRevision), id, req.ForSale))
 		return
 	}
 	id, ok := parsePathID(r.URL.Path, "/api/v1/admin/subscription-plans/")
@@ -299,7 +312,7 @@ func handleSubscriptionPlanByID(w http.ResponseWriter, r *http.Request, svc *ser
 		err := svc.UpdateSubscriptionPlan(r.Context(), &plan)
 		writeSubscriptionResponse(w, &plan, err)
 	case http.MethodDelete:
-		writeSubscriptionResponse(w, nil, svc.DeleteSubscriptionPlan(r.Context(), id))
+		writeSubscriptionResponse(w, nil, svc.DeleteSubscriptionPlan(subscriptionbiz.WithExpectedRevision(r.Context(), getQueryInt64(r, "expected_revision", 0)), id))
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}

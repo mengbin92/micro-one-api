@@ -1,0 +1,160 @@
+syntax = "proto3";
+package api.admin.v1;
+option go_package = "micro-one-api/api/admin/v1;adminv1";
+import "api/identity/v1/iam.proto";
+import "google/api/annotations.proto";
+
+// Identity remains the authority; admin delegates through its biz/data seam.
+service IAMAdminService {
+ rpc ListUserSessions(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {option (google.api.http) = {get:"/api/v1/admin/iam/users/{user_id}/sessions"};}
+ rpc ListResources(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/resources" };
+ }
+ rpc ListPermissions(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/permissions" };
+ }
+ rpc GetPermission(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/permissions/{id}" };
+ }
+ rpc CreatePermission(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { post: "/api/v1/admin/iam/permissions" body: "*" };
+ }
+ rpc UpdatePermission(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { patch: "/api/v1/admin/iam/permissions/{id}" body: "*" };
+ }
+ rpc SetPermissionStatus(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { post: "/api/v1/admin/iam/permissions/{id}/status" body: "*" };
+ }
+ rpc ArchivePermission(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { delete: "/api/v1/admin/iam/permissions/{id}" };
+ }
+ rpc GetPermissionReferences(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/permissions/{id}/references" };
+ }
+ rpc ListRoles(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/roles" };
+ }
+ rpc GetRole(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/roles/{id}" };
+ }
+ rpc CreateRole(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { post: "/api/v1/admin/iam/roles" body: "*" };
+ }
+ rpc UpdateRole(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { patch: "/api/v1/admin/iam/roles/{id}" body: "*" };
+ }
+ rpc CopyRole(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { post: "/api/v1/admin/iam/roles/{source_id}/copy" body: "*" };
+ }
+ rpc SetRoleStatus(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { post: "/api/v1/admin/iam/roles/{id}/status" body: "*" };
+ }
+ rpc ArchiveRole(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { delete: "/api/v1/admin/iam/roles/{id}" };
+ }
+ rpc GetRoleReferences(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/roles/{id}/references" };
+ }
+ rpc ListRoleMembers(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/roles/{id}/members" };
+ }
+ rpc GetRolePermissions(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/roles/{id}/permissions" };
+ }
+ rpc UpdateRolePermissions(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { put: "/api/v1/admin/iam/roles/{id}/permissions" body: "*" };
+ }
+ rpc UpdateRoleInheritance(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { put: "/api/v1/admin/iam/roles/{id}/inheritance" body: "*" };
+ }
+ rpc PreviewRoleChange(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { post: "/api/v1/admin/iam/roles/{id}/preview" body: "*" };
+ }
+ rpc GetUserRoles(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/users/{user_id}/roles" };
+ }
+ rpc AssignUserRole(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { post: "/api/v1/admin/iam/users/{user_id}/roles" body: "*" };
+ }
+ rpc RevokeUserRole(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { delete: "/api/v1/admin/iam/users/{user_id}/roles/{id}" };
+ }
+ rpc BatchAssignUserRoles(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { post: "/api/v1/admin/iam/users/roles:batchAssign" body: "*" };
+ }
+ rpc PreviewUserRoleChange(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { post: "/api/v1/admin/iam/users/{user_id}/roles:preview" body: "*" };
+ }
+ rpc GetSessionAuthorization(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/user/authorization" };
+ }
+ rpc GetSessionRoles(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/user/session/roles" };
+ }
+ rpc ActivateSessionRoles(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { put: "/api/user/session/roles" body: "*" };
+ }
+ rpc RevokeOwnSession(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { delete: "/api/user/session" };
+ }
+ rpc RevokeUserSessions(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { delete: "/api/v1/admin/iam/users/{user_id}/sessions" };
+ }
+ rpc ListDelegations(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/delegations" };
+ }
+ rpc CreateDelegation(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { post: "/api/v1/admin/iam/delegations" body: "*" };
+ }
+ rpc UpdateDelegation(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { patch: "/api/v1/admin/iam/delegations/{id}" body: "*" };
+ }
+ rpc RevokeDelegation(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { delete: "/api/v1/admin/iam/delegations/{id}" };
+ }
+ rpc ListRoleConstraints(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/constraints" };
+ }
+ rpc CreateRoleConstraint(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { post: "/api/v1/admin/iam/constraints" body: "*" };
+ }
+ rpc UpdateRoleConstraint(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { put: "/api/v1/admin/iam/constraints/{id}" body: "*" };
+ }
+ rpc DeleteRoleConstraint(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { delete: "/api/v1/admin/iam/constraints/{id}" };
+ }
+ rpc ListMenuItems(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/menus" };
+ }
+ rpc CreateMenuItem(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { post: "/api/v1/admin/iam/menus" body: "*" };
+ }
+ rpc UpdateMenuItem(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { patch: "/api/v1/admin/iam/menus/{id}" body: "*" };
+ }
+ rpc ArchiveMenuItem(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { delete: "/api/v1/admin/iam/menus/{id}" };
+ }
+ rpc CheckAuthorization(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { post: "/api/v1/admin/iam/authorization:check" body: "*" };
+ }
+ rpc GetUserEffectivePermissions(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/users/{user_id}/effective-permissions" };
+ }
+ rpc ExplainAuthorization(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { post: "/api/v1/admin/iam/authorization:explain" body: "*" };
+ }
+ rpc SimulateAuthorizationChange(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { post: "/api/v1/admin/iam/authorization:simulate" body: "*" };
+ }
+ rpc ListAuthorizationAuditEvents(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/audit-events" };
+ }
+ rpc GetAuthorizationAuditEvent(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/audit-events/{event_id}" };
+ }
+ rpc ExportAuthorizationAuditEvents(api.identity.v1.IAMRequest) returns (api.identity.v1.IAMReply) {
+  option (google.api.http) = { get: "/api/v1/admin/iam/audit-events:export" };
+ }
+}

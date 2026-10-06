@@ -7,15 +7,26 @@ import (
 	"time"
 
 	"micro-one-api/app/channel/internal/biz"
+	"micro-one-api/domain/authorization"
 )
 
 func (r *Repository) ListSubscriptionAccountsByRecovery(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform, policy string) ([]*biz.SubscriptionAccount, int64, error) {
+	if r.db == nil {
+		if _, iam := authorization.QueryScopeFromContext(ctx, "channel.account.list"); iam {
+			return nil, 0, authorization.ErrDenied
+		}
+	}
 	var candidates []*biz.SubscriptionAccount
 	if r.db != nil {
 		// Recovery metadata is a legacy text column and may contain invalid JSON.
 		// Decode at the storage boundary to keep filtering identical across drivers.
 		var rows []subscriptionAccountModel
-		query := r.db.WithContext(ctx).Where("metadata LIKE ?", "%"+policy+"%")
+		query := r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("metadata LIKE ?", "%"+policy+"%")
+		var err error
+		query, err = r.subscriptionAccountScope(ctx, query, "subscription_accounts")
+		if err != nil {
+			return nil, 0, err
+		}
 		if status != 0 {
 			query = query.Where("status = ?", status)
 		}

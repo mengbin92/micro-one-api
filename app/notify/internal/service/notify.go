@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/authz"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,6 +17,7 @@ import (
 
 // NotifyService is the transport layer entry for notify-worker.
 type NotifyService struct {
+	ownerAuthorization *authz.Client
 	notifyv1.UnimplementedNotifyServiceServer
 	uc *biz.NotifyUsecase
 	// alertmanagerNotifyType selects the sender channel for Alertmanager
@@ -85,6 +88,9 @@ func (s *NotifyService) ListNotifications(ctx context.Context, req *notifyv1.Lis
 }
 
 func (s *NotifyService) UpdateNotificationStatus(ctx context.Context, req *notifyv1.UpdateNotificationStatusRequest) (*notifyv1.UpdateNotificationStatusResponse, error) {
+	if req == nil || req.Id <= 0 {
+		return nil, managementError(biz.ErrInvalidNotification)
+	}
 	var err error
 	switch req.Status {
 	case biz.NotifyStatusSent:
@@ -92,10 +98,10 @@ func (s *NotifyService) UpdateNotificationStatus(ctx context.Context, req *notif
 	case biz.NotifyStatusFailed:
 		err = s.uc.MarkFailed(ctx, req.Id)
 	default:
-		err = s.uc.MarkSent(ctx, req.Id)
+		return nil, managementError(biz.ErrInvalidNotification)
 	}
 	if err != nil {
-		return nil, err
+		return nil, managementError(err)
 	}
 	return &notifyv1.UpdateNotificationStatusResponse{Success: true}, nil
 }
@@ -106,7 +112,8 @@ func notificationToProto(n *biz.Notification) (*notifyv1.NotificationItem, error
 		return nil, err
 	}
 	return &notifyv1.NotificationItem{
-		Id:         n.ID,
+		Id:       n.ID,
+		Revision: n.Revision, AcknowledgedBy: n.AcknowledgedBy, AcknowledgedAt: notificationAcknowledgedUnix(n),
 		Type:       n.Type,
 		Recipient:  n.Recipient,
 		Subject:    n.Subject,
@@ -142,7 +149,7 @@ func (s *NotifyService) HandleCreateNotification(w http.ResponseWriter, r *http.
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		authz.WriteHTTPError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, notificationToMap(n))
@@ -166,7 +173,7 @@ func (s *NotifyService) HandleGetNotification(w http.ResponseWriter, r *http.Req
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		authz.WriteHTTPError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, notificationToMap(n))
@@ -184,7 +191,7 @@ func (s *NotifyService) HandleListNotifications(w http.ResponseWriter, r *http.R
 	status := q.Get("status")
 	notifications, total, err := s.uc.ListNotifications(r.Context(), int32(page), int32(pageSize), notifyType, status)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		authz.WriteHTTPError(w, err)
 		return
 	}
 	items := make([]map[string]any, 0, len(notifications))
@@ -198,6 +205,7 @@ func notificationToMap(n *biz.Notification) map[string]any {
 	return map[string]any{
 		"id": n.ID, "type": n.Type, "recipient": n.Recipient, "subject": n.Subject,
 		"content": n.Content, "status": n.Status, "retry_count": n.RetryCount,
+		"revision": strconv.FormatUint(n.Revision, 10), "acknowledged_at": notificationAcknowledgedUnix(n), "acknowledged_by": n.AcknowledgedBy,
 		"created_at": n.CreatedAt, "sent_at": n.SentAt, "last_error": n.LastError,
 	}
 }
@@ -212,4 +220,51 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = jsonx.NewEncoder(w).Encode(map[string]any{"error": message})
+}
+
+func (s *NotifyService) SetAuthorization(r authorization.Resolver) {
+	s.uc.SetAuthorization(r)
+	s.ownerAuthorization, _ = r.(*authz.Client)
+}
+func (s *NotifyService) OwnerAuthorizationClient() *authz.Client { return s.ownerAuthorization }
+
+func notificationAcknowledgedUnix(n *biz.Notification) int64 {
+	if n.AcknowledgedAt.IsZero() || n.AcknowledgedAt.Unix() == 0 {
+		return 0
+	}
+	return n.AcknowledgedAt.Unix()
+}
+
+func (s *NotifyService) HandleUpdateNotificationStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		writeError(w, 405, "method not allowed")
+		return
+	}
+	idText := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v1/notifications/"), "/status")
+	id, err := strconv.ParseInt(idText, 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, 400, "invalid notification id")
+		return
+	}
+	var body struct {
+		Status string `json:"status"`
+	}
+	if jsonx.NewDecoder(r.Body).Decode(&body) != nil {
+		writeError(w, 400, "invalid request body")
+		return
+	}
+	switch body.Status {
+	case biz.NotifyStatusSent:
+		err = s.uc.MarkSent(r.Context(), id)
+	case biz.NotifyStatusFailed:
+		err = s.uc.MarkFailed(r.Context(), id)
+	default:
+		writeError(w, 400, "invalid delivery status")
+		return
+	}
+	if err != nil {
+		authz.WriteHTTPError(w, managementError(err))
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"success": true})
 }

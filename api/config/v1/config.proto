@@ -61,6 +61,8 @@ message SetConfigRequest {
   string key = 2;
   string value = 3;
   string comment = 4;
+ uint64 expected_revision = 5;
+ string reason = 6;
 }
 
 message SetConfigResponse {
@@ -71,6 +73,8 @@ message SetConfigResponse {
 message DeleteConfigRequest {
   string namespace = 1;
   string key = 2;
+ uint64 expected_revision = 3;
+ string reason = 4;
 }
 
 message DeleteConfigResponse {
