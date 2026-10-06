@@ -1,0 +1,117 @@
+{
+  "source_commit": "af0c1a8e",
+  "alerts": [
+    {
+      "number": 321,
+      "rule": "go/sql-injection",
+      "state": "fixed",
+      "fixed_at": "2026-10-06T10:50:38Z",
+      "dismissed_at": null
+    },
+    {
+      "number": 323,
+      "rule": "go/sql-injection",
+      "state": "fixed",
+      "fixed_at": "2026-10-06T10:50:38Z",
+      "dismissed_at": null
+    },
+    {
+      "number": 324,
+      "rule": "go/sql-injection",
+      "state": "fixed",
+      "fixed_at": "2026-10-06T10:50:38Z",
+      "dismissed_at": null
+    },
+    {
+      "number": 325,
+      "rule": "CVE-2026-93687",
+      "state": "fixed",
+      "fixed_at": "2026-10-06T11:02:51Z",
+      "dismissed_at": null
+    },
+    {
+      "number": 326,
+      "rule": "CVE-2026-104844",
+      "state": "fixed",
+      "fixed_at": "2026-10-06T11:02:51Z",
+      "dismissed_at": null
+    },
+    {
+      "number": 327,
+      "rule": "CVE-2026-90711",
+      "state": "fixed",
+      "fixed_at": "2026-10-06T11:02:51Z",
+      "dismissed_at": null
+    },
+    {
+      "number": 328,
+      "rule": "CVE-2026-93749",
+      "state": "fixed",
+      "fixed_at": "2026-10-06T11:02:51Z",
+      "dismissed_at": null
+    }
+  ],
+  "open_alerts": 0,
+  "validation": {
+    "npm_audit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "trivy_all_dependencies": {
+      "vulnerabilities": 0,
+      "targets": [
+        "go.mod",
+        "web/package-lock.json"
+      ]
+    },
+    "config_query_and_iam_tests_passed": true,
+    "config_race_passed": true,
+    "gosec_config_non_generated_passed": true,
+    "web_unit_tests_passed": 215,
+    "desktop_mobile_dialog_tests_passed": 2,
+    "production_build_and_budget_passed": true
+  },
+  "deployment": {
+    "version": "v0.34.4",
+    "source_digest": "078bab9c0c23a09cc482ff6c3d1dcbe3b3059200aa0f31ce87c3adb83c5a60f4",
+    "config": {
+      "image": "sha256:d7fa5f83aeade82a60e9abf23e915f6ea2b2938b19c9d13b375e0ea171cfb0ac",
+      "previous_image": "sha256:9ab5521df6526ed00ac529f7e9c689b0cf41e41c5dfe7d199db3fdee5ae7a98f",
+      "health": 200,
+      "restarts": 0,
+      "environment_preserved": true,
+      "rollback_tag": "docker-compose-config-service:rollback-v0.34.4-20261006-185101",
+      "backup_directory": "/opt/micro-one-api/deploy-v0.34.4-20261006-185101"
+    },
+    "frontend": {
+      "files_verified": 173,
+      "index_sha256": "883962cd93a71bb335946d97e044a0528a17448849cabc6c2b28980d9b2820df",
+      "backup": "/opt/web/dist.bak.v0.34.4-20261006-185101",
+      "old_hashed_assets_retained": true
+    },
+    "deployed_at": "2026-10-06T10:51:05.080239+00:00"
+  },
+  "production_config": {
+    "checks": [
+      {
+        "check": "root authorization",
+        "passed": true,
+        "status": 200
+      },
+      {
+        "check": "owner-backed config options read",
+        "passed": true,
+        "status": 200
+      },
+      {
+        "check": "public status config read",
+        "passed": true,
+        "status": 200
+      }
+    ]
+  }
+}

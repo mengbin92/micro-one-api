@@ -7,6 +7,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.34.4] - 2026-10-06
+
+v0.34.4 是 v0.34.3 之后的 **PATCH 安全修复版本**：关闭七条 GitHub Code Scanning 告警，固定配置查询边界并移除未使用的易受攻击前端 CLI 工具链。更新 config 与前端；无 API/proto、迁移或配置变更。详见 [release-v0.34.4.md](docs/releases/release-v0.34.4.md)。
+
+### Fixed
+
+- 配置 get/set/delete 改为固定 SQL 与显式绑定参数，使用数据库方言引用固定 key 列；恶意输入及原有 IAM/CAS 回归通过，三条 CodeQL 告警自动关闭。
+- 保留相同 MIT 许可样式变体并移除 shadcn CLI 依赖链，消除 braces、proxy-addr 和 postcss-selector-parser 的漏洞；source-map-js 更新至 1.2.2。npm audit/Trivy 均为零，四条依赖告警自动关闭。
+
 ## [0.34.3] - 2026-10-06
 
 v0.34.3 是 v0.34.2 之后的 **PATCH 前端修复版本**：权限目录“详情”在当前视口内打开响应式弹窗，保留只读查看和精确修改权限。只更新前端；无 API/proto、迁移、后端或配置变更。详见 [release-v0.34.3.md](docs/releases/release-v0.34.3.md)。
