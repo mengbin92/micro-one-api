@@ -7,6 +7,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.34.2] - 2026-10-06
+
+v0.34.2 是 v0.34.1 之后的 **PATCH 修复版本**：恢复已登录用户的本人订阅进度查询，并补齐联系字段可见性的前端生成类型。线上只更新 admin；无新增 API/proto、迁移、配置或前端运行时变化。详见 [release-v0.34.2.md](docs/releases/release-v0.34.2.md)。
+
+### Fixed
+
+- 本人订阅 HTTP 入口在认证成功后设置 verified operator 上下文，向 billing 转发真实会话，修复 `/api/v1/subscriptions/progress` 的 `user session required`；异用户和无效会话仍拒绝。
+- 同步 `web/src/types/api.ts` 的 `contactFieldsVisible`，修复 v0.34.1 前端 CI 的 API 类型生成一致性失败。
+
 ## [0.34.1] - 2026-10-06
 
 v0.34.1 是 v0.34.0 之后的 **PATCH 修复版本**：恢复 API Key 订阅用量查询和 IAM 用户管理的获准字段，修复公开价格页的模型过滤与模态展示。更新 billing、channel、identity、admin 和前端；API/proto 兼容性新增，无数据库迁移或新增运行时业务配置。详见 [release-v0.34.1.md](docs/releases/release-v0.34.1.md)。

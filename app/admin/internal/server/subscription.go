@@ -105,11 +105,11 @@ func authenticatedUserID(w http.ResponseWriter, r *http.Request, svc *service.Ad
 	token := strings.TrimPrefix(authHeader, "Bearer ")
 	ctx := authorization.WithCredential(authorization.WithExternal(r.Context()), token)
 	userID, err := svc.AuthenticateSelf(ctx, token)
-	*r = *r.WithContext(subscriptionbiz.WithSelfRequest(ctx))
 	if err != nil || userID <= 0 {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return 0, false
 	}
+	*r = *r.WithContext(subscriptionbiz.WithSelfRequest(service.WithOperatorCredential(ctx, token)))
 	return userID, true
 }
 
