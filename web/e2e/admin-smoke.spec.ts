@@ -5,6 +5,35 @@ test.beforeEach(async ({ page }) => {
   await mockApi(page);
 });
 
+test('IAM permission details open in the viewport for a read-only catalog user', async ({ page }) => {
+  await page.route('**/api/user/authorization?**', route => route.fulfill({ json: {
+    authorization_mode: 'iam', session: { activation_state: 'active' },
+    permitted_operations: ['admin.console.enter', 'iam.permission.list'],
+    versions: { policy_revision: '7' }, valid_until: new Date(Date.now() + 60_000).toISOString(),
+  } }));
+  await page.route('**/api/v1/admin/iam/permissions?**', route => route.fulfill({ json: {
+    permissions: Array.from({ length: 50 }, (_, index) => ({ id: String(index + 1), name: `Permission ${index + 1}`, code: `channel.action_${index + 1}.read`, description: `Description ${index + 1}`, status: 'enabled', revision: '1' })), total: '50',
+  } }));
+  await page.addInitScript(() => { localStorage.setItem('token', 'test-user-token'); localStorage.setItem('locale', 'zh-CN'); });
+  await page.goto('/admin/iam/permissions');
+  await expect(page.getByText('Permission 1', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '详情', exact: true }).first().click();
+  const dialog = page.getByRole('dialog', { name: '详情', exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('名称', { exact: true })).toHaveValue('Permission 1');
+  await expect(dialog.getByRole('button', { name: '保存目录资料' })).toHaveCount(0);
+  const bounds = await dialog.boundingBox();
+  const viewport = page.viewportSize()!;
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.y).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height);
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole('button', { name: '详情', exact: true }).nth(1).click();
+  await expect(dialog.getByLabel('名称', { exact: true })).toHaveValue('Permission 2');
+});
+
 // Seed the server authorization summary independently of the displayed role.
 // Playwright uses the most recently registered matching route first.
 async function seedAdminSession(page: Page) {

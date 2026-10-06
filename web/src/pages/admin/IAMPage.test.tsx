@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { http, HttpResponse } from 'msw';
@@ -13,6 +13,25 @@ function authorize(operations: string[]) {
 }
 
 describe('IAM independent reads and metadata', () => {
+  it('opens visible permission details without metadata write permission', async () => {
+    authorize(['iam.permission.list']);
+    server.use(http.get('/api/v1/admin/iam/permissions', () => HttpResponse.json({
+      permissions: Array.from({ length: 50 }, (_, index) => ({ id: String(index + 1), name: `Permission ${index + 1}`, code: `channel.action_${index + 1}.read`, description: `Description ${index + 1}`, status: 'enabled', revision: '1' })),
+      total: '50',
+    })));
+    renderWithQuery(<MemoryRouter initialEntries={['/admin/iam/permissions']}><IAMPage /></MemoryRouter>);
+    await screen.findByText('Permission 1');
+    await userEvent.click(screen.getAllByRole('button', { name: '详情' })[0]);
+    const detail = await screen.findByRole('dialog');
+    expect(within(detail).getByRole('textbox', { name: '名称' })).toHaveValue('Permission 1');
+    expect(within(detail).getByRole('textbox', { name: '说明' })).toHaveValue('Description 1');
+    expect(within(detail).queryByRole('button', { name: '保存目录资料' })).not.toBeInTheDocument();
+    await userEvent.click(within(detail).getByRole('button', { name: '关闭' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await userEvent.click(screen.getAllByRole('button', { name: '详情' })[1]);
+    expect(within(await screen.findByRole('dialog')).getByRole('textbox', { name: '名称' })).toHaveValue('Permission 2');
+  });
+
   it('reads sessions with the read operation without requiring revoke', async () => {
     authorize(['identity.user_role.read', 'iam.authorization.user.read']);
     const sessions = vi.fn();
