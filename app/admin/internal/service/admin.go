@@ -686,6 +686,30 @@ func (s *AdminService) BatchGetAccountSnapshots(ctx context.Context, userIDs []s
 	return accounts, nil
 }
 
+// OptionalAccountSnapshots enriches user views without making an independent
+// billing permission a prerequisite for listing users. Every fallback read is
+// still authorized by billing against the forwarded operator and user facts.
+func (s *AdminService) OptionalAccountSnapshots(ctx context.Context, userIDs []string) (map[string]*commonv1.AccountInfo, error) {
+	accounts, err := s.BatchGetAccountSnapshots(ctx, userIDs)
+	if status.Code(err) != codes.PermissionDenied {
+		return accounts, err
+	}
+	accounts = make(map[string]*commonv1.AccountInfo)
+	for _, userID := range userIDs {
+		response, readErr := s.GetAccountSnapshot(ctx, &adminv1.GetAccountSnapshotRequest{UserId: userID})
+		if status.Code(readErr) == codes.PermissionDenied || status.Code(readErr) == codes.NotFound {
+			continue
+		}
+		if readErr != nil {
+			return nil, readErr
+		}
+		if response.GetAccount() != nil {
+			accounts[userID] = response.GetAccount()
+		}
+	}
+	return accounts, nil
+}
+
 // ========== 用户管理 ==========
 
 func (s *AdminService) ListUsers(ctx context.Context, req *adminv1.AdminListUsersRequest) (*adminv1.AdminListUsersResponse, error) {

@@ -176,6 +176,22 @@ func (s *ChannelService) routingUc() *biz.ModelRoutingUsecase {
 	return s.routingUC
 }
 
+func (s *ChannelService) ListPublicModels(ctx context.Context, req *channelv1.ListModelsRequest) (*channelv1.ListModelsResponse, error) {
+	models, total, err := s.modelUc().ListPublicModels(ctx, req.GetPage(), req.GetPageSize())
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*channelv1.ModelSummary, 0, len(models))
+	for _, model := range models {
+		result = append(result, &channelv1.ModelSummary{
+			ModelId: model.ModelID, Status: model.Status, IsPublic: model.IsPublic,
+			InputModalities:  append([]string(nil), model.InputModalities...),
+			OutputModalities: append([]string(nil), model.OutputModalities...),
+		})
+	}
+	return &channelv1.ListModelsResponse{Models: result, Total: total}, nil
+}
+
 func (s *ChannelService) ListModels(ctx context.Context, req *channelv1.ListModelsRequest) (*channelv1.ListModelsResponse, error) {
 	uc := s.modelUc()
 	if uc == nil {

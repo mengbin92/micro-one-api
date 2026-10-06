@@ -13,7 +13,7 @@ import (
 )
 
 func TestServiceCallerMethodAllowlist(t *testing.T) {
-	v, err := serviceidentity.NewVerifier(map[string]string{"relay": "relay-private"}, "legacy")
+	v, err := serviceidentity.NewVerifier(map[string]string{"relay": "relay-private", "admin": "admin-private"}, "legacy")
 	require.NoError(t, err)
 	interceptor := ServiceIdentityUnaryInterceptor(v)
 	for _, tt := range []struct {
@@ -22,6 +22,9 @@ func TestServiceCallerMethodAllowlist(t *testing.T) {
 		dedicated     bool
 	}{
 		{"relay-private", "/api.billing.v1.BillingService/CommitQuota", codes.OK, true},
+		{"relay-private", "/api.billing.v1.BillingService/GetSubscriptionUsage", codes.OK, true},
+		{"admin-private", "/api.channel.v1.ChannelService/ListPublicModels", codes.OK, true},
+		{"relay-private", "/api.channel.v1.ChannelService/ListPublicModels", codes.PermissionDenied, false},
 		{"relay-private", "/api.identity.v1.IdentityService/DeleteUser", codes.PermissionDenied, false},
 		{"legacy", "/api.billing.v1.BillingService/CommitQuota", codes.OK, false},
 		{"legacy", "/api.billing.v1.BillingService/Unknown", codes.PermissionDenied, false},

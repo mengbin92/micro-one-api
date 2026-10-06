@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	"github.com/stretchr/testify/require"
 	"testing"
 
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/channel/internal/biz"
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/security/serviceidentity"
 )
 
 // modelServiceRepo embeds the channel test repo so it satisfies ChannelRepo,
@@ -190,6 +193,17 @@ func newModelService() *ChannelService {
 	svc := NewChannelService(biz.NewChannelUsecase(repo, nil))
 	svc.SetModelUsecase(biz.NewModelUsecase(repo))
 	return svc
+}
+
+func TestPublicModelCatalogProjectsOnlyPublicMetadata(t *testing.T) {
+	repo := newModelServiceRepo()
+	repo.models[1] = &biz.Model{ModelID: "public", Status: 1, IsPublic: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}, PricingInput: 123, Description: "internal details", AuthorizationRevision: 10}
+	svc := NewChannelService(biz.NewChannelUsecase(repo, nil))
+	svc.SetModelUsecase(biz.NewModelUsecase(repo))
+	ctx := serviceidentity.WithRPCMethod(serviceidentity.WithPrincipal(authorization.WithExternal(context.Background()), serviceidentity.Principal{Name: "admin", Dedicated: true}), channelv1.ChannelService_ListPublicModels_FullMethodName)
+	out, err := svc.ListPublicModels(ctx, &channelv1.ListModelsRequest{PublicOnly: false, Status: 0})
+	require.NoError(t, err)
+	require.Equal(t, &channelv1.ListModelsResponse{Total: 1, Models: []*channelv1.ModelSummary{{ModelId: "public", Status: 1, IsPublic: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}}}}, out)
 }
 
 func TestChannelService_ListModels(t *testing.T) {

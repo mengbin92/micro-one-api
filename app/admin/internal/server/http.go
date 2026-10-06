@@ -1417,9 +1417,21 @@ func handleReadonlyPricing(w http.ResponseWriter, r *http.Request, svc *service.
 	}
 
 	rows := readonlyPricingRows(optionMap, amountPerUnit)
-	modelsResp, modelsErr := svc.ListModels(r.Context(), &channelv1.ListModelsRequest{Page: 1, PageSize: 1000})
-	if modelsErr == nil && modelsResp != nil {
-		rows = mergeReadonlyPricingModels(rows, modelsResp.GetModels())
+	var models []*channelv1.ModelSummary
+	for page := int32(1); ; page++ {
+		modelsResp, modelsErr := svc.ListPublicModels(r.Context(), &channelv1.ListModelsRequest{Page: page, PageSize: 200})
+		if modelsErr != nil {
+			writeServiceResponse(w, nil, modelsErr)
+			return
+		}
+		if modelsResp == nil {
+			break // Compatibility for an unconfigured model registry.
+		}
+		models = append(models, modelsResp.GetModels()...)
+		if len(modelsResp.GetModels()) == 0 || int64(len(models)) >= modelsResp.GetTotal() {
+			rows = mergeReadonlyPricingModels(rows, models)
+			break
+		}
 	}
 	unpricedCount := 0
 	for _, row := range rows {
@@ -1441,7 +1453,8 @@ func handleReadonlyPricing(w http.ResponseWriter, r *http.Request, svc *service.
 }
 
 func mergeReadonlyPricingModels(rows []readonlyPricingRow, models []*channelv1.ModelSummary) []readonlyPricingRow {
-	byID := make(map[string]readonlyPricingRow, len(rows)+len(models))
+	byID := make(map[string]readonlyPricingRow, len(rows))
+	merged := make([]readonlyPricingRow, 0, len(rows))
 	for _, row := range rows {
 		byID[strings.ToLower(strings.TrimSpace(row.Model))] = row
 	}
@@ -1465,10 +1478,6 @@ func mergeReadonlyPricingModels(rows []readonlyPricingRow, models []*channelv1.M
 		}
 		row.InputModalities = append([]string(nil), model.GetInputModalities()...)
 		row.OutputModalities = append([]string(nil), model.GetOutputModalities()...)
-		byID[id] = row
-	}
-	merged := make([]readonlyPricingRow, 0, len(byID))
-	for _, row := range byID {
 		merged = append(merged, row)
 	}
 	sort.Slice(merged, func(i, j int) bool { return merged[i].Model < merged[j].Model })
@@ -1682,17 +1691,6 @@ func providerNameFromType(channelType int32) string {
 
 func enrichUsersWithBilling(ctx context.Context, svc *service.AdminService, users []*commonv1.UserInfo) []map[string]any {
 	result := make([]map[string]any, 0, len(users))
-	if isIAMBusinessContext(ctx) {
-		for _, user := range users {
-			row := userInfoToMap(user, 0, 0)
-			row["authorizationRevision"] = strconv.FormatUint(user.AuthorizationRevision, 10)
-			row["authorizationPolicyRevision"] = strconv.FormatUint(user.AuthorizationPolicyRevision, 10)
-			delete(row, "balance")
-			delete(row, "usedAmount")
-			result = append(result, row)
-		}
-		return result
-	}
 
 	// Collect user IDs for batch query
 	userIDs := make([]string, 0, len(users))
@@ -1702,11 +1700,13 @@ func enrichUsersWithBilling(ctx context.Context, svc *service.AdminService, user
 
 	// Batch fetch account snapshots
 	var accounts map[string]*commonv1.AccountInfo
+	var billingUnavailable bool
 	if svc != nil && len(userIDs) > 0 {
 		var err error
-		accounts, err = svc.BatchGetAccountSnapshots(ctx, userIDs)
+		accounts, err = svc.OptionalAccountSnapshots(ctx, userIDs)
 		if err != nil {
 			accounts = map[string]*commonv1.AccountInfo{}
+			billingUnavailable = true
 		}
 	}
 
@@ -1720,7 +1720,18 @@ func enrichUsersWithBilling(ctx context.Context, svc *service.AdminService, user
 				usedAmount = acc.GetUsedAmount()
 			}
 		}
-		result = append(result, userInfoToMap(u, balance, usedAmount))
+		row := userInfoToMap(u, balance, usedAmount)
+		if isIAMBusinessContext(ctx) {
+			row["authorizationRevision"] = strconv.FormatUint(u.AuthorizationRevision, 10)
+			row["authorizationPolicyRevision"] = strconv.FormatUint(u.AuthorizationPolicyRevision, 10)
+			row["contactFieldsVisible"] = u.GetContactFieldsVisible()
+			row["billingFieldsUnavailable"] = billingUnavailable
+			if accounts[strconv.FormatInt(u.GetId(), 10)] == nil {
+				delete(row, "balance")
+				delete(row, "usedAmount")
+			}
+		}
+		result = append(result, row)
 	}
 	return result
 }

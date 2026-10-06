@@ -33,11 +33,13 @@ interface User {
   username: string;
   displayName: string;
   email: string;
+  contactFieldsVisible?: boolean;
+  billingFieldsUnavailable?: boolean;
   group: string;
   status: number;
   role: number;
-  balance: string;
-  usedAmount: string;
+  balance?: string;
+  usedAmount?: string;
   createdAt: string;
 }
 
@@ -238,7 +240,7 @@ export function AdminUsersPage() {
                       <TableCell className="font-mono text-sm">{user.id}</TableCell>
                       <TableCell className="font-medium">{user.username}</TableCell>
                       <TableCell className="hidden lg:table-cell">{user.displayName || '—'}</TableCell>
-                      <TableCell className="max-w-56 truncate">{user.email || (auth.snapshot?.authorization_mode === 'iam' ? t('受限') : '—')}</TableCell>
+                      <TableCell className="max-w-56 truncate">{user.email || (auth.snapshot?.authorization_mode === 'iam' && !user.contactFieldsVisible ? t('受限') : '—')}</TableCell>
                       <TableCell>{user.group}</TableCell>
                       <TableCell>
                         <span
@@ -247,8 +249,8 @@ export function AdminUsersPage() {
                           {auth.snapshot?.authorization_mode === 'legacy' ? roleLabel(user.role) : t('IAM 多角色')}
                         </span>
                       </TableCell>
-                      <TableCell>{user.balance === undefined ? t('受限') : formatAmount(user.balance)}</TableCell>
-                      <TableCell>{user.usedAmount === undefined ? t('受限') : formatAmount(user.usedAmount)}</TableCell>
+                      <TableCell>{user.balance === undefined ? t(user.billingFieldsUnavailable ? '暂不可用' : '受限') : formatAmount(user.balance)}</TableCell>
+                      <TableCell>{user.usedAmount === undefined ? t(user.billingFieldsUnavailable ? '暂不可用' : '受限') : formatAmount(user.usedAmount)}</TableCell>
                       <TableCell>
                         <span
                           className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${

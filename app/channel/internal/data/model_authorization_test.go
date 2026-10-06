@@ -8,10 +8,49 @@ import (
 	"micro-one-api/domain/authorization"
 	authztest "micro-one-api/domain/authorization/testutil"
 	dbtest "micro-one-api/platform/database/testutil"
+	"micro-one-api/platform/security/serviceidentity"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+func TestPublicModelCatalogFiltersBeforePagination(t *testing.T) {
+	db := dbtest.RoutingContextDB(t, "sqlite")
+	repo := &Repository{db: db}
+	for _, model := range []*biz.Model{
+		{ModelID: "disabled", IsPublic: true, Status: biz.ModelStatusDisabled},
+		{ModelID: "private", IsPublic: false, Status: biz.ModelStatusEnabled},
+		{ModelID: "public-a", IsPublic: true, Status: biz.ModelStatusEnabled, InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}},
+		{ModelID: "public-b", IsPublic: true, Status: biz.ModelStatusEnabled},
+	} {
+		require.NoError(t, repo.CreateModel(context.Background(), model))
+	}
+	uc := biz.NewModelUsecase(repo)
+	ctx := serviceidentity.WithRPCMethod(serviceidentity.WithPrincipal(authorization.WithExternal(context.Background()), serviceidentity.Principal{Name: "admin", Dedicated: true}), "/api.channel.v1.ChannelService/ListPublicModels")
+	rows, total, err := uc.ListPublicModels(ctx, 1, 1)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, total)
+	require.Len(t, rows, 1)
+	first := rows[0]
+	rows, total, err = uc.ListPublicModels(ctx, 2, 1)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, total)
+	require.ElementsMatch(t, []string{"public-a", "public-b"}, []string{first.ModelID, rows[0].ModelID})
+	if first.ModelID == "public-a" {
+		require.Equal(t, []string{"text", "image"}, first.InputModalities)
+	} else {
+		require.Equal(t, []string{"text", "image"}, rows[0].InputModalities)
+	}
+	for _, denied := range []context.Context{
+		authorization.WithExternal(context.Background()),
+		serviceidentity.WithPrincipal(ctx, serviceidentity.Principal{Name: "legacy-shared"}),
+		serviceidentity.WithRPCMethod(ctx, "/api.channel.v1.ChannelService/ListModels"),
+		authorization.WithCredential(ctx, "user-session"),
+	} {
+		_, _, err := uc.ListPublicModels(denied, 1, 10)
+		require.ErrorIs(t, err, authorization.ErrDenied)
+	}
+}
 
 func TestIAMB2ModelExecutionDialects(t *testing.T) {
 	for _, driver := range []string{"sqlite", "mysql", "postgres"} {

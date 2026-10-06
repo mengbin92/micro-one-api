@@ -10,6 +10,7 @@ type RPCPolicy struct {
 // Identity forwards verified sessions for ListLedger and AggregateLedgerByDate.
 // Their user caller policy preserves billing self scope; it grants no system bypass.
 var rpcPolicies = map[string]RPCPolicy{
+	"/api.channel.v1.ChannelService/ListPublicModels":           {Owner: "channel", SystemCallers: []string{"admin"}},
 	"/api.channel.v1.ChannelService/BatchDeleteChannels":        {Owner: "channel", UserCallers: []string{"admin"}},
 	"/api.channel.v1.ChannelService/ExportChannels":             {Owner: "channel", UserCallers: []string{"admin"}},
 	"/api.channel.v1.ChannelService/ArchiveRoutingGroup":        {Owner: "channel", UserCallers: []string{"admin"}},
@@ -148,7 +149,7 @@ var rpcPolicies = map[string]RPCPolicy{
 	"/api.channel.v1.ChannelService/RecordUsageSemanticVerdict":              {Owner: "channel", UserCallers: []string{}, SystemCallers: []string{"relay"}},
 	"/api.channel.v1.ChannelService/ResolveUsageSemanticBlock":               {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.channel.v1.ChannelService/ListUsageSemanticBlocks":                 {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{}},
-	"/api.billing.v1.BillingService/GetSubscriptionUsage":                    {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{"identity"}},
+	"/api.billing.v1.BillingService/GetSubscriptionUsage":                    {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{"identity", "relay"}},
 	"/api.billing.v1.BillingService/ExecuteSubscriptionCommerce":             {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{"identity"}},
 	"/api.billing.v1.BillingService/GetRoutingBillingPolicy":                 {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{"channel"}},
 	"/api.billing.v1.BillingService/PublishRoutingBillingPolicy":             {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{}},
