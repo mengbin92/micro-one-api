@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.34.1 发布公告](./docs/releases/release-v0.34.1.md)（订阅用量 502、用户字段受限与公开模型价格修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.1)
+> 📣 **最新发布**：[v0.34.2 发布公告](./docs/releases/release-v0.34.2.md)（本人订阅进度会话转发与前端生成类型修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.2)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.34.2
+
+v0.34.2 是 v0.34.1 之后的 **PATCH 修复版本**：修复本人订阅进度漏转发已验证登录会话，并补齐前端生成 API 类型。**无新增 API/proto、数据库迁移、配置或前端运行时变化**；线上只更新 `admin-api`，其余服务和前端沿用 v0.34.1。详见 [docs/releases/release-v0.34.2.md](./docs/releases/release-v0.34.2.md)。
 
 ### 升级到 v0.34.1
 
