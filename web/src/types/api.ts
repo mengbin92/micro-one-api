@@ -1507,6 +1507,7 @@ export interface components {
             /** @description IAM owner CAS values; protobuf JSON encodes them as decimal strings. */
             authorizationRevision?: string;
             authorizationPolicyRevision?: string;
+            contactFieldsVisible?: boolean;
         };
         "api.config.v1.DeleteConfigResponse": {
             success?: boolean;

@@ -1,0 +1,115 @@
+{
+  "source_commit": "a2c19711c546b315cf33e4db8dba4c9d08b3568d",
+  "deployment": {
+    "version": "v0.34.2",
+    "service": "admin-api",
+    "image": "sha256:2cb481a5a5e2d814f96dfa7847cf139f5bef3310e4b0edfe9ef370d680ca2f57",
+    "previous_image": "sha256:b6df3f3a7542957617b90386fd85a2c17c268933de29821fc20272d5478b0053",
+    "source_digest": "81299ad222f529b0cdf697170d6c605b39213c4a58a4c567d2e5b25b991c42f8",
+    "rollback_tag": "docker-compose-admin-api:rollback-v0.34.2-20261006-171628",
+    "health": 200,
+    "restarts": 0,
+    "environment_preserved": true,
+    "frontend_unchanged": true,
+    "backup_directory": "/opt/micro-one-api/deploy-v0.34.2-20261006-171628",
+    "deployed_at": "2026-10-06T09:16:31.770246+00:00"
+  },
+  "before": {
+    "status": 401,
+    "success": false,
+    "message": "user session required"
+  },
+  "progress_verification": {
+    "checks": [
+      {
+        "check": "explicit self progress",
+        "status": 200,
+        "passed": true,
+        "usage_source": "billing",
+        "message": ""
+      },
+      {
+        "check": "implicit self progress",
+        "status": 200,
+        "passed": true,
+        "usage_source": "billing",
+        "message": ""
+      },
+      {
+        "check": "foreign progress denied",
+        "status": 403,
+        "passed": true
+      },
+      {
+        "check": "anonymous progress denied",
+        "status": 401,
+        "passed": true
+      },
+      {
+        "check": "invalid session denied",
+        "status": 401,
+        "passed": true
+      }
+    ]
+  },
+  "v0_34_1_regression": {
+    "baseline": false,
+    "policy": {
+      "mode": "iam",
+      "cutover": "complete",
+      "policy_revision": "7",
+      "catalog_revision": "2"
+    },
+    "checks": [
+      {
+        "check": "root authorization",
+        "passed": true,
+        "status": 200
+      },
+      {
+        "check": "root user billing fields",
+        "passed": true,
+        "status": 200,
+        "users_checked": 8
+      },
+      {
+        "check": "root contact field visibility",
+        "passed": true,
+        "users_checked": 8
+      },
+      {
+        "check": "pricing excludes disabled private and unregistered models",
+        "passed": true,
+        "status": 200,
+        "models_checked": 7
+      },
+      {
+        "check": "pricing input/output modalities",
+        "passed": true,
+        "models_checked": 7
+      },
+      {
+        "check": "anonymous user management denied",
+        "passed": true,
+        "status": 401
+      },
+      {
+        "check": "anonymous subscription usage denied",
+        "passed": true,
+        "status": 401
+      },
+      {
+        "check": "API-key subscription usage",
+        "passed": true,
+        "status": 200,
+        "has_subscription": true,
+        "user_binding_verified": true
+      },
+      {
+        "check": "temporary verification token removed",
+        "passed": true,
+        "status": 200
+      }
+    ]
+  }
+}
