@@ -7,7 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-10-06
+
+v0.34.0 是 v0.33.6 之后的 **MINOR 权限管理版本**：新增 RBAC 授权治理、管理界面、服务身份和全资源执行边界，完成 IAM 离线迁移及生产正式交接；修复本人用量、设计复审问题和发布门禁。涉及全部九服务、前端、API/proto、三库迁移 110–123 与部署配置；详见 [release-v0.34.0.md](docs/releases/release-v0.34.0.md)。
+
 ### Fixed
+
+- 固定 caller 表补齐 Relay 读取路由事实的系统能力，恢复 Responses/SSE/WebSocket 绑定源复验；源撤权及无关 caller 仍拒绝。
+
+- legacy 会话摘要投影已验证本人，修复订阅购买 401，并保持无效/密码撤销会话拒绝；Lite/PostgreSQL 补齐六个 owner 的 identity 地址，避免 localhost 回退造成 503。
+
+- 定时全历史密钥扫描仅豁免四条已核对的历史 IAM 测试签名指纹；通用浏览器 smoke 分离真实 IAM 专用场景并补齐服务端授权摘要及手机等待；路由验收安装隔离专属服务身份和固定 receiver map。
 
 - RBAC 设计复审修复 deny 分配期限扩权、分配载荷借用撤销权、管理创建凭证委派遗漏、隐藏授权来源读取、非法范围与不兼容分配、归档权限复活，以及 root 摘要、菜单层级和前端读写 gate 差异；记录与回归见 [审查记录](docs/design/rbac/design-review-2026-10-05.md)。已更新线上九服务及前端并应用 123 迁移，模式保持 iam/complete，见 [生产更新](docs/design/rbac/review-production-deployment-2026-10-05.md)。
 
@@ -31,7 +41,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- RBAC 主设计、实施清单及 823 行入口契约同步；真实 B0–B4 HTTP/gRPC 角色矩阵、B1–B4 SQLite/MySQL/PostgreSQL race 和全仓门禁完成。Compose 服务身份模板及静态核验脚本就绪；2026-10-03 已更新全部线上服务、前端和分库迁移，并修复 admin 历史迁移元数据默认值，见 [生产更新记录](docs/design/rbac/b-legacy-production-deployment.md)。C1–C3 和 D0 已交付；2026-10-05 经授权完成 D1 真实停写、旧通道撤权及 IAM 正式交接，线上已为 iam/complete，见 [D1 生产记录](docs/design/rbac/d-iam-production-deployment.md)，未发布版本。
+- RBAC 主设计、实施清单及 823 行入口契约同步；真实 B0–B4 HTTP/gRPC 角色矩阵、B1–B4 SQLite/MySQL/PostgreSQL race 和全仓门禁完成。Compose 服务身份模板及静态核验脚本就绪；2026-10-03 已更新全部线上服务、前端和分库迁移，并修复 admin 历史迁移元数据默认值，见 [生产更新记录](docs/design/rbac/b-legacy-production-deployment.md)。C1–C3 和 D0 已交付；2026-10-05 经授权完成 D1 真实停写、旧通道撤权及 IAM 正式交接，线上已为 iam/complete，见 [D1 生产记录](docs/design/rbac/d-iam-production-deployment.md)，现纳入 v0.34.0 发布。
 
 ## [0.33.6] - 2026-09-30
 
