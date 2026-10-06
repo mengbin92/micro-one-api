@@ -165,7 +165,7 @@ func (r *Repository) Delete(ctx context.Context, namespace, key string) error {
 
 func (r *Repository) getDB(ctx context.Context, namespace, key string) (*biz.ConfigEntry, error) {
 	var m configModel
-	if err := r.db.WithContext(ctx).Where(map[string]any{"namespace": namespace, "key": key, "deleted": 0}).First(&m).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("namespace = ? AND ? = ? AND deleted = 0", namespace, clause.Column{Name: "key"}, key).First(&m).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, biz.ErrConfigNotFound
 		}
@@ -221,7 +221,7 @@ func (r *Repository) setDB(ctx context.Context, entry *biz.ConfigEntry) error {
 			return err
 		}
 		var existing configModel
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(map[string]any{"namespace": entry.Namespace, "key": entry.Key}).First(&existing).Error
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("namespace = ? AND ? = ?", entry.Namespace, clause.Column{Name: "key"}, entry.Key).First(&existing).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			if _, iam := authorization.QueryScopeFromContext(ctx, biz.ConfigWriteOperation(entry.Namespace, entry.Key)); iam {
 				expected, ok := authorization.ExpectedResourceRevision(ctx)
@@ -284,7 +284,7 @@ func (r *Repository) deleteDB(ctx context.Context, namespace, key string) error 
 			return err
 		}
 		var current configModel
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(map[string]any{"namespace": namespace, "key": key, "deleted": 0}).First(&current).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("namespace = ? AND ? = ? AND deleted = 0", namespace, clause.Column{Name: "key"}, key).First(&current).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return biz.ErrConfigNotFound
 			}

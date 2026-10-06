@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import "./styles/shadcn.css";
 @import "@fontsource-variable/noto-sans-sc/wght.css";
 
 @custom-variant dark (&:is(.dark *));
