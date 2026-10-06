@@ -2,6 +2,8 @@
 
 `web/` 是 micro-one-api 的管理后台前端，基于 React、TypeScript、Vite、React Router、TanStack Query 和 shadcn/base-ui 组件实现。
 
+组件代码由本仓库维护；shadcn 4.7.0 的样式变体保存在 `src/styles/shadcn.css`，包含原 MIT 许可。构建使用这份本地样式，避免仅为 CSS 安装包含 MCP、Express 和文件匹配库的组件生成 CLI 工具链。
+
 ## 常用命令
 
 ```bash
