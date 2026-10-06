@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.33.6 发布公告](./docs/releases/release-v0.33.6.md)（支付宝脱敏回调回执、Playground 消息重用与依赖更新） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.33.6)
+> 📣 **最新发布**：[v0.34.0 发布公告](./docs/releases/release-v0.34.0.md)（RBAC 权限管理、IAM 正式交接与发布门禁修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.0)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.34.0
+
+v0.34.0 是 v0.33.6 之后的 **MINOR 权限管理版本**：交付 RBAC 目录、角色/分配/委派与会话管理、九服务资源执行边界及 IAM 离线迁移和正式交接，修复本人用量、权限治理与发布门禁。**涉及全部九服务、前端、API/proto、三库迁移 110–123 和部署配置**；IAM 切换需按执行手册完成停写及旧通道撤权，不能仅替换镜像。生产已完成 IAM complete 与复审更新。详见 [docs/releases/release-v0.34.0.md](./docs/releases/release-v0.34.0.md)。
 
 ### 升级到 v0.33.6
 
