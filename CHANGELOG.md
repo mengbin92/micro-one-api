@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.34.3] - 2026-10-06
+
+v0.34.3 是 v0.34.2 之后的 **PATCH 前端修复版本**：权限目录“详情”在当前视口内打开响应式弹窗，保留只读查看和精确修改权限。只更新前端；无 API/proto、迁移、后端或配置变更。详见 [release-v0.34.3.md](docs/releases/release-v0.34.3.md)。
+
+### Fixed
+
+- IAM 权限详情和目录草稿通过可见弹窗打开，解决长列表下方的编辑器导致点击“详情”看似无反应；支持关闭、切换记录及获准引用显示，原有元数据预检/CAS 和只读限制保持有效。
+
 ## [0.34.2] - 2026-10-06
 
 v0.34.2 是 v0.34.1 之后的 **PATCH 修复版本**：恢复已登录用户的本人订阅进度查询，并补齐联系字段可见性的前端生成类型。线上只更新 admin；无新增 API/proto、迁移、配置或前端运行时变化。详见 [release-v0.34.2.md](docs/releases/release-v0.34.2.md)。

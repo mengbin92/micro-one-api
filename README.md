@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.34.2 发布公告](./docs/releases/release-v0.34.2.md)（本人订阅进度会话转发与前端生成类型修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.2)
+> 📣 **最新发布**：[v0.34.3 发布公告](./docs/releases/release-v0.34.3.md)（IAM 权限详情可见性修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.3)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.34.3
+
+v0.34.3 是 v0.34.2 之后的 **PATCH 前端修复版本**：权限目录“详情”使用可见的响应式弹窗，保留只读查看和原有资料预检/CAS。**无 API/proto、数据库迁移、后端或配置变更**；只更新前端 `web/dist`，线上已完成发布及真实 Chrome 验证。详见 [docs/releases/release-v0.34.3.md](./docs/releases/release-v0.34.3.md)。
 
 ### 升级到 v0.34.2
 

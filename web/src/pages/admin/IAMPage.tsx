@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { IAMChangeDialog, type IAMChange } from '@/components/admin/IAMChangeDialog';
 import { IAMPermissionEditor } from '@/components/admin/IAMPermissionEditor';
 import { ScopeView, SourcesView, PreviewView } from '@/components/admin/IAMDetails';
@@ -46,6 +47,7 @@ function IAMWorkspace({ section }: { section: Section }) {
   const [filter, setFilter] = useState('');
   const [pages, setPages] = useState(['']);
   const [selected, setSelected] = useState('');
+  const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
   const [change, setChange] = useState<IAMChange>();
   const config = sections[section];
   const path = section === 'assignments' ? `/users/${userId}/roles` : config.path;
@@ -57,6 +59,10 @@ function IAMWorkspace({ section }: { section: Section }) {
   const members = useAuthorizedQuery<IAMReply>({ permission: 'iam.role.members.read', queryKey: ['iam', 'members', selected], enabled: section === 'roles' && !!selected, queryFn: ({ signal }) => readIAM(`/roles/${selected}/members`, {}, signal) });
   const sessions = useAuthorizedQuery<IAMReply>({ permission: 'iam.authorization.user.read', queryKey: ['iam', 'sessions', userId], enabled: section === 'assignments' && !!userId, queryFn: ({ signal }) => readIAM(`/users/${userId}/sessions`, {}, signal) });
   const prepare = (draft: IAMChange) => setChange(draft);
+  const showDetails = (id: string) => {
+    setSelected(id);
+    if (section === 'permissions') setPermissionDialogOpen(true);
+  };
   const role = query.data?.roles?.find(item => item.id === selected);
   const permission = query.data?.permissions?.find(item => item.id === selected);
   const delegation = query.data?.delegations?.find(item => item.id === selected);
@@ -70,17 +76,27 @@ function IAMWorkspace({ section }: { section: Section }) {
     {section === 'assignments' || section === 'explain' ? <div className="flex items-end gap-3"><TextField label="用户 ID" value={userInput} onChange={setUserInput} /><Button onClick={() => { setUserId(userInput); setPages(['']); }}>{t('查询用户')}</Button></div> : <div className="flex items-end gap-3"><TextField label="筛选表达式" value={filterInput} onChange={setFilterInput} /><Button onClick={() => { setFilter(filterInput); setPages(['']); }}>{t('查询')}</Button></div>}
     {section === 'explain' ? <Explanation key={userId} userId={userId} /> : <>
     {query.isLoading && <p role="status">{t('加载中...')}</p>}{query.isError && <p role="alert">{getApiErrorMessage(query.error)}</p>}{[grantDetail, references, members, sessions, audit].filter(result => result.isError).map((result, i) => <p key={i} role="alert">{getApiErrorMessage(result.error)}</p>)}
-    <div className="overflow-x-auto rounded border"><table className="w-full text-left text-sm"><thead><tr><th className="p-3">ID</th><th>{t('名称 / 操作')}</th><th>{t('状态 / 来源')}</th><th>{t('版本')}</th><th>{t('操作')}</th></tr></thead><tbody>{rows.map((item, i) => <tr key={item.id ?? item.event_id ?? i} className="border-t"><td className="p-3 font-mono">{item.id ?? item.event_id}</td><td>{item.name ?? item.code ?? item.action ?? `user #${item.user_id} / role #${item.role_id}`}</td><td>{item.status ?? item.origin ?? item.target_kind ?? item.result} {item.binding} {item.protected && t('保护项')}</td><td>{item.revision}</td><td><Button variant="outline" onClick={() => setSelected(item.id ?? item.event_id ?? '')}>{t('详情')}</Button>{section === 'assignments' && auth.can('identity.user_role.revoke') && <Button variant="destructive" onClick={() => prepare({ title: t('撤销角色'), path: `/users/${userId}/roles/${item.id}`, method: 'delete', rpc: 'RevokeUserRole', permission: 'identity.user_role.revoke', request: { id: item.id, user_id: userId, expected_revision: item.revision } })}>{t('撤销')}</Button>}</td></tr>)}</tbody></table></div>
+    <div className="overflow-x-auto rounded border"><table className="w-full text-left text-sm"><thead><tr><th className="p-3">ID</th><th>{t('名称 / 操作')}</th><th>{t('状态 / 来源')}</th><th>{t('版本')}</th><th>{t('操作')}</th></tr></thead><tbody>{rows.map((item, i) => <tr key={item.id ?? item.event_id ?? i} className="border-t"><td className="p-3 font-mono">{item.id ?? item.event_id}</td><td>{item.name ?? item.code ?? item.action ?? `user #${item.user_id} / role #${item.role_id}`}</td><td>{item.status ?? item.origin ?? item.target_kind ?? item.result} {item.binding} {item.protected && t('保护项')}</td><td>{item.revision}</td><td><Button variant="outline" onClick={() => showDetails(item.id ?? item.event_id ?? '')}>{t('详情')}</Button>{section === 'assignments' && auth.can('identity.user_role.revoke') && <Button variant="destructive" onClick={() => prepare({ title: t('撤销角色'), path: `/users/${userId}/roles/${item.id}`, method: 'delete', rpc: 'RevokeUserRole', permission: 'identity.user_role.revoke', request: { id: item.id, user_id: userId, expected_revision: item.revision } })}>{t('撤销')}</Button>}</td></tr>)}</tbody></table></div>
     <div className="flex items-center gap-3"><span>{t('总数')} {query.data?.total ?? '0'}</span><Button disabled={pages.length < 2} onClick={() => setPages(pages.slice(0, -1))}>{t('上一页')}</Button><Button disabled={!query.data?.next_page_token} onClick={() => setPages([...pages, query.data!.next_page_token!])}>{t('下一页')}</Button></div>
     </>}
     {section === 'roles' && <RoleEditor key={`${selected}:${grantDetail.data?.roles?.[0]?.revision ?? 'loading'}`} role={grantDetail.data?.roles?.[0] ?? role} roles={query.data?.roles ?? []} permissions={permissions.data?.permissions ?? []} detail={grantDetail.data} prepare={prepare} />}
-    {section === 'permissions' && <PermissionEditor key={selected} item={permission} prepare={prepare} />}
+    {section === 'permissions' && <>
+      {auth.can('iam.permission.create') && <Button onClick={() => { setSelected(''); setPermissionDialogOpen(true); }}>{t('创建目录草稿')}</Button>}
+      <Dialog open={permissionDialogOpen} onOpenChange={setPermissionDialogOpen}>
+        <DialogContent className="sm:max-w-3xl" aria-describedby={undefined}>
+          <DialogHeader><DialogTitle>{selected ? t('详情') : t('创建目录草稿')}</DialogTitle></DialogHeader>
+          {permissionDialogOpen && <PermissionEditor key={selected} item={permission} prepare={draft => { setPermissionDialogOpen(false); prepare(draft); }} />}
+          {references.isError && <p role="alert">{getApiErrorMessage(references.error)}</p>}
+          {!!references.data?.references?.length && <details open><summary>{t('引用关系')}</summary><pre className="overflow-auto text-xs">{JSON.stringify(references.data.references, null, 2)}</pre></details>}
+        </DialogContent>
+      </Dialog>
+    </>}
     {section === 'assignments' && userId && <AssignmentEditor userId={userId} roles={roles.data?.roles ?? []} assignments={query.data?.assignments ?? []} prepare={prepare} />}
     {section === 'delegations' && <DelegationEditor key={selected} item={delegation} roles={roles.data?.roles ?? []} prepare={prepare} />}
     {section === 'constraints' && <ConstraintEditor key={selected} item={constraint} roles={roles.data?.roles ?? []} prepare={prepare} />}
     {section === 'menus' && <MenuEditor key={selected} item={menu} prepare={prepare} />}
     {section === 'audits' && <><AuditExport filter={filter} />{selectedAudit && <pre className="overflow-auto rounded border p-3 text-xs">{JSON.stringify(audit.data?.audits?.[0] ?? selectedAudit, null, 2)}</pre>}</>}
-    {!!references.data?.references?.length && <details open><summary>{t('引用关系')}</summary><pre>{JSON.stringify(references.data.references, null, 2)}</pre></details>}
+    {section !== 'permissions' && !!references.data?.references?.length && <details open><summary>{t('引用关系')}</summary><pre>{JSON.stringify(references.data.references, null, 2)}</pre></details>}
     {!!members.data?.assignments?.length && <details><summary>{t('角色成员')}</summary><pre>{JSON.stringify(members.data.assignments, null, 2)}</pre></details>}
     {section === 'assignments' && userId && auth.can('identity.user.sessions.revoke') && sessions.data && <RevokeSessions userId={userId} reply={sessions.data} refresh={() => sessions.refetch()} />}
     {!!sessions.data?.sessions?.length && <details><summary>{t('用户会话')}</summary><pre>{JSON.stringify(sessions.data.sessions, null, 2)}</pre></details>}
