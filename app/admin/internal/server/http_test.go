@@ -32,6 +32,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -1507,6 +1508,97 @@ func TestReadonlyPricingReturnsModelPriceRows(t *testing.T) {
 	}
 }
 
+type guardedPricingChannelClient struct {
+	adminHTTPModelChannelClient
+	publicErr error
+}
+
+func (c *guardedPricingChannelClient) ListModels(context.Context, *channelv1.ListModelsRequest, ...grpc.CallOption) (*channelv1.ListModelsResponse, error) {
+	return nil, status.Error(codes.Unauthenticated, "user operator required")
+}
+
+func (c *guardedPricingChannelClient) ListPublicModels(context.Context, *channelv1.ListModelsRequest, ...grpc.CallOption) (*channelv1.ListModelsResponse, error) {
+	return &channelv1.ListModelsResponse{Models: c.models, Total: int64(len(c.models))}, c.publicErr
+}
+
+func TestReadonlyPricingWithGuardedModelOwner(t *testing.T) {
+	store := &adminHTTPSystemOptionsStore{values: map[string]string{"ModelPrice": `{"enabled-model":{"input_price":0.000001},"disabled-model":{"input_price":0.000002}}`}}
+	channel := &guardedPricingChannelClient{adminHTTPModelChannelClient: adminHTTPModelChannelClient{models: []*channelv1.ModelSummary{{ModelId: "enabled-model", Status: 1, IsPublic: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}}}}}
+	svc := service.NewAdminService(nil, nil, channel, adminbiz.NewSystemOptionsUsecase(store))
+	rec := httptest.NewRecorder()
+	handleReadonlyPricing(rec, httptest.NewRequest(http.MethodGet, "/api/pricing", nil), svc)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotContains(t, rec.Body.String(), `"model":"disabled-model"`)
+	require.Contains(t, rec.Body.String(), `"input_modalities":["text","image"]`)
+	require.Contains(t, rec.Body.String(), `"output_modalities":["text"]`)
+	channel.models = nil
+	rec = httptest.NewRecorder()
+	handleReadonlyPricing(rec, httptest.NewRequest(http.MethodGet, "/api/pricing", nil), svc)
+	require.Contains(t, rec.Body.String(), `"prices":[]`, "an empty public catalog must not fall back to stale configured prices")
+	channel.publicErr = status.Error(codes.Unavailable, "catalog unavailable")
+	rec = httptest.NewRecorder()
+	handleReadonlyPricing(rec, httptest.NewRequest(http.MethodGet, "/api/pricing", nil), svc)
+	require.NotEqual(t, http.StatusOK, rec.Code)
+	require.NotContains(t, rec.Body.String(), "disabled-model", "catalog failures must not expose unfiltered prices")
+}
+
+func TestIAMUserListEnrichesAuthorizedBalances(t *testing.T) {
+	svc := service.NewAdminService(&adminHTTPBillingClient{}, nil, nil, nil)
+	ctx := iamBusinessContext(service.WithOperatorCredential(authorization.WithExternal(context.Background()), "verified-session"))
+	rows := enrichUsersWithBilling(ctx, svc, []*commonv1.UserInfo{{Id: 42}})
+	require.Equal(t, "500", rows[0]["balance"])
+	require.Equal(t, "100", rows[0]["usedAmount"])
+}
+
+type scopedUserBillingClient struct {
+	billingv1.BillingServiceClient
+	batchErr error
+	reads    []string
+}
+
+func (c *scopedUserBillingClient) BatchGetAccountSnapshots(ctx context.Context, _ *billingv1.BatchGetAccountSnapshotsRequest, _ ...grpc.CallOption) (*billingv1.BatchGetAccountSnapshotsResponse, error) {
+	md, _ := metadata.FromOutgoingContext(ctx)
+	if !slices.Contains(md.Get("x-operator-authorization"), "Bearer verified-session") {
+		return nil, status.Error(codes.Unauthenticated, "operator not forwarded")
+	}
+	return nil, c.batchErr
+}
+
+func (c *scopedUserBillingClient) GetAccountSnapshot(ctx context.Context, req *billingv1.GetAccountSnapshotRequest, _ ...grpc.CallOption) (*billingv1.GetAccountSnapshotResponse, error) {
+	c.reads = append(c.reads, req.UserId)
+	md, _ := metadata.FromOutgoingContext(ctx)
+	if !slices.Contains(md.Get("x-operator-authorization"), "Bearer verified-session") {
+		return nil, status.Error(codes.Unauthenticated, "operator not forwarded")
+	}
+	if req.UserId != "42" {
+		return nil, status.Error(codes.PermissionDenied, "outside scope")
+	}
+	return &billingv1.GetAccountSnapshotResponse{Snapshot: &commonv1.AccountSnapshot{UserId: "42", Balance: 0, UsedAmount: 100}}, nil
+}
+
+func TestIAMUserListUsesOwnerScopeAndDistinguishesOutages(t *testing.T) {
+	for _, code := range []codes.Code{codes.PermissionDenied, codes.Unavailable} {
+		t.Run(code.String(), func(t *testing.T) {
+			billing := &scopedUserBillingClient{batchErr: status.Error(code, "read rejected")}
+			svc := service.NewAdminService(billing, nil, nil, nil)
+			ctx := iamBusinessContext(service.WithOperatorCredential(authorization.WithExternal(context.Background()), "verified-session"))
+			rows := enrichUsersWithBilling(ctx, svc, []*commonv1.UserInfo{{Id: 42, ContactFieldsVisible: true}, {Id: 99}})
+			require.NotContains(t, rows[1], "balance")
+			require.True(t, rows[0]["contactFieldsVisible"].(bool))
+			require.False(t, rows[1]["contactFieldsVisible"].(bool))
+			if code == codes.PermissionDenied {
+				require.Equal(t, "0", rows[0]["balance"], "authorized zero must remain visible")
+				require.Equal(t, "100", rows[0]["usedAmount"])
+				require.Equal(t, []string{"42", "99"}, billing.reads)
+			} else {
+				require.NotContains(t, rows[0], "balance")
+				require.Equal(t, true, rows[0]["billingFieldsUnavailable"])
+				require.Empty(t, billing.reads)
+			}
+		})
+	}
+}
+
 func TestMergeReadonlyPricingModelsFiltersUnavailableAndAddsModalities(t *testing.T) {
 	rows := []readonlyPricingRow{
 		{Model: "enabled-model", InputPrice: new(float64(1))},
@@ -1519,7 +1611,7 @@ func TestMergeReadonlyPricingModelsFiltersUnavailableAndAddsModalities(t *testin
 		{ModelId: "registry-only", Status: 1, IsPublic: true, PricingInput: 0.005, PricingOutput: 0.015},
 	})
 
-	require.Len(t, merged, 2)
+	require.Len(t, merged, 1)
 	byModel := map[string]readonlyPricingRow{}
 	for _, row := range merged {
 		byModel[row.Model] = row
@@ -1527,7 +1619,7 @@ func TestMergeReadonlyPricingModelsFiltersUnavailableAndAddsModalities(t *testin
 	assert.NotContains(t, byModel, "disabled-model")
 	assert.Equal(t, []string{"text", "image"}, byModel["enabled-model"].InputModalities)
 	assert.NotContains(t, byModel, "registry-only")
-	assert.Contains(t, byModel, "legacy-model")
+	assert.NotContains(t, byModel, "legacy-model", "unregistered price options cannot establish model availability")
 }
 
 func TestReadonlyPricingReadsLegacyQuotaPerUnit(t *testing.T) {

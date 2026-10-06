@@ -75,6 +75,7 @@ type User struct {
 	Username                                           string
 	DisplayName                                        string
 	Email                                              string
+	ContactFieldsVisible                               bool
 	Group                                              string
 	Status                                             int32
 	Role                                               int32

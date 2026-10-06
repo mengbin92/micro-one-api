@@ -39,10 +39,14 @@ func (uc *IdentityUsecase) redactManagedContact(ctx context.Context, point strin
 		}
 		for _, u := range users {
 			u.Email = ""
+			u.ContactFieldsVisible = false
 		}
 		return nil
 	}
 	if scope == nil {
+		for _, u := range users {
+			u.ContactFieldsVisible = true
+		}
 		return nil
 	}
 	for _, u := range users {
@@ -50,7 +54,8 @@ func (uc *IdentityUsecase) redactManagedContact(ctx context.Context, point strin
 		if err != nil {
 			return err
 		}
-		if !scope.Matches(facts, false) {
+		u.ContactFieldsVisible = scope.Matches(facts, false)
+		if !u.ContactFieldsVisible {
 			u.Email = ""
 		}
 		u.PasswordHash = ""

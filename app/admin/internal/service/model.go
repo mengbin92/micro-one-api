@@ -16,6 +16,14 @@ import (
 // Admin-api proxies model management RPCs to channel-service, mirroring the
 // existing channel/subscription-account pattern.
 
+// ListPublicModels reads only the owner's public catalog projection.
+func (s *AdminService) ListPublicModels(ctx context.Context, req *channelv1.ListModelsRequest) (*channelv1.ListModelsResponse, error) {
+	if s == nil || s.channelClient == nil {
+		return nil, nil
+	}
+	return s.channelClient.ListPublicModels(ctx, req)
+}
+
 // ListModels lists models from the registry.
 func (s *AdminService) ListModels(ctx context.Context, req *channelv1.ListModelsRequest) (*channelv1.ListModelsResponse, error) {
 	if s == nil || s.channelClient == nil {
