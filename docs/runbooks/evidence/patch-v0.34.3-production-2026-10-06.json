@@ -1,0 +1,29 @@
+{
+  "deployment": {
+    "version": "v0.34.3",
+    "source_commit": "185f02d2975aee47b15a2949c88f08b0939e9313",
+    "source_digest": "d566c7b9ee72b12c8368a5020fe55e43bf5ec1a21f00e918112edf98ad57461a",
+    "files_verified": 173,
+    "index_sha256": "92c4fd7b0356be7f13bde3eff423e39e9c1be8647f35564be583a96d554cd738",
+    "backup": "/opt/web/dist.bak.v0.34.3-20261006-173546",
+    "old_hashed_assets_retained": true,
+    "served_index_verified": true,
+    "backend_containers_unchanged": true,
+    "published_at": "2026-10-06T09:35:47.942851+00:00"
+  },
+  "production_browser": {
+    "live_permission_dialog_visible": true,
+    "within_viewport": true,
+    "close_verified": true,
+    "second_record_verified": true,
+    "mutations_performed": false
+  },
+  "local_validation": {
+    "unit_tests_passed": 215,
+    "desktop_and_mobile_viewport_tests_passed": 2,
+    "metadata_preview_regression_passed": true,
+    "typecheck_passed": true,
+    "eslint_passed": true,
+    "production_build_and_budget_passed": true
+  }
+}
