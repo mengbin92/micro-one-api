@@ -1,0 +1,26 @@
+.playground-markdown {
+  min-width: 0;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+.playground-markdown > * + * { margin-top: 0.75rem; }
+.playground-markdown :is(h1, h2, h3, h4, h5, h6) { font-weight: 650; line-height: 1.4; margin-block: 1rem 0.5rem; }
+.playground-markdown h1 { font-size: 1.4em; }
+.playground-markdown h2 { font-size: 1.25em; }
+.playground-markdown h3 { font-size: 1.1em; }
+.playground-markdown :is(ul, ol) { padding-inline-start: 1.5rem; }
+.playground-markdown ul { list-style: disc; }
+.playground-markdown ol { list-style: decimal; }
+.playground-markdown li + li { margin-top: 0.25rem; }
+.playground-markdown blockquote { border-inline-start: 3px solid var(--border); padding-inline-start: 0.75rem; color: var(--muted-foreground); }
+.playground-markdown a { color: var(--primary); text-decoration: underline; text-underline-offset: 0.2em; }
+.playground-markdown :is(a, pre, .playground-table):focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.playground-markdown code { font-family: var(--font-mono); font-size: 0.9em; }
+.playground-markdown :not(pre) > code { border-radius: 0.25rem; background: var(--muted); padding: 0.1rem 0.3rem; }
+.playground-code { min-width: 0; max-width: 100%; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--muted); }
+.playground-code pre { max-width: 100%; overflow-x: auto; padding: 0.75rem; line-height: 1.6; white-space: pre; overflow-wrap: normal; tab-size: 2; }
+.playground-table { max-width: 100%; overflow-x: auto; }
+.playground-table table { border-collapse: collapse; min-width: 100%; font-variant-numeric: tabular-nums; }
+.playground-table :is(th, td) { border: 1px solid var(--border); padding: 0.4rem 0.6rem; text-align: start; white-space: nowrap; overflow-wrap: normal; }
+.playground-table th { background: var(--muted); font-weight: 600; }
+.playground-markdown hr { border-color: var(--border); }

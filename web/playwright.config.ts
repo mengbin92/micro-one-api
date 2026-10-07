@@ -4,7 +4,8 @@ export default defineConfig({
   testDir: './e2e',
   // The live IAM suite has its own config and receives RBAC_C_FIXTURE from
   // the Go integration harness; the shared smoke gate uses mocked APIs.
-  testIgnore: 'rbac-permissions.spec.ts',
+  // D7 injects the shipped CSP and must run against a production build.
+  testIgnore: ['rbac-permissions.spec.ts', 'playground-experience.spec.ts'],
   timeout: 30_000,
   expect: {
     timeout: 10_000,

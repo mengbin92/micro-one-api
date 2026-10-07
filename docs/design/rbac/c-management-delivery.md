@@ -11,6 +11,8 @@
 - 前端 `authorization.ts` 提供 `can/canAll/canAny` 和共用受保护查询。查询 key 包含 platform context、凭证变更后的身份 generation 和授权版本；权限未知、查询失败或未激活时不发送受保护查询，手动 refetch 同样检查权限。
 - AdminRoute 独立核对 console 和页面权限。没有总览权时进入首个可访问页面；导航、通知计数、健康轮询、详情/自动补全独立 gate。菜单 route/icon 仅使用注册白名单。管理入口不读取 JWT/localStorage 数值 role；自助订单页也改用授权快照选择管理或本人接口。
 - 403 保留有效 JWT，先取消在途请求、移除受保护缓存再刷新 authorization，禁止查询重试；401 清理登录。角色激活、权限快照重取、版本变化和最早失效时间到达均清除旧受保护数据。刷新失败保持拒绝，authorization 错误不递归刷新。
+
+> **后台续验修复（2026-10-07，本地已验、未部署）**：上条保留 C 阶段交付时点。后续普通后台轮询在摘要仍有效且权限/身份不变时保留展示与 owner read cache，避免整页卸载；写入/预检仍需要非 fetching 的实时授权状态。403、明确权限重验、失败、到期及身份/权限变化仍清旧数据，角色初始化页仅保留同一身份的本地冲突/选择状态。十项真实 owner 浏览器已通过，见 [诊断记录](../../runbooks/console-authorization-refresh-2026-10-07.md)。
 - `/session-roles` 展示本人可激活角色、来源和强制 deny；提交 reason 与本人 session CAS。DSD 的 selection_required 会话先选择角色，不能进入普通业务；选择冲突由服务端拒绝，成功后重取授权并进入可访问首页。
 
 ## C2：完整 IAM 工作区

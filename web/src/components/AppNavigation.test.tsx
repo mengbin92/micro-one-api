@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useQuery } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
@@ -8,6 +8,7 @@ import { AppNavigation } from './AppNavigation';
 import { server } from '@/test/msw/server';
 import { renderWithQuery } from '@/test/render';
 import { accountDashboardQueryOptions, userSelfQueryOptions } from '@/lib/account-queries';
+import { useAuthorization, useAuthorizationLifecycle } from '@/lib/authorization';
 
 function renderNavigation(initialPath = '/dashboard') {
   return renderWithQuery(
@@ -18,8 +19,10 @@ function renderNavigation(initialPath = '/dashboard') {
 }
 
 function SharedAccountQueryProbe() {
-  useQuery(userSelfQueryOptions);
-  useQuery(accountDashboardQueryOptions);
+  const auth = useAuthorization();
+  const enabled = auth.displaySnapshot?.authorization_mode === 'legacy' || auth.displaySnapshot?.session?.activation_state === 'active';
+  useQuery({ ...userSelfQueryOptions, enabled });
+  useQuery({ ...accountDashboardQueryOptions, enabled });
   return null;
 }
 
@@ -44,6 +47,30 @@ function mockSelfAndDashboardEmpty() {
 describe('AppNavigation', () => {
   beforeEach(() => {
     window.localStorage.clear();
+  });
+
+  it('discards shared identity and balance cache on credential changes', async () => {
+    localStorage.setItem('token', 'first-navigation-actor');
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({ authorization_mode: 'legacy', legacy_admin: false })),
+      http.get('/api/user/self', ({ request }) => {
+        const second = request.headers.get('authorization') === 'Bearer second-navigation-actor';
+        return HttpResponse.json({ success: true, data: { id: second ? 2 : 1, display_name: second ? 'Second actor' : 'First actor', role: 1 } });
+      }),
+      http.get('/api/user/dashboard', ({ request }) => HttpResponse.json({ success: true, data: { balance: request.headers.get('authorization') === 'Bearer second-navigation-actor' ? 20000 : 10000 } })),
+    );
+    function Shell() { useAuthorizationLifecycle(); return <AppNavigation />; }
+    renderWithQuery(<MemoryRouter><Shell /></MemoryRouter>);
+    await screen.findByText('First actor');
+    await screen.findByText('$1.0000');
+    await act(async () => {
+      localStorage.setItem('token', 'second-navigation-actor');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'token', newValue: 'second-navigation-actor' }));
+    });
+    expect(await screen.findByText('Second actor')).toBeVisible();
+    expect(await screen.findByText('$2.0000')).toBeVisible();
+    expect(screen.queryByText('First actor')).not.toBeInTheDocument();
+    expect(screen.queryByText('$1.0000')).not.toBeInTheDocument();
   });
 
   it('renders user navigation links', () => {

@@ -91,4 +91,57 @@ describe('relay playground client', () => {
     expect(error).toBeInstanceOf(RelayPlaygroundError);
     expect(error).toMatchObject({ kind: 'protocol_error', status: 200, requestId: 'req-test' });
   });
+
+  it.each([[401, 'invalid_key'], [403, 'forbidden_model'], [402, 'insufficient_quota'], [429, 'rate_limited'], [503, 'upstream_unavailable'], [400, 'invalid_request'], [422, 'invalid_request'], [409, 'unknown']] as const)('classifies HTTP %s without retrying a billable request', async (status, kind) => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response('{"message":"denied"}', { status }));
+    await expect(executeChatCompletion({ baseUrl: 'https://relay.test', apiKey: 'sk-test', requestId: 'client-1', request: { model: 'm', messages: [], stream: false } })).rejects.toMatchObject({ kind, status, requestId: 'req-test' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([['{"error":"insufficient balance"}', 'insufficient_quota'], ['{"error":{"message":"quota exceeded"}}', 'insufficient_quota'], ['broken json', 'unknown']] as const)('handles nonstandard error payload %s', async (payload, kind) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response(payload, { status: 418 }));
+    await expect(fetchRelayModels({ baseUrl: 'https://relay.test', apiKey: 'sk-test' })).rejects.toMatchObject({ kind });
+  });
+
+  it.each([new DOMException('stopped', 'AbortError'), new TypeError('network')])('distinguishes cancellation from connectivity failure', async (cause) => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(cause);
+    const kind = cause instanceof DOMException ? 'aborted' : 'cors_or_network';
+    await expect(fetchRelayModels({ baseUrl: 'https://relay.test', apiKey: 'sk-test' })).rejects.toMatchObject({ kind });
+    await expect(executeChatCompletion({ baseUrl: 'https://relay.test', apiKey: 'sk-test', request: { model: 'm', messages: [], stream: true } })).rejects.toMatchObject({ kind });
+  });
+
+  it.each(['not json', '{"data":null}'])('rejects invalid model discovery %s', async (payload) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response(payload));
+    await expect(fetchRelayModels({ baseUrl: 'https://relay.test', apiKey: 'sk-test' })).rejects.toMatchObject({ kind: 'protocol_error' });
+  });
+
+  it('filters invalid model rows and normalizes successful JSON usage', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(response('{"data":[null,{},123,{"id":" "},{"id":"m"}]}')).mockResolvedValueOnce(response('{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"input_tokens":3,"output_tokens":1}}'));
+    expect(await fetchRelayModels({ baseUrl: 'https://relay.test', apiKey: 'sk-test' })).toEqual([{ id: 'm' }]);
+    const delta = vi.fn();
+    const result = await executeChatCompletion({ baseUrl: 'https://relay.test', apiKey: 'sk-test', request: { model: 'm', messages: [], stream: false }, callbacks: { onDelta: delta } });
+    expect(result.usage).toMatchObject({ prompt_tokens: 3, completion_tokens: 1 }); expect(delta).toHaveBeenCalledWith('ok');
+  });
+
+  it.each([
+    ['data: {"choices":[{"delta":{"content":"partial"}}]}\n\n', 'Relay 流在收到 [DONE] 前结束'],
+    ['data: broken\n\ndata: broken\n\ndata: broken\n\n', 'Relay 流式响应格式异常'],
+  ])('keeps incomplete or malformed streams out of the success state', async (text, message) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response(text, { headers: { 'Content-Type': 'text/event-stream' } }));
+    await expect(executeChatCompletion({ baseUrl: 'https://relay.test', apiKey: 'sk-test', request: { model: 'm', messages: [], stream: true } })).rejects.toMatchObject({ kind: 'protocol_error', message });
+  });
+
+  it('allows an isolated malformed event to recover and forwards reasoning separately', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response('data: broken\n\ndata: {"choices":[{"delta":{"reasoning_content":"private","content":"visible"}}]}\n\ndata: [DONE]\n\n', { headers: { 'Content-Type': 'text/event-stream' } }));
+    const reasoning = vi.fn(); const delta = vi.fn();
+    await executeChatCompletion({ baseUrl: 'https://relay.test', apiKey: 'sk-test', request: { model: 'm', messages: [], stream: true }, callbacks: { onDelta: delta, onReasoning: reasoning } });
+    expect(reasoning).toHaveBeenCalledWith('private'); expect(delta).toHaveBeenCalledWith('visible');
+  });
+
+  it('rejects unreadable JSON and missing response streams', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(response('bad')).mockResolvedValueOnce(response(null, { headers: { 'Content-Type': 'text/event-stream' } }));
+    const options = { baseUrl: 'https://relay.test', apiKey: 'sk-test', request: { model: 'm', messages: [], stream: true } };
+    await expect(executeChatCompletion(options)).rejects.toMatchObject({ kind: 'protocol_error' });
+    await expect(executeChatCompletion(options)).rejects.toMatchObject({ kind: 'protocol_error' });
+  });
 });

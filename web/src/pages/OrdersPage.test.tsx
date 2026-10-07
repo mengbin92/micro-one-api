@@ -162,4 +162,28 @@ describe('OrdersPage', () => {
 
     expect(openSpy).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['closed', 'https://pay.example.test/closed'],
+    ['pending', ''],
+    ['pending', 'mock://isolated-payment'],
+  ])('never opens a payment for status=%s url=%s', async (status, pay_url) => {
+    const user = userEvent.setup();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const order = { id: 1, trade_no: 'SAFE-ORDER', status, pay_url, money_cents: 1, asset_amount: 0, currency: 'CNY' };
+    server.use(
+      http.get('/api/user/payment/orders', () => HttpResponse.json({ success: true, data: { orders: [order] } })),
+      http.get('/api/user/payment/orders/SAFE-ORDER', () => HttpResponse.json({ success: true, data: { order } })),
+      http.get('/api/user/logs', () => HttpResponse.json({ success: true, data: { logs: [] } })),
+    );
+    renderWithQuery(<OrdersPage />);
+    await user.click(await screen.findByRole('button', { name: '查看订单 SAFE-ORDER' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('CNY 0.01')).toBeVisible();
+    expect(within(dialog).getByText('0.0000')).toBeVisible();
+    if (status === 'closed') expect(within(dialog).queryByRole('button', { name: '继续支付' })).not.toBeInTheDocument();
+    else if (!pay_url) expect(within(dialog).getByRole('button', { name: '继续支付' })).toBeDisabled();
+    else await user.click(within(dialog).getByRole('button', { name: '继续支付' }));
+    expect(open).not.toHaveBeenCalled();
+  });
 });

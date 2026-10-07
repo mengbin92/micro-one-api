@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { AssistantContent } from '@/components/playground/AssistantContent';
 import { cn } from '@/lib/utils';
 import { clearPlaygroundCredential, takePlaygroundCredential } from '@/lib/playground-credential';
 import {
@@ -242,7 +243,9 @@ export function PlaygroundPage() {
   }
 
   async function sendMessage() {
-    if (!canSend || !address) return;
+    // React may batch a shortcut and click before disabled state renders.
+    // The mutable request guard must be checked at the moment of submission.
+    if (activeRequest.current || !canSend || !address) return;
     const content = draft.trim();
     const requestId = id('playground-chat');
     const controller = new AbortController();
@@ -451,7 +454,7 @@ export function PlaygroundPage() {
           </CardContent>
         </Card>
 
-        <Card className="flex min-h-[620px] flex-col rounded-2xl">
+        <Card className="flex min-h-[620px] min-w-0 flex-col rounded-2xl">
           <CardHeader className="border-b border-border">
             <CardTitle className="flex items-center gap-2 text-base"><Activity className="size-4 text-blue-600" />{t("对话")}</CardTitle>
             <CardDescription>{selectedModel || t("验证 API Key 后选择模型")}</CardDescription>
@@ -483,7 +486,9 @@ export function PlaygroundPage() {
                         </button>
                       ) : null}
                     </div>
-                    <div className="whitespace-pre-wrap break-words leading-6">{message.content || (message.status === 'streaming' ? '…' : '')}</div>
+                    {message.role === 'assistant'
+                      ? <AssistantContent content={message.content} streaming={message.status === 'streaming'} />
+                      : <div className="whitespace-pre-wrap break-words leading-7 [overflow-wrap:anywhere]">{message.content}</div>}
                     {message.requestId ? (
                       <button type="button" onClick={() => setSelectedInspectorId(message.requestId === inspector.clientRequestId ? null : message.requestId!)} className="mt-2 break-all text-left font-mono text-xs underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" aria-label={t("查看请求 {id}", { id: message.requestId })}>
                         {message.requestId}

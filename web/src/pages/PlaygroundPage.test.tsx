@@ -1,14 +1,103 @@
-import { screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import * as relay from '@/lib/relay-playground';
 import { MAX_ASSISTANT_CONTENT_BYTES, PlaygroundPage } from './PlaygroundPage';
 import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 import { setPlaygroundCredential } from '@/lib/playground-credential';
 
 describe('PlaygroundPage', () => {
+  async function ready() {
+    server.use(
+      http.get('/api/status', () => HttpResponse.json({ success: true, data: { server_address: 'https://relay.test' } })),
+      http.get('https://relay.test/v1/models', () => HttpResponse.json({ data: [{ id: 'demo-model' }] })),
+    );
+    setPlaygroundCredential('sk-playground-secret');
+    const view = renderWithQuery(<MemoryRouter><PlaygroundPage /></MemoryRouter>);
+    await screen.findByText('已验证：sk-p••••cret');
+    return view;
+  }
+
+  it('guards simultaneous shortcut and click submissions before React renders', async () => {
+    const execute = vi.spyOn(relay, 'executeChatCompletion').mockImplementation(() => new Promise(() => {}));
+    await ready();
+    fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: 'one billable request' } });
+    const input = screen.getByLabelText('输入消息');
+    const send = screen.getByRole('button', { name: '发送' });
+    act(() => {
+      fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+      fireEvent.click(send);
+    });
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: '重用消息' })).toBeDisabled();
+  });
+
+  it.each(['停止', '清空'])('ignores late deltas, usage and completion after %s and a subsequent request', async (action) => {
+    type Options = Parameters<typeof relay.executeChatCompletion>[0];
+    const pending: Array<{ options: Options; resolve: (result: relay.ChatCompletionResult) => void }> = [];
+    vi.spyOn(relay, 'executeChatCompletion').mockImplementation(options => new Promise(resolve => pending.push({ options, resolve })));
+    const user = userEvent.setup();
+    await ready();
+    await user.type(screen.getByLabelText('输入消息'), 'first');
+    await user.click(screen.getByRole('button', { name: '发送' }));
+    act(() => pending[0].options.callbacks?.onDelta?.('**partial**'));
+    expect(screen.getByText('**partial**')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: action }));
+    expect(pending[0].options.signal?.aborted).toBe(true);
+    await user.type(screen.getByLabelText('输入消息'), 'second');
+    await user.click(screen.getByRole('button', { name: '发送' }));
+    await act(async () => {
+      pending[0].options.callbacks?.onDelta?.('OLD LATE DELTA');
+      pending[0].options.callbacks?.onUsage?.({ completion_tokens: 99999 });
+      pending[0].resolve({ status: 200, streamed: true });
+    });
+    expect(screen.queryByText(/OLD LATE DELTA/)).not.toBeInTheDocument();
+    expect(screen.queryByText('99,999')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '停止' })).toBeVisible();
+    await act(async () => {
+      pending[1].options.callbacks?.onDelta?.('**new answer**');
+      pending[1].resolve({ status: 200, streamed: true });
+    });
+    expect(await screen.findByText('new answer')).toBeVisible();
+    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled();
+  });
+
+  it('aborts an active request on unmount', async () => {
+    const execute = vi.spyOn(relay, 'executeChatCompletion').mockImplementation(() => new Promise(() => {}));
+    const view = await ready();
+    fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: 'hello' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    view.unmount();
+    expect(execute.mock.calls[0][0].signal?.aborted).toBe(true);
+  });
+
+  it.each([['温度', '3'], ['最大 Token', '0'], ['最大 Token', '1.5']])('validates %s=%s before starting a billable request', async (label, value) => {
+    const execute = vi.spyOn(relay, 'executeChatCompletion');
+    await ready();
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: 'keep draft' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('超出允许范围');
+    expect(execute).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('输入消息')).toHaveValue('keep draft');
+  });
+
+  it.each([[402, '额度不足'], [403, '模型无权限']])('exposes HTTP %s recovery without automatic retries or losing the session', async (status, title) => {
+    let calls = 0;
+    server.use(http.post('https://relay.test/v1/chat/completions', () => { calls++; return HttpResponse.json({ error: { message: 'denied' } }, { status }); }));
+    localStorage.setItem('token', 'user-session');
+    const user = userEvent.setup();
+    await ready();
+    await user.type(screen.getByLabelText('输入消息'), 'hello');
+    await user.click(screen.getByRole('button', { name: '发送' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(title);
+    if (status === 402) expect(screen.getByRole('link', { name: '前往充值' })).toHaveAttribute('href', '/recharge');
+    else expect(screen.queryByRole('link', { name: '前往充值' })).not.toBeInTheDocument();
+    expect(calls).toBe(1); expect(localStorage.getItem('token')).toBe('user-session');
+  });
   it('consumes a one-time token handoff and loads models from Relay', async () => {
     const secret = 'sk-playground-secret';
     server.use(

@@ -197,6 +197,17 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Measure critical money, authorization and cancellation branches
+        run: npm run test:critical
+
+      - name: Upload critical coverage
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-critical-coverage
+          path: web/coverage/critical/
+          if-no-files-found: error
+
       - name: Build
         run: npm run build
 

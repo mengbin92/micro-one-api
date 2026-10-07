@@ -240,13 +240,13 @@ export function AdminUsersPage() {
                       <TableCell className="font-mono text-sm">{user.id}</TableCell>
                       <TableCell className="font-medium">{user.username}</TableCell>
                       <TableCell className="hidden lg:table-cell">{user.displayName || '—'}</TableCell>
-                      <TableCell className="max-w-56 truncate">{user.email || (auth.snapshot?.authorization_mode === 'iam' && !user.contactFieldsVisible ? t('受限') : '—')}</TableCell>
+                      <TableCell className="max-w-56 truncate">{user.email || (auth.displaySnapshot?.authorization_mode === 'iam' && !user.contactFieldsVisible ? t('受限') : '—')}</TableCell>
                       <TableCell>{user.group}</TableCell>
                       <TableCell>
                         <span
                           className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${roleBadgeClass(user.role)}`}
                         >
-                          {auth.snapshot?.authorization_mode === 'legacy' ? roleLabel(user.role) : t('IAM 多角色')}
+                          {auth.displaySnapshot?.authorization_mode === 'legacy' ? roleLabel(user.role) : t('IAM 多角色')}
                         </span>
                       </TableCell>
                       <TableCell>{user.balance === undefined ? t(user.billingFieldsUnavailable ? '暂不可用' : '受限') : formatAmount(user.balance)}</TableCell>
@@ -265,7 +265,7 @@ export function AdminUsersPage() {
                       <TableCell className="text-right">
  <UserRoutingAccess userId={user.id} />
                         <div className="flex justify-end gap-2">
-                          {auth.can('identity.user_role.read') && <Link className="rounded border px-3 py-1 text-sm" to={`/admin/iam/assignments?user_id=${user.id}`}>{t('管理角色')}</Link>}
+                          {auth.displayCan('identity.user_role.read') && <Link className="rounded border px-3 py-1 text-sm" to={`/admin/iam/assignments?user_id=${user.id}`}>{t('管理角色')}</Link>}
 
                           <Button permission={user.status === 1 ? 'identity.user.disable' : 'identity.user.enable'}
                             variant="outline"

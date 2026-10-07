@@ -1,0 +1,218 @@
+{
+  "version": "v0.34.7",
+  "deployed_at": "2026-10-07T18:32:52.595588+08:00",
+  "backup_directory": "/opt/micro-one-api/deploy-v0.34.7-20261007-183249",
+  "rollback_tag": "docker-compose-channel-service:rollback-v0.34.7-20261007-183249",
+  "transport": {
+    "version": "v0.34.7",
+    "image_ref": "docker-compose-channel-service:v0.34.7",
+    "image_id": "sha256:d48580fdc65877b02b45299da70763f9c68c4f1da026691180078a07f8fc1a98",
+    "platform": "linux/amd64",
+    "source": {
+      "revision": "5c2911319fab22d9eb83f783314fcc1dc1881ac4",
+      "digest": "cc8a00234ebd6b49bff4c02d3eddd4a2bc8aa1d2427c7e1b0f4d5f7970a7b2d7"
+    },
+    "image_archive_sha256": "934819dd81e124c592ac16ddb6ea56037f836264b6184a125a3a2c1f651f594c",
+    "image_archive_bytes": 18480422,
+    "web_archive_sha256": "24b4604aa963fa5333794e9219ee5e0038c09d4456b8a06079442b68f1501a12",
+    "web_archive_bytes": 606505,
+    "web_index_sha256": "2061a6b5c2707d13822f7eebf9226da8e4a5c0888461b7065a2d4920e04b53f7"
+  },
+  "before": {
+    "services": {
+      "channel-service": {
+        "container_id": "8589008e176b7790fad34e61508d536dd26adb27fca0d93f729dfbc2f4bca2f5",
+        "image_id": "sha256:c234d03a251d0919a2e002c77ab13ff80df109c194391e73a6120363d0fcca46",
+        "image_ref": "docker-compose-channel-service:v0.34.1",
+        "env_sha256": "677dd537727c510eb17319c3901acd5a663a9e171c05eda186ccf2923db3aa05",
+        "restart_count": 0,
+        "started_at": "2026-10-06T09:03:57.66007255Z",
+        "running": true
+      },
+      "admin-api": {
+        "container_id": "e8fae9efc0807d5bcbec06b09a669c79d5ef19f50a4098fb0c9f94c76bdd6928",
+        "image_id": "sha256:2cb481a5a5e2d814f96dfa7847cf139f5bef3310e4b0edfe9ef370d680ca2f57",
+        "image_ref": "docker-compose-admin-api:v0.34.2",
+        "env_sha256": "28db38fdccdc3e259572cc216cddda297d2822c953e993c693bacecd8bf68255",
+        "restart_count": 0,
+        "started_at": "2026-10-06T09:16:31.52540723Z",
+        "running": true
+      },
+      "identity-service": {
+        "container_id": "e6a0acc820086a2d621ded46dd09734cd401b5d0be30ad0d74f7c106aeb5d7ff",
+        "image_id": "sha256:9deb67acf25c9555ba2030de01ba696549a6daeb141df2d419f8fac0f6a235e8",
+        "image_ref": "docker-compose-identity-service:v0.34.1",
+        "env_sha256": "e41add83db3064090d427bc68a09eac034a499cbefdc6e3363eb96dc08c38016",
+        "restart_count": 0,
+        "started_at": "2026-10-06T09:03:59.359091341Z",
+        "running": true
+      },
+      "billing-service": {
+        "container_id": "eee2858428e2b5b350155d5c5f707969ee5cff613cadedd9b4688797a5cabfed",
+        "image_id": "sha256:b0d2bb409009b0ec2539eafb6f9c24cb2177c3cf2fb5aa7c6b34ad2470c47018",
+        "image_ref": "docker-compose-billing-service:v0.34.6",
+        "env_sha256": "e506233214ceb0ff73801cfc274ea4ff2a0bc0625d168b5a6f231acab74e029a",
+        "restart_count": 0,
+        "started_at": "2026-10-07T02:12:52.690749463Z",
+        "running": true
+      },
+      "config-service": {
+        "container_id": "7cc6a5a6618f2da3d17471a9799ae25d81bba3c9204791732fa954d6cbe635f7",
+        "image_id": "sha256:d7fa5f83aeade82a60e9abf23e915f6ea2b2938b19c9d13b375e0ea171cfb0ac",
+        "image_ref": "docker-compose-config-service:v0.34.4",
+        "env_sha256": "912c406eabba6fc72b93d1eb696b1730a384c3433f8311628f3c2af17a4b4ee2",
+        "restart_count": 0,
+        "started_at": "2026-10-06T10:51:04.327488447Z",
+        "running": true
+      },
+      "log-service": {
+        "container_id": "45e664fdf7ee175e282009ca4a0c2247f5d640e03fd4a74db57b0ce97b8132ef",
+        "image_id": "sha256:3da9944c8fa8a07a3a0d6263071d3be87a974b2a0394b7ec70c2e1d3bad98287",
+        "image_ref": "docker-compose-log-service:rbac-review-42b21ad4",
+        "env_sha256": "4fe774e84d82d49d6bee83119209f8f5e1acf1927130bc1c937f7f3d7f99e2fd",
+        "restart_count": 0,
+        "started_at": "2026-10-05T10:36:24.791614751Z",
+        "running": true
+      },
+      "relay-gateway": {
+        "container_id": "66482b5495970b45f42948829ea8a9e9b8785076752c31c6e2cab207f17970ae",
+        "image_id": "sha256:63864dc9e220beeb59c35943d304b33555f57f5a802cf548aaa5056b26410470",
+        "image_ref": "docker-compose-relay-gateway:rbac-review-42b21ad4",
+        "env_sha256": "21f461902732cd95274ecefd4dead7076da610d16286aefc165c01a7892f12b7",
+        "restart_count": 0,
+        "started_at": "2026-10-05T10:36:33.309583132Z",
+        "running": true
+      },
+      "monitor-worker": {
+        "container_id": "9cad349d1ba041a36bcfa37e2a3e64fe92757f9b6c40e86618edb868cf4961a0",
+        "image_id": "sha256:5e3e45b49edb62f5bfdff07799195f4d70adcad541657aef0a98812726f8a04d",
+        "image_ref": "docker-compose-monitor-worker:rbac-review-42b21ad4",
+        "env_sha256": "3a0b3f07900d3381a52050efe987337b0063d923002c5608827c4db08b7e9429",
+        "restart_count": 0,
+        "started_at": "2026-10-05T10:36:25.481126505Z",
+        "running": true
+      },
+      "notify-worker": {
+        "container_id": "d4171b3a4732ac9298219e7feae98249ef698b192f785cbf9f3c2632a096bc6e",
+        "image_id": "sha256:f42c1172ab1be4df04176440d71200421aaf25ac8be947aa4d90486fc4cf659c",
+        "image_ref": "docker-compose-notify-worker:rbac-review-42b21ad4",
+        "env_sha256": "5cabe160f3831976bd3b9682e0ffd19e6718cd75cb6d531638df9c7a24241a5e",
+        "restart_count": 0,
+        "started_at": "2026-10-05T10:36:28.145019971Z",
+        "running": true
+      }
+    },
+    "policy": "iam\tcomplete\t7\t2",
+    "web_index_sha256": "6598982adfe66c4729ef23755bdc4dfef0e070dd810aff8107c34f8720d45d7f"
+  },
+  "after": {
+    "services": {
+      "channel-service": {
+        "container_id": "3ed4c9103c39361a60ecd09dfeff9237e9b1c100ee6f86180cad7e52767caed8",
+        "image_id": "sha256:d48580fdc65877b02b45299da70763f9c68c4f1da026691180078a07f8fc1a98",
+        "image_ref": "docker-compose-channel-service:v0.34.7",
+        "env_sha256": "677dd537727c510eb17319c3901acd5a663a9e171c05eda186ccf2923db3aa05",
+        "restart_count": 0,
+        "started_at": "2026-10-07T10:32:51.091285956Z",
+        "running": true
+      },
+      "admin-api": {
+        "container_id": "e8fae9efc0807d5bcbec06b09a669c79d5ef19f50a4098fb0c9f94c76bdd6928",
+        "image_id": "sha256:2cb481a5a5e2d814f96dfa7847cf139f5bef3310e4b0edfe9ef370d680ca2f57",
+        "image_ref": "docker-compose-admin-api:v0.34.2",
+        "env_sha256": "28db38fdccdc3e259572cc216cddda297d2822c953e993c693bacecd8bf68255",
+        "restart_count": 0,
+        "started_at": "2026-10-06T09:16:31.52540723Z",
+        "running": true
+      },
+      "identity-service": {
+        "container_id": "e6a0acc820086a2d621ded46dd09734cd401b5d0be30ad0d74f7c106aeb5d7ff",
+        "image_id": "sha256:9deb67acf25c9555ba2030de01ba696549a6daeb141df2d419f8fac0f6a235e8",
+        "image_ref": "docker-compose-identity-service:v0.34.1",
+        "env_sha256": "e41add83db3064090d427bc68a09eac034a499cbefdc6e3363eb96dc08c38016",
+        "restart_count": 0,
+        "started_at": "2026-10-06T09:03:59.359091341Z",
+        "running": true
+      },
+      "billing-service": {
+        "container_id": "eee2858428e2b5b350155d5c5f707969ee5cff613cadedd9b4688797a5cabfed",
+        "image_id": "sha256:b0d2bb409009b0ec2539eafb6f9c24cb2177c3cf2fb5aa7c6b34ad2470c47018",
+        "image_ref": "docker-compose-billing-service:v0.34.6",
+        "env_sha256": "e506233214ceb0ff73801cfc274ea4ff2a0bc0625d168b5a6f231acab74e029a",
+        "restart_count": 0,
+        "started_at": "2026-10-07T02:12:52.690749463Z",
+        "running": true
+      },
+      "config-service": {
+        "container_id": "7cc6a5a6618f2da3d17471a9799ae25d81bba3c9204791732fa954d6cbe635f7",
+        "image_id": "sha256:d7fa5f83aeade82a60e9abf23e915f6ea2b2938b19c9d13b375e0ea171cfb0ac",
+        "image_ref": "docker-compose-config-service:v0.34.4",
+        "env_sha256": "912c406eabba6fc72b93d1eb696b1730a384c3433f8311628f3c2af17a4b4ee2",
+        "restart_count": 0,
+        "started_at": "2026-10-06T10:51:04.327488447Z",
+        "running": true
+      },
+      "log-service": {
+        "container_id": "45e664fdf7ee175e282009ca4a0c2247f5d640e03fd4a74db57b0ce97b8132ef",
+        "image_id": "sha256:3da9944c8fa8a07a3a0d6263071d3be87a974b2a0394b7ec70c2e1d3bad98287",
+        "image_ref": "docker-compose-log-service:rbac-review-42b21ad4",
+        "env_sha256": "4fe774e84d82d49d6bee83119209f8f5e1acf1927130bc1c937f7f3d7f99e2fd",
+        "restart_count": 0,
+        "started_at": "2026-10-05T10:36:24.791614751Z",
+        "running": true
+      },
+      "relay-gateway": {
+        "container_id": "66482b5495970b45f42948829ea8a9e9b8785076752c31c6e2cab207f17970ae",
+        "image_id": "sha256:63864dc9e220beeb59c35943d304b33555f57f5a802cf548aaa5056b26410470",
+        "image_ref": "docker-compose-relay-gateway:rbac-review-42b21ad4",
+        "env_sha256": "21f461902732cd95274ecefd4dead7076da610d16286aefc165c01a7892f12b7",
+        "restart_count": 0,
+        "started_at": "2026-10-05T10:36:33.309583132Z",
+        "running": true
+      },
+      "monitor-worker": {
+        "container_id": "9cad349d1ba041a36bcfa37e2a3e64fe92757f9b6c40e86618edb868cf4961a0",
+        "image_id": "sha256:5e3e45b49edb62f5bfdff07799195f4d70adcad541657aef0a98812726f8a04d",
+        "image_ref": "docker-compose-monitor-worker:rbac-review-42b21ad4",
+        "env_sha256": "3a0b3f07900d3381a52050efe987337b0063d923002c5608827c4db08b7e9429",
+        "restart_count": 0,
+        "started_at": "2026-10-05T10:36:25.481126505Z",
+        "running": true
+      },
+      "notify-worker": {
+        "container_id": "d4171b3a4732ac9298219e7feae98249ef698b192f785cbf9f3c2632a096bc6e",
+        "image_id": "sha256:f42c1172ab1be4df04176440d71200421aaf25ac8be947aa4d90486fc4cf659c",
+        "image_ref": "docker-compose-notify-worker:rbac-review-42b21ad4",
+        "env_sha256": "5cabe160f3831976bd3b9682e0ffd19e6718cd75cb6d531638df9c7a24241a5e",
+        "restart_count": 0,
+        "started_at": "2026-10-05T10:36:28.145019971Z",
+        "running": true
+      }
+    },
+    "policy": "iam\tcomplete\t7\t2",
+    "web_index_sha256": "2061a6b5c2707d13822f7eebf9226da8e4a5c0888461b7065a2d4920e04b53f7"
+  },
+  "channel_health": 200,
+  "admin_health": 200,
+  "environment_preserved": true,
+  "other_eight_container_ids_preserved": true,
+  "iam_preserved": true,
+  "public_frontend": {
+    "url": "https://console.mengbin.top/index.html",
+    "http_status": 200,
+    "sha256": "2061a6b5c2707d13822f7eebf9226da8e4a5c0888461b7065a2d4920e04b53f7",
+    "matches_local_build": true
+  },
+  "live_browser": {
+    "url": "https://console.mengbin.top/admin/model-health",
+    "checked_at": "2026-10-07T18:36:50.898160+08:00",
+    "existing_administrator_session": true,
+    "initial_observed_routes": 11,
+    "keyword": "kimi",
+    "filtered_observed_routes": 2,
+    "auto_refresh_enabled": true,
+    "keyword_and_filtered_data_preserved_after_30_second_poll": true,
+    "loading_failure_visible": false,
+    "scope": "Read-only page inspection with the existing browser session; no new grants, JWT issuance, model calls or record mutations."
+  }
+}

@@ -16,11 +16,11 @@ export function SessionRolesPage() {
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  const snapshot = auth.snapshot;
+  const snapshot = auth.displaySnapshot;
   const ids = selection ?? snapshot?.active_role_ids ?? [];
   const activate = async () => {
     setSaving(true); setError(''); suspendProtectedQueries(client);
-    try { await activateRoles(ids, snapshot?.session?.revision ?? '0', reason); setSelection(null); await auth.refresh(); }
+    try { await activateRoles(ids, auth.snapshot?.session?.revision ?? '0', reason); setSelection(null); await auth.refresh(); }
     catch (err) { setError(getApiErrorMessage(err)); await auth.refresh(); }
     finally { setSaving(false); }
   };
@@ -31,9 +31,9 @@ export function SessionRolesPage() {
     <p>{t('激活状态')} {snapshot?.session?.activation_state} · {t('会话版本')} {snapshot?.session?.revision}</p>
     {(snapshot?.authorized_role_ids ?? []).map(id => <label key={id} className="flex items-center gap-3 rounded border p-3"><input type="checkbox" checked={ids.includes(id)} onChange={e => setSelection(e.target.checked ? [...ids, id] : ids.filter(value => value !== id))} />{snapshot?.roles?.find(role => role.id === id)?.name ?? `#${id}`}</label>)}
     <label className="block">{t('变更原因')}<input className="mt-2 w-full rounded border p-2" value={reason} onChange={e => setReason(e.target.value)} /></label>
-    <Button disabled={saving || !reason.trim() || !snapshot || auth.isFetching} onClick={() => void activate()}>{t('激活所选角色')}</Button>
+    <Button disabled={saving || !reason.trim() || !auth.snapshot || auth.isFetching} onClick={() => void activate()}>{t('激活所选角色')}</Button>
     {error && <p role="alert">{error}</p>}
-    {auth.can('admin.console.enter') && <Link className="ml-4 underline" to={firstAdminPage(auth.can)}>{t('进入管理')}</Link>}
+    {auth.displayCan('admin.console.enter') && <Link className="ml-4 underline" to={firstAdminPage(auth.displayCan)}>{t('进入管理')}</Link>}
     <details><summary>{t('授权来源与强制拒绝')}</summary><SourcesView sources={snapshot?.sources} /></details>
     </>}
   </div>;
