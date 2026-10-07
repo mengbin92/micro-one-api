@@ -305,9 +305,14 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 	if authErr = authorization.Require(ctx, "billing.reconciliation.run", authorization.ObjectFacts{Context: authorization.Platform()}); authErr != nil {
 		return nil, authErr
 	}
-	ctx, authErr = authorization.PrepareOptional(ctx, uc.authorization, "billing.reconciliation", "billing.reconciliation.issues.read")
-	if authErr != nil {
-		return nil, authErr
+	// The startup/hourly job is a trusted in-process caller. Optional field
+	// permissions apply to external operators; asking identity for a user
+	// session here would stop every background run before it can be recorded.
+	if authorization.External(ctx) {
+		ctx, authErr = authorization.PrepareOptional(ctx, uc.authorization, "billing.reconciliation", "billing.reconciliation.issues.read")
+		if authErr != nil {
+			return nil, authErr
+		}
 	}
 	if _, iam := authorization.QueryScopeFromContext(ctx, "billing.reconciliation.run"); iam && authorization.WriteReason(ctx) == "" {
 		return nil, ErrRoutingContextInvalid

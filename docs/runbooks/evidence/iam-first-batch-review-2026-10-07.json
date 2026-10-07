@@ -1,0 +1,142 @@
+{
+  "reviewed_commit": "1a325310",
+  "base_commit": "67ba46d1",
+  "branch": "codex/iam-first-batch",
+  "recorded_at": "2026-10-07T09:38:01.701043+08:00",
+  "production_mutations": false,
+  "production_recollected": false,
+  "remote_workflows_executed": false,
+  "findings": [
+    {
+      "id": "R1",
+      "priority": 1,
+      "status": "fixed",
+      "before": {
+        "partial_matrix_checker_exit": 0,
+        "expected_failure_checker_exit": 0,
+        "actual_CI_mode_test_only_make_exit": 0,
+        "actual_focused_scenarios": 2
+      },
+      "after": {
+        "mandatory_actual_scenarios": 10,
+        "forbidOnly": true,
+        "actual_CI_mode_test_only_make_exit": 2,
+        "temporary_focus_restored": true,
+        "expected_failure_and_partial_reports_rejected": true
+      }
+    },
+    {
+      "id": "R2",
+      "priority": 1,
+      "status": "fixed",
+      "before": {
+        "diff_exit": 128,
+        "classifier_exit": 0,
+        "suite_selection": "all false"
+      },
+      "after": {
+        "diff_error_fails_gate": true,
+        "selection_output_on_diff_error": "none",
+        "tested_dependency_and_docs_paths": 16
+      }
+    },
+    {
+      "id": "R3",
+      "priority": 2,
+      "status": "fixed",
+      "before": {
+        "common_smoke_passed": true,
+        "iam_go_report_survived": false
+      },
+      "after": {
+        "retained_file_count": 7,
+        "retained_hashes": {
+          "go-test.json": "d89004d90b3e0306dfb9ae6dc3fe0affd5522d4aceadeff8f5244a29b80bcc13",
+          "playwright.json": "189c6e4b17088176e833712e94482ba6ce5b19c7280a9b7b3e1c4ad9dec6ce8f",
+          "artifacts/.last-run.json": "91d1c43004802cd49950d78eb11c8fa7d05da8ffffe219a8b13b2f561bc00903",
+          "artifacts/rbac-permissions-root-role-4ef20-tree-and-matrix-share-edits-rbac-chrome/rbac-role-matrix.png": "686ad86a7e9c2e1e46d572c9df7344240b6aafe86083e45c2bfb5768f16f1080",
+          "artifacts/rbac-permissions-permissio-29c69-ewport-after-a-long-catalog-rbac-chrome/iam-permission-mobile.png": "1691fac99bfcaef6b29a1d6114276a80911cfcfe2dfcf9f5c88e769c02de3fd6",
+          "artifacts/rbac-permissions-permissio-429d7-ewport-after-a-long-catalog-rbac-chrome/iam-permission-desktop.png": "2ad2829822ef70f107916ff3f66d07301b163d3876fc99b714902ed66612401a",
+          "artifacts/rbac-permissions-alice-inh-3a2e7-crets-and-ancillary-polling-rbac-chrome/rbac-alice.png": "4f47e81bfff47785f606fb8ca9ee977bfab42ee52941acd8a91230e46b4f17d5"
+        },
+        "common_smoke_passed": true,
+        "checker_passed_after_common_smoke": true,
+        "git_ignored": true,
+        "docker_ignored": true
+      }
+    },
+    {
+      "id": "R4",
+      "priority": 2,
+      "status": "fixed",
+      "added": [
+        "authorized external reconciliation with independently allowed/denied issue fields",
+        "issue permission alone cannot run reconciliation",
+        "Billing owner direct valid self/foreign subject/password-revoked session",
+        "real catalog_reader dialog, no metadata save control or unauthorized reference read; valid-CAS metadata mutation denied and target unchanged"
+      ]
+    },
+    {
+      "id": "R5",
+      "priority": 2,
+      "status": "corrected",
+      "field": "non_root_sql_account_configured",
+      "basis": "original sanitized S1 account snapshot",
+      "actual_grants_reprobed": false
+    }
+  ],
+  "validation": [
+    {
+      "command": "make iam-browser-gate-check",
+      "status": "passed",
+      "unittest_methods": 12
+    },
+    {
+      "command": "make test-iam-browser",
+      "status": "passed",
+      "stats": {
+        "startTime": "2026-10-07T01:30:57.631Z",
+        "duration": 19585.832,
+        "expected": 10,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "contract": "scripts/iam-browser-contract.json",
+      "actual_scenarios": 10
+    },
+    {
+      "command": "go test -race ./app/billing/internal/biz ./internal/integration -run TestReconciliationExternalRunKeepsIndependentIssuePermission|TestReconciliationJobIAMBackgroundPersistsWithoutUserSession|TestIAMSelfSubscriptionProgressThroughRealOwners -count=1",
+      "status": "passed"
+    },
+    {
+      "command": "make verify",
+      "status": "passed",
+      "frontend_tests": 215,
+      "build_budget_checks": 6,
+      "rbac_contract_rows": 829
+    },
+    {
+      "command": "go test -race ./internal/integration ./app/billing/... -count=1",
+      "status": "passed",
+      "ordinary_browser_opt_in": "skipped here and executed separately",
+      "mysql_postgres_opt_in": "not reconfigured or reverified"
+    },
+    {
+      "command": "CI=1 npx playwright test e2e/operations-usage.spec.ts --grep subscription settled --project chrome",
+      "working_directory": "web",
+      "status": "passed",
+      "passed": 1,
+      "purpose": "prove common smoke does not remove independent IAM artifacts; does not replace first-batch full 67-pass common smoke"
+    },
+    {
+      "command": "go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.9 .github/workflows/ci.yml .github/workflows/e2e.yml .github/workflows/pull-request-e2e.yml",
+      "status": "passed"
+    }
+  ],
+  "boundaries": [
+    "No new production business implementation was changed during this review.",
+    "Previously implemented Billing background reconciliation fix remains undeployed.",
+    "Original first-batch nine-scenario report is retained as historical evidence; this review confirms the current ten-scenario contract."
+  ]
+}

@@ -22,6 +22,7 @@ func NewIAMStack(db *gorm.DB, resolver *authz.Client) *kgrpc.Server {
 	svc := service.NewBillingService(uc, nil, payment, nil)
 	svc.SetOwnerAuthorization(resolver)
 	subscriptions := subscriptiondata.NewRepository(db, nil)
+	uc.SetSubscriptionPrimatives(subscriptionbiz.NewSubscriptionUsecase(subscriptions, subscriptions))
 	refund := biz.NewRefundUsecase(d.PaymentRepo(), d.AccountRepo(), d.LedgerRepo(), subscriptionbiz.NewSubscriptionUsecase(subscriptions, subscriptions))
 	refund.SetAuthorization(resolver)
 	svc.SetRefundUsecase(refund)

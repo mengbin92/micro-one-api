@@ -48,7 +48,7 @@ func TestIAMCRealBrowserMatrix(t *testing.T) {
 	_, err := identity.EnsureRootAdmin(context.Background())
 	require.NoError(t, err)
 	users := map[string]int64{"root": 1}
-	for _, name := range []string{"alice", "bob", "finance", "auditor", "member", "selection"} {
+	for _, name := range []string{"alice", "bob", "finance", "auditor", "member", "selection", "catalog"} {
 		user, err := identity.Register(context.Background(), name, "password123", name+"@example.com", "default")
 		require.NoError(t, err)
 		users[name] = user.ID
@@ -76,11 +76,13 @@ func TestIAMCRealBrowserMatrix(t *testing.T) {
 	addRole(53, "finance_reader", map[string]string{"admin.console.enter": all, "billing.payment.list": finances, "billing.payment.read": finances, "billing.account.ledger.read": finances, "billing.account.cost.read": finances})
 	addRole(54, "bob_manager", map[string]string{"admin.console.enter": all, "identity.user_role.read": all, "identity.user_role.assign": all, "identity.user_role.revoke": all, "iam.role.list": all, "iam.role.read": all, "iam.authorization.simulate": all})
 	addRole(55, "auditor", map[string]string{"admin.console.enter": all, "iam.audit.read": all})
+	addRole(56, "catalog_reader", map[string]string{"admin.console.enter": all, "iam.permission.list": all})
 	assign("alice", 52)
 	assign("alice", 53)
 	assign("finance", 53)
 	assign("bob", 54)
 	assign("auditor", 55)
+	assign("catalog", 56)
 	assign("selection", 55)
 	assign("selection", 53)
 	// A single delegation covers the target user's whole resulting maximum,
@@ -108,7 +110,7 @@ func TestIAMCRealBrowserMatrix(t *testing.T) {
 		tokens[name] = raw
 		snapshot, err := identity.GetSessionAuthorization(context.Background(), raw, authorization.Platform())
 		require.NoError(t, err)
-		active := map[string][]int64{"alice": {52, 53}, "bob": {54}, "finance": {53}, "auditor": {55}}
+		active := map[string][]int64{"alice": {52, 53}, "bob": {54}, "finance": {53}, "auditor": {55}, "catalog": {56}}
 		if ids, ok := active[name]; ok {
 			_, err = identity.ActivateSessionRoles(context.Background(), raw, authorization.Platform(), ids, snapshot.Session.Revision, "C browser setup")
 			require.NoError(t, err)

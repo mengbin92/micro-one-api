@@ -7,6 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.34.5] - 2026-10-07
+
+v0.34.5 是 v0.34.4 之后的 **PATCH 可靠性与验收修复版本**：恢复 IAM 切换后的后台定时对账，强化完整 IAM 持续门禁，补齐本人订阅/owner/目录只读验收与证据范围。运行时只更新 billing，前端静态资源不变；无 API/proto、迁移或业务配置变更。详见 [release-v0.34.5.md](docs/releases/release-v0.34.5.md)。
+
+### Fixed
+
+- 第一批复审：IAM 门禁拒绝精简矩阵、`test.only` 与预期失败，PR diff 失败不再静默跳过专项；每次独立保存 IAM 验收文件，避免被通用 smoke 删除。补齐目录只读与直接 owner 授权回归并修正 SQL 证据表述，见 [审查记录](docs/design/iam-first-batch-review-2026-10-07.md)。
+- IAM 启用后定时对账不再因可选明细字段权限要求用户会话而在保存运行记录前中止；仅后台本进程路径使用既有信任，外部 operator、运行权与字段权限仍验证。2026-10-07 已更新生产 Billing，启动轮 #365 completed、差异 0，环境及 IAM 状态保持。
+
+### Added
+
+- 固定 IAM 入口契约接入本地 verify/后端 CI；共享 E2E 新增真实 owner 浏览器专项与 PR 路径选择，拒绝跳过或缺失的 Go/Playwright 验收。
+- 本人订阅进度与 API Key 用量的真实跨服务冻结额度回归、桌面/手机权限详情检查及第一批只读生产/关键链路验收，见 [实施记录](docs/runbooks/iam-first-batch-acceptance-2026-10-07.md)。
+
 ## [0.34.4] - 2026-10-06
 
 v0.34.4 是 v0.34.3 之后的 **PATCH 安全修复版本**：关闭七条 GitHub Code Scanning 告警，固定配置查询边界并移除未使用的易受攻击前端 CLI 工具链。更新 config 与前端；无 API/proto、迁移或配置变更。详见 [release-v0.34.4.md](docs/releases/release-v0.34.4.md)。

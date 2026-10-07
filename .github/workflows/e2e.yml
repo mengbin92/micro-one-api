@@ -25,11 +25,57 @@ on:
         required: false
         type: boolean
         default: true
+      run_iam:
+        description: Run the real owner-backed IAM browser matrix
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
 jobs:
+  iam-browser:
+    if: inputs.run_iam
+    name: IAM browser matrix (real owners)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27'
+          cache: true
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install pinned generators
+        run: |
+          make init
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Generate protocol stubs
+        run: make api config
+      - name: Install web dependencies and Chrome
+        working-directory: web
+        run: |
+          npm ci
+          npx playwright install chrome
+      - name: Verify reviewed entry contract
+        run: make rbac-contract-check
+      - name: Execute IAM browser matrix (skip is failure)
+        run: make test-iam-browser
+        timeout-minutes: 15
+      - name: Upload IAM execution evidence and failure traces
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: iam-browser-evidence
+          path: web/iam-test-results/
+          if-no-files-found: error
+
   routing-e2e:
     if: inputs.run_routing
     name: Routing v2 acceptance (${{ matrix.driver }})
