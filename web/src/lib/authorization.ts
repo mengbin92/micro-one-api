@@ -130,10 +130,59 @@ export function useAuthorizedQuery<T>(options: UseQueryOptions<T> & { permission
   // can retain their cache during polling; failed/expired/explicitly invalidated
   // summaries never enable reads or preserve sensitive data.
   const allowed = typeof permission === 'string' ? auth.displayCan(permission) : auth.displayCanAll(permission);
-  const result = useQuery({ ...rest, queryKey: [...options.queryKey, 'authorization', auth.contextKey, auth.generation], enabled: allowed && options.enabled !== false, retry: (count, error) => { if ((error as { response?: { status?: number } }).response?.status === 403) return false; return typeof configuredRetry === 'function' ? configuredRetry(count, error) : configuredRetry === true || (typeof configuredRetry === 'number' && count < configuredRetry); }, meta: { ...options.meta, protected: true }, queryFn: typeof options.queryFn === 'function' ? (ctx) => {
-    if (!allowed) throw new Error('没有执行此查询的权限');
-    return (options.queryFn as (context: Parameters<Exclude<typeof options.queryFn, undefined | symbol>>[0]) => T | Promise<T>)(ctx);
-  } : options.queryFn });
+  const queryKey = [...options.queryKey, 'authorization', auth.contextKey, auth.generation];
+  // A 403 clears protected queries and revalidates the summary. Keep the
+  // rejection outside that cache so an unchanged summary cannot recreate the
+  // same failing read indefinitely, including after the route remounts.
+  const denialKey = ['authorization-denial', ...queryKey];
+  const denial = useQuery<Error | null>({ queryKey: denialKey, queryFn: () => null, enabled: false });
+  const result = useQuery({
+    ...rest,
+    queryKey,
+    enabled: allowed && options.enabled !== false,
+    retry: (count, error) => {
+      if ((error as { response?: { status?: number } }).response?.status === 403) return false;
+      return typeof configuredRetry === 'function' ? configuredRetry(count, error) : configuredRetry === true || (typeof configuredRetry === 'number' && count < configuredRetry);
+    },
+    meta: { ...options.meta, protected: true },
+    queryFn: typeof options.queryFn === 'function' ? async (ctx) => {
+      if (!allowed) throw new Error('没有执行此查询的权限');
+      const rejection = client.getQueryData<Error>(denialKey);
+      if (rejection) throw rejection;
+      try {
+        return await (options.queryFn as (context: Parameters<Exclude<typeof options.queryFn, undefined | symbol>>[0]) => T | Promise<T>)(ctx);
+      } catch (error) {
+        if ((error as { response?: { status?: number } }).response?.status === 403) {
+          // Retain only a safe rejection marker, never the Axios request's JWT
+          // or response body, across protected-cache invalidation.
+          client.setQueryData(denialKey, Object.assign(new Error('没有执行此查询的权限'), { response: { status: 403 } }));
+        }
+        throw error;
+      }
+    } : options.queryFn,
+  });
   const waitingForSummary = auth.isPending || (auth.isFetching && !auth.displaySnapshot);
-  return { ...result, isLoading: result.isLoading || waitingForSummary, isRestricted: !allowed && !waitingForSummary, isPending: (allowed && result.isPending) || waitingForSummary };
+  const displayedResult = denial.data ? {
+    ...result,
+    data: undefined,
+    error: denial.data,
+    isError: true as const,
+    isSuccess: false as const,
+    status: 'error' as const,
+  } : result;
+  return {
+    ...displayedResult,
+    isLoading: (!denial.data && result.isLoading) || waitingForSummary,
+    isRestricted: !allowed && !waitingForSummary,
+    isPending: (allowed && !denial.data && result.isPending) || waitingForSummary,
+    refetch: (...args: Parameters<typeof result.refetch>) => {
+      // Revalidation can change the cache before React repaints the button.
+      const identity = identityKey();
+      const state = client.getQueryState<IAMReply>([...authorizationKey, identity]);
+      const snapshot = state?.status === 'success' && state.fetchStatus === 'idle' ? currentSummary(state.data) : undefined;
+      if (`${identity}:${summaryIdentity(snapshot)}` !== auth.generation || (typeof permission === 'string' ? !can(snapshot, permission) : !canAll(snapshot, permission))) return Promise.resolve(result);
+      client.setQueryData(denialKey, null);
+      return result.refetch(...args);
+    },
+  };
 }

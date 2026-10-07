@@ -285,9 +285,16 @@ func (r *Repository) sourceHealthQuery(ctx context.Context, query *gorm.DB) (*go
 	if _, scoped := authorization.QueryScopeFromContext(ctx, "monitor.health.model.read"); !scoped {
 		return query, nil
 	}
-	groups := "SELECT 1 FROM routing_groups rg WHERE rg.id IN ? AND ((model_health_states.source_kind = 'channel' AND EXISTS (SELECT 1 FROM channel_routing_groups rel WHERE rel.channel_id = model_health_states.source_id AND rel.routing_group_id = rg.id)) OR (model_health_states.source_kind = 'subscription' AND EXISTS (SELECT 1 FROM account_routing_groups rel WHERE rel.subscription_account_id = model_health_states.source_id AND rel.routing_group_id = rg.id)))"
-	if !r.routingGroupRelations {
-		return nil, authorization.ErrDenied
+	// Serving repositories keep legacy CSV membership reads until the relation
+	// projection is enabled. All/resource scopes do not need membership tables;
+	// group scopes must resolve the source's authoritative membership.
+	var groups string
+	if r.routingGroupRelations {
+		groups = "SELECT 1 FROM routing_groups rg WHERE rg.id IN ? AND ((model_health_states.source_kind = 'channel' AND EXISTS (SELECT 1 FROM channel_routing_groups rel WHERE rel.channel_id = model_health_states.source_id AND rel.routing_group_id = rg.id)) OR (model_health_states.source_kind = 'subscription' AND EXISTS (SELECT 1 FROM account_routing_groups rel WHERE rel.subscription_account_id = model_health_states.source_id AND rel.routing_group_id = rg.id)))"
+	} else {
+		channelMatch := r.legacyGroupMembershipSQL("c")
+		accountMatch := r.legacyGroupMembershipSQL("sa")
+		groups = "SELECT 1 FROM routing_groups rg WHERE rg.id IN ? AND ((model_health_states.source_kind = 'channel' AND EXISTS (SELECT 1 FROM channels c WHERE c.id = model_health_states.source_id AND " + channelMatch + ")) OR (model_health_states.source_kind = 'subscription' AND EXISTS (SELECT 1 FROM subscription_accounts sa WHERE sa.id = model_health_states.source_id AND " + accountMatch + ")))"
 	}
 	return authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "model_health_states.id", Groups: groups}, "monitor.health.model.read")
 }
