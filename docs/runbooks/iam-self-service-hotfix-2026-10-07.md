@@ -1,6 +1,6 @@
 # IAM 用户侧分组、订阅购买与权限页面修复记录
 
-> 2026-10-07 · 正式版本：[v0.34.8](../releases/release-v0.34.8.md)
+> 2026-10-07 · 正式版本：[v0.34.9](../releases/release-v0.34.9.md)（v0.34.8 候选发布中止，业务热修复保持）
 
 ## 故障与修复边界
 
@@ -61,8 +61,13 @@ npm test -- src/pages/admin/IAMPage.test.tsx src/lib/authorization.test.tsx src/
 
 受影响的运行时为 `admin-api`、`channel-service`、`billing-service` 和宿主机挂载的 `web/dist`。无 API/proto 变更、数据库迁移或新增配置项；保留现有服务专用凭证、IAM 模式与订阅开关。
 
-未部署修复的环境按 [v0.34.8 升级步骤](../releases/release-v0.34.8.md#升级步骤) 操作。当前生产已经运行修复等价镜像，正式 tag 发布不要求再重启容器。
+未部署修复的环境按 [v0.34.9 升级步骤](../releases/release-v0.34.9.md#升级步骤) 操作。当前生产已经运行修复等价镜像，正式 tag 发布不要求再重启容器。
 
 - 首次回滚标签：`rollback-20261007-202844`；Compose 备份见首次证据；前端备份 `/opt/web/dist.bak.hotfix-20261007-202844`。
 - 支付补修回滚标签：`rollback-payment-hotfix-20261007-203939`；Compose 备份见支付入口证据。该备份中的 billing 尚缺 `CreatePaymentOrder` 覆盖，回退会重新出现支付创建故障。
 - 回滚只恢复 IAM 兼容镜像／前端；不切回 legacy、不改 IAM 分配、不删除数据库列。恢复绑定目录内容时保留 `/opt/web/dist` 目录本身，确保容器 bind mount 仍指向该目录。
+
+
+## Release 冒烟同步
+
+v0.34.8 的通用 Playwright 冒烟仍要求刷新期间按钮数量为 0，和「保留控件、暂时禁用」的新行为矛盾，因此桌面／手机两项失败并阻止镜像与 GitHub Release 发布。v0.34.9 同步该断言，保留草稿、缓存、刷新后恢复和真实撤销清理验证；不改变业务代码或已部署镜像，不跳过门禁。原 tag 保留，见 [v0.34.9 发布说明](../releases/release-v0.34.9.md)。
