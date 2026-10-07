@@ -39,7 +39,7 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——本表明确指向且头部标注「当前执行入口」的计划。未定发布版本时使用 `design/next-stage-plan-YYYY-MM-DD.md`，已定版本时使用 `design/vX.Y-roadmap.md`。新阶段立项时：新建计划 → 旧路线图标为「已归档」并指回新入口 → 同步本表、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-最新发布：[v0.34.4](./releases/release-v0.34.4.md)（2026-10-06），配置查询与前端依赖安全修复。v0.34.0 已交付 IAM 权限管理及正式生产交接，v0.34.1–v0.34.3 补齐本人订阅/用量、字段与公开价格展示、权限详情交互。
+最新发布：[v0.34.5](./releases/release-v0.34.5.md)（2026-10-07），恢复后台对账并强化完整 IAM 持续门禁。v0.34.0 已交付 IAM 正式生产交接，v0.34.1–v0.34.4 补齐本人用量/订阅、字段/公开价格、权限详情与安全修复。
 
 本轮核对（2026-10-07）：`develop@a37b39bf` 与 main 的 CI/安全流水线、v0.34.4 Release 已通过，开放 Code Scanning 告警为零。生产交接现状来自 [2026-10-05 记录](./design/rbac/d-iam-production-deployment.md)，本轮未重验生产。新计划按 S1 只读运行基线 → S2 关键链路覆盖 → S3 IAM 专项持续门禁推进；E1 核对 10 月 1 日重新开启的两枚 Token executor 灰度及有效七天起点，运行事实仍由 [观察手册](./design/v0.23-executor-observation.md) 管理。
 
@@ -48,6 +48,8 @@ docs/
 第一批实施（2026-10-07）：S1 只读基线、S2 关键链路与 S3 门禁接线/本地验收完成，见 [验收记录](./runbooks/iam-first-batch-acceptance-2026-10-07.md)。生产定时对账断点已复现并本地修复，尚待发布部署；executor 对照条件未满足。上段未重验生产仅指规划整理时点。
 
 第一批复审：[五项问题/差异已修复](./design/iam-first-batch-review-2026-10-07.md)，当前十项完整真实 IAM 浏览器及十二项快速门禁通过；验收文件与 SQL 证据范围已纠正，生产状态未改动。
+
+上线更新（2026-10-07）：已更新 Billing 为 v0.34.5，启动轮 #365 completed/0 差异；[生产证据](./runbooks/evidence/patch-v0.34.5-production-2026-10-07.json)保留备份、回滚及 IAM/环境/实例一致性。此前“待部署/生产未改动”为实施和复审时点的历史记录。
 
 ---
 
@@ -77,7 +79,7 @@ docs/
 - [v0.30.0](./releases/release-v0.30.0.md) · [v0.30.1](./releases/release-v0.30.1.md) · [v0.31.0](./releases/release-v0.31.0.md) · [v0.31.1](./releases/release-v0.31.1.md)
 - [v0.32.0](./releases/release-v0.32.0.md) · [v0.32.1](./releases/release-v0.32.1.md) · [v0.32.2](./releases/release-v0.32.2.md)
 - [v0.33.0](./releases/release-v0.33.0.md) · [v0.33.1](./releases/release-v0.33.1.md) · [v0.33.2](./releases/release-v0.33.2.md) · [v0.33.3](./releases/release-v0.33.3.md) · [v0.33.4](./releases/release-v0.33.4.md) · [v0.33.5](./releases/release-v0.33.5.md) · [v0.33.6](./releases/release-v0.33.6.md)
-- [v0.34.0](./releases/release-v0.34.0.md) · [v0.34.1](./releases/release-v0.34.1.md) · [v0.34.2](./releases/release-v0.34.2.md) · [v0.34.3](./releases/release-v0.34.3.md) · [v0.34.4](./releases/release-v0.34.4.md)（最新）
+- [v0.34.0](./releases/release-v0.34.0.md) · [v0.34.1](./releases/release-v0.34.1.md) · [v0.34.2](./releases/release-v0.34.2.md) · [v0.34.3](./releases/release-v0.34.3.md) · [v0.34.4](./releases/release-v0.34.4.md) · [v0.34.5](./releases/release-v0.34.5.md)（最新）
 
 ### runbooks/ — 运维操作手册
 

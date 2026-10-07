@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.34.4 发布公告](./docs/releases/release-v0.34.4.md)（代码扫描与前端依赖安全修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.4)
+> 📣 **最新发布**：[v0.34.5 发布公告](./docs/releases/release-v0.34.5.md)（定时对账恢复与 IAM 验收门禁） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.5)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.34.5
+
+v0.34.5 是 v0.34.4 之后的 **PATCH 可靠性与验收修复版本**：恢复 IAM 后台对账执行与运行记录，强化完整 IAM 浏览器/入口契约门禁，补齐本人订阅、owner 会话与目录只读验收。**无 API/proto、数据库迁移或业务配置变更**；运行时只更新 `billing-service`，前端静态资源不变。详见 [docs/releases/release-v0.34.5.md](./docs/releases/release-v0.34.5.md)。
 
 ### 升级到 v0.34.4
 
