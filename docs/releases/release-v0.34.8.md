@@ -1,6 +1,8 @@
-# Micro-One-API v0.34.8 发布：用户可用分组、订阅支付与权限页面修复
+# Micro-One-API v0.34.8 候选（发布中止）：用户可用分组、订阅支付与权限页面修复
 
-> 2026-10-07 · 上一版：[v0.34.7](./release-v0.34.7.md)（2026-10-07）· [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.8)
+> 2026-10-07 · 上一版：[v0.34.7](./release-v0.34.7.md)（2026-10-07）· [GitHub tag](https://github.com/mengbin92/micro-one-api/tree/v0.34.8)
+
+**发布已中止**：Release 的通用 Playwright 冒烟仍按旧行为期待刷新时隐藏按钮，桌面／手机两项失败，镜像构建与 GitHub Release 创建被跳过。原 tag 保留；业务热修复仍在线上。测试同步及正式发布改用 [v0.34.9](./release-v0.34.9.md)，见 [失败流水线](https://github.com/mengbin92/micro-one-api/actions/runs/37625675751)。
 
 v0.34.8 是 v0.34.7 之后的 **PATCH 用户侧 IAM 与权限页面可靠性修复版本**：恢复普通用户的可用分组读取，补齐钱包购买／续订和支付订单创建的 owner 执行点覆盖，移除权限管理页面重复导航，并保留授权轮询期间的界面与有效读缓存。
 

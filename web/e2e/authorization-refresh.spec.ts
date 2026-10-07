@@ -32,14 +32,18 @@ test('background authorization polling preserves the page, details draft and own
     await page.getByRole('button', { name: '详情', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '详情', exact: true });
     await dialog.getByLabel('说明', { exact: true }).fill('unsaved description');
+    const save = dialog.getByRole('button', { name: '保存目录资料' });
+    await expect(save).toBeEnabled();
     await page.clock.fastForward(31_000);
     await expect.poll(() => authorizationCalls).toBe(2);
     await expect(dialog).toBeVisible();
     await expect(dialog.getByLabel('说明', { exact: true })).toHaveValue('unsaved description');
-    await expect(dialog.getByRole('button', { name: '保存目录资料' })).toHaveCount(0);
+    // Background refresh retains the action's layout but blocks execution.
+    await expect(save).toBeVisible();
+    await expect(save).toBeDisabled();
     expect(permissionCalls).toBe(1);
     release?.();
-    await expect(dialog.getByRole('button', { name: '保存目录资料' })).toBeEnabled();
+    await expect(save).toBeEnabled();
     await expect(dialog.getByLabel('说明', { exact: true })).toHaveValue('unsaved description');
     expect(permissionCalls).toBe(1);
 
