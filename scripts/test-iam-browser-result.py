@@ -6,11 +6,15 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
 
 ROOT = Path(__file__).resolve().parent
+# A clean checkout's generated-file gate must not depend on personal Git
+# ignores. Dynamic imports otherwise create scripts/__pycache__ in CI.
+sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location("iam_result", ROOT / "check-iam-browser-result.py")
 checker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(checker)
@@ -148,6 +152,20 @@ class WorkflowSelectionTests(unittest.TestCase):
                 expected = "false" if path == "docs/TODO.md" else "true"
                 self.assertEqual(output["iam"], expected)
                 self.assertEqual(output["any"], expected)
+
+    def test_clean_checkout_does_not_write_bytecode(self):
+        with tempfile.TemporaryDirectory(prefix="iam-bytecode-check-") as directory:
+            root = Path(directory)
+            for name in ("test-iam-browser-result.py", "check-iam-browser-result.py", "iam-browser-contract.json"):
+                (root / name).write_bytes((ROOT / name).read_bytes())
+            env = {key: value for key, value in os.environ.items()
+                   if key not in ("PYTHONDONTWRITEBYTECODE", "PYTHONPYCACHEPREFIX")}
+            code = ('import runpy,sys; sys.dont_write_bytecode=False; sys.pycache_prefix=None; '
+                    'sys.argv=[sys.argv[1], "AcceptanceResultTests"]; '
+                    'runpy.run_path(sys.argv[0],run_name="__main__")')
+            result = subprocess.run([sys.executable, "-c", code, str(root / "test-iam-browser-result.py")], env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(list(root.rglob("*.pyc")), [], "acceptance checks must not dirty a clean checkout")
 
 
 if __name__ == "__main__":
