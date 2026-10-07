@@ -1715,7 +1715,9 @@ func (uc *BillingUsecase) topUpQuotaInTx(ctx context.Context, tx subscriptionbiz
 // `{group_id}:subscription:legacy` collision that blocked any second purchase
 // of the same group).
 func (uc *BillingUsecase) PurchaseSubscription(ctx context.Context, userID string, priceQuota, groupID int64, remark, requestId string) (int64, error) {
-	if authorization.External(ctx) && serviceidentity.FromContext(ctx).Name == "identity" {
+	// Both admin and identity adapt public purchases/renewals. The owner must
+	// verify the end-user session before reading or deducting any wallet.
+	if authorization.External(ctx) {
 		var err error
 		ctx, err = uc.AuthorizeSelf(ctx, userID)
 		if err != nil {
