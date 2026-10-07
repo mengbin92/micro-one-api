@@ -7,19 +7,25 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.34.5] - 2026-10-07
+## [0.34.6] - 2026-10-07
 
-v0.34.5 是 v0.34.4 之后的 **PATCH 可靠性与验收修复版本**：恢复 IAM 切换后的后台定时对账，强化完整 IAM 持续门禁，补齐本人订阅/owner/目录只读验收与证据范围。运行时只更新 billing，前端静态资源不变；无 API/proto、迁移或业务配置变更。详见 [release-v0.34.5.md](docs/releases/release-v0.34.5.md)。
+v0.34.6 是 v0.34.4 之后的 **PATCH 可靠性与验收修复版本**：恢复 IAM 切换后的后台定时对账，强化完整 IAM 持续门禁，补齐本人订阅/owner/目录只读验收与证据范围。运行时只更新 billing，前端静态资源不变；无 API/proto、迁移或业务配置变更。详见 [release-v0.34.6.md](docs/releases/release-v0.34.6.md)。
 
 ### Fixed
 
+- Linux IAM 门禁动态导入禁止写入 bytecode，隔离复现去掉本机缓存前缀，避免测试通过后工作区检查失败；v0.34.5 发布候选中止，tag 保留，本版为正式发布。
+
 - 第一批复审：IAM 门禁拒绝精简矩阵、`test.only` 与预期失败，PR diff 失败不再静默跳过专项；每次独立保存 IAM 验收文件，避免被通用 smoke 删除。补齐目录只读与直接 owner 授权回归并修正 SQL 证据表述，见 [审查记录](docs/design/iam-first-batch-review-2026-10-07.md)。
-- IAM 启用后定时对账不再因可选明细字段权限要求用户会话而在保存运行记录前中止；仅后台本进程路径使用既有信任，外部 operator、运行权与字段权限仍验证。2026-10-07 已更新生产 Billing，启动轮 #365 completed、差异 0，环境及 IAM 状态保持。
+- IAM 启用后定时对账不再因可选明细字段权限要求用户会话而在保存运行记录前中止；仅后台本进程路径使用既有信任，外部 operator、运行权与字段权限仍验证。2026-10-07 已更新生产 Billing 为最终 v0.34.6，启动轮 #366 completed、差异 0，环境及 IAM 状态保持。
 
 ### Added
 
 - 固定 IAM 入口契约接入本地 verify/后端 CI；共享 E2E 新增真实 owner 浏览器专项与 PR 路径选择，拒绝跳过或缺失的 Go/Playwright 验收。
 - 本人订阅进度与 API Key 用量的真实跨服务冻结额度回归、桌面/手机权限详情检查及第一批只读生产/关键链路验收，见 [实施记录](docs/runbooks/iam-first-batch-acceptance-2026-10-07.md)。
+
+## [0.34.5] - 2026-10-07
+
+v0.34.5 发布候选已中止：Linux CI 工作区一致性检查失败；没有 GitHub Release 或镜像发布，tag 保留。业务部署与候选记录见 [release-v0.34.5.md](docs/releases/release-v0.34.5.md)，正式变更纳入 v0.34.6。
 
 ## [0.34.4] - 2026-10-06
 

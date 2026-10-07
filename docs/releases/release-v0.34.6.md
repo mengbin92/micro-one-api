@@ -1,10 +1,8 @@
-# Micro-One-API v0.34.5 发布：定时对账恢复与 IAM 验收门禁
+# Micro-One-API v0.34.6 发布：定时对账恢复与 IAM 验收门禁
 
-> 2026-10-07 · 上一版：[v0.34.4](./release-v0.34.4.md)（2026-10-06）· [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.5)
+> 2026-10-07 · 上一版：[v0.34.4](./release-v0.34.4.md)（2026-10-06）· [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.6)
 
-> **候选已中止**：tag 已推送，但 Linux 后端 CI 的 bytecode 工作区副作用阻断发布；未创建 GitHub Release、未发布镜像。业务修复已上线，正式版本改为 [v0.34.6](./release-v0.34.6.md)，原 tag 保留。
-
-v0.34.5 是 v0.34.4 之后的 **PATCH 可靠性与验收修复版本**：恢复 IAM 切换后被用户会话要求阻断的后台定时对账，补齐本人订阅与目录只读的真实所有者链路，并把完整 IAM 浏览器矩阵与固定入口契约接入持续门禁。
+v0.34.6 是 v0.34.4 之后的 **PATCH 可靠性与验收修复版本**：恢复 IAM 切换后被用户会话要求阻断的后台定时对账，补齐本人订阅与目录只读的真实所有者链路，并把完整 IAM 浏览器矩阵与固定入口契约接入持续门禁。
 
 **运行时只需更新 `billing-service`**。无新增 API/proto、数据库迁移或业务配置，前端运行代码及挂载的 `web/dist` 不变。
 
@@ -22,7 +20,7 @@ v0.34.5 是 v0.34.4 之后的 **PATCH 可靠性与验收修复版本**：恢复 
 
 **根因**：Go PASS 与 Playwright 汇总的 `expected>0` 不能证明完整角色矩阵通过；实际 `test.only` 精简到两项和“预期失败”均曾被接受。PR 分类器还可能把 `git diff` 失败当作无相关变更；IAM 与通用 smoke 共用目录，导致前者证据被后者删除。
 
-**修复**：禁止聚焦测试，按受审契约核对当前十项场景、文件、项目及逐项实际 passed；拒绝缺失、重复、替换、跳过、预期失败及不完整统计。diff 失败直接阻断，IAM/owner/共享 harness/工具版本及工作流变更触发专项。每次独立保存 Go/PW JSON、截图和失败 trace，Git/Docker 排除验收目录；十二项快速回归与固定 829 行入口契约接入 verify/后端 CI，完整浏览器接入 PR/Release/Nightly。
+**修复**：禁止聚焦测试，按受审契约核对当前十项场景、文件、项目及逐项实际 passed；拒绝缺失、重复、替换、跳过、预期失败及不完整统计。diff 失败直接阻断，IAM/owner/共享 harness/工具版本及工作流变更触发专项。每次独立保存 Go/PW JSON、截图和失败 trace，Git/Docker 排除验收目录；十三项快速回归与固定 829 行入口契约接入 verify/后端 CI，完整浏览器接入 PR/Release/Nightly。
 
 **影响范围**：开发验证与 GitHub Actions；不增加运行时权限 grant。
 
@@ -33,6 +31,14 @@ v0.34.5 是 v0.34.4 之后的 **PATCH 可靠性与验收修复版本**：恢复 
 **修复**：增加真实 Admin/Relay → identity/Billing → SQLite 的本人/Key 用量链路，核对 settled/frozen/available 及异用户、失效/撤销、禁用 Key 和无关 caller 反例；直接 owner RPC 复验会话与主体。增加目录只读用户和桌面/手机详情，403 使用合法 CAS 载荷并确认目标未改写。每个用户复用固定签名会话，SQL 证据限定为非 root 账号配置及 DSN 接线，实际 grants 仍引用原 D1 独立探针。
 
 **影响范围**：测试夹具、验收记录及文档。
+
+### 4. Linux CI 工作区一致性
+
+**根因**：Python 门禁动态导入在 Linux 默认设置下生成 `scripts/__pycache__`；本机缓存前缀/全局忽略设置隐藏了副作用。后端测试通过后，工作区一致性门禁失败，v0.34.5 发布候选因此中止，未创建 GitHub Release 或发布镜像。
+
+**修复**：导入前禁止 bytecode 写入；隔离回归显式采用无外部缓存前缀、允许默认 bytecode 的 CI 行为。修复前生成 1 个缓存文件，修复后 0，快速门禁增至十三项。保留已推送的 v0.34.5 tag，不改写历史，正式发布使用 v0.34.6。
+
+**影响范围**：验证脚本；不改变 Billing 业务逻辑。
 
 ## 兼容性说明
 
@@ -51,11 +57,14 @@ v0.34.5 是 v0.34.4 之后的 **PATCH 可靠性与验收修复版本**：恢复 
 
 ## 验证
 
-- 全仓 `make verify` 通过，包含 829 行入口契约、十二项快速门禁、215 个前端单元测试、lint/build 及六项预算。
+> v0.34.6 最终生产镜像已更新；首轮 v0.34.5 记录保留为中止候选的历史证据。
+
+- 全仓 `make verify` 通过，包含 829 行入口契约、十三项快速门禁、215 个前端单元测试、lint/build 及六项预算。
 - 完整 Billing/集成 race、有效外部对账明细权限及直接 owner 会话/主体反例通过；十项真实 IAM 浏览器逐项通过，无跳过。
 - 真实 `.only`、精简矩阵、预期失败及 diff 失败的负向验证通过；通用 smoke 后七个 IAM 文件及摘要保持不变。
 - 首轮完整通用浏览器 67 passed、1 个既定 mobile-only skip 保留；三库 opt-in 本轮只重新执行 SQLite，不扩大为 MySQL/PostgreSQL 复验。
-- 2026-10-07 09:49 CST 完成 Billing 更新，健康 200、restart 0；环境与其他八服务实例保持一致，前端摘要保持 v0.34.4，IAM 为 iam/complete（policy 7、catalog 2）。09:51 只读复核新增对账 **#365 completed、差异 0**，成功指标 1、启动失败/原会话错误 0；结算任务均 completed。数据库/部署备份、回滚镜像与[脱敏上线证据](../runbooks/evidence/patch-v0.34.5-production-2026-10-07.json)已归档。启动轮已恢复，下一次自然小时轮尚未到达；不将启动轮当作小时轮验收。
+- 2026-10-07 09:49 CST 首次完成 Billing 业务修复更新，健康 200、restart 0；环境与其他八服务实例保持一致，前端摘要保持 v0.34.4，IAM 为 iam/complete（policy 7、catalog 2）。09:51 只读复核新增对账 **#365 completed、差异 0**，成功指标 1、启动失败/原会话错误 0；结算任务均 completed。数据库/部署备份、回滚镜像与[首次上线证据](../runbooks/evidence/patch-v0.34.5-production-2026-10-07.json)已归档。启动轮已恢复，下一次自然小时轮尚未到达；不将启动轮当作小时轮验收。
+- 2026-10-07 10:12 CST 更新最终 v0.34.6 Billing 镜像；10:14 只读验收 **#366 completed、差异 0**，启动原错误/panic/fatal 均 0，健康 200、restart 0，环境及其他八服务/IAM 保持一致，前端摘要不变。数据库备份、回滚与[最终生产证据](../runbooks/evidence/patch-v0.34.6-production-2026-10-07.json)已归档；下一次自然小时轮仍待观察。
 - 本地复验与历史生产证据分别见 [第一批记录](../runbooks/iam-first-batch-acceptance-2026-10-07.md)和[复审](../design/iam-first-batch-review-2026-10-07.md)。
 
 ## 完整变更日志
@@ -64,3 +73,5 @@ v0.34.5 是 v0.34.4 之后的 **PATCH 可靠性与验收修复版本**：恢复 
 - `fix: restore background reconciliation and enforce IAM gates`
 - `fix: require complete IAM acceptance and preserve review evidence`
 - `docs(release): v0.34.5`
+- `fix(ci): keep IAM gate imports from dirtying clean checkouts`
+- `docs(release): v0.34.6`
