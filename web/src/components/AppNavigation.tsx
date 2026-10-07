@@ -199,7 +199,7 @@ function NavigationLinks({
   compact?: boolean;
 }) {
   const auth = useAuthorization();
-  const visible = items.filter(item => !item.to.startsWith('/admin') || auth.can(adminPages[item.to] ?? ''));
+  const visible = items.filter(item => !item.to.startsWith('/admin') || auth.displayCan(adminPages[item.to] ?? ''));
   return (
     <div className="space-y-2">
       {visible.map((link) => {
@@ -292,11 +292,11 @@ export function AppNavigation() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const auth = useAuthorization();
-  const sessionActive = auth.snapshot?.authorization_mode === 'legacy' || auth.snapshot?.session?.activation_state === 'active';
+  const sessionActive = auth.displaySnapshot?.authorization_mode === 'legacy' || auth.displaySnapshot?.session?.activation_state === 'active';
   const { data: user } = useQuery({ ...userSelfQueryOptions, enabled: sessionActive });
   const { data: account } = useQuery({ ...accountDashboardQueryOptions, enabled: sessionActive });
   const isWide = useMediaQuery('(min-width: 1024px)');
-  const isAdmin = auth.can('admin.console.enter');
+  const isAdmin = auth.displayCan('admin.console.enter');
   const isAdminRoute = location.pathname === '/admin' || location.pathname.startsWith('/admin/');
   const activeAdminGroup = adminNavGroups.find((group) => group.items.some((item) => (
     location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
@@ -340,7 +340,7 @@ export function AppNavigation() {
 
   const adminControl = isAdmin ? (
     <Link
-      to={isAdminRoute ? '/dashboard' : firstAdminPage(auth.can)}
+      to={isAdminRoute ? '/dashboard' : firstAdminPage(auth.displayCan)}
       aria-label={t(isAdminRoute ? '返回控制台' : '进入管理')}
       className={buttonVariants({ variant: 'outline', size: 'sm' })}
       onMouseEnter={() => preloadRoute(isAdminRoute ? '/dashboard' : '/admin')}
@@ -369,7 +369,7 @@ export function AppNavigation() {
             <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('管理工作台')}</p>
             <NavigationLinks items={adminOverviewLink} compact onNavigate={() => setMobileOpen(false)} />
             <div className="mt-4 space-y-1">
-              {adminNavGroups.filter(group => group.items.some(item => auth.can(adminPages[item.to]))).map((group) => {
+              {adminNavGroups.filter(group => group.items.some(item => auth.displayCan(adminPages[item.to]))).map((group) => {
                 const expanded = expandedAdminGroup === group.label;
                 return (
                   <section key={group.label}>
@@ -389,7 +389,7 @@ export function AppNavigation() {
             </div>
             <div className="mt-4 border-t border-border pt-4">
               <NavigationLinks items={adminSystemLink} compact onNavigate={() => setMobileOpen(false)} />
-              {configuredMenuItems(auth.snapshot?.menus ?? [], auth.can).map(item => {
+              {configuredMenuItems(auth.displaySnapshot?.menus ?? [], auth.displayCan).map(item => {
                 const Icon = configuredMenuIcons[item.iconKey] ?? Layers;
                 return <div key={item.id} style={{ paddingLeft: item.depth * 12 }}>{item.to ? <NavigationLinks items={[{ to: item.to, label: item.label, icon: Icon }]} compact onNavigate={() => setMobileOpen(false)} /> : <div className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-muted-foreground"><Icon className="size-4" /><span>{t(item.label)}</span></div>}</div>;
               })}
@@ -453,7 +453,7 @@ export function AppNavigation() {
             <div className="hidden md:block">
               <ThemeToggle />
             </div>
-            {auth.can('notify.notification.list') && <NotificationPanel open={notificationOpen} onOpenChange={setNotificationOpen} />}
+            {auth.displayCan('notify.notification.list') && <NotificationPanel open={notificationOpen} onOpenChange={setNotificationOpen} />}
             {adminControl}
             <button
               type="button"

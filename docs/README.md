@@ -25,6 +25,8 @@ docs/
 | 查看下一阶段执行路线与条件保留项 | [design/next-stage-plan-2026-10-07.md](./design/next-stage-plan-2026-10-07.md) |
 | 复核 executor 有限灰度与第二批条件结论 | [观察手册](./design/v0.23-executor-observation.md) · [第二批记录](./runbooks/executor-second-batch-acceptance-2026-10-07.md) |
 | 查看当前待办和历史完成记录 | [TODO.md](./TODO.md) |
+| 查看 Playground 安全 Markdown、字体与关键分支验收 | [D7 本地验收记录](./runbooks/d7-experience-acceptance-2026-10-07.md) |
+| 排查控制台周期性闪刷和数据等待 | [权限轮询诊断与本地修复](./runbooks/console-authorization-refresh-2026-10-07.md) |
 | 查看产品界面预览 | [根 README 界面预览](../README.md#界面预览) |
 | 查看某版本发布内容 | [releases/](./releases/) |
 | 排查订阅系统生产故障 | [runbooks/subscription-production-runbook.md](./runbooks/subscription-production-runbook.md) |
@@ -46,7 +48,9 @@ docs/
 
 本轮核对（2026-10-07）：`develop@a37b39bf` 与 main 的 CI/安全流水线、v0.34.4 Release 已通过，开放 Code Scanning 告警为零。生产交接现状来自 [2026-10-05 记录](./design/rbac/d-iam-production-deployment.md)，本轮未重验生产。新计划按 S1 只读运行基线 → S2 关键链路覆盖 → S3 IAM 专项持续门禁推进；E1 核对 10 月 1 日重新开启的两枚 Token executor 灰度及有效七天起点，运行事实仍由 [观察手册](./design/v0.23-executor-observation.md) 管理。
 
-历史可靠性阶段：R1–R4、O1–O4、O5 正确性及 Q1–Q3 既定实施/隔离验收已完成。O5 代表性流量复采与缓存优化延续 2026-09-28 的暂缓决定；真实 OAuth/多副本、支付平台重发、供应商侧取消及 D2–D7 按 [新计划](./design/next-stage-plan-2026-10-07.md) 条件恢复，原证据保留在 [历史阶段清单](./design/next-stage-todo-2026-09-26.md)。
+**D7 三项本地交付（2026-10-07）**：已按确认顺序完成安全 Markdown、系统字体优化、关键分支覆盖率与交互时序，含重复提交修复；工作区尚未提交、推送、发版或部署。见 [D7 记录](./runbooks/d7-experience-acceptance-2026-10-07.md)。
+
+历史可靠性阶段：R1–R4、O1–O4、O5 正确性及 Q1–Q3 既定实施/隔离验收已完成。O5 代表性流量复采与缓存优化延续 2026-09-28 的暂缓决定；真实 OAuth/多副本、支付平台重发、供应商侧取消、D2–D6 及 D7 剩余扩展按 [新计划](./design/next-stage-plan-2026-10-07.md) 条件恢复，原证据保留在 [历史阶段清单](./design/next-stage-todo-2026-09-26.md)。
 
 第一批实施（2026-10-07）：S1 只读基线、S2 关键链路与 S3 门禁接线/本地验收完成，见 [验收记录](./runbooks/iam-first-batch-acceptance-2026-10-07.md)。生产定时对账断点已复现并本地修复，尚待发布部署；executor 对照条件未满足。上段未重验生产仅指规划整理时点。
 
@@ -91,6 +95,7 @@ docs/
 | 文档 | 用途 |
 |------|------|
 | [subscription-production-runbook.md](./runbooks/subscription-production-runbook.md) | 订阅系统生产发布、回滚与排障总入口 |
+| [d7-experience-acceptance-2026-10-07.md](./runbooks/d7-experience-acceptance-2026-10-07.md) | 安全 Markdown、字体、资金/权限/取消分支及交互时序的本地验收 |
 | [routing-groups-runbook.md](./runbooks/routing-groups-runbook.md) | 路由分组 / 订阅合约 / 结算模式的迁移核对、开关启用、验证与回退 |
 | [subscription-account-setup-guide.md](./runbooks/subscription-account-setup-guide.md) | 上游订阅号配置与导入实操 |
 | [subscription-account-ops-runbook.md](./runbooks/subscription-account-ops-runbook.md) | 订阅账号治理（阶段 1） |

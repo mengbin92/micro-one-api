@@ -41,6 +41,32 @@ describe('parseSSEStream', () => {
     await expect(collect(['data: final'])).resolves.toEqual([{ data: 'final', raw: 'data: final' }]);
   });
 
+  it('ignores heartbeat fields and accepts data with no colon or space', async () => {
+    await expect(collect([': keep-alive\nevent: ignored\n\ndata\n\ndata:next\n\n'])).resolves.toEqual([
+      { data: '', raw: 'data' }, { data: 'next', raw: 'data:next' },
+    ]);
+  });
+
+  it('reassembles split UTF-8 bytes and a final carriage return', async () => {
+    const bytes = new TextEncoder().encode('data: 中文\r');
+    const stream = new ReadableStream<Uint8Array>({ start(controller) {
+      for (const byte of bytes) controller.enqueue(new Uint8Array([byte]));
+      controller.close();
+    } });
+    const result = [];
+    for await (const event of parseSSEStream(stream)) result.push(event.data);
+    expect(result).toEqual(['中文']);
+  });
+
+  it('still releases the reader lock when cancellation throws', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new TextEncoder().encode('data: first\n\n')); },
+      cancel() { throw new Error('already aborted'); },
+    });
+    for await (const event of parseSSEStream(stream)) { expect(event.data).toBe('first'); break; }
+    expect(stream.locked).toBe(false);
+  });
+
   it('rejects an oversized unterminated event', async () => {
     await expect(collect([`data: ${'x'.repeat(MAX_SSE_EVENT_BYTES)}`])).rejects.toBeInstanceOf(SSEProtocolError);
   });

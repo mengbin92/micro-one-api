@@ -1,0 +1,417 @@
+{
+  "captured_at": "2026-10-07T16:36:01+08:00",
+  "base_commit": "5c17986fdd7b001547dff557cc3b74ad5f69a437",
+  "state": "local uncommitted workspace; no new production build or deployment; contains previous D7 work",
+  "production_observation": {
+    "browser_environment": "existing production Chrome /admin/redemptions, no network throttling",
+    "redemption_timing_ms": {
+      "queueing": 1.4,
+      "stalled": 0.8,
+      "request_sent": 0.11,
+      "waiting_for_response": 772.46,
+      "download": 1.6,
+      "total": 776.37
+    },
+    "public_status_ttfb_ms": [
+      1098.87,
+      1129.512,
+      1103.858
+    ],
+    "host_direct_status_ms": {
+      "ttfb": 3.008,
+      "total": 3.047
+    },
+    "host_direct_health_ms": {
+      "ttfb": 0.872,
+      "total": 0.909
+    },
+    "unauthenticated_authorization_control": {
+      "status": 401,
+      "public_ttfb_ms": 1119.95,
+      "host_ttfb_ms": 0.681
+    },
+    "business_services_running": 9,
+    "admin_cpu_percent": 0.07,
+    "identity_cpu_percent": 0.06,
+    "mysql_cpu_percent": 4.05,
+    "index_sha256": "883962cd93a71bb335946d97e044a0528a17448849cabc6c2b28980d9b2820df",
+    "private_request_server_duration": "not obtained; logs lack useful latency; Jaeger query unavailable",
+    "scope": "readonly; no permissions, configuration, images, static assets, billable model calls, payments or notifications changed"
+  },
+  "feedback_before_fix": [
+    {
+      "command": "npm test -- src/lib/authorization.test.tsx -t 'same-version background'",
+      "failure": "visible stable data disappeared during blocked same-version summary"
+    },
+    {
+      "command": "npm test -- src/lib/authorization.test.tsx -t 'appearance preferences'",
+      "failure": "theme storage event removed displayed data"
+    },
+    {
+      "failure": "write could be prepared after summary refresh started but before React render; fixed by live query-state guard"
+    },
+    {
+      "failure": "same role IDs in reordered arrays invalidated owner cache; fixed by canonical set ordering"
+    },
+    {
+      "command": "make test-iam-browser",
+      "failure": "initial patch: 9 passed, DSD conflict alert/selection lost after forced summary reset",
+      "recovery": "same-identity initialization route preserves local state; final matrix 10 actual passes, skipped=0"
+    }
+  ],
+  "checks": [
+    {
+      "command": "npm test -- --maxWorkers=2",
+      "exit": 0,
+      "files": 63,
+      "passed": 317,
+      "skipped": 0
+    },
+    {
+      "command": "npm run test:critical -- --maxWorkers=2",
+      "exit": 0,
+      "files": 13,
+      "passed": 138,
+      "skipped": 0
+    },
+    {
+      "command": "npm run lint",
+      "exit": 0
+    },
+    {
+      "command": "npx tsc --noEmit -p tsconfig.app.json",
+      "exit": 0
+    },
+    {
+      "command": "npx playwright test authorization-refresh.spec.ts --workers=1",
+      "exit": 0,
+      "passed": 2,
+      "skipped": 0,
+      "API": "isolated fixture; virtual clock"
+    },
+    {
+      "command": "make test-iam-browser",
+      "exit": 0,
+      "actual_browser_passes": 10,
+      "skipped": 0,
+      "backend": "real HTTP/gRPC/SQLite fixture"
+    }
+  ],
+  "coverage": {
+    "total": {
+      "lines": {
+        "total": 579,
+        "covered": 539,
+        "skipped": 0,
+        "pct": 93.09
+      },
+      "statements": {
+        "total": 735,
+        "covered": 674,
+        "skipped": 0,
+        "pct": 91.7
+      },
+      "functions": {
+        "total": 172,
+        "covered": 158,
+        "skipped": 0,
+        "pct": 91.86
+      },
+      "branches": {
+        "total": 753,
+        "covered": 647,
+        "skipped": 0,
+        "pct": 85.92
+      },
+      "branchesTrue": {
+        "total": 0,
+        "covered": 0,
+        "skipped": 0,
+        "pct": 100
+      }
+    },
+    "web/src/components/AdminRoute.tsx": {
+      "lines": {
+        "total": 9,
+        "covered": 9,
+        "skipped": 0,
+        "pct": 100
+      },
+      "functions": {
+        "total": 4,
+        "covered": 3,
+        "skipped": 0,
+        "pct": 75
+      },
+      "statements": {
+        "total": 16,
+        "covered": 15,
+        "skipped": 0,
+        "pct": 93.75
+      },
+      "branches": {
+        "total": 21,
+        "covered": 20,
+        "skipped": 0,
+        "pct": 95.23
+      }
+    },
+    "web/src/components/playground/AssistantContent.tsx": {
+      "lines": {
+        "total": 7,
+        "covered": 7,
+        "skipped": 0,
+        "pct": 100
+      },
+      "functions": {
+        "total": 2,
+        "covered": 2,
+        "skipped": 0,
+        "pct": 100
+      },
+      "statements": {
+        "total": 10,
+        "covered": 10,
+        "skipped": 0,
+        "pct": 100
+      },
+      "branches": {
+        "total": 11,
+        "covered": 11,
+        "skipped": 0,
+        "pct": 100
+      }
+    },
+    "web/src/components/playground/AssistantMarkdown.tsx": {
+      "lines": {
+        "total": 22,
+        "covered": 22,
+        "skipped": 0,
+        "pct": 100
+      },
+      "functions": {
+        "total": 9,
+        "covered": 9,
+        "skipped": 0,
+        "pct": 100
+      },
+      "statements": {
+        "total": 24,
+        "covered": 24,
+        "skipped": 0,
+        "pct": 100
+      },
+      "branches": {
+        "total": 20,
+        "covered": 17,
+        "skipped": 0,
+        "pct": 85
+      }
+    },
+    "web/src/lib/admin-write.ts": {
+      "lines": {
+        "total": 48,
+        "covered": 47,
+        "skipped": 0,
+        "pct": 97.91
+      },
+      "functions": {
+        "total": 17,
+        "covered": 16,
+        "skipped": 0,
+        "pct": 94.11
+      },
+      "statements": {
+        "total": 79,
+        "covered": 77,
+        "skipped": 0,
+        "pct": 97.46
+      },
+      "branches": {
+        "total": 147,
+        "covered": 137,
+        "skipped": 0,
+        "pct": 93.19
+      }
+    },
+    "web/src/lib/amount.ts": {
+      "lines": {
+        "total": 13,
+        "covered": 13,
+        "skipped": 0,
+        "pct": 100
+      },
+      "functions": {
+        "total": 6,
+        "covered": 6,
+        "skipped": 0,
+        "pct": 100
+      },
+      "statements": {
+        "total": 15,
+        "covered": 15,
+        "skipped": 0,
+        "pct": 100
+      },
+      "branches": {
+        "total": 11,
+        "covered": 11,
+        "skipped": 0,
+        "pct": 100
+      }
+    },
+    "web/src/lib/authorization.ts": {
+      "lines": {
+        "total": 73,
+        "covered": 73,
+        "skipped": 0,
+        "pct": 100
+      },
+      "functions": {
+        "total": 33,
+        "covered": 32,
+        "skipped": 0,
+        "pct": 96.96
+      },
+      "statements": {
+        "total": 105,
+        "covered": 103,
+        "skipped": 0,
+        "pct": 98.09
+      },
+      "branches": {
+        "total": 99,
+        "covered": 90,
+        "skipped": 0,
+        "pct": 90.9
+      }
+    },
+    "web/src/lib/relay-playground.ts": {
+      "lines": {
+        "total": 123,
+        "covered": 119,
+        "skipped": 0,
+        "pct": 96.74
+      },
+      "functions": {
+        "total": 18,
+        "covered": 18,
+        "skipped": 0,
+        "pct": 100
+      },
+      "statements": {
+        "total": 144,
+        "covered": 137,
+        "skipped": 0,
+        "pct": 95.13
+      },
+      "branches": {
+        "total": 131,
+        "covered": 117,
+        "skipped": 0,
+        "pct": 89.31
+      }
+    },
+    "web/src/lib/sse.ts": {
+      "lines": {
+        "total": 59,
+        "covered": 59,
+        "skipped": 0,
+        "pct": 100
+      },
+      "functions": {
+        "total": 6,
+        "covered": 6,
+        "skipped": 0,
+        "pct": 100
+      },
+      "statements": {
+        "total": 68,
+        "covered": 67,
+        "skipped": 0,
+        "pct": 98.52
+      },
+      "branches": {
+        "total": 31,
+        "covered": 31,
+        "skipped": 0,
+        "pct": 100
+      }
+    },
+    "web/src/pages/PlaygroundPage.tsx": {
+      "lines": {
+        "total": 225,
+        "covered": 190,
+        "skipped": 0,
+        "pct": 84.44
+      },
+      "functions": {
+        "total": 77,
+        "covered": 66,
+        "skipped": 0,
+        "pct": 85.71
+      },
+      "statements": {
+        "total": 274,
+        "covered": 226,
+        "skipped": 0,
+        "pct": 82.48
+      },
+      "branches": {
+        "total": 282,
+        "covered": 213,
+        "skipped": 0,
+        "pct": 75.53
+      }
+    }
+  },
+  "source_sha256": {
+    "web/.gitignore": "56b7817da43ae1a7b206b81b9cddbce0f58c14e61433ef5fe5d9dad458819186",
+    "web/README.md": "190438dc55cd7c534aef0d84a232544f727878bec77a1cc3e0d7ca98a01360b5",
+    "web/e2e/authorization-refresh.spec.ts": "f7d499d6ed5f0b4f2caf74fbb9ee6a0e6e438dfa7421d449921fe13fd5f094b4",
+    "web/e2e/playground-experience.spec.ts": "8bb834552c37edead9cb47e3fdacf9df2f026738a2c5997fe67f98cb99d091d5",
+    "web/eslint.config.js": "01707c9cb6872fd9b4ed0a190a4ba010b8fc2d5da11d1d77d5712ec095232281",
+    "web/package-lock.json": "335361ae41feead2dbb2fb8ed50996bb3c34caed9c3c8b41435c6a102acf401d",
+    "web/package.json": "bb065e523954b8f6ea90e233176ea92cf4c5b1f84b3f3942aaaed6e86376e94c",
+    "web/performance-budget.json": "13195bd7a587aecc7936b8f34084476b290b290d66ed461cb4ce656102301ae7",
+    "web/playwright.config.ts": "4b3d13e87990e2594b54df8f38bd1664ef1df30fae7d101f674109aa010cb55c",
+    "web/playwright.d7.config.ts": "ddec0a64f64e426ba65dbabaaf8f8acf20b153ee80a17698cfba0243623b302d",
+    "web/src/components/AdminRoute.test.tsx": "0780ba7a1f9c3f5711be35019d0138a99947c9e9f3e52316be870e3c42a213d1",
+    "web/src/components/AdminRoute.tsx": "baad54599f56f474b4bba654e005db837808a5fb3503ac75fe82de9d0e09a079",
+    "web/src/components/AppNavigation.test.tsx": "d54bb87066861d523113e99a00fb6c28a3f204c66205aa31dfd2756cc3fc07b4",
+    "web/src/components/AppNavigation.tsx": "95b63fe1604431a4598f5081f99338c1984e877975a9466e700f3fa961bd0d96",
+    "web/src/components/ProtectedRoute.test.tsx": "4cc1ff502205bf20c696fd7ed4c8a0d0ed04999877c6b461e29bdb0263177e9f",
+    "web/src/components/ProtectedRoute.tsx": "30531dea532a068a5e0b912554881201ce9ca39ef774250225cca2cd417640b9",
+    "web/src/components/playground/AssistantContent.tsx": "688251d4af25e91709d51d85ab7a98ab9a2cd78ab1742db8553a8a3ccc85df13",
+    "web/src/components/playground/AssistantMarkdown.test.tsx": "b90b62ed227c997b880b9a944cc2d02732a37be2abb8179e0231606f14c65200",
+    "web/src/components/playground/AssistantMarkdown.tsx": "dc6f1a16bc818e525074e0d316c5d227d3687390a538e243379d3a71b99cfc71",
+    "web/src/components/playground/markdown.css": "1a4aa445be16fe1bb6eb8a579e619ad777a6081b0d779f9299760cb244aa82f6",
+    "web/src/index.css": "963efc5e7dba1ee2ece936aa772999f7985dd6345022fc3905ffb9d677b54216",
+    "web/src/lib/account-queries.ts": "7ef23c4525f7a0151af963c0883c4a88f75e1e62e4d074bbe3991cfeddd9d0ee",
+    "web/src/lib/admin-write.test.ts": "4a08b6aaef489a25c3de5bc949403c78ddf393f147299d3cf88d2078537da33d",
+    "web/src/lib/amount.test.ts": "1ee81379c4be664968d94311d55e7b6792c29add0d53f8068d6385f58e565d64",
+    "web/src/lib/authorization.test.tsx": "ce3bbab0eb1eaadd162f1e8d92bc3d705ad03c7730a98df36dbbe57dae79502f",
+    "web/src/lib/authorization.ts": "46dfc3051be2fc31f8b553a1d33a6d401f9ebd53dbd672775b2df5119b2f75da",
+    "web/src/lib/relay-playground.test.ts": "cf6faaf484edc0eb5f457880e88e89cddd8b1e2ae49b0d27e29cb3cef27714a4",
+    "web/src/lib/sse.test.ts": "f141f9abda783548f11cd7b567d434c0c097d07044cfb732db1d01dc95e34b88",
+    "web/src/locales/en-US.ts": "1d795f5f7f9d6902c63155b7c90a3b0a2716d41959cb27aca8dd6bb5bf381654",
+    "web/src/pages/OrdersPage.test.tsx": "f3a4805a40a8f31cff559fb27384987532ae45a9862ef92d0c63f4d3181bc098",
+    "web/src/pages/OrdersPage.tsx": "bcbf24a5ad76c2fd64482434221f1c6442bc6c24ee1f492f8544057bac8abaea",
+    "web/src/pages/PlaygroundPage.test.tsx": "e6858dae9cfa578c16b21aa0685030576680fa85a008e234980bf881810f3cab",
+    "web/src/pages/PlaygroundPage.tsx": "20790c29a2c742b70f1bce2147c3ca5bf887d8c3b78fd220dde9f196171369f6",
+    "web/src/pages/SessionRolesPage.tsx": "dd48c5cba2bbd4800473ffa06477f0f95e849986c78306c174443a249a3cd47e",
+    "web/src/pages/admin/IAMPage.tsx": "9edf2be2a42d2a08725bc7f2748b2dd3049bdd921dc52d2d8ffb34f06651022a",
+    "web/src/pages/admin/ModelDetailPanel.tsx": "b77544d9a6662d29511cf5df018bdd9ef6cedc217757234e13e9c1f88681aae1",
+    "web/src/pages/admin/ModelsPage.tsx": "6a67376d001055ed7ac7f9574b30a79faf78a99be9c63b9caf2eeb4d56a23555",
+    "web/src/pages/admin/UsersPage.test.tsx": "1f9f86b4815fc4cd10313d4acdc6e58e0381312c721e0a94016b446cb877d5bf",
+    "web/src/pages/admin/UsersPage.tsx": "0c534a195957e6187646b084c477bfdcbdf24840e4276e732900cd47d0f87c69",
+    "web/vitest.critical.config.ts": "9ba09e34d0dbb93bc59318ebceb719f7e17b654724cf0547c796aaf140f3a6ec"
+  },
+  "remaining": [
+    "production frontend needs a fresh build and scoped deployment approval",
+    "current dist is the previous D7 build and lacks this repair",
+    "initial public network/entry latency remains; no same-request private server duration measurement",
+    "remote CI not executed for this workspace",
+    "diagnostic Chrome DevTools could not be closed after Mac locked"
+  ]
+}

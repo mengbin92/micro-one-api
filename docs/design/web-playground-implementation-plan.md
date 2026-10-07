@@ -3,6 +3,7 @@
 > 制定日期：2026-08-26
 > 状态：首版已交付；[v0.24.0](../releases/release-v0.24.0.md) 已包含 Playground 交互重构，[v0.33.6](../releases/release-v0.33.6.md) 已上线历史用户消息重用。本文保留原设计时点描述；后续验收与扩展以 [当前执行计划](next-stage-plan-2026-10-07.md) 为准，不能将原“无 Playground 路由”等描述当作当前缺口。
 > 范围：`web/` 用户控制台、`relay-gateway` 浏览器访问边界、部署配置与测试
+> **D7 扩展（2026-10-07，本地已验、尚未上线）**：安全 Markdown、系统字体及关键分支/交互时序已交付；助手终态格式化、流中纯文本、HTML/链接/图片/复制规则与证据见 [D7 记录](../runbooks/d7-experience-acceptance-2026-10-07.md)。原文“后续 Markdown”保留首版设计时点；原参数重放与历史分支编辑仍未交付。
 > 决策摘要：首版以 OpenAI Chat Completions 为唯一执行协议；浏览器直接调用
 > `relay-gateway`，API Key 只保存在当前页面内存中，不经过 `admin-api`、不落本地存储；
 > Relay 在实际生产路由上启用精确 Origin 的 CORS。无数据库迁移、无 proto 变更。

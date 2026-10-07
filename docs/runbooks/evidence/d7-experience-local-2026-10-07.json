@@ -1,0 +1,393 @@
+{
+  "captured_at": "2026-10-07T15:07:57+08:00",
+  "scope": "local workspace and isolated frontend fixtures; no production changes or billable requests",
+  "base_commit": "5c17986fdd7b001547dff557cc3b74ad5f69a437",
+  "implementation_state": "uncommitted on develop; not pushed, released, or deployed",
+  "runtime": {
+    "node": "v24.15.0",
+    "playwright": "1.60.0",
+    "vitest": "5.0.0",
+    "browser": "local Google Chrome; desktop and Pixel 5 emulation"
+  },
+  "checks": [
+    {
+      "command": "npm run lint",
+      "exit_code": 0
+    },
+    {
+      "command": "npm test -- --maxWorkers=2",
+      "exit_code": 0,
+      "files_passed": 62,
+      "tests_passed": 297,
+      "skipped": 0
+    },
+    {
+      "command": "npm run test:critical -- --maxWorkers=2",
+      "exit_code": 0,
+      "files_passed": 11,
+      "tests_passed": 117,
+      "skipped": 0
+    },
+    {
+      "command": "npm run build",
+      "exit_code": 0,
+      "byte_budgets_passed": 6
+    },
+    {
+      "command": "npm run test:e2e:d7",
+      "exit_code": 0,
+      "tests_passed": 28,
+      "skipped": 0,
+      "api_mode": "isolated mocked API/Relay; production build and admin CSP"
+    },
+    {
+      "command": "npm run test:e2e -- --workers=2",
+      "exit_code": 1,
+      "tests_passed": 67,
+      "skipped": 1,
+      "reason": "worker-2 did not exit within 300000ms after stop; force-killed by Playwright; not recorded as a passing command"
+    },
+    {
+      "command": "npm audit --omit=dev",
+      "exit_code": 0,
+      "vulnerabilities": 0
+    },
+    {
+      "command": "PWTEST_CHILD_PROCESS_TIMEOUT=10000 npm run test:e2e -- --project=chrome --workers=1",
+      "exit_code": 0,
+      "tests_passed": 33,
+      "skipped": 1,
+      "skip_reason": "existing mobile-only navigation test excluded on desktop"
+    },
+    {
+      "command": "python3 scripts/check-markdown-links.py",
+      "exit_code": 0,
+      "markdown_files_checked": 247
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    },
+    {
+      "command": "PWTEST_CHILD_PROCESS_TIMEOUT=10000 npm run test:e2e -- --project=mobile-chrome --workers=1",
+      "exit_code": 0,
+      "tests_passed": 34,
+      "skipped": 0
+    }
+  ],
+  "earlier_feedback": [
+    {
+      "command": "npm test -- src/pages/PlaygroundPage.test.tsx -t simultaneous",
+      "verdict_before_fix": "FAIL, expected 1 request but got 2; reproduced twice",
+      "verdict_after_fix": "PASS; included in final suite"
+    },
+    {
+      "run": "all unit tests concurrently with two browser suites",
+      "verdict": "11 failed, 283 passed; timeouts/waits under contention",
+      "replacement": "complete 297-pass full suite with maxWorkers=2"
+    },
+    {
+      "run": "first D7 browser fixture",
+      "verdict": "API Key selector matched navigation link; scoped to main and rerun; final 28 passed"
+    }
+  ],
+  "build_before_font_removal": {
+    "initialJavaScriptRawBytes": 749042,
+    "initialJavaScriptGzipBytes": 245617,
+    "initialCssRawBytes": 214506,
+    "initialCssGzipBytes": 61137,
+    "largestFontSubsetBytes": 76800,
+    "allFontSubsetsBytes": 4507216
+  },
+  "build_final": {
+    "initialJavaScriptRawBytes": 749333,
+    "initialJavaScriptGzipBytes": 245756,
+    "initialCssRawBytes": 107056,
+    "initialCssGzipBytes": 17399,
+    "largestFontSubsetBytes": 0,
+    "allFontSubsetsBytes": 0
+  },
+  "font_subsets": {
+    "before": 98,
+    "after": 0
+  },
+  "coverage": {
+    "total": {
+      "lines": {
+        "total": 551,
+        "covered": 509,
+        "skipped": 0,
+        "pct": 92.37
+      },
+      "statements": {
+        "total": 690,
+        "covered": 627,
+        "skipped": 0,
+        "pct": 90.86
+      },
+      "functions": {
+        "total": 162,
+        "covered": 148,
+        "skipped": 0,
+        "pct": 91.35
+      },
+      "branches": {
+        "total": 688,
+        "covered": 584,
+        "skipped": 0,
+        "pct": 84.88
+      },
+      "branchesTrue": {
+        "total": 0,
+        "covered": 0,
+        "skipped": 0,
+        "pct": 100
+      }
+    },
+    "web/src/components/playground/AssistantContent.tsx": {
+      "lines": {
+        "total": 7,
+        "covered": 7,
+        "skipped": 0,
+        "pct": 100
+      },
+      "functions": {
+        "total": 2,
+        "covered": 2,
+        "skipped": 0,
+        "pct": 100
+      },
+      "statements": {
+        "total": 10,
+        "covered": 10,
+        "skipped": 0,
+        "pct": 100
+      },
+      "branches": {
+        "total": 11,
+        "covered": 11,
+        "skipped": 0,
+        "pct": 100
+      }
+    },
+    "web/src/components/playground/AssistantMarkdown.tsx": {
+      "lines": {
+        "total": 22,
+        "covered": 22,
+        "skipped": 0,
+        "pct": 100
+      },
+      "functions": {
+        "total": 9,
+        "covered": 9,
+        "skipped": 0,
+        "pct": 100
+      },
+      "statements": {
+        "total": 24,
+        "covered": 24,
+        "skipped": 0,
+        "pct": 100
+      },
+      "branches": {
+        "total": 20,
+        "covered": 17,
+        "skipped": 0,
+        "pct": 85
+      }
+    },
+    "web/src/lib/admin-write.ts": {
+      "lines": {
+        "total": 48,
+        "covered": 47,
+        "skipped": 0,
+        "pct": 97.91
+      },
+      "functions": {
+        "total": 17,
+        "covered": 16,
+        "skipped": 0,
+        "pct": 94.11
+      },
+      "statements": {
+        "total": 79,
+        "covered": 77,
+        "skipped": 0,
+        "pct": 97.46
+      },
+      "branches": {
+        "total": 147,
+        "covered": 137,
+        "skipped": 0,
+        "pct": 93.19
+      }
+    },
+    "web/src/lib/amount.ts": {
+      "lines": {
+        "total": 13,
+        "covered": 13,
+        "skipped": 0,
+        "pct": 100
+      },
+      "functions": {
+        "total": 6,
+        "covered": 6,
+        "skipped": 0,
+        "pct": 100
+      },
+      "statements": {
+        "total": 15,
+        "covered": 15,
+        "skipped": 0,
+        "pct": 100
+      },
+      "branches": {
+        "total": 11,
+        "covered": 11,
+        "skipped": 0,
+        "pct": 100
+      }
+    },
+    "web/src/lib/authorization.ts": {
+      "lines": {
+        "total": 54,
+        "covered": 52,
+        "skipped": 0,
+        "pct": 96.29
+      },
+      "functions": {
+        "total": 27,
+        "covered": 25,
+        "skipped": 0,
+        "pct": 92.59
+      },
+      "statements": {
+        "total": 76,
+        "covered": 71,
+        "skipped": 0,
+        "pct": 93.42
+      },
+      "branches": {
+        "total": 55,
+        "covered": 47,
+        "skipped": 0,
+        "pct": 85.45
+      }
+    },
+    "web/src/lib/relay-playground.ts": {
+      "lines": {
+        "total": 123,
+        "covered": 119,
+        "skipped": 0,
+        "pct": 96.74
+      },
+      "functions": {
+        "total": 18,
+        "covered": 18,
+        "skipped": 0,
+        "pct": 100
+      },
+      "statements": {
+        "total": 144,
+        "covered": 137,
+        "skipped": 0,
+        "pct": 95.13
+      },
+      "branches": {
+        "total": 131,
+        "covered": 117,
+        "skipped": 0,
+        "pct": 89.31
+      }
+    },
+    "web/src/lib/sse.ts": {
+      "lines": {
+        "total": 59,
+        "covered": 59,
+        "skipped": 0,
+        "pct": 100
+      },
+      "functions": {
+        "total": 6,
+        "covered": 6,
+        "skipped": 0,
+        "pct": 100
+      },
+      "statements": {
+        "total": 68,
+        "covered": 67,
+        "skipped": 0,
+        "pct": 98.52
+      },
+      "branches": {
+        "total": 31,
+        "covered": 31,
+        "skipped": 0,
+        "pct": 100
+      }
+    },
+    "web/src/pages/PlaygroundPage.tsx": {
+      "lines": {
+        "total": 225,
+        "covered": 190,
+        "skipped": 0,
+        "pct": 84.44
+      },
+      "functions": {
+        "total": 77,
+        "covered": 66,
+        "skipped": 0,
+        "pct": 85.71
+      },
+      "statements": {
+        "total": 274,
+        "covered": 226,
+        "skipped": 0,
+        "pct": 82.48
+      },
+      "branches": {
+        "total": 282,
+        "covered": 213,
+        "skipped": 0,
+        "pct": 75.53
+      }
+    }
+  },
+  "source_sha256": {
+    ".github/workflows/ci.yml": "fa1a4d0c78769f5a930bcc26174d96b9da1e209e42f066d7d7aa35b904a48102",
+    ".github/workflows/e2e.yml": "ab7610aa585b5331fffc329ba71b4a15a0229ca140d03c6fedb4e27b02f24ca1",
+    "web/.gitignore": "56b7817da43ae1a7b206b81b9cddbce0f58c14e61433ef5fe5d9dad458819186",
+    "web/README.md": "190438dc55cd7c534aef0d84a232544f727878bec77a1cc3e0d7ca98a01360b5",
+    "web/e2e/playground-experience.spec.ts": "8bb834552c37edead9cb47e3fdacf9df2f026738a2c5997fe67f98cb99d091d5",
+    "web/eslint.config.js": "01707c9cb6872fd9b4ed0a190a4ba010b8fc2d5da11d1d77d5712ec095232281",
+    "web/package-lock.json": "335361ae41feead2dbb2fb8ed50996bb3c34caed9c3c8b41435c6a102acf401d",
+    "web/package.json": "bb065e523954b8f6ea90e233176ea92cf4c5b1f84b3f3942aaaed6e86376e94c",
+    "web/performance-budget.json": "13195bd7a587aecc7936b8f34084476b290b290d66ed461cb4ce656102301ae7",
+    "web/playwright.config.ts": "4b3d13e87990e2594b54df8f38bd1664ef1df30fae7d101f674109aa010cb55c",
+    "web/playwright.d7.config.ts": "ddec0a64f64e426ba65dbabaaf8f8acf20b153ee80a17698cfba0243623b302d",
+    "web/src/components/playground/AssistantContent.tsx": "688251d4af25e91709d51d85ab7a98ab9a2cd78ab1742db8553a8a3ccc85df13",
+    "web/src/components/playground/AssistantMarkdown.test.tsx": "b90b62ed227c997b880b9a944cc2d02732a37be2abb8179e0231606f14c65200",
+    "web/src/components/playground/AssistantMarkdown.tsx": "dc6f1a16bc818e525074e0d316c5d227d3687390a538e243379d3a71b99cfc71",
+    "web/src/components/playground/markdown.css": "1a4aa445be16fe1bb6eb8a579e619ad777a6081b0d779f9299760cb244aa82f6",
+    "web/src/index.css": "963efc5e7dba1ee2ece936aa772999f7985dd6345022fc3905ffb9d677b54216",
+    "web/src/lib/admin-write.test.ts": "4a08b6aaef489a25c3de5bc949403c78ddf393f147299d3cf88d2078537da33d",
+    "web/src/lib/amount.test.ts": "1ee81379c4be664968d94311d55e7b6792c29add0d53f8068d6385f58e565d64",
+    "web/src/lib/authorization.test.tsx": "5089439341f5ffdf2a0a7b433d29fc490c8dfee618557d6800c5272a9d2b253a",
+    "web/src/lib/relay-playground.test.ts": "cf6faaf484edc0eb5f457880e88e89cddd8b1e2ae49b0d27e29cb3cef27714a4",
+    "web/src/lib/sse.test.ts": "f141f9abda783548f11cd7b567d434c0c097d07044cfb732db1d01dc95e34b88",
+    "web/src/locales/en-US.ts": "1d795f5f7f9d6902c63155b7c90a3b0a2716d41959cb27aca8dd6bb5bf381654",
+    "web/src/pages/OrdersPage.test.tsx": "f3a4805a40a8f31cff559fb27384987532ae45a9862ef92d0c63f4d3181bc098",
+    "web/src/pages/PlaygroundPage.test.tsx": "e6858dae9cfa578c16b21aa0685030576680fa85a008e234980bf881810f3cab",
+    "web/src/pages/PlaygroundPage.tsx": "20790c29a2c742b70f1bce2147c3ca5bf887d8c3b78fd220dde9f196171369f6",
+    "web/src/pages/admin/UsersPage.test.tsx": "1f9f86b4815fc4cd10313d4acdc6e58e0381312c721e0a94016b446cb877d5bf",
+    "web/vitest.critical.config.ts": "481afeb0ccd9d6a48c74b89eb4d20a29ed85f4169f88789d22c46b3ad6daf0e5"
+  },
+  "dist_index_sha256": "dcdbfc7e5b9271b7ceed3136b94bfacb14e05452e576e672c351052ea297fb3e",
+  "remaining_boundaries": [
+    "combined shared browser run has a local worker shutdown error; both projects pass when run separately; root cause not established",
+    "remote CI has not run this candidate",
+    "Windows/Android/iOS device font rendering not tested",
+    "no new backend coverage or production finance/cancellation acceptance",
+    "original-parameter replay, history branching, reconciliation tolerance and executor seven-day admission remain outside this delivery"
+  ]
+}

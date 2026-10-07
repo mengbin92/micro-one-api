@@ -49,18 +49,20 @@ export interface AccountDashboard {
 
 export const userSelfQueryOptions = queryOptions({
   queryKey: ['user-self'] as const,
-  queryFn: async () => {
-    const response = await apiClient.get('/user/self');
+  queryFn: async ({ signal }) => {
+    const response = await apiClient.get('/user/self', { signal });
     return unwrapApiData<UserSelf | null>(response.data);
   },
   staleTime: 5 * 60 * 1000,
+  meta: { protected: true },
 });
 
 export const accountDashboardQueryOptions = queryOptions({
   queryKey: ['dashboard-summary'] as const,
-  queryFn: async () => {
-    const response = await apiClient.get('/user/dashboard');
+  queryFn: async ({ signal }) => {
+    const response = await apiClient.get('/user/dashboard', { signal });
     return unwrapApiData<AccountDashboard | null>(response.data);
   },
   staleTime: 30 * 1000,
+  meta: { protected: true },
 });

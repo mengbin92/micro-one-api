@@ -169,15 +169,15 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("输入价格")}</p>
-                <p>{auth.snapshot?.authorization_mode === 'iam' && !model.price_fields_visible ? t('受限') : formatPricing(model.pricing_input)}</p>
+                <p>{auth.displaySnapshot?.authorization_mode === 'iam' && !model.price_fields_visible ? t('受限') : formatPricing(model.pricing_input)}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("输出价格")}</p>
-                <p>{auth.snapshot?.authorization_mode === 'iam' && !model.price_fields_visible ? t('受限') : formatPricing(model.pricing_output)}</p>
+                <p>{auth.displaySnapshot?.authorization_mode === 'iam' && !model.price_fields_visible ? t('受限') : formatPricing(model.pricing_output)}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("缓存读取价格")}</p>
-                <p>{auth.snapshot?.authorization_mode === 'iam' && !model.price_fields_visible ? t('受限') : formatPricing(model.pricing_cache_read)}</p>
+                <p>{auth.displaySnapshot?.authorization_mode === 'iam' && !model.price_fields_visible ? t('受限') : formatPricing(model.pricing_cache_read)}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("公开显示")}</p>

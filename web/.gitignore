@@ -12,7 +12,9 @@ dist
 dist-ssr
 test-results
 iam-test-results
+d7-test-results
 playwright-report
+coverage
 *.local
 
 # Editor directories and files

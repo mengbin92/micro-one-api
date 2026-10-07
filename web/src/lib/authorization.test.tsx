@@ -3,10 +3,12 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, it, expect, vi } from 'vitest';
 import { server } from '@/test/msw/server';
-import { can, suspendProtectedQueries, useAuthorizedQuery, useAuthorizationLifecycle } from './authorization';
+import { authorizationKey, can, canAll, canAny, suspendProtectedQueries, useAuthorizedQuery, useAuthorizationLifecycle } from './authorization';
 import { adminApiClient } from './api';
 import { refreshAuthorization } from './authorization-events';
 import type { IAMReply } from './iam-types';
+import { prepareAdminRequest } from './authorization-events';
+import { AxiosHeaders } from 'axios';
 const active = (operations: string[], revision = '1'): IAMReply => ({ authorization_mode: 'iam', session: { activation_state: 'active', revision }, permitted_operations: operations, versions: { policy_revision: revision }, valid_until: new Date(Date.now() + 60_000).toISOString() });
 function Consumer() {
  useAuthorizationLifecycle();
@@ -15,6 +17,163 @@ function Consumer() {
 }
 function mount(client: QueryClient) { return render(<QueryClientProvider client={client}><Consumer /></QueryClientProvider>); }
 describe('authorization lifecycle', () => {
+ it('keeps verified data visible and avoids owner refetch during a same-version background authorization refresh', async () => {
+  const snapshot = { ...active(['channel.channel.list']), versions: { policy_revision: '1', user_revision: '2' }, authorized_role_ids: ['2', '1'], active_role_ids: ['2', '1'] };
+  let authCalls = 0;
+  let release: (() => void) | undefined;
+  const requests = vi.fn();
+  server.use(
+   http.get('/api/user/authorization', async () => {
+    authCalls++;
+    if (authCalls > 1) await new Promise<void>(resolve => { release = resolve; });
+    return HttpResponse.json({ ...snapshot, authorized_role_ids: authCalls > 1 ? ['1', '2'] : ['2', '1'], active_role_ids: authCalls > 1 ? ['1', '2'] : ['2', '1'], versions: { user_revision: '2', policy_revision: '1' }, valid_until: new Date(Date.now() + 60_000).toISOString() });
+   }),
+   http.get('/api/test-protected', () => { requests(); return HttpResponse.json({ value: 'stable data' }); }),
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 60_000 } } });
+  const result = mount(client);
+  let refreshing: Promise<void> | undefined;
+  let writeBlockedBeforeRender = false;
+  try {
+   await screen.findByText('stable data');
+   const initialOwnerQuery = client.getQueryCache().findAll({ queryKey: ['protected-list'] })[0];
+   expect(initialOwnerQuery).toBeDefined();
+   expect(prepareAdminRequest({ url: '/channel', method: 'put', data: { reason: 'reviewed reason' }, headers: new AxiosHeaders() }).data.reason).toBe('reviewed reason');
+   act(() => {
+    refreshing = client.refetchQueries({ queryKey: authorizationKey });
+    try { prepareAdminRequest({ url: '/channel', method: 'put', data: { reason: 'reviewed reason' }, headers: new AxiosHeaders() }); }
+    catch { writeBlockedBeforeRender = true; }
+   });
+   await waitFor(() => expect(authCalls).toBe(2));
+   expect(writeBlockedBeforeRender).toBe(true);
+   expect(screen.getByText('stable data')).toBeVisible();
+   expect(() => prepareAdminRequest({ url: '/channel', method: 'put', data: { reason: 'reviewed reason' }, headers: new AxiosHeaders() })).toThrow('授权状态不可用');
+   expect(() => prepareAdminRequest({ url: '/v1/admin/iam/roles', method: 'post', data: {}, headers: new AxiosHeaders() })).toThrow('授权状态不可用');
+   await act(async () => { release?.(); await refreshing; });
+   expect(client.getQueryCache().findAll({ queryKey: ['protected-list'] })[0]).toBe(initialOwnerQuery);
+   expect(screen.getByText('stable data')).toBeVisible();
+   expect(requests).toHaveBeenCalledTimes(1);
+   expect(prepareAdminRequest({ url: '/v1/admin/iam/roles', method: 'patch', headers: new AxiosHeaders() }).method).toBe('patch');
+  } finally {
+   await act(async () => { release?.(); await refreshing; });
+   result.unmount(); client.clear();
+  }
+ });
+ it.each(['versions', 'operations', 'session', 'session_revision', 'roles', 'expired', 'malformed_expiry', 'unknown_mode', 'legacy_mode', 'failed'])('clears previously displayed data when background authorization changes %s', async (change) => {
+  let snapshot = active(['channel.channel.list']);
+  let failed = false;
+  let calls = 0;
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 60_000 } } });
+  server.use(
+   http.get('/api/user/authorization', () => failed ? HttpResponse.json({ message: 'unavailable' }, { status: 503 }) : HttpResponse.json(snapshot)),
+   http.get('/api/test-protected', () => HttpResponse.json({ value: ++calls === 1 ? 'old protected data' : 'new protected data' })),
+  );
+  const view = mount(client);
+  try {
+   await screen.findByText('old protected data');
+   if (change === 'versions') snapshot = active(['channel.channel.list'], '2');
+   if (change === 'operations') snapshot = { ...snapshot, permitted_operations: [] };
+   if (change === 'session') snapshot = { ...snapshot, session: { activation_state: 'selection_required', revision: '2' } };
+   if (change === 'session_revision') snapshot = { ...snapshot, session: { activation_state: 'active', revision: '2' } };
+   if (change === 'roles') snapshot = { ...snapshot, active_role_ids: ['2'] };
+   if (change === 'expired') snapshot = { ...snapshot, valid_until: new Date(0).toISOString() };
+   if (change === 'malformed_expiry') snapshot = { ...snapshot, valid_until: 'not-a-date' };
+   if (change === 'unknown_mode') snapshot = { ...snapshot, authorization_mode: 'unknown' };
+   if (change === 'legacy_mode') snapshot = { ...snapshot, authorization_mode: 'legacy', legacy_admin: false };
+   if (change === 'failed') failed = true;
+   await act(async () => { await client.refetchQueries({ queryKey: authorizationKey }); });
+   await waitFor(() => expect(screen.queryByText('old protected data')).not.toBeInTheDocument());
+   if (change === 'versions' || change === 'session_revision' || change === 'roles') {
+    expect(await screen.findByText('new protected data')).toBeVisible();
+    expect(calls).toBe(2);
+   } else {
+    expect(screen.getByText('hidden')).toBeVisible(); expect(calls).toBe(1);
+    expect(client.getQueryCache().findAll({ predicate: q => q.meta?.protected === true }).every(q => q.state.data === undefined)).toBe(true);
+   }
+  } finally { view.unmount(); client.clear(); }
+ });
+ it('starts a new permitted owner read without serially waiting for an unchanged background summary', async () => {
+  let authCalls = 0;
+  let release: (() => void) | undefined;
+  server.use(http.get('/api/user/authorization', async () => {
+   if (++authCalls > 1) await new Promise<void>(resolve => { release = resolve; });
+   return HttpResponse.json(active(['channel.channel.list']));
+  }), http.get('/api/test-protected', () => HttpResponse.json({ value: 'first page data' })), http.get('/api/next-page', () => HttpResponse.json({ value: 'next page data' })));
+  function NextPage() {
+   const data = useAuthorizedQuery({ permission: 'channel.channel.list', queryKey: ['next-page-list'], queryFn: async () => (await adminApiClient.get('/next-page')).data.value });
+   return <div>{data.data ?? 'next page loading'}</div>;
+  }
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 60_000 } } }); const view = mount(client);
+  let refreshing: Promise<void> | undefined;
+  try {
+   await screen.findByText('first page data');
+   act(() => { refreshing = client.refetchQueries({ queryKey: authorizationKey }); });
+   await waitFor(() => expect(authCalls).toBe(2));
+   view.rerender(<QueryClientProvider client={client}><Consumer /><NextPage /></QueryClientProvider>);
+   expect(await screen.findByText('next page data')).toBeVisible();
+   expect(client.getQueryCache().findAll({ queryKey: authorizationKey })[0].state.fetchStatus).toBe('fetching');
+  } finally {
+   await act(async () => { release?.(); await refreshing; });
+   view.unmount(); client.clear();
+  }
+ });
+ it('expires displayed data on time even while a background authorization response is blocked', async () => {
+  const started = Date.now();
+  const now = vi.spyOn(Date, 'now').mockReturnValue(started);
+  const originalSetTimeout = window.setTimeout.bind(window);
+  const originalClearTimeout = window.clearTimeout.bind(window);
+  const deadlines = new Map<number, TimerHandler>();
+  vi.spyOn(window, 'setTimeout').mockImplementation((handler, delay, ...args) => {
+   const timer = originalSetTimeout(handler, delay, ...args);
+   if (delay === 60_000) deadlines.set(timer, handler);
+   return timer;
+  });
+  vi.spyOn(window, 'clearTimeout').mockImplementation(timer => { if (timer !== undefined) deadlines.delete(timer); originalClearTimeout(timer); });
+  const snapshot = active(['channel.channel.list']);
+  const releases: Array<() => void> = [];
+  let calls = 0;
+  server.use(http.get('/api/user/authorization', async () => {
+   if (++calls > 1) await new Promise<void>(resolve => releases.push(resolve));
+   return HttpResponse.json(snapshot);
+  }), http.get('/api/test-protected', () => HttpResponse.json({ value: 'expires during polling' })));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 60_000 } } }); const view = mount(client);
+  let refreshing: Promise<void> | undefined;
+  try {
+   await screen.findByText('expires during polling');
+   act(() => { refreshing = client.refetchQueries({ queryKey: authorizationKey }); });
+   await waitFor(() => expect(calls).toBe(2));
+   expect(deadlines.size).toBe(1);
+   expect(screen.getByText('expires during polling')).toBeVisible();
+   now.mockReturnValue(started + 60_001);
+   await act(async () => { for (const callback of [...deadlines.values()]) if (typeof callback === 'function') callback(); });
+   await waitFor(() => expect(screen.queryByText('expires during polling')).not.toBeInTheDocument());
+   expect(client.getQueryCache().findAll({ predicate: q => q.meta?.protected === true }).every(q => q.state.data === undefined)).toBe(true);
+  } finally {
+   view.unmount(); client.clear();
+   for (const release of releases) release();
+   await refreshing;
+  }
+ });
+ it('does not reload authorization or owner data for another tab changing appearance preferences', async () => {
+  let calls = 0;
+  const requests = vi.fn();
+  server.use(http.get('/api/user/authorization', () => { calls++; return HttpResponse.json(active(['channel.channel.list'])); }), http.get('/api/test-protected', () => { requests(); return HttpResponse.json({ value: 'stable preference data' }); }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 60_000 } } }); const view = mount(client);
+  try {
+   await screen.findByText('stable preference data');
+   await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key: 'web:theme', newValue: '"dark"' })); await new Promise(resolve => setTimeout(resolve, 0)); });
+   expect(screen.getByText('stable preference data')).toBeVisible();
+   expect(calls).toBe(1); expect(requests).toHaveBeenCalledTimes(1);
+  } finally { view.unmount(); client.clear(); }
+ });
+ it('requires all operations for financial paths and permits any only when explicitly requested', () => {
+  const snapshot = active(['billing.payment.list']);
+  expect(canAll(snapshot, ['admin.console.enter', 'billing.payment.list'])).toBe(false);
+  expect(canAny(snapshot, ['billing.payment.read', 'billing.payment.list'])).toBe(true);
+  expect(canAny(snapshot, ['billing.payment.read'])).toBe(false);
+  expect(can({ ...snapshot, authorization_mode: 'future-mode' }, 'billing.payment.list')).toBe(false);
+  expect(can({ ...snapshot, session: undefined }, 'billing.payment.list')).toBe(false);
+ });
  it('uses verified legacy state and IAM summary, ignores numeric local role, rejects expiry and unknown modes', () => {
   localStorage.setItem('userRole', '100');
   expect(can(undefined, 'admin.console.enter')).toBe(false);

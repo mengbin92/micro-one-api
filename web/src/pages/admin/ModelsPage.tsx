@@ -333,7 +333,7 @@ export function AdminModelsPage() {
     setEditingModel({ pk: model.id, draft: emptyDraft, pricesVisible: false });
     try {
       const detail = await getModel(model.id);
-      setEditingModel({ pk: model.id, draft: modelInfoToDraft(detail.model), pricesVisible: auth.snapshot?.authorization_mode === 'legacy' || detail.model.price_fields_visible === true });
+      setEditingModel({ pk: model.id, draft: modelInfoToDraft(detail.model), pricesVisible: auth.displaySnapshot?.authorization_mode === 'legacy' || detail.model.price_fields_visible === true });
     } catch (err) {
       toast.error((err as Error).message || t("加载模型详情失败"));
       setEditingModel(null);

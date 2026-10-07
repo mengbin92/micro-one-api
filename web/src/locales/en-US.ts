@@ -10,6 +10,12 @@ export const EN_US_MESSAGES: Record<string, string> = {
   ...EN_US_RBAC_MESSAGES,
   "重用消息": "Reuse message",
   "填入输入框，编辑后发送": "Fill the composer, edit and send",
+  "代码已复制": "Code copied",
+  "复制失败，请选择代码手动复制": "Copy failed. Select the code and copy it manually.",
+  "长回复以纯文本显示": "Long replies are displayed as plain text",
+  "图片：{alt}": "Image: {alt}",
+  "未提供说明": "No description",
+  "回复表格": "Reply table",
   // Routing groups admin surface (v2 phases D–F): resource members, in-group
   // overrides, settlement policy and per-user multipliers.
   "上游模型": "Upstream model",

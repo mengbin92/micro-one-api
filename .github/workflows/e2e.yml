@@ -213,6 +213,13 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install chrome
 
+      - name: Build production assets with byte budgets
+        run: npm run build
+
+      - name: Verify D7 production Markdown, CSP and typography
+        run: npm run test:e2e:d7
+        timeout-minutes: 5
+
       - name: Run Playwright admin smoke
         run: npx playwright test
         timeout-minutes: 15
@@ -225,4 +232,5 @@ jobs:
           path: |
             web/playwright-report/
             web/test-results/
+            web/d7-test-results/
           if-no-files-found: ignore
