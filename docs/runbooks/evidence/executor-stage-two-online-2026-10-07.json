@@ -1,0 +1,34 @@
+{
+  "checked_at": "2026-10-07T13:14:38.883346+08:00",
+  "destination": "/opt/micro-one-api/ops/executor-stage-two-20261007-131435",
+  "manifest": {
+    "workspace_base": "43924b1d181d94ccbc15e6f8e8f943b68fedd091",
+    "files": {
+      "scripts/executor-observation-readonly.py": "4ca9a8bb87d14e48ac1876f1b28c1bb570f72e6966864516fc878c2f7e39d5cb",
+      "docs/README.md": "979c49533322749f42bf67bf8f02ec2f711cbca967bd1a216201caf1652b0bfb",
+      "docs/TODO.md": "1e70a8b5239d2ccf590c31a133a3c333be01a2a14440bb6b10d76883355cbc2d",
+      "docs/design/next-stage-plan-2026-10-07.md": "ce00efb5a5d19ec5e236675bf6cd0359508c80ccfa82ee3371cf58ab78408c46",
+      "docs/design/v0.23-executor-observation.md": "38a5da5ec6a23becba6c216934a6056575dbea42daf1cc971e5befd6b1c91bdd",
+      "docs/runbooks/executor-second-batch-acceptance-2026-10-07.md": "0917dc16965d41199c3051a3d8a0658d049600fcb401c5d542b3c241a20a0ae7",
+      "docs/runbooks/evidence/executor-stage-two-production-2026-10-07.json": "e71a06ad7f443da183ea4fbd770a5505c6f08a46bfa0f764e23cc8847be16fc2"
+    }
+  },
+  "files_verified": 7,
+  "service_container_ids_preserved": true,
+  "service_images_preserved": true,
+  "service_environments_preserved": true,
+  "service_restarts_preserved": true,
+  "all_services_running": true,
+  "frontend_index_sha256": "883962cd93a71bb335946d97e044a0528a17448849cabc6c2b28980d9b2820df",
+  "frontend_preserved": true,
+  "iam_rows": [
+    "iam\tcomplete\t7\t2",
+    "1\t1"
+  ],
+  "iam_preserved": true,
+  "relay_health": 200,
+  "relay_flag": "true",
+  "allowlist_count": 2,
+  "application_images_deployed": false,
+  "application_tag_created": false
+}

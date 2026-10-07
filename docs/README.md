@@ -23,6 +23,7 @@ docs/
 | 个人单机，创建首个渠道和 Token | [quickstart-lite.md](./quickstart-lite.md) |
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
 | 查看下一阶段执行路线与条件保留项 | [design/next-stage-plan-2026-10-07.md](./design/next-stage-plan-2026-10-07.md) |
+| 复核 executor 有限灰度与第二批条件结论 | [观察手册](./design/v0.23-executor-observation.md) · [第二批记录](./runbooks/executor-second-batch-acceptance-2026-10-07.md) |
 | 查看当前待办和历史完成记录 | [TODO.md](./TODO.md) |
 | 查看产品界面预览 | [根 README 界面预览](../README.md#界面预览) |
 | 查看某版本发布内容 | [releases/](./releases/) |
@@ -40,6 +41,8 @@ docs/
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——本表明确指向且头部标注「当前执行入口」的计划。未定发布版本时使用 `design/next-stage-plan-YYYY-MM-DD.md`，已定版本时使用 `design/vX.Y-roadmap.md`。新阶段立项时：新建计划 → 旧路线图标为「已归档」并指回新入口 → 同步本表、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
 最新发布：[v0.34.6](./releases/release-v0.34.6.md)（2026-10-07），恢复后台对账并强化完整 IAM 持续门禁。v0.34.0 已交付 IAM 正式生产交接，v0.34.1–v0.34.4 补齐本人用量/订阅、字段/公开价格、权限详情与安全修复。
+
+**当前第二批状态（2026-10-07）**：第一批已上线发版，v0.34.6 CI 的固定契约/十三项快速门禁已实际成功，自然小时对账恢复已复核。E1 与 E2 条件评估完成，结论 **INSUFFICIENT**，正式七天起点和可比自然 cohort 仍不成立；只读取证工具及隔离长流方案已交付，线上同步运维资料，保留有限灰度与 legacy。见 [第二批记录](./runbooks/executor-second-batch-acceptance-2026-10-07.md)，运行事实仍以 [观察手册](./design/v0.23-executor-observation.md) 为唯一来源。下方规划/第一批记录保留当轮历史边界。
 
 本轮核对（2026-10-07）：`develop@a37b39bf` 与 main 的 CI/安全流水线、v0.34.4 Release 已通过，开放 Code Scanning 告警为零。生产交接现状来自 [2026-10-05 记录](./design/rbac/d-iam-production-deployment.md)，本轮未重验生产。新计划按 S1 只读运行基线 → S2 关键链路覆盖 → S3 IAM 专项持续门禁推进；E1 核对 10 月 1 日重新开启的两枚 Token executor 灰度及有效七天起点，运行事实仍由 [观察手册](./design/v0.23-executor-observation.md) 管理。
 
