@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/e2e.yml'
       - '.github/workflows/pull-request-e2e.yml'
+      - '.github/workflows/ci.yml'
+      - 'Makefile'
       - 'Dockerfile'
       - 'api/**'
       - 'app/**'
@@ -20,6 +22,9 @@ on:
       - 'pkg/**'
       - 'platform/**'
       - 'scripts/test-routing-e2e.py'
+      - 'scripts/test-iam-browser.sh'
+      - 'scripts/check-iam-browser-result.py'
+      - 'scripts/tool-versions.env'
       - 'test/e2e/**'
       - 'web/**'
 
@@ -35,6 +40,7 @@ jobs:
       routing: ${{ steps.filter.outputs.routing }}
       compose: ${{ steps.filter.outputs.compose }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      iam: ${{ steps.filter.outputs.iam }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -48,23 +54,30 @@ jobs:
           routing=false
           compose=false
           frontend=false
+          iam=false
           while IFS= read -r path; do
             case "$path" in
               web/*)
                 frontend=true
+                iam=true
                 ;;
-              .github/workflows/e2e.yml|.github/workflows/pull-request-e2e.yml)
+              .github/workflows/e2e.yml|.github/workflows/pull-request-e2e.yml|.github/workflows/ci.yml|Makefile|scripts/tool-versions.env)
                 routing=true
                 compose=true
                 frontend=true
+                iam=true
+                ;;
+              scripts/test-iam-browser.sh|scripts/check-iam-browser-result.py)
+                iam=true
                 ;;
               api/*|app/*|cmd/*|configs/*|deployments/docker-compose/*|domain/*|internal/*|migrations/*|pkg/*|platform/*|test/e2e/*|scripts/test-routing-e2e.py|Dockerfile|go.mod|go.sum)
                 routing=true
                 compose=true
+                iam=true
                 ;;
             esac
           done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          if [ "$routing" = true ] || [ "$compose" = true ] || [ "$frontend" = true ]; then
+          if [ "$routing" = true ] || [ "$compose" = true ] || [ "$frontend" = true ] || [ "$iam" = true ]; then
             any=true
           else
             any=false
@@ -72,6 +85,7 @@ jobs:
           echo "routing=$routing" >> "$GITHUB_OUTPUT"
           echo "compose=$compose" >> "$GITHUB_OUTPUT"
           echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
+          echo "iam=$iam" >> "$GITHUB_OUTPUT"
           echo "any=$any" >> "$GITHUB_OUTPUT"
 
   affected-e2e:
@@ -84,3 +98,4 @@ jobs:
       run_routing: ${{ needs.changes.outputs.routing == 'true' }}
       run_compose: ${{ needs.changes.outputs.compose == 'true' }}
       run_frontend: ${{ needs.changes.outputs.frontend == 'true' }}
+      run_iam: ${{ needs.changes.outputs.iam == 'true' }}

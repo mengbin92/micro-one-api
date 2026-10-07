@@ -8,10 +8,14 @@ import (
 	"micro-one-api/app/admin/internal/data/iam"
 	"micro-one-api/app/admin/internal/server"
 	"micro-one-api/app/admin/internal/service"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
 )
 
 func NewManagedBillingHTTP(identity identityv1.IdentityServiceClient, iamClient identityv1.IAMServiceClient, billing billingv1.BillingServiceClient) *khttp.Server {
 	svc := service.NewAdminService(billing, identity, nil, nil)
 	svc.SetIAMService(service.NewIAMAdminService(biz.NewIAMUsecase(iam.NewRepo(iamClient))))
+	// The self adapter delegates usage to the billing owner; this usecase only
+	// enables the existing subscription route, with no local storage fallback.
+	svc.SetSubscriptionUsecases(subscriptionbiz.NewSubscriptionUsecase(nil, nil), nil, nil)
 	return server.NewHTTPServer(":0", svc, nil)
 }

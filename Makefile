@@ -347,7 +347,7 @@ format-check:
 
 .PHONY: verify
 # v0.19 P2.2: aggregate the per-PR quality gates in one command:
-# format + unit + race + architecture + migration governance + frontend
+# format + unit + race + architecture + migration/IAM contracts + frontend
 # (lint/test/build).
 # This mirrors what ci.yml runs for every PR, so local `make verify` and CI
 # cannot drift apart. Integration/e2e suites need external services and are
@@ -363,6 +363,8 @@ verify:
 	@./scripts/check-architecture.sh
 	@echo "== make verify: migration-check =="
 	@make migration-check
+	@echo "== make verify: rbac-contract-check =="
+	@make rbac-contract-check
 	@echo "== make verify: generated frontend API types =="
 	@make api
 	@cd web && npm run generate:api && git diff --exit-code -- src/types/api.ts
@@ -382,6 +384,11 @@ migration-check:
 # P0: reject unreviewed HTTP/RPC registrations, helper drift and unknown codes.
 rbac-contract-check:
 	go run ./cmd/rbac-contract-check
+
+.PHONY: test-iam-browser
+# Real HTTP/gRPC/SQLite IAM matrix. Requires Chrome and web/node_modules.
+test-iam-browser:
+	./scripts/test-iam-browser.sh
 
 .PHONY: migration-smoke-mysql
 # v0.21 P1: execute all MySQL migrations against a scratch database, verify a

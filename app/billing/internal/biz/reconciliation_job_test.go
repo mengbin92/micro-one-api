@@ -10,10 +10,25 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/authz"
 	"micro-one-api/platform/metrics"
 )
 
 const floatEpsilon = 0.000001
+
+func TestReconciliationJobIAMBackgroundPersistsWithoutUserSession(t *testing.T) {
+	job := newJobHarness(t, &mockReconRepo{accounts: []*Account{{UserID: "user1", Balance: 1000}}, ledgerSums: map[string]int64{"user1": 1000}}, nil, nil, "")
+	store := &recordingReconciliationRunStore{}
+	job.uc.runStore = store
+	job.uc.SetAuthorization(authz.NewClient("billing", nil))
+	job.runReconciliation(context.Background())
+	require.Len(t, store.saved, 1, "the trusted startup/hourly job must not require a user operator")
+	require.Equal(t, "completed", store.saved[0].Status)
+	_, err := job.uc.RunReconciliation(authorization.WithExternal(context.Background()))
+	require.Error(t, err, "an external caller without an operator must remain denied")
+	require.Len(t, store.saved, 1, "rejected external calls must not run or persist reconciliation")
+}
 
 func TestAlertContentExplainsEveryDiscrepancy(t *testing.T) {
 	tests := []struct {

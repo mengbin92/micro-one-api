@@ -7,6 +7,31 @@ async function signIn(page: Page, name: string, path: string) {
 }
 function headers(name: string) { return { Authorization: `Bearer ${fixture.tokens[name]}`, 'x-authorization-reason': 'C browser negative acceptance' }; }
 
+for (const viewport of [{ name: 'desktop', width: 1280, height: 800 }, { name: 'mobile', width: 390, height: 844 }]) {
+ test(`permission details remain in the ${viewport.name} viewport after a long catalog`, async ({ page }) => {
+  await page.setViewportSize({ width: viewport.width, height: viewport.height });
+  await signIn(page, 'root', '/admin/iam/permissions');
+  const details = page.getByRole('button', { name: '详情', exact: true });
+  await expect(details.first()).toBeVisible();
+  await details.first().click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('textbox', { name: '说明', exact: true })).toBeVisible();
+  const bounds = await dialog.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.y).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height);
+  const originalName = await dialog.getByRole('textbox', { name: '名称', exact: true }).inputValue();
+  await page.screenshot({ path: `test-results/iam-permission-${viewport.name}.png` });
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await details.nth(1).click();
+  await expect(dialog.getByRole('textbox', { name: '名称', exact: true })).not.toHaveValue(originalName);
+ });
+}
+
 test('alice: inherited group read, shared-group whole-write denial, secrets and ancillary polling', async ({ page, request }) => {
  const requests: string[] = []; page.on('request', req => requests.push(req.url()));
  await signIn(page, 'alice', '/admin');

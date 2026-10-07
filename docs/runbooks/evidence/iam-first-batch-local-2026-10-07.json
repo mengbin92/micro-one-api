@@ -1,0 +1,186 @@
+{
+  "date": "2026-10-07",
+  "timezone": "Asia/Shanghai",
+  "baseline_commit": "67ba46d1",
+  "branch": "codex/iam-first-batch",
+  "validation": [
+    {
+      "command": "make verify",
+      "status": "passed",
+      "frontend_files": 60,
+      "frontend_tests": 215,
+      "build_budget_checks": 6,
+      "rbac_contract_rows": 829
+    },
+    {
+      "command": "go test -race ./internal/integration ./app/billing/... -count=1",
+      "status": "passed",
+      "opt_in_suites": "ordinary IAM browser test skipped here; executed independently below; MySQL/PostgreSQL DSNs absent"
+    },
+    {
+      "command": "make test-iam-browser",
+      "status": "passed",
+      "playwright_stats": {
+        "startTime": "2026-10-07T01:17:31.673Z",
+        "duration": 17569.356,
+        "expected": 9,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "go_test": "TestIAMCRealBrowserMatrix"
+    },
+    {
+      "command": "CI=1 npx playwright test",
+      "working_directory": "web",
+      "status": "passed",
+      "passed": 67,
+      "skipped": 1,
+      "skip_reason": "desktop project intentionally skips the mobile-only test in admin-smoke.spec.ts:413"
+    },
+    {
+      "command": "go test -race -v ./app/channel/internal/data ./app/identity/internal/data ./app/billing/internal/data -run TestPublicModelCatalogFiltersBeforePagination|TestIAMB1ManagedUsersDialects|TestSubscriptionUsageAuthoritativeWindows -count=1",
+      "status": "passed",
+      "sqlite": "executed",
+      "mysql": "skipped - disposable local DSN absent",
+      "postgres": "skipped - disposable local DSN absent"
+    },
+    {
+      "command": "go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.9 .github/workflows/ci.yml .github/workflows/e2e.yml .github/workflows/pull-request-e2e.yml",
+      "status": "passed"
+    },
+    {
+      "command": "actual PR workflow classifier shell with 16 changed-path fixtures",
+      "status": "passed",
+      "cases": [
+        {
+          "path": "app/identity/internal/biz/auth.go",
+          "iam": "true",
+          "any": "true"
+        },
+        {
+          "path": "app/billing/internal/biz/reconciliation.go",
+          "iam": "true",
+          "any": "true"
+        },
+        {
+          "path": "internal/integration/iam_c_browser_test.go",
+          "iam": "true",
+          "any": "true"
+        },
+        {
+          "path": "platform/authz/authorization.go",
+          "iam": "true",
+          "any": "true"
+        },
+        {
+          "path": "domain/authorization/enforcer.go",
+          "iam": "true",
+          "any": "true"
+        },
+        {
+          "path": "web/src/lib/iam-api.ts",
+          "iam": "true",
+          "any": "true"
+        },
+        {
+          "path": "web/playwright.rbac.config.ts",
+          "iam": "true",
+          "any": "true"
+        },
+        {
+          "path": "api/identity/v1/iam.proto",
+          "iam": "true",
+          "any": "true"
+        },
+        {
+          "path": "Makefile",
+          "iam": "true",
+          "any": "true"
+        },
+        {
+          "path": "scripts/tool-versions.env",
+          "iam": "true",
+          "any": "true"
+        },
+        {
+          "path": "scripts/test-iam-browser.sh",
+          "iam": "true",
+          "any": "true"
+        },
+        {
+          "path": "scripts/check-iam-browser-result.py",
+          "iam": "true",
+          "any": "true"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "iam": "true",
+          "any": "true"
+        },
+        {
+          "path": ".github/workflows/e2e.yml",
+          "iam": "true",
+          "any": "true"
+        },
+        {
+          "path": ".github/workflows/pull-request-e2e.yml",
+          "iam": "true",
+          "any": "true"
+        },
+        {
+          "path": "docs/TODO.md",
+          "iam": "false",
+          "any": "false"
+        }
+      ]
+    }
+  ],
+  "negative_gate_validation": [
+    {
+      "case": "actual rbac-contract-check with mutated source_digest matrix",
+      "exit_code": 1,
+      "restored": true
+    },
+    {
+      "case": "actual opt-in-disabled Go report rejected by IAM result checker",
+      "exit_code": 1
+    },
+    {
+      "case": "skipped",
+      "exit_code": 1
+    },
+    {
+      "case": "failed",
+      "exit_code": 1
+    },
+    {
+      "case": "flaky",
+      "exit_code": 1
+    },
+    {
+      "case": "zero",
+      "exit_code": 1
+    }
+  ],
+  "diagnosis": {
+    "reconciliation": {
+      "test": "TestReconciliationJobIAMBackgroundPersistsWithoutUserSession",
+      "before": "failed: trusted background run produced no saved record",
+      "after": "passed: completed run persisted; external operator-less request denied",
+      "production_fix_deployed": false
+    },
+    "self_usage_fixture": {
+      "test": "TestIAMSelfUsageThroughDedicatedIdentityCaller",
+      "before": "failed on wall-clock-dependent re-signed JTI expiration",
+      "after": "same signed session reused; five repeated race runs passed"
+    }
+  },
+  "execution_notes": [
+    "Initial common-browser run reported individual test passes but did not terminate; canceled owned local processes and reran with CI=1; only completed CI-mode run counted as passed.",
+    "Final specialized browser run occurred after common smoke to preserve its Go/Playwright artifacts.",
+    "Full verify preceded final additions to the subscription test negative cases; that final test was rerun under race and passed.",
+    "GitHub workflows changed locally; this branch has not been pushed and remote new jobs have not executed.",
+    "No production mutations, model/payment requests or notification sends."
+  ]
+}

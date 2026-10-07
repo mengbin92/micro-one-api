@@ -7,6 +7,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- IAM 启用后定时对账不再因可选明细字段权限要求用户会话而在保存运行记录前中止；仅后台本进程路径使用既有信任，外部 operator、运行权与字段权限仍验证。本地回归已通过，生产修复尚待发布部署。
+
+### Added
+
+- 固定 IAM 入口契约接入本地 verify/后端 CI；共享 E2E 新增真实 owner 浏览器专项与 PR 路径选择，拒绝跳过或缺失的 Go/Playwright 验收。
+- 本人订阅进度与 API Key 用量的真实跨服务冻结额度回归、桌面/手机权限详情检查及第一批只读生产/关键链路验收，见 [实施记录](docs/runbooks/iam-first-batch-acceptance-2026-10-07.md)。
+
 ## [0.34.4] - 2026-10-06
 
 v0.34.4 是 v0.34.3 之后的 **PATCH 安全修复版本**：关闭七条 GitHub Code Scanning 告警，固定配置查询边界并移除未使用的易受攻击前端 CLI 工具链。更新 config 与前端；无 API/proto、迁移或配置变更。详见 [release-v0.34.4.md](docs/releases/release-v0.34.4.md)。
