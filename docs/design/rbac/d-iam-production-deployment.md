@@ -50,3 +50,10 @@ billing 的 users 写限于 `balance/frozen_amount/used_amount/request_count` �
 后续回滚仅使用已验证的 IAM 兼容镜像和前端；IAM 事实、审计及旧 DB 通道撤权保持。旧 B 二进制和 legacy 回填不能作为恢复手段。
 
 2026-10-05 后续用户侧验收发现本人账本调用遗漏，已单独更新 billing 为 `iam-self-usage-af8d42e4`；其他服务仍使用上述切换镜像。修复、真实接口与数据库核对记录见 [用户用量修复](self-usage-fix-2026-10-05.md)。
+
+
+## 2026-10-07 后续修复
+
+v0.34.8 修复 IAM 切换后的用户可用分组内部读取、钱包续订与支付创建执行点遗漏，并移除权限页面重复导航和授权轮询期间的局部闪动。20:29 更新 admin/channel/billing 和前端，20:40 单独补更新 billing 的 `CreatePaymentOrder` 覆盖；未修改 IAM 分配、切换状态或数据库结构。
+
+本次现网支付探针使用无效会话和空参数验证执行点可达，没有创建真实订单或执行付款。完整购买链路与拒绝边界在本地真实服务集成测试中验证，外部支付 provider 为 mock。详细范围、最终镜像、回滚备份及两次部署证据见 [IAM 用户侧修复记录](../../runbooks/iam-self-service-hotfix-2026-10-07.md)。

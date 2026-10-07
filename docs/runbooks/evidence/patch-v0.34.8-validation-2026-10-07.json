@@ -1,0 +1,37 @@
+{
+  "verified_at": "2026-10-07T21:03:02.584921+08:00",
+  "runtime_source_commit": "85391d457481d2542a3c846153cd179f088bdfc4",
+  "make_verify": {
+    "status": "passed",
+    "frontend_test_files": 63,
+    "frontend_tests": 322,
+    "rbac_reviewed_rows": 829,
+    "checks": [
+      "format",
+      "unit",
+      "race",
+      "architecture",
+      "migration",
+      "rbac-contract",
+      "iam-browser-result-contract",
+      "generated-api-types",
+      "frontend-lint",
+      "frontend-tests",
+      "frontend-production-build",
+      "six-build-budgets"
+    ],
+    "log_sha256": "13b1dfb6d7fec62cc86b158053342c1017ab472ade8e2d961a87557dd7754cfe"
+  },
+  "iam_browser": {
+    "status": "passed",
+    "actual_passed": 10,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0,
+    "global_errors": 0,
+    "initial_attempt": "All 10 tests passed, but the local Chrome worker exit timed out; the complete fresh-process rerun passed without skipped tests or a gate change.",
+    "result_sha256": "84137e954a971ad99eb51389f1fa96ca4a53091a3cecdfe9ad245a0e4256ed61"
+  },
+  "markdown_local_links": "251 files passed",
+  "production_checks": "See separate rollout evidence; no real payment order or debit executed by the production smoke probes."
+}

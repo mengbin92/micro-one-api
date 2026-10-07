@@ -364,6 +364,20 @@ SHOW PROCESSLIST;          -- 找 migration 连接
 
 发布前跑 `make security-scan`（gosec / govulncheck / gitleaks）。常见误报处理见 `docs/releases/release-v0.5.0.md` 的 Fixed 小节：文档示例用 `${API_TOKEN}` / `${ADMIN_TOKEN}`、公开 OAuth client id 标注、历史命中进 `.gitleaksignore`。
 
+### 6.10 IAM 购买／续订报 owner execution point incomplete or caller denied
+
+该文案来自 owner 的执行点覆盖拦截，通常发生在进入业务用例之前。先确认调用入口及实际 RPC：钱包购买／续订使用 `PurchaseSubscription`（合约钱包路径为 `ExecuteSubscriptionCommerce`），`/api/v1/subscriptions/purchase/payment` 使用 `CreatePaymentOrder`；令牌能力探测另用 `GetRoutingCapabilities`。不要用钱包 RPC 的通过结果替代支付入口验收。
+
+v0.34.8 补齐 `PurchaseSubscription`、`GetRoutingCapabilities`、`CreatePaymentOrder` 的 billing 覆盖列表；购买和创建订单仍由 owner 校验本人会话／账户，支付金额从套餐快照生成。核对 billing 的实际运行镜像和 Compose 固定标签，确认专用 admin 凭证允许调用该完整方法。HTTP 200 且 `success=false` 仍是失败。
+
+执行完整入口回归：
+
+```bash
+go test ./internal/integration -run TestIAMSubscriptionPaymentThroughRealOwners -count=1
+```
+
+该测试覆盖真实 HTTP/RPC/IAM/订单仓储、服务器定价、幂等重放、下架套餐及跨用户拒绝，外部支付 provider 为 mock。生产健康检查或无效会话探针不能替代实际支付、回调和权益发放验收。部署与回滚记录见 [IAM 用户侧修复记录](./iam-self-service-hotfix-2026-10-07.md)。
+
 ## 八、订阅文档索引
 
 | 文档 | 范围 |
