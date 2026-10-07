@@ -39,7 +39,7 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——本表明确指向且头部标注「当前执行入口」的计划。未定发布版本时使用 `design/next-stage-plan-YYYY-MM-DD.md`，已定版本时使用 `design/vX.Y-roadmap.md`。新阶段立项时：新建计划 → 旧路线图标为「已归档」并指回新入口 → 同步本表、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-最新发布：[v0.34.5](./releases/release-v0.34.5.md)（2026-10-07），恢复后台对账并强化完整 IAM 持续门禁。v0.34.0 已交付 IAM 正式生产交接，v0.34.1–v0.34.4 补齐本人用量/订阅、字段/公开价格、权限详情与安全修复。
+最新发布：[v0.34.6](./releases/release-v0.34.6.md)（2026-10-07），恢复后台对账并强化完整 IAM 持续门禁。v0.34.0 已交付 IAM 正式生产交接，v0.34.1–v0.34.4 补齐本人用量/订阅、字段/公开价格、权限详情与安全修复。
 
 本轮核对（2026-10-07）：`develop@a37b39bf` 与 main 的 CI/安全流水线、v0.34.4 Release 已通过，开放 Code Scanning 告警为零。生产交接现状来自 [2026-10-05 记录](./design/rbac/d-iam-production-deployment.md)，本轮未重验生产。新计划按 S1 只读运行基线 → S2 关键链路覆盖 → S3 IAM 专项持续门禁推进；E1 核对 10 月 1 日重新开启的两枚 Token executor 灰度及有效七天起点，运行事实仍由 [观察手册](./design/v0.23-executor-observation.md) 管理。
 
@@ -79,7 +79,7 @@ docs/
 - [v0.30.0](./releases/release-v0.30.0.md) · [v0.30.1](./releases/release-v0.30.1.md) · [v0.31.0](./releases/release-v0.31.0.md) · [v0.31.1](./releases/release-v0.31.1.md)
 - [v0.32.0](./releases/release-v0.32.0.md) · [v0.32.1](./releases/release-v0.32.1.md) · [v0.32.2](./releases/release-v0.32.2.md)
 - [v0.33.0](./releases/release-v0.33.0.md) · [v0.33.1](./releases/release-v0.33.1.md) · [v0.33.2](./releases/release-v0.33.2.md) · [v0.33.3](./releases/release-v0.33.3.md) · [v0.33.4](./releases/release-v0.33.4.md) · [v0.33.5](./releases/release-v0.33.5.md) · [v0.33.6](./releases/release-v0.33.6.md)
-- [v0.34.0](./releases/release-v0.34.0.md) · [v0.34.1](./releases/release-v0.34.1.md) · [v0.34.2](./releases/release-v0.34.2.md) · [v0.34.3](./releases/release-v0.34.3.md) · [v0.34.4](./releases/release-v0.34.4.md) · [v0.34.5](./releases/release-v0.34.5.md)（最新）
+- [v0.34.0](./releases/release-v0.34.0.md) · [v0.34.1](./releases/release-v0.34.1.md) · [v0.34.2](./releases/release-v0.34.2.md) · [v0.34.3](./releases/release-v0.34.3.md) · [v0.34.4](./releases/release-v0.34.4.md) · [v0.34.5 中止候选](./releases/release-v0.34.5.md) · [v0.34.6](./releases/release-v0.34.6.md)（最新）
 
 ### runbooks/ — 运维操作手册
 
@@ -152,3 +152,5 @@ Kratos 大仓结构、grpc-gateway、log-service 降级、buf 工具链迁移、
 | [log-service-to-platform-logging.md](./migration/log-service-to-platform-logging.md) | log-service 降级为 platform/logging 组件 |
 | [grpc-gateway-migration-todo.md](./migration/grpc-gateway-migration-todo.md) | grpc-gateway 迁移 TODO |
 | [buf-migration-and-kratos-v3-upgrade-plan.md](./migration/buf-migration-and-kratos-v3-upgrade-plan.md) | buf 工具链迁移 + Kratos v3 升级综合方案（含两个未知项确认结论） |
+
+发布恢复（2026-10-07）：v0.34.5 候选因 Linux bytecode 工作区检查失败中止；原 tag 保留。修复后正式版本为 v0.34.6，最终 Billing 镜像已更新，对账 #366 completed/0 差异，见 [最终证据](./runbooks/evidence/patch-v0.34.6-production-2026-10-07.json)。

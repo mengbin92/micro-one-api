@@ -1,0 +1,61 @@
+{
+  "deployment": {
+    "version": "v0.34.6",
+    "source_commit": "a7f09f58",
+    "backup_directory": "/opt/micro-one-api/deploy-v0.34.6-20261007-101248",
+    "previous_image": "sha256:d5acd7f263de53916e00f8dde8a2409f70bf16eef6d3b92018a72fb6cddb6c5d",
+    "before_database": [
+      "policy\tiam\tcomplete\t7\t2",
+      "latest\t365\t1791337741\tcompleted\t0"
+    ],
+    "image": "sha256:b0d2bb409009b0ec2539eafb6f9c24cb2177c3cf2fb5aa7c6b34ad2470c47018",
+    "image_ref": "docker-compose-billing-service:v0.34.6",
+    "source_digest": "b22e94cfbf770d0e480a20514356a1848926709fa813113642ae79cbef5713bc",
+    "rollback_tag": "docker-compose-billing-service:rollback-v0.34.6-20261007-101248",
+    "billing_health": 200,
+    "billing_restarts": 0,
+    "environment_preserved": true,
+    "other_eight_container_ids_preserved": true,
+    "deployed_at": "2026-10-07T10:12:52.981591+08:00",
+    "started_at": "2026-10-07T02:12:52.690749463Z",
+    "after_database": [
+      "policy\tiam\tcomplete\t7\t2",
+      "latest\t365\t1791337741\tcompleted\t0"
+    ],
+    "frontend_index_sha256": "883962cd93a71bb335946d97e044a0528a17448849cabc6c2b28980d9b2820df",
+    "billing_backup_bytes": 12401091,
+    "billing_backup_sha256": "c54e8e1907af2184312a339d145c02101d67936e87751692fabc56b4a8ba2625"
+  },
+  "transport": {
+    "image_ref": "docker-compose-billing-service:v0.34.6",
+    "image_id": "sha256:b0d2bb409009b0ec2539eafb6f9c24cb2177c3cf2fb5aa7c6b34ad2470c47018",
+    "source_digest": "b22e94cfbf770d0e480a20514356a1848926709fa813113642ae79cbef5713bc",
+    "archive_sha256": "aa619ffe943f55b39fb5cafe605873c67d675d447c84e02f18fd1ecccfeb1a9f",
+    "archive_bytes": 18356844,
+    "platform": "linux/amd64"
+  },
+  "verification": {
+    "checked_at": "2026-10-07T10:14:03.456306+08:00",
+    "database": [
+      "latest_reconciliation\t366\t1791339172\tcompleted\t0",
+      "policy\tiam\tcomplete\t7\t2",
+      "settlement\tcompleted\t5920"
+    ],
+    "logs": {
+      "reconciliation completed": 1,
+      "reconciliation failed": 0,
+      "user operator required": 0,
+      "panic": 0,
+      "fatal": 0
+    }
+  },
+  "release_candidate_history": {
+    "v0.34.5_tag_preserved": true,
+    "release_run": 37559569131,
+    "conclusion": "cancelled",
+    "reason": "Linux backend clean-worktree gate detected generated Python bytecode; all backend tests had passed",
+    "github_release_created": false,
+    "images_published": false
+  },
+  "remaining_observation": "next scheduled hourly reconciliation after 2026-10-07T02:12:52Z not yet elapsed at 10:14 CST"
+}
