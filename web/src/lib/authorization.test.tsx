@@ -9,6 +9,7 @@ import { refreshAuthorization } from './authorization-events';
 import type { IAMReply } from './iam-types';
 import { prepareAdminRequest } from './authorization-events';
 import { AxiosHeaders } from 'axios';
+import userEvent from '@testing-library/user-event';
 const active = (operations: string[], revision = '1'): IAMReply => ({ authorization_mode: 'iam', session: { activation_state: 'active', revision }, permitted_operations: operations, versions: { policy_revision: revision }, valid_until: new Date(Date.now() + 60_000).toISOString() });
 function Consumer() {
  useAuthorizationLifecycle();
@@ -260,7 +261,9 @@ describe('authorization lifecycle', () => {
    authFailed = false;
    await act(async () => { await client.refetchQueries({ queryKey: authorizationKey }); });
    deny = false;
-   await act(async () => { screen.getByRole('button', { name: 'refetch' }).click(); });
+   // Query completion precedes React's observer notification. Drive a real
+   // user event so the retry uses the rendered, recovered authorization state.
+   await userEvent.click(screen.getByRole('button', { name: 'refetch' }));
    expect(await screen.findByText('manual recovery')).toBeVisible();
    expect(requests).toHaveBeenCalledTimes(2);
   } finally { view.unmount(); client.clear(); }

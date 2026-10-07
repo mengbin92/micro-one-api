@@ -96,7 +96,7 @@ func (uc *RoutingAccessUsecase) eligible(ctx context.Context, userID, groupID in
 	if groupID == 0 {
 		groupID = f.DefaultGroupID
 	}
-	d, err := uc.groups.Get(ctx, groupID)
+	d, err := uc.groups.Get(withRoutingReferenceRead(ctx), groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +110,7 @@ func (uc *RoutingAccessUsecase) Available(ctx context.Context, userID int64, q r
 	if err != nil {
 		return nil, err
 	}
+	ctx = withRoutingReferenceRead(ctx)
 	page, err := uc.groups.List(ctx, q)
 	if err != nil {
 		return nil, err
@@ -173,7 +174,7 @@ func (uc *RoutingAccessUsecase) validateOrderedCandidates(ctx context.Context, f
 	eligible := 0
 	now := time.Now().Unix()
 	for _, gid := range groupIDs {
-		d, err := uc.groups.Get(ctx, gid)
+		d, err := uc.groups.Get(withRoutingReferenceRead(ctx), gid)
 		if err != nil {
 			return err
 		}

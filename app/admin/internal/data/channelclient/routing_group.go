@@ -4,6 +4,7 @@ import (
 	"context"
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/admin/internal/biz"
+	"micro-one-api/app/admin/internal/data/routingrpc"
 	"micro-one-api/domain/routing"
 )
 
@@ -21,7 +22,7 @@ func (r *routingGroupReader) List(ctx context.Context, q routing.GroupListReques
 	if r.client == nil {
 		return nil, biz.ErrRoutingGroupUnavailable
 	}
-	reply, err := r.client.ListRoutingGroups(ctx, &channelv1.ListRoutingGroupsRequest{PageSize: q.PageSize, PageToken: q.PageToken, Filter: q.Filter, OrderBy: q.OrderBy})
+	reply, err := r.client.ListRoutingGroups(routingrpc.ReferenceContext(ctx), &channelv1.ListRoutingGroupsRequest{PageSize: q.PageSize, PageToken: q.PageToken, Filter: q.Filter, OrderBy: q.OrderBy})
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +42,7 @@ func (r *routingGroupReader) Get(ctx context.Context, id int64) (*routing.GroupD
 	if r.client == nil {
 		return nil, biz.ErrRoutingGroupUnavailable
 	}
-	reply, err := r.client.GetRoutingGroup(ctx, &channelv1.GetRoutingGroupRequest{Id: id})
+	reply, err := r.client.GetRoutingGroup(routingrpc.ReferenceContext(ctx), &channelv1.GetRoutingGroupRequest{Id: id})
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,76 @@
+{
+  "tag": "hotfix-20261007-202844",
+  "rollback_tag": "rollback-20261007-202844",
+  "compose_backup": "/opt/micro-one-api/docker-compose/docker-compose.yml.bak.hotfix-20261007-202844",
+  "frontend_backup": "/opt/web/dist.bak.hotfix-20261007-202844",
+  "frontend_index_sha256": "7c9b23d4b4e03af1efa6efffc7161d4525730c78d3ce792844e9c785e8ebcd6a",
+  "containers_before": [
+    {
+      "service": "/channel-service",
+      "image": "sha256:d48580fdc65877b02b45299da70763f9c68c4f1da026691180078a07f8fc1a98"
+    },
+    {
+      "service": "/billing-service",
+      "image": "sha256:b0d2bb409009b0ec2539eafb6f9c24cb2177c3cf2fb5aa7c6b34ad2470c47018"
+    },
+    {
+      "service": "/admin-api",
+      "image": "sha256:2cb481a5a5e2d814f96dfa7847cf139f5bef3310e4b0edfe9ef370d680ca2f57"
+    }
+  ],
+  "containers_after": [
+    {
+      "service": "/channel-service",
+      "image": "sha256:7327c20cf4a2cd9d0e576c61d83af3913a686a7d58d1696e9b0224c6350aebb7",
+      "started_at": "2026-10-07T12:29:08.66510776Z",
+      "restart_count": 0
+    },
+    {
+      "service": "/billing-service",
+      "image": "sha256:6dd5aa301e8214c00e6b3e02ed683cd219443d63b53994007e39fede38cdba80",
+      "started_at": "2026-10-07T12:29:09.4238883Z",
+      "restart_count": 0
+    },
+    {
+      "service": "/admin-api",
+      "image": "sha256:112c54418db60caaf4c6051920b8ce22c10d9d80807f31b95e957f7e6014638f",
+      "started_at": "2026-10-07T12:29:10.345142352Z",
+      "restart_count": 0
+    }
+  ],
+  "healthz": "all three passed",
+  "served_frontend_matches_build": true,
+  "post_deploy_checks": {
+    "channel-service": {
+      "running": true,
+      "restart_count": 0,
+      "fatal_or_panic": false,
+      "error_log_lines": 0,
+      "startup_lines": []
+    },
+    "billing-service": {
+      "running": true,
+      "restart_count": 0,
+      "fatal_or_panic": false,
+      "error_log_lines": 0,
+      "startup_lines": []
+    },
+    "admin-api": {
+      "running": true,
+      "restart_count": 0,
+      "fatal_or_panic": false,
+      "error_log_lines": 0,
+      "startup_lines": []
+    },
+    "frontend_iam_assets": [
+      "IAMPage-BFTOJ60J.js"
+    ],
+    "/tokens": 200,
+    "/admin/iam/permissions": 200,
+    "/api/v1/routing-groups/available?page_size=200&page_token=": 401
+  },
+  "verified_at": "2026-10-07T20:30:16.294408+08:00",
+  "source_commit": "071d86b3e5997c85f4ee844332642ba7fd3dd9d5",
+  "source_includes_uncommitted_hotfix": true,
+  "authenticated_user_purchase_executed": false
+}

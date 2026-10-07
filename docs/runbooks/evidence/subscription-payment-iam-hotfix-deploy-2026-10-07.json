@@ -1,0 +1,28 @@
+{
+  "tag": "payment-hotfix-20261007-203939",
+  "rollback_tag": "rollback-payment-hotfix-20261007-203939",
+  "compose_backup": "/opt/micro-one-api/docker-compose/docker-compose.yml.bak.payment-hotfix-20261007-203939",
+  "image_before": "sha256:6dd5aa301e8214c00e6b3e02ed683cd219443d63b53994007e39fede38cdba80",
+  "image_after": "sha256:395ffdf6b79254dbaa94952f226268d31cca07408029e4d4b2e17c5881f628ac",
+  "started_at": "2026-10-07T12:40:01.146478414Z",
+  "healthz": "ok",
+  "post_deploy_checks": {
+    "running": true,
+    "restart_count": 0,
+    "healthz": "ok",
+    "fatal_or_panic": false
+  },
+  "rpc_probe_before": {
+    "code": "PermissionDenied",
+    "message": "owner execution point incomplete or caller denied"
+  },
+  "rpc_probe_after": {
+    "code": "Unauthenticated",
+    "message": "authentication failed"
+  },
+  "verified_at": "2026-10-07T20:41:04.770239+08:00",
+  "root_cause": "CreatePaymentOrder was missing from billingReadyMethods, so IAM coverage rejected the public subscription payment creation RPC before owner self authorization.",
+  "regression_command": "go test ./internal/integration -run TestIAMSubscriptionPaymentThroughRealOwners -count=1",
+  "regression_status": "passed; real HTTP, gRPC, IAM session, plan snapshot and order repository; mocked external payment provider",
+  "authenticated_production_order_created": false
+}
