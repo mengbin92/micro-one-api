@@ -73,9 +73,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: iam-browser-evidence
-          path: |
-            web/test-results/
-            web/playwright-report/
+          path: web/iam-test-results/
           if-no-files-found: error
 
   routing-e2e:

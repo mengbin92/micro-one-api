@@ -182,5 +182,11 @@
     "Full verify preceded final additions to the subscription test negative cases; that final test was rerun under race and passed.",
     "GitHub workflows changed locally; this branch has not been pushed and remote new jobs have not executed.",
     "No production mutations, model/payment requests or notification sends."
-  ]
+  ],
+  "review_update": {
+    "reviewed_commit": "1a325310",
+    "evidence": "iam-first-batch-review-2026-10-07.json",
+    "historical_validation_preserved": true,
+    "current_mandatory_browser_scenarios": 10
+  }
 }

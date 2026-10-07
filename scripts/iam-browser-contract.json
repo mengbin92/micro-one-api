@@ -1,0 +1,16 @@
+{
+  "file": "rbac-permissions.spec.ts",
+  "project": "rbac-chrome",
+  "titles": [
+    "permission details remain in the desktop viewport after a long catalog",
+    "permission details remain in the mobile viewport after a long catalog",
+    "catalog reader: visible details without metadata writes or reference authority",
+    "alice: inherited group read, shared-group whole-write denial, secrets and ancillary polling",
+    "finance reader: first accessible page and actual scoped orders, independent refunds and export",
+    "auditor: audit page and no management or export authority",
+    "member: self roles remain accessible; numeric JWT and local role cannot enter console",
+    "bob: delegated assignment preview and commit; hidden targets and self assignment rejected",
+    "root: role creation uses server preview and same-revision digest; permission tree and matrix share edits",
+    "DSD: select only assigned roles before business access, reject conflicting activation"
+  ]
+}

@@ -123,6 +123,13 @@ func TestIAMSelfSubscriptionProgressThroughRealOwners(t *testing.T) {
 	}
 	_, err = adminBilling.GetSubscriptionUsage(context.Background(), &billingv1.GetSubscriptionUsageRequest{UserId: member.ID, SelfRequest: true})
 	require.Equal(t, codes.Unauthenticated, status.Code(err), "dedicated admin alone cannot impersonate self")
+	operator := metadata.NewOutgoingContext(context.Background(), metadata.Pairs("x-operator-authorization", "Bearer "+session))
+	owned, err := adminBilling.GetSubscriptionUsage(operator, &billingv1.GetSubscriptionUsageRequest{UserId: member.ID, SelfRequest: true})
+	require.NoError(t, err)
+	require.NotNil(t, owned.Usage)
+	require.InDelta(t, 0.5, *owned.Usage.DailyUsed.Frozen, 1e-9)
+	_, err = adminBilling.GetSubscriptionUsage(operator, &billingv1.GetSubscriptionUsageRequest{UserId: 1, SelfRequest: true})
+	require.Equal(t, codes.PermissionDenied, status.Code(err), "owner must reject a foreign subject even with a valid user session")
 	_, err = billingv1.NewBillingServiceClient(connect("monitor", billingListener)).GetSubscriptionUsage(context.Background(), &billingv1.GetSubscriptionUsageRequest{UserId: member.ID})
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 	expired, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"user_id": member.ID, "token_type": "user_session", "pwd_epoch": 0, "jti": "progress-expired", "sub": fmt.Sprint(member.ID), "iss": "micro-one-api", "aud": "micro-one-api-web", "exp": now - 1}).SignedString([]byte("progress-isolated-jwt"))
@@ -132,4 +139,6 @@ func TestIAMSelfSubscriptionProgressThroughRealOwners(t *testing.T) {
 	require.Equal(t, 403, call(relayHTTP, "/v1/subscription/usage", key.Key).Code)
 	require.NoError(t, db.Table("users").Where("id = ?", member.ID).Update("password_changed_at", time.Now().UnixMilli()).Error)
 	require.Equal(t, 401, call(admin, "/api/v1/subscriptions/progress", session).Code)
+	_, err = adminBilling.GetSubscriptionUsage(operator, &billingv1.GetSubscriptionUsageRequest{UserId: member.ID, SelfRequest: true})
+	require.Equal(t, codes.Unauthenticated, status.Code(err), "owner must independently reject the password-revoked session")
 }

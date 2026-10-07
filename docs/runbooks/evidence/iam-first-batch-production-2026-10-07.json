@@ -20,9 +20,9 @@
       "sql_config_consistent": true,
       "rescue_enabled": "false",
       "http_health": 200,
-      "least_privilege_owner_channel": true,
       "matches_latest_deployment_evidence": true,
-      "required_receiver_callers_present": true
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
     },
     {
       "service": "admin-api",
@@ -41,9 +41,9 @@
       "sql_config_consistent": true,
       "rescue_enabled": "false",
       "http_health": 200,
-      "least_privilege_owner_channel": true,
       "matches_latest_deployment_evidence": true,
-      "required_receiver_callers_present": true
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
     },
     {
       "service": "identity-service",
@@ -72,9 +72,9 @@
       "sql_config_consistent": true,
       "rescue_enabled": "false",
       "http_health": 200,
-      "least_privilege_owner_channel": true,
       "matches_latest_deployment_evidence": true,
-      "required_receiver_callers_present": true
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
     },
     {
       "service": "channel-service",
@@ -100,9 +100,9 @@
       "sql_config_consistent": true,
       "rescue_enabled": "false",
       "http_health": 200,
-      "least_privilege_owner_channel": true,
       "matches_latest_deployment_evidence": true,
-      "required_receiver_callers_present": true
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
     },
     {
       "service": "billing-service",
@@ -126,9 +126,9 @@
       "sql_config_consistent": true,
       "rescue_enabled": "false",
       "http_health": 200,
-      "least_privilege_owner_channel": true,
       "matches_latest_deployment_evidence": true,
-      "required_receiver_callers_present": true
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
     },
     {
       "service": "config-service",
@@ -154,9 +154,9 @@
       "sql_config_consistent": true,
       "rescue_enabled": "false",
       "http_health": 200,
-      "least_privilege_owner_channel": true,
       "matches_latest_deployment_evidence": true,
-      "required_receiver_callers_present": true
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
     },
     {
       "service": "log-service",
@@ -181,9 +181,9 @@
       "sql_config_consistent": true,
       "rescue_enabled": "false",
       "http_health": 200,
-      "least_privilege_owner_channel": true,
       "matches_latest_deployment_evidence": true,
-      "required_receiver_callers_present": true
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
     },
     {
       "service": "monitor-worker",
@@ -205,9 +205,9 @@
       "sql_config_consistent": true,
       "rescue_enabled": "false",
       "http_health": 200,
-      "least_privilege_owner_channel": true,
       "matches_latest_deployment_evidence": true,
-      "required_receiver_callers_present": true
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
     },
     {
       "service": "notify-worker",
@@ -232,9 +232,9 @@
       "sql_config_consistent": true,
       "rescue_enabled": "false",
       "http_health": 200,
-      "least_privilege_owner_channel": true,
       "matches_latest_deployment_evidence": true,
-      "required_receiver_callers_present": true
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
     }
   ],
   "unique_service_credentials": true,
@@ -892,7 +892,8 @@
     "payments_created": false,
     "notifications_sent": false,
     "database_transaction": "read-only consistent snapshot",
-    "metrics_window": "24h rolling at query timestamp; Prometheus increase values are extrapolated"
+    "metrics_window": "24h rolling at query timestamp; Prometheus increase values are extrapolated",
+    "sql_privilege_scope": "non-root owner account configuration and DSN agreement checked; actual database grants not re-probed in S1 (D1 grant probes retained separately)"
   },
   "business_check_columns": {
     "request_integrity": [

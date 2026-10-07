@@ -365,6 +365,8 @@ verify:
 	@make migration-check
 	@echo "== make verify: rbac-contract-check =="
 	@make rbac-contract-check
+	@echo "== make verify: IAM browser acceptance checker =="
+	@make iam-browser-gate-check
 	@echo "== make verify: generated frontend API types =="
 	@make api
 	@cd web && npm run generate:api && git diff --exit-code -- src/types/api.ts
@@ -389,6 +391,11 @@ rbac-contract-check:
 # Real HTTP/gRPC/SQLite IAM matrix. Requires Chrome and web/node_modules.
 test-iam-browser:
 	./scripts/test-iam-browser.sh
+
+.PHONY: iam-browser-gate-check
+# Fast negative tests for the mandatory browser acceptance result contract.
+iam-browser-gate-check:
+	python3 scripts/test-iam-browser-result.py
 
 .PHONY: migration-smoke-mysql
 # v0.21 P1: execute all MySQL migrations against a scratch database, verify a

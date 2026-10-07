@@ -54,6 +54,9 @@ jobs:
       - name: Check reviewed IAM entry contract
         run: make rbac-contract-check
 
+      - name: Test IAM browser acceptance result contract
+        run: make iam-browser-gate-check
+
       - name: Verify generated files are current
         run: |
           if [ -n "$(git status --porcelain)" ]; then

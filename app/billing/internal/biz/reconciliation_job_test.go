@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"micro-one-api/domain/authorization"
+	authztest "micro-one-api/domain/authorization/testutil"
 	"micro-one-api/platform/authz"
 	"micro-one-api/platform/metrics"
 )
@@ -28,6 +29,35 @@ func TestReconciliationJobIAMBackgroundPersistsWithoutUserSession(t *testing.T) 
 	_, err := job.uc.RunReconciliation(authorization.WithExternal(context.Background()))
 	require.Error(t, err, "an external caller without an operator must remain denied")
 	require.Len(t, store.saved, 1, "rejected external calls must not run or persist reconciliation")
+}
+
+func TestReconciliationExternalRunKeepsIndependentIssuePermission(t *testing.T) {
+	for _, visible := range []bool{false, true} {
+		t.Run(map[bool]string{false: "run without issue details", true: "run with issue details"}[visible], func(t *testing.T) {
+			job := newJobHarness(t, &mockReconRepo{accounts: []*Account{{UserID: "user1", Balance: 1000}}, ledgerSums: map[string]int64{"user1": 500}}, nil, nil, "")
+			store := &recordingReconciliationRunStore{}
+			job.uc.runStore = store
+			resolver := &authztest.Resolver{ActorID: 1, Scopes: map[string]authorization.QueryScope{"billing.reconciliation.run": authztest.All()}}
+			if visible {
+				resolver.Scopes["billing.reconciliation.issues.read"] = authztest.All()
+			}
+			job.uc.SetAuthorization(resolver)
+			result, err := job.uc.RunReconciliation(authztest.Context())
+			require.NoError(t, err)
+			require.Len(t, store.saved, 1)
+			require.Len(t, store.saved[0].AccountInconsistencies, 1, "stored audit facts must remain complete")
+			require.Equal(t, visible, result.IssuesVisible)
+			if visible {
+				require.Len(t, result.AccountInconsistencies, 1)
+			} else {
+				require.Empty(t, result.AccountInconsistencies, "run permission must not expose independent issue fields")
+			}
+			delete(resolver.Scopes, "billing.reconciliation.run")
+			_, err = job.uc.RunReconciliation(authztest.Context())
+			require.Error(t, err, "issue permission alone must never confer run permission")
+			require.Len(t, store.saved, 1)
+		})
+	}
 }
 
 func TestAlertContentExplainsEveryDiscrepancy(t *testing.T) {

@@ -24,6 +24,8 @@ on:
       - 'scripts/test-routing-e2e.py'
       - 'scripts/test-iam-browser.sh'
       - 'scripts/check-iam-browser-result.py'
+      - 'scripts/iam-browser-contract.json'
+      - 'scripts/test-iam-browser-result.py'
       - 'scripts/tool-versions.env'
       - 'test/e2e/**'
       - 'web/**'
@@ -55,6 +57,9 @@ jobs:
           compose=false
           frontend=false
           iam=false
+          # Check diff failure before entering the loop: a process-substitution
+          # failure otherwise looks like an empty successful path selection.
+          changed_paths="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
           while IFS= read -r path; do
             case "$path" in
               web/*)
@@ -67,7 +72,7 @@ jobs:
                 frontend=true
                 iam=true
                 ;;
-              scripts/test-iam-browser.sh|scripts/check-iam-browser-result.py)
+              scripts/test-iam-browser.sh|scripts/check-iam-browser-result.py|scripts/iam-browser-contract.json|scripts/test-iam-browser-result.py)
                 iam=true
                 ;;
               api/*|app/*|cmd/*|configs/*|deployments/docker-compose/*|domain/*|internal/*|migrations/*|pkg/*|platform/*|test/e2e/*|scripts/test-routing-e2e.py|Dockerfile|go.mod|go.sum)
@@ -76,7 +81,7 @@ jobs:
                 iam=true
                 ;;
             esac
-          done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          done <<< "$changed_paths"
           if [ "$routing" = true ] || [ "$compose" = true ] || [ "$frontend" = true ] || [ "$iam" = true ]; then
             any=true
           else

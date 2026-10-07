@@ -9,6 +9,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- 第一批复审：IAM 门禁拒绝精简矩阵、`test.only` 与预期失败，PR diff 失败不再静默跳过专项；每次独立保存 IAM 验收文件，避免被通用 smoke 删除。补齐目录只读与直接 owner 授权回归并修正 SQL 证据表述，见 [审查记录](docs/design/iam-first-batch-review-2026-10-07.md)。
 - IAM 启用后定时对账不再因可选明细字段权限要求用户会话而在保存运行记录前中止；仅后台本进程路径使用既有信任，外部 operator、运行权与字段权限仍验证。本地回归已通过，生产修复尚待发布部署。
 
 ### Added

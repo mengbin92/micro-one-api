@@ -8,7 +8,7 @@ async function signIn(page: Page, name: string, path: string) {
 function headers(name: string) { return { Authorization: `Bearer ${fixture.tokens[name]}`, 'x-authorization-reason': 'C browser negative acceptance' }; }
 
 for (const viewport of [{ name: 'desktop', width: 1280, height: 800 }, { name: 'mobile', width: 390, height: 844 }]) {
- test(`permission details remain in the ${viewport.name} viewport after a long catalog`, async ({ page }) => {
+ test(`permission details remain in the ${viewport.name} viewport after a long catalog`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
   await signIn(page, 'root', '/admin/iam/permissions');
   const details = page.getByRole('button', { name: '详情', exact: true });
@@ -24,7 +24,7 @@ for (const viewport of [{ name: 'desktop', width: 1280, height: 800 }, { name: '
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width);
   expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height);
   const originalName = await dialog.getByRole('textbox', { name: '名称', exact: true }).inputValue();
-  await page.screenshot({ path: `test-results/iam-permission-${viewport.name}.png` });
+  await page.screenshot({ path: testInfo.outputPath(`iam-permission-${viewport.name}.png`) });
   await dialog.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await details.nth(1).click();
@@ -32,7 +32,29 @@ for (const viewport of [{ name: 'desktop', width: 1280, height: 800 }, { name: '
  });
 }
 
-test('alice: inherited group read, shared-group whole-write denial, secrets and ancillary polling', async ({ page, request }) => {
+test('catalog reader: visible details without metadata writes or reference authority', async ({ page, request }) => {
+ const requests: string[] = [];
+ page.on('request', req => requests.push(req.url()));
+ await signIn(page, 'catalog', '/admin/iam/permissions');
+ await page.getByRole('button', { name: '详情', exact: true }).first().click();
+ const dialog = page.getByRole('dialog');
+ await expect(dialog.getByRole('textbox', { name: '名称', exact: true })).toBeVisible();
+ await expect(dialog.getByRole('button', { name: '保存目录资料', exact: true })).toHaveCount(0);
+ expect(requests.filter(url => /\/permissions\/[^/]+\/references/.test(url))).toEqual([]);
+ const catalog = await (await request.get('/api/v1/admin/iam/permissions', { headers: headers('catalog') })).json();
+ const permission = catalog.permissions[0];
+ const authorization = await (await request.get('/api/user/authorization', { headers: headers('catalog') })).json();
+ const denied = await request.patch(`/api/v1/admin/iam/permissions/${permission.id}`, {
+  headers: headers('catalog'), data: { id: permission.id, permission: { id: permission.id, name: 'unauthorized metadata edit' },
+   update_mask: 'name', expected_revision: permission.revision, expected_policy_revision: authorization.versions.policy_revision,
+   reason: 'readonly metadata rejection', request_id: 'catalog-forbidden-edit' },
+ });
+ expect(denied.status()).toBe(403);
+ const after = await (await request.get('/api/v1/admin/iam/permissions', { headers: headers('catalog') })).json();
+ expect(after.permissions.find((row: { id: string }) => row.id === permission.id)).toMatchObject({ name: permission.name, revision: permission.revision });
+});
+
+test('alice: inherited group read, shared-group whole-write denial, secrets and ancillary polling', async ({ page, request }, testInfo) => {
  const requests: string[] = []; page.on('request', req => requests.push(req.url()));
  await signIn(page, 'alice', '/admin');
  await expect(page).toHaveURL(/\/admin\/channels$/);
@@ -48,7 +70,7 @@ test('alice: inherited group read, shared-group whole-write denial, secrets and 
  expect(await (await request.get('/api/channel/8', { headers: headers('alice') })).status()).toBe(403);
  const detail = await request.get('/api/channel/9', { headers: headers('alice') }); expect(detail.status()).toBe(200); expect(await detail.text()).not.toContain('c-private-key');
  expect((await request.post('/api/channel/disable/9?expected_revision=1', { headers: headers('alice') })).status()).toBe(403);
- await page.screenshot({ path: 'test-results/rbac-alice.png', fullPage: true });
+ await page.screenshot({ path: testInfo.outputPath('rbac-alice.png'), fullPage: true });
 });
 
 test('finance reader: first accessible page and actual scoped orders, independent refunds and export', async ({ page, request }) => {
@@ -91,7 +113,7 @@ test('bob: delegated assignment preview and commit; hidden targets and self assi
  expect((await request.post(`/api/v1/admin/iam/users/${fixture.users.alice}/roles`, { headers: headers('bob'), data: body(fixture.users.alice) })).status()).toBe(403);
 });
 
-test('root: role creation uses server preview and same-revision digest; permission tree and matrix share edits', async ({ page, request }) => {
+test('root: role creation uses server preview and same-revision digest; permission tree and matrix share edits', async ({ page, request }, testInfo) => {
  await signIn(page, 'root', '/admin/iam/roles');
  const inherited = await request.get('/api/v1/admin/iam/roles/52/permissions', { headers: headers('root') });
  expect(inherited.status()).toBe(200);
@@ -108,7 +130,7 @@ test('root: role creation uses server preview and same-revision digest; permissi
  await page.getByRole('button', { name: '资源 × 操作矩阵', exact: true }).click();
  await expect(page.getByLabel('admin.console.enter 直接授权', { exact: true })).toHaveValue('allow');
  await expect(page.getByRole('columnheader', { name: '资源', exact: true })).toBeVisible();
- await page.screenshot({ path: 'test-results/rbac-role-matrix.png', fullPage: true });
+ await page.screenshot({ path: testInfo.outputPath('rbac-role-matrix.png'), fullPage: true });
  await page.getByRole('button', { name: '预检并保存授权', exact: true }).click();
  await page.getByLabel('变更原因', { exact: true }).fill('C explicit tree/matrix grant');
  await page.getByRole('button', { name: '预检变更', exact: true }).click();
