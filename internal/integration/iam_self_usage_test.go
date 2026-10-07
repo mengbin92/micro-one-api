@@ -64,9 +64,16 @@ func TestIAMSelfUsageThroughDedicatedIdentityCaller(t *testing.T) {
 		require.NoError(t, db.Table("users").Where("id = ?", uid).Updates(map[string]any{"used_amount": uid * 100, "request_count": uid * 10}).Error)
 		require.NoError(t, db.Table("billing_ledgers").Create(map[string]any{"user_id": fmt.Sprint(uid), "amount": -uid * 100, "balance_after": 0, "quota": uid * 100, "upstream_cost": 30, "type": "consume", "model_name": "usage-model", "ledger_dedupe_key": fmt.Sprint("self-usage-", uid), "created_at": time.Now().Add(-time.Hour).UTC()}).Error)
 	}
+	// A session JTI identifies one immutable signed token. Re-signing on each
+	// request changes exp across a wall-clock second and violates that binding.
+	sessions := map[int64]string{}
 	session := func(uid int64) string {
+		if raw := sessions[uid]; raw != "" {
+			return raw
+		}
 		raw, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"user_id": uid, "role": 100, "token_type": "user_session", "pwd_epoch": 0, "jti": fmt.Sprint("usage-", uid), "sub": fmt.Sprint(uid), "iss": "micro-one-api", "aud": "micro-one-api-web", "exp": time.Now().Add(time.Hour).Unix()}).SignedString([]byte("usage-jwt"))
 		require.NoError(t, err)
+		sessions[uid] = raw
 		return raw
 	}
 	for _, uid := range []int64{1, member.ID} {
@@ -129,4 +136,25 @@ func TestIAMSelfUsageThroughDedicatedIdentityCaller(t *testing.T) {
 	require.Empty(t, otherDays.Daily)
 	_, err = billing.AggregateUsage(ctx, &billingv1.AggregateUsageRequest{})
 	require.Equal(t, codes.PermissionDenied, status.Code(err), "identity must not gain managed financial reports")
+	for _, credential := range []string{"", "invalid-session"} {
+		for _, path := range []string{"/api/user/dashboard", "/api/user/logs"} {
+			req := httptest.NewRequest("GET", path, nil)
+			if credential != "" {
+				req.Header.Set("Authorization", "Bearer "+credential)
+			}
+			w := httptest.NewRecorder()
+			http.ServeHTTP(w, req)
+			require.Equal(t, 401, w.Code, w.Body.String())
+		}
+	}
+	// A password epoch change must invalidate a previously accepted session
+	// at the owner as well as at the user-facing adapter.
+	require.NoError(t, db.Table("users").Where("id = ?", member.ID).Update("password_changed_at", time.Now().UnixMilli()).Error)
+	for _, path := range []string{"/api/user/dashboard", "/api/user/logs"} {
+		req := httptest.NewRequest("GET", path, nil)
+		req.Header.Set("Authorization", "Bearer "+session(member.ID))
+		w := httptest.NewRecorder()
+		http.ServeHTTP(w, req)
+		require.Equal(t, 401, w.Code, w.Body.String())
+	}
 }

@@ -1,0 +1,960 @@
+{
+  "checked_at": "2026-10-07T09:06:10.849418+08:00",
+  "services": [
+    {
+      "service": "relay-gateway",
+      "image_id": "sha256:63864dc9e220beeb59c35943d304b33555f57f5a802cf548aaa5056b26410470",
+      "image_ref": "docker-compose-relay-gateway:rbac-review-42b21ad4",
+      "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741",
+      "status": "running",
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-05T10:36:33.309583132Z",
+      "outbound_present": true,
+      "outbound_distinct_from_shared": true,
+      "receiver_map_valid": true,
+      "correct_callers": [
+        "admin"
+      ],
+      "incorrect_callers": [],
+      "sql_config_consistent": true,
+      "rescue_enabled": "false",
+      "http_health": 200,
+      "matches_latest_deployment_evidence": true,
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
+    },
+    {
+      "service": "admin-api",
+      "image_id": "sha256:2cb481a5a5e2d814f96dfa7847cf139f5bef3310e4b0edfe9ef370d680ca2f57",
+      "image_ref": "docker-compose-admin-api:v0.34.2",
+      "source_digest": "81299ad222f529b0cdf697170d6c605b39213c4a58a4c567d2e5b25b991c42f8",
+      "status": "running",
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-06T09:16:31.52540723Z",
+      "outbound_present": true,
+      "outbound_distinct_from_shared": true,
+      "receiver_map_valid": true,
+      "correct_callers": [],
+      "incorrect_callers": [],
+      "sql_config_consistent": true,
+      "rescue_enabled": "false",
+      "http_health": 200,
+      "matches_latest_deployment_evidence": true,
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
+    },
+    {
+      "service": "identity-service",
+      "image_id": "sha256:9deb67acf25c9555ba2030de01ba696549a6daeb141df2d419f8fac0f6a235e8",
+      "image_ref": "docker-compose-identity-service:v0.34.1",
+      "source_digest": "3d2ef7c965b1790db56e8e9dfb6194b5b55763ff2589b55a5cd32f08223c8d85",
+      "status": "running",
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-06T09:03:59.359091341Z",
+      "outbound_present": true,
+      "outbound_distinct_from_shared": true,
+      "receiver_map_valid": true,
+      "correct_callers": [
+        "admin",
+        "billing",
+        "channel",
+        "config",
+        "identity",
+        "log",
+        "monitor",
+        "notify",
+        "relay"
+      ],
+      "incorrect_callers": [],
+      "sql_config_consistent": true,
+      "rescue_enabled": "false",
+      "http_health": 200,
+      "matches_latest_deployment_evidence": true,
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
+    },
+    {
+      "service": "channel-service",
+      "image_id": "sha256:c234d03a251d0919a2e002c77ab13ff80df109c194391e73a6120363d0fcca46",
+      "image_ref": "docker-compose-channel-service:v0.34.1",
+      "source_digest": "3d2ef7c965b1790db56e8e9dfb6194b5b55763ff2589b55a5cd32f08223c8d85",
+      "status": "running",
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-06T09:03:57.66007255Z",
+      "outbound_present": true,
+      "outbound_distinct_from_shared": true,
+      "receiver_map_valid": true,
+      "correct_callers": [
+        "admin",
+        "billing",
+        "channel",
+        "identity",
+        "monitor",
+        "relay"
+      ],
+      "incorrect_callers": [],
+      "sql_config_consistent": true,
+      "rescue_enabled": "false",
+      "http_health": 200,
+      "matches_latest_deployment_evidence": true,
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
+    },
+    {
+      "service": "billing-service",
+      "image_id": "sha256:6d5dacb0d23182bb316ced62b33f97d1a53fadc559b2c6dc77119df05d3180c0",
+      "image_ref": "docker-compose-billing-service:v0.34.1",
+      "source_digest": "3d2ef7c965b1790db56e8e9dfb6194b5b55763ff2589b55a5cd32f08223c8d85",
+      "status": "running",
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-06T09:03:55.933460343Z",
+      "outbound_present": true,
+      "outbound_distinct_from_shared": true,
+      "receiver_map_valid": true,
+      "correct_callers": [
+        "admin",
+        "channel",
+        "identity",
+        "relay"
+      ],
+      "incorrect_callers": [],
+      "sql_config_consistent": true,
+      "rescue_enabled": "false",
+      "http_health": 200,
+      "matches_latest_deployment_evidence": true,
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
+    },
+    {
+      "service": "config-service",
+      "image_id": "sha256:d7fa5f83aeade82a60e9abf23e915f6ea2b2938b19c9d13b375e0ea171cfb0ac",
+      "image_ref": "docker-compose-config-service:v0.34.4",
+      "source_digest": "078bab9c0c23a09cc482ff6c3d1dcbe3b3059200aa0f31ce87c3adb83c5a60f4",
+      "status": "running",
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-06T10:51:04.327488447Z",
+      "outbound_present": true,
+      "outbound_distinct_from_shared": true,
+      "receiver_map_valid": true,
+      "correct_callers": [
+        "admin",
+        "billing",
+        "channel",
+        "identity",
+        "notify",
+        "relay"
+      ],
+      "incorrect_callers": [],
+      "sql_config_consistent": true,
+      "rescue_enabled": "false",
+      "http_health": 200,
+      "matches_latest_deployment_evidence": true,
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
+    },
+    {
+      "service": "log-service",
+      "image_id": "sha256:3da9944c8fa8a07a3a0d6263071d3be87a974b2a0394b7ec70c2e1d3bad98287",
+      "image_ref": "docker-compose-log-service:rbac-review-42b21ad4",
+      "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741",
+      "status": "running",
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-05T10:36:24.791614751Z",
+      "outbound_present": true,
+      "outbound_distinct_from_shared": true,
+      "receiver_map_valid": true,
+      "correct_callers": [
+        "admin",
+        "billing",
+        "channel",
+        "identity",
+        "relay"
+      ],
+      "incorrect_callers": [],
+      "sql_config_consistent": true,
+      "rescue_enabled": "false",
+      "http_health": 200,
+      "matches_latest_deployment_evidence": true,
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
+    },
+    {
+      "service": "monitor-worker",
+      "image_id": "sha256:5e3e45b49edb62f5bfdff07799195f4d70adcad541657aef0a98812726f8a04d",
+      "image_ref": "docker-compose-monitor-worker:rbac-review-42b21ad4",
+      "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741",
+      "status": "running",
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-05T10:36:25.481126505Z",
+      "outbound_present": true,
+      "outbound_distinct_from_shared": true,
+      "receiver_map_valid": true,
+      "correct_callers": [
+        "admin",
+        "monitor"
+      ],
+      "incorrect_callers": [],
+      "sql_config_consistent": true,
+      "rescue_enabled": "false",
+      "http_health": 200,
+      "matches_latest_deployment_evidence": true,
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
+    },
+    {
+      "service": "notify-worker",
+      "image_id": "sha256:f42c1172ab1be4df04176440d71200421aaf25ac8be947aa4d90486fc4cf659c",
+      "image_ref": "docker-compose-notify-worker:rbac-review-42b21ad4",
+      "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741",
+      "status": "running",
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-05T10:36:28.145019971Z",
+      "outbound_present": true,
+      "outbound_distinct_from_shared": true,
+      "receiver_map_valid": true,
+      "correct_callers": [
+        "admin",
+        "billing",
+        "channel",
+        "monitor",
+        "notify"
+      ],
+      "incorrect_callers": [],
+      "sql_config_consistent": true,
+      "rescue_enabled": "false",
+      "http_health": 200,
+      "matches_latest_deployment_evidence": true,
+      "required_receiver_callers_present": true,
+      "non_root_sql_account_configured": true
+    }
+  ],
+  "unique_service_credentials": true,
+  "relay_executor": {
+    "flag": "true",
+    "allowlist_count": 2
+  },
+  "frontend_index_sha256": "883962cd93a71bb335946d97e044a0528a17448849cabc6c2b28980d9b2820df",
+  "prometheus_targets": [
+    {
+      "instance": "relay-gateway:8080",
+      "health": "up",
+      "last_error": ""
+    },
+    {
+      "instance": "admin-api:8000",
+      "health": "up",
+      "last_error": ""
+    },
+    {
+      "instance": "identity-service:8001",
+      "health": "up",
+      "last_error": ""
+    },
+    {
+      "instance": "channel-service:8002",
+      "health": "up",
+      "last_error": ""
+    },
+    {
+      "instance": "billing-service:8004",
+      "health": "up",
+      "last_error": ""
+    },
+    {
+      "instance": "monitor-worker:8007",
+      "health": "up",
+      "last_error": ""
+    },
+    {
+      "instance": "notify-worker:8008",
+      "health": "up",
+      "last_error": ""
+    },
+    {
+      "instance": "config-service:8005",
+      "health": "up",
+      "last_error": ""
+    },
+    {
+      "instance": "log-service:8006",
+      "health": "up",
+      "last_error": ""
+    },
+    {
+      "instance": "localhost:9090",
+      "health": "up",
+      "last_error": ""
+    }
+  ],
+  "prometheus_rules": [
+    {
+      "name": "PaymentReconciliationFailing",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "BillingSettlementLag",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "AsyncBillingQueueFull",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "HighQuotaCheckFallbackRate",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "CacheHitRateLow",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "CacheHighEvictionRate",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "ChannelHighFailureRate",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "HealthCheckNotRunning",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "CircuitBreakerOpen",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "CircuitBreakerHalfOpen",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "CircuitBreakerFrequentTrips",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "CredentialPersistenceFailing",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "CredentialPersistenceStalled",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "ServiceInCachedMode",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "ServiceInAsyncMode",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "ServiceInMinimalMode",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "CredentialRefreshUncertain",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "CredentialCoordinationUnavailable",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "LoginLimiterRedisDegraded",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "AccountLimiterRedisDegraded",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "NotificationDeliveryFailing",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "HighRelayErrorRate",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "HighUpstreamLatency",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "HighRetryRate",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "RoutedModelsUnpriced",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "UpstreamCostMissing",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "CacheCreationShadowCostDrift",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "CacheCreationChargeUnpricedTraffic",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "CacheCreationChargeSignalLost",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "NegativeGrossMargin",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "RoutingSourceImbalance",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "CacheUsageParseAnomaly",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "BillingUsageAmbiguous",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "TokenUsageInvariantMismatch",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "UsageSemanticSourceIsolated",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "BillingUsageSemanticsCostDelta",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "RoutingOutboxDeliveryFailing",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "RoutingOutboxBacklog",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "RoutingOutboxScanStale",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "RoutingOutboxStorageFailing",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "RoutingCapabilityRejected",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "RoutingSnapshotValidationFailed",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "RoutingAuthorityRPCFailing",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "RoutingAuthorityRPCSlow",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "RoutingMetricsTargetDown",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "ServiceHighGRPCLatency",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    },
+    {
+      "name": "ServiceHighGRPCErrorRate",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": ""
+    }
+  ],
+  "served_frontend_sha256": "883962cd93a71bb335946d97e044a0528a17448849cabc6c2b28980d9b2820df",
+  "business_window_utc": {
+    "start": "2026-10-06T00:50:00Z",
+    "end": "2026-10-07T00:50:00Z"
+  },
+  "business_checks": [
+    "legacy_remote_root_locked\t1\t1",
+    "committed_reservations\t70",
+    "request_integrity\t70\t0\t0\t0\t0\t0\t0",
+    "reservation_states\tcommitted\t70",
+    "reservation_states\treleased\t4",
+    "overdue_reserved\t0",
+    "settlement_tasks\tcompleted\t5920\t0",
+    "latest_reconciliation\tcompleted\t0\t2026-10-05T01:05:20Z",
+    "payment_states\tpaid\tissued\t3\t6562759",
+    "notification_states\tfailed\t2\t2",
+    "notification_states\tsent\t129\t0",
+    "active_subscriptions\t1"
+  ],
+  "metrics": {
+    "payment_reconcile_failed": [
+      {
+        "metric": {
+          "__name__": "micro_one_api_billing_payment_reconcile_failed",
+          "instance": "billing-service:8004",
+          "job": "micro-one-api",
+          "stack": "micro-one-api"
+        },
+        "value": [
+          1791335173.182,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "micro_one_api_billing_payment_reconcile_failed",
+          "instance": "identity-service:8001",
+          "job": "micro-one-api",
+          "stack": "micro-one-api"
+        },
+        "value": [
+          1791335173.182,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "micro_one_api_billing_payment_reconcile_failed",
+          "instance": "channel-service:8002",
+          "job": "micro-one-api",
+          "stack": "micro-one-api"
+        },
+        "value": [
+          1791335173.182,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "micro_one_api_billing_payment_reconcile_failed",
+          "instance": "relay-gateway:8080",
+          "job": "micro-one-api",
+          "stack": "micro-one-api"
+        },
+        "value": [
+          1791335173.182,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "micro_one_api_billing_payment_reconcile_failed",
+          "instance": "config-service:8005",
+          "job": "micro-one-api",
+          "stack": "micro-one-api"
+        },
+        "value": [
+          1791335173.182,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "micro_one_api_billing_payment_reconcile_failed",
+          "instance": "notify-worker:8008",
+          "job": "micro-one-api",
+          "stack": "micro-one-api"
+        },
+        "value": [
+          1791335173.182,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "micro_one_api_billing_payment_reconcile_failed",
+          "instance": "log-service:8006",
+          "job": "micro-one-api",
+          "stack": "micro-one-api"
+        },
+        "value": [
+          1791335173.182,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "micro_one_api_billing_payment_reconcile_failed",
+          "instance": "admin-api:8000",
+          "job": "micro-one-api",
+          "stack": "micro-one-api"
+        },
+        "value": [
+          1791335173.182,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "micro_one_api_billing_payment_reconcile_failed",
+          "instance": "monitor-worker:8007",
+          "job": "micro-one-api",
+          "stack": "micro-one-api"
+        },
+        "value": [
+          1791335173.182,
+          "0"
+        ]
+      }
+    ],
+    "payment_reconcile_runs_24h": [
+      {
+        "metric": {
+          "result": "error"
+        },
+        "value": [
+          1791335173.239,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "result": "partial"
+        },
+        "value": [
+          1791335173.239,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "result": "success"
+        },
+        "value": [
+          1791335173.239,
+          "1440.2500434103142"
+        ]
+      }
+    ],
+    "executor_requests_24h": [
+      {
+        "metric": {
+          "endpoint": "/v1/chat/completions",
+          "execution_path": "orchestrator",
+          "result": "success",
+          "stream": "true"
+        },
+        "value": [
+          1791335173.311,
+          "60.01007471575527"
+        ]
+      },
+      {
+        "metric": {
+          "endpoint": "/v1/chat/completions",
+          "execution_path": "orchestrator",
+          "result": "timeout",
+          "stream": "true"
+        },
+        "value": [
+          1791335173.311,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "endpoint": "/v1/messages",
+          "execution_path": "orchestrator",
+          "result": "canceled",
+          "stream": "true"
+        },
+        "value": [
+          1791335173.311,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "endpoint": "/v1/messages",
+          "execution_path": "orchestrator",
+          "result": "success",
+          "stream": "true"
+        },
+        "value": [
+          1791335173.311,
+          "8.001339668826493"
+        ]
+      }
+    ],
+    "executor_resets_24h": [
+      {
+        "metric": {},
+        "value": [
+          1791335173.376,
+          "0"
+        ]
+      }
+    ],
+    "relay_scrape_min_24h": [
+      {
+        "metric": {
+          "instance": "relay-gateway:8080",
+          "job": "micro-one-api",
+          "stack": "micro-one-api"
+        },
+        "value": [
+          1791335173.436,
+          "1"
+        ]
+      }
+    ],
+    "scrape_failed_24h": [
+      {
+        "metric": {
+          "instance": "relay-gateway:8080",
+          "job": "micro-one-api",
+          "stack": "micro-one-api"
+        },
+        "value": [
+          1791335173.494,
+          "0"
+        ]
+      }
+    ]
+  },
+  "background_log_summary": {
+    "billing-service": {
+      "lines": 20,
+      "reconciliation_completed_lines": 0,
+      "authorization_denied_lines": 0,
+      "error_kinds": {
+        "authorization identity/session invalid": 0,
+        "authorization denied": 0,
+        "permission denied": 0,
+        "access denied": 0,
+        "unknown column": 0,
+        "table": 0,
+        "connection refused": 0,
+        "context deadline exceeded": 0
+      },
+      "error_or_panic_lines": 18,
+      "reconciliation_error_lines": 17,
+      "healthcheck_error_lines": 0
+    },
+    "monitor-worker": {
+      "lines": 0,
+      "reconciliation_completed_lines": 0,
+      "authorization_denied_lines": 0,
+      "error_kinds": {
+        "authorization identity/session invalid": 0,
+        "authorization denied": 0,
+        "permission denied": 0,
+        "access denied": 0,
+        "unknown column": 0,
+        "table": 0,
+        "connection refused": 0,
+        "context deadline exceeded": 0
+      },
+      "error_or_panic_lines": 0,
+      "reconciliation_error_lines": 0,
+      "healthcheck_error_lines": 0
+    },
+    "notify-worker": {
+      "lines": 0,
+      "reconciliation_completed_lines": 0,
+      "authorization_denied_lines": 0,
+      "error_kinds": {
+        "authorization identity/session invalid": 0,
+        "authorization denied": 0,
+        "permission denied": 0,
+        "access denied": 0,
+        "unknown column": 0,
+        "table": 0,
+        "connection refused": 0,
+        "context deadline exceeded": 0
+      },
+      "error_or_panic_lines": 0,
+      "reconciliation_error_lines": 0,
+      "healthcheck_error_lines": 0
+    }
+  },
+  "iam_policy": {
+    "mode": "iam",
+    "cutover_state": "complete",
+    "policy_revision": 7,
+    "catalog_revision": 2
+  },
+  "method": {
+    "production_mutations": false,
+    "paid_model_calls": false,
+    "payments_created": false,
+    "notifications_sent": false,
+    "database_transaction": "read-only consistent snapshot",
+    "metrics_window": "24h rolling at query timestamp; Prometheus increase values are extrapolated",
+    "sql_privilege_scope": "non-root owner account configuration and DSN agreement checked; actual database grants not re-probed in S1 (D1 grant probes retained separately)"
+  },
+  "business_check_columns": {
+    "request_integrity": [
+      "committed_count",
+      "missing_consume_ledger",
+      "missing_log",
+      "actual_cost_vs_negated_sum_consume_amount_mismatch",
+      "channel_usage_event_missing",
+      "subscription_account_quota_event_missing",
+      "subscription_id_missing"
+    ],
+    "legacy_remote_root_locked": [
+      "accounts_count",
+      "locked_count"
+    ],
+    "settlement_tasks": [
+      "status",
+      "count",
+      "max_attempts"
+    ],
+    "payment_states": [
+      "status",
+      "asset_issue_status",
+      "count",
+      "max_age_seconds"
+    ],
+    "notification_states": [
+      "status",
+      "count",
+      "max_retry_count"
+    ],
+    "latest_reconciliation": [
+      "status",
+      "discrepancy_count",
+      "run_at_utc"
+    ]
+  },
+  "findings": [
+    {
+      "id": "S1-RECON",
+      "status": "production-failure-local-fix-pending-deploy",
+      "evidence": "latest persisted reconciliation at 2026-10-05T01:05:20Z; 17 reconciliation failures in available last-24h container logs",
+      "rpc_code": "Unauthenticated",
+      "rpc_description": "user operator required",
+      "local_reproduction": "TestReconciliationJobIAMBackgroundPersistsWithoutUserSession failed before fix and passed after fix; external sessionless operator remains denied"
+    },
+    {
+      "id": "S1-NOTIFY",
+      "status": "historical-failed-records",
+      "failed_records": 2,
+      "failed_record_created_range_utc": [
+        "2026-09-28T05:19:36+00:00",
+        "2026-09-29T23:41:06+00:00"
+      ],
+      "current_firing_rules": 0,
+      "note": "historical failures are retained; no new notification was sent or replayed; receiver inbox not revalidated"
+    },
+    {
+      "id": "E1",
+      "status": "observation-preconditions-not-met",
+      "note": "two-token canary active; Relay restarted 2026-10-05T10:36:33Z; recent 24h has orchestrator SSE successes and no same endpoint/stream legacy comparator; cannot establish seven-day PASS"
+    }
+  ]
+}

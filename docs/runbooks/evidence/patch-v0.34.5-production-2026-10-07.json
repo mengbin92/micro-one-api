@@ -1,0 +1,119 @@
+{
+  "deployment": {
+    "version": "v0.34.5",
+    "source_commit": "44fb7a10",
+    "source_digest": "ccbdb65b3ba181c890145d166950bde39694bb6425701cef2a99dfdff2da969a",
+    "backup_directory": "/opt/micro-one-api/deploy-v0.34.5-20261007-094853",
+    "pre_deploy_checked_at": "2026-10-07T09:48:53.464062+08:00",
+    "previous_image": "sha256:6d5dacb0d23182bb316ced62b33f97d1a53fadc559b2c6dc77119df05d3180c0",
+    "before_database": [
+      "policy\tiam\tcomplete\t7\t2",
+      "latest\t364\t1791162320\tcompleted\t0"
+    ],
+    "billing_backup_bytes": 12401041,
+    "billing_backup_sha256": "2a5e8206ad6a91f2cf73d3ad143c9210794a2815f3c3153baa419565db12f4ee",
+    "image": "sha256:d5acd7f263de53916e00f8dde8a2409f70bf16eef6d3b92018a72fb6cddb6c5d",
+    "image_ref": "docker-compose-billing-service:v0.34.5",
+    "rollback_tag": "docker-compose-billing-service:rollback-v0.34.5-20261007-094853",
+    "environment_preserved": true,
+    "other_eight_container_ids_preserved": true,
+    "billing_health": 200,
+    "billing_restarts": 0,
+    "deployed_at": "2026-10-07T09:49:01.092673+08:00",
+    "started_at": "2026-10-07T01:49:00.797714142Z",
+    "after_database": [
+      "policy\tiam\tcomplete\t7\t2",
+      "latest\t364\t1791162320\tcompleted\t0",
+      "settlement\tcompleted\t5920",
+      "expired_reserved\t0"
+    ],
+    "frontend_index_sha256": "883962cd93a71bb335946d97e044a0528a17448849cabc6c2b28980d9b2820df",
+    "all_services": [
+      {
+        "service": "relay-gateway",
+        "state": "running",
+        "image_id": "sha256:63864dc9e220beeb59c35943d304b33555f57f5a802cf548aaa5056b26410470",
+        "restarts": 0
+      },
+      {
+        "service": "admin-api",
+        "state": "running",
+        "image_id": "sha256:2cb481a5a5e2d814f96dfa7847cf139f5bef3310e4b0edfe9ef370d680ca2f57",
+        "restarts": 0
+      },
+      {
+        "service": "identity-service",
+        "state": "running",
+        "image_id": "sha256:9deb67acf25c9555ba2030de01ba696549a6daeb141df2d419f8fac0f6a235e8",
+        "restarts": 0
+      },
+      {
+        "service": "channel-service",
+        "state": "running",
+        "image_id": "sha256:c234d03a251d0919a2e002c77ab13ff80df109c194391e73a6120363d0fcca46",
+        "restarts": 0
+      },
+      {
+        "service": "billing-service",
+        "state": "running",
+        "image_id": "sha256:d5acd7f263de53916e00f8dde8a2409f70bf16eef6d3b92018a72fb6cddb6c5d",
+        "restarts": 0
+      },
+      {
+        "service": "config-service",
+        "state": "running",
+        "image_id": "sha256:d7fa5f83aeade82a60e9abf23e915f6ea2b2938b19c9d13b375e0ea171cfb0ac",
+        "restarts": 0
+      },
+      {
+        "service": "log-service",
+        "state": "running",
+        "image_id": "sha256:3da9944c8fa8a07a3a0d6263071d3be87a974b2a0394b7ec70c2e1d3bad98287",
+        "restarts": 0
+      },
+      {
+        "service": "monitor-worker",
+        "state": "running",
+        "image_id": "sha256:5e3e45b49edb62f5bfdff07799195f4d70adcad541657aef0a98812726f8a04d",
+        "restarts": 0
+      },
+      {
+        "service": "notify-worker",
+        "state": "running",
+        "image_id": "sha256:f42c1172ab1be4df04176440d71200421aaf25ac8be947aa4d90486fc4cf659c",
+        "restarts": 0
+      }
+    ]
+  },
+  "transport": {
+    "image_ref": "docker-compose-billing-service:v0.34.5",
+    "image_id": "sha256:d5acd7f263de53916e00f8dde8a2409f70bf16eef6d3b92018a72fb6cddb6c5d",
+    "platform": "linux/amd64",
+    "source_digest": "ccbdb65b3ba181c890145d166950bde39694bb6425701cef2a99dfdff2da969a",
+    "archive_sha256": "4c81f1b782470de75edff5d80a93cae8593f80328bddae349b3c3754b88cf95c",
+    "archive_bytes": 18356824
+  },
+  "verification": {
+    "checked_at": "2026-10-07T09:51:15.169482+08:00",
+    "database": [
+      "latest_reconciliation\t365\t1791337741\tcompleted\t0\t",
+      "policy\tiam\tcomplete\t7\t2",
+      "tasks\tcompleted\t5920"
+    ],
+    "startup_logs": {
+      "reconciliation completed": 1,
+      "reconciliation failed": 0,
+      "user operator required": 0,
+      "panic": 0,
+      "fatal": 0
+    },
+    "reconciliation_metrics": [
+      "micro_one_api_billing_payment_reconcile_failed 0",
+      "micro_one_api_billing_reconciliation_runs_total{status=\"success\"} 1"
+    ]
+  },
+  "iam_policy_preserved": true,
+  "frontend_preserved": true,
+  "scope": "billing-service only; no migrations, runtime business configuration or grants changed",
+  "remaining_observation": "startup reconciliation verified; next scheduled hourly iteration not yet elapsed at 09:51 CST"
+}
