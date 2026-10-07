@@ -269,6 +269,12 @@ Key 额度与会话行为不变。账单详情应显示实际组 ID/键与快照
 outbox 待投递记录数、事件投递错误、权威 RPC（identity/billing/channel）延迟与失败率；
 D 阶段起纳入日常看板。
 
+### 5.5 IAM 用户侧可用分组与管理目录边界
+
+普通登录用户通过 `/api/v1/routing-groups/available` 查看按实际权益过滤的目录，不需要后台分组目录或价格管理权限。identity 的本人路由事实校验必须保留；admin 内部参考读取由固定专用服务能力完成，再按用户来源过滤。后台管理目录、详情与价格读取仍转发 operator 并独立判权。
+
+若 IAM 模式下 `/tokens` 的可用分组查询出现「无权使用此分组」，先确认运行的是 v0.34.8 或等价修复，并检查 admin、channel、billing 的专用 caller 凭证和实际镜像 ID。不要通过给普通用户补管理权限来修复内部依赖读取。可执行 `TestRoutingAvailableIAMMember` 和 `TestRoutingManagementKeepsOperatorPermissionChecks` 检查两类入口，见 [2026-10-07 修复与生产证据](./iam-self-service-hotfix-2026-10-07.md)。
+
 ## 六、回退与排空
 
 **通用原则**：保留 additive 字段与历史证据，永不以删表/删列回滚；回退目标必须是
@@ -297,6 +303,7 @@ D 阶段起纳入日常看板。
 | 现象 | 原因 | 处置 |
 | --- | --- | --- |
 | 开 relay v2 后新请求被拒 | 混合版本缺契约（identity 未回 v2 / billing 能力缺失） | 按 §五.1 检查各服务能力；确认 C 步骤 3–4 顺序 |
+| IAM 用户可用组查询返回「无权使用此分组」 | 内部参考读取误套管理权限或专用 caller 配置缺失 | 按 §5.5 核对修复版本、实际镜像及服务凭证，保留用户事实与资格过滤 |
 | ordered Key 全部 401/403 | relay 未开 `RELAY_ROUTING_ORDERED`（identity fail-closed） | 开 relay 开关，或把 Key 改回 inherit/fixed |
 | `SUBSCRIPTION_ENTITLEMENTS_V2` 只开了部分服务 | 三处未一致 | admin/billing/relay 补齐一致后重建受控测试订单验证 |
 | outbox 待投递持续增长 | 事件消费者/Redis 未指向共享集群 | 检查各服务 Redis 配置与投递错误日志（§五.4） |

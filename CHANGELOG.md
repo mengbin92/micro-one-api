@@ -7,6 +7,26 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.34.8] - 2026-10-07
+
+v0.34.8 是 v0.34.7 之后的 **PATCH 用户侧 IAM 与权限页面可靠性修复版本**：恢复普通用户可用分组读取，补齐钱包续订、能力探测和支付创建执行点，移除 IAM 页面重复导航及轮询闪动。更新 `admin-api`、`channel-service`、`billing-service` 和独立挂载的前端；无 API/proto、迁移或配置变更。生产已运行修复等价镜像。详见 [release-v0.34.8.md](docs/releases/release-v0.34.8.md)。
+
+### Fixed
+
+- 用户可用组编排使用专用服务能力读取内部目录／报价／模型；本人路由事实、实际分组权益过滤和普通后台管理权限校验保留。
+- billing 的 `PurchaseSubscription`、`GetRoutingCapabilities` 与 `CreatePaymentOrder` 纳入 IAM 已完成执行点，钱包扣款前增加 owner 本人账户校验。
+- 权限管理子页面移除与侧边栏重复的导航，授权轮询期间保留控件和有效数据，暂时禁用动作执行。
+- 授权手动恢复测试使用真实用户事件，避免查询完成与 React 通知之间的时序竞态。
+
+### Added
+
+- 真实 HTTP/RPC/IAM/SQLite 支付购买集成回归，覆盖服务端定价、幂等重放、套餐下架及跨用户／无会话／错误 caller 拒绝。
+- 用户可用组与管理读取隔离、钱包扣款前本人校验、权限页面轮询展示回归及两次生产部署证据。
+
+### Changed
+
+- 更新分组与订阅生产 runbook，明确钱包购买和支付创建的独立链路、固定 Compose 镜像标签及生产验证范围。
+
 ## [0.34.7] - 2026-10-07
 
 v0.34.7 是 v0.34.6 之后的 **PATCH 权限与界面可靠性修复版本**：恢复 IAM 模型健康读取，精确匹配组名，停止持续 403 的请求循环，并完整发布控制台后台刷新与 Playground 展示/体积优化。更新 `channel-service` 和独立挂载的前端；无 API/proto、迁移或配置变更。详见 [release-v0.34.7.md](docs/releases/release-v0.34.7.md)。

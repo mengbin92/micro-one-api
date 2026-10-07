@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { http, HttpResponse } from 'msw';
@@ -6,6 +6,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { IAMPage } from './IAMPage';
 import { server } from '@/test/msw/server';
 import { renderWithQuery } from '@/test/render';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { authorizationKey } from '@/lib/authorization';
 import type { IAMRequest } from '@/lib/iam-types';
 
 function authorize(operations: string[]) {
@@ -65,5 +67,46 @@ describe('IAM independent reads and metadata', () => {
     expect(body?.permission?.sort).toBe(-10);
     expect(body?.update_mask).toBe('name,description,sort,category,risk_level');
     expect(body?.expected_revision).toBe('3');
+  });
+});
+
+
+describe('IAM page presentation', () => {
+  it('uses the sidebar navigation without repeating every IAM page above the table', async () => {
+    authorize(['iam.permission.list', 'iam.role.list', 'identity.user_role.read']);
+    server.use(http.get('/api/v1/admin/iam/permissions', () => HttpResponse.json({ permissions: [{ id: '1', name: 'Visible permission' }] })));
+    renderWithQuery(<MemoryRouter initialEntries={['/admin/iam/permissions']}><IAMPage /></MemoryRouter>);
+    await screen.findByText('Visible permission');
+    expect(screen.queryByRole('link', { name: '权限目录' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '角色与继承' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '用户角色' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the page and its actions visible during unchanged authorization polling', async () => {
+    let calls = 0;
+    let release: (() => void) | undefined;
+    const reads = vi.fn();
+    server.use(
+      http.get('/api/user/authorization', async () => {
+        if (++calls > 1) await new Promise<void>(resolve => { release = resolve; });
+        return HttpResponse.json({ authorization_mode: 'iam', session: { activation_state: 'active' }, permitted_operations: ['iam.permission.list', 'iam.permission.create'], versions: { policy_revision: '7' }, valid_until: new Date(Date.now() + 60_000).toISOString() });
+      }),
+      http.get('/api/v1/admin/iam/permissions', () => { reads(); return HttpResponse.json({ permissions: [{ id: '1', name: 'Stable permission' }] }); }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/admin/iam/permissions']}><IAMPage /></MemoryRouter></QueryClientProvider>);
+    let refreshing: Promise<void> | undefined;
+    try {
+      await screen.findByText('Stable permission');
+      expect(screen.getByRole('button', { name: '创建目录草稿' })).toBeVisible();
+      act(() => { refreshing = client.refetchQueries({ queryKey: authorizationKey }); });
+      await waitFor(() => expect(calls).toBe(2));
+      expect(screen.getByText('Stable permission')).toBeVisible();
+      expect(screen.getByRole('button', { name: '创建目录草稿' })).toBeVisible();
+      expect(screen.getByRole('button', { name: '创建目录草稿' })).toBeDisabled();
+      await act(async () => { release?.(); await refreshing; });
+      expect(reads).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(screen.getByRole('button', { name: '创建目录草稿' })).toBeEnabled());
+    } finally { release?.(); await refreshing; view.unmount(); client.clear(); }
   });
 });

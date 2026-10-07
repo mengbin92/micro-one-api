@@ -7,6 +7,7 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/app/admin/internal/biz"
+	"micro-one-api/app/admin/internal/data/routingrpc"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
@@ -75,7 +76,7 @@ func (r *repo) SetToken(ctx context.Context, user, token int64, mode string, gro
 	return p.GetRevision(), nil
 }
 func (r *repo) Price(ctx context.Context, group, user int64) (biz.RoutingPrice, error) {
-	p, err := r.billing.GetRoutingGroupPrice(ctx, &billingv1.GetRoutingGroupPriceRequest{RoutingGroupId: group, UserId: user})
+	p, err := r.billing.GetRoutingGroupPrice(routingrpc.ReferenceContext(ctx), &billingv1.GetRoutingGroupPriceRequest{RoutingGroupId: group, UserId: user})
 	if err != nil {
 		return biz.RoutingPrice{}, err
 	}
@@ -107,7 +108,7 @@ func (r *repo) ClearUserRoutingPrice(ctx context.Context, userID, groupID int64)
 	return err
 }
 func (r *repo) Models(ctx context.Context, groupID int64, key string) ([]string, error) {
-	p, err := r.channel.ListAvailableModels(ctx, &channelv1.ListAvailableModelsRequest{Group: key, RoutingGroupId: groupID})
+	p, err := r.channel.ListAvailableModels(routingrpc.ReferenceContext(ctx), &channelv1.ListAvailableModelsRequest{Group: key, RoutingGroupId: groupID})
 	if err != nil {
 		return nil, err
 	}
