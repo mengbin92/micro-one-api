@@ -39,18 +39,7 @@ func (r *Repository) groupsSubselect(relation, column, table string) string {
 	if r.routingGroupRelations {
 		return "SELECT 1 FROM " + relation + " rel WHERE rel." + column + " = " + table + ".id AND rel.routing_group_id IN ?"
 	}
-	group := quoteGroupColumnSQL(r.db, table+".`group`")
-	var key strings.Builder
-	r.db.Dialector.QuoteTo(&key, "key")
-	quotedKey := "rg." + key.String()
-	var csvMatch string
-	switch r.db.Dialector.Name() {
-	case "mysql":
-		csvMatch = "CONCAT(',', " + group + ", ',') LIKE CONCAT('%,', " + quotedKey + ", ',%')"
-	default:
-		csvMatch = "(',' || " + group + " || ',') LIKE ('%,' || " + quotedKey + " || ',%')"
-	}
-	return "SELECT 1 FROM routing_groups rg WHERE rg.id IN ? AND " + csvMatch
+	return "SELECT 1 FROM routing_groups rg WHERE rg.id IN ? AND " + r.legacyGroupMembershipSQL(table)
 }
 
 // ChannelAuthorizationFacts reads the authoritative object facts for one

@@ -1,12 +1,46 @@
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { MemoryRouter } from 'react-router';
-import { describe, expect, it } from 'vitest';
+import { MemoryRouter, Outlet, Route, Routes } from 'react-router';
+import { describe, expect, it, vi } from 'vitest';
+import { AdminRoute } from '@/components/AdminRoute';
+import { useAuthorizationLifecycle } from '@/lib/authorization';
 import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 import { ModelHealthPage } from './ModelHealthPage';
 
+function AuthenticatedShell() {
+  useAuthorizationLifecycle();
+  return <Outlet />;
+}
+
 describe('ModelHealthPage', () => {
+  it('keeps a persistent owner 403 visible without repeatedly remounting or requesting the page', async () => {
+    const requests = vi.fn();
+    const authRequests = vi.fn();
+    const snapshot = { authorization_mode: 'iam', session: { activation_state: 'active', revision: '1' }, versions: { policy_revision: '1' }, permitted_operations: ['admin.console.enter', 'monitor.health.model.read'], valid_until: new Date(Date.now() + 60_000).toISOString() };
+    server.use(
+      http.get('/api/user/authorization', () => { authRequests(); return HttpResponse.json(snapshot); }),
+      http.get('/api/admin/model-health', () => { requests(); return HttpResponse.json({ message: 'authorization denied', success: false }, { status: 403 }); }),
+    );
+    const view = renderWithQuery(
+      <MemoryRouter initialEntries={['/admin/model-health']}>
+        <Routes>
+          <Route element={<AuthenticatedShell />}>
+            <Route path="/admin" element={<AdminRoute />}>
+              <Route path="model-health" element={<ModelHealthPage />} />
+            </Route>
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    try {
+      expect(await screen.findByRole('alert')).toHaveTextContent('模型健康数据加载失败');
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+      expect(requests).toHaveBeenCalledTimes(1);
+      expect(authRequests).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText('暂无模型健康数据')).not.toBeInTheDocument();
+    } finally { view.unmount(); }
+  });
   it('shows a load error instead of an empty-data message when the API fails', async () => {
     server.use(
       http.get('/api/admin/model-health', () => HttpResponse.json({ error: 'unavailable' }, { status: 503 })),

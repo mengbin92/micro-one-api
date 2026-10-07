@@ -7,6 +7,27 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.34.7] - 2026-10-07
+
+v0.34.7 是 v0.34.6 之后的 **PATCH 权限与界面可靠性修复版本**：恢复 IAM 模型健康读取，精确匹配组名，停止持续 403 的请求循环，并完整发布控制台后台刷新与 Playground 展示/体积优化。更新 `channel-service` 和独立挂载的前端；无 API/proto、迁移或配置变更。详见 [release-v0.34.7.md](docs/releases/release-v0.34.7.md)。
+
+### Fixed
+
+- 模型健康查询兼容现网 CSV 成员读取，不再提前拒绝 All/资源 ID/组范围；特殊组名按字节匹配，allow/deny 在计数和分页之前应用。
+- 前端按真实授权版本记住 owner 403，阻止授权刷新重建查询形成无界请求循环；支持显式重试及真实权限变化后恢复。
+- 无变化的后台授权轮询保留页面、有效数据和草稿，主题/语言 storage 事件不再重载权限；真实边界变化仍清理旧数据。
+- Playground 同批重复提交不再并发执行。
+
+### Added
+
+- 受限、安全的 Markdown 答复展示与代码手动复制，关键路径覆盖率和桌面/手机生产 bundle 浏览器门禁。
+- 模型健康范围、特殊组名、分页、deny 与持续 403 恢复的回归测试。
+
+### Changed
+
+- 前端改用系统字体，移除 98 个打包字体分片，首屏 CSS gzip 降至约 17 kB。
+- 记录 executor 第二阶段条件复核；不改变 relay 运行路径。
+
 ## [0.34.6] - 2026-10-07
 
 v0.34.6 是 v0.34.4 之后的 **PATCH 可靠性与验收修复版本**：恢复 IAM 切换后的后台定时对账，强化完整 IAM 持续门禁，补齐本人订阅/owner/目录只读验收与证据范围。运行时只更新 billing，前端静态资源不变；无 API/proto、迁移或业务配置变更。详见 [release-v0.34.6.md](docs/releases/release-v0.34.6.md)。

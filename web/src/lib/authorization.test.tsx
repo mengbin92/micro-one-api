@@ -212,6 +212,59 @@ describe('authorization lifecycle', () => {
   expect(client.getQueryCache().findAll({ predicate: q => q.meta?.protected === true }).every(q => q.state.data === undefined)).toBe(true);
   expect(protectedRequests).toHaveBeenCalledTimes(2); result.unmount(); client.clear();
  });
+ it('stops automatic reads after persistent 403 with an unchanged authorization summary', async () => {
+  localStorage.setItem('token', 'valid-user-jti');
+  const authRequests = vi.fn(); const protectedRequests = vi.fn();
+  let snapshot = active(['channel.channel.list']);
+  let deny = true;
+  server.use(
+   http.get('/api/user/authorization', () => { authRequests(); return HttpResponse.json(snapshot); }),
+   http.get('/api/test-protected', () => { protectedRequests(); return deny ? HttpResponse.json({ message: 'authorization denied', success: false }, { status: 403 }) : HttpResponse.json({ value: 'recovered data' }); }),
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: 3 } } });
+  const view = mount(client);
+  try {
+   await waitFor(() => expect(authRequests.mock.calls.length).toBeGreaterThanOrEqual(2));
+   await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+   expect(protectedRequests).toHaveBeenCalledTimes(1);
+   expect(authRequests).toHaveBeenCalledTimes(2);
+   expect(localStorage.getItem('token')).toBe('valid-user-jti');
+   // The denial must survive both route remounts and unchanged background polls.
+   view.rerender(<QueryClientProvider client={client}>{null}</QueryClientProvider>);
+   view.rerender(<QueryClientProvider client={client}><Consumer /></QueryClientProvider>);
+   await act(async () => { await client.refetchQueries({ queryKey: authorizationKey }); });
+   await act(async () => { await client.refetchQueries({ queryKey: ['protected-list'] }); });
+   expect(protectedRequests).toHaveBeenCalledTimes(1);
+   // A real policy boundary change can automatically try the read again.
+   deny = false; snapshot = active(['channel.channel.list'], '2');
+   await act(async () => { await client.refetchQueries({ queryKey: authorizationKey }); });
+   expect(await screen.findByText('recovered data')).toBeVisible();
+   expect(protectedRequests).toHaveBeenCalledTimes(2);
+  } finally { view.unmount(); client.clear(); }
+ });
+ it('allows an explicit retry after a denied read without trusting an unavailable summary', async () => {
+  let deny = true;
+  let authFailed = false;
+  const requests = vi.fn();
+  server.use(http.get('/api/user/authorization', () => authFailed ? HttpResponse.json({ message: 'unavailable' }, { status: 503 }) : HttpResponse.json(active(['channel.channel.list']))), http.get('/api/test-protected', () => {
+   requests(); return deny ? HttpResponse.json({ message: 'authorization denied' }, { status: 403 }) : HttpResponse.json({ value: 'manual recovery' });
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); const view = mount(client);
+  try {
+   await waitFor(() => expect(client.getQueryCache().findAll({ queryKey: ['authorization-denial'] }).some(q => q.state.data)).toBe(true));
+   await waitFor(() => expect(client.getQueryCache().findAll({ queryKey: authorizationKey })[0]?.state.fetchStatus).toBe('idle'));
+   authFailed = true;
+   await act(async () => { await client.refetchQueries({ queryKey: authorizationKey }); });
+   await act(async () => { screen.getByRole('button', { name: 'refetch' }).click(); });
+   expect(requests).toHaveBeenCalledTimes(1);
+   authFailed = false;
+   await act(async () => { await client.refetchQueries({ queryKey: authorizationKey }); });
+   deny = false;
+   await act(async () => { screen.getByRole('button', { name: 'refetch' }).click(); });
+   expect(await screen.findByText('manual recovery')).toBeVisible();
+   expect(requests).toHaveBeenCalledTimes(2);
+  } finally { view.unmount(); client.clear(); }
+ });
  it('failed refresh never resumes the protected cached query', async () => {
   let failed = false; const requests = vi.fn();
   server.use(http.get('/api/user/authorization', () => failed ? HttpResponse.json({ message: 'unavailable' }, { status: 503 }) : HttpResponse.json(active(['channel.channel.list']))), http.get('/api/test-protected', () => { requests(); return HttpResponse.json({ value: 'secret' }); }));
