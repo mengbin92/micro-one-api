@@ -7,7 +7,22 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.34.9] - 2026-10-07
+
+v0.34.9 是 v0.34.7 之后的 **PATCH 发布恢复版本**：完整纳入 v0.34.8 候选已上线的用户分组、订阅购买／支付及权限页面修复，同步独立 Release 冒烟对「按钮保留但禁用」的新断言。v0.34.8 没有生成完整 Release 制品，原 tag 保留；相对已上线热修复仅测试／文档变化，无 API/proto、迁移或配置变更。详见 [release-v0.34.9.md](docs/releases/release-v0.34.9.md)。
+
+### Fixed
+
+- Release 授权刷新冒烟不再要求按钮消失，改为验证可见且禁用、刷新后恢复；继续验证草稿、读缓存及权限撤销后的清理。
+- 完整包含 v0.34.8 候选的用户可用分组、钱包购买／续订、支付创建 IAM 覆盖与权限页面修复。
+
+### Changed
+
+- 将 v0.34.8 标记为发布中止，保留失败流水线和旧 tag；升级目标改为 v0.34.9，当前生产无需重复重启。
+
 ## [0.34.8] - 2026-10-07
+
+v0.34.8 发布候选已中止：Release 通用 Playwright 冒烟使用旧的按钮隐藏断言，两项失败，未创建 GitHub Release 或发布镜像。tag 保留，正式变更纳入 v0.34.9；业务热修复已上线。
 
 v0.34.8 是 v0.34.7 之后的 **PATCH 用户侧 IAM 与权限页面可靠性修复版本**：恢复普通用户可用分组读取，补齐钱包续订、能力探测和支付创建执行点，移除 IAM 页面重复导航及轮询闪动。更新 `admin-api`、`channel-service`、`billing-service` 和独立挂载的前端；无 API/proto、迁移或配置变更。生产已运行修复等价镜像。详见 [release-v0.34.8.md](docs/releases/release-v0.34.8.md)。
 

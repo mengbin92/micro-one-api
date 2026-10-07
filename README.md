@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.34.8 发布公告](./docs/releases/release-v0.34.8.md)（用户可用分组、订阅支付与权限页面修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.8)
+> 📣 **最新发布**：[v0.34.9 发布公告](./docs/releases/release-v0.34.9.md)（用户分组／订阅支付修复与 Release 冒烟同步） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.9)
 
 ## 功能概览
 
@@ -180,9 +180,13 @@ make web-dist
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
 
-### 升级到 v0.34.8
+### 升级到 v0.34.9
 
-v0.34.8 是 v0.34.7 之后的 **PATCH 用户侧 IAM 与权限页面可靠性修复版本**：恢复用户可用分组读取，补齐钱包续订及支付订单创建执行点，移除权限管理重复导航和授权轮询闪动。**无 API/proto、迁移或配置变更**；更新 `admin-api`、`channel-service`、`billing-service`，并单独同步宿主机挂载的前端 `web/dist`。生产已运行修复等价镜像，正式发版不重复重启。详见 [release-v0.34.8.md](./docs/releases/release-v0.34.8.md)。
+v0.34.9 完整包含 v0.34.8 候选已上线的用户分组、订阅支付与权限页面修复，并同步 Release 授权刷新冒烟断言。**相对当前热修复仅测试／文档变化，无运行时、API/proto、迁移或配置变更**；当前生产无需重复部署，未部署修复的环境更新 admin/channel/billing 与独立前端。详见 [release-v0.34.9.md](./docs/releases/release-v0.34.9.md)。
+
+### v0.34.8 候选（发布已中止）
+
+Release 通用 Playwright 冒烟仍按旧行为断言按钮隐藏，桌面／手机两项失败；没有 GitHub Release 或发布镜像，原 tag 保留。业务热修复已上线，正式升级使用 v0.34.9。候选内容见 [release-v0.34.8.md](./docs/releases/release-v0.34.8.md)。
 
 ### 升级到 v0.34.7
 

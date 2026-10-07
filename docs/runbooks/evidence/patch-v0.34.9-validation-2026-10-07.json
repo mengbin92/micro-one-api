@@ -1,0 +1,39 @@
+{
+  "verified_at": "2026-10-07T21:58:18.826418+08:00",
+  "failed_candidate_tag": "v0.34.8",
+  "failed_release_run": "https://github.com/mengbin92/micro-one-api/actions/runs/37625675751",
+  "failed_job": "Release E2E gate / Playwright admin smoke",
+  "failure": "authorization-refresh.spec.ts expected save button count=0 during background polling; runtime intentionally retains one disabled button",
+  "focused_command": "npx playwright test e2e/authorization-refresh.spec.ts --workers=1",
+  "focused_before": {
+    "status": "failed",
+    "failed_projects": [
+      "chrome",
+      "mobile-chrome"
+    ],
+    "expected_count": 0,
+    "received_count": 1
+  },
+  "focused_after": {
+    "status": "passed",
+    "passed": 2,
+    "checks": [
+      "enabled before polling",
+      "visible and disabled during polling",
+      "unsaved draft retained",
+      "owner read count unchanged",
+      "enabled after refresh",
+      "revoked page and protected data removed"
+    ]
+  },
+  "full_smoke": {
+    "command": "CI=1 npx playwright test --workers=2",
+    "status": "passed",
+    "passed": 69,
+    "skipped": 1,
+    "skip_reason": "Existing mobile-only coverage is skipped in desktop project; no new skip or gate change.",
+    "log_sha256": "55691cf756bd9153d6f7cd91853457a58f5d0bd1e098fa727b2dc0a2eeb8a2ad"
+  },
+  "runtime_changes_since_v0_34_8": false,
+  "release_tag_policy": "Retain immutable failed candidate v0.34.8; publish corrected tests/docs as v0.34.9."
+}
