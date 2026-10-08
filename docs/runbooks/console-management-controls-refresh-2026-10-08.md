@@ -1,6 +1,6 @@
 # 管理页面授权轮询导致控件消失：诊断与修复
 
-> 2026-10-08（Asia/Shanghai）。用户反馈线上 `/admin/channels` 仍约一分钟闪刷，并要求检查其它管理页面。修复基线 `develop@2c695044`。本轮完成源码修复和本地回归；尚未构建或发布生产静态资源。
+> 2026-10-08（Asia/Shanghai）。用户反馈线上 `/admin/channels` 仍约一分钟闪刷，并要求检查其它管理页面。修复基线 `develop@2c695044`。源码修复 `d1573f9b` 已提交并推送 develop，用户随后授权更新线上；生产静态资源已于 17:05 CST 发布并完成校验。
 
 ## 复现与根因
 
@@ -56,4 +56,16 @@ npm test -- src/pages/admin/ChannelsPage.refresh.test.tsx
 | 类型，`npx tsc --noEmit -p tsconfig.app.json` | 通过 |
 | Playwright，`npx playwright test authorization-refresh.spec.ts --workers=1` | 桌面/手机 8 项通过：渠道、用户、日志连续 90 秒轮询及原 IAM 续验场景；渠道未保存编辑草稿保留，真实撤权移除控件、弹窗和旧页面，owner 请求不增加 |
 
-未执行生产构建、部署、提交或发布。线上生效需按仓库前端流程更新主机挂载的 `web/dist`；仅重建 admin-api 镜像不会更新这些静态资源。
+## 生产部署（用户授权后）
+
+- 源码提交：`d1573f9b6f5d6f2181105911f657dc47bd88d2d9`，已推送 `origin/develop`；提交正文记录根因、影响和回归，pre-push gosec 通过。
+- 本机执行 `cd web && npm run build`，生产构建及六项体积预算全部通过。未在远程主机构建。
+- 确认 admin-api 将 `/opt/web/dist` 只读挂载到 `/web`，按前端发布流程备份后更新静态目录，无容器重启。
+- 回滚备份：`/opt/web/dist.bak.20261008-170528`；旧 `index.html` SHA256 为 `7c9b23d4b4e03af1efa6efffc7161d4525730c78d3ce792844e9c785e8ebcd6a`。
+- 新 `index.html` SHA256：`9f5bb76e786054e17f6bef54b4c7c9ee2b31a1aa9483a0ae790a347fae5fe821`；入口 chunk：`index-D-yeAoCd.js`。
+- 远程目录 77 个文件的完整路径与 SHA256 均与本机构建一致；公网 `index.html`、ChannelsPage、PermissionButton、ExportButton 的 JS 内容逐一核对一致，`/admin/channels` 返回 200 和新入口。
+- admin-api 仍正常运行，主机直连 `/healthz` 返回 `{"status":"ok"}`。
+- 已登录 Chrome 重新加载线上 `/admin/channels`，打开编辑弹窗并输入仅用于验证的未保存名称；跨过一分钟及自然授权轮询后，两次间隔观察均确认弹窗、草稿和保存控件仍存在。最后关闭弹窗丢弃测试草稿，列表与编辑/导出控件正常显示，未点击保存。此为线上人工状态抽样，连续 DOM 与请求计数仍由前述桌面/手机 Playwright 回归验证。
+- 首次 tar 包包含 macOS 自动生成的 `._*` 元数据文件，完整清单校验发现后仅清理这些生成文件，再次严格核对 77 个业务文件全部一致；没有忽略清单差异。后续跨平台打包应禁用 Apple 元数据（`COPYFILE_DISABLE=1 tar --no-xattrs ...`）。
+
+脱敏部署清单见 [生产部署证据](evidence/console-management-controls-deploy-2026-10-08.json)。未修改业务数据、权限或后端二进制，也未进行版本发布或打 tag。
