@@ -7,11 +7,7 @@
 # Each run tags the previously-live images with one shared rollback-<timestamp>
 # tag before loading the new build.
 
-set -e
-
-SERVER="root@43.133.65.212"
-SERVER_DIR="/opt/micro-one-api"
-COMPOSE_DIR="${SERVER_DIR}/docker-compose"
+set -euo pipefail
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -27,6 +23,26 @@ log_step() { echo -e "${BLUE}[STEP]${NC} $1"; }
 # Get project root
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}/.."
+
+# Only deployment coordinates are read; .env is data, never executable code.
+if [ -f "${PROJECT_ROOT}/.env" ]; then
+    while IFS='=' read -r key value; do
+        case "$key" in
+            DEPLOY_REMOTE_SERVER|DEPLOY_REMOTE_DIR)
+                value="${value%\"}"; value="${value#\"}"
+                value="${value%\'}"; value="${value#\'}"
+                if [ -z "${!key:-}" ]; then export "$key=$value"; fi ;;
+        esac
+    done < "${PROJECT_ROOT}/.env"
+fi
+: "${DEPLOY_REMOTE_SERVER:?DEPLOY_REMOTE_SERVER is required}"
+: "${DEPLOY_REMOTE_DIR:?DEPLOY_REMOTE_DIR is required}"
+# SSH passes remote arguments through a shell. Reject shell syntax in these
+# two coordinates rather than interpolating untrusted executable text.
+[[ "$DEPLOY_REMOTE_SERVER" =~ ^[a-zA-Z0-9_@.:-]+$ && "$DEPLOY_REMOTE_SERVER" != -* ]]
+[[ "$DEPLOY_REMOTE_DIR" =~ ^/[a-zA-Z0-9_./-]+$ ]]
+SERVER="$DEPLOY_REMOTE_SERVER"
+COMPOSE_DIR="${DEPLOY_REMOTE_DIR}/docker-compose"
 
 log_info "======================================"
 log_info "  Micro-One-API Production Deploy"
@@ -92,75 +108,134 @@ if ! docker buildx version &>/dev/null; then
     exit 1
 fi
 
-if ! ssh -o ConnectTimeout=5 ${SERVER} "echo 'Connected'" &>/dev/null; then
-    log_error "Cannot connect to server ${SERVER}"
-    exit 1
-fi
+ssh -o BatchMode=yes -o ConnectTimeout=10 "$SERVER" bash -s -- "$COMPOSE_DIR" "${SERVICES[@]}" <<'REMOTE'
+set -euo pipefail
+cd "$1"; shift
+docker compose config --quiet
+for service in "$@"; do
+    cid=$(docker compose ps -q "$service")
+    [[ -n "$cid" && "$cid" != *$'\n'* ]]
+    test "$(docker inspect "$cid" --format '{{.State.Running}}')" = true
+done
+REMOTE
 log_info "Prerequisites OK"
 echo ""
 
 # Rollback tag shared by every service deployed in this run, so a multi-service
 # deploy can be rolled back to one consistent point in time.
 ROLLBACK_TAG="rollback-$(date +%Y%m%d-%H%M%S)"
+DEPLOY_TAG="deploy-$(date +%Y%m%d-%H%M%S)-$(git -C "$PROJECT_ROOT" rev-parse --short HEAD)"
+SOURCE_DIGEST=$(python3 "${PROJECT_ROOT}/scripts/rbac-source-digest.py")
+[[ "$SOURCE_DIGEST" =~ ^[a-f0-9]{64}$ ]]
 
 # Function to build and deploy a service
 deploy_service() {
     local service=$1
-    local image_name="docker-compose-${service}:latest"
-    local temp_file="/tmp/${service}-image.tar.gz"
+    local image_name="docker-compose-${service}:${DEPLOY_TAG}"
+    local temp_file
+    temp_file=$(mktemp "/tmp/${service}-image.tar.gz.XXXXXX")
 
     log_step "========================================"
     log_step "Building ${service} (linux/amd64)..."
     log_step "========================================"
 
     # Build image (cross-platform)
-    (cd ${PROJECT_ROOT} && docker buildx build \
+    (cd "$PROJECT_ROOT" && docker buildx build \
         --platform linux/amd64 \
         --load \
         --progress=plain \
-        -f $(service_dockerfile ${service}) \
-        --build-arg SERVICE_NAME=${service} --build-arg SERVICE_PATH=$(service_path ${service}) \
-        -t ${image_name} \
+        --label "micro-one-api.source.digest=${SOURCE_DIGEST}" \
+        -f "$(service_dockerfile "$service")" \
+        --build-arg "SERVICE_NAME=${service}" --build-arg "SERVICE_PATH=$(service_path "$service")" \
+        -t "$image_name" \
         .)
 
     # Get image size
-    local size=$(docker inspect ${image_name} --format='{{.Size}}' | awk '{printf "%.2f MB", $1/1024/1024}')
-    log_info "Built image size: ${size}"
+    local expected_id
+    expected_id=$(docker inspect "$image_name" --format '{{.Id}}')
+    [[ "$expected_id" =~ ^sha256:[a-f0-9]{64}$ ]]
 
     # Save image (gzipped: the upload link is the bottleneck, docker load
     # accepts .tar.gz directly)
     log_info "Saving ${service} image..."
-    docker save ${image_name} | gzip > ${temp_file}
+    docker save "$image_name" | gzip > "$temp_file"
 
     # Transfer to server
     log_info "Uploading to server..."
-    scp ${temp_file} ${SERVER}:/tmp/
+    scp "$temp_file" "$SERVER:/tmp/"
 
     # Load and deploy on server
     log_info "Deploying on server (rollback tag: ${ROLLBACK_TAG})..."
-    ssh ${SERVER} bash << EOF
-        set -e
+    ssh "$SERVER" bash -s -- "$COMPOSE_DIR" "$service" "$image_name" "$expected_id" "$ROLLBACK_TAG" "${temp_file##*/}" <<'REMOTE'
+set -euo pipefail
+cd "$1"
+service=$2; image=$3; expected=$4; rollback=$5; archive="/tmp/$6"
+cid=$(docker compose ps -q "$service")
+[[ -n "$cid" && "$cid" != *$'\n'* ]]
+old=$(docker inspect "$cid" --format '{{.Image}}')
+docker tag "$old" "docker-compose-${service}:${rollback}"
+docker load -i "$archive"
+test "$(docker inspect "$image" --format '{{.Id}}')" = "$expected"
 
-        echo "Tagging current image for rollback..."
-        docker tag ${image_name} docker-compose-${service}:${ROLLBACK_TAG} 2>/dev/null || true
-
-        echo "Loading image..."
-        docker load -i /tmp/${service}-image.tar.gz
-
-        echo "Updating container via docker compose..."
-        cd ${COMPOSE_DIR}
-
-        # Restart service with docker compose
-        docker compose up -d --no-deps ${service}
-
-        # Cleanup
-        rm -f /tmp/${service}-image.tar.gz
-
-        echo "Deployed ${service}!"
-EOF
+# Pin the selected service in the default Compose file, so later ordinary
+# compose invocations use this build too. Preserve all other YAML verbatim.
+file=""
+for candidate in compose.yaml compose.yml docker-compose.yaml docker-compose.yml; do
+    if [ -f "$candidate" ]; then file=$candidate; break; fi
+done
+test -n "$file"
+if [ ! -e "$file.$rollback" ]; then cp -p "$file" "$file.$rollback"; fi
+previous=$(mktemp "${file}.before-image.XXXXXX")
+cp -p "$file" "$previous"
+python3 - "$file" "$service" "$image" <<'PY'
+import os, re, sys, tempfile
+from pathlib import Path
+path, service, image = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+text = path.read_text()
+blocks = list(re.finditer(r'^  '+re.escape(service)+r':\s*\n(?:^(?:    .*|\s*|#.*)\n)*', text, re.M))
+if len(blocks) != 1:
+    raise SystemExit('Expected one standard service block; Compose file unchanged')
+block = blocks[0]
+body = block.group()
+pattern = r'^    image:.*$'
+if len(re.findall(pattern, body, re.M)) > 1:
+    raise SystemExit('Ambiguous image field; Compose file unchanged')
+if re.search(pattern, body, re.M):
+    body = re.sub(pattern, '    image: '+image, body, flags=re.M)
+else:
+    header, rest = body.split('\n', 1)
+    body = header+'\n    image: '+image+'\n'+rest
+fd, name = tempfile.mkstemp(dir=path.parent)
+with os.fdopen(fd, 'w') as out:
+    out.write(text[:block.start()]+body+text[block.end():])
+os.chmod(name, path.stat().st_mode & 0o777)
+os.replace(name, path)
+PY
+if ! test "$(docker compose config --images "$service")" = "$image"; then
+    cp -p "$previous" "$file"
+    rm -f "$previous"
+    echo 'Effective Compose image differs; restored configuration' >&2
+    exit 1
+fi
+rm -f "$previous"
+docker compose up -d --no-deps --no-build --pull never "$service"
+for attempt in {1..30}; do
+    cid=$(docker compose ps -q "$service")
+    test -n "$cid"
+    test "$(docker inspect "$cid" --format '{{.Image}}')" = "$expected"
+    state=$(docker inspect "$cid" --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}')
+    case "$state" in
+        'running healthy'|'running none') echo "$service image=$expected state=$state rollback=$rollback"; break ;;
+        *unhealthy*|exited*|dead*) echo "$service failed: $state" >&2; exit 1 ;;
+    esac
+    test "$attempt" -lt 30
+    sleep 2
+done
+rm -f "$archive"
+REMOTE
 
     # Cleanup local temp file
-    rm -f ${temp_file}
+    rm -f "$temp_file"
 
     log_info "${service} deployed successfully!"
     echo ""
@@ -170,36 +245,7 @@ for svc in "${SERVICES[@]}"; do
     deploy_service "${svc}"
 done
 
-# Apply database migrations
-log_step "Applying database migrations..."
-ssh ${SERVER} bash << 'EOF'
-    # Check if there are new migration files not yet applied
-    MIGRATION_DIR="/opt/micro-one-api/migrations"
-    LATEST_FILE=$(ls -t ${MIGRATION_DIR}/*.sql 2>/dev/null | head -1)
-
-    if [ -n "$LATEST_FILE" ]; then
-        echo "Latest migration: $(basename ${LATEST_FILE})"
-        echo "Please verify migrations are applied correctly"
-    fi
-EOF
-echo ""
-
-# Check status
-log_step "Checking service status..."
-ssh ${SERVER} bash << 'EOF'
-    echo "======================================"
-    echo "  Container Status"
-    echo "======================================"
-    docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' | grep -E 'NAME|billing-service|admin-api|relay-gateway'
-
-    echo ""
-    echo "======================================"
-    echo "  Recent Logs (billing-service)"
-    echo "======================================"
-    docker logs --tail 20 billing-service 2>&1 | tail -20
-EOF
-
-echo ""
+log_info "Migrations and frontend assets use their separate release steps."
 log_info "========================================"
 log_info "Deployment completed!"
 log_info "========================================"
