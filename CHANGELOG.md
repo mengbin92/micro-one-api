@@ -7,6 +7,26 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.34.10] - 2026-10-08
+
+v0.34.10 是 v0.34.9 的 **PATCH 支付校验与交付验收版本**：有效签名回调必须匹配本地订单金额、支付渠道及已配置 app_id，避免匿名回调误走本人查单授权后漏校验。补齐真实购买/权益链路、本地关键覆盖率和固定镜像部署门禁，归档隔离长流与故障矩阵；运行时只更新 Billing，无 API/proto、迁移或新增业务配置。详见 [release-v0.34.10.md](docs/releases/release-v0.34.10.md)。
+
+### Fixed
+
+- 已验签支付宝通知直接核对本地订单，错误/缺失金额、错误渠道与配置 app_id 不匹配均拒绝；保留原支付发放事务和重复回调幂等。
+- 部署脚本按环境目标、实际运行 image ID 备份及固定 Compose 引用执行，禁止远端构建/拉取，核对所选服务镜像和健康；多服务失败保留已完成服务引用。
+- 部署文档检查使用兼容 BSD 的临时 YAML，确保 Kubernetes 资源实际执行校验。
+
+### Added
+
+- 真实 HTTP/RPC/IAM/SQLite 与 RSA2 购买闭环、发放回滚/恢复、重复回调、本人/API Key 用量及钱包幂等续期回归；外部支付宝沙箱一次续期的脱敏证据。
+- executor 12 档、每档 50 对的长流模式，共 600 对；24 项新旧路径/上游来源故障矩阵及低样本 INSUFFICIENT 非零退出门禁。
+
+### Changed
+
+- `make verify` 接入既有关键分支覆盖率专项，保持阈值；补发布前桌面/移动 smoke 结果与本机 worker 退出边界。
+- 同步阶段计划及生产 executor 只读复核；正式七天起点仍不成立，保留两枚 Token 灰度与 legacy。
+
 ## [0.34.9] - 2026-10-07
 
 v0.34.9 是 v0.34.7 之后的 **PATCH 发布恢复版本**：完整纳入 v0.34.8 候选已上线的用户分组、订阅购买／支付及权限页面修复，同步独立 Release 冒烟对「按钮保留但禁用」的新断言。v0.34.8 没有生成完整 Release 制品，原 tag 保留；相对已上线热修复仅测试／文档变化，无 API/proto、迁移或配置变更。详见 [release-v0.34.9.md](docs/releases/release-v0.34.9.md)。
