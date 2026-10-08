@@ -8,10 +8,11 @@ import { toCsv, type CsvColumn } from '@/lib/csv';
 interface ExportButtonProps<T extends object> {
   filename: string; rows?: T[]; columns?: Array<CsvColumn<T>>; href?: string; label?: string; permission?: string | readonly string[];
 }
-function ExportDownload<T extends object>({ filename, rows, columns, href, label = 'Export CSV' }: ExportButtonProps<T>) {
+function ExportDownload<T extends object>({ filename, rows, columns, href, label = 'Export CSV', disabled = false }: ExportButtonProps<T> & { disabled?: boolean }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const download = async () => {
+    if (disabled || pending) return;
     setPending(true); setError('');
     try {
       const blob = href ? new Blob([(await adminApiClient.get(href, { responseType: 'blob' })).data], { type: 'text/csv;charset=utf-8' }) : new Blob([toCsv(rows ?? [], columns ?? [])], { type: 'text/csv;charset=utf-8' });
@@ -19,12 +20,13 @@ function ExportDownload<T extends object>({ filename, rows, columns, href, label
     } catch (err) { setError(getApiErrorMessage(err)); }
     finally { setPending(false); }
   };
-  return <><Button variant="outline" size="sm" disabled={pending || (!href && (!rows?.length || !columns))} onClick={() => void download()}><Download className="size-3.5" />{label}</Button>{error && <span role="alert">{error}</span>}</>;
+  return <><Button variant="outline" size="sm" disabled={disabled || pending || (!href && (!rows?.length || !columns))} onClick={() => void download()}><Download className="size-3.5" />{label}</Button>{error && <span role="alert">{error}</span>}</>;
 }
 
 function AuthorizedExport<T extends object>(props: ExportButtonProps<T>) {
  const auth = useAuthorization();
- return (typeof props.permission === 'string' ? auth.can(props.permission) : auth.canAll(props.permission ?? [])) ? <ExportDownload {...props} /> : null;
+ const operations = typeof props.permission === 'string' ? [props.permission] : props.permission ?? [];
+ return auth.displayCanAll(operations) ? <ExportDownload {...props} disabled={!auth.canAll(operations)} /> : null;
 }
 export function ExportButton<T extends object>(props: ExportButtonProps<T>) {
  return props.permission ? <AuthorizedExport {...props} /> : <ExportDownload {...props} />;
