@@ -19,6 +19,7 @@ func (r *Repository) StoreSubscriptionCredentials(ctx context.Context, a *biz.Su
 			if sameCredentialReplay(old, a) {
 				a.CredentialRevision = old.CredentialRevision
 				a.CredentialRefreshPending = false
+				advanceCredentialBaseline(a)
 				return nil
 			}
 			return biz.ErrCredentialConflict
@@ -33,6 +34,7 @@ func (r *Repository) StoreSubscriptionCredentials(ctx context.Context, a *biz.Su
 		r.subAccounts[a.ID] = &cp
 		a.CredentialRevision = cp.CredentialRevision
 		a.CredentialRefreshPending = false
+		advanceCredentialBaseline(a)
 		return nil
 	}
 	model, err := r.subscriptionAccountBizToModel(a)
@@ -48,6 +50,7 @@ func (r *Repository) StoreSubscriptionCredentials(ctx context.Context, a *biz.Su
 	if result.RowsAffected == 1 {
 		a.CredentialRevision++
 		a.CredentialRefreshPending = false
+		advanceCredentialBaseline(a)
 		return nil
 	}
 	old, err := r.FindSubscriptionAccountByID(ctx, a.ID)
@@ -58,6 +61,7 @@ func (r *Repository) StoreSubscriptionCredentials(ctx context.Context, a *biz.Su
 	if sameCredentialReplay(old, a) {
 		a.CredentialRevision = old.CredentialRevision
 		a.CredentialRefreshPending = false
+		advanceCredentialBaseline(a)
 		return nil
 	}
 	return biz.ErrCredentialConflict
@@ -97,5 +101,17 @@ func (r *Repository) ClaimSubscriptionCredentialRefresh(ctx context.Context, a *
 	}
 	a.CredentialRevision++
 	a.CredentialRefreshPending = true
+	advanceCredentialBaseline(a)
 	return nil
+}
+
+// Credential writes intentionally advance the credential component, while
+// retaining the captured health metadata so a concurrent incident still fences
+// a later full account update.
+func advanceCredentialBaseline(a *biz.SubscriptionAccount) {
+	if a.RecoveryBaseline != nil {
+		baseline := *a.RecoveryBaseline
+		baseline.CredentialRevision = a.CredentialRevision
+		a.RecoveryBaseline = &baseline
+	}
 }

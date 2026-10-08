@@ -16,6 +16,8 @@ type (
 	SubscriptionAccount                    = channelbiz.SubscriptionAccount
 	SubscriptionAccountAbility             = channelbiz.SubscriptionAccountAbility
 	AccountQuotaSnapshot                   = channelbiz.AccountQuotaSnapshot
+	AccountRecoveryState                   = channelbiz.AccountRecoveryState
+	AccountScan                            = channelbiz.AccountScan
 	SubscriptionAccountQuotaUsage          = channelbiz.SubscriptionAccountQuotaUsage
 	SubscriptionAccountQuotaResetRun       = channelbiz.SubscriptionAccountQuotaResetRun
 	ChannelHealthEvent                     = channelbiz.ChannelHealthEvent

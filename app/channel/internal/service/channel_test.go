@@ -455,19 +455,18 @@ func TestChannelServiceSubscriptionAccountCRUD(t *testing.T) {
 	}
 }
 
-func (r *channelServiceRepo) ClearRecoveryMarkers(ctx context.Context, accountID int64, clearTemp, clearError, clearMeta bool) error {
-	if r.account != nil && r.account.ID == accountID {
-		if clearTemp {
-			r.account.RateLimitedUntil = 0
-		}
-		if clearError {
-			r.account.LastError = ""
-		}
-		if clearMeta {
-			r.account.Metadata = ""
-		}
+func (r *channelServiceRepo) ClearRecoveryMarkers(ctx context.Context, expected biz.AccountRecoveryState, at time.Time) (bool, error) {
+	if r.account == nil || r.account.RecoveryState() != expected || !r.account.CanAutoRecoverAt(at) {
+		return false, nil
 	}
-	return nil
+	r.account.RateLimitedUntil = 0
+	r.account.LastError = ""
+	r.account.Metadata = ""
+	return true, nil
+}
+
+func (r *channelServiceRepo) ScanSubscriptionAccounts(ctx context.Context, scan biz.AccountScan) ([]*biz.SubscriptionAccount, error) {
+	return nil, nil
 }
 
 func (r *channelServiceRepo) StoreSubscriptionCredentials(ctx context.Context, a *biz.SubscriptionAccount) error {

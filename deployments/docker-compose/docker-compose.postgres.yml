@@ -145,6 +145,14 @@ services:
       - CHANNEL_HEALTH_ALERT_ENABLED=${CHANNEL_HEALTH_ALERT_ENABLED:-true}
       - CHANNEL_HEALTH_ALERT_NOTIFY_TYPE=${CHANNEL_HEALTH_ALERT_NOTIFY_TYPE:-webhook}
       - CHANNEL_HEALTH_ALERT_RECIPIENTS=${CHANNEL_HEALTH_ALERT_RECIPIENTS:-[""]}
+      - SUBSCRIPTION_QUOTA_RESET_ENABLED=${SUBSCRIPTION_QUOTA_RESET_ENABLED:-false}
+      - SUBSCRIPTION_QUOTA_RESET_INTERVAL=${SUBSCRIPTION_QUOTA_RESET_INTERVAL:-5m}
+      - SUBSCRIPTION_QUOTA_RESET_TIMEOUT=${SUBSCRIPTION_QUOTA_RESET_TIMEOUT:-30s}
+      - SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED=${SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED:-false}
+      - SUBSCRIPTION_ACCOUNT_RECOVERY_INTERVAL=${SUBSCRIPTION_ACCOUNT_RECOVERY_INTERVAL:-5m}
+      - SUBSCRIPTION_ACCOUNT_RECOVERY_TIMEOUT=${SUBSCRIPTION_ACCOUNT_RECOVERY_TIMEOUT:-30s}
+      - SUBSCRIPTION_ACCOUNT_OPS_SHARD_COUNT=${SUBSCRIPTION_ACCOUNT_OPS_SHARD_COUNT:-1}
+      - SUBSCRIPTION_ACCOUNT_OPS_SHARD_INDEX=${SUBSCRIPTION_ACCOUNT_OPS_SHARD_INDEX:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -162,6 +170,29 @@ services:
       - /tmp
     cap_drop:
       - ALL
+
+
+  # Enable with --profile account-ops-shards after setting SHARD_COUNT=2.
+  # This inherits the primary service's pinned image and private connection config.
+  channel-account-ops-worker:
+    extends:
+      service: channel-service
+    profiles: [account-ops-shards]
+    container_name: channel-account-ops-worker
+    environment:
+      SUBSCRIPTION_ACCOUNT_OPS_WORKER_ONLY: "true"
+      SUBSCRIPTION_QUOTA_RESET_ENABLED: "true"
+      SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED: "true"
+      SUBSCRIPTION_ACCOUNT_OPS_SHARD_INDEX: ${SUBSCRIPTION_ACCOUNT_OPS_WORKER_SHARD_INDEX:-1}
+      GOMEMLIMIT: 192MiB
+    mem_limit: 256m
+    cpus: 0.25
+    healthcheck:
+      test: [CMD, wget, -qO-, http://127.0.0.1:8002/healthz]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   billing-service:
     build:

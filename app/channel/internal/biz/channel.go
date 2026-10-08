@@ -90,6 +90,9 @@ type Channel struct {
 // It is selected separately from API-key channels but uses the same group,
 // model and priority semantics for routing.
 type SubscriptionAccount struct {
+	// RecoveryBaseline is captured on read and retained across management
+	// edits, fencing a full update against a newer incident or recovery.
+	RecoveryBaseline         *AccountRecoveryState
 	PermittedActions         []string
 	CredentialRefreshPending bool
 
@@ -233,6 +236,8 @@ type ChannelRepo interface {
 	FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*SubscriptionAccount, error)
 	ListSubscriptionAccountAbilities(ctx context.Context, group, model, platform string) ([]SubscriptionAccountAbility, error)
 	ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*SubscriptionAccount, int64, error)
+	// ScanSubscriptionAccounts applies account-ID sharding before cursor pagination.
+	ScanSubscriptionAccounts(context.Context, AccountScan) ([]*SubscriptionAccount, error)
 	ListOAuthRefreshCandidates(ctx context.Context, within time.Duration) ([]int64, error)
 	CreateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error
 	UpdateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error
@@ -254,11 +259,9 @@ type ChannelRepo interface {
 	// account metadata blob. It is called by the recovery sweeper once an account
 	// has been auto-recovered so the admin UI no longer shows a stale reason.
 	ClearRecoveryMetadata(ctx context.Context, accountID int64) error
-	// ClearRecoveryMarkers atomically clears the temp-unschedulable,
-	// last-error, and recovery-metadata markers in a single transaction so a
-	// failure cannot leave the account with half-cleared markers (review L3).
-	// Each flag controls whether that specific marker is cleared.
-	ClearRecoveryMarkers(ctx context.Context, accountID int64, clearTemp, clearError, clearMeta bool) error
+	// ClearRecoveryMarkers checks the observed state and current recovery
+	// eligibility before atomically clearing markers. False means stale or blocked.
+	ClearRecoveryMarkers(context.Context, AccountRecoveryState, time.Time) (bool, error)
 	QuotaResetRunApplier
 	// StampQuotaAlertMetadata records the last-emitted alert kind and timestamp
 	// on the account metadata blob for alert deduplication.

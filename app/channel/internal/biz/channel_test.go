@@ -1332,19 +1332,42 @@ func equalStringSlices(a, b []string) bool {
 	return true
 }
 
-func (m *mockChannelRepo) ClearRecoveryMarkers(ctx context.Context, accountID int64, clearTemp, clearError, clearMeta bool) error {
-	if acc, ok := m.accounts[accountID]; ok {
-		if clearTemp {
-			acc.RateLimitedUntil = 0
-		}
-		if clearError {
-			acc.LastError = ""
-		}
-		if clearMeta {
-			acc.Metadata = ""
+func (m *mockChannelRepo) ClearRecoveryMarkers(ctx context.Context, expected AccountRecoveryState, at time.Time) (bool, error) {
+	acc, ok := m.accounts[expected.AccountID]
+	if !ok {
+		return false, ErrSubscriptionAccountNotFound
+	}
+	if acc.RecoveryState() != expected || !acc.CanAutoRecoverAt(at) {
+		return false, nil
+	}
+	acc.RateLimitedUntil = 0
+	acc.LastError = ""
+	acc.Metadata = ""
+	return true, nil
+}
+
+func (m *mockChannelRepo) ScanSubscriptionAccounts(ctx context.Context, scan AccountScan) ([]*SubscriptionAccount, error) {
+	if err := scan.Shard.Validate(); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for id, a := range m.accounts {
+		if id > scan.AfterID && id%scan.Shard.EffectiveCount() == scan.Shard.Index &&
+			(scan.Status == 0 || a.Status == scan.Status) && (!scan.FixedOnly || a.UsesFixedQuotaReset()) {
+			ids = append(ids, id)
 		}
 	}
-	return nil
+	slices.Sort(ids)
+	ids = ids[:min(len(ids), int(scan.Limit))]
+	result := make([]*SubscriptionAccount, len(ids))
+	for i, id := range ids {
+		copy := *m.accounts[id]
+		result[i] = &copy
+	}
+	return result, nil
 }
 
 // ---------------------------------------------------------------------------

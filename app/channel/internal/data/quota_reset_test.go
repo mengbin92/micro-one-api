@@ -39,7 +39,7 @@ func TestQuotaResetConcurrentAcrossDialects(t *testing.T) {
 			repo := &Repository{db: db}
 			ctx := context.Background()
 			start := time.Now().UTC().Truncate(24 * time.Hour).Unix()
-			account := &biz.SubscriptionAccount{Name: "concurrent-reset", Platform: "codex", Status: 1, Group: "default", QuotaDailyWindowStart: start - 86400, QuotaDailyUsedUSD: 3}
+			account := &biz.SubscriptionAccount{Name: "concurrent-reset", Platform: "codex", Status: 1, Group: "default", QuotaResetStrategy: "fixed", QuotaTimezone: "UTC", QuotaDailyWindowStart: start - 86400, QuotaDailyUsedUSD: 3}
 			require.NoError(t, repo.CreateSubscriptionAccount(ctx, account))
 			if dialect == "sqlite" {
 				sqlDB, err := db.DB()

@@ -28,6 +28,20 @@ func NewHTTPServer(addr string, usecases ...*biz.ChannelUsecase) *khttp.Server {
 		uc = usecases[0]
 	}
 	oauthSvc := channeloauth.NewService(uc)
+	registerAccountOpsHealth(srv)
+	registerOAuthRoutes(srv, oauthSvc, uc)
+	registerSelectorStatsRoute(srv, uc)
+	return srv
+}
+
+// NewAccountOpsHTTPServer exposes only health and metrics for scan workers.
+func NewAccountOpsHTTPServer(addr string) *khttp.Server {
+	srv := xhttp.NewServer(khttp.Address(addr))
+	registerAccountOpsHealth(srv)
+	return srv
+}
+
+func registerAccountOpsHealth(srv *khttp.Server) {
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		metrics.Handler().ServeHTTP(w, r)
 	})
@@ -36,9 +50,6 @@ func NewHTTPServer(addr string, usecases ...*biz.ChannelUsecase) *khttp.Server {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
-	registerOAuthRoutes(srv, oauthSvc, uc)
-	registerSelectorStatsRoute(srv, uc)
-	return srv
 }
 
 func registerOAuthRoutes(srv *khttp.Server, oauthSvc *channeloauth.Service, uc *biz.ChannelUsecase) {

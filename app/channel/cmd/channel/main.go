@@ -16,6 +16,16 @@ func main() {
 
 	applogger.InitializeStartupLogger()
 	defer applogger.Sync()
+	if envBool("SUBSCRIPTION_ACCOUNT_OPS_WORKER_ONLY", false) {
+		if _, err := accountOpsShardFromEnv(); err != nil {
+			applogger.Log.Error("invalid account ops worker shard", zap.Error(err))
+			os.Exit(1)
+		}
+		if !envBool("SUBSCRIPTION_QUOTA_RESET_ENABLED", false) && !envBool("SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED", false) {
+			applogger.Log.Error("account ops worker requires an enabled sweeper")
+			os.Exit(1)
+		}
+	}
 
 	app, cleanup, err := InitApp(confPath)
 	if err != nil {

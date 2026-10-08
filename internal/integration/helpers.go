@@ -612,6 +612,10 @@ func (m *testChannelRepo) ChangeStatus(ctx context.Context, channelID int64, sta
 	return nil
 }
 
-func (m *testChannelRepo) ClearRecoveryMarkers(ctx context.Context, accountID int64, clearTemp, clearError, clearMeta bool) error {
-	return channeltestutil.ErrSubscriptionAccountNotFound
+func (m *testChannelRepo) ClearRecoveryMarkers(ctx context.Context, expected channeltestutil.AccountRecoveryState, at time.Time) (bool, error) {
+	return false, channeltestutil.ErrSubscriptionAccountNotFound
+}
+
+func (m *testChannelRepo) ScanSubscriptionAccounts(ctx context.Context, scan channeltestutil.AccountScan) ([]*channeltestutil.SubscriptionAccount, error) {
+	return nil, nil
 }
