@@ -22,7 +22,7 @@ docs/
 |---------|--------|
 | 个人单机，创建首个渠道和 Token | [quickstart-lite.md](./quickstart-lite.md) |
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
-| 查看下一阶段执行路线与条件保留项 | [design/next-stage-plan-2026-10-07.md](./design/next-stage-plan-2026-10-07.md) |
+| 查看下一阶段执行路线与条件保留项 | [design/next-stage-plan-2026-10-08.md](./design/next-stage-plan-2026-10-08.md) |
 | 复核 executor 有限灰度与第二批条件结论 | [观察手册](./design/v0.23-executor-observation.md) · [第二批记录](./runbooks/executor-second-batch-acceptance-2026-10-07.md) |
 | 查看当前待办和历史完成记录 | [TODO.md](./TODO.md) |
 | 查看 Playground 安全 Markdown、字体与关键分支验收 | [D7 本地验收记录](./runbooks/d7-experience-acceptance-2026-10-07.md) |
@@ -42,7 +42,11 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——本表明确指向且头部标注「当前执行入口」的计划。未定发布版本时使用 `design/next-stage-plan-YYYY-MM-DD.md`，已定版本时使用 `design/vX.Y-roadmap.md`。新阶段立项时：新建计划 → 旧路线图标为「已归档」并指回新入口 → 同步本表、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-最新发布：[v0.34.6](./releases/release-v0.34.6.md)（2026-10-07），恢复后台对账并强化完整 IAM 持续门禁。v0.34.0 已交付 IAM 正式生产交接，v0.34.1–v0.34.4 补齐本人用量/订阅、字段/公开价格、权限详情与安全修复。
+最新发布登记：[v0.34.9](./releases/release-v0.34.9.md)（2026-10-07），纳入用户可用组、订阅购买/支付与权限页面修复，同步 Release 授权刷新冒烟。v0.34.5 / v0.34.8 为中止候选，原 tag 保留；v0.34.6–v0.34.7 已交付对账恢复、IAM 门禁及 D7/刷新修复。
+
+**当前实施（2026-10-08）**：仓库基线 `develop@bf083b28`；N1–N4 验收完成：隔离/沙箱购买、本地门禁/通用 smoke、部署脚本 stub、600 对长流及 24 项故障矩阵。N5 生产只读复核仍为 INSUFFICIENT，正式七天起点未成立。详见 [当前计划](./design/next-stage-plan-2026-10-08.md)和 [实施记录](./runbooks/next-stage-acceptance-2026-10-08.md)。本轮代码未提交或部署。
+
+**以下为 2026-10-07 的历史过程**；未提交/未发版/待部署表述仅对应当轮时点，当前状态以上方及发布记录为准。
 
 **当前第二批状态（2026-10-07）**：第一批已上线发版，v0.34.6 CI 的固定契约/十三项快速门禁已实际成功，自然小时对账恢复已复核。E1 与 E2 条件评估完成，结论 **INSUFFICIENT**，正式七天起点和可比自然 cohort 仍不成立；只读取证工具及隔离长流方案已交付，线上同步运维资料，保留有限灰度与 legacy。见 [第二批记录](./runbooks/executor-second-batch-acceptance-2026-10-07.md)，运行事实仍以 [观察手册](./design/v0.23-executor-observation.md) 为唯一来源。下方规划/第一批记录保留当轮历史边界。
 
@@ -50,7 +54,7 @@ docs/
 
 **D7 三项本地交付（2026-10-07）**：已按确认顺序完成安全 Markdown、系统字体优化、关键分支覆盖率与交互时序，含重复提交修复；工作区尚未提交、推送、发版或部署。见 [D7 记录](./runbooks/d7-experience-acceptance-2026-10-07.md)。
 
-历史可靠性阶段：R1–R4、O1–O4、O5 正确性及 Q1–Q3 既定实施/隔离验收已完成。O5 代表性流量复采与缓存优化延续 2026-09-28 的暂缓决定；真实 OAuth/多副本、支付平台重发、供应商侧取消、D2–D6 及 D7 剩余扩展按 [新计划](./design/next-stage-plan-2026-10-07.md) 条件恢复，原证据保留在 [历史阶段清单](./design/next-stage-todo-2026-09-26.md)。
+历史可靠性阶段：R1–R4、O1–O4、O5 正确性及 Q1–Q3 既定实施/隔离验收已完成。O5 代表性流量复采与缓存优化延续 2026-09-28 的暂缓决定；真实 OAuth/多副本、支付平台重发、供应商侧取消、D2–D6 及 D7 剩余扩展按 [当前计划](./design/next-stage-plan-2026-10-08.md) 条件恢复，原证据保留在 [历史阶段清单](./design/next-stage-todo-2026-09-26.md)。
 
 第一批实施（2026-10-07）：S1 只读基线、S2 关键链路与 S3 门禁接线/本地验收完成，见 [验收记录](./runbooks/iam-first-batch-acceptance-2026-10-07.md)。生产定时对账断点已复现并本地修复，尚待发布部署；executor 对照条件未满足。上段未重验生产仅指规划整理时点。
 
@@ -86,7 +90,7 @@ docs/
 - [v0.30.0](./releases/release-v0.30.0.md) · [v0.30.1](./releases/release-v0.30.1.md) · [v0.31.0](./releases/release-v0.31.0.md) · [v0.31.1](./releases/release-v0.31.1.md)
 - [v0.32.0](./releases/release-v0.32.0.md) · [v0.32.1](./releases/release-v0.32.1.md) · [v0.32.2](./releases/release-v0.32.2.md)
 - [v0.33.0](./releases/release-v0.33.0.md) · [v0.33.1](./releases/release-v0.33.1.md) · [v0.33.2](./releases/release-v0.33.2.md) · [v0.33.3](./releases/release-v0.33.3.md) · [v0.33.4](./releases/release-v0.33.4.md) · [v0.33.5](./releases/release-v0.33.5.md) · [v0.33.6](./releases/release-v0.33.6.md)
-- [v0.34.0](./releases/release-v0.34.0.md) · [v0.34.1](./releases/release-v0.34.1.md) · [v0.34.2](./releases/release-v0.34.2.md) · [v0.34.3](./releases/release-v0.34.3.md) · [v0.34.4](./releases/release-v0.34.4.md) · [v0.34.5 中止候选](./releases/release-v0.34.5.md) · [v0.34.6](./releases/release-v0.34.6.md)（最新）
+- [v0.34.0](./releases/release-v0.34.0.md) · [v0.34.1](./releases/release-v0.34.1.md) · [v0.34.2](./releases/release-v0.34.2.md) · [v0.34.3](./releases/release-v0.34.3.md) · [v0.34.4](./releases/release-v0.34.4.md) · [v0.34.5 中止候选](./releases/release-v0.34.5.md) · [v0.34.6](./releases/release-v0.34.6.md) · [v0.34.7](./releases/release-v0.34.7.md) · [v0.34.8 中止候选](./releases/release-v0.34.8.md) · [v0.34.9](./releases/release-v0.34.9.md)（最新）
 
 ### runbooks/ — 运维操作手册
 
@@ -123,7 +127,8 @@ docs/
 | [v0.23-roadmap.md](./design/v0.23-roadmap.md) | v0.23 路线图：上线观察与 Relay executor 首切片（已归档） |
 | [v0.23-executor-observation.md](./design/v0.23-executor-observation.md) | executor 新旧路径 7 天生产观察与回滚事实源 |
 | [v0.24-web-release-readiness.md](./design/v0.24-web-release-readiness.md) | v0.24 双语 Web、中国法律协议与发布隔离准备清单 |
-| [next-stage-plan-2026-10-07.md](./design/next-stage-plan-2026-10-07.md) | 当前计划：IAM 上线稳定性、本人/公开关键链路、专项持续门禁与 executor 有限灰度收口 |
+| [next-stage-plan-2026-10-08.md](./design/next-stage-plan-2026-10-08.md) | 当前计划：用户购买闭环、本地门禁/部署一致性与 executor 长流及七天验收 |
+| [next-stage-plan-2026-10-07.md](./design/next-stage-plan-2026-10-07.md) | 已归档：IAM 第一批、executor 条件评估与 D7 交付；后续由 10 月 8 日计划接管 |
 | [rbac-permission-management-implementation-plan.md](./design/rbac-permission-management-implementation-plan.md) | RBAC A–D 实施与交接记录，已纳入 v0.34.0；后续补丁见发布说明 |
 | [next-stage-plan-2026-09-22.md](./design/next-stage-plan-2026-09-22.md) | 已归档：R/O/Q 可靠性与观测交付；外部证据和条件项由新计划接管 |
 | [v0.30-roadmap.md](./design/v0.30-roadmap.md) | 已归档：分组 v2 配置、真实链路验收与稳定性收口 |

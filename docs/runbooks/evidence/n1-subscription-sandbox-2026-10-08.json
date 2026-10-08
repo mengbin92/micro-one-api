@@ -1,0 +1,61 @@
+{
+  "captured_at_utc": "2026-10-08T02:04:13.477082+00:00",
+  "order_sha256": "9c733372881890ec0c4ad292f1fbd4749dc4237736d9d9a76b38e1243c7d7aa5",
+  "rows": [
+    [
+      "order",
+      "9c733372881890ec0c4ad292f1fbd4749dc4237736d9d9a76b38e1243c7d7aa5",
+      "paid",
+      "issued",
+      "subscription",
+      "10000",
+      "6",
+      "NULL"
+    ],
+    [
+      "subscription",
+      "6",
+      "active",
+      "1790476533",
+      "1800844533",
+      "100",
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "\"073ae92561fffdbaf9cae95b73ac75a169b3d0679f7042e74a667adb83339f98\"",
+      "1"
+    ]
+  ],
+  "verified_notify_receipts": [
+    {
+      "timestamp": "2026-10-08T02:00:04.468Z",
+      "order_sha256": "9c733372881890ec0c4ad292f1fbd4749dc4237736d9d9a76b38e1243c7d7aa5",
+      "order_status": "paid",
+      "asset_issue_status": "issued"
+    }
+  ],
+  "snapshot_and_uniqueness": {
+    "plan_contract_digest": "073ae92561fffdbaf9cae95b73ac75a169b3d0679f7042e74a667adb83339f98",
+    "subscription_contract_digest": "073ae92561fffdbaf9cae95b73ac75a169b3d0679f7042e74a667adb83339f98",
+    "validity_days": 30,
+    "active_subscription_count": 1,
+    "matching_order_count": 1
+  },
+  "browser": {
+    "account": "Administrator",
+    "payment_completed_by": "user",
+    "order_status": "paid",
+    "asset_issue_status": "issued",
+    "expires_before": "2026-12-26T10:35:33+08:00",
+    "expires_after": "2027-01-25T10:35:33+08:00",
+    "usage_windows_visible": [
+      "daily",
+      "weekly",
+      "monthly"
+    ]
+  },
+  "boundaries": [
+    "Live sandbox roundtrip used the existing deployed binary; local validation fix was not deployed.",
+    "Same-contract renewal retains the existing subscription source_order; the order links subscription_id.",
+    "No duplicate callback or fault was injected into production.",
+    "No buyer credentials, keys, signed URL or full trade number are archived."
+  ]
+}
