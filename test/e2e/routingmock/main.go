@@ -35,6 +35,16 @@ func main() {
 			time.Sleep(1500 * time.Millisecond)
 		}
 		stream, _ := req["stream"].(bool)
+		var chunks int
+		if stream && strings.HasPrefix(fmt.Sprint(req["model"]), "long-") {
+			_, _ = fmt.Sscanf(fmt.Sprint(req["model"]), "long-%d", &chunks)
+			if chunks != 256 && chunks != 1024 {
+				http.Error(w, "invalid long-stream fixture", 400)
+				return
+			}
+			longStream(w, r, id, fmt.Sprint(req["model"]), chunks)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		if strings.Contains(r.URL.Path, "embeddings") {
 			jsonx.NewEncoder(w).Encode(map[string]any{"object": "list", "model": req["model"], "data": []any{map[string]any{"object": "embedding", "index": 0, "embedding": []float64{.1, .2}}}, "usage": map[string]any{"prompt_tokens": 10, "total_tokens": 10}})
@@ -98,6 +108,48 @@ func main() {
 	}
 	if err := server.ListenAndServe(); err != nil {
 		panic(err)
+	}
+}
+
+// Chunk counts are fixture output frames, not token counts. All protocols
+// report the same fixed usage, content and one-millisecond source cadence.
+func longStream(w http.ResponseWriter, r *http.Request, id, model string, chunks int) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	messages := strings.Contains(r.URL.Path, "messages")
+	responses := strings.Contains(r.URL.Path, "responses")
+	if messages {
+		event(w, "message_start", map[string]any{"type": "message_start", "message": map[string]any{"id": id, "type": "message", "role": "assistant", "model": model, "content": []any{}, "usage": map[string]any{"input_tokens": 100, "output_tokens": 0}}})
+		event(w, "content_block_start", map[string]any{"type": "content_block_start", "index": 0, "content_block": map[string]any{"type": "text", "text": ""}})
+	} else if responses {
+		event(w, "response.created", map[string]any{"type": "response.created", "response": map[string]any{"id": id, "object": "response", "status": "in_progress", "model": model}})
+	}
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for i := 0; i < chunks; i++ {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+		}
+		switch {
+		case messages:
+			event(w, "content_block_delta", map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "text_delta", "text": "x"}})
+		case responses:
+			event(w, "response.output_text.delta", map[string]any{"type": "response.output_text.delta", "output_index": 0, "content_index": 0, "delta": "x"})
+		default:
+			event(w, "", map[string]any{"id": id, "object": "chat.completion.chunk", "model": model, "choices": []any{map[string]any{"index": 0, "delta": map[string]any{"content": "x"}, "finish_reason": nil}}})
+		}
+	}
+	switch {
+	case messages:
+		event(w, "content_block_stop", map[string]any{"type": "content_block_stop", "index": 0})
+		event(w, "message_delta", map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": "end_turn"}, "usage": map[string]any{"output_tokens": 20}})
+		event(w, "message_stop", map[string]any{"type": "message_stop"})
+	case responses:
+		event(w, "response.completed", map[string]any{"type": "response.completed", "response": map[string]any{"id": id, "object": "response", "model": model, "status": "completed", "output": []any{map[string]any{"type": "message", "role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": strings.Repeat("x", chunks)}}}}, "usage": map[string]any{"input_tokens": 100, "output_tokens": 20, "total_tokens": 120}}})
+	default:
+		event(w, "", map[string]any{"id": id, "object": "chat.completion.chunk", "model": model, "choices": []any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": "stop"}}, "usage": map[string]any{"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120}})
+		fmt.Fprint(w, "data: [DONE]\n\n")
 	}
 }
 func event(w http.ResponseWriter, name string, payload any) {

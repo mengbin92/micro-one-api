@@ -25,8 +25,11 @@ def main():
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--build-only", action="store_true")
     parser.add_argument("--reliability-only", action="store_true", help="run legacy setup and the isolated streaming fault matrix")
+    parser.add_argument("--long-stream-pairs", type=int, help="run paired SSE matrix; fewer than 50 pairs is INSUFFICIENT")
     parser.add_argument("--keep", action="store_true", help="retain only this test project for diagnosis")
     args = parser.parse_args()
+    if args.long_stream_pairs is not None and args.long_stream_pairs < 1:
+        parser.error("--long-stream-pairs must be positive")
     scratch = Path(tempfile.mkdtemp(prefix="routing-e2e-"))
     scratch.chmod(0o700)
     project = "routing-e2e-" + secrets.token_hex(4)
@@ -170,12 +173,12 @@ def main():
             identity = ("-e", "SERVICE_IDENTITY_TOKEN="+settings["IDENTITY_SERVICE_IDENTITY_TOKEN"])
         return run("run", "--rm", "-T", "--no-deps", *identity, "--entrypoint", "/out/"+binary, "test-runner", *cmd, input=input, check=check)
     def test(phase):
-        result = run("run", "--rm", "-T", "--no-deps", "-e", "ROUTING_PHASE="+phase, "test-runner", "-test.v", "-test.timeout=5m", check=False)
+        result = run("run", "--rm", "-T", "--no-deps", "-e", "ROUTING_PHASE="+phase, "test-runner", "-test.v", "-test.timeout=30m" if phase == "long-stream" else "-test.timeout=5m", check=False)
         with (scratch / "acceptance.log").open("a") as log:
             log.write(result.stdout)
         # Assertions never print authentication values; retain full fixture logs privately.
         for line in result.stdout.splitlines():
-            if line.startswith(("=== RUN", "--- PASS", "--- FAIL", "PASS", "FAIL", "    observability_test.go:")):
+            if line.startswith(("=== RUN", "--- PASS", "--- FAIL", "PASS", "FAIL", "    observability_test.go:", "    long_stream_test.go:")):
                 print(line, flush=True)
         if result.returncode:
             raise RuntimeError(f"{phase} acceptance failed; see {scratch}/compose.log")
@@ -187,11 +190,31 @@ def main():
         test("legacy")
         # O5a: legacy-mode Redis outage — chat availability and dependency-RPC
         # degradation latency, before any V2 gates are applied.
-        run("stop", "redis")
-        test("legacy-redis-down")
-        run("start", "redis")
-        test("legacy-redis-recovered")
-        print("[routing-e2e] legacy Redis outage degradation PASS")
+        if args.long_stream_pairs is None:
+            run("stop", "redis")
+            test("legacy-redis-down")
+            run("start", "redis")
+            test("legacy-redis-recovered")
+            print("[routing-e2e] legacy Redis outage degradation PASS")
+        if args.long_stream_pairs is not None:
+            state = json.loads(run("run", "--rm", "-T", "--no-deps", "--entrypoint", "/bin/cat", "test-runner", "/state/state.json").stdout)
+            digest = hmac.new(settings["SERVICE_TOKEN"].encode(), state["reliability"].encode(), hashlib.sha256).hexdigest()
+            gate("relay-gateway", RELAY_ORCHESTRATOR_ENABLED="true", RELAY_ORCHESTRATOR_TOKEN_HMAC_SHA256=digest)
+            base["services"]["test-runner"]["environment"]["LONG_STREAM_PAIRS"] = str(args.long_stream_pairs)
+            save()
+            run("up", "-d", "--no-deps", "relay-gateway", "relay-peer")
+            try:
+                test("long-stream")
+            finally:
+                result = run("run", "--rm", "-T", "--no-deps", "--entrypoint", "/bin/cat", "test-runner", "/state/long-stream.json", check=False)
+                if result.returncode == 0:
+                    (scratch / "long-stream.json").write_text(result.stdout)
+                    print(f"[routing-e2e] paired stream report={scratch}/long-stream.json", flush=True)
+            verdict = json.loads((scratch / "long-stream.json").read_text())["Verdict"]
+            print(f"[routing-e2e] paired stream verdict={verdict}", flush=True)
+            if verdict != "PASS":
+                raise SystemExit(2)
+            return
         if args.reliability_only:
             state = json.loads(run("run", "--rm", "-T", "--no-deps", "--entrypoint", "/bin/cat", "test-runner", "/state/state.json").stdout)
             digest = hmac.new(settings["SERVICE_TOKEN"].encode(), state["reliability"].encode(), hashlib.sha256).hexdigest()
@@ -201,6 +224,13 @@ def main():
                 save()
                 run("up", "-d", "--no-deps", "relay-gateway", "relay-peer")
                 test("stream-reliability")
+                gate("relay-gateway", RELAY_STREAM_TOTAL_TIMEOUT="500ms")
+                base["services"]["test-runner"]["environment"]["RELIABILITY_BUDGET"] = "1"
+                save()
+                run("up", "-d", "--no-deps", "relay-gateway", "relay-peer")
+                test("stream-reliability")
+                gate("relay-gateway", RELAY_STREAM_TOTAL_TIMEOUT="0s")
+                base["services"]["test-runner"]["environment"].pop("RELIABILITY_BUDGET")
             print("[routing-e2e] streaming reliability matrix PASS", flush=True)
             return
         print("[routing-e2e] legacy compatibility PASS; applying fixture backfills", flush=True)

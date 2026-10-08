@@ -1,0 +1,301 @@
+{
+  "version": "v0.34.10",
+  "before": {
+    "captured_at": "2026-10-08T11:14:02.533269+08:00",
+    "services": [
+      {
+        "service": "relay-gateway",
+        "container_id": "66482b5495970b45f42948829ea8a9e9b8785076752c31c6e2cab207f17970ae",
+        "image_id": "sha256:63864dc9e220beeb59c35943d304b33555f57f5a802cf548aaa5056b26410470",
+        "image_ref": "docker-compose-relay-gateway:rbac-review-42b21ad4",
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741",
+        "started_at": "2026-10-05T10:36:33.309583132Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "21f461902732cd95274ecefd4dead7076da610d16286aefc165c01a7892f12b7"
+      },
+      {
+        "service": "admin-api",
+        "container_id": "71800ab54af932a52049193bc0b6b028459eada77c31c487e92e97a1832b7bfa",
+        "image_id": "sha256:112c54418db60caaf4c6051920b8ce22c10d9d80807f31b95e957f7e6014638f",
+        "image_ref": "docker-compose-admin-api:hotfix-20261007-202844",
+        "source_digest": "81299ad222f529b0cdf697170d6c605b39213c4a58a4c567d2e5b25b991c42f8",
+        "started_at": "2026-10-07T12:29:10.345142352Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "28db38fdccdc3e259572cc216cddda297d2822c953e993c693bacecd8bf68255"
+      },
+      {
+        "service": "identity-service",
+        "container_id": "e6a0acc820086a2d621ded46dd09734cd401b5d0be30ad0d74f7c106aeb5d7ff",
+        "image_id": "sha256:9deb67acf25c9555ba2030de01ba696549a6daeb141df2d419f8fac0f6a235e8",
+        "image_ref": "docker-compose-identity-service:v0.34.1",
+        "source_digest": "3d2ef7c965b1790db56e8e9dfb6194b5b55763ff2589b55a5cd32f08223c8d85",
+        "started_at": "2026-10-06T09:03:59.359091341Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "e41add83db3064090d427bc68a09eac034a499cbefdc6e3363eb96dc08c38016"
+      },
+      {
+        "service": "channel-service",
+        "container_id": "074d39c1e1d4e6a01d19b65e950ccd20a8580e48a1bcb728ae23378ef6d4753d",
+        "image_id": "sha256:7327c20cf4a2cd9d0e576c61d83af3913a686a7d58d1696e9b0224c6350aebb7",
+        "image_ref": "docker-compose-channel-service:hotfix-20261007-202844",
+        "source_digest": "cc8a00234ebd6b49bff4c02d3eddd4a2bc8aa1d2427c7e1b0f4d5f7970a7b2d7",
+        "started_at": "2026-10-07T12:29:08.66510776Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "677dd537727c510eb17319c3901acd5a663a9e171c05eda186ccf2923db3aa05"
+      },
+      {
+        "service": "billing-service",
+        "container_id": "06072b5d88b33068754c4fd2a411e6578f86ba17a26657ce07f8b0c6c129ca21",
+        "image_id": "sha256:395ffdf6b79254dbaa94952f226268d31cca07408029e4d4b2e17c5881f628ac",
+        "image_ref": "docker-compose-billing-service:payment-hotfix-20261007-203939",
+        "source_digest": "b22e94cfbf770d0e480a20514356a1848926709fa813113642ae79cbef5713bc",
+        "started_at": "2026-10-07T12:40:01.146478414Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "e506233214ceb0ff73801cfc274ea4ff2a0bc0625d168b5a6f231acab74e029a"
+      },
+      {
+        "service": "config-service",
+        "container_id": "7cc6a5a6618f2da3d17471a9799ae25d81bba3c9204791732fa954d6cbe635f7",
+        "image_id": "sha256:d7fa5f83aeade82a60e9abf23e915f6ea2b2938b19c9d13b375e0ea171cfb0ac",
+        "image_ref": "docker-compose-config-service:v0.34.4",
+        "source_digest": "078bab9c0c23a09cc482ff6c3d1dcbe3b3059200aa0f31ce87c3adb83c5a60f4",
+        "started_at": "2026-10-06T10:51:04.327488447Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "912c406eabba6fc72b93d1eb696b1730a384c3433f8311628f3c2af17a4b4ee2"
+      },
+      {
+        "service": "log-service",
+        "container_id": "45e664fdf7ee175e282009ca4a0c2247f5d640e03fd4a74db57b0ce97b8132ef",
+        "image_id": "sha256:3da9944c8fa8a07a3a0d6263071d3be87a974b2a0394b7ec70c2e1d3bad98287",
+        "image_ref": "docker-compose-log-service:rbac-review-42b21ad4",
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741",
+        "started_at": "2026-10-05T10:36:24.791614751Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "4fe774e84d82d49d6bee83119209f8f5e1acf1927130bc1c937f7f3d7f99e2fd"
+      },
+      {
+        "service": "monitor-worker",
+        "container_id": "9cad349d1ba041a36bcfa37e2a3e64fe92757f9b6c40e86618edb868cf4961a0",
+        "image_id": "sha256:5e3e45b49edb62f5bfdff07799195f4d70adcad541657aef0a98812726f8a04d",
+        "image_ref": "docker-compose-monitor-worker:rbac-review-42b21ad4",
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741",
+        "started_at": "2026-10-05T10:36:25.481126505Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "3a0b3f07900d3381a52050efe987337b0063d923002c5608827c4db08b7e9429"
+      },
+      {
+        "service": "notify-worker",
+        "container_id": "d4171b3a4732ac9298219e7feae98249ef698b192f785cbf9f3c2632a096bc6e",
+        "image_id": "sha256:f42c1172ab1be4df04176440d71200421aaf25ac8be947aa4d90486fc4cf659c",
+        "image_ref": "docker-compose-notify-worker:rbac-review-42b21ad4",
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741",
+        "started_at": "2026-10-05T10:36:28.145019971Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "5cabe160f3831976bd3b9682e0ffd19e6718cd75cb6d531638df9c7a24241a5e"
+      }
+    ],
+    "billing_healthz": {
+      "status": 200,
+      "body": "{\"status\":\"ok\"}"
+    },
+    "frontend": {
+      "files": 158,
+      "digest": "54ac99934a24adf20d84aa5270546661910648bcfe54d4e4414788266780d62d"
+    },
+    "database": {
+      "transaction": "UTC read-only consistent snapshot",
+      "aggregate_rows": [
+        "iam\t7\t2\tiam\tcomplete",
+        "sandbox_order\tpaid\tissued\t10000\t6\t073ae92561fffdbaf9cae95b73ac75a169b3d0679f7042e74a667adb83339f98",
+        "sandbox_subscription\tactive\t1800844533\t073ae92561fffdbaf9cae95b73ac75a169b3d0679f7042e74a667adb83339f98",
+        "sandbox_entitlements\t1",
+        "reconciliation\t392\t1791427201\tcompleted\t0",
+        "reconciliation\t391\t1791423601\tcompleted\t0",
+        "reconciliation\t390\t1791420001\tcompleted\t0",
+        "reconciliation\t389\t1791416401\tcompleted\t0",
+        "reconciliation\t388\t1791412801\tcompleted\t0"
+      ]
+    },
+    "fatal_or_panic": false
+  },
+  "initial_attempt": {
+    "deploy_tag": "deploy-20261008-111427-ea4c22aa",
+    "rollback_tag": "rollback-20261008-111427",
+    "result": "stopped before container switch; Compose restored",
+    "reason": "Compose 5.5 config --images returns selected service and dependency images",
+    "fix_commit": "404ccab9",
+    "regression_check": "existing six stub tests pass with dependency service present, including override restoration"
+  },
+  "after": {
+    "captured_at": "2026-10-08T11:55:53.447743+08:00",
+    "services": [
+      {
+        "service": "relay-gateway",
+        "container_id": "66482b5495970b45f42948829ea8a9e9b8785076752c31c6e2cab207f17970ae",
+        "image_id": "sha256:63864dc9e220beeb59c35943d304b33555f57f5a802cf548aaa5056b26410470",
+        "image_ref": "docker-compose-relay-gateway:rbac-review-42b21ad4",
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741",
+        "started_at": "2026-10-05T10:36:33.309583132Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "21f461902732cd95274ecefd4dead7076da610d16286aefc165c01a7892f12b7"
+      },
+      {
+        "service": "admin-api",
+        "container_id": "71800ab54af932a52049193bc0b6b028459eada77c31c487e92e97a1832b7bfa",
+        "image_id": "sha256:112c54418db60caaf4c6051920b8ce22c10d9d80807f31b95e957f7e6014638f",
+        "image_ref": "docker-compose-admin-api:hotfix-20261007-202844",
+        "source_digest": "81299ad222f529b0cdf697170d6c605b39213c4a58a4c567d2e5b25b991c42f8",
+        "started_at": "2026-10-07T12:29:10.345142352Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "28db38fdccdc3e259572cc216cddda297d2822c953e993c693bacecd8bf68255"
+      },
+      {
+        "service": "identity-service",
+        "container_id": "e6a0acc820086a2d621ded46dd09734cd401b5d0be30ad0d74f7c106aeb5d7ff",
+        "image_id": "sha256:9deb67acf25c9555ba2030de01ba696549a6daeb141df2d419f8fac0f6a235e8",
+        "image_ref": "docker-compose-identity-service:v0.34.1",
+        "source_digest": "3d2ef7c965b1790db56e8e9dfb6194b5b55763ff2589b55a5cd32f08223c8d85",
+        "started_at": "2026-10-06T09:03:59.359091341Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "e41add83db3064090d427bc68a09eac034a499cbefdc6e3363eb96dc08c38016"
+      },
+      {
+        "service": "channel-service",
+        "container_id": "074d39c1e1d4e6a01d19b65e950ccd20a8580e48a1bcb728ae23378ef6d4753d",
+        "image_id": "sha256:7327c20cf4a2cd9d0e576c61d83af3913a686a7d58d1696e9b0224c6350aebb7",
+        "image_ref": "docker-compose-channel-service:hotfix-20261007-202844",
+        "source_digest": "cc8a00234ebd6b49bff4c02d3eddd4a2bc8aa1d2427c7e1b0f4d5f7970a7b2d7",
+        "started_at": "2026-10-07T12:29:08.66510776Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "677dd537727c510eb17319c3901acd5a663a9e171c05eda186ccf2923db3aa05"
+      },
+      {
+        "service": "billing-service",
+        "container_id": "7046a295b2e4fa529108098b240ac22326fb710fb6333e1db9c94567b05199ff",
+        "image_id": "sha256:829d44acc6fef55b14d2a9d740a65ae552f2c4f09aaf443bbae97630576073fd",
+        "image_ref": "docker-compose-billing-service:deploy-20261008-111825-404ccab9",
+        "source_digest": "b22e94cfbf770d0e480a20514356a1848926709fa813113642ae79cbef5713bc",
+        "started_at": "2026-10-08T03:19:59.50654172Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "e506233214ceb0ff73801cfc274ea4ff2a0bc0625d168b5a6f231acab74e029a"
+      },
+      {
+        "service": "config-service",
+        "container_id": "7cc6a5a6618f2da3d17471a9799ae25d81bba3c9204791732fa954d6cbe635f7",
+        "image_id": "sha256:d7fa5f83aeade82a60e9abf23e915f6ea2b2938b19c9d13b375e0ea171cfb0ac",
+        "image_ref": "docker-compose-config-service:v0.34.4",
+        "source_digest": "078bab9c0c23a09cc482ff6c3d1dcbe3b3059200aa0f31ce87c3adb83c5a60f4",
+        "started_at": "2026-10-06T10:51:04.327488447Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "912c406eabba6fc72b93d1eb696b1730a384c3433f8311628f3c2af17a4b4ee2"
+      },
+      {
+        "service": "log-service",
+        "container_id": "45e664fdf7ee175e282009ca4a0c2247f5d640e03fd4a74db57b0ce97b8132ef",
+        "image_id": "sha256:3da9944c8fa8a07a3a0d6263071d3be87a974b2a0394b7ec70c2e1d3bad98287",
+        "image_ref": "docker-compose-log-service:rbac-review-42b21ad4",
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741",
+        "started_at": "2026-10-05T10:36:24.791614751Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "4fe774e84d82d49d6bee83119209f8f5e1acf1927130bc1c937f7f3d7f99e2fd"
+      },
+      {
+        "service": "monitor-worker",
+        "container_id": "9cad349d1ba041a36bcfa37e2a3e64fe92757f9b6c40e86618edb868cf4961a0",
+        "image_id": "sha256:5e3e45b49edb62f5bfdff07799195f4d70adcad541657aef0a98812726f8a04d",
+        "image_ref": "docker-compose-monitor-worker:rbac-review-42b21ad4",
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741",
+        "started_at": "2026-10-05T10:36:25.481126505Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "3a0b3f07900d3381a52050efe987337b0063d923002c5608827c4db08b7e9429"
+      },
+      {
+        "service": "notify-worker",
+        "container_id": "d4171b3a4732ac9298219e7feae98249ef698b192f785cbf9f3c2632a096bc6e",
+        "image_id": "sha256:f42c1172ab1be4df04176440d71200421aaf25ac8be947aa4d90486fc4cf659c",
+        "image_ref": "docker-compose-notify-worker:rbac-review-42b21ad4",
+        "source_digest": "42b21ad47e4b29d0b411307ba5faf5c04aaf5a5e933cd7cbab6cdc9f475bf741",
+        "started_at": "2026-10-05T10:36:28.145019971Z",
+        "running": true,
+        "health": null,
+        "restart_count": 0,
+        "oom_killed": false,
+        "environment_sha256": "5cabe160f3831976bd3b9682e0ffd19e6718cd75cb6d531638df9c7a24241a5e"
+      }
+    ],
+    "billing_healthz": {
+      "status": 200,
+      "body": "{\"status\":\"ok\"}"
+    },
+    "frontend": {
+      "files": 158,
+      "digest": "54ac99934a24adf20d84aa5270546661910648bcfe54d4e4414788266780d62d"
+    },
+    "database": {
+      "transaction": "UTC read-only consistent snapshot",
+      "aggregate_rows": [
+        "iam\t7\t2\tiam\tcomplete",
+        "sandbox_order\tpaid\tissued\t10000\t6\t073ae92561fffdbaf9cae95b73ac75a169b3d0679f7042e74a667adb83339f98",
+        "sandbox_subscription\tactive\t1800844533\t073ae92561fffdbaf9cae95b73ac75a169b3d0679f7042e74a667adb83339f98",
+        "sandbox_entitlements\t1",
+        "reconciliation\t393\t1791429599\tcompleted\t0",
+        "reconciliation\t392\t1791427201\tcompleted\t0",
+        "reconciliation\t391\t1791423601\tcompleted\t0",
+        "reconciliation\t390\t1791420001\tcompleted\t0",
+        "reconciliation\t389\t1791416401\tcompleted\t0"
+      ]
+    },
+    "fatal_or_panic": false
+  }
+}

@@ -114,6 +114,18 @@ docker compose --env-file .env down -v        # 停止并删除数据卷
 
 可运行 `make test-lite-smoke` 验证全新环境、业务请求和重启后的数据保持。
 
+### 2.6 远程 Linux 生产更新
+
+当前生产为远程 Linux/x86_64，开发机为 Apple Silicon。根目录 `.env` 的 `DEPLOY_REMOTE_SERVER` / `DEPLOY_REMOTE_DIR` 指定目标；在本机交叉构建、上传镜像，禁止在资源受限的生产主机上构建。
+
+```bash
+./scripts/deploy-update.sh billing-service
+```
+
+显式列出本次受影响服务。脚本从实际运行 image ID 保存回滚标签和原 Compose，加载并核对新镜像，固定所选服务的有效引用，使用 `--no-deps --no-build --pull never` 切换并验证健康。Compose 配置通过 JSON 读取所选镜像，避免把依赖镜像误计入比较。保留脚本输出的部署/回滚标签与备份，另核对业务对账；失败会阻断后续服务。
+
+前端由宿主机 `/opt/web/dist` 挂载，必须单独构建、备份并发布，重建 admin-api 不会更新它。数据库迁移同样独立执行；仅无 schema 变更的补丁不需要迁移。实例见 [v0.34.10 上线验收](runbooks/next-stage-acceptance-2026-10-08.md)。
+
 ## 3. Kubernetes 部署（生产）
 
 ### 3.1 前置条件
@@ -124,7 +136,7 @@ docker compose --env-file .env down -v        # 停止并删除数据卷
 - Nginx Ingress Controller 已安装
 - MySQL 8 和启用密码认证的 Redis 可用（集群内或外部），并能通过清单中的 `mysql:3306`、`redis:6379` 地址访问；使用外部地址时先修改 `app-config`
 - 已安装 Go 1.27（执行数据库迁移）
-- 已准备九个服务镜像；本仓库的 Release 流程只发布 GitHub Release，不代替用户推送镜像
+- 已准备九个服务镜像；本仓库的 Release 流程在 Linux E2E 通过后推送九服务多架构镜像，再发布 GitHub Release，部署仍需单独执行
 
 ### 3.2 创建命名空间
 

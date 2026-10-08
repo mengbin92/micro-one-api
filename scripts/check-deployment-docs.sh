@@ -62,8 +62,9 @@ validate_compose .env.example \
     -f docker-compose.test.yml \
     -f docker-compose.e2e-ports.yml
 
-rendered_manifest="$(mktemp "${TMPDIR:-/tmp}/micro-one-api-k8s.XXXXXX.yaml")"
-trap 'rm -f "$rendered_manifest"' EXIT
+manifest_dir="$(mktemp -d "${TMPDIR:-/tmp}/micro-one-api-k8s.XXXXXX")"
+rendered_manifest="$manifest_dir/rendered.yaml"
+trap 'rm -f "$rendered_manifest"; rmdir "$manifest_dir"' EXIT
 
 echo "==> kustomize build"
 kustomize build "$K8S_DIR" > "$rendered_manifest"

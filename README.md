@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.34.9 发布公告](./docs/releases/release-v0.34.9.md)（用户分组／订阅支付修复与 Release 冒烟同步） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.9)
+> 📣 **最新发布**：[v0.34.10 发布公告](./docs/releases/release-v0.34.10.md)（支付回调校验、交付门禁与隔离长流验收） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.10)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.34.10
+
+v0.34.10 修复已验签支付宝回调的本地订单金额／渠道核对，补齐购买到权益闭环、关键覆盖率门禁与固定镜像部署，并归档 600 对长流及 24 项故障验收。**无 API/proto、迁移或新增业务配置**；当前生产仅需更新 Billing。前端与 executor 行为未变，七天准入仍待新旧对照。详见 [release-v0.34.10.md](./docs/releases/release-v0.34.10.md)。
 
 ### 升级到 v0.34.9
 
