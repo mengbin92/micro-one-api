@@ -211,7 +211,9 @@ with os.fdopen(fd, 'w') as out:
 os.chmod(name, path.stat().st_mode & 0o777)
 os.replace(name, path)
 PY
-if ! test "$(docker compose config --images "$service")" = "$image"; then
+# Compose includes dependency images even when a service is specified. Read
+# the selected service explicitly from the resolved configuration instead.
+if ! test "$(docker compose config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"][sys.argv[1]]["image"])' "$service")" = "$image"; then
     cp -p "$previous" "$file"
     rm -f "$previous"
     echo 'Effective Compose image differs; restored configuration' >&2

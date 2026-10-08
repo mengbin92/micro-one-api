@@ -48,9 +48,16 @@ case "$1 $2" in
     esac ;;
   'compose ps') echo "test-container-$4" ;;
   'compose config')
-    if [[ "$3" = --images ]]; then
-      if [[ "$DEPLOY_TEST_FAILURE" = override || ( "$DEPLOY_TEST_FAILURE" = second-override && "$4" = billing-service ) ]]; then echo registry/shadow:old
-      else awk -v name="$4" '$0=="  "name":" {found=1;next} found && /^    image:/ {sub(/^    image: /, ""); print; exit}' docker-compose.yml; fi
+    if [[ "$3" = --format && "$4" = json ]]; then
+      python3 - <<'PY'
+import json, os, re
+images = dict(re.findall(r'^  ([a-z-]+):\\n    image: (.+)$', open('docker-compose.yml').read(), re.M))
+images['redis'] = 'redis:8.4'
+failure = os.environ['DEPLOY_TEST_FAILURE']
+if failure == 'override': images['channel-service'] = 'registry/shadow:old'
+if failure == 'second-override': images['billing-service'] = 'registry/shadow:old'
+print(json.dumps({'services': {name: {'image': image} for name, image in images.items()}}))
+PY
     fi ;;
   'compose up') touch "$DEPLOY_TEST_UPDATED.${!#}" ;;
   'tag '*) [[ "$DEPLOY_TEST_FAILURE" != backup ]] ;;
@@ -92,6 +99,8 @@ esac
         self.assertIn("image: registry/billing:fixed-old", config)
         self.assertIn("KEEP: untouched", config)
         self.assertIn("up -d --no-deps --no-build --pull never channel-service", calls)
+        self.assertIn("compose config --format json", calls)
+        self.assertNotIn("compose config --images", calls)
         self.assertNotIn("docker remote=1 build", calls)
         self.assertNotIn("docker remote=1 pull", calls)
         self.assertIn("channel-service image=sha256:", result.stdout)
