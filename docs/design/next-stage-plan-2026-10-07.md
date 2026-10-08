@@ -1,6 +1,8 @@
 # 下一阶段计划：IAM 上线稳定性、关键链路门禁与有限灰度收口
 
-> **当前执行入口**。制定：2026-10-07（Asia/Shanghai）。规划基线：`develop@a37b39bf`，最新正式发布 [v0.34.4](../releases/release-v0.34.4.md)。本文件接替 [2026-09-22 计划](next-stage-plan-2026-09-22.md)；历史验收及条件保留项继续有效。
+> **已归档（2026-10-08）**。当前执行入口为 [用户购买闭环、交付一致性与 executor 长流验收](next-stage-plan-2026-10-08.md)。本阶段 S1–S3 与 D7 已纳入 v0.34.6–v0.34.9；E2 条件评估仍为 INSUFFICIENT，七天准入未通过。下方未提交/未发版/未部署均保留原轮次的历史时点。
+>
+> 制定：2026-10-07（Asia/Shanghai）。规划基线：`develop@a37b39bf`，当时最新正式发布 [v0.34.4](../releases/release-v0.34.4.md)。本文件接替 [2026-09-22 计划](next-stage-plan-2026-09-22.md)；历史验收及条件保留项继续有效。
 
 > **D7 与刷新修复已发布生产前端（2026-10-07 17:22–17:35 CST）**：刷新修复与 D7 三项（安全 Markdown、字体、关键分支覆盖）连同本地验收文档按当前工作区整包构建发布；`npm run build` 六项性能预算 PASS，生产 `https://console.mengbin.top/index.html` SHA256 `6598982adfe66c4729ef23755bdc4dfef0e070dd810aff8107c34f8720d45d7f` 与本机构建一致，旧产物已备份为 `/opt/web/dist.bak.*`。未提交、推送或打 tag，完整 release 工作流仍待执行；前述未部署表述保留各轮历史时点。
 

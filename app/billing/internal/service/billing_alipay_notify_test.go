@@ -97,6 +97,7 @@ func notifyService(order *biz.PaymentOrder) (*BillingService, *notifyPaymentRepo
 		Success:         true,
 		TotalAmount:     order.MoneyCents,
 		AppID:           "app-1",
+		Channel:         biz.PaymentChannelAlipay,
 	}})
 	svc.SetExpectedAlipayAppID("app-1")
 	return svc, repo, issuer
@@ -180,6 +181,7 @@ func TestHandleAlipayNotifyAmountMismatchRespondsFail(t *testing.T) {
 		Success:     true,
 		TotalAmount: 2000, // 本地订单是 1000 分
 		AppID:       "app-1",
+		Channel:     biz.PaymentChannelAlipay,
 	}})
 	svc.SetExpectedAlipayAppID("app-1")
 
@@ -204,6 +206,7 @@ func TestHandleAlipayNotifyAppIDMismatchRespondsFail(t *testing.T) {
 		Success:     true,
 		TotalAmount: 1000,
 		AppID:       "attacker-app",
+		Channel:     biz.PaymentChannelAlipay,
 	}})
 	svc.SetExpectedAlipayAppID("app-1")
 

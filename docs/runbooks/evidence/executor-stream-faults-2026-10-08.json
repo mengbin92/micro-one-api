@@ -1,0 +1,239 @@
+{
+  "verdict": "PASS",
+  "driver": "sqlite3",
+  "command": "python3 scripts/test-routing-e2e.py --driver sqlite3 --reliability-only --keep",
+  "exit_code": 0,
+  "cases": [
+    {
+      "executor": "legacy",
+      "first": "channel",
+      "fault": "500",
+      "status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 2
+    },
+    {
+      "executor": "legacy",
+      "first": "channel",
+      "fault": "refused",
+      "status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "channel",
+      "fault": "partial",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "channel",
+      "fault": "cancel",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "channel",
+      "fault": "paused-cancel",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "subscription",
+      "fault": "500",
+      "status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 2
+    },
+    {
+      "executor": "legacy",
+      "first": "subscription",
+      "fault": "refused",
+      "status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "subscription",
+      "fault": "partial",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "subscription",
+      "fault": "cancel",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "subscription",
+      "fault": "paused-cancel",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "channel",
+      "fault": "budget",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "subscription",
+      "fault": "budget",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "channel",
+      "fault": "500",
+      "status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 2
+    },
+    {
+      "executor": "orchestrator",
+      "first": "channel",
+      "fault": "refused",
+      "status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "channel",
+      "fault": "partial",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "channel",
+      "fault": "cancel",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "channel",
+      "fault": "paused-cancel",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "subscription",
+      "fault": "500",
+      "status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 2
+    },
+    {
+      "executor": "orchestrator",
+      "first": "subscription",
+      "fault": "refused",
+      "status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "subscription",
+      "fault": "partial",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "subscription",
+      "fault": "cancel",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "subscription",
+      "fault": "paused-cancel",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "channel",
+      "fault": "budget",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "subscription",
+      "fault": "budget",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    }
+  ],
+  "billing_mode": "wallet-only",
+  "server_stream_total_budget_ms": 500,
+  "paused_reader_ms": 100,
+  "recovery": "cancel, paused-cancel and budget followed by completed nonstream request and one consume",
+  "redis_outage_and_recovery": "PASS",
+  "source_sha256": {
+    "test/e2e/routing/stream_reliability_test.go": "8fe657f87f9f38ab405bc587320833b6f13c67d57c93ce2d9b63cb4a371bf6e7",
+    "scripts/test-routing-e2e.py": "3e86c58cb7abe052651b49342126af23f9bd4a1b36d620a32cfa8e2ea704b98d",
+    "test/e2e/routingmock/main.go": "cfe63456b0c0a01e6c970fc129b58cde38bc8356acf4883fb8937bc5a5adfff6"
+  },
+  "boundaries": [
+    "real service binaries/storage; deterministic local upstream only",
+    "paused reader cancels before completion; not a TCP send-buffer saturation load test",
+    "downstream writer failure and HTTP/2 cancellation/timeout additionally covered by existing server tests; their billing clients are fakes"
+  ]
+}

@@ -459,6 +459,23 @@ func (uc *PaymentUsecase) ReconcilePendingOrders(ctx context.Context, limit int3
 	return report, nil
 }
 
+// AcceptVerifiedNotify is called only after provider signature verification.
+// Callbacks have no user session: read the local order directly, without the
+// user-read authorization or provider refresh that could issue assets early.
+func (uc *PaymentUsecase) AcceptVerifiedNotify(ctx context.Context, notify *PaymentNotify) (*PaymentOrder, error) {
+	if notify == nil || notify.TotalAmount <= 0 {
+		return nil, errors.New("payment notify amount is required")
+	}
+	order, err := uc.repo.GetOrderByTradeNo(ctx, notify.TradeNo)
+	if err != nil {
+		return nil, err
+	}
+	if order == nil || order.Channel != notify.Channel || order.MoneyCents != notify.TotalAmount {
+		return nil, errors.New("payment notify does not match local order")
+	}
+	return uc.MarkOrderPaid(ctx, notify.TradeNo, notify.ProviderTradeNo)
+}
+
 func (uc *PaymentUsecase) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, error) {
 	if tradeNo == "" {
 		return nil, errors.New("trade_no is required")

@@ -1,0 +1,506 @@
+{
+  "Verdict": "INSUFFICIENT",
+  "CadenceMS": 1,
+  "WarmupPairs": 3,
+  "Buckets": [
+    {
+      "Protocol": "chat",
+      "Context": "short",
+      "Verdict": "INSUFFICIENT",
+      "Chunks": 256,
+      "Pairs": 1,
+      "Legacy": [
+        {
+          "Executor": "legacy",
+          "Source": "channel",
+          "Model": "long-256-chat",
+          "ContentSHA256": "85e62acd750c4eb56b7b6a1d66dca5bfaac5f062608a1a893410d0288936c09a",
+          "PayloadSHA256": "6f8371482d25c982b8743ec82d4e537b17a1781ecdddf950ed608fb07497a3cf",
+          "TTFTMS": 6.318,
+          "TotalMS": 319.737,
+          "ServerElapsedMS": 299,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "Orchestrator": [
+        {
+          "Executor": "orchestrator",
+          "Source": "channel",
+          "Model": "long-256-chat",
+          "ContentSHA256": "85e62acd750c4eb56b7b6a1d66dca5bfaac5f062608a1a893410d0288936c09a",
+          "PayloadSHA256": "6f8371482d25c982b8743ec82d4e537b17a1781ecdddf950ed608fb07497a3cf",
+          "TTFTMS": 7.639,
+          "TotalMS": 313.582,
+          "ServerElapsedMS": 302,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "LegacyP50MS": 319.737,
+      "LegacyP95MS": 319.737,
+      "OrchestratorP50MS": 313.582,
+      "OrchestratorP95MS": 313.582
+    },
+    {
+      "Protocol": "chat",
+      "Context": "long",
+      "Verdict": "INSUFFICIENT",
+      "Chunks": 256,
+      "Pairs": 1,
+      "Legacy": [
+        {
+          "Executor": "legacy",
+          "Source": "channel",
+          "Model": "long-256-chat",
+          "ContentSHA256": "85e62acd750c4eb56b7b6a1d66dca5bfaac5f062608a1a893410d0288936c09a",
+          "PayloadSHA256": "b337ec3a4b76b64d5b6cacb95b7ee41ff5738566e2bf4ef460f8aa8e66f83dbc",
+          "TTFTMS": 7.125,
+          "TotalMS": 312.412,
+          "ServerElapsedMS": 299,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "Orchestrator": [
+        {
+          "Executor": "orchestrator",
+          "Source": "channel",
+          "Model": "long-256-chat",
+          "ContentSHA256": "85e62acd750c4eb56b7b6a1d66dca5bfaac5f062608a1a893410d0288936c09a",
+          "PayloadSHA256": "b337ec3a4b76b64d5b6cacb95b7ee41ff5738566e2bf4ef460f8aa8e66f83dbc",
+          "TTFTMS": 7.372,
+          "TotalMS": 312.974,
+          "ServerElapsedMS": 302,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "LegacyP50MS": 312.412,
+      "LegacyP95MS": 312.412,
+      "OrchestratorP50MS": 312.974,
+      "OrchestratorP95MS": 312.974
+    },
+    {
+      "Protocol": "chat",
+      "Context": "short",
+      "Verdict": "INSUFFICIENT",
+      "Chunks": 1024,
+      "Pairs": 1,
+      "Legacy": [
+        {
+          "Executor": "legacy",
+          "Source": "channel",
+          "Model": "long-1024-chat",
+          "ContentSHA256": "49abd65bbf7f7e40c7055093ed2e3fd75f2f602f2c5fcf955c213e3135eb03f7",
+          "PayloadSHA256": "36a853bd3aa7de99a188c463399205cc327560fd5c58da47c00367806af1f49f",
+          "TTFTMS": 7.325,
+          "TotalMS": 1201.389,
+          "ServerElapsedMS": 1184,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "Orchestrator": [
+        {
+          "Executor": "orchestrator",
+          "Source": "channel",
+          "Model": "long-1024-chat",
+          "ContentSHA256": "49abd65bbf7f7e40c7055093ed2e3fd75f2f602f2c5fcf955c213e3135eb03f7",
+          "PayloadSHA256": "36a853bd3aa7de99a188c463399205cc327560fd5c58da47c00367806af1f49f",
+          "TTFTMS": 7.674,
+          "TotalMS": 1189.479,
+          "ServerElapsedMS": 1177,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "LegacyP50MS": 1201.389,
+      "LegacyP95MS": 1201.389,
+      "OrchestratorP50MS": 1189.479,
+      "OrchestratorP95MS": 1189.479
+    },
+    {
+      "Protocol": "chat",
+      "Context": "long",
+      "Verdict": "INSUFFICIENT",
+      "Chunks": 1024,
+      "Pairs": 1,
+      "Legacy": [
+        {
+          "Executor": "legacy",
+          "Source": "channel",
+          "Model": "long-1024-chat",
+          "ContentSHA256": "49abd65bbf7f7e40c7055093ed2e3fd75f2f602f2c5fcf955c213e3135eb03f7",
+          "PayloadSHA256": "3bbb67251785e98892889f4951e6f8d3f83f674f3e4d015ba227f04344c13a3a",
+          "TTFTMS": 8.723,
+          "TotalMS": 1173.473,
+          "ServerElapsedMS": 1159,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "Orchestrator": [
+        {
+          "Executor": "orchestrator",
+          "Source": "channel",
+          "Model": "long-1024-chat",
+          "ContentSHA256": "49abd65bbf7f7e40c7055093ed2e3fd75f2f602f2c5fcf955c213e3135eb03f7",
+          "PayloadSHA256": "3bbb67251785e98892889f4951e6f8d3f83f674f3e4d015ba227f04344c13a3a",
+          "TTFTMS": 6.259,
+          "TotalMS": 1201.262,
+          "ServerElapsedMS": 1193,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "LegacyP50MS": 1173.473,
+      "LegacyP95MS": 1173.473,
+      "OrchestratorP50MS": 1201.262,
+      "OrchestratorP95MS": 1201.262
+    },
+    {
+      "Protocol": "messages",
+      "Context": "short",
+      "Verdict": "INSUFFICIENT",
+      "Chunks": 256,
+      "Pairs": 1,
+      "Legacy": [
+        {
+          "Executor": "legacy",
+          "Source": "channel",
+          "Model": "long-256-messages",
+          "ContentSHA256": "85e62acd750c4eb56b7b6a1d66dca5bfaac5f062608a1a893410d0288936c09a",
+          "PayloadSHA256": "0753fba7183f5998fbe9661f6a0f218ff24e7a9c584e660d42a22a68a70f1a1d",
+          "TTFTMS": 4.532,
+          "TotalMS": 310.375,
+          "ServerElapsedMS": 295,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "Orchestrator": [
+        {
+          "Executor": "orchestrator",
+          "Source": "channel",
+          "Model": "long-256-messages",
+          "ContentSHA256": "85e62acd750c4eb56b7b6a1d66dca5bfaac5f062608a1a893410d0288936c09a",
+          "PayloadSHA256": "0753fba7183f5998fbe9661f6a0f218ff24e7a9c584e660d42a22a68a70f1a1d",
+          "TTFTMS": 3.871,
+          "TotalMS": 304.453,
+          "ServerElapsedMS": 296,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "LegacyP50MS": 310.375,
+      "LegacyP95MS": 310.375,
+      "OrchestratorP50MS": 304.453,
+      "OrchestratorP95MS": 304.453
+    },
+    {
+      "Protocol": "messages",
+      "Context": "long",
+      "Verdict": "INSUFFICIENT",
+      "Chunks": 256,
+      "Pairs": 1,
+      "Legacy": [
+        {
+          "Executor": "legacy",
+          "Source": "channel",
+          "Model": "long-256-messages",
+          "ContentSHA256": "85e62acd750c4eb56b7b6a1d66dca5bfaac5f062608a1a893410d0288936c09a",
+          "PayloadSHA256": "aef88604891149b535e499c2708d39ea8e2a0d36b5f3f17e12b8d11f9fde8c3d",
+          "TTFTMS": 7.858,
+          "TotalMS": 312.534,
+          "ServerElapsedMS": 294,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "Orchestrator": [
+        {
+          "Executor": "orchestrator",
+          "Source": "channel",
+          "Model": "long-256-messages",
+          "ContentSHA256": "85e62acd750c4eb56b7b6a1d66dca5bfaac5f062608a1a893410d0288936c09a",
+          "PayloadSHA256": "aef88604891149b535e499c2708d39ea8e2a0d36b5f3f17e12b8d11f9fde8c3d",
+          "TTFTMS": 5.815,
+          "TotalMS": 311.952,
+          "ServerElapsedMS": 302,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "LegacyP50MS": 312.534,
+      "LegacyP95MS": 312.534,
+      "OrchestratorP50MS": 311.952,
+      "OrchestratorP95MS": 311.952
+    },
+    {
+      "Protocol": "messages",
+      "Context": "short",
+      "Verdict": "INSUFFICIENT",
+      "Chunks": 1024,
+      "Pairs": 1,
+      "Legacy": [
+        {
+          "Executor": "legacy",
+          "Source": "channel",
+          "Model": "long-1024-messages",
+          "ContentSHA256": "49abd65bbf7f7e40c7055093ed2e3fd75f2f602f2c5fcf955c213e3135eb03f7",
+          "PayloadSHA256": "07bd45807a0e83d28eff7626dbb212fc5a12a9e3e8f3544b57c280645dcd5d5e",
+          "TTFTMS": 6.405,
+          "TotalMS": 1184.681,
+          "ServerElapsedMS": 1177,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "Orchestrator": [
+        {
+          "Executor": "orchestrator",
+          "Source": "channel",
+          "Model": "long-1024-messages",
+          "ContentSHA256": "49abd65bbf7f7e40c7055093ed2e3fd75f2f602f2c5fcf955c213e3135eb03f7",
+          "PayloadSHA256": "07bd45807a0e83d28eff7626dbb212fc5a12a9e3e8f3544b57c280645dcd5d5e",
+          "TTFTMS": 6.446,
+          "TotalMS": 1192.802,
+          "ServerElapsedMS": 1180,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "LegacyP50MS": 1184.681,
+      "LegacyP95MS": 1184.681,
+      "OrchestratorP50MS": 1192.802,
+      "OrchestratorP95MS": 1192.802
+    },
+    {
+      "Protocol": "messages",
+      "Context": "long",
+      "Verdict": "INSUFFICIENT",
+      "Chunks": 1024,
+      "Pairs": 1,
+      "Legacy": [
+        {
+          "Executor": "legacy",
+          "Source": "channel",
+          "Model": "long-1024-messages",
+          "ContentSHA256": "49abd65bbf7f7e40c7055093ed2e3fd75f2f602f2c5fcf955c213e3135eb03f7",
+          "PayloadSHA256": "46cdbf313276115748e9f6c7faaa51d6368619599756cbe1a3a7feeb22940e9f",
+          "TTFTMS": 6.836,
+          "TotalMS": 1137.567,
+          "ServerElapsedMS": 1128,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "Orchestrator": [
+        {
+          "Executor": "orchestrator",
+          "Source": "channel",
+          "Model": "long-1024-messages",
+          "ContentSHA256": "49abd65bbf7f7e40c7055093ed2e3fd75f2f602f2c5fcf955c213e3135eb03f7",
+          "PayloadSHA256": "46cdbf313276115748e9f6c7faaa51d6368619599756cbe1a3a7feeb22940e9f",
+          "TTFTMS": 7.011,
+          "TotalMS": 1198.582,
+          "ServerElapsedMS": 1188,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "LegacyP50MS": 1137.567,
+      "LegacyP95MS": 1137.567,
+      "OrchestratorP50MS": 1198.582,
+      "OrchestratorP95MS": 1198.582
+    },
+    {
+      "Protocol": "responses",
+      "Context": "short",
+      "Verdict": "INSUFFICIENT",
+      "Chunks": 256,
+      "Pairs": 1,
+      "Legacy": [
+        {
+          "Executor": "legacy",
+          "Source": "channel",
+          "Model": "long-256-responses",
+          "ContentSHA256": "85e62acd750c4eb56b7b6a1d66dca5bfaac5f062608a1a893410d0288936c09a",
+          "PayloadSHA256": "abea4809c6243e4673d5ed3acc6421ca5723e07ac7076670ec5e418a24adc5f4",
+          "TTFTMS": 5.968,
+          "TotalMS": 310.145,
+          "ServerElapsedMS": 297,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "Orchestrator": [
+        {
+          "Executor": "orchestrator",
+          "Source": "channel",
+          "Model": "long-256-responses",
+          "ContentSHA256": "85e62acd750c4eb56b7b6a1d66dca5bfaac5f062608a1a893410d0288936c09a",
+          "PayloadSHA256": "abea4809c6243e4673d5ed3acc6421ca5723e07ac7076670ec5e418a24adc5f4",
+          "TTFTMS": 5.794,
+          "TotalMS": 311.703,
+          "ServerElapsedMS": 297,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "LegacyP50MS": 310.145,
+      "LegacyP95MS": 310.145,
+      "OrchestratorP50MS": 311.703,
+      "OrchestratorP95MS": 311.703
+    },
+    {
+      "Protocol": "responses",
+      "Context": "long",
+      "Verdict": "INSUFFICIENT",
+      "Chunks": 256,
+      "Pairs": 1,
+      "Legacy": [
+        {
+          "Executor": "legacy",
+          "Source": "channel",
+          "Model": "long-256-responses",
+          "ContentSHA256": "85e62acd750c4eb56b7b6a1d66dca5bfaac5f062608a1a893410d0288936c09a",
+          "PayloadSHA256": "9841a464551db78e9f38c018ca3338f530f127fd66b286d020e048cec6906fc9",
+          "TTFTMS": 7.643,
+          "TotalMS": 305.064,
+          "ServerElapsedMS": 296,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "Orchestrator": [
+        {
+          "Executor": "orchestrator",
+          "Source": "channel",
+          "Model": "long-256-responses",
+          "ContentSHA256": "85e62acd750c4eb56b7b6a1d66dca5bfaac5f062608a1a893410d0288936c09a",
+          "PayloadSHA256": "9841a464551db78e9f38c018ca3338f530f127fd66b286d020e048cec6906fc9",
+          "TTFTMS": 5.109,
+          "TotalMS": 311.478,
+          "ServerElapsedMS": 301,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "LegacyP50MS": 305.064,
+      "LegacyP95MS": 305.064,
+      "OrchestratorP50MS": 311.478,
+      "OrchestratorP95MS": 311.478
+    },
+    {
+      "Protocol": "responses",
+      "Context": "short",
+      "Verdict": "INSUFFICIENT",
+      "Chunks": 1024,
+      "Pairs": 1,
+      "Legacy": [
+        {
+          "Executor": "legacy",
+          "Source": "channel",
+          "Model": "long-1024-responses",
+          "ContentSHA256": "49abd65bbf7f7e40c7055093ed2e3fd75f2f602f2c5fcf955c213e3135eb03f7",
+          "PayloadSHA256": "b8bec997f1ce805fade722db71cc1b814ce3dfa592b613d98498a2f82f0aafe2",
+          "TTFTMS": 6.162,
+          "TotalMS": 1180.708,
+          "ServerElapsedMS": 1164,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "Orchestrator": [
+        {
+          "Executor": "orchestrator",
+          "Source": "channel",
+          "Model": "long-1024-responses",
+          "ContentSHA256": "49abd65bbf7f7e40c7055093ed2e3fd75f2f602f2c5fcf955c213e3135eb03f7",
+          "PayloadSHA256": "b8bec997f1ce805fade722db71cc1b814ce3dfa592b613d98498a2f82f0aafe2",
+          "TTFTMS": 5.054,
+          "TotalMS": 1157.279,
+          "ServerElapsedMS": 1148,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "LegacyP50MS": 1180.708,
+      "LegacyP95MS": 1180.708,
+      "OrchestratorP50MS": 1157.279,
+      "OrchestratorP95MS": 1157.279
+    },
+    {
+      "Protocol": "responses",
+      "Context": "long",
+      "Verdict": "INSUFFICIENT",
+      "Chunks": 1024,
+      "Pairs": 1,
+      "Legacy": [
+        {
+          "Executor": "legacy",
+          "Source": "channel",
+          "Model": "long-1024-responses",
+          "ContentSHA256": "49abd65bbf7f7e40c7055093ed2e3fd75f2f602f2c5fcf955c213e3135eb03f7",
+          "PayloadSHA256": "0d5681030f2da667875aa09b5da1523d6e397ba9aaf5632e150dfe5b9128683d",
+          "TTFTMS": 4.647,
+          "TotalMS": 1210.193,
+          "ServerElapsedMS": 1196,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "Orchestrator": [
+        {
+          "Executor": "orchestrator",
+          "Source": "channel",
+          "Model": "long-1024-responses",
+          "ContentSHA256": "49abd65bbf7f7e40c7055093ed2e3fd75f2f602f2c5fcf955c213e3135eb03f7",
+          "PayloadSHA256": "0d5681030f2da667875aa09b5da1523d6e397ba9aaf5632e150dfe5b9128683d",
+          "TTFTMS": 6.122,
+          "TotalMS": 1141.564,
+          "ServerElapsedMS": 1136,
+          "PromptTokens": 100,
+          "OutputTokens": 20,
+          "Cached": 0
+        }
+      ],
+      "LegacyP50MS": 1210.193,
+      "LegacyP95MS": 1210.193,
+      "OrchestratorP50MS": 1141.564,
+      "OrchestratorP95MS": 1141.564
+    }
+  ],
+  "Evidence": {
+    "command": "python3 scripts/test-routing-e2e.py --driver sqlite3 --long-stream-pairs 1 --skip-build",
+    "expected_exit_code": 2,
+    "actual_exit_code": 2,
+    "verdict": "INSUFFICIENT",
+    "not_admission_evidence": true
+  }
+}

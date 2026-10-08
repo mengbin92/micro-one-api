@@ -348,7 +348,7 @@ format-check:
 .PHONY: verify
 # v0.19 P2.2: aggregate the per-PR quality gates in one command:
 # format + unit + race + architecture + migration/IAM contracts + frontend
-# (lint/test/build).
+# (lint/test/critical coverage/build).
 # This mirrors what ci.yml runs for every PR, so local `make verify` and CI
 # cannot drift apart. Integration/e2e suites need external services and are
 # deliberately not part of this gate (see `make help` for test-e2e-*).
@@ -370,8 +370,8 @@ verify:
 	@echo "== make verify: generated frontend API types =="
 	@make api
 	@cd web && npm run generate:api && git diff --exit-code -- src/types/api.ts
-	@echo "== make verify: frontend (lint/test/build) =="
-	@cd web && npm run lint && npm test -- --run && npm run build
+	@echo "== make verify: frontend (lint/test/critical coverage/build) =="
+	@cd web && npm run lint && npm test -- --run && npm run test:critical && npm run build
 	@echo "== make verify: all gates passed =="
 
 .PHONY: migration-check
