@@ -10,6 +10,12 @@ make test-routing-e2e ROUTING_E2E_DRIVER=sqlite3
 
 # 复用刚构建的同一版本镜像，避免重复编译
 python3 scripts/test-routing-e2e.py --driver=sqlite3 --skip-build
+
+# executor 隔离 SSE：12 档，每档预热后至少 50 对，约 15–25 分钟
+python3 scripts/test-routing-e2e.py --driver=sqlite3 --long-stream-pairs=50
+
+# 新旧路径的流前失败 / 流后截断、取消、暂停读取后取消 / 总预算耗尽
+python3 scripts/test-routing-e2e.py --driver=sqlite3 --reliability-only
 ```
 
 要求 Docker Compose、Python 3 和可下载构建依赖的网络。脚本从已跟踪及未忽略的新文件建立源码快照；不读取生产 .env。每次生成独立项目名、数据库卷、测试凭据和网络，不映射服务端口到宿主。完成或失败后默认只清理本次项目；`--keep` 可保留诊断环境，并打印精确清理命令。构建在本机完成。
@@ -17,6 +23,8 @@ python3 scripts/test-routing-e2e.py --driver=sqlite3 --skip-build
 日志目录由脚本打印。`acceptance.log` 保存用例结果，`preflight.json` 保存阶段 F 预检，`build.log` 保存构建结果；环境与夹具文件包含随机测试凭据，仅保存在私有临时目录 / 测试卷。CI 仅上传前三种日志，不上传原始环境、Compose 配置和服务日志。
 
 共享 [E2E workflow](../../../.github/workflows/e2e.yml) 增加 MySQL / SQLite 矩阵，nightly 与 release 复用该入口。普通 `go test` 跳过此包的服务验收；`make verify` 不包含完整 E2E。
+
+长流模式保存私有 `long-stream.json`：每次原始 TTFT/总耗时/账本 elapsed、usage、来源/模型/内容摘要与成对 P50/P95。它固定余额计费，避免夹具订阅额度耗尽时切换到拆分账本。每档少于 50 对报告 INSUFFICIENT（exit 2），协议/账务差异或新路径 P95 回归超过 20% 报 FAIL（exit 1）；只有完整 PASS 返回 0。此模式跳过 Redis 故障阶段；故障阶段由普通完整验收和 `--reliability-only` 执行。它不访问生产或付费上游，也不建立生产七天准入起点。
 
 ## 场景与断言
 

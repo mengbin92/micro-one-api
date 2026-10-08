@@ -79,7 +79,7 @@ func newSuite(t *testing.T) *suite {
 	ctx, conn := s.conn("BILLING_GRPC_ENDPOINT")
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer "+os.Getenv("RELAY_SERVICE_IDENTITY_TOKEN")))
 	version := int32(2)
-	if phase := os.Getenv("ROUTING_PHASE"); phase == "legacy" || phase == "stream-reliability" || phase == "missing-capability" || phase == "legacy-redis-down" || phase == "legacy-redis-recovered" {
+	if phase := os.Getenv("ROUTING_PHASE"); phase == "legacy" || phase == "stream-reliability" || phase == "long-stream" || phase == "missing-capability" || phase == "legacy-redis-down" || phase == "legacy-redis-recovered" {
 		version = 0
 	}
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {

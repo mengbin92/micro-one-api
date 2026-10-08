@@ -23,6 +23,8 @@ func TestRoutingAcceptance(t *testing.T) {
 		s.recordO5("legacy_baseline", before)
 	case "stream-reliability":
 		s.streamReliability()
+	case "long-stream":
+		s.longStreamPairs()
 	case "v2":
 		for _, test := range []struct {
 			name string
