@@ -6,7 +6,158 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
+
+type recoveryProbeFunc func(context.Context, *SubscriptionAccount) (bool, error)
+
+func (f recoveryProbeFunc) ProbeRecovery(ctx context.Context, a *SubscriptionAccount) (bool, error) {
+	return f(ctx, a)
+}
+
+type quotaResetFunc func(context.Context, *SubscriptionAccountQuotaResetRun) error
+
+func (f quotaResetFunc) RecordQuotaResetAndReset(ctx context.Context, run *SubscriptionAccountQuotaResetRun) error {
+	return f(ctx, run)
+}
+
+func TestQuotaResetSweeperResumesAfterTimedOutAccount(t *testing.T) {
+	at := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	a := fixedAccount(1, "UTC", at.Add(-48*time.Hour).Unix(), 0)
+	b := fixedAccount(2, "UTC", a.QuotaDailyWindowStart, 0)
+	repo := newSweeperRepo(a, b)
+	applier := quotaResetFunc(func(ctx context.Context, run *SubscriptionAccountQuotaResetRun) error {
+		if run.AccountID == 1 {
+			<-ctx.Done()
+			return ctx.Err()
+		}
+		return repo.RecordQuotaResetAndReset(ctx, run)
+	})
+	s := NewQuotaResetSweeper(repo, applier, QuotaResetSweeperConfig{Enabled: true, Timeout: 10 * time.Millisecond})
+	s.SetNow(func() time.Time { return at })
+	require.ErrorIs(t, s.SweepOnce(context.Background()), context.DeadlineExceeded)
+	require.NoError(t, s.SweepOnce(context.Background()))
+	require.Equal(t, 1.5, a.QuotaDailyUsedUSD)
+	require.Zero(t, b.QuotaDailyUsedUSD)
+}
+
+func TestRecoverySweeperRejectsOverlappingInvocation(t *testing.T) {
+	a := autoBlockedAccount(1, 500, `{"recovery_policy":"auto","unschedulable_reason":"429"}`)
+	s := NewAccountRecoverySweeper(newSweeperRepo(a), AccountRecoverySweeperConfig{Enabled: true})
+	s.SetNow(func() time.Time { return time.Unix(1000, 0) })
+	entered, release := make(chan struct{}), make(chan struct{})
+	s.SetProber(recoveryProbeFunc(func(ctx context.Context, a *SubscriptionAccount) (bool, error) {
+		close(entered)
+		<-release
+		return true, nil
+	}))
+	done := make(chan error, 1)
+	go func() { done <- s.SweepOnce(context.Background()) }()
+	<-entered
+	err := s.SweepOnce(context.Background())
+	close(release)
+	require.ErrorIs(t, err, ErrAccountSweepInProgress)
+	require.NoError(t, <-done)
+}
+
+func TestRecoverySweeperRejectsStateChangedDuringProbe(t *testing.T) {
+	acc := autoBlockedAccount(1, 500, `{"recovery_policy":"auto","recovery_revision":"old","unschedulable_reason":"429"}`)
+	repo := newSweeperRepo(acc)
+	s := NewAccountRecoverySweeper(repo, AccountRecoverySweeperConfig{Enabled: true})
+	s.SetNow(func() time.Time { return time.Unix(1000, 0) })
+	s.SetProber(recoveryProbeFunc(func(ctx context.Context, scanned *SubscriptionAccount) (bool, error) {
+		acc.Metadata = `{"recovery_policy":"auto","recovery_revision":"new","unschedulable_reason":"429"}`
+		// Even a prober that mutates its input must not replace the captured CAS.
+		scanned.Metadata = acc.Metadata
+		return true, nil
+	}))
+	require.NoError(t, s.SweepOnce(context.Background()))
+	require.EqualValues(t, 500, acc.RateLimitedUntil)
+	require.Contains(t, acc.Metadata, `"new"`)
+}
+
+func TestAccountSweepersOnlyProcessTheirShard(t *testing.T) {
+	at := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	var accounts []*SubscriptionAccount
+	for id := int64(1); id <= 7; id++ {
+		a := fixedAccount(id, "UTC", at.Add(-48*time.Hour).Unix(), 0)
+		a.RateLimitedUntil = at.Add(-time.Minute).Unix()
+		a.Metadata = `{"recovery_policy":"auto","unschedulable_reason":"429"}`
+		accounts = append(accounts, a)
+	}
+	repo := newSweeperRepo(accounts...)
+	shard := AccountScanShard{Count: 3, Index: 1}
+	reset := NewQuotaResetSweeper(repo, repo, QuotaResetSweeperConfig{Enabled: true, PageSize: 1, Shard: shard})
+	reset.SetNow(func() time.Time { return at })
+	recovery := NewAccountRecoverySweeper(repo, AccountRecoverySweeperConfig{Enabled: true, PageSize: 1, Shard: shard})
+	recovery.SetNow(func() time.Time { return at })
+	var probed []int64
+	recovery.SetProber(recoveryProbeFunc(func(ctx context.Context, a *SubscriptionAccount) (bool, error) {
+		probed = append(probed, a.ID)
+		return true, nil
+	}))
+	require.NoError(t, reset.SweepOnce(context.Background()))
+	require.NoError(t, recovery.SweepOnce(context.Background()))
+	require.Equal(t, []int64{1, 4, 7}, probed)
+	for _, a := range accounts {
+		if a.ID%3 == 1 {
+			require.Zero(t, a.QuotaDailyUsedUSD)
+			require.Zero(t, a.RateLimitedUntil)
+		} else {
+			require.Equal(t, 1.5, a.QuotaDailyUsedUSD)
+			require.NotZero(t, a.RateLimitedUntil)
+		}
+	}
+}
+
+func TestRecoverySweeperScanTimeoutCancelsProbe(t *testing.T) {
+	a := autoBlockedAccount(1, 500, `{"recovery_policy":"auto","unschedulable_reason":"429"}`)
+	s := NewAccountRecoverySweeper(newSweeperRepo(a), AccountRecoverySweeperConfig{Enabled: true, Timeout: 10 * time.Millisecond})
+	s.SetNow(func() time.Time { return time.Unix(1000, 0) })
+	s.SetProber(recoveryProbeFunc(func(ctx context.Context, a *SubscriptionAccount) (bool, error) {
+		<-ctx.Done()
+		return false, ctx.Err()
+	}))
+	require.ErrorIs(t, s.SweepOnce(context.Background()), context.DeadlineExceeded)
+	require.NotEmpty(t, a.Metadata)
+	require.EqualValues(t, 500, a.RateLimitedUntil)
+}
+
+func TestRecoverySweeperResumesAfterTimedOutAccount(t *testing.T) {
+	a := autoBlockedAccount(1, 500, `{"recovery_policy":"auto","unschedulable_reason":"429"}`)
+	b := autoBlockedAccount(2, 500, a.Metadata)
+	s := NewAccountRecoverySweeper(newSweeperRepo(a, b), AccountRecoverySweeperConfig{Enabled: true, Timeout: 10 * time.Millisecond})
+	s.SetNow(func() time.Time { return time.Unix(1000, 0) })
+	s.SetProber(recoveryProbeFunc(func(ctx context.Context, a *SubscriptionAccount) (bool, error) {
+		if a.ID == 1 {
+			<-ctx.Done()
+			return false, ctx.Err()
+		}
+		return true, nil
+	}))
+	require.ErrorIs(t, s.SweepOnce(context.Background()), context.DeadlineExceeded)
+	require.NoError(t, s.SweepOnce(context.Background()))
+	require.Zero(t, b.RateLimitedUntil, "an earlier timed-out probe must not starve later accounts")
+}
+
+func TestRecoveryPolicyFailsClosed(t *testing.T) {
+	for _, metadata := range []string{
+		`{"recovery_policy":"future-policy","unschedulable_reason":"blocked"}`,
+		`{"recovery_policy":42}`,
+		`{"recovery_policy":"manual"`,
+		`[]`,
+	} {
+		t.Run(metadata, func(t *testing.T) {
+			a := autoBlockedAccount(1, 500, metadata)
+			s := NewAccountRecoverySweeper(newSweeperRepo(a), AccountRecoverySweeperConfig{Enabled: true})
+			s.SetNow(func() time.Time { return time.Unix(1000, 0) })
+			require.NoError(t, s.SweepOnce(context.Background()))
+			require.EqualValues(t, 500, a.RateLimitedUntil)
+			require.Equal(t, metadata, a.Metadata)
+		})
+	}
+}
 
 // newSweeperRepo builds a mockChannelRepo seeded with the given accounts.
 func newSweeperRepo(accounts ...*SubscriptionAccount) *mockChannelRepo {

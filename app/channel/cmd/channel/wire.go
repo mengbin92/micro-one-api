@@ -44,6 +44,9 @@ func newRepo(cfg *Config) (*data.Repository, error) {
 }
 
 func newEventBus(repo *data.Repository) events.EventBus {
+	if envBool("SUBSCRIPTION_ACCOUNT_OPS_WORKER_ONLY", false) {
+		return events.NewMemoryEventBus()
+	}
 	return events.NewConfiguredEventBus(repo.Redis(), "channel-service")
 }
 
@@ -52,6 +55,9 @@ type registrarResult struct {
 }
 
 func provideRegistrar(cfg *Config) registrarResult {
+	if envBool("SUBSCRIPTION_ACCOUNT_OPS_WORKER_ONLY", false) {
+		return registrarResult{}
+	}
 	registrar, err := appregistry.NewRegistrar(cfg.Registry())
 	if err != nil {
 		return registrarResult{}
@@ -78,6 +84,9 @@ func newApp(
 	svc *service.ChannelService,
 	reg registrarResult,
 ) (*kratos.App, func()) {
+	if envBool("SUBSCRIPTION_ACCOUNT_OPS_WORKER_ONLY", false) {
+		return newAccountOpsApp(cfg, repo, uc)
+	}
 	ownerAuth, _ := authz.FromEnvironment("channel")
 	svc.SetResourceAuthorization(ownerAuth)
 	closeOutbox := func() {}

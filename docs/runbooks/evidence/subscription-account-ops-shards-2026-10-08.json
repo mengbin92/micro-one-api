@@ -1,0 +1,87 @@
+{
+  "verified_at": "2026-10-08T20:18:41.659023+08:00",
+  "platform": "linux/amd64",
+  "image": "docker-compose-channel-service:deploy-20261008-195458-account-ops",
+  "source_digest": "f6c6bbf3e1fcc10186210c0aacaf68c1d5ec5625053f28e0dde5759d1080f471",
+  "rollback_image": "docker-compose-channel-service:rollback-20261008-195458-account-ops",
+  "configuration_backups": [
+    "docker-compose.yml.account-ops-backup-20261008-195458",
+    ".env.account-ops-backup-20261008-195458",
+    "prometheus.yml.account-ops-backup-20261008-195458"
+  ],
+  "scan_interval": "5m",
+  "scan_timeout": "30s",
+  "worker_limits": {
+    "cpu": 0.25,
+    "memory_mib": 256,
+    "go_memory_soft_limit_mib": 192
+  },
+  "database_migration": "not_required",
+  "scan_verification_before_label_refresh": {
+    "workers": [
+      {
+        "service": "channel-service",
+        "image_id": "sha256:1e2ba7795d4b0426f5f9b337f321e5467b2c2d9aed7acf7ae2f7f0c5ac82a763",
+        "shard_index": 0,
+        "shard_count": 2,
+        "scan_counts": {
+          "quota_reset": 2.0,
+          "recovery": 2.0
+        },
+        "sweeper_errors": 0,
+        "started_at_utc": "2026-10-08T12:01:36.817510872Z"
+      },
+      {
+        "service": "channel-account-ops-worker",
+        "image_id": "sha256:1e2ba7795d4b0426f5f9b337f321e5467b2c2d9aed7acf7ae2f7f0c5ac82a763",
+        "shard_index": 1,
+        "shard_count": 2,
+        "scan_counts": {
+          "quota_reset": 2.0,
+          "recovery": 2.0
+        },
+        "sweeper_errors": 0,
+        "started_at_utc": "2026-10-08T12:01:36.81644897Z"
+      }
+    ]
+  },
+  "workers": [
+    {
+      "service": "channel-service",
+      "image_id": "sha256:1e2ba7795d4b0426f5f9b337f321e5467b2c2d9aed7acf7ae2f7f0c5ac82a763",
+      "shard_index": 0,
+      "shard_count": 2,
+      "worker_only": false,
+      "health": "ok",
+      "scan_counts_after_label_refresh": {
+        "quota_reset": 0.0,
+        "recovery": 0.0
+      },
+      "sweeper_errors": 0,
+      "started_at_utc": "2026-10-08T12:16:46.415023879Z",
+      "container_source_digest": "f6c6bbf3e1fcc10186210c0aacaf68c1d5ec5625053f28e0dde5759d1080f471"
+    },
+    {
+      "service": "channel-account-ops-worker",
+      "image_id": "sha256:1e2ba7795d4b0426f5f9b337f321e5467b2c2d9aed7acf7ae2f7f0c5ac82a763",
+      "shard_index": 1,
+      "shard_count": 2,
+      "worker_only": true,
+      "health": "ok",
+      "scan_counts_after_label_refresh": {
+        "quota_reset": 0.0,
+        "recovery": 0.0
+      },
+      "sweeper_errors": 0,
+      "started_at_utc": "2026-10-08T12:16:46.41592038Z",
+      "container_source_digest": "f6c6bbf3e1fcc10186210c0aacaf68c1d5ec5625053f28e0dde5759d1080f471"
+    }
+  ],
+  "prometheus_targets": {
+    "channel-account-ops-worker:8002": "up",
+    "channel-service:8002": "up"
+  },
+  "gateway_health": "ok",
+  "worker_business_grpc": "closed",
+  "primary_grpc": "reachable"
+}

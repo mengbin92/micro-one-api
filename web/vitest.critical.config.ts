@@ -10,6 +10,10 @@ export default mergeConfig(base, defineConfig({
       'src/pages/{PlaygroundPage,OrdersPage,SubscriptionsPage}.test.tsx',
       'src/pages/admin/UsersPage.test.tsx',
       'src/components/admin/IAMChangeDialog.test.tsx',
+      // Management action gates exercise both execution and display snapshots
+      // during revalidation, including any/all and object-level permissions.
+      'src/components/admin/PermissionButton.test.tsx',
+      'src/pages/admin/ChannelsPage.refresh.test.tsx',
       'src/components/AdminRoute.test.tsx',
       'src/components/ProtectedRoute.test.tsx',
       'src/components/playground/AssistantMarkdown.test.tsx',

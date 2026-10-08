@@ -69,6 +69,26 @@ describe('AdminRoute', () => {
     expect(screen.queryByText('admin content')).not.toBeInTheDocument();
   });
 
+  it('recovers a denied route after the user explicitly refreshes newly granted permissions', async () => {
+    let calls = 0;
+    let granted = false;
+    server.use(http.get('/api/user/authorization', () => {
+      calls++;
+      return HttpResponse.json({ authorization_mode: 'iam', session: { activation_state: 'active' }, versions: { policy_revision: granted ? '2' : '1' }, permitted_operations: granted ? ['admin.console.enter', 'admin.overview.read'] : [] });
+    }));
+    renderAdminRoute();
+    await screen.findByText('需要管理员权限');
+    expect(screen.queryByText('admin content')).not.toBeInTheDocument();
+    expect(calls).toBe(1);
+
+    granted = true;
+    await userEvent.click(screen.getByRole('button', { name: '刷新权限' }));
+
+    expect(await screen.findByText('admin content')).toBeVisible();
+    expect(screen.queryByText('需要管理员权限')).not.toBeInTheDocument();
+    expect(calls).toBe(2);
+  });
+
   it('preserves the page on unchanged checks but clears local copies when the authority version changes', async () => {
     let calls = 0;
     let release: (() => void) | undefined;

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"micro-one-api/platform/security/serviceidentity"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -67,6 +68,29 @@ func envBool(key string, fallback bool) bool {
 	}
 }
 
+func accountOpsShardFromEnv() (biz.AccountScanShard, error) {
+	shard := biz.AccountScanShard{Count: 1}
+	count := strings.TrimSpace(os.Getenv("SUBSCRIPTION_ACCOUNT_OPS_SHARD_COUNT"))
+	index := strings.TrimSpace(os.Getenv("SUBSCRIPTION_ACCOUNT_OPS_SHARD_INDEX"))
+	var err error
+	if count != "" {
+		shard.Count, err = strconv.ParseInt(count, 10, 64)
+		if err != nil || shard.Count < 1 {
+			return shard, fmt.Errorf("SUBSCRIPTION_ACCOUNT_OPS_SHARD_COUNT must be a positive integer")
+		}
+	}
+	if shard.Count > 1 && index == "" {
+		return shard, fmt.Errorf("SUBSCRIPTION_ACCOUNT_OPS_SHARD_INDEX is required for multiple shards")
+	}
+	if index != "" {
+		shard.Index, err = strconv.ParseInt(index, 10, 64)
+		if err != nil {
+			return shard, fmt.Errorf("SUBSCRIPTION_ACCOUNT_OPS_SHARD_INDEX must be an integer")
+		}
+	}
+	return shard, shard.Validate()
+}
+
 func recipientsFromEnv(key string) []string {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
@@ -113,9 +137,13 @@ func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, exi
 	}
 	ctx, cancelFn := context.WithCancel(context.Background())
 	cancel = cancelFn
+	shard, shardErr := accountOpsShardFromEnv()
+	if shardErr != nil && (envBool("SUBSCRIPTION_QUOTA_RESET_ENABLED", false) || envBool("SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED", false)) {
+		applogger.Log.Error("subscription account sweepers disabled: invalid shard configuration", zap.Error(shardErr))
+	}
 
 	// 1. Quota reset sweeper (fixed-strategy daily/weekly boundary reset).
-	if envBool("SUBSCRIPTION_QUOTA_RESET_ENABLED", false) {
+	if envBool("SUBSCRIPTION_QUOTA_RESET_ENABLED", false) && shardErr == nil {
 		interval := parseDurationEnv("SUBSCRIPTION_QUOTA_RESET_INTERVAL", 5*time.Minute)
 		timeout := parseDurationEnv("SUBSCRIPTION_QUOTA_RESET_TIMEOUT", 30*time.Second)
 		sweeper := biz.NewQuotaResetSweeper(repo, repo, biz.QuotaResetSweeperConfig{
@@ -123,16 +151,17 @@ func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, exi
 			Interval: interval,
 			Timeout:  timeout,
 			PageSize: 200,
+			Shard:    shard,
 		})
 		wg.Go(func() {
 			sweeper.Run(ctx)
 		})
 		applogger.Log.Info("subscription quota reset sweeper started",
-			zap.Duration("interval", interval))
+			zap.Duration("interval", interval), zap.Int64("shard_index", shard.Index), zap.Int64("shard_count", shard.Count))
 	}
 
 	// 2. Account recovery sweeper (auto-recover temp-blocked accounts after TTL).
-	if envBool("SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED", false) {
+	if envBool("SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED", false) && shardErr == nil {
 		interval := parseDurationEnv("SUBSCRIPTION_ACCOUNT_RECOVERY_INTERVAL", 5*time.Minute)
 		timeout := parseDurationEnv("SUBSCRIPTION_ACCOUNT_RECOVERY_TIMEOUT", 30*time.Second)
 		recovery := biz.NewAccountRecoverySweeper(repo, biz.AccountRecoverySweeperConfig{
@@ -140,6 +169,7 @@ func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, exi
 			Interval: interval,
 			Timeout:  timeout,
 			PageSize: 200,
+			Shard:    shard,
 		})
 		// Wire the optional pre-recovery probe (roadmap §1.2) so auto-policy
 		// accounts are confirmed healthy upstream before re-enablement.
@@ -150,7 +180,7 @@ func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, exi
 			recovery.Run(ctx)
 		})
 		applogger.Log.Info("subscription account recovery sweeper started",
-			zap.Duration("interval", interval))
+			zap.Duration("interval", interval), zap.Int64("shard_index", shard.Index), zap.Int64("shard_count", shard.Count))
 	}
 
 	// 3. Coding-plan quota probe (Zhipu/MiniMax/Kimi upstream quota).
@@ -162,7 +192,7 @@ func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, exi
 	}
 
 	// 4. Quota alert evaluator (reuses notify-worker channel for delivery).
-	if envBool("SUBSCRIPTION_QUOTA_ALERT_ENABLED", false) {
+	if !envBool("SUBSCRIPTION_ACCOUNT_OPS_WORKER_ONLY", false) && envBool("SUBSCRIPTION_QUOTA_ALERT_ENABLED", false) {
 		endpoint := strings.TrimSpace(os.Getenv("NOTIFY_GRPC_ENDPOINT"))
 		var notifier biz.QuotaAlertNotifier
 		if endpoint != "" {

@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.34.10 发布公告](./docs/releases/release-v0.34.10.md)（支付回调校验、交付门禁与隔离长流验收） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.10)
+> 📣 **最新发布**：[v0.34.11 发布公告](./docs/releases/release-v0.34.11.md)（管理控件轮询稳定性与订阅账号治理并发保护） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.11)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.34.11
+
+v0.34.11 修复管理页面授权续验时控件消失和布局闪动，保护新封禁与新额度窗口，并增加账号分片扫描、超时续扫及可选轻量 worker。**无 API/proto 或数据库迁移，新增可选分片配置**；更新 Channel 与独立前端，启用 worker 时同时更新两个扫描容器。生产已部署等价修复和两分片，无需为正式发版重复部署；升级时先停止旧扫描任务，再按手册统一切换分片。详见 [release-v0.34.11.md](./docs/releases/release-v0.34.11.md)。
 
 ### 升级到 v0.34.10
 

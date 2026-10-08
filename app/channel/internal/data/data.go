@@ -25,6 +25,7 @@ import (
 	applogger "micro-one-api/platform/logging"
 	appcrypto "micro-one-api/platform/security/crypto"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -354,9 +355,7 @@ func (r *Repository) FindSubscriptionAccountByID(ctx context.Context, accountID 
 	if !ok {
 		return nil, biz.ErrSubscriptionAccountNotFound
 	}
-	cloned := *account
-	cloned.Models = append([]string(nil), account.Models...)
-	return &cloned, nil
+	return cloneSubscriptionAccount(account), nil
 }
 
 func (r *Repository) ListUnrestrictedChannelsByGroup(ctx context.Context, group string) ([]*biz.Channel, error) {
@@ -534,7 +533,11 @@ func (r *Repository) ListOAuthRefreshCandidates(ctx context.Context, within time
 
 func (r *Repository) CreateSubscriptionAccount(ctx context.Context, account *biz.SubscriptionAccount) error {
 	if r.db != nil {
-		return r.createSubscriptionAccountDB(ctx, account)
+		err := r.createSubscriptionAccountDB(ctx, account)
+		if err == nil {
+			account.RecoveryBaseline = new(account.RecoveryState())
+		}
+		return err
 	}
 	r.lock.Lock()
 	defer r.lock.Unlock()
@@ -542,7 +545,8 @@ func (r *Repository) CreateSubscriptionAccount(ctx context.Context, account *biz
 	if account.CredentialRevision < 1 {
 		account.CredentialRevision = 1
 	}
-	r.subAccounts[account.ID] = account
+	account.RecoveryBaseline = new(account.RecoveryState())
+	r.subAccounts[account.ID] = cloneSubscriptionAccount(account)
 	return nil
 }
 
@@ -559,15 +563,20 @@ func (r *Repository) UpdateSubscriptionAccount(ctx context.Context, account *biz
 	if previous.CredentialRevision != account.CredentialRevision {
 		return biz.ErrCredentialConflict
 	}
+	if account.RecoveryBaseline != nil && previous.RecoveryState() != *account.RecoveryBaseline {
+		return biz.ErrAccountRecoveryStateChanged
+	}
 	if previous.CredentialRefreshPending && previous.RefreshToken == account.RefreshToken {
 		return biz.ErrCredentialConflict
 	}
-	cp := *account
+	cp := *cloneSubscriptionAccount(account)
 	cp.CredentialRevision++
 	cp.CredentialRefreshPending = false
+	cp.RecoveryBaseline = new(cp.RecoveryState())
 	r.subAccounts[account.ID] = &cp
 	account.CredentialRevision = cp.CredentialRevision
 	account.CredentialRefreshPending = false
+	account.RecoveryBaseline = cp.RecoveryBaseline
 	return nil
 }
 
@@ -611,7 +620,7 @@ func (r *Repository) SetSubscriptionAccountError(ctx context.Context, accountID 
 		return biz.ErrSubscriptionAccountNotFound
 	}
 	account.LastError = message
-	account.Metadata = setSubscriptionAccountMetadataValue(account.Metadata, "last_error", message)
+	account.Metadata = subscriptionAccountErrorMetadata(account.Metadata, message)
 	account.UpdatedAt = now()
 	return nil
 }
@@ -851,9 +860,8 @@ func (r *Repository) AutoPauseAccount(ctx context.Context, accountID int64, reas
 	// the unschedulable markers once the upstream snapshot / local window
 	// resets. Only authorization errors (401/403, policy=manual) disable the
 	// account, because those never auto-recover and require an OAuth rebind.
-	policy := recoveryPolicyForReason(reason)
 	account.Metadata = stampRecoveryMetadata(account.Metadata, reason, 0, now())
-	account.Metadata = setSubscriptionAccountMetadataValue(account.Metadata, "recovery_policy", policy)
+	policy := subscriptionAccountMetadataValue(account.Metadata, "recovery_policy")
 	if policy == biz.RecoveryPolicyManual {
 		account.Status = biz.ChannelStatusDisabled
 	}
@@ -1243,6 +1251,18 @@ func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *b
 		if err := r.checkResourceTx(ctx, tx, account.ID, account.Group, true, "channel.account.update"); err != nil {
 			return err
 		}
+		if account.RecoveryBaseline != nil {
+			var current subscriptionAccountModel
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, account.ID).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return biz.ErrSubscriptionAccountNotFound
+				}
+				return err
+			}
+			if r.subscriptionAccountModelToBiz(&current).RecoveryState() != *account.RecoveryBaseline {
+				return biz.ErrAccountRecoveryStateChanged
+			}
+		}
 		if _, iam := authorization.QueryScopeFromContext(ctx, "channel.account.update"); iam {
 			owner := &Repository{db: tx, encKey: r.encKey}
 			current, err := owner.FindSubscriptionAccountByID(ctx, account.ID)
@@ -1338,6 +1358,8 @@ func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *b
 	if err == nil {
 		account.CredentialRevision++
 		account.CredentialRefreshPending = false
+		account.LastError = subscriptionAccountMetadataValue(account.Metadata, "last_error")
+		account.RecoveryBaseline = new(account.RecoveryState())
 	}
 	return err
 }
@@ -1391,7 +1413,7 @@ func (r *Repository) setSubscriptionAccountErrorDB(ctx context.Context, accountI
 			}
 			return err
 		}
-		metadata := setSubscriptionAccountMetadataValue(r.subscriptionAccountModelToBiz(&row).Metadata, "last_error", message)
+		metadata := subscriptionAccountErrorMetadata(derefString(row.Metadata), message)
 		return tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]any{
 			"metadata": new(metadata), "updated_at": now(),
 		}).Error
@@ -1399,16 +1421,21 @@ func (r *Repository) setSubscriptionAccountErrorDB(ctx context.Context, accountI
 }
 
 func (r *Repository) setTempUnschedulableDB(ctx context.Context, accountID int64, until time.Time, reason string) error {
-	account, err := r.findSubscriptionAccountByIDDB(ctx, accountID)
-	if err != nil {
-		return err
-	}
-	metadata := stampRecoveryMetadata(account.Metadata, reason, until.Unix(), now())
-	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]any{
-		"rate_limited_until": until.Unix(),
-		"metadata":           new(metadata),
-		"updated_at":         now(),
-	}).Error
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		var row subscriptionAccountModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&row, accountID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return biz.ErrSubscriptionAccountNotFound
+			}
+			return err
+		}
+		metadata := stampRecoveryMetadata(derefString(row.Metadata), reason, until.Unix(), now())
+		return tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]any{
+			"rate_limited_until": until.Unix(),
+			"metadata":           new(metadata),
+			"updated_at":         now(),
+		}).Error
+	})
 }
 
 func (r *Repository) clearTempUnschedulableDB(ctx context.Context, accountID int64) error {
@@ -1420,7 +1447,16 @@ func (r *Repository) clearTempUnschedulableDB(ctx context.Context, accountID int
 
 func (r *Repository) recordAccountQuotaSnapshotDB(ctx context.Context, snapshot *biz.AccountQuotaSnapshot) error {
 	model := accountQuotaSnapshotBizToModel(snapshot)
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		// Lock the account before its snapshot, as recovery and pause do. The
+		// snapshot and recovery check then observe one committed account state.
+		var account subscriptionAccountModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&account, snapshot.AccountID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return biz.ErrSubscriptionAccountNotFound
+			}
+			return err
+		}
 		if err := tx.Save(model).Error; err != nil {
 			return err
 		}
@@ -1440,9 +1476,9 @@ func (r *Repository) recordAccountQuotaSnapshotDB(ctx context.Context, snapshot 
 		if result.Error != nil {
 			return result.Error
 		}
-		if result.RowsAffected == 0 {
-			return biz.ErrSubscriptionAccountNotFound
-		}
+		// Existence was proved under the account lock above. MySQL reports
+		// zero changed rows for a secondary-only snapshot in the same second;
+		// that must still commit the snapshot rather than return NotFound.
 		return nil
 	})
 }
@@ -1592,25 +1628,23 @@ func (r *Repository) resetSubscriptionAccountQuotaDB(ctx context.Context, accoun
 }
 
 func (r *Repository) autoPauseAccountDB(ctx context.Context, accountID int64, reason string) error {
-	account, err := r.findSubscriptionAccountByIDDB(ctx, accountID)
-	if err != nil {
-		return err
-	}
-	// Derive the recovery policy from the reason (review H1/H2 fix). Codex
-	// snapshot exhaustion and local quota exhaustion are transient: keep the
-	// account ENABLED so the recovery sweeper can clear the unschedulable
-	// markers once the upstream snapshot / local window resets. Only
-	// authorization errors (manual policy) disable the account.
-	policy := recoveryPolicyForReason(reason)
-	metadata := stampRecoveryMetadata(account.Metadata, reason, 0, now())
-	metadata = setSubscriptionAccountMetadataValue(metadata, "recovery_policy", policy)
-	status := biz.ChannelStatusEnabled
-	abilityEnabled := true
-	if policy == biz.RecoveryPolicyManual {
-		status = biz.ChannelStatusDisabled
-		abilityEnabled = false
-	}
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		var account subscriptionAccountModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&account, accountID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return biz.ErrSubscriptionAccountNotFound
+			}
+			return err
+		}
+		metadata := stampRecoveryMetadata(derefString(account.Metadata), reason, 0, now())
+		policy := subscriptionAccountMetadataValue(metadata, "recovery_policy")
+		// A transient pause must not undo an administrative disable.
+		status := account.Status
+		abilityEnabled := status == biz.ChannelStatusEnabled
+		if policy == biz.RecoveryPolicyManual {
+			status = biz.ChannelStatusDisabled
+			abilityEnabled = false
+		}
 		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]any{
 			"status":     status,
 			"metadata":   new(metadata),
@@ -2740,7 +2774,7 @@ func (r *Repository) subscriptionAccountModelToBiz(m *subscriptionAccountModel) 
 	if m.BaseURL != nil {
 		baseURL = *m.BaseURL
 	}
-	return &biz.SubscriptionAccount{
+	account := &biz.SubscriptionAccount{
 		CredentialRefreshPending: m.CredentialRefreshPending,
 
 		ID:                     m.ID,
@@ -2786,6 +2820,8 @@ func (r *Repository) subscriptionAccountModelToBiz(m *subscriptionAccountModel) 
 		ModelMapping:           m.ModelMapping,
 		LastError:              subscriptionAccountMetadataValue(derefString(m.Metadata), "last_error"),
 	}
+	account.RecoveryBaseline = new(account.RecoveryState())
+	return account
 }
 
 func (r *Repository) subscriptionAccountBizToModel(a *biz.SubscriptionAccount) (*subscriptionAccountModel, error) {
@@ -3072,6 +3108,16 @@ func subscriptionAccountMetadataValue(raw, key string) string {
 	return value
 }
 
+// A non-empty error is a new incident even if the text is unchanged.
+func subscriptionAccountErrorMetadata(raw, message string) string {
+	if message != "" {
+		// This RPC is also the relay's quota-exhaustion path. Persist the
+		// policy together with the incident so the sweeper does not guess.
+		return stampRecoveryMetadata(raw, message, 0, now())
+	}
+	return setSubscriptionAccountMetadataValue(raw, "last_error", "")
+}
+
 func setSubscriptionAccountMetadataValue(raw, key, value string) string {
 	values := subscriptionAccountMetadata(raw)
 	if values == nil {
@@ -3208,6 +3254,9 @@ func (r *Repository) RecordQuotaResetAndReset(ctx context.Context, run *biz.Subs
 	if !ok {
 		return biz.ErrSubscriptionAccountNotFound
 	}
+	if !run.MatchesAccount(account) {
+		return biz.ErrQuotaResetRunStale
+	}
 	stored := account.QuotaDailyWindowStart
 	if run.Scope == "weekly" {
 		stored = account.QuotaWeeklyWindowStart
@@ -3254,6 +3303,9 @@ func (r *Repository) recordQuotaResetAndResetDB(ctx context.Context, run *biz.Su
 				return biz.ErrSubscriptionAccountNotFound
 			}
 			return err
+		}
+		if !run.MatchesAccount(r.subscriptionAccountModelToBiz(&account)) {
+			return biz.ErrQuotaResetRunStale
 		}
 		model := subscriptionAccountQuotaResetRunModel{
 			SubscriptionAccountID: run.AccountID,
@@ -3317,77 +3369,8 @@ func (r *Repository) ClearRecoveryMetadata(ctx context.Context, accountID int64)
 	return nil
 }
 
-func (r *Repository) ClearRecoveryMarkers(ctx context.Context, accountID int64, clearTemp, clearError, clearMeta bool) error {
-	if accountID <= 0 {
-		return biz.ErrSubscriptionAccountNotFound
-	}
-	if r.db != nil {
-		return r.clearRecoveryMarkersDB(ctx, accountID, clearTemp, clearError, clearMeta)
-	}
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	account, ok := r.subAccounts[accountID]
-	if !ok {
-		return biz.ErrSubscriptionAccountNotFound
-	}
-	if clearTemp {
-		account.RateLimitedUntil = 0
-	}
-	if clearError {
-		account.LastError = ""
-		account.Metadata = setSubscriptionAccountMetadataValue(account.Metadata, "last_error", "")
-	}
-	if clearMeta {
-		account.Metadata = clearSubscriptionAccountRecoveryMetadata(account.Metadata)
-	}
-	account.UpdatedAt = now()
-	return nil
-}
-
-func (r *Repository) clearRecoveryMarkersDB(ctx context.Context, accountID int64, clearTemp, clearError, clearMeta bool) error {
-	return authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
-		if err := r.checkResourceTx(ctx, tx, accountID, "", true, "channel.account.recovery.clear"); err != nil {
-			return err
-		}
-		// Re-read metadata under the same lock as the write, so concurrent
-		// credential or worker updates are neither overwritten nor reused.
-		owner := &Repository{db: tx, encKey: r.encKey}
-		account, err := owner.findSubscriptionAccountByIDDB(ctx, accountID)
-		if err != nil {
-			return err
-		}
-		metadata := account.Metadata
-		updates := map[string]any{"updated_at": now()}
-		if clearTemp {
-			updates["rate_limited_until"] = 0
-		}
-		if clearError {
-			metadata = setSubscriptionAccountMetadataValue(metadata, "last_error", "")
-		}
-		if clearMeta {
-			metadata = clearSubscriptionAccountRecoveryMetadata(metadata)
-		}
-		updates["metadata"] = new(metadata)
-		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(updates).Error; err != nil {
-			return err
-		}
-		if clearTemp {
-			return tx.Model(&subscriptionAccountAbilityModel{}).Where("account_id = ?", accountID).Update("enabled", xdb.BoolInt(true)).Error
-		}
-		return nil
-	})
-}
-
 func (r *Repository) clearRecoveryMetadataDB(ctx context.Context, accountID int64) error {
-	account, err := r.findSubscriptionAccountByIDDB(ctx, accountID)
-	if err != nil {
-		return err
-	}
-	metadata := clearSubscriptionAccountRecoveryMetadata(account.Metadata)
-	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]any{
-		"metadata":   new(metadata),
-		"updated_at": now(),
-	}).Error
+	return r.updateSubscriptionAccountMetadataDB(ctx, accountID, clearSubscriptionAccountRecoveryMetadata)
 }
 
 // clearSubscriptionAccountRecoveryMetadata removes the recovery-policy and
@@ -3399,6 +3382,7 @@ func clearSubscriptionAccountRecoveryMetadata(raw string) string {
 		return raw
 	}
 	delete(values, "recovery_policy")
+	delete(values, "recovery_revision")
 	delete(values, "unschedulable_reason")
 	delete(values, "unschedulable_since")
 	delete(values, "unschedulable_until")
@@ -3438,11 +3422,19 @@ func stampRecoveryMetadata(raw, reason string, untilUnix, nowUnix int64) string 
 		values = make(map[string]any)
 	}
 	values["last_error"] = reason
-	values["unschedulable_reason"] = reason
-	values["unschedulable_since"] = nowUnix
-	values["unschedulable_until"] = untilUnix
 	policy := recoveryPolicyForReason(reason)
+	if values["recovery_policy"] == biz.RecoveryPolicyManual && policy != biz.RecoveryPolicyManual {
+		// A later 429/quota event is not manual confirmation that the prior
+		// authorization failure was resolved. Retain its blocking cause.
+		policy = biz.RecoveryPolicyManual
+	} else {
+		values["unschedulable_reason"] = reason
+		values["unschedulable_since"] = nowUnix
+		values["unschedulable_until"] = untilUnix
+	}
 	values["recovery_policy"] = policy
+	// Each incident has its own version, even for identical same-second failures.
+	values["recovery_revision"] = uuid.NewString()
 	if policy == biz.RecoveryPolicyAuto && untilUnix > 0 {
 		values["expected_recovery_at"] = untilUnix
 	} else {
@@ -3462,6 +3454,8 @@ func stampRecoveryMetadata(raw, reason string, untilUnix, nowUnix int64) string 
 func recoveryPolicyForReason(reason string) string {
 	lower := strings.ToLower(reason)
 	switch {
+	case strings.Contains(lower, "401"), strings.Contains(lower, "403"), strings.Contains(lower, "unauthorized"), strings.Contains(lower, "forbidden"):
+		return biz.RecoveryPolicyManual
 	// Codex snapshot exhaustion: a transient upstream quota condition that
 	// clears when the upstream snapshot resets. Must NOT be treated as manual
 	// (the review H1/H2 found codex-exhausted accounts were permanently
@@ -3472,8 +3466,6 @@ func recoveryPolicyForReason(reason string) string {
 	// Local quota window exhaustion: clears when the local window resets.
 	case strings.Contains(lower, "quota"):
 		return biz.RecoveryPolicyQuota
-	case strings.Contains(lower, "401"), strings.Contains(lower, "403"), strings.Contains(lower, "unauthorized"), strings.Contains(lower, "forbidden"):
-		return biz.RecoveryPolicyManual
 	case strings.Contains(lower, "429"), strings.Contains(lower, "rate limit"), strings.Contains(lower, "529"), strings.Contains(lower, "overloaded"), strings.Contains(lower, "5xx"), strings.Contains(lower, "500"), strings.Contains(lower, "502"), strings.Contains(lower, "503"), strings.Contains(lower, "504"):
 		return biz.RecoveryPolicyAuto
 	default:
@@ -3503,13 +3495,7 @@ func (r *Repository) StampQuotaAlertMetadata(ctx context.Context, accountID int6
 }
 
 func (r *Repository) stampQuotaAlertMetadataDB(ctx context.Context, accountID int64, kind string, alertAt int64) error {
-	account, err := r.findSubscriptionAccountByIDDB(ctx, accountID)
-	if err != nil {
-		return err
-	}
-	metadata := setSubscriptionAccountMetadataValue(setSubscriptionAccountMetadataValue(account.Metadata, "last_quota_alert_kind", kind), "last_quota_alert_at", strconv.FormatInt(alertAt, 10))
-	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]any{
-		"metadata":   new(metadata),
-		"updated_at": now(),
-	}).Error
+	return r.updateSubscriptionAccountMetadataDB(ctx, accountID, func(raw string) string {
+		return setSubscriptionAccountMetadataValue(setSubscriptionAccountMetadataValue(raw, "last_quota_alert_kind", kind), "last_quota_alert_at", strconv.FormatInt(alertAt, 10))
+	})
 }
