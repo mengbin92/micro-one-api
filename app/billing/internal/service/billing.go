@@ -1191,7 +1191,7 @@ func (s *BillingService) HandleAlipayNotify(w http.ResponseWriter, r *http.Reque
 		writeNotifyResponse(w, false)
 		return
 	}
-	order, err := s.paymentUc.MarkOrderPaid(r.Context(), notify.TradeNo, notify.ProviderTradeNo)
+	order, err := s.paymentUc.AcceptVerifiedNotify(r.Context(), notify)
 	if err != nil {
 		writeNotifyResponse(w, false)
 		return
@@ -1214,24 +1214,12 @@ func (s *BillingService) crossCheckAlipayNotify(ctx context.Context, notify *biz
 	}
 	// app_id cross-check: skip when the deployment has not configured a
 	// merchant app id (preserves legacy behaviour for unconfigured installs).
-	if s.expectedAlipayAppID != "" && notify.AppID != "" &&
+	if s.expectedAlipayAppID != "" &&
 		!strings.EqualFold(s.expectedAlipayAppID, notify.AppID) {
 		return fmt.Sprintf("alipay app_id mismatch: notify=%q configured=%q", notify.AppID, s.expectedAlipayAppID)
 	}
-	// amount cross-check: skip when the notify did not carry a total_amount
-	// (some notify flavours omit it); otherwise it must match the local
-	// order's MoneyCents exactly.
-	if notify.TotalAmount > 0 {
-		order, err := s.paymentUc.GetOrderByTradeNo(ctx, notify.TradeNo)
-		if err != nil || order == nil {
-			// Defer to MarkOrderPaid's own not-found handling: we only
-			// reject when we have a local order to compare against.
-			return ""
-		}
-		if order.MoneyCents != notify.TotalAmount {
-			return fmt.Sprintf("alipay total_amount mismatch: notify=%d order=%d", notify.TotalAmount, order.MoneyCents)
-		}
-	}
+	// The usecase checks amount and channel against the local order without
+	// requiring a user session or querying the provider from this callback.
 	return ""
 }
 
