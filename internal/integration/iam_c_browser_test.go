@@ -30,6 +30,7 @@ import (
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/authz"
 	dbtest "micro-one-api/platform/database/testutil"
+	appcrypto "micro-one-api/platform/security/crypto"
 )
 
 // Opt-in browser test, with actual HTTP -> gRPC -> biz -> SQL. No production
@@ -146,11 +147,13 @@ func TestIAMCRealBrowserMatrix(t *testing.T) {
 	}{{11, "east"}, {12, "west"}} {
 		require.NoError(t, db.Table("routing_groups").Create(map[string]any{"id": group.id, "key": group.key, "display_name": group.key, "description": "", "status": "enabled", "access_mode": "restricted", "model_access_mode": "all", "revision": 1, "created_at": time.Now().Unix(), "updated_at": time.Now().Unix()}).Error)
 	}
+	channelKey, err := appcrypto.Encrypt("c-private-key", []byte("0123456789abcdef0123456789abcdef"))
+	require.NoError(t, err)
 	for _, ch := range []struct {
 		id    int64
 		group string
 	}{{7, "east"}, {8, "west"}, {9, "east,west"}} {
-		require.NoError(t, db.Table("channels").Create(map[string]any{"id": ch.id, "type": 1, "name": fmt.Sprintf("channel-%d", ch.id), "key": "c-private-key", "group": ch.group, "models": "gpt-test", "status": 1}).Error)
+		require.NoError(t, db.Table("channels").Create(map[string]any{"id": ch.id, "type": 1, "name": fmt.Sprintf("channel-%d", ch.id), "key": channelKey, "group": ch.group, "models": "gpt-test", "status": 1}).Error)
 		for _, key := range strings.Split(ch.group, ",") {
 			id := 11
 			if key == "west" {
@@ -170,6 +173,13 @@ func TestIAMCRealBrowserMatrix(t *testing.T) {
 		}
 	}))
 	t.Cleanup(httpServer.Close)
+	request, err := http.NewRequest(http.MethodGet, httpServer.URL+"/api/channel?page=1&page_size=20", nil)
+	require.NoError(t, err)
+	request.Header.Set("Authorization", "Bearer "+tokens["alice"])
+	response, err := http.DefaultClient.Do(request)
+	require.NoError(t, err)
+	response.Body.Close()
+	require.Equal(t, http.StatusOK, response.StatusCode, "owner-backed channel fixture must be readable before browser acceptance")
 	manifest, err := jsonx.Marshal(map[string]any{"users": users, "tokens": tokens})
 	require.NoError(t, err)
 	manifestPath := filepath.Join(t.TempDir(), "browser-fixture.json")
