@@ -58,14 +58,26 @@ func TestOwnerReasonTransportRejectsAmbiguity(t *testing.T) {
 	handler(w, r)
 	require.Equal(t, 401, w.Code)
 	interceptor := authz.OperatorUnaryInterceptor()
-	next := func(ctx context.Context, _ any) (any, error) {
-		require.Equal(t, "reviewed retention", authorization.WriteReason(ctx))
-		return nil, nil
+	for _, input := range []struct{ key, reason string }{
+		{"x-authorization-reason", "reviewed retention"},
+		{"x-authorization-reason-bin", "上游缺货"},
+	} {
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-operator-authorization", "Bearer user-session", input.key, input.reason))
+		_, err := interceptor(ctx, nil, &grpc.UnaryServerInfo{}, func(ctx context.Context, _ any) (any, error) {
+			require.Equal(t, input.reason, authorization.WriteReason(ctx))
+			return nil, nil
+		})
+		require.NoError(t, err)
 	}
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-operator-authorization", "Bearer user-session", "x-authorization-reason", "reviewed retention"))
-	_, err := interceptor(ctx, nil, &grpc.UnaryServerInfo{}, next)
-	require.NoError(t, err)
-	ctx = metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-operator-authorization", "Bearer user-session", "x-authorization-reason", "reviewed retention", "x-authorization-reason", "conflicting reason"))
-	_, err = interceptor(ctx, nil, &grpc.UnaryServerInfo{}, next)
-	require.Equal(t, codes.Unauthenticated, status.Code(err))
+	for _, md := range []metadata.MD{
+		metadata.Pairs("x-authorization-reason", "first", "x-authorization-reason", "second"),
+		metadata.Pairs("x-authorization-reason-bin", "first", "x-authorization-reason-bin", "second"),
+		metadata.Pairs("x-authorization-reason", "first", "x-authorization-reason-bin", "second"),
+	} {
+		called := false
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+		_, err := interceptor(ctx, nil, &grpc.UnaryServerInfo{}, func(context.Context, any) (any, error) { called = true; return nil, nil })
+		require.Equal(t, codes.Unauthenticated, status.Code(err))
+		require.False(t, called)
+	}
 }

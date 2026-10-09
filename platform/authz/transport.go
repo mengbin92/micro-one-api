@@ -24,7 +24,7 @@ func OperatorUnaryInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, next grpc.UnaryHandler) (any, error) {
 		md, _ := metadata.FromIncomingContext(ctx)
 		values := md.Get("x-operator-authorization")
-		reasons := md.Get("x-authorization-reason")
+		reasons := slices.Concat(md.Get("x-authorization-reason-bin"), md.Get("x-authorization-reason"))
 		if len(values) > 1 || len(reasons) > 1 {
 			return nil, status.Error(codes.Unauthenticated, "ambiguous operator credential")
 		}

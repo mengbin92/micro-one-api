@@ -210,7 +210,7 @@ func iamOwnerRouteReady(path, method string) bool {
 			return method == http.MethodPut
 		}
 		if len(parts) == 2 && positivePathID(parts[1]) && prefix == "/api/channel/" && (parts[0] == "enable" || parts[0] == "disable") {
-			return oneOfMethod(method, http.MethodGet, http.MethodPut)
+			return oneOfMethod(method, http.MethodGet, http.MethodPost)
 		}
 		if len(parts) == 2 && positivePathID(parts[1]) && prefix == "/api/channel/" && (parts[0] == "test" || parts[0] == "update_balance") {
 			return method == http.MethodGet

@@ -17,5 +17,6 @@ func ReferenceContext(ctx context.Context) context.Context {
 	md = md.Copy()
 	md.Delete("x-operator-authorization")
 	md.Delete("x-authorization-reason")
+	md.Delete("x-authorization-reason-bin")
 	return metadata.NewOutgoingContext(authorization.WithCredential(ctx, ""), md)
 }

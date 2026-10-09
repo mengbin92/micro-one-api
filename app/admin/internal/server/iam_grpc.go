@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -19,7 +20,7 @@ func IAMOperatorUnaryInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		md, _ := metadata.FromIncomingContext(ctx)
 		values := md.Get("x-operator-authorization")
-		reasons := md.Get("x-authorization-reason")
+		reasons := slices.Concat(md.Get("x-authorization-reason-bin"), md.Get("x-authorization-reason"))
 		if len(reasons) > 1 {
 			return nil, status.Error(codes.InvalidArgument, "ambiguous write reason")
 		}
