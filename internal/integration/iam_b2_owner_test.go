@@ -19,7 +19,9 @@ import (
 	dbtest "micro-one-api/platform/database/testutil"
 	appcrypto "micro-one-api/platform/security/crypto"
 	"net"
+	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -182,6 +184,45 @@ func TestIAMB2RealAdminHTTPRoleMatrix(t *testing.T) {
 	w = call("GET", "/api/admin/channels/101/models", "", "audit")
 	require.Equal(t, 200, w.Code, w.Body.String())
 	require.NotContains(t, w.Body.String(), "hidden-upstream", "out-of-scope mapping rows must be absent")
+	t.Run("Chinese channel action reason", func(t *testing.T) {
+		t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, "/v1/models", r.URL.Path)
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer upstream.Close()
+		require.NoError(t, db.Table("channels").Where("id = ?", 100).Update("base_url", upstream.URL+"/v1").Error)
+		for _, action := range []struct {
+			method, path string
+			status       int32
+		}{
+			{http.MethodGet, "/api/channel/test/100", 1},
+			{http.MethodPost, "/api/channel/disable/100", 2},
+			{http.MethodPost, "/api/channel/enable/100", 1},
+		} {
+			var revision int64
+			require.NoError(t, db.Table("channels").Select("authorization_revision").Where("id = ?", 100).Scan(&revision).Error)
+			path := fmt.Sprintf("%s?reason=%s&expected_revision=%d", action.path, url.QueryEscape("上游缺货"), revision)
+			req := httptest.NewRequest(action.method, path, nil)
+			req.Header.Set("Authorization", "Bearer "+tokens["root"])
+			req.Header.Set("x-authorization-reason", "上游缺货")
+			denied := req.Clone(context.Background())
+			denied.Header.Set("Authorization", "Bearer "+tokens["audit"])
+			w := httptest.NewRecorder()
+			admin.ServeHTTP(w, denied)
+			require.Equal(t, http.StatusForbidden, w.Code, "read-only operator must not execute channel actions")
+			w = httptest.NewRecorder()
+			admin.ServeHTTP(w, req)
+			require.Equal(t, http.StatusOK, w.Code, action.path+": "+w.Body.String())
+			require.Contains(t, w.Body.String(), `"success":true`)
+			var status int32
+			require.NoError(t, db.Table("channels").Select("status").Where("id = ?", 100).Scan(&status).Error)
+			require.Equal(t, action.status, status)
+		}
+		var audits int64
+		require.NoError(t, db.Table("resource_write_audits").Where("reason = ? AND result = ?", "上游缺货", "success").Count(&audits).Error)
+		require.EqualValues(t, 3, audits, "the owner must retain the original Chinese audit reason")
+	})
 	w = call("GET", "/api/v1/admin/routing-groups/10", "", "audit")
 	require.Equal(t, 200, w.Code, w.Body.String())
 	require.Contains(t, w.Body.String(), `"members_visible":false`)

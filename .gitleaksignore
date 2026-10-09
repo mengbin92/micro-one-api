@@ -17,3 +17,10 @@ c8958d1bd82644d63cad0196da0f552c435d378f:internal/integration/iam_b2_owner_test.
 c8958d1bd82644d63cad0196da0f552c435d378f:internal/integration/iam_b3_owner_test.go:generic-api-key:32
 c8958d1bd82644d63cad0196da0f552c435d378f:internal/integration/iam_b4_owner_test.go:generic-api-key:35
 a133642efe4e238250f4c5d82865b823de984587:internal/integration/iam_resource_test.go:generic-api-key:29
+# Historical deployment manifest: these four values are SHA256 file checksums,
+# not credentials. The current manifest uses explicit path/sha256 records;
+# exact fingerprints preserve scanning of future changes and other findings.
+5f8b852837bf7a9774b9b49ddb9aaee02746f029:docs/runbooks/evidence/console-management-controls-deploy-2026-10-08.json:generic-api-key:67
+5f8b852837bf7a9774b9b49ddb9aaee02746f029:docs/runbooks/evidence/console-management-controls-deploy-2026-10-08.json:generic-api-key:73
+5f8b852837bf7a9774b9b49ddb9aaee02746f029:docs/runbooks/evidence/console-management-controls-deploy-2026-10-08.json:generic-api-key:80
+5f8b852837bf7a9774b9b49ddb9aaee02746f029:docs/runbooks/evidence/console-management-controls-deploy-2026-10-08.json:generic-api-key:81
