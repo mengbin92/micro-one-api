@@ -45,7 +45,7 @@ jobs:
           ref: ${{ inputs.ref }}
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.27'
+          go-version: '1.27.2'
           cache: true
       - uses: actions/setup-node@v5
         with:
@@ -115,7 +115,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.27'
+          go-version: '1.27.2'
           cache: true
 
       # api/**/*.pb.go and internal/conf/*.pb.go are git-ignored and generated

@@ -47,6 +47,7 @@ func NewAuthCache(
 }
 
 func authCacheKey(token string) string {
+	// Hash high-entropy API tokens for cache keys; user passwords are bcrypt-hashed by identity.
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(token)))
 }
 
