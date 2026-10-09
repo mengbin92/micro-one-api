@@ -105,6 +105,10 @@ func NewMultiLevelCache[T any](
 
 // Get retrieves from L1 → L2 → source, populating upstream caches.
 func (c *MultiLevelCache[T]) Get(ctx context.Context, key string) (*T, error) {
+	return c.get(ctx, key, c.loader)
+}
+
+func (c *MultiLevelCache[T]) get(ctx context.Context, key string, loader CacheLoader[T]) (*T, error) {
 	start := time.Now()
 	cacheKey := c.prefix + key
 
@@ -145,7 +149,7 @@ func (c *MultiLevelCache[T]) Get(ctx context.Context, key string) (*T, error) {
 
 	result, err, _ := c.sf.Do(key, func() (any, error) {
 		// Load from source
-		val, err := c.loader(ctx, key)
+		val, err := loader(ctx, key)
 		if err != nil {
 			return nil, err
 		}

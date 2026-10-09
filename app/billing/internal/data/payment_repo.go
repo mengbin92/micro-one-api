@@ -167,9 +167,14 @@ func (r *paymentRepo) ListOrders(ctx context.Context, req biz.ListPaymentOrdersR
 		return nil, 0, fmt.Errorf("failed to count payment orders: %w", err)
 	}
 
+	orderBy := "id DESC"
+	if req.Reconcile {
+		query = query.Where("id > ?", req.AfterID)
+		orderBy = "id ASC"
+	}
 	var rows []PaymentOrder
 	offset := (page - 1) * pageSize
-	if err := query.Offset(int(offset)).Limit(int(pageSize)).Order("id DESC").Find(&rows).Error; err != nil {
+	if err := query.Offset(int(offset)).Limit(int(pageSize)).Order(orderBy).Find(&rows).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to list payment orders: %w", err)
 	}
 	orders := make([]*biz.PaymentOrder, len(rows))

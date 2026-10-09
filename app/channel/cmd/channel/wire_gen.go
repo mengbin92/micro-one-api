@@ -111,7 +111,7 @@ func newApp(
 	modelUC.SetCacheInvalidator(uc)
 	svc.SyncExistingChannelModels(context.Background())
 	grpcSrv := server.NewGRPCServer(cfg.Server.Grpc.Addr, svc)
-	httpSrv := server.NewHTTPServer(cfg.Server.Http.Addr, svc.Usecase())
+	httpSrv := server.NewHTTPServerWithOAuthSessions(cfg.Server.Http.Addr, svc.Usecase(), data.NewOAuthSessionRepo(repo))
 
 	var modelProbe *service.CodexModelProbeService
 	if probe := service.NewCodexModelProbeService(repo); probe != nil {

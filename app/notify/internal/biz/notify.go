@@ -84,6 +84,14 @@ func NewNotifyUsecase(repo NotifyRepo) *NotifyUsecase {
 }
 
 func (uc *NotifyUsecase) CreateNotification(ctx context.Context, notifyType, recipient, subject, content string) (*Notification, error) {
+	if notifyType == "" {
+		return nil, ErrInvalidNotification
+	}
+	switch notifyType {
+	case NotifyTypeWebhook, NotifyTypeEvent, NotifyTypeEmail, NotifyTypeWeCom, NotifyTypeDingTalk, NotifyTypeFeishu, NotifyTypeSlack:
+	default:
+		return nil, ErrUnsupportedNotificationType
+	}
 	if err := uc.authorizeSystem(ctx, "/api.notify.v1.NotifyService/CreateNotification", "notify.notifications", "notify.notification.read"); err != nil {
 		return nil, err
 	}

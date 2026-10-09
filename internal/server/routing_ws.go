@@ -65,7 +65,24 @@ func (t *routingWSTurns) take() *billingv1.ReserveQuotaResponse {
 
 func (s *HTTPServer) newRoutingWSTurns(token, clientModel, resolvedModel string, plan *relaybiz.RelayPlan, channel *relaybiz.Channel, first *billingv1.ReserveQuotaResponse) *routingWSTurns {
 	if plan.Auth.RoutingContext == nil {
-		return nil
+		return &routingWSTurns{active: first, admit: func(ctx context.Context, payload []byte) (*billingv1.ReserveQuotaResponse, []byte, error) {
+			requested := extractOpenAIWSClientModel(payload)
+			if requested != "" && requested != clientModel && requested != resolvedModel {
+				return nil, nil, fmt.Errorf("model changed; open a new websocket")
+			}
+			fresh, err := s.getRawAuthSnapshot(ctx, token)
+			if err != nil {
+				return nil, nil, err
+			}
+			if !fresh.UserEnabled || !fresh.TokenEnabled || fresh.UserId != plan.Auth.UserID || fresh.TokenId != plan.Auth.TokenID || fresh.Group != plan.Auth.Group || !authAllowsModel(fresh.AllowedModels, clientModel) {
+				return nil, nil, fmt.Errorf("authorization changed; open a new websocket")
+			}
+			rewritten := rewriteOpenAIWSModel(payload, clientModel, resolvedModel)
+			requestID := generateRequestID()
+			ctx = channelAttemptContext(ctx, requestID, 1, channel, resolvedModel)
+			reservation, err := s.reserveQuota(ctx, strconv.FormatInt(fresh.UserId, 10), requestID, estimateRawTokens(rewritten), s.BillingModelName(clientModel, resolvedModel, resolvedModel), strconv.FormatInt(channel.ID, 10), routingSubscriptionAccountID(channel))
+			return reservation, rewritten, err
+		}}
 	}
 	return &routingWSTurns{active: first, admit: func(ctx context.Context, payload []byte) (*billingv1.ReserveQuotaResponse, []byte, error) {
 		requested := extractOpenAIWSClientModel(payload)

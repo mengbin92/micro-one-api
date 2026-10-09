@@ -48,6 +48,7 @@ type Orchestrator interface {
 
 // RelayRequest is the normalized input for orchestration.
 type RelayRequest struct {
+	ClientIP string
 	// Token is the Bearer token from Authorization header.
 	Token string
 	// Model is the model name requested by the client.
@@ -260,7 +261,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 
 	// Stage 1-3: Planning (auth, model mapping, channel selection)
 	// This reuses the existing RelayUsecase.Plan() logic
-	plan, err := o.planner.Plan(ctx, relaybiz.RelayRequest{Token: req.Token, Model: req.Model, RequestID: req.RequestID, SessionHash: req.SessionHash})
+	plan, err := o.planner.Plan(ctx, relaybiz.RelayRequest{Token: req.Token, Model: req.Model, RequestID: req.RequestID, SessionHash: req.SessionHash, ClientIP: req.ClientIP})
 	if err != nil {
 		result.Error = err
 		result.StatusCode = statusCodeFromError(err)
@@ -333,12 +334,13 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		executeStreamAttempt := func(attemptCtx context.Context, channel *relaybiz.Channel) error {
 			attemptPlan, planErr := relayPlanForAttempt(attemptCtx, o.relayUsecase, plan, channel, req.Model)
 			if planErr != nil {
-				lastFailureStatus = http.StatusServiceUnavailable
+				lastFailureStatus = statusCodeFromError(planErr)
 				return planErr
 			}
 			attemptBody := rewriteRequestModel(rawBody, attemptPlan.ResolvedModel)
 			attemptRequest := relaybiz.ExecutorRequest{
 				Token:         req.Token,
+				ClientIP:      req.ClientIP,
 				Model:         req.Model,
 				Endpoint:      string(req.Endpoint),
 				RawQuery:      req.RawQuery,
@@ -359,7 +361,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			if admission, ok := o.hooks.(relayAttemptAdmissionHook); ok {
 				releaseAdmission, err = admission.AcquireRelayAttempt(attemptCtx, attemptPlan, attemptRequest)
 				if err != nil {
-					lastFailureStatus = http.StatusServiceUnavailable
+					lastFailureStatus = statusCodeFromError(err)
 					return err
 				}
 			}
@@ -510,12 +512,13 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 	executeAttempt := func(attemptCtx context.Context, channel *relaybiz.Channel) error {
 		attemptPlan, planErr := relayPlanForAttempt(attemptCtx, o.relayUsecase, plan, channel, req.Model)
 		if planErr != nil {
-			lastFailureStatus = http.StatusServiceUnavailable
+			lastFailureStatus = statusCodeFromError(planErr)
 			return planErr
 		}
 		attemptBody := rewriteRequestModel(rawBody, attemptPlan.ResolvedModel)
 		attemptReq := relaybiz.ExecutorRequest{
 			Token:         req.Token,
+			ClientIP:      req.ClientIP,
 			Model:         req.Model,
 			Endpoint:      string(req.Endpoint),
 			RawQuery:      req.RawQuery,
@@ -540,7 +543,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		if admission, ok := o.hooks.(relayAttemptAdmissionHook); ok {
 			releaseAdmission, err = admission.AcquireRelayAttempt(attemptCtx, attemptPlan, attemptReq)
 			if err != nil {
-				lastFailureStatus = http.StatusServiceUnavailable
+				lastFailureStatus = statusCodeFromError(err)
 				return err
 			}
 		}
@@ -734,6 +737,9 @@ func rewriteRequestModel(body []byte, model string) []byte {
 }
 
 func mapUpstreamOrInternalStatus(err error) int {
+	if code := status.Code(err); code != codes.Unknown && code != codes.OK {
+		return statusCodeFromError(err)
+	}
 	if relaybiz.IsProtocolCapabilityMismatch(err) {
 		return http.StatusNotImplemented
 	}

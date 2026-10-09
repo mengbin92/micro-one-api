@@ -17,6 +17,7 @@ import (
 	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/authz"
 	dbtest "micro-one-api/platform/database/testutil"
+	appcrypto "micro-one-api/platform/security/crypto"
 	"net"
 	"net/http/httptest"
 	"strings"
@@ -120,11 +121,13 @@ func TestIAMB2RealAdminHTTPRoleMatrix(t *testing.T) {
 	}{{10, "ops"}, {11, "hidden"}} {
 		require.NoError(t, db.Table("routing_groups").Create(map[string]any{"id": g.id, "key": g.key, "display_name": g.key, "description": "", "status": "enabled", "access_mode": "restricted", "model_access_mode": "all", "revision": 1, "created_at": time.Now().Unix(), "updated_at": time.Now().Unix()}).Error)
 	}
+	channelKey, err := appcrypto.Encrypt("private-channel-key", []byte("0123456789abcdef0123456789abcdef"))
+	require.NoError(t, err)
 	for _, ch := range []struct {
 		id    int64
 		group string
 	}{{100, "ops"}, {101, "hidden"}, {102, "ops,hidden"}} {
-		require.NoError(t, db.Table("channels").Create(map[string]any{"id": ch.id, "type": 1, "name": fmt.Sprint("channel-", ch.id), "key": "private-channel-key", "group": ch.group, "models": "gpt-test", "status": 1}).Error)
+		require.NoError(t, db.Table("channels").Create(map[string]any{"id": ch.id, "type": 1, "name": fmt.Sprint("channel-", ch.id), "key": channelKey, "group": ch.group, "models": "gpt-test", "status": 1}).Error)
 		for _, group := range strings.Split(ch.group, ",") {
 			id := 10
 			if group == "hidden" {

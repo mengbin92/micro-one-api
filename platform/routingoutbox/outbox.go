@@ -43,7 +43,12 @@ func Enqueue(tx *gorm.DB, owner, kind string, id, revision int64) error {
 
 // Dispatch acknowledges only successful durable publishes. A crash after publish
 // may cause duplicates; consumers invalidate rather than installing event state.
-func Dispatch(ctx context.Context, db *gorm.DB, owner string, publish func(context.Context, string, any) error) error {
+func Dispatch(ctx context.Context, db *gorm.DB, owner string, publish func(context.Context, string, any) error) (err error) {
+	defer func() {
+		if value := recover(); value != nil {
+			err = failure(owner, "panic", "", fmt.Errorf("dispatcher panic: %v", value))
+		}
+	}()
 	// Initialize zero-valued series even before the first publish/failure.
 	metrics.RoutingOutboxLastSuccess.WithLabelValues(owner)
 	for _, op := range []string{"scan", "load", "publish", "acknowledge", "gc"} {

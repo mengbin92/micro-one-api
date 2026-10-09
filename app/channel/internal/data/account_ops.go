@@ -47,7 +47,11 @@ func (r *Repository) ScanSubscriptionAccounts(ctx context.Context, scan biz.Acco
 		}
 		accounts := make([]*biz.SubscriptionAccount, len(rows))
 		for i := range rows {
-			accounts[i] = r.subscriptionAccountModelToBiz(&rows[i])
+			account, err := r.subscriptionAccountModelToBiz(&rows[i])
+			if err != nil {
+				return nil, err
+			}
+			accounts[i] = account
 		}
 		if err := r.attachAccountQuotaSnapshots(ctx, accounts); err != nil {
 			return nil, err
@@ -142,7 +146,10 @@ func (r *Repository) clearRecoveryMarkersDB(ctx context.Context, expected biz.Ac
 			}
 			return err
 		}
-		a := r.subscriptionAccountModelToBiz(&row)
+		a, err := r.subscriptionAccountModelToBiz(&row)
+		if err != nil {
+			return err
+		}
 		if a.RecoveryState() != expected {
 			return nil
 		}

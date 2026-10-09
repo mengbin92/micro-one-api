@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"errors"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/stretchr/testify/require"
 	"strconv"
 	"sync"
 	"testing"
@@ -327,4 +329,18 @@ func TestRedisAccountConcurrencyLimiter_MultiReplicaFailOpenExceedsCap(t *testin
 	if _, ok := replicaB.TryAcquire(context.Background(), 42, 1); ok {
 		t.Fatal("replica B must observe the shared Redis cap after recovery")
 	}
+}
+
+func TestConcurrencyRefreshCannotResurrectReleasedSlot(t *testing.T) {
+	srv := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: srv.Addr()})
+	defer rdb.Close()
+	ctx := context.Background()
+	key, member := "slots", "member"
+	require.NoError(t, rdb.ZAdd(ctx, key, redis.Z{Score: 100, Member: member}).Err())
+	require.NoError(t, rdb.ZRem(ctx, key, member).Err())
+	n, err := rdb.Eval(ctx, redisRefreshConcurrencyScript, []string{key}, member, 200, 10000).Int64()
+	require.NoError(t, err)
+	require.Zero(t, n)
+	require.Zero(t, rdb.ZCard(ctx, key).Val())
 }

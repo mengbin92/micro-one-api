@@ -1,6 +1,7 @@
 package xhttp
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"net/netip"
@@ -10,6 +11,17 @@ import (
 )
 
 const trustedProxyCIDRsEnv = "TRUSTED_PROXY_CIDRS"
+
+type clientIPKey struct{}
+
+func WithClientIP(ctx context.Context, ip string) context.Context {
+	return context.WithValue(ctx, clientIPKey{}, ip)
+}
+
+func ClientIPFromContext(ctx context.Context) string {
+	ip, _ := ctx.Value(clientIPKey{}).(string)
+	return ip
+}
 
 // TrustedProxyCIDRsFromEnv parses TRUSTED_PROXY_CIDRS. Invalid entries are
 // ignored, which fails closed by treating those networks as untrusted.

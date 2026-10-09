@@ -68,6 +68,7 @@ func (s *HTTPServer) handleChatCompletionsWithOrchestrator(w http.ResponseWriter
 		sessionHash = extractSessionHashFromRequest(r, body)
 	}
 	result, err := executor.Execute(r.Context(), relaybiz.ExecutorRequest{
+		ClientIP:    relayClientIP(r),
 		Token:       token,
 		Model:       req.Model,
 		Endpoint:    string(EndpointChatCompletions),

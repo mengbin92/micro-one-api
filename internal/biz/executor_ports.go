@@ -9,6 +9,7 @@ import (
 // Transport adapters read and validate the request before constructing it;
 // the executor never receives an http.Request or owns a response writer.
 type ExecutorRequest struct {
+	ClientIP      string
 	Token         string
 	Model         string
 	Endpoint      string

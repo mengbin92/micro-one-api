@@ -87,8 +87,6 @@ func (b *StreamEventBus) Publish(ctx context.Context, topic string, payload any)
 
 	err = b.redis.XAdd(ctx, &redis.XAddArgs{
 		Stream: topic,
-		MaxLen: b.maxlen,
-		Approx: true,
 		Values: map[string]any{
 			"payload":   string(data),
 			"timestamp": time.Now().UnixNano(),
@@ -100,6 +98,9 @@ func (b *StreamEventBus) Publish(ctx context.Context, topic string, payload any)
 		return fmt.Errorf("publish event to stream %s: %w", topic, err)
 	}
 
+	if err := b.redis.Eval(ctx, trimAcknowledgedStreamScript, []string{topic}, b.maxlen).Err(); err != nil {
+		metrics.EventStreamFailures.WithLabelValues(topic, "trim_error").Inc()
+	}
 	return nil
 }
 
@@ -204,7 +205,21 @@ func (b *StreamEventBus) consumeLoop(topic string) {
 
 // processMessage processes a single message from a stream.
 func (b *StreamEventBus) processMessage(topic string, msg *redis.XMessage) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(b.ctx, 30*time.Second)
+	defer cancel()
+	pending, err := b.redis.XPendingExt(ctx, &redis.XPendingExtArgs{Stream: topic, Group: b.consumerGroup, Start: msg.ID, End: msg.ID, Count: 1}).Result()
+	if err != nil {
+		metrics.EventStreamFailures.WithLabelValues(topic, "pending_error").Inc()
+		return
+	}
+	if len(pending) > 0 && pending[0].RetryCount > 10 {
+		if err := b.redis.Eval(ctx, deadLetterStreamScript, []string{topic, topic + ".dlq"}, b.consumerGroup, msg.ID, fmt.Sprint(msg.Values["payload"])).Err(); err != nil {
+			metrics.EventStreamFailures.WithLabelValues(topic, "dead_letter_error").Inc()
+		} else {
+			metrics.EventStreamFailures.WithLabelValues(topic, "dead_letter").Inc()
+		}
+		return
+	}
 	key := topic + ":" + msg.ID
 	b.processingMu.Lock()
 	b.processing[key] = struct{}{}
@@ -247,7 +262,7 @@ func (b *StreamEventBus) processMessage(topic string, msg *redis.XMessage) {
 	// guarantee).
 	handlerFailed := false
 	for _, handler := range handlers {
-		if err := handler(ctx, payload); err != nil {
+		if err := invokeHandler(ctx, handler, payload); err != nil {
 			metrics.EventStreamFailures.WithLabelValues(topic, "handler_error").Inc()
 			fmt.Printf("handler error for topic %s: %v (message %s left pending for retry)\n", topic, err, msg.ID)
 			handlerFailed = true
@@ -264,6 +279,15 @@ func (b *StreamEventBus) processMessage(topic string, msg *redis.XMessage) {
 	if err := b.redis.XAck(ctx, topic, b.consumerGroup, msg.ID).Err(); err != nil {
 		fmt.Printf("failed to ACK message %s from %s: %v\n", msg.ID, topic, err)
 	}
+}
+
+func invokeHandler(ctx context.Context, handler Handler, event Event) (err error) {
+	defer func() {
+		if value := recover(); value != nil {
+			err = fmt.Errorf("event handler panic: %v", value)
+		}
+	}()
+	return handler(ctx, event)
 }
 
 // ensureGroup ensures the consumer group exists for a stream. It is idempotent:
@@ -442,3 +466,32 @@ func (b *StreamEventBus) Trim(ctx context.Context, topic string, exact bool, max
 func (b *StreamEventBus) ReadLast(ctx context.Context, topic string, start, stop string) ([]redis.XMessage, error) {
 	return b.redis.XRevRange(ctx, topic, start, stop).Result()
 }
+
+// Preserve every group's unread and pending messages, even above maxlen.
+const trimAcknowledgedStreamScript = `
+if redis.call('XLEN',KEYS[1]) <= tonumber(ARGV[1]) then return 0 end
+local groups=redis.call('XINFO','GROUPS',KEYS[1])
+local floor=nil
+local function earlier(a,b)
+ local am,as=string.match(a,'(%d+)%-(%d+)')
+ local bm,bs=string.match(b,'(%d+)%-(%d+)')
+ return tonumber(am)<tonumber(bm) or (tonumber(am)==tonumber(bm) and tonumber(as)<tonumber(bs))
+end
+for _,group in ipairs(groups) do
+ local name,delivered
+ for i=1,#group,2 do
+  if group[i]=='name' then name=group[i+1] end
+  if group[i]=='last-delivered-id' then delivered=group[i+1] end
+ end
+ local pending=redis.call('XPENDING',KEYS[1],name)
+ if pending[1]>0 and earlier(pending[2],delivered) then delivered=pending[2] end
+ if not floor or earlier(delivered,floor) then floor=delivered end
+end
+if floor then return redis.call('XTRIM',KEYS[1],'MINID',floor) end
+return 0
+`
+const deadLetterStreamScript = `
+if #redis.call('XPENDING',KEYS[1],ARGV[1],ARGV[2],ARGV[2],1)==0 then return 0 end
+redis.call('XADD',KEYS[2],'*','payload',ARGV[3],'source_id',ARGV[2],'consumer_group',ARGV[1],'reason','delivery attempts exceeded')
+return redis.call('XACK',KEYS[1],ARGV[1],ARGV[2])
+`

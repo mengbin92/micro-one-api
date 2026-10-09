@@ -378,7 +378,7 @@ func (s *WeightedSelector) totalEffectiveWeight(candidates []*Channel, now int64
 }
 
 // RecordHealth records a health check result for a channel.
-func (s *WeightedSelector) RecordHealth(channelID int64, success bool, latency int64, err string) {
+func (s *WeightedSelector) RecordHealth(channelID int64, success bool, latency int64, err string, releaseSlot ...bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -403,7 +403,9 @@ func (s *WeightedSelector) RecordHealth(channelID int64, success bool, latency i
 	}
 
 	// Decrement in-flight
-	state.inflight.Add(-1)
+	if (len(releaseSlot) == 0 || releaseSlot[0]) && state.inflight.Load() > 0 {
+		state.inflight.Add(-1)
+	}
 
 	// channel-H1: if this channel is half-open, the just-recorded outcome is
 	// the probe result — close on success, re-open on failure.

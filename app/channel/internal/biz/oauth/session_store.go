@@ -18,6 +18,17 @@ type Session struct {
 	CreatedAt        time.Time
 }
 
+type SessionRepository interface {
+	Set(*Session) error
+	Pop(string, time.Time) (*Session, bool)
+	Get(string, time.Time) (*Session, bool)
+	Delete(string)
+	Cleanup(time.Time)
+	TTL() time.Duration
+}
+
+func (s *SessionStore) TTL() time.Duration { return s.ttl }
+
 type SessionStore struct {
 	mu       sync.RWMutex
 	ttl      time.Duration
@@ -34,13 +45,14 @@ func NewSessionStore(ttl time.Duration) *SessionStore {
 	}
 }
 
-func (s *SessionStore) Set(session *Session) {
+func (s *SessionStore) Set(session *Session) error {
 	if s == nil || session == nil || session.ID == "" {
-		return
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sessions[session.ID] = session
+	return nil
 }
 
 func (s *SessionStore) Pop(id string, now time.Time) (*Session, bool) {

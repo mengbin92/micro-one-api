@@ -47,3 +47,24 @@ func TestV2AlwaysReadsFreshIdentityFacts(t *testing.T) {
 	require.ErrorIs(t, err, fresh.err)
 	require.Equal(t, 3, fresh.calls)
 }
+
+func TestLegacyClientIPNeverUsesTokenOnlyCache(t *testing.T) {
+	t.Setenv("RELAY_ROUTING_CONTEXT_V2", "false")
+	cache, err := appcache.NewAuthCache(nil, nil, func(context.Context, string) (*identityv1.GetAuthSnapshotReply, error) {
+		return &identityv1.GetAuthSnapshotReply{UserId: 1}, nil
+	})
+	require.NoError(t, err)
+	defer cache.Close()
+	_, err = cache.Get(context.Background(), "key")
+	require.NoError(t, err)
+	fresh := &freshRoutingIdentity{}
+	client := NewCachedIdentityClient(fresh, cache)
+	reply, err := client.GetAuthSnapshot(context.Background(), &identityv1.GetAuthSnapshotRequest{Token: "key", ClientIp: "192.0.2.1"})
+	require.NoError(t, err)
+	require.EqualValues(t, 2, reply.UserId)
+	require.Equal(t, "192.0.2.1", fresh.clientIP)
+	fresh.err = fmt.Errorf("subnet denied or token revoked")
+	_, err = client.GetAuthSnapshot(context.Background(), &identityv1.GetAuthSnapshotRequest{Token: "key", ClientIp: "198.51.100.1"})
+	require.ErrorIs(t, err, fresh.err)
+	require.Equal(t, 2, fresh.calls)
+}

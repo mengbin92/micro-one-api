@@ -88,6 +88,24 @@ type ChatCompletionsRequest struct {
 	ToolChoice          any       `json:"tool_choice,omitempty"`
 }
 
+const DefaultEstimatedOutputTokens int64 = 1000
+
+// EstimateChatTokens is a reservation heuristic; billing uses reported usage.
+func EstimateChatTokens(req *ChatCompletionsRequest) int64 {
+	var tokens int64
+	for _, message := range req.Messages {
+		tokens += int64(len(message.Content) / 4)
+	}
+	maximum := req.MaxTokens
+	if req.MaxCompletionTokens != nil {
+		maximum = req.MaxCompletionTokens
+	}
+	if maximum != nil && *maximum > 0 {
+		return tokens + int64(*maximum)
+	}
+	return tokens + DefaultEstimatedOutputTokens
+}
+
 // Message represents a chat message.
 //
 // ReasoningContent is a passthrough field for upstream "thinking mode" responses

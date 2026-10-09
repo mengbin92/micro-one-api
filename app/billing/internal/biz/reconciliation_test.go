@@ -145,11 +145,12 @@ func TestRunReconciliation_ExpiredReservations(t *testing.T) {
 
 	uc := NewReconciliationUsecase(accountRepo, reservationRepo, reconRepo, nil)
 	result, err := uc.RunReconciliation(context.Background())
+	require.ErrorContains(t, err, "atomic reservation releaser")
+	assert.Equal(t, 0, result.ExpiredCleaned)
+	assert.Equal(t, ReservationStatusReserved, expiredRes.Status)
+	assert.Equal(t, int64(100), account.FrozenAmount)
+	assert.Equal(t, int64(900), account.Balance)
 
-	require.NoError(t, err)
-	assert.Equal(t, 1, result.ExpiredCleaned)
-	assert.Equal(t, ReservationStatusExpired, expiredRes.Status)
-	assert.Equal(t, int64(0), account.FrozenAmount)
 }
 
 func TestRunReconciliation_QuotaConsistency(t *testing.T) {

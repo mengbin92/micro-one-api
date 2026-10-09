@@ -1,3 +1,4 @@
+import { safePaymentURL } from '@/lib/payment-url';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Check, ChevronRight, CreditCard, Loader2, ShieldCheck, WalletCards } from 'lucide-react';
@@ -81,11 +82,13 @@ export function RechargePage() {
         toast.success(t(`测试订单已创建：${data.trade_no || data.order?.trade_no || '-'}`));
         return;
       }
+      const url = safePaymentURL(payURL);
+      if (!url) { variables.paymentWindow?.close(); toast.error(t('支付地址无效')); return; }
       if (variables.paymentWindow) {
-        variables.paymentWindow.location.href = payURL;
+        variables.paymentWindow.location.href = url;
         return;
       }
-      window.open(payURL, '_blank', 'noopener,noreferrer');
+      window.open(url, '_blank', 'noopener,noreferrer');
     },
     onError: (_error, variables) => {
       variables.paymentWindow?.close();
@@ -99,7 +102,7 @@ export function RechargePage() {
     if (paymentWindow) {
       paymentWindow.opener = null;
       paymentWindow.document.title = t("正在前往支付");
-      paymentWindow.document.body.innerHTML = t("<p style=\"font-family: sans-serif; padding: 24px;\">正在创建支付订单，请稍候...</p>");
+      paymentWindow.document.body.textContent = t("正在创建支付订单，请稍候...");
     }
     createPayment.mutate({ paymentWindow });
   };

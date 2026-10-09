@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	xhttp "micro-one-api/platform/http"
 	"strings"
 	"time"
 
@@ -69,7 +70,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveStoredRoute(ctx context.Context, token
 			if err != nil {
 				return nil, false
 			}
-			s.server.relayUsecase.BindRoutingAdmission(resolvedAuth, token, "")
+			s.server.relayUsecase.BindRoutingAdmission(resolvedAuth, token, xhttp.ClientIPFromContext(ctx))
 			return &relaybiz.RelayPlan{
 				ClientModel:   modelForPermission,
 				Auth:          resolvedAuth,
@@ -110,7 +111,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveSessionRoute(ctx context.Context, toke
 	if err != nil {
 		return nil, false
 	}
-	s.server.relayUsecase.BindRoutingAdmission(resolvedAuth, token, "")
+	s.server.relayUsecase.BindRoutingAdmission(resolvedAuth, token, xhttp.ClientIPFromContext(ctx))
 	return &relaybiz.RelayPlan{
 		ClientModel:   clientModel,
 		Auth:          resolvedAuth,
@@ -162,8 +163,9 @@ func (s *OpenAIWSRoutingScheduler) ResolvePlan(ctx context.Context, token, clien
 		return nil, fmt.Errorf("openai ws scheduler unavailable")
 	}
 	plan, err := s.planner.Plan(ctx, relaybiz.RelayRequest{
-		Token: token,
-		Model: clientModel,
+		ClientIP: xhttp.ClientIPFromContext(ctx),
+		Token:    token,
+		Model:    clientModel,
 	})
 	if err != nil {
 		return nil, err

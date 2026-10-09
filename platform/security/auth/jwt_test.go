@@ -250,6 +250,8 @@ func TestRefreshToken_ValidToken_IssuesNew(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "relay", claims.ServiceName)
 	assert.NotEqual(t, "", claims.ID)
+	_, err = jm.ValidateServiceToken(token)
+	require.Error(t, err, "refresh must revoke the previous token")
 }
 
 func TestRefreshToken_InvalidToken_Error(t *testing.T) {

@@ -215,7 +215,7 @@ func (r *Repository) addUsageDB(ctx context.Context, userID int64, costUSD float
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var model subscriptionModel
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("user_id = ? AND status = ?", userID, string(biz.SubscriptionStatusActive)).
+			Where("user_id = ? AND status = ? AND expires_at > ?", userID, string(biz.SubscriptionStatusActive), now).
 			Order("updated_at DESC, id DESC").
 			First(&model).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -245,7 +245,7 @@ func (r *Repository) addUsageMemory(ctx context.Context, userID int64, costUSD f
 	defer r.lock.Unlock()
 	var chosen *biz.UserSubscription
 	for _, subscription := range r.subscriptions {
-		if subscription.UserID != userID || subscription.Status != biz.SubscriptionStatusActive {
+		if subscription.UserID != userID || subscription.Status != biz.SubscriptionStatusActive || subscription.ExpiresAt <= now {
 			continue
 		}
 		if chosen == nil || subscription.UpdatedAt > chosen.UpdatedAt || (subscription.UpdatedAt == chosen.UpdatedAt && subscription.ID > chosen.ID) {

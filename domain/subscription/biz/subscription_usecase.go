@@ -283,10 +283,7 @@ func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx Tx, req *A
 	// columns are owned by AddUsage; writing them here from a read snapshot
 	// taken before a concurrent AddUsage commits would clobber that increment.
 	active.PricePaid = req.PricePaid
-	fields := []SubscriptionField{SubscriptionFieldExpiresAt, SubscriptionFieldMetadata, SubscriptionFieldRenewalStrategy}
-	if active.Contract != nil {
-		fields = append(fields, SubscriptionFieldPricePaid)
-	}
+	fields := []SubscriptionField{SubscriptionFieldExpiresAt, SubscriptionFieldMetadata, SubscriptionFieldRenewalStrategy, SubscriptionFieldPricePaid}
 	if contractChanged {
 		fields = append(fields, SubscriptionFieldContract)
 	}

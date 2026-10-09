@@ -14,6 +14,13 @@ func TestGetTimeout_Unset_ReturnsDefault(t *testing.T) {
 	assert.Equal(t, 42*time.Second, GetTimeout("MOA_TIMEOUT_UNSET", 42*time.Second, 0))
 }
 
+func TestGetTimeout_NonpositiveReturnsDefault(t *testing.T) {
+	for _, value := range []string{"-1s", "0s"} {
+		t.Setenv("MOA_TIMEOUT_INVALID", value)
+		assert.Equal(t, 5*time.Second, GetTimeout("MOA_TIMEOUT_INVALID", 5*time.Second, 0))
+	}
+}
+
 func TestGetTimeout_Invalid_ReturnsDefault(t *testing.T) {
 	t.Setenv("MOA_TIMEOUT_INVALID", "not-a-duration")
 	assert.Equal(t, 5*time.Second, GetTimeout("MOA_TIMEOUT_INVALID", 5*time.Second, 0))

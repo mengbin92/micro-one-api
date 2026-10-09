@@ -12,6 +12,46 @@ import (
 
 var errLoginRateLimiterUnavailable = errors.New("login rate limiter unavailable")
 
+type publicRequestCount struct {
+	count   int
+	expires time.Time
+}
+
+func (r *Repository) AllowPublicRequest(ctx context.Context, key string, limit int, window time.Duration) (bool, error) {
+	key = "public:" + key
+	if r.redis != nil {
+		count, err := r.redis.Eval(ctx, `local n = redis.call('INCR', KEYS[1]); if n == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end; return n`, []string{loginFailureRedisKey(key)}, window.Milliseconds()).Int64()
+		return count <= int64(limit), err
+	}
+	if r.db != nil {
+		return false, errLoginRateLimiterUnavailable
+	}
+	r.identityLock.Lock()
+	defer r.identityLock.Unlock()
+	now := time.Now()
+	for key, value := range r.publicRequests {
+		if !value.expires.After(now) {
+			delete(r.publicRequests, key)
+		}
+	}
+	if r.publicRequests == nil {
+		r.publicRequests = make(map[string]publicRequestCount)
+	}
+	value := r.publicRequests[key]
+	if value.count == 0 {
+		if len(r.publicRequests) >= 10000 {
+			return false, nil
+		}
+		value.expires = now.Add(window)
+	}
+	if value.count >= limit {
+		return false, nil
+	}
+	value.count++
+	r.publicRequests[key] = value
+	return true, nil
+}
+
 func loginFailureRedisKey(key string) string {
 	digest := sha256.Sum256([]byte(key))
 	return "identity:login-fail:" + hex.EncodeToString(digest[:])

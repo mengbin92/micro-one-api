@@ -33,8 +33,10 @@ type Repository struct {
 	tokensByHash        map[string]*biz.Token
 	oauthIdentities     map[string]*biz.OAuthIdentity
 	nextOAuthIdentityID int64
+	nextUserID          int64
 	systemOptions       map[string]string
 	identityLock        sync.RWMutex
+	publicRequests      map[string]publicRequestCount
 }
 
 type userModel struct {
@@ -165,6 +167,7 @@ func NewRepository(d *Data) *Repository {
 		tokensByHash:        make(map[string]*biz.Token),
 		oauthIdentities:     make(map[string]*biz.OAuthIdentity),
 		nextOAuthIdentityID: 1,
+		nextUserID:          1,
 	}
 }
 
@@ -312,7 +315,16 @@ func (r *Repository) CreateUser(ctx context.Context, user *biz.User) error {
 	} // Persistent writes require the policy-locked account usecase.
 	r.identityLock.Lock()
 	defer r.identityLock.Unlock()
-	user.ID = int64(len(r.usersByID) + 1)
+	if r.nextUserID <= 0 {
+		r.nextUserID = 1
+		for id := range r.usersByID {
+			if id >= r.nextUserID {
+				r.nextUserID = id + 1
+			}
+		}
+	}
+	user.ID = r.nextUserID
+	r.nextUserID++
 	r.usersByID[user.ID] = user
 	return nil
 }

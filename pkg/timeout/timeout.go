@@ -31,7 +31,7 @@ const (
 // GetTimeout returns a timeout value from environment variable or default
 func GetTimeout(envVar string, defaultValue time.Duration, maxValue time.Duration) time.Duration {
 	if timeoutStr := os.Getenv(envVar); timeoutStr != "" {
-		if duration, err := time.ParseDuration(timeoutStr); err == nil {
+		if duration, err := time.ParseDuration(timeoutStr); err == nil && duration > 0 {
 			if maxValue > 0 && duration > maxValue {
 				return maxValue
 			}

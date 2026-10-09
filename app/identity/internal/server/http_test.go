@@ -161,7 +161,10 @@ func TestIdentityHTTPRegisterAcceptsAffCode(t *testing.T) {
 	}
 	srv := NewHTTPServer(":0", uc, nil)
 
-	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","aff_code":"`+inviter.AffCode+`"}`))
+	verificationStore.Lock()
+	verificationStore.items["v:bob@example.com"] = verificationRecord{Code: "verified", At: time.Now()}
+	verificationStore.Unlock()
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","verification_code":"verified","aff_code":"`+inviter.AffCode+`"}`))
 	registerRec := httptest.NewRecorder()
 	srv.ServeHTTP(registerRec, registerReq)
 
@@ -192,7 +195,10 @@ func TestIdentityHTTPRegisterWithAffCodeCreditsInvitationBonusViaBilling(t *test
 	billingClient := &identityHTTPBillingClient{}
 	srv := NewHTTPServer(":0", uc, nil, billingClient)
 
-	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","aff_code":"`+inviter.AffCode+`"}`))
+	verificationStore.Lock()
+	verificationStore.items["v:bob@example.com"] = verificationRecord{Code: "verified", At: time.Now()}
+	verificationStore.Unlock()
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","verification_code":"verified","aff_code":"`+inviter.AffCode+`"}`))
 	registerRec := httptest.NewRecorder()
 	srv.ServeHTTP(registerRec, registerReq)
 
@@ -214,6 +220,28 @@ func TestIdentityHTTPRegisterWithAffCodeCreditsInvitationBonusViaBilling(t *test
 	wantRemark := "invitation inviter bonus, invitee=" + strconv.FormatInt(bob.ID, 10)
 	if inviterCall.UserID != strconv.FormatInt(inviter.ID, 10) || inviterCall.Amount != 50 || inviterCall.OperatorID != "system_invitation" || inviterCall.Remark != wantRemark {
 		t.Fatalf("inviter credit = %#v", inviterCall)
+	}
+}
+
+func TestUnverifiedRegistrationDoesNotPayInvitationRewards(t *testing.T) {
+	t.Setenv("INVITEE_BONUS_AMOUNT", "25")
+	t.Setenv("INVITER_BONUS_AMOUNT", "50")
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo, nil)
+	inviter, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	billingClient := &identityHTTPBillingClient{}
+	srv := NewHTTPServer(":0", uc, nil, billingClient)
+	r := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","aff_code":"`+inviter.AffCode+`"}`))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, r)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"success":true`) {
+		t.Fatalf("register: %d %s", w.Code, w.Body.String())
+	}
+	if len(billingClient.topUpCalls) != 0 {
+		t.Fatalf("unverified invitation paid: %+v", billingClient.topUpCalls)
 	}
 }
 
@@ -263,7 +291,10 @@ func TestIdentityHTTPRegisterWithAffCodeCreditsAllRewardsFromSystemOptions(t *te
 	billingClient := &identityHTTPBillingClient{}
 	srv := NewHTTPServer(":0", uc, nil, billingClient)
 
-	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","aff_code":"`+inviter.AffCode+`"}`))
+	verificationStore.Lock()
+	verificationStore.items["v:bob@example.com"] = verificationRecord{Code: "verified", At: time.Now()}
+	verificationStore.Unlock()
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","verification_code":"verified","aff_code":"`+inviter.AffCode+`"}`))
 	registerRec := httptest.NewRecorder()
 	srv.ServeHTTP(registerRec, registerReq)
 
@@ -305,7 +336,10 @@ func TestIdentityHTTPRegisterOptionZeroDisablesEnvFallback(t *testing.T) {
 	billingClient := &identityHTTPBillingClient{}
 	srv := NewHTTPServer(":0", uc, nil, billingClient)
 
-	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","aff_code":"`+inviter.AffCode+`"}`))
+	verificationStore.Lock()
+	verificationStore.items["v:bob@example.com"] = verificationRecord{Code: "verified", At: time.Now()}
+	verificationStore.Unlock()
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","verification_code":"verified","aff_code":"`+inviter.AffCode+`"}`))
 	registerRec := httptest.NewRecorder()
 	srv.ServeHTTP(registerRec, registerReq)
 
@@ -329,7 +363,10 @@ func TestIdentityHTTPRegisterWithAffCodeCreditsLegacyInvitationBonusEnv(t *testi
 	billingClient := &identityHTTPBillingClient{}
 	srv := NewHTTPServer(":0", uc, nil, billingClient)
 
-	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","aff_code":"`+inviter.AffCode+`"}`))
+	verificationStore.Lock()
+	verificationStore.items["v:bob@example.com"] = verificationRecord{Code: "verified", At: time.Now()}
+	verificationStore.Unlock()
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","verification_code":"verified","aff_code":"`+inviter.AffCode+`"}`))
 	registerRec := httptest.NewRecorder()
 	srv.ServeHTTP(registerRec, registerReq)
 
@@ -356,7 +393,10 @@ func TestIdentityHTTPRegisterWithAffCodeSkipsCreditWhenBonusesZero(t *testing.T)
 	billingClient := &identityHTTPBillingClient{}
 	srv := NewHTTPServer(":0", uc, nil, billingClient)
 
-	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","aff_code":"`+inviter.AffCode+`"}`))
+	verificationStore.Lock()
+	verificationStore.items["v:bob@example.com"] = verificationRecord{Code: "verified", At: time.Now()}
+	verificationStore.Unlock()
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","verification_code":"verified","aff_code":"`+inviter.AffCode+`"}`))
 	registerRec := httptest.NewRecorder()
 	srv.ServeHTTP(registerRec, registerReq)
 
@@ -1233,7 +1273,7 @@ func TestIdentityHTTPUserPaymentOrdersFiltersToAuthenticatedUser(t *testing.T) {
 	}
 }
 
-func TestIdentityHTTPAdminUserPaymentOrdersCanListAllUsers(t *testing.T) {
+func TestIdentityHTTPAdminSelfPaymentOrdersAreScoped(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo, nil)
 	user, err := uc.Register(context.Background(), "admin", "password123", "admin@example.com", "default")
@@ -1263,8 +1303,8 @@ func TestIdentityHTTPAdminUserPaymentOrdersCanListAllUsers(t *testing.T) {
 	if got == nil {
 		t.Fatal("ListPaymentOrders was not called")
 	}
-	if got.GetUserId() != "" {
-		t.Fatalf("user_id = %q, want empty for admin user", got.GetUserId())
+	if got.GetUserId() != strconv.FormatInt(user.ID, 10) {
+		t.Fatalf("user_id = %q, want authenticated admin's own ID", got.GetUserId())
 	}
 }
 

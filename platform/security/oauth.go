@@ -10,16 +10,18 @@ import (
 	"time"
 
 	"micro-one-api/pkg/jsonx"
+	xhttp "micro-one-api/platform/http"
 )
 
 // UserInfo holds the OAuth user profile returned by providers.
 type UserInfo struct {
-	Provider    string
-	ProviderID  string
-	Username    string
-	Email       string
-	DisplayName string
-	AvatarURL   string
+	EmailVerified bool
+	Provider      string
+	ProviderID    string
+	Username      string
+	Email         string
+	DisplayName   string
+	AvatarURL     string
 }
 
 // Provider is the interface for OAuth2 identity providers.
@@ -143,7 +145,7 @@ func (p *githubProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		AccessToken string `json:"access_token"`
 		Error       string `json:"error"`
 	}
-	if err := jsonx.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	if err := jsonx.NewDecoder(io.LimitReader(resp.Body, xhttp.MaxExternalResponseBody)).Decode(&tokenResp); err != nil {
 		return nil, fmt.Errorf("github token decode: %w", err)
 	}
 	if tokenResp.Error != "" {
@@ -168,14 +170,12 @@ func (p *githubProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		Email     string `json:"email"`
 		AvatarURL string `json:"avatar_url"`
 	}
-	if err := jsonx.NewDecoder(userResp.Body).Decode(&ghUser); err != nil {
+	if err := jsonx.NewDecoder(io.LimitReader(userResp.Body, xhttp.MaxExternalResponseBody)).Decode(&ghUser); err != nil {
 		return nil, fmt.Errorf("github user decode: %w", err)
 	}
 
-	// If email is empty, fetch from emails endpoint
-	if ghUser.Email == "" {
-		ghUser.Email = p.fetchGitHubEmail(ctx, tokenResp.AccessToken)
-	}
+	// The public profile email does not prove ownership; use a verified primary email.
+	ghUser.Email = p.fetchGitHubEmail(ctx, tokenResp.AccessToken)
 
 	displayName := ghUser.Name
 	if displayName == "" {
@@ -183,12 +183,13 @@ func (p *githubProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 	}
 
 	return &UserInfo{
-		Provider:    "github",
-		ProviderID:  fmt.Sprintf("%d", ghUser.ID),
-		Username:    ghUser.Login,
-		Email:       ghUser.Email,
-		DisplayName: displayName,
-		AvatarURL:   ghUser.AvatarURL,
+		Provider:      "github",
+		EmailVerified: ghUser.Email != "",
+		ProviderID:    fmt.Sprintf("%d", ghUser.ID),
+		Username:      ghUser.Login,
+		Email:         ghUser.Email,
+		DisplayName:   displayName,
+		AvatarURL:     ghUser.AvatarURL,
 	}, nil
 }
 
@@ -203,7 +204,7 @@ func (p *githubProvider) fetchGitHubEmail(ctx context.Context, token string) str
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := xhttp.ReadBody(resp.Body, xhttp.MaxExternalResponseBody)
 	var emails []struct {
 		Email    string `json:"email"`
 		Primary  bool   `json:"primary"`
@@ -284,7 +285,7 @@ func (p *googleProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		AccessToken string `json:"access_token"`
 		Error       string `json:"error"`
 	}
-	if err := jsonx.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	if err := jsonx.NewDecoder(io.LimitReader(resp.Body, xhttp.MaxExternalResponseBody)).Decode(&tokenResp); err != nil {
 		return nil, fmt.Errorf("google token decode: %w", err)
 	}
 	if tokenResp.Error != "" {
@@ -302,12 +303,13 @@ func (p *googleProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 	defer userResp.Body.Close()
 
 	var gUser struct {
-		ID      string `json:"id"`
-		Email   string `json:"email"`
-		Name    string `json:"name"`
-		Picture string `json:"picture"`
+		ID            string `json:"id"`
+		Email         string `json:"email"`
+		EmailVerified bool   `json:"verified_email"`
+		Name          string `json:"name"`
+		Picture       string `json:"picture"`
 	}
-	if err := jsonx.NewDecoder(userResp.Body).Decode(&gUser); err != nil {
+	if err := jsonx.NewDecoder(io.LimitReader(userResp.Body, xhttp.MaxExternalResponseBody)).Decode(&gUser); err != nil {
 		return nil, fmt.Errorf("google user decode: %w", err)
 	}
 
@@ -317,12 +319,13 @@ func (p *googleProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 	}
 
 	return &UserInfo{
-		Provider:    "google",
-		ProviderID:  gUser.ID,
-		Username:    username,
-		Email:       gUser.Email,
-		DisplayName: gUser.Name,
-		AvatarURL:   gUser.Picture,
+		Provider:      "google",
+		EmailVerified: gUser.EmailVerified,
+		ProviderID:    gUser.ID,
+		Username:      username,
+		Email:         gUser.Email,
+		DisplayName:   gUser.Name,
+		AvatarURL:     gUser.Picture,
 	}, nil
 }
 
@@ -398,7 +401,7 @@ func (p *larkProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 		Error            string `json:"error"`
 		ErrorDescription string `json:"error_description"`
 	}
-	if err := jsonx.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	if err := jsonx.NewDecoder(io.LimitReader(resp.Body, xhttp.MaxExternalResponseBody)).Decode(&tokenResp); err != nil {
 		return nil, fmt.Errorf("lark token decode: %w", err)
 	}
 	if tokenResp.Error != "" {
@@ -422,7 +425,7 @@ func (p *larkProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 		Avatar  string `json:"avatar_url"`
 		Error   string `json:"error"`
 	}
-	if err := jsonx.NewDecoder(userResp.Body).Decode(&user); err != nil {
+	if err := jsonx.NewDecoder(io.LimitReader(userResp.Body, xhttp.MaxExternalResponseBody)).Decode(&user); err != nil {
 		return nil, fmt.Errorf("lark user decode: %w", err)
 	}
 	if user.Error != "" {
@@ -498,7 +501,7 @@ func (p *wechatProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		ErrorCode   int    `json:"errcode"`
 		ErrorMsg    string `json:"errmsg"`
 	}
-	if err := jsonx.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	if err := jsonx.NewDecoder(io.LimitReader(resp.Body, xhttp.MaxExternalResponseBody)).Decode(&tokenResp); err != nil {
 		return nil, fmt.Errorf("wechat token decode: %w", err)
 	}
 	if tokenResp.ErrorCode != 0 {
@@ -529,7 +532,7 @@ func (p *wechatProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		ErrorCode  int    `json:"errcode"`
 		ErrorMsg   string `json:"errmsg"`
 	}
-	if err := jsonx.NewDecoder(userResp.Body).Decode(&user); err != nil {
+	if err := jsonx.NewDecoder(io.LimitReader(userResp.Body, xhttp.MaxExternalResponseBody)).Decode(&user); err != nil {
 		return nil, fmt.Errorf("wechat user decode: %w", err)
 	}
 	if user.ErrorCode != 0 {
@@ -600,7 +603,7 @@ func (p *oidcProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 		IDToken     string `json:"id_token"`
 		Error       string `json:"error"`
 	}
-	if err := jsonx.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	if err := jsonx.NewDecoder(io.LimitReader(resp.Body, xhttp.MaxExternalResponseBody)).Decode(&tokenResp); err != nil {
 		return nil, fmt.Errorf("oidc token decode: %w", err)
 	}
 	if tokenResp.Error != "" {
@@ -617,12 +620,13 @@ func (p *oidcProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 	}
 	defer userResp.Body.Close()
 	var user struct {
-		Sub     string `json:"sub"`
-		Email   string `json:"email"`
-		Name    string `json:"name"`
-		Picture string `json:"picture"`
+		Sub           string `json:"sub"`
+		Email         string `json:"email"`
+		EmailVerified bool   `json:"email_verified"`
+		Name          string `json:"name"`
+		Picture       string `json:"picture"`
 	}
-	if err := jsonx.NewDecoder(userResp.Body).Decode(&user); err != nil {
+	if err := jsonx.NewDecoder(io.LimitReader(userResp.Body, xhttp.MaxExternalResponseBody)).Decode(&user); err != nil {
 		return nil, fmt.Errorf("oidc user decode: %w", err)
 	}
 	username := user.Email
@@ -637,11 +641,12 @@ func (p *oidcProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 		displayName = username
 	}
 	return &UserInfo{
-		Provider:    "oidc",
-		ProviderID:  user.Sub,
-		Username:    username,
-		Email:       user.Email,
-		DisplayName: displayName,
-		AvatarURL:   user.Picture,
+		Provider:      "oidc",
+		EmailVerified: user.EmailVerified,
+		ProviderID:    user.Sub,
+		Username:      username,
+		Email:         user.Email,
+		DisplayName:   displayName,
+		AvatarURL:     user.Picture,
 	}, nil
 }

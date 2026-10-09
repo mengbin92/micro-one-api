@@ -27,7 +27,15 @@ func NewHTTPServer(addr string, usecases ...*biz.ChannelUsecase) *khttp.Server {
 	if len(usecases) > 0 {
 		uc = usecases[0]
 	}
-	oauthSvc := channeloauth.NewService(uc)
+	return newOAuthHTTPServer(srv, uc, nil)
+}
+
+func NewHTTPServerWithOAuthSessions(addr string, uc *biz.ChannelUsecase, store channeloauth.SessionRepository) *khttp.Server {
+	return newOAuthHTTPServer(xhttp.NewServer(khttp.Address(addr)), uc, store)
+}
+
+func newOAuthHTTPServer(srv *khttp.Server, uc *biz.ChannelUsecase, store channeloauth.SessionRepository) *khttp.Server {
+	oauthSvc := channeloauth.NewService(uc, channeloauth.WithSessionStore(store))
 	registerAccountOpsHealth(srv)
 	registerOAuthRoutes(srv, oauthSvc, uc)
 	registerSelectorStatsRoute(srv, uc)

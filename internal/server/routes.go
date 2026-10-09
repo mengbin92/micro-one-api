@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	xhttp "micro-one-api/platform/http"
 	"net/http"
 	"slices"
 
@@ -149,8 +150,13 @@ func (s *HTTPServer) wrapRoute(pattern string, declaration routeDeclaration, han
 	}
 	h = xtrace.Middleware(h)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(xhttp.WithClientIP(r.Context(), relayClientIP(r)))
 		h.ServeHTTP(w, appmiddleware.WithMetricPath(r, pattern))
 	})
+}
+
+func relayClientIP(r *http.Request) string {
+	return xhttp.ClientIP(r, xhttp.TrustedProxyCIDRsFromEnv())
 }
 
 func (s *HTTPServer) handlePrefix(srv *khttp.Server, pattern string, declaration routeDeclaration, handler http.Handler) {

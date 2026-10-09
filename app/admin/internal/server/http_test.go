@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -3927,5 +3928,34 @@ func TestAdminHTTPListModelHealth(t *testing.T) {
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"model_id":"gpt-4o"`) {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+type reviewPagedIdentityClient struct {
+	adminHTTPIdentityClient
+	pages []int32
+}
+
+func (c *reviewPagedIdentityClient) ListUsers(ctx context.Context, r *identityv1.ListUsersRequest, _ ...grpc.CallOption) (*identityv1.ListUsersResponse, error) {
+	c.pages = append(c.pages, r.Page)
+	users := []*commonv1.UserInfo{}
+	if r.Page == 1 {
+		for i := int64(1); i <= 100; i++ {
+			users = append(users, &commonv1.UserInfo{Id: i, Username: fmt.Sprintf("alice-%d", i)})
+		}
+	} else {
+		users = append(users, &commonv1.UserInfo{Id: 101, Username: "alice"})
+	}
+	return &identityv1.ListUsersResponse{Users: users, Total: 101}, nil
+}
+func TestManageUserFindsExactUsernameAfterFirstPage(t *testing.T) {
+	identity := &reviewPagedIdentityClient{}
+	svc := service.NewAdminService(nil, identity, nil, nil)
+	svc.SetIAMService(service.NewIAMAdminService(adminbiz.NewIAMUsecase(adminHTTPLegacyIAMRepo{})))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/user/manage", strings.NewReader(`{"username":"alice","action":"disable"}`))
+	handleOneAPIUserManage(rec, req, svc)
+	if identity.updatedUser == nil || identity.updatedUser.UserId != 101 {
+		t.Fatalf("update=%+v pages=%v body=%s", identity.updatedUser, identity.pages, rec.Body.String())
 	}
 }

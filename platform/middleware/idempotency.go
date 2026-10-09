@@ -229,6 +229,11 @@ func (im *IdempotencyMiddleware) Handler(next http.Handler) http.Handler {
 			return
 		}
 
+		if err := ValidateIdempotencyKey(key); err != nil {
+			http.Error(w, "invalid idempotency key", http.StatusBadRequest)
+			return
+		}
+
 		// M2: scope the idempotency key by caller identity + method + path so a
 		// client that guesses/reuses another client's Idempotency-Key cannot
 		// replay that client's cached response. Identity is the bearer token
@@ -267,6 +272,7 @@ func (im *IdempotencyMiddleware) Handler(next http.Handler) http.Handler {
 			select {
 			case <-done:
 			case <-r.Context().Done():
+				http.Error(w, "idempotency wait canceled", http.StatusRequestTimeout)
 				return
 			}
 			// The first request should have cached the response by now.
@@ -286,6 +292,7 @@ func (im *IdempotencyMiddleware) Handler(next http.Handler) http.Handler {
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				im.completeInflight(normalizedKey)
+				http.Error(w, "idempotency wait canceled", http.StatusRequestTimeout)
 				return
 			}
 			applogger.Log.Warn("distributed idempotency lock unavailable; using local lock", zap.Error(err))
@@ -295,6 +302,11 @@ func (im *IdempotencyMiddleware) Handler(next http.Handler) http.Handler {
 			im.completeInflight(normalizedKey)
 			cachedResp, waitErr := im.waitDistributedInflight(r.Context(), normalizedKey)
 			if waitErr != nil {
+				status := http.StatusServiceUnavailable
+				if errors.Is(waitErr, context.Canceled) || errors.Is(waitErr, context.DeadlineExceeded) {
+					status = http.StatusRequestTimeout
+				}
+				http.Error(w, "idempotency wait failed", status)
 				return
 			}
 			if cachedResp != nil {

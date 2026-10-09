@@ -72,7 +72,7 @@ func (s *HTTPServer) executeAnthropicChannelAttempt(
 		estimatedUsage.TotalTokens,
 		billingModel,
 		fmt.Sprintf("%d", channel.ID),
-		subscriptionAccountIDFromPlan(plan),
+		subscriptionAccountIDFromChannel(channel),
 		plan.Auth.RoutingContext,
 	)
 	if err != nil {
@@ -114,7 +114,7 @@ func (s *HTTPServer) executeAnthropicChannelAttempt(
 		Endpoint:              "/v1/messages",
 		ModelName:             billingModel,
 		ChannelID:             channel.ID,
-		SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
+		SubscriptionAccountID: subscriptionAccountIDFromChannel(channel),
 		IsStream:              request.Stream,
 	}
 	logInput.applyChannelInputs(channel)

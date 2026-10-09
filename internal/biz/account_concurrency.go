@@ -192,7 +192,7 @@ func (l *RedisAccountConcurrencyLimiter) TryAcquire(ctx context.Context, account
 
 	done := make(chan struct{})
 	var once sync.Once
-	go l.refreshLease(ctx, key, member, done)
+	go l.refreshLease(context.WithoutCancel(ctx), key, member, done)
 	return func() {
 		once.Do(func() {
 			close(done)
@@ -241,13 +241,10 @@ func (l *RedisAccountConcurrencyLimiter) refreshLease(ctx context.Context, key, 
 		case <-ticker.C:
 			deadline := time.Now().Add(l.leaseTTL).UnixMilli()
 			rCtx, cancel := context.WithTimeout(ctx, l.timeout)
-			if err := l.rdb.ZAdd(rCtx, key, redis.Z{Score: float64(deadline), Member: member}).Err(); err != nil {
+			if err := l.rdb.Eval(rCtx, redisRefreshConcurrencyScript, []string{key}, member, deadline, l.leaseTTL.Milliseconds()).Err(); err != nil {
 				metrics.RelayAccountConcurrencyFallbackTotal.WithLabelValues("refresh_error").Inc()
 				cancel()
 				continue
-			}
-			if err := l.rdb.Expire(rCtx, key, l.leaseTTL).Err(); err != nil {
-				metrics.RelayAccountConcurrencyFallbackTotal.WithLabelValues("refresh_error").Inc()
 			}
 			cancel()
 		}
@@ -265,3 +262,12 @@ func (l *RedisAccountConcurrencyLimiter) slotMember(accountID int64) string {
 
 var _ AccountConcurrencyLimiter = (*MemoryAccountConcurrencyLimiter)(nil)
 var _ AccountConcurrencyLimiter = (*RedisAccountConcurrencyLimiter)(nil)
+
+const redisRefreshConcurrencyScript = `
+if redis.call('ZSCORE', KEYS[1], ARGV[1]) then
+ redis.call('ZADD', KEYS[1], 'XX', ARGV[2], ARGV[1])
+ redis.call('PEXPIRE', KEYS[1], ARGV[3])
+ return 1
+end
+return 0
+`

@@ -671,6 +671,9 @@ go run ./app/channel/cmd/channel-credentials -apply
 dry-run，`suspected_plaintext` 应为 0，`indeterminate` 应已按运维记录处理，再滚动
 重启 channel-service。
 
+配置加密密钥后，读取凭证时的任何解密失败都会报错，不再回退为明文。历史明文
+必须先迁移；损坏的凭证和密钥不匹配的记录需要人工核实，避免把密文作为凭证转发。
+
 ## 9. 多数据库方言部署
 
 Micro-One-API 在运行时支持 MySQL、SQLite3 和 Postgres 三种数据库方言。方言由配置项 `data.database.driver`（或环境变量 `DATABASE_DRIVER`）选择；DSN 由 `data.database.source`（或 `DATABASE_DSN`）提供。

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	xhttp "micro-one-api/platform/http"
 	applogger "micro-one-api/platform/logging"
 	appmiddleware "micro-one-api/platform/middleware"
 )
@@ -266,9 +267,9 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 			IPAddress: extractIP(r),
 			UserAgent: r.UserAgent(),
 			Details: map[string]any{
-				"path":   r.URL.Path,
-				"query":  r.URL.RawQuery,
-				"status": wrapped.statusCode,
+				"path":       r.URL.Path,
+				"query_keys": queryKeys(r),
+				"status":     wrapped.statusCode,
 			},
 		})
 	})
@@ -411,15 +412,15 @@ func sanitizeAuditString(s string) string {
 }
 
 func extractIP(r *http.Request) string {
-	// Check X-Forwarded-For header
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return xff
+	return xhttp.ClientIP(r, xhttp.TrustedProxyCIDRsFromEnv())
+}
+
+func queryKeys(r *http.Request) []string {
+	keys := make([]string, 0, len(r.URL.Query()))
+	for key := range r.URL.Query() {
+		keys = append(keys, key)
 	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-	// Fall back to RemoteAddr
-	return r.RemoteAddr
+	return keys
 }
 
 // Common audit event builders

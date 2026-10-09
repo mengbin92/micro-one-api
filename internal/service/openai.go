@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"micro-one-api/internal/biz"
+	xhttp "micro-one-api/platform/http"
 )
 
 // OpenAIService handles the external OpenAI-compatible HTTP surface.
@@ -17,7 +18,8 @@ func NewOpenAIService(uc *biz.RelayUsecase) *OpenAIService {
 
 func (s *OpenAIService) Plan(ctx context.Context, token, model string) (*biz.RelayPlan, error) {
 	return s.uc.Plan(ctx, biz.RelayRequest{
-		Token: token,
-		Model: model,
+		Token:    token,
+		Model:    model,
+		ClientIP: xhttp.ClientIPFromContext(ctx),
 	})
 }

@@ -1,3 +1,5 @@
+import { toast } from 'sonner';
+import { safePaymentURL } from '@/lib/payment-url';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -288,7 +290,9 @@ export function OrdersPage() {
   const handleContinuePayment = () => {
     if (!selectedPayURL) return;
     if (selectedPayURL.startsWith('mock://')) return;
-    window.open(selectedPayURL, '_blank', 'noopener,noreferrer');
+    const url = safePaymentURL(selectedPayURL);
+    if (!url) { toast.error(t('支付地址无效')); return; }
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   return (

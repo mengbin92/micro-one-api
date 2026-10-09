@@ -203,9 +203,10 @@ func (a *AuthInterceptor) validateRequest(ctx context.Context, method string) er
 func extractTokenFromContext(ctx context.Context) (string, bool, error) {
 	// Check for mTLS client certificates
 	p, ok := peer.FromContext(ctx)
-	if ok && p.AuthInfo != nil {
+	md, _ := metadata.FromIncomingContext(ctx)
+	if ok && p.AuthInfo != nil && len(md.Get("authorization")) == 0 {
 		if tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo); ok {
-			if len(tlsInfo.State.PeerCertificates) > 0 {
+			if len(tlsInfo.State.VerifiedChains) > 0 {
 				applogger.Log.Debug("mTLS authentication successful")
 				return "", true, nil // No JWT needed for mTLS
 			}
@@ -213,8 +214,7 @@ func extractTokenFromContext(ctx context.Context) (string, bool, error) {
 	}
 
 	// Read JWT from gRPC incoming metadata "authorization" key
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
+	if md == nil {
 		return "", false, fmt.Errorf("no gRPC metadata in context")
 	}
 

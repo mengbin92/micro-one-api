@@ -137,7 +137,17 @@ func (p *statusPaymentProvider) CreateOrder(ctx context.Context, order *PaymentO
 }
 
 func (p *statusPaymentProvider) QueryOrder(ctx context.Context, order *PaymentOrder) (*PaymentProviderStatus, error) {
-	return p.status, p.err
+	if p.status == nil {
+		return nil, p.err
+	}
+	status := *p.status
+	if status.TradeNo == "" {
+		status.TradeNo = order.TradeNo
+	}
+	if status.TotalAmount == 0 {
+		status.TotalAmount = order.MoneyCents
+	}
+	return &status, p.err
 }
 
 type countingPaymentIssuer struct {

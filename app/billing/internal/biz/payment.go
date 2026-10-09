@@ -10,6 +10,7 @@ import (
 	"math"
 	"micro-one-api/domain/authorization"
 	"strconv"
+	"sync"
 	"time"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
@@ -79,6 +80,8 @@ type CreatePaymentOrderRequest struct {
 }
 
 type ListPaymentOrdersRequest struct {
+	Reconcile bool
+	AfterID   int64
 	Page      int32
 	PageSize  int32
 	UserID    string
@@ -96,6 +99,7 @@ type PaymentProviderOrder struct {
 }
 
 type PaymentProviderStatus struct {
+	TotalAmount     int64
 	TradeNo         string
 	ProviderTradeNo string
 	TradeStatus     string
@@ -182,6 +186,8 @@ type PaymentNotifyVerifier interface {
 }
 
 type PaymentUsecase struct {
+	reconcileMu       sync.Mutex
+	reconcileAfterID  int64
 	authorization     authorization.Resolver
 	purchaseValidator interface {
 		ValidateRenewalContract(context.Context, int64, int64, *subscriptionbiz.SubscriptionContract) error
@@ -334,39 +340,22 @@ func (uc *PaymentUsecase) CreateOrder(ctx context.Context, req CreatePaymentOrde
 		}
 		ApplyPlanSnapshotToOrder(order, snapshot)
 	}
-	if keyed {
-		// Pre-insert the row before calling the provider: the deterministic
-		// trade_no unique key turns concurrent duplicate (user, request) calls
-		// into a single provider order — the loser's insert fails and it
-		// returns the winner's row instead of minting an orphan provider
-		// order that the database dedupe would discard anyway.
-		created, err := uc.repo.CreateOrder(ctx, order)
-		if err != nil {
-			if existing, lookupErr := uc.repo.GetOrderByTradeNo(ctx, tradeNo); lookupErr == nil && existing != nil {
-				return matchSubscriptionOrder(existing, req)
-			}
-			return nil, err
+	// Pre-insert the row before calling the provider: the deterministic
+	// trade_no unique key turns concurrent duplicate (user, request) calls
+	// into a single provider order — the loser's insert fails and it
+	// returns the winner's row instead of minting an orphan provider
+	// order that the database dedupe would discard anyway.
+	created, err := uc.repo.CreateOrder(ctx, order)
+	if err != nil {
+		if existing, lookupErr := uc.repo.GetOrderByTradeNo(ctx, tradeNo); lookupErr == nil && existing != nil {
+			return matchSubscriptionOrder(existing, req)
 		}
-		order = created
-		providerOrder, err := uc.provider.CreateOrder(ctx, order)
-		if err != nil {
-			_ = uc.repo.DeletePendingOrder(ctx, tradeNo)
-			return nil, err
-		}
-		if providerOrder != nil {
-			order.PayURL = providerOrder.PayURL
-			order.ProviderPayload = providerOrder.Payload
-			order.ProviderTradeNo = providerOrder.ProviderTradeNo
-		}
-		attached, err := uc.repo.AttachProviderResult(ctx, order)
-		if err != nil {
-			_ = uc.repo.DeletePendingOrder(ctx, tradeNo)
-			return nil, err
-		}
-		return attached, nil
+		return nil, err
 	}
+	order = created
 	providerOrder, err := uc.provider.CreateOrder(ctx, order)
 	if err != nil {
+		_ = uc.repo.DeletePendingOrder(ctx, tradeNo)
 		return nil, err
 	}
 	if providerOrder != nil {
@@ -374,13 +363,11 @@ func (uc *PaymentUsecase) CreateOrder(ctx context.Context, req CreatePaymentOrde
 		order.ProviderPayload = providerOrder.Payload
 		order.ProviderTradeNo = providerOrder.ProviderTradeNo
 	}
-	created, err := uc.repo.CreateOrder(ctx, order)
+	attached, err := uc.repo.AttachProviderResult(ctx, order)
 	if err != nil {
-		if existing, lookupErr := uc.repo.GetOrderByTradeNo(ctx, tradeNo); lookupErr == nil && existing != nil {
-			return matchSubscriptionOrder(existing, req)
-		}
+		return nil, err
 	}
-	return created, err
+	return attached, nil
 }
 
 func (uc *PaymentUsecase) GetOrderByTradeNo(ctx context.Context, tradeNo string) (*PaymentOrder, error) {
@@ -436,9 +423,16 @@ func (uc *PaymentUsecase) ReconcilePendingOrders(ctx context.Context, limit int3
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
-	orders, _, err := uc.repo.ListOrders(ctx, ListPaymentOrdersRequest{Page: 1, PageSize: limit, Status: PaymentOrderStatusPending, Channel: PaymentChannelAlipay})
+	uc.reconcileMu.Lock()
+	defer uc.reconcileMu.Unlock()
+	orders, _, err := uc.repo.ListOrders(ctx, ListPaymentOrdersRequest{Page: 1, PageSize: limit, Status: PaymentOrderStatusPending, Channel: PaymentChannelAlipay, Reconcile: true, AfterID: uc.reconcileAfterID})
 	if err != nil {
 		return PaymentReconcileReport{}, err
+	}
+	if len(orders) < int(limit) {
+		uc.reconcileAfterID = 0
+	} else {
+		uc.reconcileAfterID = orders[len(orders)-1].ID
 	}
 	report := PaymentReconcileReport{Scanned: len(orders)}
 	for _, order := range orders {
@@ -563,6 +557,9 @@ func (uc *PaymentUsecase) refreshProviderStatus(ctx context.Context, order *Paym
 	}
 	providerTradeNo := firstNonEmptyString(status.ProviderTradeNo, order.ProviderTradeNo)
 	if status.Paid {
+		if status.TradeNo != order.TradeNo || status.TotalAmount != order.MoneyCents {
+			return order, errors.New("payment provider order or amount does not match local order")
+		}
 		paid, err := uc.MarkOrderPaid(ctx, order.TradeNo, providerTradeNo)
 		if err != nil {
 			return nil, err

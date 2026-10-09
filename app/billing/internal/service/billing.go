@@ -1072,6 +1072,9 @@ func (s *BillingService) GetPaymentOrderByTradeNo(ctx context.Context, req *bill
 }
 
 func (s *BillingService) MarkPaymentOrderPaid(ctx context.Context, req *billingv1.MarkPaymentOrderPaidRequest) (*billingv1.PaymentOrderResponse, error) {
+	if err := authz.RequireSystem(ctx, s.ownerAuth, "billing.payments.read", "/api.billing.v1.BillingService/MarkPaymentOrderPaid"); err != nil {
+		return nil, err
+	}
 	if s.paymentUc == nil {
 		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: "payment service is not configured"}, nil
 	}
@@ -1093,6 +1096,9 @@ func (s *BillingService) MarkPaymentOrderPaid(ctx context.Context, req *billingv
 // the order is not issuable — the caller decides from order.asset_issue_status
 // (code-review M10).
 func (s *BillingService) MarkPaymentOrderAssetIssued(ctx context.Context, req *billingv1.MarkPaymentOrderAssetIssuedRequest) (*billingv1.PaymentOrderResponse, error) {
+	if err := authz.RequireSystem(ctx, s.ownerAuth, "billing.payments.read", "/api.billing.v1.BillingService/MarkPaymentOrderAssetIssued"); err != nil {
+		return nil, err
+	}
 	if s.paymentUc == nil {
 		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: "payment service is not configured"}, nil
 	}
@@ -1113,6 +1119,9 @@ func (s *BillingService) MarkPaymentOrderAssetIssued(ctx context.Context, req *b
 // pending (compensation for a failed fulfilment). No-op when already pending,
 // so it is safe to call unconditionally on the failure path.
 func (s *BillingService) UnmarkPaymentOrderAssetIssued(ctx context.Context, req *billingv1.UnmarkPaymentOrderAssetIssuedRequest) (*billingv1.PaymentOrderResponse, error) {
+	if err := authz.RequireSystem(ctx, s.ownerAuth, "billing.payments.read", "/api.billing.v1.BillingService/UnmarkPaymentOrderAssetIssued"); err != nil {
+		return nil, err
+	}
 	if s.paymentUc == nil {
 		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: "payment service is not configured"}, nil
 	}

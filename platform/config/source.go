@@ -89,7 +89,8 @@ func (s *EnvFileSource) Watch() (config.Watcher, error) {
 	})
 	if s.watcherErr != nil {
 		// Fall back to a no-op watcher so the process can still boot.
-		return &noopWatcher{ctx: s.ctx, cancel: s.cancel}, nil
+		ctx, cancel := context.WithCancel(s.ctx)
+		return &noopWatcher{ctx: ctx, cancel: cancel}, nil
 	}
 	w := &fsnotifyWatcher{
 		ch:   make(chan []*config.KeyValue, 4),

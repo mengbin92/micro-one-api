@@ -431,6 +431,7 @@ func (uc *IdentityUsecase) checkLoginRateLimit(ctx context.Context, key string) 
 	if key == "" {
 		return nil
 	}
+	limit := maxLoginAttempts
 	if uc.distributedLoginLimiter != nil {
 		count, err := uc.distributedLoginLimiter.LoginFailureCount(ctx, key)
 		if err == nil {
@@ -440,6 +441,7 @@ func (uc *IdentityUsecase) checkLoginRateLimit(ctx context.Context, key string) 
 			return nil
 		}
 		metrics.LoginLimiterDegraded.WithLabelValues("read").Inc()
+		limit = 1
 	}
 
 	uc.loginMutex.Lock()
@@ -456,7 +458,7 @@ func (uc *IdentityUsecase) checkLoginRateLimit(ctx context.Context, key string) 
 		return nil
 	}
 
-	if attempt.count >= maxLoginAttempts {
+	if attempt.count >= limit {
 		return fmt.Errorf("too many failed login attempts, try again later")
 	}
 
@@ -764,7 +766,7 @@ type UpdateAccessTokenOptions struct {
 	Status         int32
 	RemainQuota    int64
 	UnlimitedQuota bool
-	Subnet         string
+	Subnet         *string
 }
 
 func (uc *IdentityUsecase) CreateAccessToken(ctx context.Context, userID int64, name string, models []string, expireAt int64, opts ...CreateAccessTokenOptions) (*Token, error) {
@@ -870,6 +872,14 @@ func (uc *IdentityUsecase) UpdateAccessToken(ctx context.Context, userID, tokenI
 }
 
 func (uc *IdentityUsecase) UpdateAccessTokenWithOptions(ctx context.Context, userID, tokenID int64, opts UpdateAccessTokenOptions) (*Token, error) {
+	if opts.Status != 0 && opts.Status != TokenStatusEnabled && opts.Status != TokenStatusDisabled && opts.Status != TokenStatusExpired && opts.Status != TokenStatusExhausted {
+		return nil, ErrInvalidToken
+	}
+	if opts.Subnet != nil && strings.TrimSpace(*opts.Subnet) != "" {
+		if _, _, err := net.ParseCIDR(strings.TrimSpace(*opts.Subnet)); err != nil {
+			return nil, ErrInvalidToken
+		}
+	}
 	token, err := uc.repo.FindTokenByID(ctx, userID, tokenID)
 	if err != nil {
 		return nil, err
@@ -895,7 +905,9 @@ func (uc *IdentityUsecase) UpdateAccessTokenWithOptions(ctx context.Context, use
 	// H2: respect the caller's unlimited_quota flag. Previously this was
 	// unconditionally set to true, discarding a configured finite quota.
 	token.UnlimitedQuota = opts.UnlimitedQuota
-	token.Subnet = opts.Subnet
+	if opts.Subnet != nil {
+		token.Subnet = strings.TrimSpace(*opts.Subnet)
+	}
 	if err := uc.repo.UpdateToken(ctx, token); err != nil {
 		return nil, err
 	}
@@ -1205,7 +1217,12 @@ func (uc *IdentityUsecase) ResetPasswordByEmail(ctx context.Context, email, pass
 	if mode == "iam" {
 		return uc.resetIAMPasswordByEmail(ctx, email, password)
 	}
-	if email == "" || len(password) < 8 {
+	proof, ok := ctx.Value(emailRecoveryKey{}).(emailRecoveryProof)
+	now := uc.now()
+	if !ok || proof.UserID <= 0 || email == "" || proof.Email != email || proof.VerifiedAt.After(now.Add(time.Second)) || now.Sub(proof.VerifiedAt) > time.Minute {
+		return ErrInvalidToken
+	}
+	if len(password) < 8 || len(password) > 72 {
 		return ErrInvalidPassword
 	}
 	user, err := uc.repo.FindUserByEmail(ctx, email)
@@ -1217,8 +1234,11 @@ func (uc *IdentityUsecase) ResetPasswordByEmail(ctx context.Context, email, pass
 		return err
 	}
 	return uc.mutateLegacyAccount(ctx, user.ID, "account.password.reset", []string{"password"}, func(u *User) error {
-		if u.Email != email {
+		if u.ID != proof.UserID || u.Email != email || u.PasswordChangedAt != proof.PasswordEpoch {
 			return ErrIAMRevisionConflict
+		}
+		if u.Status != UserStatusEnabled {
+			return ErrUserDisabled
 		}
 		u.PasswordHash = string(hash)
 		u.PasswordChangedAt = nextPasswordEpoch(u.PasswordChangedAt, uc.now())
@@ -1248,7 +1268,7 @@ func (uc *IdentityUsecase) generateToken() string {
 // tokenHashSecret returns the HMAC key used to hash access-token keys. It
 // prefers the dedicated TOKEN_HASH_KEY, falls back to JWT_SECRET_KEY (so
 // deployments that already rotate a JWT secret get token-key rotation for
-// free), and finally a fixed dev default so unit tests work without env.
+// free). Token hashing fails closed when neither key is configured.
 // Rotating the secret invalidates every existing token (keys can no longer
 // be looked up), which is the desired break-glass behaviour.
 func tokenHashSecret() []byte {
@@ -1258,7 +1278,7 @@ func tokenHashSecret() []byte {
 	if v := os.Getenv("JWT_SECRET_KEY"); v != "" {
 		return []byte(v)
 	}
-	return []byte("micro-one-api-token-hash-default")
+	panic("TOKEN_HASH_KEY or JWT_SECRET_KEY is required for token hashing")
 }
 
 // HashTokenKey returns the lowercase hex HMAC-SHA256 of a plaintext token
@@ -1332,6 +1352,19 @@ func (uc *IdentityUsecase) OAuthLogin(ctx context.Context, provider, oauthID, us
 		if displayName == "" {
 			displayName = username
 		}
+		digest := sha256.Sum256([]byte(provider + ":" + oauthID))
+		base := []rune(username)
+		if len(base) > 19 {
+			base = base[:19]
+		}
+		fallbackUsername := string(base) + "-" + hex.EncodeToString(digest[:6])
+		existing, lookupErr := uc.repo.FindUserByUsername(ctx, username)
+		if lookupErr != nil && !errors.Is(lookupErr, ErrUserNotFound) {
+			return nil, "", false, lookupErr
+		}
+		if existing != nil {
+			username = fallbackUsername
+		}
 		user = &User{
 			Username:      username,
 			DisplayName:   displayName,
@@ -1343,8 +1376,15 @@ func (uc *IdentityUsecase) OAuthLogin(ctx context.Context, provider, oauthID, us
 			OAuthID:       oauthID,
 		}
 		user.Group = registrationGroup(user.Group)
-		if err := uc.createUser(ctx, user); err != nil {
-			return nil, "", false, err
+		for attempt := 0; ; attempt++ {
+			err := uc.createUser(ctx, user)
+			if err == nil {
+				break
+			}
+			if !errors.Is(err, ErrUserExists) || attempt >= 2 {
+				return nil, "", false, err
+			}
+			user.Username = string(base) + "-" + uc.generateToken()[:12]
 		}
 		created = true
 		_, identityErr := uc.repo.FindOAuthIdentity(ctx, provider, oauthID)

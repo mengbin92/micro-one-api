@@ -384,7 +384,11 @@ func (r *Repository) listUnrestrictedChannelsByGroupDB(ctx context.Context, grou
 	}
 	result := make([]*biz.Channel, 0, len(models))
 	for i := range models {
-		result = append(result, r.modelToChannel(&models[i]))
+		channel, err := r.modelToChannel(&models[i])
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, channel)
 	}
 	return result, nil
 }
@@ -1036,7 +1040,7 @@ func (r *Repository) findSubscriptionAccountByIDDB(ctx context.Context, accountI
 		}
 		return nil, err
 	}
-	return r.subscriptionAccountModelToBiz(&model), nil
+	return r.subscriptionAccountModelToBiz(&model)
 }
 
 func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, group, model, platform string) ([]biz.SubscriptionAccountAbility, error) {
@@ -1145,7 +1149,11 @@ func (r *Repository) listSubscriptionAccountsDB(ctx context.Context, page, pageS
 	}
 	result := make([]*biz.SubscriptionAccount, len(models))
 	for i, m := range models {
-		result[i] = r.subscriptionAccountModelToBiz(&m)
+		account, err := r.subscriptionAccountModelToBiz(&m)
+		if err != nil {
+			return nil, 0, err
+		}
+		result[i] = account
 	}
 	if err := r.attachAccountQuotaSnapshots(ctx, result); err != nil {
 		return nil, 0, err
@@ -1259,7 +1267,11 @@ func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *b
 				}
 				return err
 			}
-			if r.subscriptionAccountModelToBiz(&current).RecoveryState() != *account.RecoveryBaseline {
+			currentAccount, err := r.subscriptionAccountModelToBiz(&current)
+			if err != nil {
+				return err
+			}
+			if currentAccount.RecoveryState() != *account.RecoveryBaseline {
 				return biz.ErrAccountRecoveryStateChanged
 			}
 		}
@@ -1503,7 +1515,10 @@ func (r *Repository) recordSubscriptionAccountQuotaUsageDB(ctx context.Context, 
 			}
 			return err
 		}
-		account := r.subscriptionAccountModelToBiz(&model)
+		account, err := r.subscriptionAccountModelToBiz(&model)
+		if err != nil {
+			return err
+		}
 		chargedUSD := usage.CostUSD * account.EffectiveRateMultiplier()
 		if usage.ReservationID != "" {
 			event := subscriptionAccountQuotaEventModel{
@@ -1685,7 +1700,10 @@ func (r *Repository) recordHealthDB(ctx context.Context, event biz.ChannelHealth
 			}
 			return err
 		}
-		channel := r.modelToChannel(&model)
+		channel, err := r.modelToChannel(&model)
+		if err != nil {
+			return err
+		}
 		applyHealthEvent(channel, event, threshold, cooldown)
 		if err := tx.Model(&channelModel{}).Where("id = ?", event.ChannelID).Updates(map[string]any{
 			"test_time":                   channel.TestTime,
@@ -1713,45 +1731,7 @@ func (r *Repository) findByIDDB(ctx context.Context, channelID int64) (*biz.Chan
 		}
 		return nil, err
 	}
-	baseURL := ""
-	if model.BaseURL != nil {
-		baseURL = *model.BaseURL
-	}
-	priority := int64(0)
-	if model.Priority != nil {
-		priority = *model.Priority
-	}
-	return &biz.Channel{
-		ID:                                model.ID,
-		AuthorizationRevision:             model.AuthorizationRevision,
-		Type:                              model.Type,
-		Name:                              model.Name,
-		Status:                            model.Status,
-		BaseURL:                           baseURL,
-		Group:                             model.Group,
-		Models:                            biz.SplitCSV(model.Models),
-		Priority:                          priority,
-		Key:                               r.decryptKey(model.Key),
-		Weight:                            derefUint(model.Weight),
-		CreatedTime:                       model.CreatedTime,
-		TestTime:                          model.TestTime,
-		ResponseTime:                      model.ResponseTime,
-		Balance:                           model.Balance,
-		BalanceUpdatedTime:                model.BalanceUpdatedTime,
-		BalanceRefreshLastError:           derefString(model.BalanceRefreshLastError),
-		BalanceRefreshLastSuccessTime:     model.BalanceRefreshLastSuccessTime,
-		ConsecutiveBalanceRefreshFailures: model.ConsecutiveBalanceRefreshFailures,
-		HealthStatus:                      model.HealthStatus,
-		HealthLastError:                   derefString(model.HealthLastError),
-		HealthLastSuccessTime:             model.HealthLastSuccessTime,
-		HealthLastFailureTime:             model.HealthLastFailureTime,
-		HealthConsecutiveFailures:         model.HealthConsecutiveFailures,
-		CircuitOpenedUntil:                model.CircuitOpenedUntil,
-		UsedQuota:                         model.UsedQuota,
-		ModelMapping:                      derefString(model.ModelMapping),
-		SystemPrompt:                      derefString(model.SystemPrompt),
-		Config:                            biz.DecodeChannelConfig(model.Config),
-	}, nil
+	return r.modelToChannel(&model)
 }
 
 func (r *Repository) listAbilitiesByGroupAndModelDB(ctx context.Context, group, model string) ([]biz.Ability, error) {
@@ -2236,7 +2216,11 @@ func (r *Repository) listChannelsDB(ctx context.Context, page, pageSize int32, k
 	}
 	result := make([]*biz.Channel, len(models))
 	for i, m := range models {
-		result[i] = r.modelToChannel(&m)
+		channel, err := r.modelToChannel(&m)
+		if err != nil {
+			return nil, 0, err
+		}
+		result[i] = channel
 	}
 	return result, total, nil
 }
@@ -2674,20 +2658,29 @@ func (r *Repository) encryptKey(key string) (string, error) {
 	return encrypted, nil
 }
 
-// decryptKey decrypts an API key from storage. Returns as-is if no encryption key is set.
-func (r *Repository) decryptKey(key string) string {
-	if r.encKey == nil || key == "" {
-		return key
+// Configured encryption requires migration of legacy plaintext before reads.
+func (r *Repository) decryptKey(key string) (string, error) {
+	if key == "" {
+		return "", nil
+	}
+	if r.encKey == nil {
+		if looksLikeCiphertext(key) {
+			return "", fmt.Errorf("encrypted credential requires encryption key")
+		}
+		return key, nil
 	}
 	decrypted, err := appcrypto.Decrypt(key, r.encKey)
-	if err != nil {
-		// If decryption fails, assume it's stored as plaintext (migration scenario)
-		return key
+	if err == nil {
+		return decrypted, nil
 	}
-	return decrypted
+	return "", fmt.Errorf("stored credential could not be decrypted; verify the encryption key or migrate legacy plaintext")
 }
 
-func (r *Repository) modelToChannel(m *channelModel) *biz.Channel {
+func (r *Repository) modelToChannel(m *channelModel) (*biz.Channel, error) {
+	key, err := r.decryptKey(m.Key)
+	if err != nil {
+		return nil, err
+	}
 	baseURL := ""
 	if m.BaseURL != nil {
 		baseURL = *m.BaseURL
@@ -2706,7 +2699,7 @@ func (r *Repository) modelToChannel(m *channelModel) *biz.Channel {
 		Group:                             m.Group,
 		Models:                            biz.SplitCSV(m.Models),
 		Priority:                          priority,
-		Key:                               r.decryptKey(m.Key),
+		Key:                               key,
 		Weight:                            derefUint(m.Weight),
 		CreatedTime:                       m.CreatedTime,
 		TestTime:                          m.TestTime,
@@ -2727,11 +2720,15 @@ func (r *Repository) modelToChannel(m *channelModel) *biz.Channel {
 		SystemPrompt:                      derefString(m.SystemPrompt),
 		RestrictModels:                    m.RestrictModels != 0,
 		Config:                            biz.DecodeChannelConfig(m.Config),
-	}
+	}, nil
 }
 
 func (r *Repository) channelToModel(ch *biz.Channel) (*channelModel, error) {
 	key, err := r.encryptKey(ch.Key)
+	if err != nil {
+		return nil, err
+	}
+	config, err := jsonx.Marshal(ch.Config)
 	if err != nil {
 		return nil, err
 	}
@@ -2763,13 +2760,21 @@ func (r *Repository) channelToModel(ch *biz.Channel) (*channelModel, error) {
 		ModelMapping:                      new(ch.ModelMapping),
 		Priority:                          new(ch.Priority),
 		Key:                               key,
-		Config:                            "{}",
+		Config:                            string(config),
 		SystemPrompt:                      new(ch.SystemPrompt),
 		RestrictModels:                    xdb.BoolInt(ch.RestrictModels),
 	}, nil
 }
 
-func (r *Repository) subscriptionAccountModelToBiz(m *subscriptionAccountModel) *biz.SubscriptionAccount {
+func (r *Repository) subscriptionAccountModelToBiz(m *subscriptionAccountModel) (*biz.SubscriptionAccount, error) {
+	accessToken, err := r.decryptKey(derefString(m.AccessToken))
+	if err != nil {
+		return nil, err
+	}
+	refreshToken, err := r.decryptKey(derefString(m.RefreshToken))
+	if err != nil {
+		return nil, err
+	}
 	baseURL := ""
 	if m.BaseURL != nil {
 		baseURL = *m.BaseURL
@@ -2787,8 +2792,8 @@ func (r *Repository) subscriptionAccountModelToBiz(m *subscriptionAccountModel) 
 		Priority:               m.Priority,
 		Weight:                 m.Weight,
 		BaseURL:                baseURL,
-		AccessToken:            r.decryptKey(derefString(m.AccessToken)),
-		RefreshToken:           r.decryptKey(derefString(m.RefreshToken)),
+		AccessToken:            accessToken,
+		RefreshToken:           refreshToken,
 		ExpiresAt:              m.ExpiresAt,
 		CredentialRevision:     m.CredentialRevision,
 		AccountID:              m.AccountID,
@@ -2821,7 +2826,7 @@ func (r *Repository) subscriptionAccountModelToBiz(m *subscriptionAccountModel) 
 		LastError:              subscriptionAccountMetadataValue(derefString(m.Metadata), "last_error"),
 	}
 	account.RecoveryBaseline = new(account.RecoveryState())
-	return account
+	return account, nil
 }
 
 func (r *Repository) subscriptionAccountBizToModel(a *biz.SubscriptionAccount) (*subscriptionAccountModel, error) {
@@ -3304,7 +3309,11 @@ func (r *Repository) recordQuotaResetAndResetDB(ctx context.Context, run *biz.Su
 			}
 			return err
 		}
-		if !run.MatchesAccount(r.subscriptionAccountModelToBiz(&account)) {
+		currentAccount, err := r.subscriptionAccountModelToBiz(&account)
+		if err != nil {
+			return err
+		}
+		if !run.MatchesAccount(currentAccount) {
 			return biz.ErrQuotaResetRunStale
 		}
 		model := subscriptionAccountQuotaResetRunModel{

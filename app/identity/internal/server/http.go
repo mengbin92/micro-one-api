@@ -109,6 +109,7 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 		khttp.RequestDecoder(iamdto.DecodeRequest), khttp.ResponseEncoder(iamdto.EncodeResponse),
 		khttp.Address(addr),
 		khttp.Filter(appmiddleware.RequestID),
+		khttp.Filter(publicIdentityRateLimit(uc)),
 	)
 	var billingClient billingv1.BillingServiceClient
 	if len(billingClients) > 0 {
@@ -314,9 +315,9 @@ func takeVerificationRecord(prefix, email, code string) (verificationRecord, boo
 	return record, true
 }
 
-// generateVerificationCode returns a 48-bit (12 hex char) random code.
+// generateVerificationCode returns a 128-bit random code.
 func generateVerificationCode() (string, error) {
-	b := make([]byte, 6)
+	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
@@ -362,13 +363,14 @@ func handleRegister(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 		return
 	}
 	var req struct {
-		Username       string `json:"username"`
-		Password       string `json:"password"`
-		Email          string `json:"email"`
-		Group          string `json:"group"`
-		AffCode        string `json:"aff_code"`
-		TurnstileToken string `json:"turnstile_token"`
-		CFToken        string `json:"cf_turnstile_response"`
+		Username         string `json:"username"`
+		Password         string `json:"password"`
+		Email            string `json:"email"`
+		Group            string `json:"group"`
+		AffCode          string `json:"aff_code"`
+		VerificationCode string `json:"verification_code"`
+		TurnstileToken   string `json:"turnstile_token"`
+		CFToken          string `json:"cf_turnstile_response"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -395,6 +397,14 @@ func handleRegister(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 			return
 		}
 	}
+	verifiedEmail := false
+	if req.VerificationCode != "" {
+		if _, ok := takeVerificationRecord("v:", req.Email, req.VerificationCode); !ok {
+			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "invalid email verification code"})
+			return
+		}
+		verifiedEmail = true
+	}
 	// M5: ignore any client-supplied group on public registration. The
 	// group drives channel access and billing ratios, so self-selection
 	// would let a registrant join a privileged or discounted group. Force
@@ -408,7 +418,7 @@ func handleRegister(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
 	}
-	creditRegistrationRewards(r.Context(), user, uc, billingClient)
+	creditRegistrationRewards(r.Context(), user, uc, billingClient, verifiedEmail)
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]any{"user_id": user.ID}})
 }
 
@@ -420,7 +430,7 @@ func handleRegister(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 // is not configured, the legacy INVITE*_BONUS_* env vars are used instead.
 // Failures are swallowed because the user record is already committed;
 // admin /api/topup can grant the reward manually if needed.
-func creditRegistrationRewards(ctx context.Context, user *biz.User, uc *biz.IdentityUsecase, billingClient billingv1.BillingServiceClient) {
+func creditRegistrationRewards(ctx context.Context, user *biz.User, uc *biz.IdentityUsecase, billingClient billingv1.BillingServiceClient, verifiedEmail bool) {
 	if user == nil || billingClient == nil {
 		return
 	}
@@ -433,7 +443,8 @@ func creditRegistrationRewards(ctx context.Context, user *biz.User, uc *biz.Iden
 			Remark:     "new user registration reward",
 		})
 	}
-	if user.InviterID == 0 {
+	// Invitation payouts require ownership proof instead of a freely supplied address.
+	if user.InviterID == 0 || !verifiedEmail {
 		return
 	}
 	inviteeAmount := rewards.Invitee
@@ -964,7 +975,7 @@ func handleCreatePaymentOrder(w http.ResponseWriter, r *http.Request, uc *biz.Id
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if req.Amount <= 0 {
+	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) || req.Amount <= 0 || req.Amount > 1e6 {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "amount must be positive"})
 		return
 	}
@@ -977,7 +988,12 @@ func handleCreatePaymentOrder(w http.ResponseWriter, r *http.Request, uc *biz.Id
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "invalid payment_method"})
 		return
 	}
-	assetAmount := int64(math.Round(req.Amount * rechargeAmountMultiplier() * float64(amountScale)))
+	assetUnits := math.Round(req.Amount * rechargeAmountMultiplier() * float64(amountScale))
+	if math.IsNaN(assetUnits) || math.IsInf(assetUnits, 0) || assetUnits >= float64(math.MaxInt64) {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "amount exceeds supported range"})
+		return
+	}
+	assetAmount := int64(assetUnits)
 	if assetAmount <= 0 {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "amount too small"})
 		return
@@ -1050,15 +1066,6 @@ func handleUserPaymentOrders(w http.ResponseWriter, r *http.Request, uc *biz.Ide
 		return
 	}
 	userID := strconv.FormatInt(snapshot.UserID, 10)
-	user, err := uc.GetUser(r.Context(), snapshot.UserID)
-	mode, modeErr := uc.AuthorizationMode(r.Context())
-	if modeErr != nil {
-		writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "authorization unavailable"})
-		return
-	}
-	if mode == "legacy" && err == nil && user.IsAdmin() {
-		userID = ""
-	}
 	query := r.URL.Query()
 	pageSize := min(queryInt32(r, "page_size", 20), 100)
 	resp, err := billingClient.ListPaymentOrders(billingSelfContext(r.Context()), &billingv1.ListPaymentOrdersRequest{
@@ -1313,7 +1320,11 @@ func handleResetPasswordRequest(w http.ResponseWriter, r *http.Request, delivere
 	gcVerificationStores()
 	record := verificationRecord{Code: token, At: time.Now()}
 	if len(usecases) > 0 && usecases[0] != nil {
-		record.UserID, record.PasswordEpoch, _ = usecases[0].PrepareEmailRecovery(r.Context(), email)
+		record.UserID, record.PasswordEpoch, err = usecases[0].PrepareEmailRecovery(r.Context(), email)
+		if err != nil {
+			writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "reset token sent", Data: map[string]any{"email": email}})
+			return
+		}
 	}
 	verificationStore.Lock()
 	verificationStore.items["r:"+email] = record
@@ -1323,8 +1334,11 @@ func handleResetPasswordRequest(w http.ResponseWriter, r *http.Request, delivere
 	}
 	if err := deliverer.DeliverResetToken(r.Context(), email, token); err != nil {
 		applogger.Log.Warn("reset token delivery failed", zap.String("email", email), zap.Error(err))
-		writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "failed to deliver reset token"})
-		return
+		verificationStore.Lock()
+		if current := verificationStore.items["r:"+email]; current.Code == token {
+			delete(verificationStore.items, "r:"+email)
+		}
+		verificationStore.Unlock()
 	}
 	// Never return the token in the response; it is delivered out-of-band.
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "reset token sent", Data: map[string]any{"email": email}})
@@ -1508,7 +1522,7 @@ func takeOAuthBindRecord(state, providerName string) (oauthBindRecord, bool, err
 }
 
 func handleCreateUserToken(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
-	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
 		return
 	}
@@ -1548,7 +1562,7 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 			return
 		}
 		page := queryInt32(r, "page", 1)
-		pageSize := queryInt32(r, "page_size", 20)
+		pageSize := min(queryInt32(r, "page_size", 20), 100)
 		keyword := r.URL.Query().Get("keyword")
 		tokens, total, err := uc.ListAccessTokens(r.Context(), snapshot.UserID, page, pageSize, keyword)
 		if err != nil {
@@ -1613,7 +1627,7 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 			Status         int32    `json:"status"`
 			RemainQuota    int64    `json:"remain_quota"`
 			UnlimitedQuota bool     `json:"unlimited_quota"`
-			Subnet         string   `json:"subnet"`
+			Subnet         *string  `json:"subnet"`
 		}
 		req.RemainQuota = -1
 		if !decodeJSON(w, r, &req) {
@@ -1661,6 +1675,7 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if err := jsonx.NewDecoder(r.Body).Decode(dst); err != nil {
 		writeJSON(w, http.StatusBadRequest, apiResponse{Success: false, Message: "invalid request body"})
 		return false
@@ -1912,13 +1927,16 @@ func handleOAuthCallback(w http.ResponseWriter, r *http.Request, provider oauth.
 		return
 	}
 
+	if !userInfo.EmailVerified {
+		userInfo.Email = ""
+	}
 	user, token, created, err := uc.OAuthLogin(r.Context(), userInfo.Provider, userInfo.ProviderID, userInfo.Username, userInfo.Email, userInfo.DisplayName)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}
 	if created {
-		creditRegistrationRewards(r.Context(), user, uc, billingClient)
+		creditRegistrationRewards(r.Context(), user, uc, billingClient, userInfo.EmailVerified)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{

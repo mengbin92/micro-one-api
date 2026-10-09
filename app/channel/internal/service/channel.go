@@ -107,6 +107,9 @@ func (s *ChannelService) GetSubscriptionAccountModel(ctx context.Context, accoun
 }
 
 func (s *ChannelService) GetSubscriptionAccountWithSecrets(ctx context.Context, req *channelv1.GetSubscriptionAccountRequest) (*channelv1.GetSubscriptionAccountReply, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_GetSubscriptionAccountWithSecrets_FullMethodName); err != nil {
+		return nil, err
+	}
 	account, err := s.uc.GetSubscriptionAccount(ctx, req.AccountId)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {

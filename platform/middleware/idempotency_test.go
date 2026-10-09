@@ -380,3 +380,30 @@ func TestIdempotencyCache_Defaults(t *testing.T) {
 		t.Fatalf("defaults wrong: max=%d ttl=%v", c.max, c.ttl)
 	}
 }
+
+func TestIdempotencyInvalidKeyNeverExecutes(t *testing.T) {
+	m := NewIdempotencyMiddleware(nil, nil)
+	called := false
+	r := httptest.NewRequest("POST", "/write", nil)
+	r.Header.Set("Idempotency-Key", "short")
+	w := httptest.NewRecorder()
+	m.Handler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true })).ServeHTTP(w, r)
+	if called || w.Code != http.StatusBadRequest {
+		t.Fatalf("called=%v status=%d", called, w.Code)
+	}
+}
+func TestIdempotencyCanceledWaitWritesError(t *testing.T) {
+	m := NewIdempotencyMiddleware(nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r := httptest.NewRequest("POST", "/write", nil).WithContext(ctx)
+	r.Header.Set("Idempotency-Key", "valid-key")
+	key := normalizeIdempotencyKey("valid-key", r)
+	m.acquireInflight(key)
+	defer m.completeInflight(key)
+	w := httptest.NewRecorder()
+	m.Handler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("duplicate executed") })).ServeHTTP(w, r)
+	if w.Code != http.StatusRequestTimeout {
+		t.Fatalf("status=%d", w.Code)
+	}
+}

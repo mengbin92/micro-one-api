@@ -2353,19 +2353,20 @@ func handleOneAPIUserManage(w http.ResponseWriter, r *http.Request, svc *service
 		writeJSON(w, http.StatusOK, apiResponse(false, "username and action are required", nil))
 		return
 	}
-	users, err := svc.ListUsers(r.Context(), &adminv1.AdminListUsersRequest{
-		Page:     1,
-		PageSize: 100,
-		Keyword:  req.Username,
-	})
-	if err != nil {
-		writeServiceResponse(w, nil, err)
-		return
-	}
 	var user *commonv1.UserInfo
-	for _, item := range users.GetUsers() {
-		if item.GetUsername() == req.Username {
-			user = item
+	for page := int32(1); user == nil; page++ {
+		users, err := svc.ListUsers(r.Context(), &adminv1.AdminListUsersRequest{Page: page, PageSize: 100, Keyword: req.Username})
+		if err != nil {
+			writeServiceResponse(w, nil, err)
+			return
+		}
+		for _, item := range users.GetUsers() {
+			if item.GetUsername() == req.Username {
+				user = item
+				break
+			}
+		}
+		if len(users.GetUsers()) < 100 || int64(page)*100 >= users.GetTotal() {
 			break
 		}
 	}
