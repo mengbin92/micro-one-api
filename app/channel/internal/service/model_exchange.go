@@ -35,12 +35,13 @@ func (s *ChannelService) ExportModels(ctx context.Context, req *channelv1.Export
 		}, nil
 	}
 	result, err := uc.ExportModels(ctx, biz.ListModelsFilter{
-		Keyword:   req.GetKeyword(),
-		Provider:  req.GetProvider(),
-		ModelType: req.GetModelType(),
-		Status:    req.GetStatus(),
-		Category:  req.GetCategory(),
-		Tier:      req.GetTier(),
+		Keyword:        req.GetKeyword(),
+		Provider:       req.GetProvider(),
+		ModelType:      req.GetModelType(),
+		Status:         req.GetStatus(),
+		StatusHasValue: req.Status != nil,
+		Category:       req.GetCategory(),
+		Tier:           req.GetTier(),
 	}, req.GetExportPrices())
 	if err != nil {
 		if authz.IsAuthorizationError(err) {

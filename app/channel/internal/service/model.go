@@ -33,7 +33,8 @@ func toModelInfo(m *biz.Model) *channelv1.ModelInfo {
 		PriceFieldsVisible:    m.PriceFieldsVisible,
 		MappingsVisible:       m.MappingsVisible,
 		AuthorizationRevision: m.AuthorizationRevision,
-		Status:                m.Status,
+		Status:                m.EffectiveStatus(),
+		ConfiguredStatus:      new(m.Status),
 		IsPublic:              m.IsPublic,
 		Capabilities:          append([]string(nil), m.Capabilities...),
 		InputModalities:       append([]string(nil), m.InputModalities...),
@@ -60,7 +61,8 @@ func toModelSummary(m *biz.Model) *channelv1.ModelSummary {
 		DisplayName:           m.DisplayName,
 		Provider:              m.Provider,
 		ModelType:             m.ModelType,
-		Status:                m.Status,
+		Status:                m.EffectiveStatus(),
+		ConfiguredStatus:      new(m.Status),
 		Category:              m.Category,
 		Tier:                  m.Tier,
 		IsPublic:              m.IsPublic,
@@ -198,13 +200,14 @@ func (s *ChannelService) ListModels(ctx context.Context, req *channelv1.ListMode
 		return &channelv1.ListModelsResponse{Models: []*channelv1.ModelSummary{}, Total: 0}, nil
 	}
 	models, total, err := uc.ListModels(ctx, req.Page, req.PageSize, biz.ListModelsFilter{
-		Keyword:    req.Keyword,
-		Provider:   req.Provider,
-		ModelType:  req.ModelType,
-		Status:     req.Status,
-		Category:   req.Category,
-		Tier:       req.Tier,
-		PublicOnly: req.PublicOnly,
+		Keyword:        req.Keyword,
+		Provider:       req.Provider,
+		ModelType:      req.ModelType,
+		Status:         req.GetStatus(),
+		StatusHasValue: req.Status != nil,
+		Category:       req.Category,
+		Tier:           req.Tier,
+		PublicOnly:     req.PublicOnly,
 	})
 	if err != nil {
 		if authz.IsAuthorizationError(err) {

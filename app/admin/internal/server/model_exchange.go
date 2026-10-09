@@ -44,6 +44,11 @@ func handleExportModels(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
+	status, valid := modelStatusQuery(r)
+	if !valid {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid model status"})
+		return
+	}
 	role, _ := r.Context().Value(adminRoleContextKey{}).(int32)
 	exportPrices := r.URL.Query().Get("export_prices") == "true"
 	if exportPrices && role < service.RoleRoot {
@@ -55,7 +60,7 @@ func handleExportModels(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		Keyword:      r.URL.Query().Get("keyword"),
 		Provider:     r.URL.Query().Get("provider"),
 		ModelType:    r.URL.Query().Get("model_type"),
-		Status:       getQueryInt32(r, "status", 0),
+		Status:       status,
 		Category:     r.URL.Query().Get("category"),
 		Tier:         r.URL.Query().Get("tier"),
 	})
