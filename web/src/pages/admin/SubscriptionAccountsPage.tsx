@@ -511,6 +511,8 @@ export function AdminSubscriptionAccountsPage() {
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['admin-subscription-accounts'] });
+    queryClient.invalidateQueries({ queryKey: ['admin-models'] });
+    queryClient.invalidateQueries({ queryKey: ['admin-model-detail'] });
   };
 
   const sort = {

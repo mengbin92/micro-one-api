@@ -501,13 +501,13 @@ export function AdminModelsPage() {
                         <Eye className="size-3.5" />{t("详情")}</Button>
                       <Button permission={['channel.model.read', 'channel.model.update']} variant="outline" size="sm" onClick={() => openEdit(m)} disabled={editLoading}>
                         <Pencil className="size-3.5" />{t("编辑")}</Button>
-                      <Button permission={['channel.model.update', m.status === 1 ? 'channel.model.disable' : 'channel.model.enable']}
+                      <Button permission={['channel.model.update', (m.configured_status ?? m.status) === 1 ? 'channel.model.disable' : 'channel.model.enable']}
                         variant="outline"
                         size="sm"
-                        onClick={() => toggleStatusMutation.mutate({ pk: m.id, status: m.status === 1 ? 0 : 1 })}
+                        onClick={() => toggleStatusMutation.mutate({ pk: m.id, status: (m.configured_status ?? m.status) === 1 ? 0 : 1 })}
                         disabled={toggleStatusMutation.isPending}
                       >
-                        {m.status === 1 ? t("禁用") : t("启用")}
+                        {(m.configured_status ?? m.status) === 1 ? t("禁用") : t("启用")}
                       </Button>
                       <Button permission={['channel.model.delete', 'channel.model_alias.delete', 'channel.model_mapping.delete', 'billing.pricing.update']}
                         variant="outline"

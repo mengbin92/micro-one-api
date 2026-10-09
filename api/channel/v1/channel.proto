@@ -654,7 +654,7 @@ message ModelInfo {
   int32 context_window = 7;
   double pricing_input = 8;       // per 1M tokens
   double pricing_output = 9;
-  int32 status = 10;              // 0=disabled, 1=enabled, 2=testing
+  int32 status = 10;              // effective: 0=disabled, 1=enabled, 2=testing
   bool is_public = 11;
   repeated string capabilities = 12;
   repeated string tags = 13;
@@ -673,6 +673,7 @@ message ModelInfo {
   bool price_fields_visible = 25;
   bool mappings_visible = 26;
   int64 authorization_revision = 27;
+  optional int32 configured_status = 28; // registry switch, independent of sources
 }
 
 message ModelSummary {
@@ -696,6 +697,7 @@ message ModelSummary {
   bool price_fields_visible = 18;
   bool mappings_visible = 19;
   int64 authorization_revision = 20;
+  optional int32 configured_status = 21; // registry switch, independent of sources
 }
 
 message ModelAlias {
@@ -747,7 +749,7 @@ message ListModelsRequest {
   string keyword = 3;           // matches model_id or display_name
   string provider = 4;
   string model_type = 5;
-  int32 status = 6;
+  optional int32 status = 6;     // omitted=all; 0=effectively disabled
   string category = 7;
   string tier = 8;
   bool public_only = 9;         // when true, exclude is_public=false
@@ -1242,7 +1244,7 @@ message ExportModelsRequest {
   string keyword = 2;
   string provider = 3;
   string model_type = 4;
-  int32 status = 5;
+  optional int32 status = 5;     // omitted=all; filters effective status
   string category = 6;
   string tier = 7;
 }

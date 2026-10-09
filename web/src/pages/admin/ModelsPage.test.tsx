@@ -125,6 +125,47 @@ describe('AdminModelsPage', () => {
     expect(screen.getByRole('button', { name: '启用' })).toBeInTheDocument();
   });
 
+  it('can manually disable an enabled model after its last source is disabled', async () => {
+    let body: Record<string, unknown> | undefined;
+    server.use(
+      http.get('/api/admin/models', () => HttpResponse.json({
+        models: [{ ...model, status: undefined, configured_status: 1, channel_count: undefined, subscription_count: undefined, suppliers: [] }],
+        total: 1,
+      })),
+      http.patch('/api/admin/models/1/status', async ({ request }) => {
+        body = await request.json() as Record<string, unknown>;
+        return HttpResponse.json({ success: true });
+      }),
+    );
+    const { userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+    renderWithQuery(<MemoryRouter><AdminModelsPage /></MemoryRouter>);
+
+    const row = (await screen.findByText('gpt-4o')).closest('tr')!;
+    expect(within(row).getByText('禁用', { selector: 'span' })).toBeInTheDocument();
+    expect(within(row).getAllByRole('cell', { name: '0' })).toHaveLength(2);
+    await user.click(within(row).getByRole('button', { name: '禁用' }));
+    await waitFor(() => expect(body?.status).toBe(0));
+  });
+
+  it('checks configured status when choosing the model toggle permission', async () => {
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({
+        authorization_mode: 'iam', session: { activation_state: 'active' },
+        permitted_operations: ['channel.model.list', 'channel.model.update', 'channel.model.disable'],
+      })),
+      http.get('/api/admin/models', () => HttpResponse.json({
+        models: [{ ...model, status: undefined, configured_status: 1, channel_count: 0, subscription_count: 0 }],
+        total: 1,
+      })),
+    );
+    renderWithQuery(<MemoryRouter><AdminModelsPage /></MemoryRouter>);
+
+    const row = (await screen.findByText('gpt-4o')).closest('tr')!;
+    expect(within(row).getByRole('button', { name: '禁用' })).toBeEnabled();
+    expect(within(row).queryByRole('button', { name: '启用' })).not.toBeInTheDocument();
+  });
+
   it('shows empty state when no models exist', async () => {
     server.use(
       http.get('/api/admin/models', () =>
@@ -300,7 +341,7 @@ describe('AdminModelsPage', () => {
       http.get('/api/admin/models/1', () =>
         HttpResponse.json({
           ...fullModel,
-          model: { ...fullModel.model, status: undefined },
+          model: { ...fullModel.model, status: undefined, channel_count: undefined, subscription_count: undefined },
         }),
       ),
       http.get('/api/admin/models/1/usage-stats', () =>
@@ -325,6 +366,7 @@ describe('AdminModelsPage', () => {
       expect(screen.getByText('gpt4o')).toBeInTheDocument();
     });
     expect(within(screen.getByRole('dialog')).getByText('禁用')).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog')).getByText('0 / 0')).toBeInTheDocument();
     expect(screen.getByText('10')).toBeInTheDocument();
     expect(within(screen.getByRole('dialog')).getByText('$0.25/1M')).toBeInTheDocument();
   });

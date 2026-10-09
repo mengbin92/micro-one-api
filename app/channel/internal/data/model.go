@@ -23,6 +23,7 @@ import (
 // PO types stay inside data. Driver-specific GORM tags never leave this file.
 
 type modelModel struct {
+	HasEnabledSource      bool    `gorm:"column:has_enabled_source;->;-:migration"`
 	AuthorizationRevision int64   `gorm:"column:authorization_revision;default:1"`
 	ID                    int64   `gorm:"column:id;primaryKey;autoIncrement"`
 	ModelID               string  `gorm:"column:model_id"`
@@ -160,6 +161,7 @@ func newModelPO(do *biz.Model) *modelModel {
 
 func toModelDO(po *modelModel) *biz.Model {
 	return &biz.Model{
+		HasEnabledSource:      po.HasEnabledSource,
 		AuthorizationRevision: po.AuthorizationRevision,
 		ID:                    po.ID,
 		ModelID:               po.ModelID,
@@ -342,6 +344,7 @@ func parseStringArray(raw string) []string {
 
 // Compile-time assertion: *Repository implements biz.ModelRepo.
 var _ biz.ModelRepo = (*Repository)(nil)
+var _ biz.ModelIdentityRepo = (*Repository)(nil)
 
 // ListModels returns a page of model summaries (without mappings).
 func (r *Repository) ListModels(ctx context.Context, page, pageSize int32, filter biz.ListModelsFilter) ([]*biz.Model, int64, error) {
@@ -355,7 +358,7 @@ func (r *Repository) ListModels(ctx context.Context, page, pageSize int32, filte
 }
 
 func (r *Repository) listModelsDB(ctx context.Context, page, pageSize int32, filter biz.ListModelsFilter) ([]*biz.Model, int64, error) {
-	query := r.db.WithContext(ctx).Model(&modelModel{})
+	query := modelAvailabilityQuery(r.db.WithContext(ctx).Model(&modelModel{}))
 	query, scopeErr := modelQuery(ctx, query, "models", "id", "channel.model.list", "channel.model.export", "billing.pricing.export")
 	if _, exporting := authorization.QueryScopeFromContext(ctx, "channel.model.export"); exporting && scopeErr == nil {
 		query, scopeErr = modelQuery(ctx, query, "models", "id", "billing.pricing.read")
@@ -375,8 +378,15 @@ func (r *Repository) listModelsDB(ctx context.Context, page, pageSize int32, fil
 	if filter.ModelType != "" {
 		query = query.Where("model_type = ?", filter.ModelType)
 	}
-	if filter.Status != 0 {
-		query = query.Where("status = ?", filter.Status)
+	if filter.StatusHasValue || filter.Status != 0 {
+		switch filter.Status {
+		case biz.ModelStatusDisabled:
+			query = query.Where("(models.status = ? OR (models.status = ? AND NOT "+modelEnabledSourceSQL+"))", biz.ModelStatusDisabled, biz.ModelStatusEnabled)
+		case biz.ModelStatusEnabled:
+			query = query.Where("models.status = ?", filter.Status).Where(modelEnabledSourceSQL)
+		default:
+			query = query.Where("models.status = ?", filter.Status)
+		}
 	}
 	if filter.Category != "" {
 		query = query.Where("category = ?", filter.Category)
@@ -423,7 +433,6 @@ func (r *Repository) batchFillModelCounts(ctx context.Context, models []*biz.Mod
 	type countRow struct {
 		ModelID    int64
 		SourceName string
-		Count      int64
 	}
 
 	// Channel counts: join channels so orphaned mappings (parent deleted
@@ -434,8 +443,9 @@ func (r *Repository) batchFillModelCounts(ctx context.Context, models []*biz.Mod
 		return err
 	}
 	if err := channelQuery.
-		Select("model_channel_mapping.model_id as model_id, channels.name as source_name, count(*) as count").
+		Select("model_channel_mapping.model_id as model_id, channels.name as source_name").
 		Where("model_channel_mapping.model_id IN ? AND model_channel_mapping.enabled = ?", ids, true).
+		Where("channels.status = ?", biz.ChannelStatusEnabled).
 		Group("model_channel_mapping.model_id, channels.id, channels.name").
 		Scan(&chRows).Error; err != nil {
 		return err
@@ -443,7 +453,7 @@ func (r *Repository) batchFillModelCounts(ctx context.Context, models []*biz.Mod
 	chMap := make(map[int64]int64, len(chRows))
 	supplierSets := make(map[int64]map[string]struct{}, len(models))
 	for _, row := range chRows {
-		chMap[row.ModelID] += row.Count
+		chMap[row.ModelID]++
 		addModelSupplier(supplierSets, row.ModelID, row.SourceName)
 	}
 
@@ -455,15 +465,18 @@ func (r *Repository) batchFillModelCounts(ctx context.Context, models []*biz.Mod
 		return err
 	}
 	if err := subQuery.
-		Select("model_subscription_mapping.model_id as model_id, subscription_accounts.name as source_name, count(*) as count").
+		Select("model_subscription_mapping.model_id as model_id, subscription_accounts.name as source_name").
 		Where("model_subscription_mapping.model_id IN ? AND model_subscription_mapping.enabled = ?", ids, true).
+		Where("subscription_accounts.status = ?", biz.ChannelStatusEnabled).
 		Group("model_subscription_mapping.model_id, subscription_accounts.id, subscription_accounts.name").
 		Scan(&subRows).Error; err != nil {
 		return err
 	}
 	subMap := make(map[int64]int64, len(subRows))
 	for _, row := range subRows {
-		subMap[row.ModelID] += row.Count
+		// One account may have a mapping in several routing groups. Count
+		// supplying accounts rather than group-specific mapping rows.
+		subMap[row.ModelID]++
 		addModelSupplier(supplierSets, row.ModelID, row.SourceName)
 	}
 
@@ -498,12 +511,30 @@ func sortedSupplierNames(names map[string]struct{}) []string {
 	return result
 }
 
+// Source availability must not use permission-filtered supplier aggregates:
+// hiding mappings from an operator does not disable a model. EXISTS also keeps
+// status filtering and pagination consistent with the returned effective state.
+// Quoted boolean literals work with SQLite, MySQL and PostgreSQL.
+const modelEnabledSourceSQL = `(EXISTS (
+	SELECT 1 FROM model_channel_mapping AS available_channel
+	JOIN channels AS source_channel ON source_channel.id = available_channel.channel_id
+	WHERE available_channel.model_id = models.id AND available_channel.enabled = '1' AND source_channel.status = 1
+) OR EXISTS (
+	SELECT 1 FROM model_subscription_mapping AS available_subscription
+	JOIN subscription_accounts AS source_account ON source_account.id = available_subscription.subscription_account_id
+	WHERE available_subscription.model_id = models.id AND available_subscription.enabled = '1' AND source_account.status = 1
+))`
+
+func modelAvailabilityQuery(query *gorm.DB) *gorm.DB {
+	return query.Select("models.*, " + modelEnabledSourceSQL + " AS has_enabled_source")
+}
+
 func (r *Repository) GetModel(ctx context.Context, modelPK int64) (*biz.Model, error) {
 	if r.db == nil {
 		return r.getModelMemory(modelPK)
 	}
 	var po modelModel
-	if err := r.db.WithContext(ctx).Where("id = ?", modelPK).First(&po).Error; err != nil {
+	if err := modelAvailabilityQuery(r.db.WithContext(ctx).Model(&modelModel{})).Where("id = ?", modelPK).First(&po).Error; err != nil {
 		if isGormNotFound(err) {
 			return nil, biz.ErrModelNotFound
 		}
@@ -525,7 +556,7 @@ func (r *Repository) GetModelByID(ctx context.Context, modelID string) (*biz.Mod
 	}
 	var po modelModel
 	// Case-insensitive lookup: "GLM-5.2" and "glm-5.2" refer to the same model.
-	if err := r.db.WithContext(ctx).Where("LOWER(model_id) = ?", strings.ToLower(modelID)).First(&po).Error; err != nil {
+	if err := modelAvailabilityQuery(r.db.WithContext(ctx).Model(&modelModel{})).Where("LOWER(model_id) = ?", strings.ToLower(modelID)).First(&po).Error; err != nil {
 		if isGormNotFound(err) {
 			return nil, biz.ErrModelNotFound
 		}
@@ -534,7 +565,38 @@ func (r *Repository) GetModelByID(ctx context.Context, modelID string) (*biz.Mod
 	if err := authorization.Require(ctx, "channel.model.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: po.ID}); err != nil {
 		return nil, err
 	}
-	return toModelDO(&po), nil
+	m := toModelDO(&po)
+	if err := r.batchFillModelCounts(ctx, []*biz.Model{m}); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// GetModelPKByID avoids admin availability/count projections when recording
+// relay usage. It retains GetModelByID's case-insensitive lookup, read
+// authorization, and not-found/storage error semantics.
+func (r *Repository) GetModelPKByID(ctx context.Context, modelID string) (int64, error) {
+	if r.db == nil {
+		r.lock.RLock()
+		defer r.lock.RUnlock()
+		for _, model := range r.models {
+			if strings.EqualFold(model.ModelID, modelID) {
+				return model.ID, nil
+			}
+		}
+		return 0, biz.ErrModelNotFound
+	}
+	var po modelModel
+	if err := r.db.WithContext(ctx).Select("id").Where("LOWER(model_id) = ?", strings.ToLower(modelID)).First(&po).Error; err != nil {
+		if isGormNotFound(err) {
+			return 0, biz.ErrModelNotFound
+		}
+		return 0, err
+	}
+	if err := authorization.Require(ctx, "channel.model.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: po.ID}); err != nil {
+		return 0, err
+	}
+	return po.ID, nil
 }
 
 func (r *Repository) CreateModel(ctx context.Context, do *biz.Model) error {
@@ -1193,9 +1255,9 @@ func (r *Repository) listModelsMemory(page, pageSize int32, filter biz.ListModel
 	defer r.lock.RUnlock()
 	var filtered []*biz.Model
 	for _, m := range r.models {
-		if matchesModelFilter(m, filter) {
-			cloned := cloneModel(m)
-			r.fillModelAggregatesMemory(cloned)
+		cloned := cloneModel(m)
+		r.fillModelAggregatesMemory(cloned)
+		if matchesModelFilter(cloned, filter) {
 			filtered = append(filtered, cloned)
 		}
 	}
@@ -1240,32 +1302,38 @@ func (r *Repository) fillModelAggregatesMemory(model *biz.Model) {
 		return
 	}
 	suppliers := make(map[string]struct{})
+	model.ChannelCount, model.SubscriptionCount = 0, 0
+	model.HasEnabledSource = false
 	for _, mapping := range r.modelChannelMappings {
 		if mapping == nil || !mapping.Enabled || mapping.ModelPK != model.ID {
 			continue
 		}
 		channel := r.channels[mapping.ChannelID]
-		if channel == nil {
+		if channel == nil || channel.Status != biz.ChannelStatusEnabled {
 			continue
 		}
 		model.ChannelCount++
+		model.HasEnabledSource = true
 		if name := strings.TrimSpace(channel.Name); name != "" {
 			suppliers[name] = struct{}{}
 		}
 	}
+	accounts := make(map[int64]struct{})
 	for _, mapping := range r.modelSubscriptionMappings {
 		if mapping == nil || !mapping.Enabled || mapping.ModelPK != model.ID {
 			continue
 		}
 		account := r.subAccounts[mapping.SubscriptionAccountID]
-		if account == nil {
+		if account == nil || account.Status != biz.ChannelStatusEnabled {
 			continue
 		}
-		model.SubscriptionCount++
+		accounts[account.ID] = struct{}{}
+		model.HasEnabledSource = true
 		if name := strings.TrimSpace(account.Name); name != "" {
 			suppliers[name] = struct{}{}
 		}
 	}
+	model.SubscriptionCount = safecast.Int64ToInt32Saturating(int64(len(accounts)))
 	model.Suppliers = sortedSupplierNames(suppliers)
 }
 
@@ -1686,7 +1754,7 @@ func matchesModelFilter(m *biz.Model, f biz.ListModelsFilter) bool {
 	if f.ModelType != "" && m.ModelType != f.ModelType {
 		return false
 	}
-	if f.Status != 0 && m.Status != f.Status {
+	if (f.StatusHasValue || f.Status != 0) && m.EffectiveStatus() != f.Status {
 		return false
 	}
 	if f.Category != "" && m.Category != f.Category {

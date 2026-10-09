@@ -143,6 +143,8 @@ export function AdminChannelsPage() {
   const invalidateChannelQueries = () => {
     queryClient.invalidateQueries({ queryKey: ['admin-channels'] });
     queryClient.invalidateQueries({ queryKey: ['admin-channels-health'] });
+    queryClient.invalidateQueries({ queryKey: ['admin-models'] });
+    queryClient.invalidateQueries({ queryKey: ['admin-model-detail'] });
   };
   const sort = { key: sortKey as keyof Channel | null, direction: sortDirection } satisfies SortState<Channel>;
   const statusFilter = filters.status ?? '';

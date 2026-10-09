@@ -830,8 +830,13 @@ func (r *Repository) exportAllModelsMemory(filter biz.ListModelsFilter) ([]*biz.
 	defer r.lock.RUnlock()
 	models := make([]*biz.Model, 0, len(r.models))
 	for _, m := range r.models {
-		if m != nil && matchesModelFilter(m, filter) {
-			models = append(models, cloneModel(m))
+		if m == nil {
+			continue
+		}
+		cloned := cloneModel(m)
+		r.fillModelAggregatesMemory(cloned)
+		if matchesModelFilter(cloned, filter) {
+			models = append(models, cloned)
 		}
 	}
 	sort.Slice(models, func(i, j int) bool {
