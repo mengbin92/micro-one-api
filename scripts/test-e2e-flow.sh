@@ -8,6 +8,7 @@
 # Prerequisites:
 #   - Docker and docker-compose installed
 #   - Go toolchain installed (to build test binary)
+#   - curl and Python 3 installed (to prepare the mock channel through HTTP)
 #   - Ports 3000, 8080, 8001, 9001, 9002, 9004 available
 #
 # This script:
@@ -168,45 +169,25 @@ log "All services ready."
 # ── Step 1: Prepare test channel pointing to mock upstream ──
 
 log "Preparing test channel for mock-upstream..."
-docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -e "
-INSERT INTO channels (
-    type, \`key\`, status, name, base_url, models, \`group\`, priority, config,
-    weight, created_time, test_time, response_time, balance, balance_updated_time,
-    used_quota, model_mapping, system_prompt
-)
-SELECT
-    1, 'sk-mock-key', 1, 'e2e-mock-openai', 'http://mock-upstream:9999',
-    'gpt-3.5-turbo,gpt-4', 'default', 1, '{}',
-    1, UNIX_TIMESTAMP(), 0, 0, 0, 0,
-    0, '', NULL
-WHERE NOT EXISTS (
-    SELECT 1 FROM channels WHERE name = 'e2e-mock-openai'
-);
-
-UPDATE channels
-SET
-    type = 1,
-    \`key\` = 'sk-mock-key',
-    status = 1,
-    base_url = 'http://mock-upstream:9999',
-    models = 'gpt-3.5-turbo,gpt-4',
-    \`group\` = 'default',
-    priority = 1,
-    weight = 1
-WHERE name = 'e2e-mock-openai';
-
-SET @channel_id := (SELECT id FROM channels WHERE name = 'e2e-mock-openai' LIMIT 1);
-
-DELETE FROM abilities WHERE channel_id = @channel_id;
-INSERT INTO abilities (\`group\`, model, channel_id, enabled, priority)
-VALUES
-    ('default', 'gpt-3.5-turbo', @channel_id, 1, 1),
-    ('default', 'gpt-4', @channel_id, 1, 1);
-" 2>/dev/null
+# Create through the owner so credentials and ability projections use the
+# same persistence rules as real channels.
+curl --fail --silent --show-error --retry 10 --retry-all-errors --retry-delay 1 \
+    --retry-max-time 30 --max-time 10 http://127.0.0.1:3000/healthz > /dev/null
+channel_response=$(curl --fail --silent --show-error --max-time 30 \
+    -H "Authorization: Bearer ${ADMIN_TOKEN:?ADMIN_TOKEN is required}" \
+    -H 'Content-Type: application/json' \
+    --data '{"type":1,"key":"sk-mock-key","name":"e2e-mock-openai","base_url":"http://mock-upstream:9999","models":"gpt-3.5-turbo,gpt-4","group":"default","priority":1,"weight":1,"config":{},"reason":"E2E mock channel fixture"}' \
+    http://127.0.0.1:3000/api/channel)
+printf '%s' "$channel_response" | python3 -c '
+import json, sys
+reply = json.load(sys.stdin)
+if reply.get("success") is not True or int((reply.get("data") or {}).get("channel_id", 0)) <= 0:
+    raise SystemExit("mock channel creation through admin API failed")
+'
 
 # Verify test channel
 channel_status=$(docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
-    "SELECT status FROM channels WHERE name='e2e-mock-openai' LIMIT 1;" 2>/dev/null)
+    "SELECT status = 1 AND \`key\` <> 'sk-mock-key' FROM channels WHERE name='e2e-mock-openai' LIMIT 1;" 2>/dev/null)
 channel_url=$(docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
     "SELECT base_url FROM channels WHERE name='e2e-mock-openai' LIMIT 1;" 2>/dev/null)
 ability_count=$(docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
