@@ -1,12 +1,10 @@
-# Micro-One-API v0.34.14 发布：鉴权、支付计费与分布式投递安全修复
+# Micro-One-API v0.34.15 发布：鉴权、计费与 HTTP/2 安全修复
 
-> 2026-10-09 · 上一版：[v0.34.11](./release-v0.34.11.md)（2026-10-08）· [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.14)
+> 2026-10-09 · 上一版：[v0.34.11](./release-v0.34.11.md)（2026-10-08）· [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.15)
 
-> **候选状态**：发布尚未生成制品时发现五项新公布的 `x/net` 安全告警，主动取消 [Release 流水线](https://github.com/mengbin92/micro-one-api/actions/runs/37896636882)，原 tag 保留。安全依赖和 Go 工具链补丁纳入 v0.34.15。
+v0.34.15 是 v0.34.11 之后的 **PATCH 安全修复与发布恢复版本**。完整包含 v0.34.12 候选的业务修复，并修复 IAM 浏览器及 Compose 端到端夹具；v0.34.12 因门禁失败未生成正式制品，v0.34.13 在确认 Compose 夹具问题后主动中止，v0.34.14 在制品发布前发现新公布的 HTTP/2 依赖告警而主动取消，三个候选原 tag 均保留。本版同时升级 `x/net` 与 Go 安全补丁。统一不同调用路径的支付授权和账务核对，保护 IP 限制与 WebSocket 逐轮额度，修复账号恢复、凭据读取及分布式投递边界，并补齐前端会话和支付安全检查。
 
-v0.34.14 是 v0.34.11 之后的 **PATCH 安全修复与发布恢复版本**。完整包含 v0.34.12 候选的业务修复，并修复 IAM 浏览器及 Compose 端到端夹具；v0.34.12 因门禁失败未生成正式制品，v0.34.13 在确认 Compose 夹具问题后主动中止，两个原 tag 均保留。统一不同调用路径的支付授权和账务核对，保护 IP 限制与 WebSocket 逐轮额度，修复账号恢复、凭据读取及分布式投递边界，并补齐前端会话和支付安全检查。
-
-**无 API/proto 或数据库结构变更，无新增 DDL 迁移**。共享基础代码涉及九个主服务、已启用的 `channel-account-ops-worker` 和宿主机挂载的前端。既有 Token 哈希密钥必须保留，历史明文凭据必须先迁移，持久化 OAuth 会话及到期提醒去重需要 Redis。生产已于 2026-10-09 部署业务提交 `fd32cf2b`，本次补齐正式发布制品，无需重复部署。
+**无 API/proto 或数据库结构变更，无新增 DDL 迁移**。共享基础代码涉及九个主服务、已启用的 `channel-account-ops-worker` 和宿主机挂载的前端。既有 Token 哈希密钥必须保留，历史明文凭据必须先迁移，持久化 OAuth 会话及到期提醒去重需要 Redis。生产已于 2026-10-09 部署业务提交 `fd32cf2b` 和前端；本版新增依赖及标准库安全修复，运行服务需重新构建并替换镜像，不能仅发布文档或复用旧镜像。
 
 ## 修复与交付内容
 
@@ -62,11 +60,21 @@ v0.34.14 是 v0.34.11 之后的 **PATCH 安全修复与发布恢复版本**。�
 
 **根因**：Compose 验收脚本也直接 SQL 写入明文渠道 key，并仅校验状态／能力表，未发现凭据不可读。模型列表返回 500、模型调用无可用渠道，后续余额与账本检查失败；v0.34.13 在该结果返回后主动停止。
 
-**修复**：通过现有管理 API 创建 mock 渠道，让 owner 完成凭据加密和能力投影；校验创建成功、有效 ID、数据库密文和能力记录。创建前等待 HTTP health 就绪，覆盖容器已运行但监听尚未就绪的连接重置。无需修改生产读取规则。
+**修复**：通过现有管理 API 创建 mock 渠道，让 owner 完成凭据加密和能力投影；校验创建成功、有效 ID、数据库密文和能力记录。创建前等待 HTTP health 就绪，覆盖容器已运行但监听尚未就绪的连接重置。无需修改生产读取规则；同步脚本变更对应的 RBAC 清单源码摘要，保留全部 831 项权限／调用事实。
 
 **验证**：本地使用已部署的九服务 linux/amd64 镜像，在独立 Compose 项目和全新数据卷中先复现原失败，再通过完整注册、登录、模型调用、余额扣减、消费账本及管理闭环；使用 mock 上游，四项真实供应商用例按前置条件跳过。验证环境已清理。
 
 **影响服务**：测试脚本与发布文档，不修改生产运行时。
+
+### 8. HTTP/2 安全依赖与 Go 标准库补丁
+
+**根因**：GitHub Code Scanning 报告 `golang.org/x/net v0.58.0` 存在五项 2026-10-08 公布的 HTTP/2 漏洞：Trailer 内存消耗、畸形 framing header、流量控制重复退还、窗口调整 CPU 消耗及 HPACK 编码器并发崩溃（CVE-2026-78659／78660／78663／78669／97032）。本地 Go 1.27.1 与可缓存的旧构建基础镜像也未保证包含标准库补丁。
+
+**修复**：升级 `x/net` 至官方修复版本 v0.60.0，同步其必需的 `x/crypto`、`x/sync`、`x/sys` 和 `x/text` 最小依赖版本。`go.mod` 工具链、CI 和全部 Docker 构建入口固定到 Go 1.27.2，路由验收基础镜像同步官方摘要；保持 Go 1.27 的 jsonx 行为边界。
+
+**告警核查**：CodeQL #329 将 API token header 标为 password。三个调用入口均读取 `x-api-key` 或 Bearer token，身份服务使用 `crypto/rand` 签发 32 字符 token；SHA-256 仅用于避免 Redis 缓存键暴露原 token。用户密码实际使用 bcrypt，已有缓存秘密／失效测试覆盖。因此附具体证据标记该条为误报，保留 SHA-256 并增加用途注释。
+
+**影响服务**：全部 Go 服务及 CLI／验收构建；升级无数据迁移，需重新构建服务镜像。参考 [x/net 官方修复](https://github.com/golang/net/releases/tag/v0.60.0)及 [Go 1.27.2 发布说明](https://go.dev/doc/devel/release#go1.27.2)。
 
 ## 兼容性说明
 
@@ -79,22 +87,23 @@ v0.34.14 是 v0.34.11 之后的 **PATCH 安全修复与发布恢复版本**。�
 
 ## 升级步骤
 
-1. 获取 v0.34.14，备份数据库、当前镜像、Compose、密钥配置与前端；保留 IAM、订阅和 executor 灰度开关。
+1. 获取 v0.34.15，备份数据库、当前镜像、Compose、密钥配置与前端；保留 IAM、订阅和 executor 灰度开关。
 2. 确认既有 JWT／Token 哈希密钥、渠道 AES 密钥和 Redis。使用 `channel-credentials` 默认 dry-run 检查凭据；有历史明文时先确认数据库备份，再显式迁移并复查。生产本次检查为 2 条渠道、3 条订阅账号均已加密，无需数据迁移。
 3. 在本地交叉构建 linux/amd64，按身份、计费、渠道、管理、配置、日志、监控、通知、网关顺序更新九个主服务；禁止在生产服务器构建。已启用账号治理分片时同步更新渠道 worker，保持既有分片编号与任务开关。
-4. 独立执行 `cd web && npm run build`，备份并发布宿主机 dist，先同步资源再替换首页，核对文件摘要及公网入口。生产已完成本版等价业务部署，无需为发布文档重复重启。
+4. 独立执行 `cd web && npm run build`，备份并发布宿主机 dist，先同步资源再替换首页，核对文件摘要及公网入口。前端已随 `fd32cf2b` 部署；本版没有新增前端变更，可保留已验证的前端资源。
 5. 核对实际镜像／源码摘要、health、重启次数、启动日志、公开状态接口和未登录鉴权；关注 OAuth、提醒、事件 pending 与死信。业务验证在受控环境执行，避免无意发送真实通知或创建支付。
 6. 回滚使用保存的镜像、Compose 和前端目录，保持数据库与密钥一致；渠道分片回滚遵循[账号治理手册](../runbooks/subscription-account-ops-runbook.md)的停扫顺序。生产镜像回滚标记为 `rollback-20261009-105701`，前端备份为 `/opt/web/dist.bak.20261009-110445-fd32cf2b`；回退旧代码会重新暴露本版修复的安全问题。
 
 ## 验证
 
-- 本地 3,859 项 Go 测试通过，112 个测试包；185 项缺少外部前置条件而跳过。CI race 门禁及鉴权／凭据专项 race 回归通过。
+- `fd32cf2b` 业务修复本地 3,859 项 Go 测试通过，112 个测试包；185 项缺少外部前置条件而跳过。CI race 门禁及鉴权／凭据专项 race 回归通过。
 - 前端 333 项普通测试、149 项关键测试、ESLint 和 TypeScript 项目检查通过；格式、架构、迁移、RBAC 及 IAM 浏览器结果契约检查通过。
-- 业务提交的[CI](https://github.com/mengbin92/micro-one-api/actions/runs/37876381774)和[安全流水线](https://github.com/mengbin92/micro-one-api/actions/runs/37876381724)均已成功。
+- `fd32cf2b` 业务提交的[CI](https://github.com/mengbin92/micro-one-api/actions/runs/37876381774)和[安全流水线](https://github.com/mengbin92/micro-one-api/actions/runs/37876381724)均已成功。
 - 生产九个主服务及渠道 worker 的源码摘要一致，均为 amd64；10 个容器 health 检查通过、重启为 0，部署后日志未发现 ERROR／FATAL／panic。公网 API 健康／状态为 200，未登录本人资料和模型接口为 401。
 - 前端 77 个文件的服务响应与本机构建摘要一致；公网控制台首页及入口资源均为本版。镜像、Compose 和前端备份已确认。
-- v0.34.12 候选的前端冒烟和 SQLite 路由门禁通过；IAM 门禁由上述明文夹具问题导致失败。修复后本地完整 IAM 浏览器矩阵通过，v0.34.14 修复两类夹具后重新执行全部 Release 门禁。
+- v0.34.12 候选的前端冒烟和 SQLite 路由门禁通过；IAM 门禁由上述明文夹具问题导致失败。修复后本地完整 IAM 浏览器矩阵通过，v0.34.15 修复两类夹具及安全依赖后重新执行全部 Release 门禁。
 - 本地独立 MySQL/Redis Compose 全链路通过，覆盖真实 HTTP/RPC/SQL 和 mock 上游；真实供应商四项用例跳过。候选的 MySQL 路由门禁也已通过。
+- 依赖与 Go 1.27.2 更新后，3,859 项 Go 测试（112 个测试包）通过，185 项缺少外部前置条件而跳过；缓存、鉴权／加密、Relay server/data 与 jsonx 专项 race 通过。`govulncheck` 成功，无可达漏洞调用；仅报告未导入的旧 OpenPGP 包模块级证据。RBAC 831 项事实及负漂移测试通过。
 - 未运行真实供应商、真实支付或邮件发送；Release 流水线另行执行 Linux 路由／Compose E2E、浏览器门禁、九服务 amd64/arm64 镜像及 GitHub Release 发布，正式制品状态以其实际结果为准。
 
 ## 完整变更日志
@@ -105,3 +114,6 @@ v0.34.14 是 v0.34.11 之后的 **PATCH 安全修复与发布恢复版本**。�
 - `docs(release): v0.34.13`
 - `test(e2e): create encrypted mock channels through the owner API`
 - `docs(release): v0.34.14`
+- `test: refresh reviewed E2E fixture source digest`
+- `fix(deps): patch HTTP/2 vulnerabilities and Go toolchain`
+- `docs(release): v0.34.15`
