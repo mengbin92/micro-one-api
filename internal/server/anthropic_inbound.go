@@ -57,7 +57,8 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 		sessionHash = extractSessionHashFromRequest(r, originalBody)
 	}
 	plan, err := s.relayUsecase.Plan(r.Context(), relaybiz.RelayRequest{
-		Token: token, Model: anthropicReq.Model, SessionHash: sessionHash,
+		ClientIP: relayClientIP(r),
+		Token:    token, Model: anthropicReq.Model, SessionHash: sessionHash,
 	})
 	if err != nil {
 		s.handleAnthropicPlanError(w, err)

@@ -14,3 +14,12 @@ func TestEqualities(t *testing.T) {
 		require.Error(t, err, s)
 	}
 }
+
+func TestEqualityAndWhitespace(t *testing.T) {
+	for _, op := range []string{"and ", "AND\t", "And\n"} {
+		_, err := Equalities(`a="1" `+op+`b="2"`, "a", "b")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}

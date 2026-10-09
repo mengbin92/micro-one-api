@@ -434,3 +434,19 @@ func TestWeightedSelector_LoadFactorBands(t *testing.T) {
 		}
 	}
 }
+
+func TestHealthProbeDoesNotReleaseSelectedSlot(t *testing.T) {
+	s := NewWeightedSelector()
+	ch := &Channel{ID: 1, Priority: 10}
+	_, _ = s.Select(context.Background(), "g", []*Channel{ch})
+	s.RecordHealth(1, true, 1, "", false)
+	st, _ := s.GetState(1)
+	if st.inflight.Load() != 1 {
+		t.Fatal("probe released live request")
+	}
+	s.RecordHealth(1, true, 1, "")
+	s.RecordHealth(1, true, 1, "")
+	if st.inflight.Load() != 0 {
+		t.Fatal("inflight became negative")
+	}
+}

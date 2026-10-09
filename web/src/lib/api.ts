@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { clearPlaygroundCredential } from '@/lib/playground-credential';
 import { toast } from 'sonner';
 import { protectedSignal, refreshAuthorization, prepareAdminRequest } from '@/lib/authorization-events';
 
@@ -15,6 +16,7 @@ export function isSessionAuthPath(path: string) {
 }
 
 export function clearUserSession() {
+  clearPlaygroundCredential();
   localStorage.removeItem('token');
   localStorage.removeItem('userId');
   localStorage.removeItem('userRole');
@@ -26,6 +28,7 @@ export function clearAdminSession() {
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 30_000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -34,6 +37,7 @@ export const apiClient = axios.create({
 // Request interceptor: attach token from localStorage
 apiClient.interceptors.request.use(
   (config) => {
+    config.signal ??= protectedSignal();
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -60,6 +64,7 @@ apiClient.interceptors.response.use(
 // Admin endpoints authenticate the user's session and authorize at the owner.
 export const adminApiClient = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 30_000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -67,11 +72,11 @@ export const adminApiClient = axios.create({
 
 adminApiClient.interceptors.request.use(
   (config) => {
+    config.signal ??= protectedSignal();
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    config.signal ??= protectedSignal();
     return prepareAdminRequest(config);
   },
   (error) => Promise.reject(error)
@@ -88,6 +93,7 @@ adminApiClient.interceptors.response.use(
       clearAdminSession();
       refreshAuthorization();
       toast.error('Session expired. Please sign in again.');
+      window.location.href = '/login';
     }
     return Promise.reject(error);
   }

@@ -50,8 +50,9 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 		}
 
 		plan, err := s.relayUsecase.Plan(r.Context(), relaybiz.RelayRequest{
-			Token: token,
-			Model: clientModel,
+			ClientIP: relayClientIP(r),
+			Token:    token,
+			Model:    clientModel,
 		})
 		if err != nil {
 			s.handleRelayPlanError(w, err)
@@ -85,7 +86,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				estimateRawTokens(body),
 				billingModel,
 				fmt.Sprintf("%d", ch.ID),
-				subscriptionAccountIDFromPlan(plan),
+				subscriptionAccountIDFromChannel(ch),
 				plan.Auth.RoutingContext,
 			)
 			if reserveErr != nil {

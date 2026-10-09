@@ -17,6 +17,7 @@ import (
 // RateLimiter implements a simple in-memory rate limiter
 type RateLimiter struct {
 	clients    map[string]*ClientLimiter
+	overflow   *ClientLimiter
 	mutex      sync.RWMutex
 	rate       int
 	burst      int
@@ -114,12 +115,11 @@ func (rl *RateLimiter) Allow(key string) (bool, int) {
 	client, exists := rl.clients[key]
 
 	if !exists {
-		// Enforce max clients limit to prevent memory exhaustion
 		if len(rl.clients) >= rl.maxClients {
-			applogger.Log.Warn("Rate limiter max clients reached",
-				zap.Int("max_clients", rl.maxClients),
-			)
-			return false, 0
+			if rl.overflow == nil {
+				rl.overflow = &ClientLimiter{tokens: float64(max(rl.burst, rl.rate, 1)), lastSeen: now}
+			}
+			client = rl.overflow
 		}
 		burst := rl.burst
 		if burst <= 0 {
@@ -128,12 +128,14 @@ func (rl *RateLimiter) Allow(key string) (bool, int) {
 		if burst <= 0 {
 			burst = 1
 		}
-		client = &ClientLimiter{
-			tokens:   float64(burst - 1),
-			lastSeen: now,
+		if client == nil {
+			client = &ClientLimiter{
+				tokens:   float64(burst - 1),
+				lastSeen: now,
+			}
+			rl.clients[key] = client
+			return true, burst - 1
 		}
-		rl.clients[key] = client
-		return true, burst - 1
 	}
 
 	burst := rl.burst
@@ -150,6 +152,7 @@ func (rl *RateLimiter) Allow(key string) (bool, int) {
 	if client.tokens > float64(burst) {
 		client.tokens = float64(burst)
 	}
+	client.lastSeen = now
 	if client.tokens < 1 {
 		applogger.Log.Warn("Rate limit exceeded",
 			zap.String("key", key),

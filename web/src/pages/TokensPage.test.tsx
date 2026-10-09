@@ -95,6 +95,28 @@ describe('TokensPage', () => {
     expect(screen.queryByText('sess********oken')).not.toBeInTheDocument();
   });
 
+  it('requires explicit confirmation to delete a key and translates the warning', async () => {
+    let deletes = 0;
+    server.use(
+      http.get('/api/token', () => HttpResponse.json({ success: true, data: [{ id: 7, name: 'test key', status: 1, created_time: 1 }] })),
+      http.delete('/api/token/7', () => { deletes++; return HttpResponse.json({ success: true }); }),
+    );
+    const user = userEvent.setup();
+    renderWithQuery(<MemoryRouter><LanguageToggle /><TokensPage /></MemoryRouter>);
+    await user.click(await screen.findByRole('button', { name: '删除' }));
+    expect(deletes).toBe(0);
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '取消' }));
+    expect(deletes).toBe(0);
+    await user.click(screen.getByRole('button', { name: '切换至英文' }));
+    await user.click(await screen.findByRole('button', { name: 'Delete' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Delete API key')).toBeVisible();
+    expect(within(dialog).getByText('Requests using this key will no longer authenticate. This action cannot be undone.')).toBeVisible();
+    expect(dialog.textContent).not.toMatch(/[\u3400-\u9fff]/);
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm deletion' }));
+    await waitFor(() => expect(deletes).toBe(1));
+  });
+
   it('shows the full API key only in the creation dialog', async () => {
     const user = userEvent.setup();
     const fullKey = 'sk-full-token-value-created-once';

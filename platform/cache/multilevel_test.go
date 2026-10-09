@@ -235,7 +235,7 @@ func TestAuthCache_RedisOutageRevocationBoundary(t *testing.T) {
 		t.Fatalf("legacy L1 boundary changed: %s", c.cache.ttl)
 	}
 	// Advance the cached entry past its production TTL without a 30s sleep.
-	v, ok := c.cache.l1.Get(c.cache.prefix + "test-key")
+	v, ok := c.cache.l1.Get(c.cache.prefix + authCacheKey("test-key"))
 	if !ok {
 		t.Fatal("missing primed cache entry")
 	}

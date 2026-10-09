@@ -3,17 +3,21 @@ package biz
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
-	"io"
+	"net"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"net/url"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
+	relayprovider "micro-one-api/domain/upstream/provider"
 	"micro-one-api/pkg/jsonx"
+	xhttp "micro-one-api/platform/http"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
 )
@@ -48,7 +52,7 @@ type MultiSender struct {
 func NewMultiSender(cfg SenderConfig) *MultiSender {
 	return &MultiSender{
 		cfg:        cfg,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: relayprovider.NewHTTPClient(10 * time.Second),
 	}
 }
 
@@ -124,6 +128,21 @@ func (s *MultiSender) sendEmail(ctx context.Context, n *Notification) error {
 	if n.Recipient == "" {
 		return ErrNotificationSenderNotReady
 	}
+	for _, value := range []string{s.cfg.SMTPFrom, n.Recipient, n.Subject} {
+		if strings.ContainsAny(value, "\r\n") {
+			return errors.New("invalid email header")
+		}
+	}
+	from, err := mail.ParseAddress(s.cfg.SMTPFrom)
+	if err != nil {
+		return err
+	}
+	to, err := mail.ParseAddress(n.Recipient)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	port := s.cfg.SMTPPort
 	if port == 0 {
 		port = 587
@@ -150,16 +169,50 @@ func (s *MultiSender) sendEmail(ctx context.Context, n *Notification) error {
 	if s.cfg.SMTPUser != "" {
 		auth = smtp.PlainAuth("", s.cfg.SMTPUser, s.cfg.SMTPPass, s.cfg.SMTPHost)
 	}
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- smtp.SendMail(addr, auth, s.cfg.SMTPFrom, []string{n.Recipient}, []byte(msg.String()))
-	}()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case err := <-errCh:
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+	if err != nil {
 		return err
 	}
+	defer conn.Close()
+	deadline, _ := ctx.Deadline()
+	if err := conn.SetDeadline(deadline); err != nil {
+		return err
+	}
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	client, err := smtp.NewClient(conn, s.cfg.SMTPHost)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		if err := client.StartTLS(&tls.Config{ServerName: s.cfg.SMTPHost, MinVersion: tls.VersionTLS12}); err != nil {
+			return err
+		}
+	}
+	if auth != nil {
+		if err := client.Auth(auth); err != nil {
+			return err
+		}
+	}
+	if err := client.Mail(from.Address); err != nil {
+		return err
+	}
+	if err := client.Rcpt(to.Address); err != nil {
+		return err
+	}
+	writer, err := client.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := writer.Write([]byte(msg.String())); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+	return client.Quit()
+
 }
 
 type Dispatcher struct {
@@ -347,7 +400,7 @@ func (s *MultiSender) sendJSONWebhook(ctx context.Context, endpoint string, payl
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("webhook returned status %d", resp.StatusCode)
 	}
-	responseBody, err := io.ReadAll(resp.Body)
+	responseBody, err := xhttp.ReadBody(resp.Body, xhttp.MaxExternalResponseBody)
 	if err != nil {
 		return fmt.Errorf("read webhook response: %w", err)
 	}

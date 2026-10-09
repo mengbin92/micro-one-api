@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"fmt"
+	"google.golang.org/grpc/peer"
 	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
+	"net"
 	"strings"
 	"time"
 
@@ -65,9 +67,14 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 		return nil, err
 	}
 
+	clientIP := ""
+	if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
+		clientIP, _, _ = net.SplitHostPort(p.Addr.String())
+	}
 	rootRequestID := "grpc_root_" + uuid.NewString()
 	ctx = requesttrace.WithAttempt(ctx, requesttrace.Attempt{RootRequestID: rootRequestID})
 	plan, err := s.relayUsecase.Plan(ctx, relaybiz.RelayRequest{
+		ClientIP:  clientIP,
 		Token:     token,
 		Model:     req.Model,
 		RequestID: rootRequestID,
@@ -371,14 +378,5 @@ func convertToGRPCResponse(resp *relayprovider.ChatCompletionsResponse) (*relayv
 }
 
 func estimateTokensForGRPC(req *relayprovider.ChatCompletionsRequest) int64 {
-	tokens := int64(0)
-	for _, msg := range req.Messages {
-		tokens += int64(len(msg.Content) / 4)
-	}
-	if req.MaxTokens != nil && *req.MaxTokens > 0 {
-		tokens += int64(*req.MaxTokens)
-	} else {
-		tokens += 1000
-	}
-	return tokens
+	return relayprovider.EstimateChatTokens(req)
 }

@@ -1,3 +1,4 @@
+import { safePaymentURL } from '@/lib/payment-url';
 import { ContractSummary, type SubscriptionContract } from '@/components/SubscriptionContract';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, Check, Loader2, Wallet } from 'lucide-react';
@@ -157,10 +158,12 @@ export function PurchasablePlansSection() {
         setPendingPlan(null);
         return;
       }
+      const url = safePaymentURL(payURL);
+      if (!url) { variables.paymentWindow?.close(); toast.error(t('支付地址无效')); return; }
       if (variables.paymentWindow) {
-        variables.paymentWindow.location.href = payURL;
+        variables.paymentWindow.location.href = url;
       } else {
-        window.open(payURL, '_blank', 'noopener,noreferrer');
+        window.open(url, '_blank', 'noopener,noreferrer');
       }
       setPendingPlan(null);
       toast.success(t("支付订单已创建，请在新打开的页面完成支付"));
@@ -270,7 +273,7 @@ export function PurchasablePlansSection() {
                 if (paymentWindow) {
                   paymentWindow.opener = null;
                   paymentWindow.document.title = t("正在前往支付");
-                  paymentWindow.document.body.innerHTML = t("<p style=\"font-family: sans-serif; padding: 24px;\">正在创建支付订单，请稍候...</p>");
+                  paymentWindow.document.body.textContent = t("正在创建支付订单，请稍候...");
                 }
                 purchase.mutate({ groupId: pendingPlan.id, planId: pendingPlan.plan_id, changeSubscriptionId: changeIntent ? progress?.id : undefined, paymentWindow });
               }}

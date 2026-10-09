@@ -252,7 +252,14 @@ func (jm *JWTManager) RefreshToken(tokenString string) (string, error) {
 	}
 
 	// Generate new token with same claims but new expiration
-	return jm.GenerateServiceToken(claims.ServiceName, claims.ServiceType, claims.Roles)
+	refreshed, err := jm.GenerateServiceToken(claims.ServiceName, claims.ServiceType, claims.Roles)
+	if err != nil {
+		return "", err
+	}
+	if err := jm.RevokeToken(tokenString); err != nil {
+		return "", err
+	}
+	return refreshed, nil
 }
 
 // ExtractTokenFromHeader extracts JWT token from authorization header

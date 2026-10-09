@@ -6,6 +6,32 @@ import (
 	"time"
 )
 
+type expiryNotifierFunc func(context.Context, ExpiryNotification) error
+
+func (f expiryNotifierFunc) NotifyExpiry(ctx context.Context, n ExpiryNotification) error {
+	return f(ctx, n)
+}
+
+func TestExpiryCheckerPrunesNotifiedSubscriptions(t *testing.T) {
+	repo := newMockSubscriptionRepo()
+	now := time.Unix(10000, 0)
+	repo.subscriptions[1] = &UserSubscription{ID: 1, UserID: 1, Status: SubscriptionStatusActive, ExpiresAt: now.Add(time.Hour).Unix()}
+	checker := NewSubscriptionExpiryChecker(repo)
+	checker.now = func() time.Time { return now }
+	calls := 0
+	checker.SetNotifier(expiryNotifierFunc(func(context.Context, ExpiryNotification) error { calls++; return nil }))
+	checker.notify(context.Background())
+	checker.notify(context.Background())
+	if calls != 1 || len(checker.notified) != 1 {
+		t.Fatalf("calls=%d, notified=%v", calls, checker.notified)
+	}
+	now = now.Add(2 * time.Hour)
+	checker.notify(context.Background())
+	if len(checker.notified) != 0 {
+		t.Fatalf("expired reminders retained: %v", checker.notified)
+	}
+}
+
 func TestSubscriptionExpiryChecker_MarksExpiredAndWarnsSoon(t *testing.T) {
 	repo := newMockSubscriptionRepo()
 	now := time.Unix(10_000, 0)

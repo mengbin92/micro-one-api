@@ -20,6 +20,7 @@ import (
 )
 
 func TestAlertmanagerDeliveryAndRecovery(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 	t.Setenv("SERVICE_CALLER_TOKENS", `{"monitor":"test-monitor-token"}`)
 	t.Setenv("NOTIFY_SQL_DSN", "")
 	t.Setenv("SQL_DSN", "")
@@ -66,6 +67,7 @@ func TestAlertmanagerDeliveryAndRecovery(t *testing.T) {
 }
 
 func TestAlertmanagerNotifyTypeConfigurable(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 	t.Setenv("SERVICE_CALLER_TOKENS", `{"monitor":"test-monitor-token"}`)
 	t.Setenv("NOTIFY_SQL_DSN", "")
 	t.Setenv("SQL_DSN", "")

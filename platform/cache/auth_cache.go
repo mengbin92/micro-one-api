@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"time"
 
@@ -14,7 +15,8 @@ import (
 
 // AuthCache caches authentication snapshots (token → user info).
 type AuthCache struct {
-	cache *MultiLevelCache[identityv1.GetAuthSnapshotReply]
+	cache  *MultiLevelCache[identityv1.GetAuthSnapshotReply]
+	loader CacheLoader[identityv1.GetAuthSnapshotReply]
 }
 
 // NewAuthCache creates a new auth cache.
@@ -41,22 +43,28 @@ func NewAuthCache(
 		return nil, err
 	}
 
-	return &AuthCache{cache: cache}, nil
+	return &AuthCache{cache: cache, loader: loader}, nil
+}
+
+func authCacheKey(token string) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(token)))
 }
 
 // Get retrieves auth snapshot for a token.
 func (c *AuthCache) Get(ctx context.Context, token string) (*identityv1.GetAuthSnapshotReply, error) {
-	return c.cache.Get(ctx, token)
+	return c.cache.get(ctx, authCacheKey(token), func(ctx context.Context, _ string) (*identityv1.GetAuthSnapshotReply, error) {
+		return c.loader(ctx, token)
+	})
 }
 
 // Set stores auth snapshot for a token.
 func (c *AuthCache) Set(ctx context.Context, token string, snapshot *identityv1.GetAuthSnapshotReply) error {
-	return c.cache.Set(ctx, token, snapshot)
+	return c.cache.Set(ctx, authCacheKey(token), snapshot)
 }
 
 // Invalidate removes auth snapshot for a token.
 func (c *AuthCache) Invalidate(ctx context.Context, token string) error {
-	return c.cache.Invalidate(ctx, token)
+	return c.cache.Invalidate(ctx, authCacheKey(token))
 }
 
 // HasData checks if the cache has any data.

@@ -1,3 +1,5 @@
+import { clearUserSession, clearAdminSession } from '@/lib/api';
+import { refreshAuthorization } from '@/lib/authorization-events';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -330,10 +332,9 @@ export function AppNavigation() {
   }, [user]);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('adminToken');
-    localStorage.removeItem('userId');
-    localStorage.removeItem('userRole');
+    clearUserSession();
+    clearAdminSession();
+    refreshAuthorization();
     queryClient.clear();
     navigate('/login', { replace: true });
   };

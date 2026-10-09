@@ -170,6 +170,7 @@ func (f relayProviderStreamForwarder) ForwardStream(ctx context.Context, plan *r
 func relayRequestFromExecutorRequest(req relaybiz.ExecutorRequest) *RelayRequest {
 	return &RelayRequest{
 		Token:         req.Token,
+		ClientIP:      req.ClientIP,
 		Model:         req.Model,
 		Endpoint:      APIEndpoint(req.Endpoint),
 		RawQuery:      req.RawQuery,

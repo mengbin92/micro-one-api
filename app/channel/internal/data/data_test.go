@@ -50,7 +50,9 @@ func TestEncryptKeyNeverFallsBackToPlaintext(t *testing.T) {
 	encrypted, err := repo.encryptKey("provider-secret")
 	require.NoError(t, err)
 	require.NotEqual(t, "provider-secret", encrypted)
-	require.Equal(t, "provider-secret", repo.decryptKey(encrypted))
+	plain, err := repo.decryptKey(encrypted)
+	require.NoError(t, err)
+	require.Equal(t, "provider-secret", plain)
 }
 
 func TestCreateChannelRejectsMissingEncryptionKey(t *testing.T) {

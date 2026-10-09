@@ -391,6 +391,14 @@ func (r *iamRepo) CreateUser(ctx context.Context, handle biz.IAMTx, user biz.Use
 	if user.ID != 0 {
 		return biz.User{}, biz.ErrIAMInvalidRelation
 	}
+	// The policy write lock serializes account creation, including username checks.
+	var existing int64
+	if err := tx.db.Table("users").Where("username = ?", user.Username).Count(&existing).Error; err != nil {
+		return biz.User{}, iamStorageError(tx, err)
+	}
+	if existing > 0 {
+		return biz.User{}, biz.ErrUserExists
+	}
 	bound := NewRepository(&Data{db: tx.db, redis: r.data.redis})
 	if err := bound.createUserDB(ctx, &user); err != nil {
 		return biz.User{}, iamRelationError(tx, err)

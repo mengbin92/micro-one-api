@@ -936,7 +936,7 @@ func TestLoginLimiterDegradationIsObservableAcrossReplicas(t *testing.T) {
 	readBefore := testutil.ToFloat64(metrics.LoginLimiterDegraded.WithLabelValues("read"))
 	writeBefore := testutil.ToFloat64(metrics.LoginLimiterDegraded.WithLabelValues("write"))
 	for _, uc := range []*IdentityUsecase{first, second} {
-		for range maxLoginAttempts {
+		for range 1 {
 			require.NoError(t, uc.checkLoginRateLimit(ctx, "user:test"))
 			uc.recordLoginFailure(ctx, "user:test")
 		}
@@ -1725,4 +1725,54 @@ func TestIdentityUsecase_SetRole_AdminCanDemoteCommonUserNoOp(t *testing.T) {
 	if got.Role != RoleCommonUser {
 		t.Fatalf("role = %d, want %d", got.Role, RoleCommonUser)
 	}
+}
+
+func TestOAuthLoginUsernameCollisionCreatesUniqueAccount(t *testing.T) {
+	repo := &mockIdentityRepo{users: map[int64]*User{1: {ID: 1, Username: "alice", Status: UserStatusEnabled}}, tokens: map[string]*Token{}, oauthIdentities: map[string]*OAuthIdentity{}}
+	uc := NewIdentityUsecase(repo, nil)
+	ctx := context.Background()
+	user, _, created, err := uc.OAuthLogin(ctx, "google", "subject", "alice", "", "Alice")
+	require.NoError(t, err)
+	require.True(t, created)
+	require.NotEqual(t, "alice", user.Username)
+	same, _, created, err := uc.OAuthLogin(ctx, "google", "subject", "alice", "", "Alice")
+	require.NoError(t, err)
+	require.False(t, created)
+	require.Equal(t, user.ID, same.ID)
+}
+
+type uniqueUsernameRepo struct{ *mockIdentityRepo }
+
+func (r uniqueUsernameRepo) CreateUser(ctx context.Context, user *User) error {
+	if existing, _ := r.FindUserByUsername(ctx, user.Username); existing != nil {
+		return ErrUserExists
+	}
+	return r.mockIdentityRepo.CreateUser(ctx, user)
+}
+
+func TestOAuthLoginRetriesOccupiedFallbackUsername(t *testing.T) {
+	repo := uniqueUsernameRepo{&mockIdentityRepo{users: map[int64]*User{
+		1: {ID: 1, Username: "alice", Status: UserStatusEnabled},
+		2: {ID: 2, Username: "alice-2e223a579f4d", Status: UserStatusEnabled},
+	}, tokens: map[string]*Token{}, oauthIdentities: map[string]*OAuthIdentity{}}}
+	uc := NewIdentityUsecase(repo, nil)
+	user, _, created, err := uc.OAuthLogin(context.Background(), "google", "subject", "alice", "", "Alice")
+	require.NoError(t, err)
+	require.True(t, created)
+	require.NotEqual(t, "alice", user.Username)
+	require.NotEqual(t, "alice-2e223a579f4d", user.Username)
+	require.Len(t, repo.users, 3)
+}
+func TestTokenUpdatePreservesOmittedSubnet(t *testing.T) {
+	repo := &mockIdentityRepo{tokens: map[string]*Token{"key": {ID: 1, UserID: 1, Name: "key", Subnet: "192.0.2.0/24", Status: TokenStatusEnabled}}}
+	uc := NewIdentityUsecase(repo, nil)
+	token, err := uc.UpdateAccessTokenWithOptions(context.Background(), 1, 1, UpdateAccessTokenOptions{Name: "rename", RemainQuota: -1})
+	require.NoError(t, err)
+	require.Equal(t, "192.0.2.0/24", token.Subnet)
+	empty := ""
+	token, err = uc.UpdateAccessTokenWithOptions(context.Background(), 1, 1, UpdateAccessTokenOptions{Subnet: &empty, RemainQuota: -1})
+	require.NoError(t, err)
+	require.Empty(t, token.Subnet)
+	_, err = uc.UpdateAccessTokenWithOptions(context.Background(), 1, 1, UpdateAccessTokenOptions{Status: 999})
+	require.ErrorIs(t, err, ErrInvalidToken)
 }

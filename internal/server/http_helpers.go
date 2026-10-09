@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	xhttp "micro-one-api/platform/http"
 	"net/http"
 	"strings"
 
@@ -85,7 +86,8 @@ func (s *HTTPServer) getAuthSnapshotForGroup(ctx context.Context, token string, 
 // on an unrelated candidate and kill a still-valid bound conversation.
 func (s *HTTPServer) getRawAuthSnapshot(ctx context.Context, token string) (*identityv1.GetAuthSnapshotReply, error) {
 	req := &identityv1.GetAuthSnapshotRequest{
-		Token: token,
+		ClientIp: xhttp.ClientIPFromContext(ctx),
+		Token:    token,
 	}
 	reply, err := s.identityClient.GetAuthSnapshot(ctx, req)
 	if err != nil {
@@ -153,27 +155,7 @@ func amountUnitsToUSD(amount int64) float64 {
 }
 
 func (s *HTTPServer) estimateTokens(req *relayprovider.ChatCompletionsRequest) int64 {
-	// 简单的 token 估算逻辑
-	// 实际应用中可以使用更精确的 tokenizer
-	tokens := int64(0)
-
-	// 估算输入 tokens
-	for _, msg := range req.Messages {
-		tokens += int64(len(msg.Content) / 4) // 假设平均每个 token 4 个字符
-	}
-
-	// 估算输出 tokens (优先使用 OpenAI 新字段 max_completion_tokens)
-	maxTokens := req.MaxTokens
-	if req.MaxCompletionTokens != nil {
-		maxTokens = req.MaxCompletionTokens
-	}
-	if maxTokens != nil && *maxTokens > 0 {
-		tokens += int64(*maxTokens)
-	} else {
-		tokens += 1000 // 默认输出 tokens
-	}
-
-	return tokens
+	return relayprovider.EstimateChatTokens(req)
 }
 
 func (s *HTTPServer) calculateActualTokens(resp *relayprovider.ChatCompletionsResponse) int64 {
@@ -305,4 +287,32 @@ func cacheCreationTokensFromProviderUsage(usage relayprovider.Usage) (fiveM, one
 		}
 	}
 	return 0, 0
+}
+
+func mergeProviderUsage(next, previous relayprovider.Usage) relayprovider.Usage {
+	if next.PromptTokens == 0 {
+		next.PromptTokens = previous.PromptTokens
+	}
+	if next.CompletionTokens == 0 {
+		next.CompletionTokens = previous.CompletionTokens
+	}
+	next.PromptTokensDetails = mergeUsageDetails(next.PromptTokensDetails, previous.PromptTokensDetails)
+	next.InputTokensDetails = mergeUsageDetails(next.InputTokensDetails, previous.InputTokensDetails)
+	next.TotalTokens = max(next.TotalTokens, next.PromptTokens+next.CompletionTokens)
+	return next
+}
+func mergeUsageDetails(next, previous relayprovider.UsageTokenDetails) relayprovider.UsageTokenDetails {
+	if next.CachedTokens == 0 {
+		next.CachedTokens = previous.CachedTokens
+	}
+	if next.CacheReadTokens == 0 {
+		next.CacheReadTokens = previous.CacheReadTokens
+	}
+	if next.CacheCreation5mTokens == 0 {
+		next.CacheCreation5mTokens = previous.CacheCreation5mTokens
+	}
+	if next.CacheCreation1hTokens == 0 {
+		next.CacheCreation1hTokens = previous.CacheCreation1hTokens
+	}
+	return next
 }

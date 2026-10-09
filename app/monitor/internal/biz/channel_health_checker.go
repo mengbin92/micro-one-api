@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -71,12 +72,22 @@ func (c *ChannelHealthChecker) CheckOnce(ctx context.Context) {
 			status = "error"
 			return
 		}
+		var workers sync.WaitGroup
+		slots := make(chan struct{}, 4)
 		for _, channel := range channels {
 			if !supportsModelsProbe(channel.Type) {
 				continue
 			}
-			c.probeChannel(ctx, channel.ID)
+			select {
+			case slots <- struct{}{}:
+			case <-ctx.Done():
+				workers.Wait()
+				return
+			}
+			workers.Add(1)
+			go func(id int64) { defer workers.Done(); defer func() { <-slots }(); c.probeChannel(ctx, id) }(channel.ID)
 		}
+		workers.Wait()
 		if len(channels) < int(c.cfg.PageSize) {
 			return
 		}
@@ -86,13 +97,13 @@ func (c *ChannelHealthChecker) CheckOnce(ctx context.Context) {
 
 func (c *ChannelHealthChecker) probeChannel(ctx context.Context, channelID int64) {
 	startedAt := time.Now()
-	detail, err := c.client.GetChannelDetail(ctx, channelID)
+	probeCtx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	defer cancel()
+	detail, err := c.client.GetChannelDetail(probeCtx, channelID)
 	if err != nil || detail == nil {
 		observeHealthProbe("error", "channel_detail", time.Since(startedAt))
 		return
 	}
-	probeCtx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
-	defer cancel()
 	provider, err := c.providerFactory.CreateProviderWithConfig(detail.Type, detail.BaseURL, detail.Key, relayprovider.ProviderConfig{
 		APIVersion: detail.APIVersion,
 	})
@@ -148,6 +159,8 @@ func (c *ChannelHealthChecker) record(ctx context.Context, channelID int64, succ
 	if c == nil || c.client == nil || channelID <= 0 {
 		return
 	}
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	defer cancel()
 	if err := c.client.RecordChannelHealth(ctx, channelID, success, message, responseTime); err != nil {
 		applogger.Log.Warn("record channel health failed", zap.Int64("channel_id", channelID), zap.Bool("success", success), zap.Error(err))
 	}

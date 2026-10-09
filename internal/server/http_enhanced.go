@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"micro-one-api/pkg/jsonx"
+	xhttp "micro-one-api/platform/http"
 
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
@@ -308,6 +309,7 @@ func (s *EnhancedHTTPServer) handleHealth(w http.ResponseWriter, r *http.Request
 
 // validateAuthorization validates the authorization header
 func (s *EnhancedHTTPServer) validateAuthorization(r *http.Request) (string, error) {
+	*r = *r.WithContext(xhttp.WithClientIP(r.Context(), relayClientIP(r)))
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
 		return "", fmt.Errorf("missing authorization header")
@@ -354,7 +356,8 @@ func chainMiddlewares(middlewares ...func(http.Handler) http.Handler) func(http.
 // Remaining methods are the same as in the original HTTPServer
 func (s *EnhancedHTTPServer) getAuthSnapshot(ctx context.Context, token string) (*identityv1.GetAuthSnapshotReply, error) {
 	req := &identityv1.GetAuthSnapshotRequest{
-		Token: token,
+		Token:    token,
+		ClientIp: xhttp.ClientIPFromContext(ctx),
 	}
 	reply, err := s.identityClient.GetAuthSnapshot(ctx, req)
 	if err != nil {

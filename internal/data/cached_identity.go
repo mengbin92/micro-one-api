@@ -25,7 +25,8 @@ func NewCachedIdentityClient(client identityv1.IdentityServiceClient, cache *app
 }
 
 func (c *CachedIdentityClient) GetAuthSnapshot(ctx context.Context, req *identityv1.GetAuthSnapshotRequest, opts ...grpc.CallOption) (*identityv1.GetAuthSnapshotReply, error) {
-	if relaybiz.RoutingContextV2Enabled() || c.cache == nil {
+	// Token-only cache entries cannot enforce caller-specific subnet restrictions.
+	if req.GetClientIp() != "" || relaybiz.RoutingContextV2Enabled() || c.cache == nil {
 		return c.IdentityServiceClient.GetAuthSnapshot(ctx, req, opts...)
 	}
 	return c.cache.Get(ctx, req.GetToken())

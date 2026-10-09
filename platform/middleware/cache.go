@@ -157,7 +157,7 @@ func ResponseCacheMiddleware(config *CacheConfig) func(http.Handler) http.Handle
 					return
 				}
 				// Expired, delete
-				cache.entries.Delete(key)
+				cache.remove(key, entry)
 			}
 
 			// Cache miss - capture response
@@ -177,14 +177,23 @@ func ResponseCacheMiddleware(config *CacheConfig) func(http.Handler) http.Handle
 			// Store in cache if successful
 			if crw.statusCode >= 200 && crw.statusCode < 300 {
 				cache.mu.Lock()
-				if cache.count < cache.maxSize {
+				cache.entries.Range(func(k, v any) bool {
+					if !time.Now().Before(v.(*cacheEntry).expiresAt) && cache.entries.CompareAndDelete(k, v) {
+						cache.count--
+					}
+					return true
+				})
+				_, exists := cache.entries.Load(key)
+				if exists || cache.count < cache.maxSize {
 					cache.entries.Store(key, &cacheEntry{
 						statusCode: crw.statusCode,
 						header:     crw.header.Clone(),
 						body:       crw.body.Bytes(),
 						expiresAt:  time.Now().Add(config.TTL),
 					})
-					cache.count++
+					if !exists {
+						cache.count++
+					}
 				}
 				cache.mu.Unlock()
 			}
@@ -194,13 +203,15 @@ func ResponseCacheMiddleware(config *CacheConfig) func(http.Handler) http.Handle
 
 // InvalidateCache removes a cached entry by key pattern
 func (rc *ResponseCache) Invalidate(keyPattern string) {
-	rc.entries.Range(func(key, value any) bool {
-		if k, ok := key.(string); ok && k == keyPattern {
-			rc.entries.Delete(key)
-			rc.mu.Lock()
-			rc.count--
-			rc.mu.Unlock()
-		}
-		return true
-	})
+	if entry, ok := rc.entries.Load(keyPattern); ok {
+		rc.remove(keyPattern, entry)
+	}
+}
+
+func (rc *ResponseCache) remove(key string, entry any) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	if rc.entries.CompareAndDelete(key, entry) {
+		rc.count--
+	}
 }

@@ -34,3 +34,9 @@ func TestSystemConsumerRequiresExactCurrentMethod(t *testing.T) {
 	require.Equal(t, codes.Unavailable, status.Code(RequireSystem(ctx, systemModeResolver{err: ErrUnavailable}, "channel.channels.list", method)))
 	require.NoError(t, RequireSystem(shared, systemModeResolver{mode: "legacy"}, "channel.channels.list", method))
 }
+
+func TestTypedNilAuthorizationClientFailsClosed(t *testing.T) {
+	var client *Client
+	_, err := client.Mode(context.Background(), "billing.payments.read")
+	require.ErrorIs(t, err, ErrUnavailable)
+}

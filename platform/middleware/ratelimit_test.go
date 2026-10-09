@@ -32,3 +32,25 @@ func TestRateLimiterTokenBucketBurstAndRefill(t *testing.T) {
 		t.Fatal("limiter refilled more than the sustained rate permits")
 	}
 }
+
+func TestRateLimiterCapacityUsesSharedOverflowBudget(t *testing.T) {
+	l := NewRateLimiter(&RateLimitConfig{RequestsPerSecond: 1, Burst: 1, MaxClients: 1})
+	if ok, _ := l.Allow("stored"); !ok {
+		t.Fatal("first client denied")
+	}
+	if ok, _ := l.Allow("new"); !ok {
+		t.Fatal("new client permanently denied at capacity")
+	}
+	if ok, _ := l.Allow("another"); ok {
+		t.Fatal("overflow identities bypass shared budget")
+	}
+	l.mutex.Lock()
+	l.overflow.lastSeen = time.Now().Add(-time.Second)
+	l.mutex.Unlock()
+	if ok, _ := l.Allow("after-refill"); !ok {
+		t.Fatal("overflow does not refill")
+	}
+	if len(l.clients) != 1 {
+		t.Fatal("unbounded overflow map")
+	}
+}

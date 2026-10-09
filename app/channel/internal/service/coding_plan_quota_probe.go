@@ -28,7 +28,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"io"
 	"micro-one-api/platform/authz"
 	"net/http"
 	"sort"
@@ -37,6 +36,7 @@ import (
 	"time"
 
 	"micro-one-api/pkg/jsonx"
+	xhttp "micro-one-api/platform/http"
 
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/pkg/safecast"
@@ -241,7 +241,7 @@ func (s *CodingPlanQuotaProbeService) queryZhipu(ctx context.Context, account *b
 		return nil, fmt.Errorf("zhipu request: %w", err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := xhttp.ReadBody(resp.Body, xhttp.MaxExternalResponseBody)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -394,7 +394,7 @@ func (s *CodingPlanQuotaProbeService) queryKimi(ctx context.Context, account *bi
 		return nil, fmt.Errorf("kimi request: %w", err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := xhttp.ReadBody(resp.Body, xhttp.MaxExternalResponseBody)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -500,7 +500,7 @@ func (s *CodingPlanQuotaProbeService) queryMinimax(ctx context.Context, account 
 		return nil, fmt.Errorf("minimax request: %w", err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := xhttp.ReadBody(resp.Body, xhttp.MaxExternalResponseBody)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err

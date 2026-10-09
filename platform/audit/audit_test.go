@@ -179,6 +179,7 @@ func TestMapMethodToEventType(t *testing.T) {
 }
 
 func TestExtractIP(t *testing.T) {
+	t.Setenv("TRUSTED_PROXY_CIDRS", "")
 	tests := []struct {
 		name       string
 		headerXFF  string
@@ -191,14 +192,14 @@ func TestExtractIP(t *testing.T) {
 			headerXFF:  "1.2.3.4",
 			headerXRI:  "5.6.7.8",
 			remoteAddr: "9.10.11.12",
-			want:       "1.2.3.4",
+			want:       "9.10.11.12",
 		},
 		{
 			name:       "X-Real-IP second priority",
 			headerXFF:  "",
 			headerXRI:  "5.6.7.8",
 			remoteAddr: "9.10.11.12",
-			want:       "5.6.7.8",
+			want:       "9.10.11.12",
 		},
 		{
 			name:       "RemoteAddr fallback",

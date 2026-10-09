@@ -64,6 +64,28 @@ func (f *iamA4Fixture) register(name string) *biz.User {
 	require.NoError(f.t, err)
 	return u
 }
+
+func TestOAuthLoginRetriesOccupiedUsernameInPersistentOwner(t *testing.T) {
+	for _, mode := range []string{"legacy", "iam"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newIAMA4Fixture(t, "sqlite")
+			f.register("alice")
+			f.register("alice-2e223a579f4d")
+			if mode == "iam" {
+				f.mode("iam", "complete")
+			}
+			user, _, created, err := f.uc.OAuthLogin(f.ctx, "google", "subject", "alice", "", "Alice")
+			require.NoError(t, err)
+			require.True(t, created)
+			require.NotEqual(t, "alice", user.Username)
+			require.NotEqual(t, "alice-2e223a579f4d", user.Username)
+			same, _, created, err := f.uc.OAuthLogin(f.ctx, "google", "subject", "alice", "", "Alice")
+			require.NoError(t, err)
+			require.False(t, created)
+			require.Equal(t, user.ID, same.ID)
+		})
+	}
+}
 func (f *iamA4Fixture) token(uid int64, jti string, epoch int64, exp time.Time) string {
 	f.t.Helper()
 	raw, err := jwt.NewWithClaims(jwt.SigningMethodHS256, biz.UserSessionClaims{UserID: uid, Role: 100, PwdEpoch: epoch, TokenType: "user_session", RegisteredClaims: jwt.RegisteredClaims{ID: jti, Subject: fmt.Sprint(uid), Issuer: "micro-one-api", Audience: []string{"micro-one-api-web"}, ExpiresAt: jwt.NewNumericDate(exp)}}).SignedString([]byte("a4-isolated-secret"))

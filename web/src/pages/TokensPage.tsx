@@ -99,6 +99,7 @@ function tokenForList(token: Token): Token {
 }
 
 export function TokensPage() {
+  const [deleteTarget, setDeleteTarget] = useState<Token | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newTokenName, setNewTokenName] = useState('');
   const [selectedGroup, setSelectedGroup] = useState('inherit');
@@ -397,7 +398,7 @@ export function TokensPage() {
                       <Button
                         variant="destructive"
                         size="sm"
-                        onClick={() => deleteMutation.mutate(token.id)}
+                        onClick={() => setDeleteTarget(token)}
                         disabled={deleteMutation.isPending}
                       >
                         {t('删除')}
@@ -410,6 +411,18 @@ export function TokensPage() {
           </Table>
         </div>
       )}
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{t('删除 API 密钥')}</DialogTitle><DialogDescription>{t('删除后，使用此密钥的请求将无法认证。此操作无法撤销。')}</DialogDescription></DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>{t('取消')}</Button>
+            <Button variant="destructive" disabled={deleteMutation.isPending} onClick={() => {
+              if (deleteTarget) deleteMutation.mutate(deleteTarget.id, { onSuccess: () => setDeleteTarget(null) });
+            }}>{t('确认删除')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <CCSwitchDialog
         key={ccSwitchSessionId}

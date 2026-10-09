@@ -323,7 +323,7 @@ export async function executeChatCompletion(
     return throwNetworkError(error);
   }
 
-  if (!sawDone) {
+  if (!sawDone && !['stop', 'length', 'tool_calls', 'function_call', 'content_filter'].includes(finishReason ?? '')) {
     throw new RelayPlaygroundError(t("Relay 流在收到 [DONE] 前结束"), { kind: 'protocol_error', status: response.status, requestId });
   }
 

@@ -54,7 +54,7 @@ type ChannelUsecase interface {
 
 type Service struct {
 	uc     ChannelUsecase
-	store  *SessionStore
+	store  SessionRepository
 	client *http.Client
 	now    func() time.Time
 
@@ -135,7 +135,7 @@ func WithHTTPClient(client *http.Client) Option {
 	}
 }
 
-func WithSessionStore(store *SessionStore) Option {
+func WithSessionStore(store SessionRepository) Option {
 	return func(s *Service) {
 		if store != nil {
 			s.store = store
@@ -200,13 +200,15 @@ func (s *Service) AuthURL(ctx context.Context, platform string, req AuthURLReque
 		CredentialDigest: oauthCredentialDigest(ctx),
 		Group:            req.Group,
 	}
-	s.store.Set(session)
+	if err := s.store.Set(session); err != nil {
+		return nil, fmt.Errorf("store oauth session: %w", err)
+	}
 	authURL := buildAuthURL(platform, state, codeChallenge(verifier), redirectURI)
 	return &AuthURLResult{
 		AuthURL:   authURL,
 		SessionID: sessionID,
 		State:     state,
-		ExpiresAt: session.CreatedAt.Add(s.store.ttl).Unix(),
+		ExpiresAt: session.CreatedAt.Add(s.store.TTL()).Unix(),
 	}, nil
 }
 

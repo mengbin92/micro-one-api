@@ -425,3 +425,22 @@ func TestListUsers_Empty(t *testing.T) {
 		t.Fatalf("expected empty result")
 	}
 }
+
+func TestMemoryUserIDsNeverReusedAfterDelete(t *testing.T) {
+	r := newTestRepo()
+	ctx := context.Background()
+	first := &biz.User{Username: "old"}
+	if err := r.CreateUser(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.DeleteUser(ctx, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	second := &biz.User{Username: "new"}
+	if err := r.CreateUser(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	if second.ID <= first.ID {
+		t.Fatalf("IDs reused: %d then %d", first.ID, second.ID)
+	}
+}

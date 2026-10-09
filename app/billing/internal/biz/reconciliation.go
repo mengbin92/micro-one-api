@@ -399,15 +399,9 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 				continue
 			}
 		} else {
-			// Legacy fallback when no billing usecase is wired (tests).
-			// Refund the wallet-side BalanceAmount so a fully
-			// subscription-absorbed reservation does not mint money.
-			refundAmount := res.BalanceAmount
-			if refundAmount > 0 {
-				_ = uc.accountRepo.UpdateFrozenAmount(ctx, res.UserID, -refundAmount)
-				_, _ = uc.accountRepo.UpdateBalance(ctx, res.UserID, refundAmount, LedgerTypeRefund)
-			}
-			_ = uc.reservationRepo.UpdateReservationStatus(ctx, res.ReservationID, ReservationStatusExpired)
+			// A separate refund and status update cannot safely release a reservation.
+			return result, fmt.Errorf("atomic reservation releaser is not configured")
+
 		}
 		result.ExpiredCleaned++
 	}

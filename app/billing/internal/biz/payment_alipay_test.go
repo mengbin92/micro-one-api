@@ -86,7 +86,7 @@ func TestAlipayProviderQueryOrderPaid(t *testing.T) {
 			t.Fatalf("app_id = %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"alipay_trade_query_response":{"code":"10000","msg":"Success","out_trade_no":"PAY-1","trade_no":"ALI-1","trade_status":"TRADE_SUCCESS"}}`))
+		w.Write([]byte(`{"alipay_trade_query_response":{"code":"10000","msg":"Success","out_trade_no":"PAY-1","trade_no":"ALI-1","trade_status":"TRADE_SUCCESS","total_amount":"1.23"}}`))
 	}))
 	defer server.Close()
 
@@ -99,6 +99,9 @@ func TestAlipayProviderQueryOrderPaid(t *testing.T) {
 	status, err := provider.QueryOrder(context.Background(), &PaymentOrder{TradeNo: "PAY-1"})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if status.TotalAmount != 123 {
+		t.Fatalf("total amount = %d", status.TotalAmount)
 	}
 	if !status.Paid {
 		t.Fatalf("paid = false")
@@ -174,6 +177,11 @@ func TestParseAlipayTotalAmount(t *testing.T) {
 		{"large amount", "99.99", 9999},
 		{"empty", "", 0},
 		{"garbage", "not-a-number", 0},
+		{"overflow", "92233720368547758.08", 0},
+		{"exact large cents", "90071992547409.91", 9007199254740991},
+		{"non-finite", "NaN", 0},
+		{"infinite", "Inf", 0},
+		{"scientific notation", "1e6", 0},
 		{"negative rejected", "-1.00", 0},
 		{"whitespace trimmed", "  0.50  ", 50},
 	}

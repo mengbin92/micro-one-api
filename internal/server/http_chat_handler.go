@@ -69,6 +69,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 
 	// Delegate auth, model validation, model mapping, and channel selection to biz layer
 	plan, err := s.relayUsecase.Plan(r.Context(), relaybiz.RelayRequest{
+		ClientIP:    relayClientIP(r),
 		Token:       token,
 		Model:       req.Model,
 		SessionHash: sessionHash,
@@ -284,13 +285,13 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 			streamError = true
 			break
 		}
-		if chunk.Usage.TotalTokens > 0 {
-			lastUsage = chunk.Usage
-			totalTokens = int64(chunk.Usage.TotalTokens)
-			promptTokens = int64(chunk.Usage.PromptTokens)
-			completionTokens = int64(chunk.Usage.CompletionTokens)
-			cacheReadTokens = cacheReadTokensFromProviderUsage(chunk.Usage)
-			if fiveM, oneH := cacheCreationTokensFromProviderUsage(chunk.Usage); fiveM > 0 || oneH > 0 {
+		if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 || chunk.Usage.PromptTokensDetails != (relayprovider.UsageTokenDetails{}) || chunk.Usage.InputTokensDetails != (relayprovider.UsageTokenDetails{}) {
+			lastUsage = mergeProviderUsage(chunk.Usage, lastUsage)
+			totalTokens = int64(lastUsage.TotalTokens)
+			promptTokens = int64(lastUsage.PromptTokens)
+			completionTokens = int64(lastUsage.CompletionTokens)
+			cacheReadTokens = cacheReadTokensFromProviderUsage(lastUsage)
+			if fiveM, oneH := cacheCreationTokensFromProviderUsage(lastUsage); fiveM > 0 || oneH > 0 {
 				cacheCreation5mTokens = fiveM
 				cacheCreation1hTokens = oneH
 			}

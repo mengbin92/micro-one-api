@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"fmt"
+	"go.uber.org/zap"
+	applogger "micro-one-api/platform/logging"
 	"time"
 )
 
@@ -22,6 +24,10 @@ type ExpiryNotification struct {
 	SubscriptionID int64
 	UserID         int64
 	ExpiresAt      int64
+}
+
+type ExpiryNotificationClaimer interface {
+	ClaimExpiryNotification(context.Context, ExpiryNotification) (func(context.Context, bool) error, bool, error)
 }
 
 type ExpiryNotifier interface {
@@ -58,19 +64,46 @@ func (c *SubscriptionExpiryChecker) Run(ctx context.Context) {
 func (c *SubscriptionExpiryChecker) notify(ctx context.Context) {
 	notifications, err := c.Tick(ctx)
 	if err != nil {
-		fmt.Printf("subscription expiry scan failed: %v\n", err)
+		applogger.Log.Warn("subscription expiry scan failed", zap.Error(err))
 		return
 	}
 	if c.notifier == nil {
 		return
+	}
+	active := make(map[string]struct{}, len(notifications))
+	for _, n := range notifications {
+		active[fmt.Sprintf("%d:%d", n.SubscriptionID, n.ExpiresAt)] = struct{}{}
+	}
+	for key := range c.notified {
+		if _, ok := active[key]; !ok {
+			delete(c.notified, key)
+		}
 	}
 	for _, notification := range notifications {
 		key := fmt.Sprintf("%d:%d", notification.SubscriptionID, notification.ExpiresAt)
 		if _, seen := c.notified[key]; seen {
 			continue
 		}
-		if err := c.notifier.NotifyExpiry(ctx, notification); err != nil {
-			fmt.Printf("subscription expiry reminder failed for %d: %v\n", notification.SubscriptionID, err)
+		complete := func(context.Context, bool) error { return nil }
+		if repo, ok := c.repo.(ExpiryNotificationClaimer); ok {
+			finish, claimed, err := repo.ClaimExpiryNotification(ctx, notification)
+			if err != nil {
+				applogger.Log.Warn("claim expiry reminder failed", zap.Error(err))
+				continue
+			}
+			if !claimed {
+				continue
+			}
+			complete = finish
+		}
+		sendCtx, cancel := context.WithTimeout(ctx, time.Minute)
+		err := c.notifier.NotifyExpiry(sendCtx, notification)
+		cancel()
+		finishCtx, finishCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		finishErr := complete(finishCtx, err == nil)
+		finishCancel()
+		if err != nil || finishErr != nil {
+			applogger.Log.Warn("subscription expiry reminder failed", zap.Int64("subscription_id", notification.SubscriptionID), zap.Error(err), zap.NamedError("claim_error", finishErr))
 			continue
 		}
 		c.notified[key] = struct{}{}

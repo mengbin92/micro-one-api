@@ -40,7 +40,11 @@ func (r *Repository) ListSubscriptionAccountsByRecovery(ctx context.Context, pag
 			return nil, 0, err
 		}
 		for i := range rows {
-			candidates = append(candidates, r.subscriptionAccountModelToBiz(&rows[i]))
+			account, err := r.subscriptionAccountModelToBiz(&rows[i])
+			if err != nil {
+				return nil, 0, err
+			}
+			candidates = append(candidates, account)
 		}
 	} else {
 		r.lock.RLock()

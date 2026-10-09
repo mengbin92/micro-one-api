@@ -30,7 +30,7 @@ func (uc *IdentityUsecase) resetIAMPasswordByEmail(ctx context.Context, email, p
 	if !ok || proof.UserID <= 0 || email == "" || proof.Email != email || proof.VerifiedAt.After(now.Add(time.Second)) || now.Sub(proof.VerifiedAt) > time.Minute {
 		return ErrInvalidToken
 	}
-	if len(password) < 8 {
+	if len(password) < 8 || len(password) > 72 {
 		return ErrInvalidPassword
 	}
 	target, err := uc.repo.FindUserByEmail(ctx, email)

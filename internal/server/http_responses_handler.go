@@ -84,8 +84,9 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		plan, err = s.wsScheduler.ResolvePlan(r.Context(), token, clientModel, previousResponseID, sessionHash)
 	} else {
 		plan, err = s.relayUsecase.Plan(r.Context(), relaybiz.RelayRequest{
-			Token: token,
-			Model: clientModel,
+			ClientIP: relayClientIP(r),
+			Token:    token,
+			Model:    clientModel,
 		})
 	}
 	if err != nil {
@@ -121,7 +122,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			estimateRawTokens(retriedBody),
 			billingModel,
 			fmt.Sprintf("%d", ch.ID),
-			subscriptionAccountIDFromPlan(plan),
+			subscriptionAccountIDFromChannel(ch),
 			plan.Auth.RoutingContext,
 		)
 		if reserveErr != nil {

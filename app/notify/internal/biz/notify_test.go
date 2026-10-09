@@ -353,6 +353,7 @@ func TestMultiSenderWebhook(t *testing.T) {
 	defer srv.Close()
 
 	sender := NewMultiSender(SenderConfig{})
+	sender.httpClient = srv.Client()
 	err := sender.Send(context.Background(), &Notification{
 		ID:        1,
 		Type:      NotifyTypeWebhook,
@@ -422,6 +423,7 @@ func TestMultiSenderWeCom(t *testing.T) {
 	defer srv.Close()
 
 	sender := NewMultiSender(SenderConfig{WeComWebhookURL: srv.URL})
+	sender.httpClient = srv.Client()
 	err := sender.Send(context.Background(), &Notification{
 		ID:        1,
 		Type:      NotifyTypeWeCom,
@@ -460,6 +462,7 @@ func TestMultiSenderDingTalk(t *testing.T) {
 	defer srv.Close()
 
 	sender := NewMultiSender(SenderConfig{DingTalkWebhookURL: srv.URL})
+	sender.httpClient = srv.Client()
 	err := sender.Send(context.Background(), &Notification{
 		ID:        1,
 		Type:      NotifyTypeDingTalk,
@@ -498,6 +501,7 @@ func TestMultiSenderFeishu(t *testing.T) {
 	defer srv.Close()
 
 	sender := NewMultiSender(SenderConfig{FeishuWebhookURL: srv.URL})
+	sender.httpClient = srv.Client()
 	err := sender.Send(context.Background(), &Notification{
 		ID:        1,
 		Type:      NotifyTypeFeishu,
@@ -536,6 +540,7 @@ func TestMultiSenderSlack(t *testing.T) {
 	defer srv.Close()
 
 	sender := NewMultiSender(SenderConfig{SlackWebhookURL: srv.URL})
+	sender.httpClient = srv.Client()
 	err := sender.Send(context.Background(), &Notification{
 		ID:        1,
 		Type:      NotifyTypeSlack,
@@ -643,6 +648,7 @@ func TestMultiSenderWeComRecipientOverride(t *testing.T) {
 
 	// Config has one key
 	sender := NewMultiSender(SenderConfig{WeComWebhookURL: srv.URL + "?key=config-key"})
+	sender.httpClient = srv.Client()
 	// Recipient overrides with different key
 	err := sender.Send(context.Background(), &Notification{
 		ID:        1,
@@ -672,6 +678,7 @@ func TestMultiSenderWeComRecipientOnly(t *testing.T) {
 
 	// No global config configured
 	sender := NewMultiSender(SenderConfig{})
+	sender.httpClient = srv.Client()
 	// Recipient provides the full URL
 	err := sender.Send(context.Background(), &Notification{
 		ID:        1,
@@ -700,6 +707,7 @@ func TestMultiSenderDingTalkRecipientOnly(t *testing.T) {
 
 	// No global config configured
 	sender := NewMultiSender(SenderConfig{})
+	sender.httpClient = srv.Client()
 	// Recipient provides the full URL
 	err := sender.Send(context.Background(), &Notification{
 		ID:        1,
@@ -728,6 +736,7 @@ func TestMultiSenderFeishuRecipientOnly(t *testing.T) {
 
 	// No global config configured
 	sender := NewMultiSender(SenderConfig{})
+	sender.httpClient = srv.Client()
 	// Recipient provides the full URL
 	err := sender.Send(context.Background(), &Notification{
 		ID:        1,
@@ -756,6 +765,7 @@ func TestMultiSenderSlackRecipientOnly(t *testing.T) {
 
 	// No global config configured
 	sender := NewMultiSender(SenderConfig{})
+	sender.httpClient = srv.Client()
 	// Recipient provides the full URL
 	err := sender.Send(context.Background(), &Notification{
 		ID:        1,
@@ -791,6 +801,7 @@ func TestMultiSenderDingTalkRecipientOverride(t *testing.T) {
 
 	// Config has one token
 	sender := NewMultiSender(SenderConfig{DingTalkWebhookURL: srv.URL + "?access_token=config-token"})
+	sender.httpClient = srv.Client()
 	// Recipient overrides with different token
 	err := sender.Send(context.Background(), &Notification{
 		ID:        1,

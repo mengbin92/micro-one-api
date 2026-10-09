@@ -9,6 +9,8 @@ import (
 	"micro-one-api/pkg/jsonx"
 )
 
+var andOperator = regexp.MustCompile(`(?i)^AND\s+`)
+
 var equality = regexp.MustCompile(`^([a-z_]+)\s*=\s*("(?:[^"\\]|\\.)*")`)
 
 func Equalities(input string, allowed ...string) (map[string]string, error) {
@@ -38,10 +40,11 @@ func Equalities(input string, allowed ...string) (map[string]string, error) {
 		if rest == "" {
 			break
 		}
-		if !strings.HasPrefix(rest, "AND ") {
+		op := andOperator.FindString(rest)
+		if op == "" {
 			return nil, fmt.Errorf("unsupported filter operator")
 		}
-		rest = strings.TrimSpace(strings.TrimPrefix(rest, "AND "))
+		rest = strings.TrimSpace(rest[len(op):])
 		if rest == "" {
 			return nil, fmt.Errorf("incomplete filter")
 		}

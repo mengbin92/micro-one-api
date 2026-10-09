@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"micro-one-api/pkg/jsonx"
+	xhttp "micro-one-api/platform/http"
 
 	"math"
 	"strconv"
@@ -150,21 +151,40 @@ func (p *alipayPaymentProvider) VerifyNotify(ctx context.Context, params map[str
 	}, nil
 }
 
-// parseAlipayTotalAmount parses the Alipay "total_amount" notify field (a
-// decimal string in yuan, e.g. "0.01") into minor units (cents). It is
-// best-effort: an unparseable value yields 0, which the caller treats as
-// "provider reported no amount" and skips the amount cross-check.
+// parseAlipayTotalAmount parses decimal yuan, rounding a fractional cent once.
+// Invalid, negative and overflowing values return zero and fail amount validation.
 func parseAlipayTotalAmount(raw string) int64 {
 	raw = strings.TrimSpace(raw)
-	if raw == "" {
+	parts := strings.Split(raw, ".")
+	if len(parts) > 2 || parts[0] == "" {
 		return 0
 	}
-	// Alipay amounts are decimal yuan with up to two fractional digits.
-	f, err := strconv.ParseFloat(raw, 64)
-	if err != nil || f < 0 {
+	for _, part := range parts {
+		for _, digit := range part {
+			if digit < '0' || digit > '9' {
+				return 0
+			}
+		}
+	}
+	yuan, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || yuan > math.MaxInt64/100 {
 		return 0
 	}
-	return int64(math.Round(f * 100))
+	cents := int64(0)
+	if len(parts) == 2 {
+		if parts[1] == "" {
+			return 0
+		}
+		digits := parts[1] + "00"
+		cents = int64(digits[0]-'0')*10 + int64(digits[1]-'0')
+		if len(parts[1]) > 2 && parts[1][2] >= '5' {
+			cents++
+		}
+	}
+	if yuan*100 > math.MaxInt64-cents {
+		return 0
+	}
+	return yuan*100 + cents
 }
 
 func (p *alipayPaymentProvider) QueryOrder(ctx context.Context, order *PaymentOrder) (*PaymentProviderStatus, error) {
@@ -212,7 +232,7 @@ func (p *alipayPaymentProvider) QueryOrder(ctx context.Context, order *PaymentOr
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := xhttp.ReadBody(resp.Body, xhttp.MaxExternalResponseBody)
 	if err != nil {
 		return nil, err
 	}
@@ -276,6 +296,7 @@ func (p *alipayPaymentProvider) parseTradeQueryResponse(body []byte) (*PaymentPr
 		OutTradeNo  string `json:"out_trade_no"`
 		TradeNo     string `json:"trade_no"`
 		TradeStatus string `json:"trade_status"`
+		TotalAmount string `json:"total_amount"`
 	}
 	if err := jsonx.Unmarshal(raw, &response); err != nil {
 		return nil, err
@@ -288,6 +309,7 @@ func (p *alipayPaymentProvider) parseTradeQueryResponse(body []byte) (*PaymentPr
 		}, nil
 	}
 	return &PaymentProviderStatus{
+		TotalAmount:     parseAlipayTotalAmount(response.TotalAmount),
 		TradeNo:         response.OutTradeNo,
 		ProviderTradeNo: response.TradeNo,
 		TradeStatus:     response.TradeStatus,

@@ -64,3 +64,12 @@ func TestInvalidationReorderingAndFailure(t *testing.T) {
 	}
 	require.Equal(t, []int64{3, 4}, revisions)
 }
+
+func TestDispatchPanicPreservesOutboxForRetry(t *testing.T) {
+	db := testutil.RoutingContextDB(t, "sqlite")
+	require.NoError(t, db.Transaction(func(tx *gorm.DB) error { return Enqueue(tx, "identity", "user", 1, 2) }))
+	require.Error(t, Dispatch(context.Background(), db, "identity", func(context.Context, string, any) error { panic("publisher failed") }))
+	calls := 0
+	require.NoError(t, Dispatch(context.Background(), db, "identity", func(context.Context, string, any) error { calls++; return nil }))
+	require.Equal(t, 1, calls)
+}

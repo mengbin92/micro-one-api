@@ -8,6 +8,7 @@ import (
 	"math"
 	"math/big"
 	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/security/serviceidentity"
 	"os"
 	"sort"
 	"strconv"
@@ -1302,7 +1303,7 @@ func (uc *ChannelUsecase) RecordHealth(ctx context.Context, event ChannelHealthE
 		return err
 	}
 	if uc.selector != nil {
-		uc.selector.RecordHealth(event.ChannelID, event.Success, event.ResponseTime, event.Error)
+		uc.selector.RecordHealth(event.ChannelID, event.Success, event.ResponseTime, event.Error, !authorization.External(ctx) || serviceidentity.FromContext(ctx).Name == "relay")
 	}
 	// §10.2 contract — RecordHealth must NOT invalidate the
 	// /v1/models L1 cache or publish a TopicChannelChanged event. Health

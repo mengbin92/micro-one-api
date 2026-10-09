@@ -219,7 +219,10 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) Mode(ctx context.Context, point string) (string, error) {
-	if c == nil || c.legacy {
+	if c == nil {
+		return "", ErrUnavailable
+	}
+	if c.legacy {
 		return "legacy", nil
 	}
 	if c.iam == nil {

@@ -68,6 +68,12 @@ describe('relay playground client', () => {
     });
   });
 
+  it('accepts a terminal finish reason without DONE', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response('data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\n', { headers: { 'Content-Type': 'text/event-stream' } }));
+    const result = await executeChatCompletion({ baseUrl: 'https://relay.test', apiKey: 'sk-test', request: { model: 'demo', messages: [{role:'user',content:'hi'}], stream: true } });
+    expect(result.finishReason).toBe('stop');
+  });
+
   it('classifies HTTP errors without exposing the key', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       response(JSON.stringify({ error: { message: 'invalid api key' } }), { status: 401, statusText: 'Unauthorized' }),

@@ -73,6 +73,8 @@ func (m *mockSubscriptionRepo) UpdateSubscriptionFields(ctx context.Context, sub
 			merged.Metadata = subscription.Metadata
 		case SubscriptionFieldRenewalStrategy:
 			merged.RenewalStrategy = subscription.RenewalStrategy
+		case SubscriptionFieldPricePaid:
+			merged.PricePaid = subscription.PricePaid
 		case SubscriptionFieldUsageAll:
 			merged.DailyUsageUSD = subscription.DailyUsageUSD
 			merged.WeeklyUsageUSD = subscription.WeeklyUsageUSD
@@ -406,7 +408,7 @@ func TestAssignOrExtend_AccumulatesRemainingTime(t *testing.T) {
 	// Renew for 30 days (30*86400) starting now=5000. A renewal must accumulate:
 	// new expires = max(9000, 5000) + 30d = 9000 + 30d, NOT 5000 + 30d.
 	renewed, reused, err := uc.AssignOrExtend(context.Background(), &AssignSubscriptionRequest{
-		UserID: 1, GroupID: group.ID, StartsAt: 5000, ExpiresAt: 5000 + 30*86400, SubscriptionName: "pro",
+		UserID: 1, GroupID: group.ID, StartsAt: 5000, ExpiresAt: 5000 + 30*86400, SubscriptionName: "pro", PricePaid: 200,
 	})
 	if err != nil {
 		t.Fatalf("renew: %v", err)
@@ -417,6 +419,13 @@ func TestAssignOrExtend_AccumulatesRemainingTime(t *testing.T) {
 	want := origExpires + int64(30*86400)
 	if renewed.ExpiresAt != want {
 		t.Fatalf("renewal expiry = %d, want %d (accumulated); orig=%d", renewed.ExpiresAt, want, origExpires)
+	}
+	stored, err := repo.GetSubscriptionByID(context.Background(), renewed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.PricePaid != 200 {
+		t.Fatalf("renewal price was not persisted: %d", stored.PricePaid)
 	}
 }
 

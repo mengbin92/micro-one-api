@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"micro-one-api/domain/routing"
+	xhttp "micro-one-api/platform/http"
 	"micro-one-api/platform/routingdto"
 	"net/http"
 	"net/url"
@@ -125,6 +126,7 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 	}
 	if plan == nil {
 		normalPlan, planErr := s.relayUsecase.Plan(ctx, relaybiz.RelayRequest{
+			ClientIP:  xhttp.ClientIPFromContext(ctx),
 			Token:     token,
 			Model:     clientModel,
 			RequestID: requestID,
@@ -689,20 +691,6 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 				if admitted := v2Turns.take(); admitted != nil {
 					turnReservationID = admitted.ReservationId
 					logInput.applyReservation(admitted)
-				}
-			} else if turnCommits > 0 {
-				turnReservationID = ""
-				if s.billingClient != nil {
-					turnCtx := channelAttemptContext(ctx, turnID, 1, currentChannel, resolvedModel)
-					if turnRes, rerr := s.reserveQuota(turnCtx, fmt.Sprintf("%d", plan.Auth.UserID), turnID, actualTotal, s.BillingModelName(clientModel, resolvedModel, resolvedModel), fmt.Sprintf("%d", currentChannel.ID), routingSubscriptionAccountID(currentChannel), plan.Auth.RoutingContext); rerr == nil && turnRes != nil {
-						turnReservationID = turnRes.ReservationId
-						logInput.applyReservation(turnRes)
-					} else {
-						applogger.Log.Warn("failed to reserve openai ws turn quota",
-							zap.String("request_id", turnID),
-							zap.Error(rerr),
-						)
-					}
 				}
 			}
 			if turnReservationID != "" {
