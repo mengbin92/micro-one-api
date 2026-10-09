@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.34.12 发布公告](./docs/releases/release-v0.34.12.md)（鉴权、支付计费与分布式投递安全修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.12)
+> 📣 **最新发布**：[v0.34.13 发布公告](./docs/releases/release-v0.34.13.md)（鉴权、支付计费与分布式投递安全修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.13)
 
 ## 功能概览
 
@@ -180,9 +180,13 @@ make web-dist
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
 
-### 升级到 v0.34.12
+### 升级到 v0.34.13
 
-v0.34.12 修复支付状态变更授权、订单金额核对、故障切换计费归属、IP 感知鉴权、WebSocket 逐轮额度校验及分布式投递，并加固账号恢复、凭据读取与前端会话。**无 API/proto 或数据库结构变更**；升级前保留既有 Token 哈希密钥、检查历史明文凭据及 Redis，更新九个主服务、已启用的渠道 worker 和独立前端。生产已部署本版修复并通过健康、源码摘要和公网验证，无需为正式发版重复部署。详见 [release-v0.34.12.md](./docs/releases/release-v0.34.12.md)。
+v0.34.13 完整包含 v0.34.12 候选的安全与计费修复，并修复 IAM 浏览器明文夹具。业务修复覆盖支付状态变更授权、订单金额核对、故障切换计费归属、IP 感知鉴权、WebSocket 逐轮额度校验及分布式投递，并加固账号恢复、凭据读取与前端会话。**无 API/proto 或数据库结构变更**；升级前保留既有 Token 哈希密钥、检查历史明文凭据及 Redis，更新九个主服务、已启用的渠道 worker 和独立前端。生产已部署本版修复并通过健康、源码摘要和公网验证，无需为正式发版重复部署。详见 [release-v0.34.13.md](./docs/releases/release-v0.34.13.md)。
+
+### v0.34.12（候选，发布中止）
+
+IAM 浏览器门禁因测试夹具直接写入明文渠道 key 而失败，未生成正式 Release 或发布镜像，原 tag 保留。业务修复已上线，正式升级使用 v0.34.13。候选内容见 [release-v0.34.12.md](./docs/releases/release-v0.34.12.md)。
 
 ### 升级到 v0.34.11
 
