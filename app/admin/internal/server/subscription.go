@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"micro-one-api/pkg/jsonx"
-
 	billingv1 "micro-one-api/api/billing/v1"
 	"micro-one-api/app/admin/internal/service"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
@@ -165,7 +163,9 @@ func handleSubscriptionByID(w http.ResponseWriter, r *http.Request, svc *service
 			Reason           string `json:"reason"`
 			ExpectedRevision int64  `json:"expected_revision"`
 		}
-		_ = jsonx.NewDecoder(r.Body).Decode(&req)
+		if !decodeBody(w, r, &req) {
+			return
+		}
 		writeSubscriptionResponse(w, nil, svc.RevokeSubscription(subscriptionbiz.WithExpectedRevision(r.Context(), req.ExpectedRevision), id, req.Reason))
 	case "extend":
 		var req struct {

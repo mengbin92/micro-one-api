@@ -5,11 +5,60 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"micro-one-api/app/identity/internal/biz"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+type tokenEditQuotaRepo struct {
+	*Repository
+	amount int64
+}
+
+func (r *tokenEditQuotaRepo) FindTokenByID(ctx context.Context, userID, tokenID int64) (*biz.Token, error) {
+	token, err := r.Repository.FindTokenByID(ctx, userID, tokenID)
+	if err == nil && r.amount > 0 {
+		amount := r.amount
+		r.amount = 0
+		_, err = r.Repository.ConsumeTokenQuota(ctx, userID, tokenID, amount)
+	}
+	return token, err
+}
+
+func TestTokenEditPreservesConcurrentUsage(t *testing.T) {
+	for _, storage := range []string{"memory", "sqlite"} {
+		for _, tt := range []struct {
+			name                     string
+			amount, quota, remaining int64
+			status                   int32
+		}{
+			{"rename", 20, -1, 80, biz.TokenStatusEnabled},
+			{"exhausted", 100, -1, 0, biz.TokenStatusExhausted},
+			{"explicit quota", 20, 250, 250, biz.TokenStatusEnabled},
+		} {
+			t.Run(storage+"/"+tt.name, func(t *testing.T) {
+				repo := NewMemoryRepositoryForTest()
+				if storage == "sqlite" {
+					repo = newTokenHashTestRepo(t)
+				}
+				ctx := context.Background()
+				token := &biz.Token{UserID: 7, Name: "before", Key: "quota-edit-key", KeyHash: biz.HashTokenKey("quota-edit-key"), Status: biz.TokenStatusEnabled, RemainQuota: 100, AccessedAt: 10}
+				require.NoError(t, repo.CreateToken(ctx, token))
+				uc := biz.NewIdentityUsecase(&tokenEditQuotaRepo{Repository: repo, amount: tt.amount}, nil)
+				_, err := uc.UpdateAccessTokenWithOptions(ctx, 7, token.ID, biz.UpdateAccessTokenOptions{Name: "after", RemainQuota: tt.quota})
+				require.NoError(t, err)
+				got, err := repo.FindTokenByID(ctx, 7, token.ID)
+				require.NoError(t, err)
+				require.Equal(t, "after", got.Name)
+				require.EqualValues(t, tt.amount, got.UsedQuota, "editing token settings must not roll back accumulated usage")
+				require.EqualValues(t, tt.remaining, got.RemainQuota, "omitted quota must preserve concurrent consumption")
+				require.Equal(t, tt.status, got.Status, "omitted status must preserve concurrent exhaustion")
+			})
+		}
+	}
+}
 
 func TestConsumeTokenQuotaDBAtomicAndUserScoped(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:token-quota?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})

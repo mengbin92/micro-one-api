@@ -113,8 +113,13 @@ func (r *Repository) updateGroupDB(ctx context.Context, group *biz.SubscriptionG
 		if err := requireOperations(ctx, old.ID, 0, "subscription.quota_policy.update"); err != nil {
 			return err
 		}
-		if _, iam := authorization.QueryScopeFromContext(ctx, "subscription.quota_policy.update"); iam && (group.Revision <= 0 || group.Revision != old.Revision) {
-			return biz.ErrSubscriptionContractConflict
+		if _, iam := authorization.QueryScopeFromContext(ctx, "subscription.quota_policy.update"); iam {
+			if group.Revision <= 0 {
+				return authorization.ErrWritePrecondition
+			}
+			if group.Revision != old.Revision {
+				return authorization.ErrWriteConflict
+			}
 		}
 		if err := tx.Model(&groupModel{}).Where("id = ? AND revision = ?", group.ID, old.Revision).Updates(map[string]any{
 			"revision":          old.Revision + 1,
@@ -150,8 +155,11 @@ func (r *Repository) deleteGroupDB(ctx context.Context, groupID int64) error {
 		}
 		if _, iam := authorization.QueryScopeFromContext(ctx, "subscription.quota_policy.delete"); iam {
 			expected, ok := biz.ExpectedRevision(ctx)
-			if !ok || expected != old.Revision {
-				return biz.ErrSubscriptionContractConflict
+			if !ok || expected <= 0 {
+				return authorization.ErrWritePrecondition
+			}
+			if expected != old.Revision {
+				return authorization.ErrWriteConflict
 			}
 		}
 		if err := tx.Delete(&groupModel{}, groupID).Error; err != nil {

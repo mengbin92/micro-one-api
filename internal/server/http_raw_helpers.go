@@ -39,18 +39,19 @@ func rewriteRawModel(body []byte, model string) []byte {
 	if model == "" {
 		return body
 	}
-	var payload map[string]any
+	var payload map[string]jsonx.RawMessage
 	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return body
 	}
 	if _, ok := payload["model"]; !ok {
 		return body
 	}
-	current, _ := payload["model"].(string)
+	var current string
+	_ = jsonx.Unmarshal(payload["model"], &current)
 	if strings.TrimSpace(current) == model {
 		return body
 	}
-	payload["model"] = model
+	payload["model"], _ = jsonx.Marshal(model)
 	rewritten, err := jsonx.Marshal(payload)
 	if err != nil {
 		return body
@@ -64,15 +65,16 @@ func ensureRawModel(body []byte, model string) []byte {
 	if model == "" {
 		return body
 	}
-	var payload map[string]any
-	if err := jsonx.Unmarshal(body, &payload); err != nil {
+	var payload map[string]jsonx.RawMessage
+	if err := jsonx.Unmarshal(body, &payload); err != nil || payload == nil {
 		return body
 	}
-	current, _ := payload["model"].(string)
+	var current string
+	_ = jsonx.Unmarshal(payload["model"], &current)
 	if strings.TrimSpace(current) == model {
 		return body
 	}
-	payload["model"] = model
+	payload["model"], _ = jsonx.Marshal(model)
 	rewritten, err := jsonx.Marshal(payload)
 	if err != nil {
 		return body

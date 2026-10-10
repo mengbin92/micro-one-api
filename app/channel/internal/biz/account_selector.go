@@ -19,8 +19,8 @@ import (
 // a LoadOracle (Redis-backed, injected by channel-service wiring) on every
 // Select to refresh a cross-replica in-flight snapshot per account, so
 // loadFactor de-rates a saturated account across ALL replicas, not just the
-// local one. Acquire/Release also receive relay slot reports over the channel RPC;
-// when neither the oracle nor Acquire is wired, loadFactor is neutral (100)
+// local one. RecordSlot also receives relay execution leases over the channel RPC;
+// when neither source is wired, loadFactor is neutral (100)
 // and the selector degrades safely to health + configured-weight weighting.
 // A saturated account is still ultimately caught by its circuit breaker.
 //
@@ -30,6 +30,7 @@ import (
 // See docs/model-management-design.md §12.2.
 
 type accountState struct {
+	executionSlotLeases
 	consecutiveFailures  int
 	failureThreshold     int
 	accountID            int64
@@ -37,9 +38,9 @@ type accountState struct {
 	maxConcurrent        int32           // configured concurrency cap (from SubscriptionAccount.Concurrency)
 	currentWeight        int64           // smooth WRR current weight (fixed-point scale)
 	recentErrors         *SlidingCounter // last 60s error count
-	inflight             atomic.Int32    // local in-flight requests (set by server)
 	crossReplicaInflight atomic.Int32    // cross-replica inflight snapshot (Phase D #12)
 	circuitOpenUntil     int64           // UnixNano; 0 = closed
+	circuitProbeUntil    int64           // UnixNano deadline for a half-open probe lease
 }
 
 // SubscriptionAccountSelector is the health-aware account selector.
@@ -155,6 +156,7 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 		// weight, errors, in-flight count) is preserved by updateAccountLocked,
 		// while admin changes such as a new priority take effect immediately.
 		state := s.updateAccountLocked(acct)
+		state.reapSlotLeases(now)
 		// Store the cross-replica snapshot unconditionally (MEDIUM-1): an idle
 		// account reads 0, which must overwrite a previously-high value so the
 		// account is no longer derated once it drains. Only writing on n>0
@@ -162,7 +164,7 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 		state.crossReplicaInflight.Store(crossReplica[acct.ID])
 		// channel-H1: skip open accounts; half-open accounts (sentinel) are
 		// eligible and resolved by the first probe outcome.
-		if st := state.breakerState(now); st == circuitOpen || state.circuitOpenUntil == circuitHalfOpenSentinel {
+		if st := state.breakerState(now); st == circuitOpen || (state.circuitOpenUntil == circuitHalfOpenSentinel && state.circuitProbeUntil > now) {
 			continue
 		}
 		effectiveWeight := accountEffectiveWeight(state)
@@ -183,6 +185,7 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 	// half-open sentinel so the breaker resolves on the first probe outcome.
 	if best.breakerState(now) == circuitHalfOpen {
 		best.circuitOpenUntil = circuitHalfOpenSentinel
+		best.circuitProbeUntil = now + circuitBreakerOpenDuration.Nanoseconds()
 	}
 	for _, acct := range candidates {
 		if acct != nil && acct.ID == best.accountID {
@@ -192,11 +195,12 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 	return nil, ErrSubscriptionAccountNotFound
 }
 
-// Acquire reserves local load reported by RecordSubscriptionAccountSlot RPC.
-// Redis load remains authoritative when available; this covers its fallback.
-func (s *SubscriptionAccountSelector) Acquire(accountID int64) {
-	if accountID <= 0 {
-		return
+// RecordSlot records load telemetry without enforcing account concurrency.
+// The relay Redis/local limiter owns admission; these leases cover its fallback
+// in the load-aware selector and cannot remain permanently inflated.
+func (s *SubscriptionAccountSelector) RecordSlot(accountID int64, slotID string, acquired bool) bool {
+	if accountID <= 0 || slotID == "" {
+		return false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -210,30 +214,7 @@ func (s *SubscriptionAccountSelector) Acquire(accountID int64) {
 		}
 		s.accounts[accountID] = state
 	}
-	state.inflight.Add(1)
-}
-
-// Release frees an in-flight slot. Idempotent via the atomic floor at 0.
-func (s *SubscriptionAccountSelector) Release(accountID int64) {
-	if accountID <= 0 {
-		return
-	}
-	s.mu.Lock()
-	state, ok := s.accounts[accountID]
-	s.mu.Unlock()
-	if !ok {
-		return
-	}
-	// Decrement but never go negative.
-	for {
-		cur := state.inflight.Load()
-		if cur <= 0 {
-			return
-		}
-		if state.inflight.CompareAndSwap(cur, cur-1) {
-			return
-		}
-	}
+	return state.recordSlot(slotID, acquired, 0)
 }
 
 // RecordAccountHealth records a real upstream outcome for an account. A
@@ -282,7 +263,9 @@ func (s *SubscriptionAccountSelector) GetStats() map[int64]AccountSelectorStats 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	stats := make(map[int64]AccountSelectorStats, len(s.accounts))
+	now := time.Now().UnixNano()
 	for id, st := range s.accounts {
+		st.reapSlotLeases(now)
 		stats[id] = AccountSelectorStats{
 			AccountID:     id,
 			Weight:        st.weight,
@@ -360,7 +343,7 @@ func (s *SubscriptionAccountSelector) totalEffectiveWeight(candidates []*Subscri
 			continue
 		}
 		if state, ok := s.accounts[acct.ID]; ok {
-			if state.circuitOpenUntil > 0 && state.circuitOpenUntil > now {
+			if state.breakerState(now) == circuitOpen || (state.circuitOpenUntil == circuitHalfOpenSentinel && state.circuitProbeUntil > now) {
 				continue
 			}
 			total += accountEffectiveWeight(state)
@@ -488,6 +471,7 @@ func (st *accountState) recordAccountBreakerOutcome(success bool) {
 	if st.breakerState(now) != circuitHalfOpen {
 		return
 	}
+	st.circuitProbeUntil = 0
 	if success {
 		st.recentErrors = NewSlidingCounter(60 * time.Second)
 		st.consecutiveFailures = 0

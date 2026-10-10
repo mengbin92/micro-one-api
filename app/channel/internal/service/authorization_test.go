@@ -16,3 +16,13 @@ func TestIAMB2PermissionFailureRemainsAnError(t *testing.T) {
 	require.ErrorIs(t, err, authorization.ErrDenied)
 	require.Nil(t, reply)
 }
+
+func TestChannelSlotRequiresSystemCapability(t *testing.T) {
+	uc := biz.NewChannelUsecase(&channelServiceRepo{}, nil)
+	svc := NewChannelService(uc)
+	svc.SetResourceAuthorizer(&authztest.Resolver{ActorID: 1, Scopes: map[string]authorization.QueryScope{}})
+	reply, err := svc.RecordChannelSlot(authztest.Context(), &channelv1.RecordChannelSlotRequest{ChannelId: 7, SlotId: "execution", Acquired: true})
+	require.Error(t, err)
+	require.Nil(t, reply)
+	require.Empty(t, uc.SelectorStats())
+}

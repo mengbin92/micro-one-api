@@ -508,22 +508,35 @@ func (r *Repository) ListTokens(ctx context.Context, userID int64, page, pageSiz
 	return tokens[start:end], total, nil
 }
 
-func (r *Repository) UpdateToken(ctx context.Context, token *biz.Token) error {
+func (r *Repository) UpdateToken(ctx context.Context, token *biz.Token, opts biz.UpdateAccessTokenOptions) error {
 	if r.db != nil {
-		return r.updateTokenDB(ctx, token)
+		return r.updateTokenDB(ctx, token, opts)
 	}
 	r.identityLock.Lock()
 	defer r.identityLock.Unlock()
-	hash := token.KeyHash
-	if hash == "" {
-		hash = biz.HashTokenKey(token.Key)
-	}
-	for key, existing := range r.tokensByHash {
+	for _, existing := range r.tokensByHash {
 		if existing.ID == token.ID && existing.UserID == token.UserID {
-			if key != hash {
-				delete(r.tokensByHash, key)
+			if opts.Name != "" {
+				existing.Name = token.Name
 			}
-			r.tokensByHash[hash] = token
+			if opts.Status != 0 {
+				existing.Status = token.Status
+			}
+			if opts.ExpireAt != 0 {
+				existing.ExpiredAt = token.ExpiredAt
+			}
+			if opts.RemainQuota >= 0 {
+				existing.RemainQuota = token.RemainQuota
+			}
+			if opts.UnlimitedQuota != nil {
+				existing.UnlimitedQuota = token.UnlimitedQuota
+			}
+			if opts.Models != nil {
+				existing.Models = append([]string(nil), token.Models...)
+			}
+			if opts.Subnet != nil {
+				existing.Subnet = token.Subnet
+			}
 			return nil
 		}
 	}
@@ -884,20 +897,32 @@ func (r *Repository) listTokensDB(ctx context.Context, userID int64, page, pageS
 	return tokens, total, nil
 }
 
-func (r *Repository) updateTokenDB(ctx context.Context, token *biz.Token) error {
+func (r *Repository) updateTokenDB(ctx context.Context, token *biz.Token, opts biz.UpdateAccessTokenOptions) error {
+	updates := map[string]any{}
+	if opts.Name != "" {
+		updates["name"] = token.Name
+	}
+	if opts.Status != 0 {
+		updates["status"] = token.Status
+	}
+	if opts.ExpireAt != 0 {
+		updates["expired_time"] = token.ExpiredAt
+	}
+	if opts.RemainQuota >= 0 {
+		updates["remain_quota"] = token.RemainQuota
+	}
+	if opts.UnlimitedQuota != nil {
+		updates["unlimited_quota"] = boolInt(token.UnlimitedQuota)
+	}
+	if opts.Models != nil {
+		updates["models"] = strings.Join(token.Models, ",")
+	}
+	if opts.Subnet != nil {
+		updates["subnet"] = token.Subnet
+	}
 	return r.db.WithContext(ctx).Model(&tokenModel{}).
 		Where("id = ? AND user_id = ?", token.ID, token.UserID).
-		Updates(map[string]any{
-			"name":            token.Name,
-			"status":          token.Status,
-			"expired_time":    token.ExpiredAt,
-			"remain_quota":    token.RemainQuota,
-			"unlimited_quota": boolInt(token.UnlimitedQuota),
-			"used_quota":      token.UsedQuota,
-			"models":          strings.Join(token.Models, ","),
-			"subnet":          token.Subnet,
-			"accessed_time":   token.AccessedAt,
-		}).Error
+		Updates(updates).Error
 }
 
 func (r *Repository) deleteTokenDB(ctx context.Context, userID, tokenID int64) error {

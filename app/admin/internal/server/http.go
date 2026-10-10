@@ -2071,6 +2071,9 @@ func httpStatusForAdminError(err error) int {
 	if errors.Is(err, service.ErrSubscriptionServiceNotConfigured) {
 		return http.StatusNotImplemented
 	}
+	if code, ok := resourceHTTPErrorCode(err); ok {
+		return code
+	}
 	if st, ok := status.FromError(err); ok {
 		switch st.Code() {
 		case codes.AlreadyExists:

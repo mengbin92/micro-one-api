@@ -122,7 +122,7 @@ func TestGetAuthSnapshotErrorCodeMapping(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := uc.UpdateAccessTokenWithOptions(context.Background(), user.ID, exhausted.ID,
-		biz.UpdateAccessTokenOptions{RemainQuota: 0, UnlimitedQuota: false, Status: 1}); err != nil {
+		biz.UpdateAccessTokenOptions{RemainQuota: 0, Status: 1}); err != nil {
 		t.Fatal(err)
 	}
 

@@ -402,16 +402,7 @@ func rewriteOpenAIWSModel(message []byte, clientModel, resolvedModel string) []b
 	if clientModel == resolvedModel || clientModel == "" || resolvedModel == "" {
 		return message
 	}
-	var payload map[string]any
-	if err := jsonx.Unmarshal(message, &payload); err != nil {
-		return message
-	}
-	payload["model"] = resolvedModel
-	rewritten, err := jsonx.Marshal(payload)
-	if err != nil {
-		return message
-	}
-	return rewritten
+	return ensureRawModel(message, resolvedModel)
 }
 
 // extractOpenAIBearerToken extracts the bearer token from the Authorization
@@ -579,6 +570,41 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 
 	for attempt := 0; ; attempt++ {
 		attemptStartedAt := time.Now()
+		attemptPlan, err := relayPlanForAttempt(ctx, s.relayUsecase, plan, currentChannel, clientModel)
+		releaseAccount := func() {}
+		if err == nil {
+			releaseAccount, err = (httpRelayLifecycleHooks{s: s}).AcquireRelayAttempt(ctx, attemptPlan, relaybiz.ExecutorRequest{SessionHash: sessionHash})
+		}
+		releaseChannel := func() {}
+		if err == nil {
+			releaseChannel, err = s.relayUsecase.AcquireChannelSlot(ctx, attemptPlan.Channel)
+			if err != nil {
+				releaseAccount()
+			}
+		}
+		if err != nil {
+			// Local account saturation is not an upstream health failure. Try a
+			// different source before dialing, using the same failover budget.
+			failedSources[relaybiz.RoutingSourceIdentityForChannel(currentChannel)] = true
+			if attempt < maxSwitches && s.maybeFailoverChannel(ctx, plan, clientModel, currentChannel, err, failedSources, &currentChannel) {
+				if firstFailure == nil {
+					firstFailure = err
+				}
+				outcome.fallback = true
+				outcome.fallbackReason = relaybiz.ClassifyRetryFallbackReason(firstFailure)
+				outcome.finalChannel = currentChannel
+				reservation, err = s.replaceResponsesWSReservation(ctx, plan, clientModel, firstMessage, requestID, reservation, currentChannel)
+				if err == nil {
+					continue
+				}
+			} else {
+				_ = s.releaseQuota(ctx, reservation.ReservationId, "websocket slot admission rejected")
+			}
+			outcome.resultLabel = "client_error"
+			closeOpenAIWSClientConn(wsConn, coderws.StatusTryAgainLater, "upstream slot admission rejected")
+			return outcome
+		}
+		currentChannel = attemptPlan.Channel
 		// re-apply the current channel's per-channel model mapping on
 		// each (re)entry and after a failover switch, so the upstream model
 		// matches the channel actually serving the request.
@@ -587,6 +613,8 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		// Resolve the upstream target for the current channel.
 		wsURL, headers, err := s.buildOpenAIWSUpstreamTarget(ctx, r, currentChannel)
 		if err != nil {
+			releaseChannel()
+			releaseAccount()
 			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, false, err.Error(), time.Since(attemptStartedAt).Milliseconds())
 			_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream target error")
 			closeOpenAIWSClientConn(wsConn, coderws.StatusInternalError, "failed to build upstream websocket target")
@@ -596,6 +624,8 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		// Acquire a (possibly pooled) upstream connection.
 		pooledConn, err := s.acquireOpenAIWSUpstreamConn(ctx, currentChannel, wsURL, headers)
 		if err != nil {
+			releaseChannel()
+			releaseAccount()
 			responseTime := time.Since(attemptStartedAt).Milliseconds()
 			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, false, err.Error(), responseTime)
 			s.relayUsecase.RecordRoutingSourceModelHealth(ctx, currentChannel, plan.ModelHealthID(), plan.BaseModel(), err, responseTime)
@@ -631,7 +661,23 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		}
 
 		turnCommits := 0
-		v2Turns := s.newRoutingWSTurns(extractOpenAIBearerToken(r), clientModel, resolvedModel, plan, currentChannel, reservation)
+		v2Turns := s.newRoutingWSTurns(extractOpenAIBearerToken(r), clientModel, resolvedModel, attemptPlan, currentChannel, reservation)
+		if attemptPlan.Account != nil {
+			// The first turn was admitted with the connection. Subsequent
+			// response.create frames keep its slot but need their own RPM and
+			// session-window admission before reserving quota.
+			account := attemptPlan.Account
+			admitTurn := v2Turns.admit
+			v2Turns.admit = func(ctx context.Context, payload []byte) (*billingv1.ReserveQuotaResponse, []byte, error) {
+				if s.accountRPM != nil && !s.accountRPM.TryAcquire(ctx, account.ID, account.RPMLimit) {
+					return nil, nil, fmt.Errorf("subscription account %d at rpm limit", account.ID)
+				}
+				if s.sessionWindow != nil && s.sessionWindow.Exceeded(ctx, attemptPlan.Auth.Group, sessionHash, account.ID, account.SessionWindowLimitUSD) {
+					return nil, nil, fmt.Errorf("subscription account %d at session window limit", account.ID)
+				}
+				return admitTurn(ctx, payload)
+			}
+		}
 		// Per-turn usage logging / quota commit. Closure captures the current
 		// channel so failover switches log against the right channel.
 		onTurnComplete := func(turn openAIWSTurnResult) {
@@ -666,6 +712,11 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 				CacheCreation1hTokens: usage.cacheCreation1hTokens,
 				ChannelID:             currentChannel.ID,
 				IsStream:              true,
+				Group:                 plan.Auth.Group,
+				SessionHash:           sessionHash,
+			}
+			if attemptPlan.Account != nil {
+				logInput.SessionWindowLimitUSD = attemptPlan.Account.SessionWindowLimitUSD
 			}
 			logInput.applyChannelInputs(currentChannel)
 			logInput.UpstreamModelID = resolvedModel
@@ -740,7 +791,10 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		// pool doesn't hand a dead conn to the next request.
 		broken := relayExit != nil && relayExit.err != nil && !relayExit.graceful
 		s.releaseOpenAIWSUpstreamConn(pooledConn, broken)
-		if relayExit != nil && relayExit.err != nil && !relayExit.graceful {
+		releaseChannel()
+		releaseAccount()
+		localAdmissionRejected := relayExit != nil && errors.Is(relayExit.err, errWSRoutingAdmission)
+		if relayExit != nil && relayExit.err != nil && !relayExit.graceful && !localAdmissionRejected {
 			responseTime := time.Since(attemptStartedAt).Milliseconds()
 			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, false, relayExit.err.Error(), responseTime)
 			// A connection error before any terminal turn is attributable to the
@@ -749,7 +803,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			if turnCommits == 0 {
 				s.relayUsecase.RecordRoutingSourceModelHealth(ctx, currentChannel, plan.ModelHealthID(), plan.BaseModel(), relayExit.err, responseTime)
 			}
-		} else {
+		} else if !localAdmissionRejected {
 			responseTime := time.Since(attemptStartedAt).Milliseconds()
 			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, true, "", responseTime)
 		}

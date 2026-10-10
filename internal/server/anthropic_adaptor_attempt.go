@@ -94,6 +94,12 @@ func (s *HTTPServer) executeAnthropicChannelAttempt(
 	if request.Stream {
 		client = provider.StreamHTTPClient(client)
 	}
+	releaseChannel, slotErr := s.relayUsecase.AcquireChannelSlot(ctx, channel)
+	if slotErr != nil {
+		_ = s.releaseQuota(ctx, reservation.ReservationId, "channel slot admission rejected")
+		return slotErr
+	}
+	defer releaseChannel()
 	response, err := client.Do(upstreamRequest) // #nosec G704 -- adaptor URL validated above.
 	if err != nil {
 		_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream error")

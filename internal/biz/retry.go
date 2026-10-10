@@ -47,6 +47,13 @@ type RetryableError struct {
 	// Retryable overrides the status policy when a protocol adaptor has
 	// classified the failure. Nil preserves the default policy.
 	Retryable *bool
+	// NoUpstreamAttempt keeps local admission failures out of upstream health.
+	NoUpstreamAttempt bool
+}
+
+func IsLocalAdmissionError(err error) bool {
+	var target *RetryableError
+	return errors.As(err, &target) && target.NoUpstreamAttempt
 }
 
 func (e *RetryableError) Error() string {
@@ -171,8 +178,8 @@ func IsProtocolCapabilityMismatch(err error) bool {
 }
 
 // upstreamAttemptHealthy distinguishes channel failures from request/local
-// failures. A 4xx response proves the channel is reachable and must release
-// selector inflight state without advancing its circuit breaker. Rate limits,
+// failures. A 4xx response proves the channel is reachable without advancing
+// its circuit breaker. Rate limits,
 // 5xx responses, timeouts, and transport failures still count as unhealthy.
 func upstreamAttemptHealthy(err error) bool {
 	if err == nil {
@@ -204,7 +211,7 @@ func upstreamAttemptHealthy(err error) bool {
 		return false
 	}
 	// Conversion, billing, and other local failures are not channel health
-	// evidence. Record them as neutral/healthy so selector inflight is released.
+	// evidence. Record them as neutral/healthy.
 	return true
 }
 
@@ -447,7 +454,7 @@ func (e *RetryExecutor) ExecuteWithAccountHealth(
 	// separately; this generic path records only the known initial attempt.
 	wrapped := func(ctx context.Context, ch *Channel) error {
 		err := fn(ctx, ch)
-		if ch == initialChannel {
+		if ch == initialChannel && !IsLocalAdmissionError(err) {
 			e.RecordAccountHealth(ctx, accountID, upstreamAttemptHealthy(err))
 		}
 		return err
@@ -485,7 +492,7 @@ func (e *RetryExecutor) ExecuteWithCandidates(
 			return err
 		}
 		err := fn(ctx, ch)
-		if !e.externalSubscriptionHealth {
+		if !e.externalSubscriptionHealth && !IsLocalAdmissionError(err) {
 			id := ch.SubscriptionAccountID
 			if id <= 0 && ch == initialChannel {
 				id = accountID
@@ -546,6 +553,10 @@ func (e *RetryExecutor) execute(
 		pendingHealth = nil
 	}
 	queueHealth := func(ch *Channel, err error, responseTime int64) {
+		if IsLocalAdmissionError(err) {
+			flushHealth()
+			return
+		}
 		channelOK := upstreamAttemptHealthy(err)
 		modelRecord, modelOK := modelHealthDisposition(err)
 		message := ""
@@ -846,7 +857,7 @@ func modelHealthDisposition(err error) (record, success bool) {
 	if err == nil {
 		return true, true
 	}
-	if IsPostForwardError(err) || IsProtocolCapabilityMismatch(err) || isUpstreamPolicyRejection(err) || errors.Is(err, context.Canceled) {
+	if IsLocalAdmissionError(err) || IsPostForwardError(err) || IsProtocolCapabilityMismatch(err) || isUpstreamPolicyRejection(err) || errors.Is(err, context.Canceled) {
 		return false, false
 	}
 	if isUpstreamModelUnavailable(err) {

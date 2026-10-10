@@ -152,6 +152,12 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 			return provErr
 		}
 
+		releaseChannel, slotErr := s.relayUsecase.AcquireChannelSlot(ctx, ch)
+		if slotErr != nil {
+			_, _ = s.billingClient.ReleaseQuota(ctx, &billingv1.ReleaseQuotaRequest{ReservationId: reservation.ReservationId, Reason: "channel slot admission rejected"})
+			return slotErr
+		}
+		defer releaseChannel()
 		resp, err = provider.ChatCompletions(ctx, providerReq)
 		if err != nil {
 			_, _ = s.billingClient.ReleaseQuota(ctx, &billingv1.ReleaseQuotaRequest{

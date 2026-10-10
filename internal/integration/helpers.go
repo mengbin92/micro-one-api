@@ -342,7 +342,7 @@ func (m *testIdentityRepo) ListTokens(ctx context.Context, userID int64, page, p
 	return result, int64(len(result)), nil
 }
 
-func (m *testIdentityRepo) UpdateToken(ctx context.Context, token *identitytestutil.Token) error {
+func (m *testIdentityRepo) UpdateToken(ctx context.Context, token *identitytestutil.Token, _ identitytestutil.UpdateAccessTokenOptions) error {
 	for key, existing := range m.tokens {
 		if existing.ID == token.ID && existing.UserID == token.UserID {
 			if key != token.Key {

@@ -176,7 +176,7 @@ type IdentityRepo interface {
 	CreateToken(ctx context.Context, token *Token) error
 	FindTokenByID(ctx context.Context, userID, tokenID int64) (*Token, error)
 	ListTokens(ctx context.Context, userID int64, page, pageSize int32, keyword string) ([]*Token, int64, error)
-	UpdateToken(ctx context.Context, token *Token) error
+	UpdateToken(ctx context.Context, token *Token, opts UpdateAccessTokenOptions) error
 	// ConsumeTokenQuota atomically decrements RemainQuota and increments
 	// UsedQuota for the given token, returning the updated RemainQuota.
 	// When RemainQuota reaches 0 the caller should mark the token
@@ -765,7 +765,7 @@ type UpdateAccessTokenOptions struct {
 	ExpireAt       int64
 	Status         int32
 	RemainQuota    int64
-	UnlimitedQuota bool
+	UnlimitedQuota *bool
 	Subnet         *string
 }
 
@@ -867,7 +867,7 @@ func (uc *IdentityUsecase) UpdateAccessToken(ctx context.Context, userID, tokenI
 		ExpireAt:       expireAt,
 		Status:         status,
 		RemainQuota:    remainQuota,
-		UnlimitedQuota: unlimitedQuota,
+		UnlimitedQuota: &unlimitedQuota,
 	})
 }
 
@@ -902,16 +902,16 @@ func (uc *IdentityUsecase) UpdateAccessTokenWithOptions(ctx context.Context, use
 	if opts.RemainQuota >= 0 {
 		token.RemainQuota = opts.RemainQuota
 	}
-	// H2: respect the caller's unlimited_quota flag. Previously this was
-	// unconditionally set to true, discarding a configured finite quota.
-	token.UnlimitedQuota = opts.UnlimitedQuota
+	if opts.UnlimitedQuota != nil {
+		token.UnlimitedQuota = *opts.UnlimitedQuota
+	}
 	if opts.Subnet != nil {
 		token.Subnet = strings.TrimSpace(*opts.Subnet)
 	}
-	if err := uc.repo.UpdateToken(ctx, token); err != nil {
+	if err := uc.repo.UpdateToken(ctx, token, opts); err != nil {
 		return nil, err
 	}
-	return token, nil
+	return uc.repo.FindTokenByID(ctx, userID, tokenID)
 }
 
 // ConsumeTokenQuota deducts `amount` from the token's RemainQuota and adds it

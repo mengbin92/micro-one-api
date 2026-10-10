@@ -153,17 +153,17 @@ func (f relayProviderStreamForwarder) ForwardStream(ctx context.Context, plan *r
 	if f.forwarder == nil {
 		return nil, fmt.Errorf("stream forwarder unavailable")
 	}
-	resp, chunks, err := f.forwarder.ForwardRequest(ctx, plan, endpointPath(APIEndpoint(req.Endpoint)), req.Body, headerMapToHTTP(req.Headers))
+	resp, err := f.forwarder.ForwardRequest(ctx, plan, endpointPath(APIEndpoint(req.Endpoint)), req.Body, headerMapToHTTP(req.Headers))
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || chunks == nil {
+	if resp == nil || resp.Body == nil {
 		return nil, fmt.Errorf("stream forwarder returned an incomplete response")
 	}
 	return &relaybiz.StreamForwardResponse{
 		StatusCode: resp.StatusCode,
 		Headers:    httpHeaderToMap(resp.Header),
-		Stream:     newChunkReadCloser(chunks),
+		Stream:     resp.Body,
 	}, nil
 }
 

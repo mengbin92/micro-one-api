@@ -74,6 +74,22 @@ describe('relay playground client', () => {
     expect(result.finishReason).toBe('stop');
   });
 
+  it('stops consuming after DONE and cancels an upstream that stays open', async () => {
+    const cancel = vi.fn();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('data: [DONE]\n\ndata: {"choices":[{"delta":{"content":"unexpected"}}]}\n\n'));
+      },
+      cancel,
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response(stream, { headers: { 'Content-Type': 'text/event-stream' } }));
+    const delta = vi.fn();
+    const result = await executeChatCompletion({ baseUrl: 'https://relay.test', apiKey: 'sk-test', request: { model: 'demo', messages: [], stream: true }, callbacks: { onDelta: delta } });
+    expect(result.streamed).toBe(true);
+    expect(delta).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
   it('classifies HTTP errors without exposing the key', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       response(JSON.stringify({ error: { message: 'invalid api key' } }), { status: 401, statusText: 'Unauthorized' }),

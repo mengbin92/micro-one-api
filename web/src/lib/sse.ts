@@ -58,7 +58,11 @@ export async function* parseSSEStream(stream: ReadableStream<Uint8Array>): Async
     let boundary = buffer.indexOf('\n\n');
     while (boundary >= 0) {
       const raw = buffer.slice(0, boundary);
-      bufferBytes -= encoder.encode(buffer.slice(0, boundary + 2)).byteLength;
+      const eventBytes = encoder.encode(raw).byteLength;
+      if (eventBytes > MAX_SSE_EVENT_BYTES) {
+        throw new SSEProtocolError(t("SSE 单个事件超过 2 MiB 限制"));
+      }
+      bufferBytes -= eventBytes + 2;
       buffer = buffer.slice(boundary + 2);
       const event = parseEvent(raw);
       if (event) events.push(event);

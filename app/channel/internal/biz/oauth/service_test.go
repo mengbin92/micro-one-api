@@ -172,6 +172,37 @@ func TestExchangeAcceptsFullCallbackURL(t *testing.T) {
 	require.NotNil(t, uc.created)
 }
 
+func TestExchangeDoesNotExposeTokenEndpointResponse(t *testing.T) {
+	for _, fixture := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"rejected", http.StatusBadRequest, `{"error_description":"rejected secret-refresh-token"}`},
+		{"malformed", http.StatusOK, `{"access_token":"secret-refresh-token",`},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(fixture.status)
+				_, _ = w.Write([]byte(fixture.body))
+			}))
+			defer server.Close()
+			uc := &fakeChannelUsecase{}
+			svc := NewService(uc, WithHTTPClient(server.Client()), WithTokenURL(PlatformClaude, server.URL))
+			auth, err := svc.AuthURL(context.Background(), PlatformClaude, AuthURLRequest{})
+			require.NoError(t, err)
+			_, err = svc.Exchange(context.Background(), PlatformClaude, ExchangeRequest{
+				SessionID: auth.SessionID,
+				State:     auth.State,
+				Code:      "code",
+			})
+			require.Error(t, err)
+			assert.NotContains(t, err.Error(), "secret-refresh-token")
+			assert.Nil(t, uc.created)
+		})
+	}
+}
+
 func mustParseURL(t *testing.T, raw string) *url.URL {
 	t.Helper()
 	u, err := url.Parse(raw)
