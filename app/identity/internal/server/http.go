@@ -1626,7 +1626,7 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 			ExpiredAt      int64    `json:"expired_time"`
 			Status         int32    `json:"status"`
 			RemainQuota    int64    `json:"remain_quota"`
-			UnlimitedQuota bool     `json:"unlimited_quota"`
+			UnlimitedQuota *bool    `json:"unlimited_quota"`
 			Subnet         *string  `json:"subnet"`
 		}
 		req.RemainQuota = -1

@@ -4,6 +4,7 @@ import (
 	"context"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/authz"
+	"strings"
 	"time"
 
 	channelv1 "micro-one-api/api/channel/v1"
@@ -1158,10 +1159,28 @@ func (s *ChannelService) RecordSubscriptionAccountHealth(ctx context.Context, re
 	return &channelv1.RecordSubscriptionAccountHealthResponse{Success: true, Message: "ok"}, nil
 }
 
+func (s *ChannelService) RecordChannelSlot(ctx context.Context, req *channelv1.RecordChannelSlotRequest) (*channelv1.RecordChannelSlotResponse, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_RecordChannelSlot_FullMethodName); err != nil {
+		return nil, err
+	}
+	if req.GetChannelId() <= 0 {
+		return &channelv1.RecordChannelSlotResponse{Success: false, Message: "channel_id is required"}, nil
+	}
+	if strings.TrimSpace(req.GetSlotId()) == "" || len(req.GetSlotId()) > 128 {
+		return &channelv1.RecordChannelSlotResponse{Success: false, Message: "slot_id is required and must be at most 128 bytes"}, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if !s.uc.RecordChannelSlot(req.GetChannelId(), req.GetSlotId(), req.GetAcquired()) {
+		return &channelv1.RecordChannelSlotResponse{Success: false, Message: "channel concurrency limit reached or slot already released"}, nil
+	}
+	return &channelv1.RecordChannelSlotResponse{Success: true, Message: "ok"}, nil
+}
+
 // RecordSubscriptionAccountSlot feeds relay-gateway local slot changes into the
-// selector's per-process inflight counter (weight loop closure). Best-effort:
-// a stale/missing account id is ignored rather than erroring, since relay
-// treats this as fire-and-forget telemetry.
+// selector's expiring per-process load telemetry. Account concurrency admission
+// remains owned by the relay's Redis/local limiter.
 func (s *ChannelService) RecordSubscriptionAccountSlot(ctx context.Context, req *channelv1.RecordSubscriptionAccountSlotRequest) (*channelv1.RecordSubscriptionAccountSlotResponse, error) {
 	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_RecordSubscriptionAccountSlot_FullMethodName); err != nil {
 		return nil, err
@@ -1169,7 +1188,15 @@ func (s *ChannelService) RecordSubscriptionAccountSlot(ctx context.Context, req 
 	if req.GetAccountId() <= 0 {
 		return &channelv1.RecordSubscriptionAccountSlotResponse{Success: false, Message: "account_id is required"}, nil
 	}
-	s.uc.RecordSubscriptionAccountSlot(req.GetAccountId(), req.GetAcquired())
+	if strings.TrimSpace(req.GetSlotId()) == "" || len(req.GetSlotId()) > 128 {
+		return &channelv1.RecordSubscriptionAccountSlotResponse{Success: false, Message: "slot_id is required and must be at most 128 bytes"}, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if !s.uc.RecordSubscriptionAccountSlot(req.GetAccountId(), req.GetSlotId(), req.GetAcquired()) {
+		return &channelv1.RecordSubscriptionAccountSlotResponse{Success: false, Message: "slot already released"}, nil
+	}
 	return &channelv1.RecordSubscriptionAccountSlotResponse{Success: true, Message: "ok"}, nil
 }
 

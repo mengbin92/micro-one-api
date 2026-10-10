@@ -192,8 +192,11 @@ func (r *Repository) updatePlanDB(ctx context.Context, plan *biz.SubscriptionPla
 				return err
 			}
 		}
+		if iam && plan.Revision <= 0 {
+			return authorization.ErrWritePrecondition
+		}
 		if iam && plan.Revision != old.Revision {
-			return biz.ErrSubscriptionContractConflict
+			return authorization.ErrWriteConflict
 		}
 		if !biz.EntitlementsEnabled() && plan.Contract == nil {
 			if iam {
@@ -220,7 +223,7 @@ func (r *Repository) updatePlanDB(ctx context.Context, plan *biz.SubscriptionPla
 			return result.Error
 		}
 		if result.RowsAffected != 1 {
-			return biz.ErrSubscriptionContractConflict
+			return authorization.ErrWriteConflict
 		}
 		if err := syncContractCoverage(tx, "subscription_plan_routing_groups", "plan_id", plan.ID, plan.Contract); err != nil {
 			return err
@@ -244,8 +247,11 @@ func (r *Repository) deletePlanDB(ctx context.Context, planID int64) error {
 		}
 		if _, iam := authorization.QueryScopeFromContext(ctx, "subscription.plan.delete"); iam {
 			expected, ok := biz.ExpectedRevision(ctx)
-			if !ok || expected != old.Revision {
-				return biz.ErrSubscriptionContractConflict
+			if !ok || expected <= 0 {
+				return authorization.ErrWritePrecondition
+			}
+			if expected != old.Revision {
+				return authorization.ErrWriteConflict
 			}
 		}
 		if err := tx.Delete(&planModel{}, planID).Error; err != nil {

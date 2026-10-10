@@ -660,7 +660,9 @@ func handleMigrateUpstreamCostKeys(w http.ResponseWriter, r *http.Request, svc *
 		ExpectedRevision string `json:"expected_revision"`
 		Reason           string `json:"reason"`
 	}
-	_ = jsonx.NewDecoder(r.Body).Decode(&body)
+	if r.ContentLength != 0 && !decodeBody(w, r, &body) {
+		return
+	}
 	if body.DryRun != nil {
 		dryRun = *body.DryRun
 	}

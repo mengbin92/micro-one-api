@@ -109,6 +109,13 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	releaseChannel, slotErr := s.relayUsecase.AcquireChannelSlot(r.Context(), &relaybiz.Channel{ID: channelReply.Channel.Id})
+	if slotErr != nil {
+		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "channel slot admission rejected")
+		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(slotErr)), "channel unavailable")
+		return
+	}
+	defer releaseChannel()
 	resp, err := provider.Forward(r.Context(), &relayprovider.RawRequest{
 		Method: r.Method,
 		Path:   "/" + targetPart,

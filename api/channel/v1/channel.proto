@@ -56,12 +56,15 @@ service ChannelService {
   rpc UpdateChannel(UpdateChannelRequest) returns (UpdateChannelResponse);
   rpc RecordChannelUsage(RecordChannelUsageRequest) returns (RecordChannelUsageResponse);
   rpc RecordChannelHealth(RecordChannelHealthRequest) returns (RecordChannelHealthResponse);
+  // Reports actual relay execution slots, independently of selection/health.
+  rpc RecordChannelSlot(RecordChannelSlotRequest) returns (RecordChannelSlotResponse);
   rpc RecordSubscriptionAccountHealth(RecordSubscriptionAccountHealthRequest) returns (RecordSubscriptionAccountHealthResponse);
   // RecordSubscriptionAccountSlot feeds the relay-gateway's local in-flight
   // slot changes into the subscription-account selector so loadFactor de-rates
   // on the in-process view (memory limiter / Redis-fallback scenarios where the
   // cross-replica LoadOracle reads zero). acquired=true reserves a slot,
-  // false releases it. Relay calls are best-effort and asynchronous.
+  // false releases it. Reports are best-effort execution leases; the relay's
+  // Redis/local limiter owns account concurrency admission.
   rpc RecordSubscriptionAccountSlot(RecordSubscriptionAccountSlotRequest) returns (RecordSubscriptionAccountSlotResponse);
   rpc BatchDeleteChannels(BatchDeleteChannelsRequest) returns (BatchDeleteChannelsResponse);
   rpc ExportChannels(ListChannelsRequest) returns (ChannelExportArtifact);
@@ -598,6 +601,20 @@ message RecordChannelHealthResponse {
   string message = 2;
 }
 
+message RecordChannelSlotRequest {
+  int64 channel_id = 1;
+  // acquired=true acquires or renews a two-minute execution lease;
+  // false releases that lease. Repeat calls with one slot_id are idempotent.
+  bool acquired = 2;
+  // Unique per relay attempt. Required, at most 128 bytes.
+  string slot_id = 3;
+}
+
+message RecordChannelSlotResponse {
+  bool success = 1;
+  string message = 2;
+}
+
 message RecordSubscriptionAccountHealthRequest {
   int64 account_id = 1;
   bool success = 2;
@@ -610,8 +627,11 @@ message RecordSubscriptionAccountHealthResponse {
 
 message RecordSubscriptionAccountSlotRequest {
   int64 account_id = 1;
-  // acquired=true reserves an in-flight slot; false releases it.
+  // acquired=true acquires or renews a two-minute telemetry lease;
+  // false releases it. Repeat calls with one slot_id are idempotent.
   bool acquired = 2;
+  // Unique per relay attempt. Required, at most 128 bytes.
+  string slot_id = 3;
 }
 
 message RecordSubscriptionAccountSlotResponse {

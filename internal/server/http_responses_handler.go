@@ -128,6 +128,12 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		if reserveErr != nil {
 			return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
 		}
+		releaseChannel, slotErr := s.relayUsecase.AcquireChannelSlot(ctx, ch)
+		if slotErr != nil {
+			_ = s.releaseQuota(ctx, reservation.ReservationId, "channel slot admission rejected")
+			return slotErr
+		}
+		defer releaseChannel()
 
 		if isRawStreamRequest(body) {
 			streamResp, streamErr := s.forwardResponsesRawStream(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), retriedBody)
@@ -348,6 +354,13 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 	}
 
 	startedAt := time.Now()
+	releaseChannel, slotErr := s.relayUsecase.AcquireChannelSlot(r.Context(), &route.Channel)
+	if slotErr != nil {
+		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "channel slot admission rejected")
+		s.writeResponsesUpstreamError(w, slotErr)
+		return
+	}
+	defer releaseChannel()
 	if stream {
 		streamResp, err := s.forwardResponsesRawStream(r.Context(), &route.Channel, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
 		if err != nil {

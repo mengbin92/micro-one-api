@@ -106,6 +106,18 @@ type mockChannelSelector struct {
 	modelHealth  []modelHealthEvent
 }
 
+func TestLocalSlotAdmissionFailureDoesNotRecordUpstreamHealth(t *testing.T) {
+	selector := &mockChannelSelector{channels: []*Channel{{ID: 1}}}
+	policy := &RetryPolicy{MaxAttempts: 1, RetryableStatus: map[int]bool{503: true}}
+	executor := NewRetryExecutor(policy, selector)
+	localErr := &RetryableError{Status: 503, Err: errors.New("channel is at concurrency limit"), NoUpstreamAttempt: true}
+	result := executor.Execute(context.Background(), "default", "model", func(context.Context, *Channel) error { return localErr })
+	assert.ErrorIs(t, result.Err, localErr)
+	assert.True(t, policy.IsRetryable(localErr))
+	assert.Empty(t, selector.healthEvents)
+	assert.Empty(t, selector.modelHealth)
+}
+
 type healthEvent struct {
 	channelID    int64
 	success      bool

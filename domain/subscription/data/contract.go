@@ -88,10 +88,15 @@ func subscriptionMutation(ctx context.Context, db *gorm.DB, s *biz.UserSubscript
 			}
 		}
 		if iam && s.EntitlementRevision != current.EntitlementRevision {
-			return biz.ErrSubscriptionContractConflict
+			return authorization.ErrWriteConflict
 		}
-		if expected, supplied := biz.ExpectedRevision(ctx); iam && supplied && expected != current.EntitlementRevision {
-			return biz.ErrSubscriptionContractConflict
+		if expected, supplied := biz.ExpectedRevision(ctx); iam && supplied {
+			if expected <= 0 {
+				return authorization.ErrWritePrecondition
+			}
+			if expected != current.EntitlementRevision {
+				return authorization.ErrWriteConflict
+			}
 		}
 		if !biz.EntitlementsEnabled() && s.Contract == nil {
 			if err := write(tx); err != nil {
@@ -104,7 +109,7 @@ func subscriptionMutation(ctx context.Context, db *gorm.DB, s *biz.UserSubscript
 			return auditOperations(ctx, tx, s.ID, subscriptionWriteOps...)
 		}
 		if s.EntitlementRevision > 0 && s.EntitlementRevision != current.EntitlementRevision {
-			return biz.ErrSubscriptionContractConflict
+			return authorization.ErrWriteConflict
 		}
 		if current.ContractSnapshot != nil && s.Contract == nil {
 			return biz.ErrSubscriptionContractConflict

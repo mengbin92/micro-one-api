@@ -283,7 +283,7 @@ export async function executeChatCompletion(
       callbacks?.onEvent?.(event);
       if (event.data === '[DONE]') {
         sawDone = true;
-        continue;
+        break;
       }
       let payload: unknown;
       try {

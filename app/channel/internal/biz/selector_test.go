@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -162,7 +163,7 @@ func TestWeightedSelector_DistributionFavorsHigherWeight(t *testing.T) {
 	}
 }
 
-func TestWeightedSelector_RecordHealthUpdatesInflight(t *testing.T) {
+func TestWeightedSelector_ExecutionSlotsAreIndependentOfSelectionAndHealth(t *testing.T) {
 	s := NewWeightedSelector()
 	ch := &Channel{ID: 1, Priority: 10}
 	_, _ = s.Select(context.Background(), "g", []*Channel{ch})
@@ -171,14 +172,20 @@ func TestWeightedSelector_RecordHealthUpdatesInflight(t *testing.T) {
 	if !ok {
 		t.Fatal("expected state for channel 1")
 	}
-	if got := st.inflight.Load(); got != 1 {
-		t.Fatalf("inflight after select = %d, want 1", got)
+	if got := st.inflight.Load(); got != 0 {
+		t.Fatalf("inflight after select = %d, want 0", got)
 	}
 
+	s.RecordSlot(1, "execution", true)
 	s.RecordHealth(1, true, int64(50*time.Millisecond), "")
 	st, _ = s.GetState(1)
+	if got := st.inflight.Load(); got != 1 {
+		t.Fatalf("health report released execution slot: inflight = %d", got)
+	}
+	s.RecordSlot(1, "execution", false)
+	s.RecordSlot(1, "execution", false)
 	if got := st.inflight.Load(); got != 0 {
-		t.Fatalf("inflight after RecordHealth = %d, want 0", got)
+		t.Fatalf("inflight after explicit release = %d, want 0", got)
 	}
 }
 
@@ -252,7 +259,7 @@ func TestWeightedSelector_PreservesHealthWeightRatio(t *testing.T) {
 	// channel-H1: healthFactor now uses a true error RATIO (errors/total), so
 	// record a mixed stream that lands the degraded channel in the <0.30 band
 	// (factor 20): 2 failures + 8 successes = 0.2 ratio. RecordOutcome writes
-	// directly to the counter; inflight is managed by Select/RecordHealth below.
+	// directly to the counter without reporting executions.
 	ds := s.channels[degraded.ID]
 	for i := range 10 {
 		ds.recentErrors.RecordOutcome(i >= 2) // i=0,1 are failures
@@ -266,8 +273,7 @@ func TestWeightedSelector_PreservesHealthWeightRatio(t *testing.T) {
 	// recording a success on every Select would dilute the degraded channel's
 	// error ratio back toward zero and cure it mid-loop, conflating the health
 	// signal under test. Smooth-WRR accumulates currentWeight across iterations
-	// so the 5:1 effectiveWeight ratio surfaces over the run. Reset inflight
-	// only (Select increments it, and without RecordHealth it never decrements).
+	// so the 5:1 effectiveWeight ratio surfaces over the run.
 	counts := map[int64]int{}
 	for range 600 {
 		selected, err = s.Select(context.Background(), "g", candidates)
@@ -275,13 +281,6 @@ func TestWeightedSelector_PreservesHealthWeightRatio(t *testing.T) {
 			t.Fatalf("Select err = %v", err)
 		}
 		counts[selected.ID]++
-		// Reset inflight only; do NOT reset currentWeight (smooth-WRR needs the
-		// accumulation) and do NOT call RecordHealth (it would cure the ratio).
-		s.mu.Lock()
-		for _, st := range s.channels {
-			st.inflight.Store(0)
-		}
-		s.mu.Unlock()
 	}
 	// Degraded healthFactor 20 vs healthy 100 → ~5:1 split (500:100).
 	if counts[healthy.ID] < 490 || counts[healthy.ID] > 510 ||
@@ -349,13 +348,11 @@ func TestWeightedSelector_ExcludesOpenCircuitFromTotalWeight(t *testing.T) {
 // TestWeightedSelector_LoadFactorDeratesHighInflight proves the Phase D #12
 // channel-side load-aware path: a channel with high in-flight load receives a
 // lower effective weight than an idle sibling, while the hard cap still skips
-// it only at maxConcurrent. Because the channel selector owns the full
-// in-flight lifecycle in-process (Select increments, RecordHealth decrements),
-// no cross-replica oracle is needed here.
+// it only at maxConcurrent. Execution slots are reported independently of
+// candidate selection and health.
 func TestWeightedSelector_LoadFactorDeratesHighInflight(t *testing.T) {
 	s := NewWeightedSelector()
-	// Two equal-weight channels; pump channel 1 to 75% of its 100 cap by
-	// selecting it without recording health (which would reset inflight).
+	// Two equal-weight channels; report 75 actual executions on channel 1.
 	busy := &Channel{ID: 1, Priority: 10}
 	idle := &Channel{ID: 2, Priority: 10}
 	candidates := []*Channel{busy, idle}
@@ -371,8 +368,8 @@ func TestWeightedSelector_LoadFactorDeratesHighInflight(t *testing.T) {
 
 	// Simulate 75 concurrent in-flight on channel 1.
 	st1, _ := s.GetState(1)
-	for range 75 {
-		st1.inflight.Add(1)
+	for i := range 75 {
+		s.RecordSlot(1, fmt.Sprintf("execution-%d", i), true)
 	}
 	// 75/100 = 75% → [0.75,0.9) band → loadFactor 20.
 	if got := st1.loadFactor(); got != 20 {
@@ -395,9 +392,6 @@ func TestWeightedSelector_LoadFactorDeratesHighInflight(t *testing.T) {
 		for _, st := range s.channels {
 			st.currentWeight = 0
 		}
-		// keep the busy channel loaded; Select incremented its inflight, undo that.
-		s.channels[1].inflight.Store(75)
-		s.channels[2].inflight.Store(0)
 		s.mu.Unlock()
 	}
 	// Idle channel (loadFactor 100) should win far more than busy (20).
@@ -435,18 +429,19 @@ func TestWeightedSelector_LoadFactorBands(t *testing.T) {
 	}
 }
 
-func TestHealthProbeDoesNotReleaseSelectedSlot(t *testing.T) {
+func TestHealthProbeDoesNotReleaseExecutionSlot(t *testing.T) {
 	s := NewWeightedSelector()
 	ch := &Channel{ID: 1, Priority: 10}
 	_, _ = s.Select(context.Background(), "g", []*Channel{ch})
-	s.RecordHealth(1, true, 1, "", false)
+	s.RecordSlot(1, "execution", true)
+	s.RecordHealth(1, true, 1, "")
 	st, _ := s.GetState(1)
 	if st.inflight.Load() != 1 {
 		t.Fatal("probe released live request")
 	}
 	s.RecordHealth(1, true, 1, "")
 	s.RecordHealth(1, true, 1, "")
-	if st.inflight.Load() != 0 {
-		t.Fatal("inflight became negative")
+	if st.inflight.Load() != 1 {
+		t.Fatal("health reports released live execution")
 	}
 }

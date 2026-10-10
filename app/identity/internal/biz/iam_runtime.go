@@ -271,8 +271,12 @@ func (uc *IdentityUsecase) mutateLegacyAccountChecked(ctx context.Context, id in
 		if err != nil {
 			return err
 		}
+		oldEmail := u.Email
 		if err = change(u); err != nil {
 			return err
+		}
+		if oldEmail != u.Email {
+			u.PasswordChangedAt = nextPasswordEpoch(u.PasswordChangedAt, uc.now())
 		}
 		return uc.repo.UpdateUser(ctx, u)
 	}
@@ -299,7 +303,12 @@ func (uc *IdentityUsecase) mutateLegacyAccountChecked(ctx context.Context, id in
 		if err = change(&u); err != nil {
 			return err
 		}
-		if err = uc.iam.UpdateAccount(ctx, tx, u, fields); err != nil {
+		writeFields := slices.Clone(fields)
+		if old.Email != u.Email {
+			u.PasswordChangedAt = nextPasswordEpoch(u.PasswordChangedAt, uc.now())
+			writeFields = append(writeFields, "password_epoch")
+		}
+		if err = uc.iam.UpdateAccount(ctx, tx, u, writeFields); err != nil {
 			return err
 		}
 		rev, err := uc.iam.UserRevision(ctx, tx, id)
@@ -316,7 +325,7 @@ func (uc *IdentityUsecase) mutateLegacyAccountChecked(ctx context.Context, id in
 		}
 		after, _ := jsonx.Marshal(iamAccountAuditState(u))
 		event.After = string(after)
-		diff, _ := jsonx.Marshal(map[string]any{"fields": fields})
+		diff, _ := jsonx.Marshal(map[string]any{"fields": writeFields})
 		event.Diff = string(diff)
 		return uc.iam.AdvancePolicy(ctx, tx, p.PolicyRevision, false)
 	})

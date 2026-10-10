@@ -65,6 +65,33 @@ func (f *iamA4Fixture) register(name string) *biz.User {
 	return u
 }
 
+func TestLegacyEmailChangesInvalidateRecoveryProofsAndSessions(t *testing.T) {
+	for _, path := range []string{"self", "managed"} {
+		t.Run(path, func(t *testing.T) {
+			f := newIAMA4Fixture(t, "sqlite")
+			u := f.register("email-binding")
+			_, session, err := f.uc.Login(f.ctx, u.Username, "password123", "127.0.0.1")
+			require.NoError(t, err)
+			id, epoch, err := f.uc.PrepareEmailRecovery(f.ctx, u.Email)
+			require.NoError(t, err)
+			proof := biz.WithVerifiedEmailRecovery(f.ctx, u.Email, time.Now(), id, epoch)
+			for _, email := range []string{"replacement@example.com", u.Email} {
+				if path == "self" {
+					err = f.uc.UpdateSelfEmail(f.ctx, u.ID, email)
+				} else {
+					err = f.uc.UpdateUser(f.ctx, u.ID, "", email, "", biz.UserStatusEnabled)
+				}
+				require.NoError(t, err)
+			}
+			require.ErrorIs(t, f.uc.ResetPasswordByEmail(proof, u.Email, "unexpected-password"), biz.ErrIAMRevisionConflict)
+			_, err = f.uc.ValidateSessionToken(f.ctx, session)
+			require.ErrorIs(t, err, biz.ErrSessionRevoked)
+			_, _, err = f.uc.Login(f.ctx, u.Username, "password123", "127.0.0.1")
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestOAuthLoginRetriesOccupiedUsernameInPersistentOwner(t *testing.T) {
 	for _, mode := range []string{"legacy", "iam"} {
 		t.Run(mode, func(t *testing.T) {

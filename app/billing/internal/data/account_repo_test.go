@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"micro-one-api/app/billing/internal/biz"
@@ -11,6 +12,60 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestAccountRepo_UpdateBalanceRejectsOverflow(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		balance int64
+		delta   int64
+	}{
+		{"credit overflow", math.MaxInt64, 1},
+		{"debit underflow", math.MinInt64, -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupTestDB(t)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = sqlDB.Close() })
+			require.NoError(t, db.Table("users").Create(map[string]any{"id": 1, "balance": tc.balance}).Error)
+			repo := NewAccountRepo(&Data{db: db})
+			_, err = repo.UpdateBalance(context.Background(), "1", tc.delta, biz.LedgerTypeRecharge)
+			require.Error(t, err)
+			account, err := repo.GetAccountSnapshot(context.Background(), "1")
+			require.NoError(t, err)
+			require.Equal(t, tc.balance, account.Balance)
+		})
+	}
+}
+
+func TestAccountRepo_UpdateBalanceCreditsOverdrawnAccount(t *testing.T) {
+	db := setupTestDB(t)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	require.NoError(t, db.Table("users").Create(map[string]any{"id": 1, "balance": -100}).Error)
+	repo := NewAccountRepo(&Data{db: db})
+	balance, err := repo.UpdateBalance(context.Background(), "1", 50, biz.LedgerTypeRefund)
+	require.NoError(t, err)
+	require.EqualValues(t, -50, balance)
+	account, err := repo.GetAccountSnapshot(context.Background(), "1")
+	require.NoError(t, err)
+	require.EqualValues(t, -50, account.Balance)
+}
+
+func TestAccountRepo_UpdateBalancePropagatesPanic(t *testing.T) {
+	db := setupTestDB(t)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	require.NoError(t, db.Table("users").Create(map[string]any{"id": 1, "balance": 100}).Error)
+	require.NoError(t, db.Callback().Update().After("gorm:update").Register("test:panic", func(*gorm.DB) { panic("update failed") }))
+	repo := NewAccountRepo(&Data{db: db})
+	require.PanicsWithValue(t, "update failed", func() { _, _ = repo.UpdateBalance(context.Background(), "1", 10, biz.LedgerTypeRecharge) })
+	account, err := repo.GetAccountSnapshot(context.Background(), "1")
+	require.NoError(t, err)
+	require.EqualValues(t, 100, account.Balance)
+}
 
 func setupTestDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})

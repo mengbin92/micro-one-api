@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"errors"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"micro-one-api/domain/authorization"
 	"net/http"
 	"strconv"
 	"strings"
@@ -50,6 +52,12 @@ func iamUserRouteReady(r *http.Request) bool {
 }
 
 func resourceHTTPErrorCode(err error) (int, bool) {
+	switch {
+	case errors.Is(err, authorization.ErrDenied):
+		return http.StatusForbidden, true
+	case errors.Is(err, authorization.ErrWriteStorageUnavailable):
+		return http.StatusServiceUnavailable, true
+	}
 	switch status.Code(err) {
 	case codes.Unauthenticated:
 		return http.StatusUnauthorized, true

@@ -13,11 +13,12 @@ import (
 
 // Type aliases for entities.
 type (
-	User            = identitybiz.User
-	Token           = identitybiz.Token
-	OAuthIdentity   = identitybiz.OAuthIdentity
-	IdentityRepo    = identitybiz.IdentityRepo
-	IdentityUsecase = identitybiz.IdentityUsecase
+	User                     = identitybiz.User
+	Token                    = identitybiz.Token
+	OAuthIdentity            = identitybiz.OAuthIdentity
+	IdentityRepo             = identitybiz.IdentityRepo
+	IdentityUsecase          = identitybiz.IdentityUsecase
+	UpdateAccessTokenOptions = identitybiz.UpdateAccessTokenOptions
 )
 
 // Sentinel errors.

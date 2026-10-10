@@ -85,6 +85,50 @@ func TestAccountErrorAuthorizationNeverAutoRecovers(t *testing.T) {
 	require.Equal(t, observed.Metadata, got.Metadata)
 }
 
+func TestAccountSelectionHonorsErrorRecoveryAndQuotaSnapshot(t *testing.T) {
+	for _, storage := range []string{"memory", "sqlite"} {
+		t.Run(storage, func(t *testing.T) {
+			repo := newMemoryRepository()
+			if storage == "sqlite" {
+				repo = setupChannelTestDB(t)
+			}
+			ctx := context.Background()
+			uc := biz.NewChannelUsecase(repo, nil)
+			a := &biz.SubscriptionAccount{Name: "selection-recovery", Platform: "codex", Status: 1, Group: "default", Models: []string{"gpt-5"}, Metadata: `{"provider":"keep"}`}
+			require.NoError(t, repo.CreateSubscriptionAccount(ctx, a))
+			selectAccount := func() error {
+				_, err := uc.SelectSubscriptionAccount(ctx, "default", "gpt-5", "codex", false)
+				return err
+			}
+			require.NoError(t, selectAccount())
+			for _, reason := range []string{"codex upstream 401 unauthorized", "invalid_grant", "credential: token refresh failed: invalid grant", "credential: no refresh_token available"} {
+				require.NoError(t, repo.SetSubscriptionAccountError(ctx, a.ID, reason))
+				require.Error(t, selectAccount(), "manual recovery error must stop selection: %s", reason)
+				require.NoError(t, uc.ClearSubscriptionAccountError(ctx, a.ID))
+				require.NoError(t, selectAccount(), "explicit error clear must restore selection")
+			}
+			used := float64(100)
+			require.NoError(t, repo.RecordAccountQuotaSnapshot(ctx, &biz.AccountQuotaSnapshot{AccountID: a.ID, PrimaryUsedPercent: &used, UpdatedAt: time.Now()}))
+			require.NoError(t, repo.SetSubscriptionAccountError(ctx, a.ID, "codex snapshot exhausted"))
+			require.Error(t, selectAccount(), "exhausted snapshot must stop selection")
+			require.NoError(t, uc.ClearSubscriptionAccountError(ctx, a.ID))
+			require.Error(t, selectAccount(), "clearing an error must not bypass exhausted snapshot")
+			used = 0
+			require.NoError(t, repo.RecordAccountQuotaSnapshot(ctx, &biz.AccountQuotaSnapshot{AccountID: a.ID, PrimaryUsedPercent: &used, UpdatedAt: time.Now()}))
+			require.NoError(t, selectAccount(), "snapshot reset must restore selection")
+			require.NoError(t, repo.SetTempUnschedulable(ctx, a.ID, time.Now().Add(time.Minute), "upstream 429"))
+			require.Error(t, selectAccount(), "live TTL must stop selection")
+			require.NoError(t, repo.SetTempUnschedulable(ctx, a.ID, time.Now().Add(-time.Minute), "upstream 429"))
+			require.NoError(t, selectAccount(), "expired TTL must restore selection")
+			require.NoError(t, uc.ClearSubscriptionAccountError(ctx, a.ID))
+			got, err := repo.FindSubscriptionAccountByID(ctx, a.ID)
+			require.NoError(t, err)
+			require.JSONEq(t, `{"provider":"keep"}`, got.Metadata)
+			require.EqualValues(t, biz.ChannelStatusEnabled, got.Status)
+		})
+	}
+}
+
 func TestTemporaryFailureCannotDowngradeManualRecovery(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()

@@ -7,11 +7,37 @@ import (
 	"testing"
 
 	"micro-one-api/app/admin/internal/service"
+	"micro-one-api/domain/authorization"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+func TestAdminWriteResponsePreservesAuthorizationErrorStatus(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		err  error
+		code int
+	}{
+		{"RPC conflict", status.Error(codes.Aborted, "resource revision changed"), http.StatusConflict},
+		{"local conflict", authorization.ErrWriteConflict, http.StatusConflict},
+		{"missing precondition", authorization.ErrWritePrecondition, http.StatusBadRequest},
+		{"denied", authorization.ErrDenied, http.StatusForbidden},
+		{"durable storage unavailable", authorization.ErrWriteStorageUnavailable, http.StatusServiceUnavailable},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for name, write := range map[string]func(http.ResponseWriter, any, error){"subscription": writeSubscriptionResponse, "service": writeServiceResponse} {
+				t.Run(name, func(t *testing.T) {
+					rec := httptest.NewRecorder()
+					write(rec, nil, tt.err)
+					require.Equal(t, tt.code, rec.Code)
+					require.Contains(t, rec.Body.String(), `"success":false`)
+				})
+			}
+		})
+	}
+}
 
 // TestWriteSubscriptionResponse_AlreadyExistsIs409 guards v0.18 P0 §5.4 on the
 // HTTP boundary: a downstream gRPC AlreadyExists (duplicate idempotency key)

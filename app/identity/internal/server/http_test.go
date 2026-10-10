@@ -568,7 +568,7 @@ func TestIdentityHTTPEmailBindRejectsInvalidCode(t *testing.T) {
 func TestIdentityHTTPEmailBindUpdatesEmail(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo, nil)
-	_, authToken := registerAndLoginForHTTPTest(t, uc)
+	user, authToken := registerAndLoginForHTTPTest(t, uc)
 	deliverer := newCapturingCodeDeliverer()
 	srv := newHTTPServerWithDeliverer(":0", uc, deliverer)
 
@@ -601,6 +601,17 @@ func TestIdentityHTTPEmailBindUpdatesEmail(t *testing.T) {
 	selfReq := httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
 	selfReq.Header.Set("Authorization", "Bearer "+authToken)
 	selfRec := httptest.NewRecorder()
+	srv.ServeHTTP(selfRec, selfReq)
+	if selfRec.Code != http.StatusUnauthorized {
+		t.Fatalf("old session status = %d, want 401 after changing recovery email", selfRec.Code)
+	}
+	_, authToken, err := uc.Login(context.Background(), user.Username, "password123", "127.0.0.1")
+	if err != nil {
+		t.Fatalf("login after email change: %v", err)
+	}
+	selfReq = httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+	selfReq.Header.Set("Authorization", "Bearer "+authToken)
+	selfRec = httptest.NewRecorder()
 	srv.ServeHTTP(selfRec, selfReq)
 	if selfRec.Code != http.StatusOK {
 		t.Fatalf("self status = %d, body=%s", selfRec.Code, selfRec.Body.String())
@@ -2202,5 +2213,35 @@ func TestIdentityHTTPTokenCreateDefaultsUnlimited(t *testing.T) {
 	_, err := uc.GetAuthSnapshot(context.Background(), tokenKey, "")
 	if err != nil {
 		t.Fatalf("default-created token failed validation (would be 401 in production): %v", err)
+	}
+}
+
+func TestIdentityHTTPTokenRenamePreservesQuotaMode(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo, nil)
+	user, session := registerAndLoginForHTTPTest(t, uc)
+	token, err := uc.CreateAccessToken(context.Background(), user.ID, "unlimited", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := NewHTTPServer(":0", uc, nil)
+	for _, tt := range []struct {
+		body      string
+		unlimited bool
+	}{
+		{`{"name":"renamed"}`, true},
+		{`{"unlimited_quota":false,"remain_quota":250}`, false},
+	} {
+		req := httptest.NewRequest(http.MethodPut, "/api/token/"+strconv.FormatInt(token.ID, 10), strings.NewReader(tt.body))
+		req.Header.Set("Authorization", "Bearer "+session)
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) {
+			t.Fatalf("update status=%d body=%s", rec.Code, rec.Body.String())
+		}
+		got, err := repo.FindTokenByID(context.Background(), user.ID, token.ID)
+		if err != nil || got.UnlimitedQuota != tt.unlimited {
+			t.Fatalf("quota mode after %s = %+v, %v", tt.body, got, err)
+		}
 	}
 }

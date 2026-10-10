@@ -156,6 +156,12 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 			_ = s.releaseQuota(ctx, reservation.ReservationId, "failed to create provider")
 			return fmt.Errorf("failed to create provider: %w", provErr)
 		}
+		releaseChannel, slotErr := s.relayUsecase.AcquireChannelSlot(ctx, ch)
+		if slotErr != nil {
+			_ = s.releaseQuota(ctx, reservation.ReservationId, "channel slot admission rejected")
+			return slotErr
+		}
+		defer releaseChannel()
 
 		if req.Stream {
 			streamLogInput := usageLogInput{

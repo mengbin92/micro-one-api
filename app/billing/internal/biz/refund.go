@@ -153,6 +153,9 @@ func (uc *RefundUsecase) RefundSubscriptionOrder(ctx context.Context, req Refund
 	if policy == "" {
 		policy = RefundPolicyRevoke
 	}
+	if policy != RefundPolicyRevoke && policy != RefundPolicyShorten && policy != RefundPolicyKeep {
+		return nil, fmt.Errorf("unsupported refund policy %q", policy)
+	}
 	var result *RefundResult
 	order, changed, err := uc.orders.MarkOrderRefunded(ctx, req.TradeNo, req.Reason, func(ctx context.Context, order *PaymentOrder, tx subscriptionbiz.Tx) error {
 		if _, iam := authorization.QueryScopeFromContext(ctx, "billing.payment.refund"); iam {

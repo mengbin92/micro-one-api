@@ -224,6 +224,31 @@ func (c *channelClient) RecordChannelHealth(ctx context.Context, channelID int64
 	return nil
 }
 
+func (c *channelClient) RecordChannelSlot(ctx context.Context, channelID int64, slotID string, acquired bool) error {
+	reply, err := c.client.RecordChannelSlot(ctx, &channelv1.RecordChannelSlotRequest{ChannelId: channelID, SlotId: slotID, Acquired: acquired})
+	if err != nil {
+		return err
+	}
+	if reply != nil && !reply.GetSuccess() {
+		return errors.New(reply.GetMessage())
+	}
+	return nil
+}
+
+func (c *channelClient) RecordSubscriptionAccountSlot(ctx context.Context, accountID int64, slotID string, acquired bool) error {
+	if accountID <= 0 {
+		return nil
+	}
+	reply, err := c.client.RecordSubscriptionAccountSlot(ctx, &channelv1.RecordSubscriptionAccountSlotRequest{AccountId: accountID, SlotId: slotID, Acquired: acquired})
+	if err != nil {
+		return err
+	}
+	if reply != nil && !reply.GetSuccess() {
+		return errors.New(reply.GetMessage())
+	}
+	return nil
+}
+
 func (c *channelClient) RecordModelHealth(ctx context.Context, sourceKind string, sourceID int64, modelID, upstreamModelID string, success bool, message string, responseTime int64) error {
 	resp, err := c.client.RecordModelHealth(ctx, &channelv1.RecordModelHealthRequest{
 		SourceKind: sourceKind, SourceId: sourceID, ModelId: modelID,

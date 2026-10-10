@@ -354,12 +354,31 @@ func (a *ChannelAdapter) RecordSubscriptionAccountHealth(ctx context.Context, ac
 
 // RecordSubscriptionAccountSlot forwards a relay-local slot acquire/release to
 // the channel selector's per-process inflight counter (weight loop closure).
-func (a *ChannelAdapter) RecordSubscriptionAccountSlot(ctx context.Context, accountID int64, acquired bool) error {
+func (a *ChannelAdapter) RecordSubscriptionAccountSlot(ctx context.Context, accountID int64, slotID string, acquired bool) error {
 	if accountID <= 0 {
 		return nil
 	}
 	reply, err := a.client.RecordSubscriptionAccountSlot(ctx, &channelv1.RecordSubscriptionAccountSlotRequest{
 		AccountId: accountID,
+		SlotId:    slotID,
+		Acquired:  acquired,
+	})
+	if err != nil {
+		return err
+	}
+	if reply != nil && !reply.GetSuccess() {
+		return errors.New(reply.GetMessage())
+	}
+	return nil
+}
+
+func (a *ChannelAdapter) RecordChannelSlot(ctx context.Context, channelID int64, slotID string, acquired bool) error {
+	if channelID <= 0 {
+		return nil
+	}
+	reply, err := a.client.RecordChannelSlot(ctx, &channelv1.RecordChannelSlotRequest{
+		ChannelId: channelID,
+		SlotId:    slotID,
 		Acquired:  acquired,
 	})
 	if err != nil {

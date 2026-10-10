@@ -326,23 +326,23 @@ func (h httpRelayLifecycleHooks) AcquireRelayAttempt(ctx context.Context, plan *
 	}
 	releaseSlot, acquired := h.s.accountConcurrency.TryAcquire(ctx, accountID, concurrencyLimit)
 	if !acquired {
-		return nil, &relaybiz.RetryableError{Status: http.StatusServiceUnavailable, Err: fmt.Errorf("subscription account %d at concurrency limit", accountID)}
+		return nil, &relaybiz.RetryableError{Status: http.StatusServiceUnavailable, Err: fmt.Errorf("subscription account %d at concurrency limit", accountID), NoUpstreamAttempt: true}
 	}
-	h.s.reportSubscriptionAccountSlot(accountID, true)
+	releaseTelemetry := h.s.relayUsecase.AcquireSubscriptionAccountSlot(ctx, accountID)
 	var releaseOnce sync.Once
 	release := func() {
 		releaseOnce.Do(func() {
 			releaseSlot()
-			h.s.reportSubscriptionAccountSlot(accountID, false)
+			releaseTelemetry()
 		})
 	}
 	if h.s.accountRPM != nil && !h.s.accountRPM.TryAcquire(ctx, accountID, rpmLimit) {
 		release()
-		return nil, &relaybiz.RetryableError{Status: http.StatusServiceUnavailable, Err: fmt.Errorf("subscription account %d at rpm limit", accountID)}
+		return nil, &relaybiz.RetryableError{Status: http.StatusServiceUnavailable, Err: fmt.Errorf("subscription account %d at rpm limit", accountID), NoUpstreamAttempt: true}
 	}
 	if h.s.sessionWindow != nil && plan.Auth != nil && h.s.sessionWindow.Exceeded(ctx, plan.Auth.Group, req.SessionHash, accountID, sessionWindowLimitUSD) {
 		release()
-		return nil, &relaybiz.RetryableError{Status: http.StatusServiceUnavailable, Err: fmt.Errorf("subscription account %d at session window limit", accountID)}
+		return nil, &relaybiz.RetryableError{Status: http.StatusServiceUnavailable, Err: fmt.Errorf("subscription account %d at session window limit", accountID), NoUpstreamAttempt: true}
 	}
 	return release, nil
 }

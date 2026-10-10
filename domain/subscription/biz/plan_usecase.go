@@ -172,7 +172,7 @@ func (uc *PlanUsecase) SetForSale(ctx context.Context, planID int64, forSale boo
 	if expected, supplied := ExpectedRevision(ctx); supplied {
 		plan.Revision = expected
 	} else if _, iam := authorization.QueryScopeFromContext(ctx, "subscription.plan."+action); iam {
-		return ErrSubscriptionContractConflict
+		return authorization.ErrWritePrecondition
 	}
 	plan.ForSale = forSale
 	plan.UpdatedAt = uc.now().Unix()

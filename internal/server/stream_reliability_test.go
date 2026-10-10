@@ -159,7 +159,7 @@ func TestCanceledAdaptorStreamReleasesSlotAndClosesUpstream(t *testing.T) {
 	if billing.commits != 0 || billing.releases != 1 {
 		t.Fatalf("commits=%d releases=%d", billing.commits, billing.releases)
 	}
-	if got := client.waitForSlotReports(t, 2); len(got) != 2 {
+	if got := client.slotReports(); len(got) != 2 {
 		t.Fatalf("slot reports=%v", got)
 	}
 }

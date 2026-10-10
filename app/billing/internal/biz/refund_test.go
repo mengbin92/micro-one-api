@@ -218,6 +218,23 @@ func newRefundOrder(tradeNo string, paid bool) *PaymentOrder {
 	}
 }
 
+func TestRefund_RejectsUnknownPolicyBeforeMutating(t *testing.T) {
+	repo := &fakeRefundRepo{order: newRefundOrder("invalid-policy", true)}
+	repo.order.SubscriptionID = 5
+	accounts := &stubAccountRepo{}
+	ledger := &recordingLedgerRepo{}
+	reverter := &stubSubscriptionReverter{}
+	uc := NewRefundUsecase(repo, accounts, ledger, reverter)
+
+	_, err := uc.RefundSubscriptionOrder(context.Background(), RefundRequest{TradeNo: repo.order.TradeNo, Policy: "keeep"})
+	require.Error(t, err)
+	require.Zero(t, repo.calls)
+	require.Zero(t, accounts.balanceCalls)
+	require.Empty(t, ledger.created)
+	require.Zero(t, reverter.revokeCalls)
+	require.Equal(t, PaymentOrderStatusPaid, repo.order.Status)
+}
+
 func TestRefund_RevokePolicyRevokesSubscription(t *testing.T) {
 	repo := &fakeRefundRepo{order: newRefundOrder("PAY-RF-1", true)}
 	// Stash the subscription id in ProviderPayload so the reverter can find it.
