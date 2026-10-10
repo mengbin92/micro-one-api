@@ -14,6 +14,7 @@ export default mergeConfig(base, defineConfig({
       // during revalidation, including any/all and object-level permissions.
       'src/components/admin/PermissionButton.test.tsx',
       'src/pages/admin/ChannelsPage.refresh.test.tsx',
+      'src/pages/admin/ChannelsPage.preconditions.test.tsx',
       'src/components/AdminRoute.test.tsx',
       'src/components/ProtectedRoute.test.tsx',
       'src/components/playground/AssistantMarkdown.test.tsx',
