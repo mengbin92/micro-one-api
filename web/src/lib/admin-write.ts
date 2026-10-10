@@ -9,7 +9,7 @@ function records(value: unknown): Record<string, unknown>[] {
   const record = value as Record<string, unknown>;
   return [record, ...Object.values(record).filter(v => v && typeof v === 'object').flatMap(records)];
 }
-function numericRevision(value: unknown) {
+export function numericRevision(value: unknown) {
   const number = Number(value);
   if (!Number.isSafeInteger(number) || number < 0) throw new Error(t('版本值无效，请重新加载数据'));
   return number;
@@ -34,7 +34,12 @@ export function prepareManagedWrite(config: InternalAxiosRequestConfig, snapshot
   config.headers.set('x-authorization-reason', reason.trim());
   data.reason = reason.trim();
   const ownerKey = /\/channel(?:\/|$)/.test(url) ? 'admin-channels' : /\/admin\/models/.test(url) ? 'admin-model' : /\/user(?:\/|$)/.test(url) ? 'admin-users' : /subscription-accounts/.test(url) ? 'admin-subscription-accounts' : /subscription-plans/.test(url) ? 'subscription-plans' : /subscription-groups/.test(url) ? 'admin-subscription-groups' : /subscriptions/.test(url) ? 'admin-subscriptions' : /routing-groups/.test(url) ? 'admin-routing-group' : /\/redemption/.test(url) ? 'admin-redemptions' : /upstream-costs/.test(url) ? 'admin-upstream-costs' : '';
-  const cached = client.getQueryCache().findAll({ predicate: query => ownerKey !== '' && query.meta?.protected === true && query.queryKey.some(key => typeof key === 'string' && key.includes(ownerKey)) }).flatMap(query => records(query.state.data));
+  const modelRelation = /\/admin\/models\/\d+\/(aliases|channel-mappings|subscription-mappings)/.test(url);
+  // A prior filter cache may still contain this row; relation edits display
+  // the model detail, whose version advances independently of the list cache.
+  const cached = client.getQueryCache().findAll({ predicate: query => ownerKey !== '' && query.meta?.protected === true && query.queryKey.some(key => typeof key === 'string' && (ownerKey === 'admin-channels' ? key === ownerKey : key.includes(ownerKey))) })
+    .sort((a, b) => Number(b.isActive()) - Number(a.isActive()) || (modelRelation ? Number(b.queryKey.includes('admin-model-detail')) - Number(a.queryKey.includes('admin-model-detail')) : 0))
+    .flatMap(query => records(query.state.data));
   const pathId = url.match(/\/(\d+)(?:\/|\?|$)/)?.[1];
   const id = data.id ?? data.channel_id ?? data.account_id ?? data.model_pk ?? data.user_id ?? data.subscription_id ?? pathId;
   const code = url.startsWith('/redemption/') ? decodeURIComponent(url.split('/').at(-1) ?? '') : undefined;
@@ -42,7 +47,7 @@ export function prepareManagedWrite(config: InternalAxiosRequestConfig, snapshot
   const row = cached.find(item => code ? item.code === code : key ? item.key === key : String(item.id ?? item.model_pk) === String(id));
   if (data.expected_revision === undefined && (id || code || key) && revision(row) !== undefined) data.expected_revision = numericRevision(revision(row));
   if (Array.isArray(data.model_pks) && !data.expected_revisions) data.expected_revisions = Object.fromEntries(data.model_pks.map((pk: unknown) => [String(pk), numericRevision(revision(cached.find(item => String(item.id) === String(pk))) ?? '0')]));
-  if (/\/admin\/models\/\d+\/(aliases|channel-mappings|subscription-mappings)/.test(url) && revision(row) !== undefined) data.expected_model_revision ??= numericRevision(revision(row));
+  if (modelRelation && revision(row) !== undefined) data.expected_model_revision ??= numericRevision(revision(row));
   for (const field of ['account_ids', 'channel_ids']) if (Array.isArray(data[field]) && !data.expected_revisions) data.expected_revisions = Object.fromEntries(data[field].map((pk: unknown) => [String(pk), numericRevision(revision(cached.find(item => String(item.id) === String(pk))) ?? '0')]));
   if (url.includes('/upstream-costs')) {
     const view = cached.find(item => item.revision !== undefined && Array.isArray(item.entries));
@@ -59,7 +64,7 @@ export function prepareManagedWrite(config: InternalAxiosRequestConfig, snapshot
   if (url.startsWith('/user')) data.expected_policy_revision ??= numericRevision(snapshot.versions?.policy_revision ?? 0);
   // Query CAS is used by DELETE and legacy action aliases; bodies keep CAS for
   // protobuf and compatibility adapters. No automatic retry follows a 409.
-  for (const key of ['reason', 'expected_revision', 'expected_policy_revision']) if (data[key] !== undefined) params[key] ??= data[key];
+  for (const key of ['reason', 'expected_revision', 'expected_model_revision', 'expected_policy_revision']) if (data[key] !== undefined) params[key] ??= data[key];
   config.params = params;
   if (method !== 'get' && method !== 'delete') config.data = data;
   return config;

@@ -36,6 +36,7 @@ import { t } from '@/lib/i18n';
 // /api/v1/admin/subscription-groups (internal/admin/server/subscription.go).
 interface SubscriptionGroup {
   id: number;
+  revision?: number;
   name: string;
   display_name: string;
   platform: string;
@@ -54,6 +55,7 @@ interface SubscriptionGroup {
 // Payload decoded into subscription.biz.SubscriptionGroup on create/update.
 interface GroupPayload {
   id?: number;
+  expected_revision?: number;
   name: string;
   display_name: string;
   platform: string;
@@ -76,6 +78,7 @@ const PLATFORM_OPTIONS: Array<{ value: string; label: string }> = [
 
 interface GroupDraft {
   id?: number;
+  revision?: number;
   name: string;
   displayName: string;
   platform: string;
@@ -124,6 +127,7 @@ function parsePrice(value: string) {
 function toDraft(group: SubscriptionGroup): GroupDraft {
   return {
     id: group.id,
+    revision: group.revision,
     name: group.name,
     displayName: group.display_name,
     platform: group.platform,
@@ -149,6 +153,7 @@ function parseLimit(value: string): number | null {
 function draftToPayload(draft: GroupDraft): GroupPayload {
   return {
     ...(draft.id ? { id: draft.id } : {}),
+    expected_revision: draft.revision,
     name: draft.name.trim(),
     display_name: draft.displayName.trim(),
     platform: draft.platform,

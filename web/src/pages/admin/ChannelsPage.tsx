@@ -4,6 +4,7 @@ import { AlertTriangle, Pencil, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
+import { numericRevision } from '@/lib/admin-write';
 import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -38,7 +39,7 @@ import { ModelMultiSelect } from '@/components/admin/ModelMultiSelect';
 import { locale, t } from '@/lib/i18n';
 
 interface Channel {
- permittedActions?: string[]; permitted_actions?: string[]; authorizationRevision?: string; authorization_revision?: string;
+ permittedActions?: string[]; permitted_actions?: string[]; authorizationRevision?: string | number; authorization_revision?: string | number;
   id: string;
   type: number;
   name: string;
@@ -63,6 +64,7 @@ interface Channel {
 
 interface ChannelEditDraft {
   id: string;
+  expectedRevision?: string | number;
   name: string;
   models: string;
   group: string;
@@ -228,6 +230,7 @@ export function AdminChannelsPage() {
       const res = await adminApiClient.put('/channel', {
         id: Number(draft.id),
         channel_id: Number(draft.id),
+        expected_revision: draft.expectedRevision === undefined ? undefined : numericRevision(draft.expectedRevision),
         name: draft.name.trim(),
         models: draft.models.trim(),
         group: draft.group.trim(),
@@ -292,6 +295,7 @@ export function AdminChannelsPage() {
   const openEdit = (channel: Channel) => {
     setEditingChannel({
       id: String(channel.id),
+      expectedRevision: channel.authorizationRevision ?? channel.authorization_revision,
       name: channel.name ?? '',
       models: channel.models ?? '',
       group: channel.group ?? 'default',
