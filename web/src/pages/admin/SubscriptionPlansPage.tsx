@@ -51,6 +51,7 @@ interface SubscriptionPlan {
 interface PlanPayload {
   coverage?: RoutingCoverage[];
   revision?: number;
+  expected_revision?: number;
   for_sale?: boolean;
   id?: number;
   name: string;
@@ -87,7 +88,7 @@ export function AdminSubscriptionPlansPage() {
   const [editing, setEditing] = useState<PlanPayload | null>(null);
 
   const { data: plans, isLoading } = useAuthorizedQuery({
-    permission: 'monitor.health.selector.read', queryKey: ['admin', 'subscription-plans', saleFilter],
+    permission: 'subscription.plan.list', queryKey: ['admin', 'subscription-plans', saleFilter],
     queryFn: async () => {
       const forSale = saleFilterParam(saleFilter);
       const params = forSale ? { for_sale: forSale } : {};
@@ -147,6 +148,7 @@ export function AdminSubscriptionPlansPage() {
   const startEdit = (p: SubscriptionPlan) =>
     setEditing({
       id: p.id,
+      expected_revision: p.revision,
       coverage: p.coverage ?? [], revision: p.revision, for_sale: p.for_sale,
       name: p.name,
       product_name: p.product_name,

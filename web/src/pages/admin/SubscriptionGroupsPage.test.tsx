@@ -9,6 +9,7 @@ import { server } from '@/test/msw/server';
 
 const group = {
   id: 1,
+  revision: 7,
   name: 'claude-pro',
   display_name: 'Claude Pro',
   platform: 'anthropic',
@@ -25,6 +26,22 @@ const group = {
 };
 
 describe('AdminSubscriptionGroupsPage', () => {
+  it('keeps the displayed revision when editing a quota policy', async () => {
+    const captured = { body: null as Record<string, unknown> | null };
+    server.use(
+      http.get('/api/v1/admin/subscription-groups', () => HttpResponse.json({ success: true, data: [group] })),
+      http.put('/api/v1/admin/subscription-groups/1', async ({ request }) => {
+        captured.body = await request.json() as Record<string, unknown>;
+        return HttpResponse.json({ success: true });
+      }),
+    );
+    renderWithQuery(<MemoryRouter><AdminSubscriptionGroupsPage /></MemoryRouter>);
+    await screen.findByText('Claude Pro');
+    await userEvent.click(screen.getByRole('button', { name: /编辑/ }));
+    await userEvent.click(screen.getByRole('button', { name: /保存/ }));
+    await waitFor(() => expect(captured.body).not.toBeNull());
+    expect(captured.body?.expected_revision).toBe(7);
+  });
   it('lists subscription groups and renders limits (null => 不限)', async () => {
     server.use(
       http.get('/api/v1/admin/subscription-groups', () =>

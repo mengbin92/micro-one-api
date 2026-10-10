@@ -629,6 +629,7 @@ message ModelRouting {
   int32 priority = 7;
   int64 created_at = 8;
   int64 updated_at = 9;
+  int64 revision = 10;
 }
 
 message UpsertModelRoutingRequest {

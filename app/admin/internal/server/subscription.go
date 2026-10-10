@@ -225,9 +225,16 @@ func handleSubscriptionGroupByID(w http.ResponseWriter, r *http.Request, svc *se
 		group, err := svc.GetSubscriptionGroup(r.Context(), id)
 		writeSubscriptionResponse(w, group, err)
 	case http.MethodPut:
-		var group subscriptionbiz.SubscriptionGroup
-		if !decodeBody(w, r, &group) {
+		var req struct {
+			subscriptionbiz.SubscriptionGroup
+			ExpectedRevision *int64 `json:"expected_revision"`
+		}
+		if !decodeBody(w, r, &req) {
 			return
+		}
+		group := req.SubscriptionGroup
+		if req.ExpectedRevision != nil {
+			group.Revision = *req.ExpectedRevision
 		}
 		group.ID = id
 		err := svc.UpdateSubscriptionGroup(r.Context(), &group)
@@ -304,9 +311,16 @@ func handleSubscriptionPlanByID(w http.ResponseWriter, r *http.Request, svc *ser
 		plan, err := svc.GetSubscriptionPlan(r.Context(), id)
 		writeSubscriptionResponse(w, plan, err)
 	case http.MethodPut:
-		var plan subscriptionbiz.SubscriptionPlan
-		if !decodeBody(w, r, &plan) {
+		var req struct {
+			subscriptionbiz.SubscriptionPlan
+			ExpectedRevision *int64 `json:"expected_revision"`
+		}
+		if !decodeBody(w, r, &req) {
 			return
+		}
+		plan := req.SubscriptionPlan
+		if req.ExpectedRevision != nil {
+			plan.Revision = *req.ExpectedRevision
 		}
 		plan.ID = id
 		err := svc.UpdateSubscriptionPlan(r.Context(), &plan)
@@ -498,6 +512,7 @@ func subscriptionResponse(sub *subscriptionbiz.UserSubscription) subscriptionDTO
 
 type subscriptionGroupDTO struct {
 	ID               int64    `json:"id"`
+	Revision         int64    `json:"revision"`
 	Name             string   `json:"name"`
 	DisplayName      string   `json:"display_name"`
 	Platform         string   `json:"platform"`
@@ -519,6 +534,7 @@ func groupResponse(group *subscriptionbiz.SubscriptionGroup) subscriptionGroupDT
 	}
 	return subscriptionGroupDTO{
 		ID:               group.ID,
+		Revision:         group.Revision,
 		Name:             group.Name,
 		DisplayName:      group.DisplayName,
 		Platform:         group.Platform,
