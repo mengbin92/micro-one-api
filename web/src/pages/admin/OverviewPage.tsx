@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { adminApiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
-import { quotaPerUnitFromOptions, quotaToCurrencyUnits } from '@/lib/amount';
+import { formatSubscriptionUSD, quotaPerUnitFromOptions, quotaToCurrencyUnits } from '@/lib/amount';
 import { cn } from '@/lib/utils';
 import { AccountStatusBadge } from '@/components/admin/AccountStatusBadge';
 import {
@@ -182,23 +182,13 @@ function subscriptionPlatformLabel(platform?: string) {
 // Compact quota summary for the overview card. Mirrors the logic of
 // QuotaStatusCell on the full page but condensed to a single row so it fits
 // in the overview table.
-const HOUR_S_OV = 3600;
-const DAY_S_OV = 86400;
-const WEEK_S_OV = 7 * DAY_S_OV;
-const FIVE_H_S_OV = 5 * HOUR_S_OV;
-
-function effectiveWindowUsedOV(used: number, windowStart: number | undefined, nowUnix: number, windowS: number): number {
-  if (!windowStart || windowStart <= 0 || nowUnix - windowStart >= windowS) return 0;
-  return used;
-}
-
-function SubscriptionQuotaMini({ account, nowUnix }: { account: AdminSubscriptionAccount; nowUnix: number }) {
+function SubscriptionQuotaMini({ account }: { account: AdminSubscriptionAccount }) {
   const rows: Array<{ label: string; used: number; limit: number }> = [];
   const pairs = [
     { label: t("总额"), used: account.quotaUsedUsd ?? 0, limit: account.quotaLimitUsd ?? 0 },
-    { label: '5h', used: effectiveWindowUsedOV(account.quota5hUsedUsd ?? 0, account.quota5hWindowStart, nowUnix, FIVE_H_S_OV), limit: account.quota5hLimitUsd ?? 0 },
-    { label: '24h', used: effectiveWindowUsedOV(account.quotaDailyUsedUsd ?? 0, account.quotaDailyWindowStart, nowUnix, DAY_S_OV), limit: account.quotaDailyLimitUsd ?? 0 },
-    { label: '7d', used: effectiveWindowUsedOV(account.quotaWeeklyUsedUsd ?? 0, account.quotaWeeklyWindowStart, nowUnix, WEEK_S_OV), limit: account.quotaWeeklyLimitUsd ?? 0 },
+    { label: '5h', used: account.quota5hUsedUsd ?? 0, limit: account.quota5hLimitUsd ?? 0 },
+    { label: '24h', used: account.quotaDailyUsedUsd ?? 0, limit: account.quotaDailyLimitUsd ?? 0 },
+    { label: '7d', used: account.quotaWeeklyUsedUsd ?? 0, limit: account.quotaWeeklyLimitUsd ?? 0 },
   ];
   for (const p of pairs) {
     if (p.limit > 0 || p.used > 0) rows.push({ label: p.label, used: p.used, limit: p.limit });
@@ -235,8 +225,8 @@ function SubscriptionQuotaMini({ account, nowUnix }: { account: AdminSubscriptio
             <div className="flex items-center justify-between gap-2 text-xs">
               <span className="font-medium">{row.label}</span>
               <span className="tabular-nums text-muted-foreground">
-                ${row.used.toFixed(2)}
-                {row.limit > 0 ? ` / $${row.limit.toFixed(2)}` : ''}
+                {formatSubscriptionUSD(row.used)}
+                {row.limit > 0 ? ` / ${formatSubscriptionUSD(row.limit)}` : ''}
               </span>
             </div>
             {row.limit > 0 && (
@@ -857,7 +847,7 @@ export function AdminOverviewPage() {
                         <TableCell className="hidden md:table-cell">{formatInteger(account.priority ?? 0)}</TableCell>
                         <TableCell className="hidden lg:table-cell">{formatDate(account.expiresAt)}</TableCell>
                         <TableCell className="hidden xl:table-cell">
-                          <SubscriptionQuotaMini account={account} nowUnix={nowUnix} />
+                          <SubscriptionQuotaMini account={account} />
                         </TableCell>
                         <TableCell>
                           <AccountStatusBadge

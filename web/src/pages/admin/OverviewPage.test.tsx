@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminOverviewPage } from './OverviewPage';
 import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
@@ -14,6 +14,28 @@ function renderOverview() {
 describe('AdminOverviewPage availability', () => {
   beforeEach(() => window.localStorage.setItem('web:language', JSON.stringify('zh-CN')));
   afterEach(() => window.localStorage.removeItem('web:language'));
+
+  it('preserves local subscription quota precision', async () => {
+    server.use(http.get('/api/admin/summary', () => HttpResponse.json({ success: true, data: {
+      subscription_accounts: [{ id: 1, name: 'Precise quota', platform: 'claude', status: 1,
+        quotaDailyUsedUsd: 0.000002, quotaDailyLimitUsd: 1.0249, quotaDailyWindowStart: Math.floor(Date.now() / 1000) }],
+    } })));
+    renderOverview();
+
+    expect(await screen.findByText('$0.000002 / $1.0249')).toBeInTheDocument();
+  });
+
+  it('keeps a server-rolled fixed daily quota during a 25-hour day', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-02T04:30:00Z'));
+    server.use(http.get('/api/admin/summary', () => HttpResponse.json({ success: true, data: {
+      subscription_accounts: [{ id: 1, name: 'Fixed quota', platform: 'claude', status: 1,
+        quotaResetStrategy: 'fixed', quotaTimezone: 'America/New_York',
+        quotaDailyUsedUsd: 3, quotaDailyLimitUsd: 10, quotaDailyWindowStart: Date.parse('2026-11-01T04:00:00Z') / 1000 }],
+    } })));
+    renderOverview();
+
+    expect(await screen.findByText('$3.00 / $10.00')).toBeInTheDocument();
+  });
 
   it('keeps healthy data and distinguishes unavailable channels and usage from empty results', async () => {
     server.use(http.get('/api/admin/summary', () => HttpResponse.json({ success: true, data: {

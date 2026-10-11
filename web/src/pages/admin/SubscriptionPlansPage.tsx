@@ -5,6 +5,7 @@ import { Package, Pencil, Save, ShoppingCart } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
+import { formatCNY } from '@/lib/amount';
 import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -203,7 +204,7 @@ export function AdminSubscriptionPlansPage() {
               <TableHead>ID</TableHead>
               <TableHead>{t("名称")}</TableHead>
               <TableHead>{t("额度策略")}</TableHead>
-              <TableHead>{t("价格 (quota)")}</TableHead>
+              <TableHead>{t("价格 (CNY)")}</TableHead>
               <TableHead>{t("有效期")}</TableHead>
               <TableHead>{t("状态")}</TableHead>
               <TableHead className="text-right">{t("操作")}</TableHead>
@@ -215,7 +216,7 @@ export function AdminSubscriptionPlansPage() {
                 <TableCell className="font-mono">{p.id}</TableCell>
                 <TableCell className="font-medium">{p.name}<ContractSummary contract={p.contract} /></TableCell>
                 <TableCell>{p.group_id}</TableCell>
-                <TableCell>{p.price_quota}</TableCell>
+                <TableCell>{formatCNY(p.price_quota)}</TableCell>
                 <TableCell>
                   {p.validity_days} {p.validity_unit === 'day' ? t("天") : p.validity_unit}
                 </TableCell>
@@ -326,7 +327,7 @@ function PlanEditForm({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="plan-price">{t("价格 (quota)")}</Label>
+          <Label htmlFor="plan-price">{t("价格 (CNY)")}</Label>
           <Input
             id="plan-price"
             type="number"

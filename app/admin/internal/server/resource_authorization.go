@@ -111,7 +111,7 @@ func iamOwnerRouteReady(path, method string) bool {
 		return oneOfMethod(method, http.MethodGet, http.MethodPost, http.MethodDelete)
 	case "/api/admin/model-routings":
 		return oneOfMethod(method, http.MethodGet, http.MethodPost)
-	case "/api/v1/admin/subscriptions", "/api/v1/admin/subscriptions/operation-report":
+	case "/api/v1/admin/subscriptions", "/api/v1/admin/subscriptions/progress", "/api/v1/admin/subscriptions/operation-report":
 		return method == http.MethodGet
 	case "/api/v1/admin/subscriptions/assign", "/api/v1/admin/subscriptions/change":
 		return method == http.MethodPost

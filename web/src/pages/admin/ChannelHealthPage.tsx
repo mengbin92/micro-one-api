@@ -35,6 +35,7 @@ import {
 import { cn } from '@/lib/utils';
 import { locale, t } from '@/lib/i18n';
 import { channelHealthStatus } from './channel-health-summary';
+import { formatSubscriptionUSD } from '@/lib/amount';
 
 interface ChannelHealth {
   id: string;
@@ -446,11 +447,6 @@ export function ChannelHealthPage() {
 
 
 
-const HOUR_S = 3600;
-const DAY_S = 86400;
-const WEEK_S = 7 * DAY_S;
-const FIVE_H_S = 5 * HOUR_S;
-
 function formatPercentCHP(value: number) {
   if (!Number.isFinite(value)) return '-';
   const rounded = Math.round(value * 10) / 10;
@@ -469,17 +465,12 @@ function formatResetAfterCHP(seconds?: number | null) {
   return t("1分钟内");
 }
 
-function effectiveWindowUsedCHP(used: number, windowStart: number | undefined, nowUnix: number, windowS: number): number {
-  if (!windowStart || windowStart <= 0 || nowUnix - windowStart >= windowS) return 0;
-  return used;
-}
-
 function SubscriptionQuotaSummary({ account, now }: { account: SubscriptionAccountSummary; now: number }) {
-  const localRows: Array<{ label: string; used?: number; limit?: number; windowStart?: number; windowS: number }> = [
-    { label: t("总额"), used: account.quotaUsedUsd, limit: account.quotaLimitUsd, windowS: 0 },
-    { label: '5h', used: account.quota5hUsedUsd, limit: account.quota5hLimitUsd, windowStart: account.quota5hWindowStart, windowS: FIVE_H_S },
-    { label: '24h', used: account.quotaDailyUsedUsd, limit: account.quotaDailyLimitUsd, windowStart: account.quotaDailyWindowStart, windowS: DAY_S },
-    { label: '7d', used: account.quotaWeeklyUsedUsd, limit: account.quotaWeeklyLimitUsd, windowStart: account.quotaWeeklyWindowStart, windowS: WEEK_S },
+  const localRows: Array<{ label: string; used?: number; limit?: number }> = [
+    { label: t("总额"), used: account.quotaUsedUsd, limit: account.quotaLimitUsd },
+    { label: '5h', used: account.quota5hUsedUsd, limit: account.quota5hLimitUsd },
+    { label: '24h', used: account.quotaDailyUsedUsd, limit: account.quotaDailyLimitUsd },
+    { label: '7d', used: account.quotaWeeklyUsedUsd, limit: account.quotaWeeklyLimitUsd },
   ].filter((row) => (row.used ?? 0) > 0 || (row.limit ?? 0) > 0);
 
   const upstreamWindows: Array<{ key: string; label: string; usedPercent?: number | null; resetAfter?: number | null }> = [
@@ -521,7 +512,7 @@ function SubscriptionQuotaSummary({ account, now }: { account: SubscriptionAccou
   return (
     <div className="min-w-[170px] space-y-1">
       {localRows.map((row) => {
-        const used = effectiveWindowUsedCHP(Number(row.used ?? 0), row.windowStart, now, row.windowS);
+        const used = Number(row.used ?? 0);
         const limit = Number(row.limit ?? 0);
         const ratio = limit > 0 ? used / limit : 0;
         const barWidth = limit > 0 ? Math.min(100, ratio * 100) : 0;
@@ -531,8 +522,8 @@ function SubscriptionQuotaSummary({ account, now }: { account: SubscriptionAccou
             <div className="flex items-center justify-between gap-2 text-xs">
               <span className="font-medium">{row.label}</span>
               <span className="tabular-nums text-muted-foreground">
-                {`$${used.toFixed(2)}`}
-                {limit > 0 ? ` / $${limit.toFixed(2)}` : ''}
+                {formatSubscriptionUSD(used)}
+                {limit > 0 ? ` / ${formatSubscriptionUSD(limit)}` : ''}
               </span>
             </div>
             {limit > 0 && (

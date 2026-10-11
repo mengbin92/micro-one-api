@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/authz"
 	"strconv"
@@ -203,9 +204,13 @@ func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID
 
 	userIDStr := strconv.FormatInt(userID, 10)
 	remark := fmt.Sprintf("purchase subscription group=%d (%s)", group.ID, group.Name)
+	priceAmount, err := subscriptionbiz.WalletPriceAmount(group.PriceQuota)
+	if err != nil {
+		return nil, err
+	}
 	deduct, err := s.billingClient.PurchaseSubscription(operatorRPCContext(ctx), &billingv1.PurchaseSubscriptionRequest{
 		UserId:      userIDStr,
-		PriceAmount: group.PriceQuota,
+		PriceAmount: priceAmount,
 		GroupId:     group.ID,
 		Remark:      remark,
 		RequestId:   requestID,
@@ -217,7 +222,7 @@ func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID
 		return nil, errors.New(deduct.GetErrorMessage())
 	}
 
-	sub, err := s.assignOrExtendGroupSubscription(ctx, userID, group, int64(group.DurationDays), "", "")
+	sub, err := s.assignOrExtendGroupSubscription(ctx, userID, group, int64(group.DurationDays), "", "", group.PriceQuota)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -226,7 +231,7 @@ func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID
 		// subscription that was never created.
 		if _, refundErr := s.billingClient.TopUpQuota(operatorRPCContext(ctx), &billingv1.TopUpQuotaRequest{
 			UserId:     userIDStr,
-			Amount:     group.PriceQuota,
+			Amount:     priceAmount,
 			OperatorId: "system",
 			Remark:     fmt.Sprintf("refund: subscription purchase rollback group=%d", group.ID),
 		}); refundErr != nil {
@@ -274,9 +279,13 @@ func (s *AdminService) PurchaseSubscriptionPlan(ctx context.Context, userID, pla
 
 	userIDStr := strconv.FormatInt(userID, 10)
 	remark := fmt.Sprintf("purchase subscription plan=%d (%s)", plan.ID, plan.Name)
+	priceAmount, err := subscriptionbiz.WalletPriceAmount(plan.PriceQuota)
+	if err != nil {
+		return nil, err
+	}
 	deduct, err := s.billingClient.PurchaseSubscription(operatorRPCContext(ctx), &billingv1.PurchaseSubscriptionRequest{
 		UserId:      userIDStr,
-		PriceAmount: plan.PriceQuota,
+		PriceAmount: priceAmount,
 		GroupId:     plan.GroupID,
 		Remark:      remark,
 		RequestId:   requestID,
@@ -294,7 +303,7 @@ func (s *AdminService) PurchaseSubscriptionPlan(ctx context.Context, userID, pla
 		}
 		if _, refundErr := s.billingClient.TopUpQuota(operatorRPCContext(ctx), &billingv1.TopUpQuotaRequest{
 			UserId:     userIDStr,
-			Amount:     plan.PriceQuota,
+			Amount:     priceAmount,
 			OperatorId: "system",
 			Remark:     fmt.Sprintf("refund: subscription purchase rollback plan=%d", plan.ID),
 		}); refundErr != nil {
@@ -330,7 +339,7 @@ func (s *AdminService) ensureSubscriptionCanUseGroup(ctx context.Context, userID
 	return subscriptionbiz.ErrSubscriptionAlreadyAssigned
 }
 
-func (s *AdminService) assignOrExtendGroupSubscription(ctx context.Context, userID int64, group *subscriptionbiz.SubscriptionGroup, durationDays int64, subscriptionName, metadata string) (*subscriptionbiz.UserSubscription, error) {
+func (s *AdminService) assignOrExtendGroupSubscription(ctx context.Context, userID int64, group *subscriptionbiz.SubscriptionGroup, durationDays int64, subscriptionName, metadata string, pricePaid int64) (*subscriptionbiz.UserSubscription, error) {
 	if group == nil {
 		return nil, subscriptionbiz.ErrSubscriptionGroupNotFound
 	}
@@ -356,6 +365,7 @@ func (s *AdminService) assignOrExtendGroupSubscription(ctx context.Context, user
 		StartsAt:         now,
 		ExpiresAt:        now + durationDays*secondsPerDay,
 		Metadata:         metadata,
+		PricePaid:        pricePaid,
 	})
 	return sub, err
 }
@@ -379,7 +389,7 @@ func (s *AdminService) assignOrExtendPlanSubscription(ctx context.Context, userI
 	if name == "" {
 		name = group.Name
 	}
-	return s.assignOrExtendGroupSubscription(ctx, userID, group, int64(plan.ValidityDays), name, metadata)
+	return s.assignOrExtendGroupSubscription(ctx, userID, group, int64(plan.ValidityDays), name, metadata, plan.PriceQuota)
 }
 
 func (s *AdminService) AssignSubscription(ctx context.Context, req *subscriptionbiz.AssignSubscriptionRequest) (*subscriptionbiz.UserSubscription, error) {
@@ -433,6 +443,9 @@ func (s *AdminService) ChangeSubscription(ctx context.Context, req subscriptionb
 	if s == nil || s.subscriptionUc == nil {
 		return nil, ErrSubscriptionServiceNotConfigured
 	}
+	if req.NewPriceQuota < 0 || req.OldPriceQuota < 0 {
+		return nil, fmt.Errorf("subscription prices must be non-negative")
+	}
 	requestID, err := normalizeRequestID(requestID)
 	if err != nil {
 		return nil, err
@@ -472,13 +485,17 @@ func (s *AdminService) ChangeSubscription(ctx context.Context, req subscriptionb
 	}
 	charged := int64(0)
 	if policy == subscriptionbiz.SubscriptionChangePolicyImmediate {
-		charged = req.NewPriceQuota - req.OldPriceQuota
+		priceDifference := req.NewPriceQuota - req.OldPriceQuota
 		// Only charge a positive difference. A same-price or negative-difference
 		// "upgrade" is treated as a no-op change (the usecase still records the
 		// group swap); charging a negative amount would be a refund through the
 		// wrong path. Downgrades are deferred to next_cycle and never charged
 		// here.
-		if charged > 0 {
+		if priceDifference > 0 {
+			charged, err = subscriptionbiz.WalletPriceAmount(priceDifference)
+			if err != nil {
+				return nil, err
+			}
 			if s.billingClient == nil {
 				return nil, ErrSubscriptionServiceNotConfigured
 			}
@@ -613,6 +630,12 @@ func (s *AdminService) CreateSubscriptionPaymentOrder(ctx context.Context, userI
 	if userID <= 0 {
 		return nil, nil, fmt.Errorf("invalid user id")
 	}
+	if currency == "" {
+		currency = "CNY"
+	}
+	if currency != "CNY" {
+		return nil, nil, fmt.Errorf("subscription price currency must be CNY")
+	}
 
 	requestID := ""
 	if len(requestIDs) > 0 {
@@ -660,12 +683,14 @@ func (s *AdminService) CreateSubscriptionPaymentOrder(ctx context.Context, userI
 
 	userIDStr := strconv.FormatInt(userID, 10)
 
-	if moneyCents <= 0 {
-		moneyCents = priceQuota * 100
+	if priceQuota <= 0 || priceQuota > math.MaxInt64/100 {
+		return nil, nil, fmt.Errorf("subscription payment price is out of range")
 	}
-	if currency == "" {
-		currency = "CNY"
+	expectedMoneyCents := priceQuota * 100
+	if moneyCents != 0 && moneyCents != expectedMoneyCents {
+		return nil, nil, fmt.Errorf("subscription payment amount does not match configured price")
 	}
+	moneyCents = expectedMoneyCents
 	if channel == "" {
 		channel = "alipay"
 	}
@@ -818,14 +843,14 @@ func (s *AdminService) CompleteSubscriptionPurchase(ctx context.Context, userID 
 // issuance claim (see CompleteSubscriptionPurchase), so it never runs twice for
 // the same order.
 func (s *AdminService) fulfilPaidOrder(ctx context.Context, userID int64, order *billingv1.PaymentOrder) (*subscriptionbiz.UserSubscription, error) {
+	if order.GetPlanSnapshot() != "" {
+		return s.completeFromPlanSnapshot(ctx, userID, order)
+	}
 	if order.PlanId > 0 {
 		// Phase 2: fulfil from the immutable plan snapshot captured at order
 		// creation. This keeps already-created orders completable even if the
 		// plan was later taken off-shelf or edited; only NEW orders are gated
 		// by the for_sale check (in CreateSubscriptionPaymentOrder).
-		if order.GetPlanSnapshot() != "" {
-			return s.completeFromPlanSnapshot(ctx, userID, order)
-		}
 		if s.planUc == nil {
 			return nil, ErrSubscriptionServiceNotConfigured
 		}
@@ -850,7 +875,7 @@ func (s *AdminService) fulfilPaidOrder(ctx context.Context, userID int64, order 
 		if name == "" {
 			name = plan.ProductName
 		}
-		return s.assignOrExtendGroupSubscription(ctx, userID, plan.Group, durationDays, name, "")
+		return s.assignOrExtendGroupSubscription(ctx, userID, plan.Group, durationDays, name, "", 0)
 	}
 	if err := s.ensureSubscriptionCanUseGroup(ctx, userID, order.GroupId); err != nil {
 		if authz.IsAuthorizationError(err) {
@@ -871,7 +896,7 @@ func (s *AdminService) fulfilPaidOrder(ctx context.Context, userID int64, order 
 		return nil, ErrSubscriptionNotPurchasable
 	}
 
-	sub, err := s.assignOrExtendGroupSubscription(ctx, userID, group, int64(group.DurationDays), "", "")
+	sub, err := s.assignOrExtendGroupSubscription(ctx, userID, group, int64(group.DurationDays), "", "", 0)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -893,8 +918,11 @@ func (s *AdminService) completeFromPlanSnapshot(ctx context.Context, userID int6
 		}
 		return nil, fmt.Errorf("decode plan snapshot: %w", err)
 	}
-	if snap.PlanID == 0 || snap.GroupID <= 0 {
+	if (snap.PlanID == 0 && snap.PriceConversion == nil) || snap.GroupID <= 0 {
 		return nil, fmt.Errorf("plan snapshot is incomplete")
+	}
+	if snap.PriceConversion != nil && (snap.PlanID != order.PlanId || (order.GroupId > 0 && snap.GroupID != order.GroupId)) {
+		return nil, fmt.Errorf("purchase snapshot does not match order")
 	}
 	if err := s.ensureSubscriptionCanUseGroup(ctx, userID, snap.GroupID); err != nil {
 		if authz.IsAuthorizationError(err) {
@@ -903,7 +931,7 @@ func (s *AdminService) completeFromPlanSnapshot(ctx context.Context, userID int6
 		return nil, err
 	}
 	durationDays := order.GetAssetAmount()
-	if durationDays <= 0 {
+	if durationDays <= 0 || snap.PriceConversion != nil {
 		durationDays = int64(snap.ValidityDays)
 	}
 	if durationDays <= 0 {
@@ -920,7 +948,11 @@ func (s *AdminService) completeFromPlanSnapshot(ctx context.Context, userID int6
 	if name == "" {
 		name = snap.ProductName
 	}
-	return s.assignOrExtendGroupSubscription(ctx, userID, group, durationDays, name, "")
+	var pricePaid int64
+	if snap.PriceConversion != nil {
+		pricePaid = snap.PriceQuota
+	}
+	return s.assignOrExtendGroupSubscription(ctx, userID, group, durationDays, name, "", pricePaid)
 }
 
 type subscriptionCommerceResult struct {

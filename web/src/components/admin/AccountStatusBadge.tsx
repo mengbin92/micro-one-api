@@ -99,28 +99,13 @@ const STATE_STYLES: Record<StateKind, Omit<StateMeta, 'tooltip'>> = {
 
 const HOUR_S = 3600;
 const DAY_S = 86400;
-const WEEK_S = 7 * DAY_S;
-const FIVE_H_S = 5 * HOUR_S;
 
-function effectiveWindowUsed(used: number, windowStart: number, nowUnix: number, windowS: number): number {
-  if (windowStart <= 0 || nowUnix - windowStart >= windowS) return 0;
-  return used;
-}
-
-function localQuotaExceeded(info: AccountStatusInfo, nowUnix: number): boolean {
+function localQuotaExceeded(info: AccountStatusInfo): boolean {
+  // Summary usage is already rolled by the server, including fixed time zones.
   if (info.quotaLimitUsd && info.quotaLimitUsd > 0 && (info.quotaUsedUsd ?? 0) >= info.quotaLimitUsd) return true;
-  if (info.quota5hLimitUsd && info.quota5hLimitUsd > 0) {
-    const used = effectiveWindowUsed(info.quota5hUsedUsd ?? 0, info.quota5hWindowStart ?? 0, nowUnix, FIVE_H_S);
-    if (used >= info.quota5hLimitUsd) return true;
-  }
-  if (info.quotaDailyLimitUsd && info.quotaDailyLimitUsd > 0) {
-    const used = effectiveWindowUsed(info.quotaDailyUsedUsd ?? 0, info.quotaDailyWindowStart ?? 0, nowUnix, DAY_S);
-    if (used >= info.quotaDailyLimitUsd) return true;
-  }
-  if (info.quotaWeeklyLimitUsd && info.quotaWeeklyLimitUsd > 0) {
-    const used = effectiveWindowUsed(info.quotaWeeklyUsedUsd ?? 0, info.quotaWeeklyWindowStart ?? 0, nowUnix, WEEK_S);
-    if (used >= info.quotaWeeklyLimitUsd) return true;
-  }
+  if (info.quota5hLimitUsd && info.quota5hLimitUsd > 0 && (info.quota5hUsedUsd ?? 0) >= info.quota5hLimitUsd) return true;
+  if (info.quotaDailyLimitUsd && info.quotaDailyLimitUsd > 0 && (info.quotaDailyUsedUsd ?? 0) >= info.quotaDailyLimitUsd) return true;
+  if (info.quotaWeeklyLimitUsd && info.quotaWeeklyLimitUsd > 0 && (info.quotaWeeklyUsedUsd ?? 0) >= info.quotaWeeklyLimitUsd) return true;
   return false;
 }
 
@@ -154,7 +139,7 @@ export function deriveAccountStatus(info: AccountStatusInfo, nowUnix: number): S
   if (info.rateLimitedUntil && info.rateLimitedUntil > nowUnix) return 'rate_limited';
 
   // Quota exceeded (local or upstream)
-  if (localQuotaExceeded(info, nowUnix) || upstreamQuotaExceeded(info)) return 'quota_exceeded';
+  if (localQuotaExceeded(info) || upstreamQuotaExceeded(info)) return 'quota_exceeded';
 
   // Unschedulable (has reason + since)
   if (info.unschedulableReason && info.unschedulableSince && info.unschedulableSince > 0) return 'unschedulable';

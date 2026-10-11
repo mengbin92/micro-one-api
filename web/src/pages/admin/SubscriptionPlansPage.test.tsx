@@ -19,4 +19,6 @@ it('loads plans for a session with subscription plan list permission', async () 
   );
   renderWithQuery(<MemoryRouter><AdminSubscriptionPlansPage /></MemoryRouter>);
   expect(await screen.findByText('Monthly')).toBeInTheDocument();
+  expect(screen.getByText('¥10.00')).toBeInTheDocument();
+  expect(screen.getByText('价格 (CNY)')).toBeInTheDocument();
 });

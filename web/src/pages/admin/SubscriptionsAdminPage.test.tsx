@@ -31,8 +31,8 @@ function mockBaseEndpoints() {
     http.get('/api/v1/admin/subscriptions', () =>
       HttpResponse.json({ success: true, data: [subscription] }),
     ),
-    http.get('/api/v1/subscriptions/progress', () =>
-      HttpResponse.json({ success: false, message: 'no active' }),
+    http.get('/api/v1/admin/subscriptions/progress', () =>
+      HttpResponse.json({ success: false, message: 'subscription not found' }),
     ),
   );
 }
@@ -72,8 +72,8 @@ describe('AdminSubscriptionsPage', () => {
         captured.url = request.url;
         return HttpResponse.json({ success: true, data: [subscription] });
       }),
-      http.get('/api/v1/subscriptions/progress', () =>
-        HttpResponse.json({ success: false, message: 'no active' }),
+      http.get('/api/v1/admin/subscriptions/progress', () =>
+        HttpResponse.json({ success: false, message: 'subscription not found' }),
       ),
     );
 
@@ -88,6 +88,54 @@ describe('AdminSubscriptionsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /筛选/ }));
 
     await waitFor(() => expect(captured.url).toContain('user_id=42'));
+  });
+
+  it('reads another user progress through the managed endpoint with the read permission', async () => {
+    mockBaseEndpoints();
+    const captured = { userId: null as string | null, selfCalls: 0 };
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({
+        authorization_mode: 'iam',
+        session: { user_id: '7', session_id: 'admin-session', activation_state: 'active', revision: '1' },
+        versions: { policy_revision: '1' },
+        permitted_operations: ['subscription.user_subscription.list', 'subscription.user_subscription.read', 'subscription.quota_policy.list'],
+        valid_until: new Date(Date.now() + 60_000).toISOString(),
+      })),
+      http.get('/api/v1/subscriptions/progress', () => {
+        captured.selfCalls++;
+        return HttpResponse.json({ success: false, message: 'foreign subscription progress denied' }, { status: 403 });
+      }),
+      http.get('/api/v1/admin/subscriptions/progress', ({ request }) => {
+        captured.userId = new URL(request.url).searchParams.get('user_id');
+        return HttpResponse.json({ success: true, data: {
+          ...subscription,
+          daily_used: { used: 1.5, settled: 1.5, frozen: 0.5, available: 8, limit: 10, remaining: 8 },
+          weekly_used: null, monthly_used: null, remaining_seconds: 3600,
+        } });
+      }),
+    );
+    renderWithQuery(<MemoryRouter><AdminSubscriptionsPage /></MemoryRouter>);
+    await screen.findByText('alice-pro');
+    await userEvent.type(screen.getByPlaceholderText(/按用户 ID 筛选/), '42');
+    await userEvent.click(screen.getByRole('button', { name: /筛选/ }));
+
+    expect(await screen.findByText('用户 42 当前活跃订阅配额')).toBeVisible();
+    expect(screen.getByText('可用 $8.00')).toBeVisible();
+    expect(captured.userId).toBe('42');
+    expect(captured.selfCalls).toBe(0);
+  });
+
+  it.each([200, 503])('shows a progress failure at HTTP %s instead of hiding it as no subscription', async (status) => {
+    mockBaseEndpoints();
+    server.use(http.get('/api/v1/admin/subscriptions/progress', () =>
+      HttpResponse.json({ success: false, message: 'billing unavailable' }, { status }),
+    ));
+    renderWithQuery(<MemoryRouter><AdminSubscriptionsPage /></MemoryRouter>);
+    await screen.findByText('alice-pro');
+    await userEvent.type(screen.getByPlaceholderText(/按用户 ID 筛选/), '42');
+    await userEvent.click(screen.getByRole('button', { name: /筛选/ }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('订阅用量暂不可用');
   });
 
   it('revokes a subscription via the :id/revoke endpoint', async () => {

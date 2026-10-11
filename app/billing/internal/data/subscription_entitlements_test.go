@@ -15,8 +15,10 @@ import (
 
 func TestLegacyPlanCommerceWithSingleConnection(t *testing.T) {
 	t.Setenv("SUBSCRIPTION_ENTITLEMENTS_V2", "true")
+	t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", "10")
 	db := testutil.RoutingContextDB(t, "sqlite")
 	billing, _, d, repo, _ := snapshotBillingFixture(t, db, false, 1, 1)
+	require.NoError(t, db.Table("users").Where("id = ?", 7001).Update("balance", 20_000_000).Error)
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
@@ -32,7 +34,7 @@ func TestLegacyPlanCommerceWithSingleConnection(t *testing.T) {
 	first, err := commerce.Execute(ctx, req)
 	require.NoError(t, err)
 	require.Nil(t, first.Subscription.Contract)
-	require.EqualValues(t, 999900, first.Balance)
+	require.EqualValues(t, 10_000_000, first.Balance)
 	require.NoError(t, repo.DeletePlan(ctx, plan.ID))
 	replay, err := commerce.Execute(ctx, req)
 	require.NoError(t, err)
@@ -44,8 +46,10 @@ func TestSubscriptionCommerceAtomic(t *testing.T) {
 		t.Run(dialect, func(t *testing.T) {
 			t.Setenv("BILLING_REQUEST_SNAPSHOT_V2", "true")
 			t.Setenv("SUBSCRIPTION_ENTITLEMENTS_V2", "true")
+			t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", "10")
 			db := testutil.RoutingContextDB(t, dialect)
 			billing, _, d, repo, _ := snapshotBillingFixture(t, db, false, 1, 1)
+			require.NoError(t, db.Table("users").Where("id = ?", 7001).Update("balance", 20_000_000).Error)
 			billing.SetRoutingPolicyRepo(NewRoutingPolicyRepo(d))
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
@@ -66,7 +70,7 @@ func TestSubscriptionCommerceAtomic(t *testing.T) {
 			req := biz.SubscriptionCommerceRequest{UserID: 7001, RequestID: "purchase", PlanID: plan.ID}
 			first, err := commerce.Execute(ctx, req)
 			require.NoError(t, err)
-			require.EqualValues(t, 999900, first.Balance)
+			require.EqualValues(t, 10_000_000, first.Balance)
 			require.Equal(t, contract.Digest, first.Subscription.Contract.Digest)
 			replay, err := commerce.Execute(ctx, req)
 			require.NoError(t, err)
@@ -88,7 +92,7 @@ func TestSubscriptionCommerceAtomic(t *testing.T) {
 			require.Equal(t, first.Subscription.ExpiresAt, current.ExpiresAt)
 			require.NoError(t, db.Table("subscription_commerce_receipts").Where("request_id = ?", "renew").Count(&count).Error)
 			require.Zero(t, count)
-			require.NoError(t, db.Table("users").Where("id = ?", 7001).Update("balance", 1000).Error)
+			require.NoError(t, db.Table("users").Where("id = ?", 7001).Update("balance", 20_000_000).Error)
 			renewed, err := commerce.Execute(ctx, req)
 			require.NoError(t, err)
 			require.Equal(t, first.Subscription.ID, renewed.Subscription.ID)
@@ -102,7 +106,7 @@ func TestSubscriptionCommerceAtomic(t *testing.T) {
 			require.Error(t, err)
 			account, err := d.accountRepo.GetAccountSnapshot(ctx, "7001")
 			require.NoError(t, err)
-			require.EqualValues(t, 900, account.Balance)
+			require.EqualValues(t, 10_000_000, account.Balance)
 			require.NoError(t, subs.RecordUsage(ctx, 7001, 0.1))
 			req.RequestID = "explicit-change"
 			req.FromSubscriptionID = first.Subscription.ID
@@ -123,7 +127,7 @@ func TestSubscriptionCommerceAtomic(t *testing.T) {
 			scheduled, err := commerce.Execute(ctx, req)
 			require.NoError(t, err)
 			require.False(t, scheduled.Change.Applied)
-			require.EqualValues(t, 900, scheduled.Balance)
+			require.EqualValues(t, 10_000_000, scheduled.Balance)
 			require.Equal(t, plan.Contract.Digest, scheduled.Subscription.Contract.Digest)
 			req.FromSubscriptionID = 0
 			req.RequestID = "renew-target"
@@ -132,7 +136,7 @@ func TestSubscriptionCommerceAtomic(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, contract.Digest, next.Subscription.Contract.Digest)
 			require.InDelta(t, 0.2, next.Subscription.DailyUsageUSD, 1e-10)
-			require.EqualValues(t, 850, next.Balance)
+			require.EqualValues(t, 5_000_000, next.Balance)
 
 		})
 	}

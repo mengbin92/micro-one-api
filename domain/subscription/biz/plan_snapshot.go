@@ -9,7 +9,7 @@ import (
 )
 
 // PlanSnapshot captures the immutable purchase-time attributes of a
-// subscription plan. It is stored on the payment order at creation time so
+// subscription plan or legacy group. It is stored on the payment order at creation time so
 // the order can be fulfilled even if the plan is later marked for_sale=false,
 // edited, or deleted. Without the snapshot a closed-but-unpaid order could be
 // stranded (cannot fulfill from a now-off-shelf plan) or, worse, fulfilled
@@ -20,22 +20,23 @@ import (
 // plan id, because the assigner must not re-read the live plan row at
 // fulfillment time.
 type PlanSnapshot struct {
-	Version      int32                 `json:"version,omitempty"`
-	Contract     *SubscriptionContract `json:"contract,omitempty"`
-	PlanID       int64                 `json:"plan_id"`
-	Name         string                `json:"name"`
-	ProductName  string                `json:"product_name"`
-	GroupID      int64                 `json:"group_id"`
-	PriceQuota   int64                 `json:"price_quota"`
-	ValidityDays int32                 `json:"validity_days"`
-	CapturedAt   int64                 `json:"captured_at"`
+	Version         int32                 `json:"version,omitempty"`
+	Contract        *SubscriptionContract `json:"contract,omitempty"`
+	PlanID          int64                 `json:"plan_id"`
+	Name            string                `json:"name"`
+	ProductName     string                `json:"product_name"`
+	GroupID         int64                 `json:"group_id"`
+	PriceQuota      int64                 `json:"price_quota"`
+	ValidityDays    int32                 `json:"validity_days"`
+	CapturedAt      int64                 `json:"captured_at"`
+	PriceConversion *PriceConversion      `json:"price_conversion,omitempty"`
 }
 
 // EncodePlanSnapshot serialises a snapshot into the JSON string persisted in
-// payment_orders.plan_snapshot. An empty (zero-value) snapshot is encoded as
-// the empty string so the column stays NULL for non-plan orders.
+// payment_orders.plan_snapshot. An empty snapshot without a price conversion
+// is encoded as the empty string for orders without subscription pricing.
 func EncodePlanSnapshot(s PlanSnapshot) string {
-	if s.PlanID == 0 {
+	if s.PlanID == 0 && s.PriceConversion == nil {
 		return ""
 	}
 	if s.CapturedAt == 0 {
@@ -67,6 +68,9 @@ func DecodePlanSnapshot(raw string) (PlanSnapshot, error) {
 	}
 	if s.Version == 0 && s.Contract != nil {
 		return PlanSnapshot{}, ErrSubscriptionContractInvalid
+	}
+	if err := s.PriceConversion.validate(s.PriceQuota); err != nil {
+		return PlanSnapshot{}, err
 	}
 	return s, nil
 }

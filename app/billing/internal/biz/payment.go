@@ -50,7 +50,7 @@ type PaymentOrder struct {
 	// PlanSnapshot holds the immutable purchase-time view of the plan. It is
 	// populated at order creation so fulfillment does not depend on the live
 	// plan row (which may be taken off-shelf or edited while the order is
-	// pending). See plan_snapshot.go. Empty for non-plan orders.
+	// pending). Legacy group orders also freeze their price and duration here.
 	PlanSnapshot string
 	// SubscriptionID is the id of the subscription granted by this order. It is
 	// written by the assigner at MarkOrderPaid time and persisted so refunds can
@@ -312,13 +312,22 @@ func (uc *PaymentUsecase) CreateOrder(ctx context.Context, req CreatePaymentOrde
 		UpdatedAt:        time.Now(),
 	}
 	// Phase 2: capture the plan snapshot at creation time so fulfillment is
-	// decoupled from later on/off-shelf changes. Only subscription orders with
-	// a plan_id carry a snapshot; balance orders and group-only orders leave
-	// the column NULL.
+	// decoupled from later on/off-shelf changes. Balance orders leave the
+	// column NULL; group-only subscriptions capture their snapshot below.
 	if order.AssetType == PaymentAssetTypeSubscription && order.PlanID > 0 && uc.snapshotter != nil {
 		snapshot, snapErr := uc.snapshotter.CapturePlanSnapshot(ctx, order.PlanID)
 		if snapErr != nil {
 			return nil, fmt.Errorf("capture plan snapshot: %w", snapErr)
+		}
+		if snapshot.PriceConversion != nil {
+			if order.Currency != "CNY" {
+				return nil, ErrRoutingContextInvalid
+			}
+			if snapshot.PriceQuota <= 0 || snapshot.PriceQuota > math.MaxInt64/100 || snapshot.ValidityDays <= 0 {
+				return nil, subscriptionbiz.ErrSubscriptionPlanNotSaleable
+			}
+			order.MoneyCents = snapshot.PriceQuota * 100
+			order.AssetAmount = int64(snapshot.ValidityDays)
 		}
 		if keyed {
 			if snapshot.PlanID <= 0 || snapshot.PriceQuota <= 0 || snapshot.PriceQuota > math.MaxInt64/100 || snapshot.ValidityDays <= 0 {
@@ -338,6 +347,25 @@ func (uc *PaymentUsecase) CreateOrder(ctx context.Context, req CreatePaymentOrde
 			order.AssetAmount = int64(snapshot.ValidityDays)
 			order.GroupID = snapshot.GroupID
 		}
+		ApplyPlanSnapshotToOrder(order, snapshot)
+	}
+	if order.AssetType == PaymentAssetTypeSubscription && order.PlanID == 0 {
+		groupSnapshotter, ok := uc.assigner.(GroupSnapshotter)
+		if !ok {
+			return nil, ErrRequestSnapshotUnavailable
+		}
+		snapshot, err := groupSnapshotter.CaptureGroupSnapshot(ctx, order.GroupID)
+		if err != nil {
+			return nil, err
+		}
+		if order.Currency != "CNY" {
+			return nil, ErrRoutingContextInvalid
+		}
+		if snapshot.PriceQuota <= 0 || snapshot.PriceQuota > math.MaxInt64/100 || snapshot.ValidityDays <= 0 {
+			return nil, subscriptionbiz.ErrSubscriptionPlanNotSaleable
+		}
+		order.MoneyCents = snapshot.PriceQuota * 100
+		order.AssetAmount = int64(snapshot.ValidityDays)
 		ApplyPlanSnapshotToOrder(order, snapshot)
 	}
 	// Pre-insert the row before calling the provider: the deterministic
@@ -691,6 +719,15 @@ func (p *routedPaymentProvider) QueryOrder(ctx context.Context, order *PaymentOr
 func matchSubscriptionOrder(order *PaymentOrder, req CreatePaymentOrderRequest) (*PaymentOrder, error) {
 	if order.UserID != req.UserID || order.PlanID != req.PlanID || order.Channel != req.Channel || order.AssetType != req.AssetType {
 		return nil, ErrRoutingContextConflict
+	}
+	if order.AssetType == PaymentAssetTypeSubscription && order.PlanSnapshot != "" {
+		snapshot, err := DecodePlanSnapshot(order.PlanSnapshot)
+		if err != nil {
+			return nil, err
+		}
+		if snapshot.PriceConversion != nil && (order.Currency != "CNY" || (req.Currency != "" && req.Currency != "CNY")) {
+			return nil, ErrRoutingContextInvalid
+		}
 	}
 	return order, nil
 }

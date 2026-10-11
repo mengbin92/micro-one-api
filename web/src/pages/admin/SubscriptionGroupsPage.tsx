@@ -4,6 +4,7 @@ import { Layers, Pencil, Save } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
+import { formatCNY } from '@/lib/amount';
 import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -115,7 +116,7 @@ function formatLimit(value: number | null) {
 }
 
 function formatPrice(value: number) {
-  return `$${Number(value || 0).toFixed(2)}`;
+  return formatCNY(value);
 }
 
 function parsePrice(value: string) {
@@ -467,7 +468,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
         </div>
         <p className="text-xs text-muted-foreground sm:col-span-2">{t("额度消耗倍率只影响订阅额度消耗速度；用户请求的价格由模型价格和路由分组价格倍率决定。平台是策略描述，不限制可调用模型。")}</p>
         <div className="space-y-2">
-          <Label htmlFor="grp-price">{t("购买价格(USD)")}</Label>
+          <Label htmlFor="grp-price">{t("购买价格(CNY)")}</Label>
           <Input
             id="grp-price"
             type="number"

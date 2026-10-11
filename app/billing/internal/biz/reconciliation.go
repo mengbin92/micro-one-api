@@ -48,14 +48,9 @@ type ReconciliationRepo interface {
 	// reconciliation to verify the receivables mirror and the wallet
 	// state are aligned.
 	SumOverdraftBalances(ctx context.Context) (int64, error)
-	// SumReversalLedgerAmounts returns the total amount of reversal ledger
-	// entries (type=refund, cost_source=reversal) — the wallet-side view of
-	// refunds. Used by reconciliation to verify every refunded order has a
-	// matching reversal ledger and vice versa (phase 2.3).
-	SumReversalLedgerAmounts(ctx context.Context) (int64, error)
-	// CountRefundedOrders returns the count and total money_cents of orders
-	// in the refunded terminal state (phase 2.3 reconciliation coverage).
-	CountRefundedOrders(ctx context.Context) (count int64, totalMoneyCents int64, err error)
+	// ListRefundReconciliations matches reversals by trade number and user,
+	// including refunded orders with no credit and credits with no order.
+	ListRefundReconciliations(ctx context.Context) ([]*RefundReconciliation, error)
 	// ListStuckIssuedOrders returns paid payment orders whose asset issuance
 	// was claimed (asset_issue_status=issued) but never fulfilled
 	// (subscription_id=0). These are stuck orders — typically produced by a
@@ -188,14 +183,30 @@ type ReceivableInconsistency struct {
 // entry whose amount equals the order's purchase price; a count or amount
 // mismatch signals a missed or duplicate refund.
 type RefundInconsistency struct {
-	RefundedOrderCount      int64 `json:"refunded_order_count"`
-	RefundedOrderMoneyCents int64 `json:"refunded_order_money_cents"`
-	ReversalLedgerCount     int64 `json:"reversal_ledger_count"`
-	ReversalLedgerAmount    int64 `json:"reversal_ledger_amount"`
-	// MoneyCentsDiff is refunded_order_money_cents - reversal_ledger_amount
-	// (in cents). Positive: refunded orders without a matching ledger; negative:
-	// reversal ledgers without a matching order.
+	TradeNo                 string `json:"trade_no,omitempty"`
+	UserID                  string `json:"user_id,omitempty"`
+	ExpectedRefundAmount    int64  `json:"expected_refund_amount"`
+	AmountDiff              int64  `json:"amount_diff"`
+	RefundedOrderCount      int64  `json:"refunded_order_count"`
+	RefundedOrderMoneyCents int64  `json:"refunded_order_money_cents"`
+	ReversalLedgerCount     int64  `json:"reversal_ledger_count"`
+	ReversalLedgerAmount    int64  `json:"reversal_ledger_amount"`
+	// MoneyCentsDiff is the wallet discrepancy converted back to CNY cents
+	// using this order's frozen rate (or the historical amount*100 rule).
+	// AmountDiff retains discrepancies smaller than one CNY cent.
 	MoneyCentsDiff int64 `json:"money_cents_diff"`
+}
+
+// RefundReconciliation pairs one refunded subscription order with its wallet
+// reversal. Rows without a refunded order expose orphan or wrong-user credits.
+type RefundReconciliation struct {
+	TradeNo, UserID      string
+	RefundedOrder        bool
+	MoneyCents           int64
+	Currency             string
+	PlanSnapshot         string
+	ReversalLedgerCount  int64
+	ReversalLedgerAmount int64
 }
 
 // StuckIssuanceInconsistency captures a paid order whose asset issuance was
@@ -619,30 +630,46 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 	// implicitly catches the net effect, but this step surfaces a refund-
 	// specific discrepancy so operators can see missed or duplicate refunds
 	// directly (phase 2.3 reconciliation coverage).
-	if refundedCount, refundedCents, rerr := uc.reconRepo.CountRefundedOrders(ctx); rerr == nil {
-		if reversalAmount, lerr := uc.reconRepo.SumReversalLedgerAmounts(ctx); lerr == nil {
-			// Reversal ledger amounts are in quota (wallet units); refunded
-			// order money_cents are in cents. Normalize both to quota for
-			// the comparison (the refund ledger amount is quota, refunded
-			// orders' money_cents/100 = quota). Reversal ledger count is not
-			// directly available without an extra query, so we compare the
-			// aggregated amounts: refunded quota should equal reversal amount.
-			refundedQuota := refundedCents / 100
-			if refundedQuota != reversalAmount || refundedCount > 0 && reversalAmount == 0 {
-				result.RefundInconsistencies = append(result.RefundInconsistencies, RefundInconsistency{
-					RefundedOrderCount:      refundedCount,
-					RefundedOrderMoneyCents: refundedCents,
-					ReversalLedgerAmount:    reversalAmount,
-					MoneyCentsDiff:          refundedCents - reversalAmount*100,
-				})
+	if refunds, rerr := uc.reconRepo.ListRefundReconciliations(ctx); rerr == nil {
+		for _, row := range refunds {
+			if row == nil {
+				continue
 			}
-		} else {
-			apploggerError(lerr, "sum reversal ledger amounts for reconciliation")
-			markPartial("reversal ledger", lerr)
+			d := RefundInconsistency{TradeNo: row.TradeNo, UserID: row.UserID,
+				RefundedOrderMoneyCents: row.MoneyCents,
+				ReversalLedgerCount:     row.ReversalLedgerCount, ReversalLedgerAmount: row.ReversalLedgerAmount}
+			var snap PlanSnapshot
+			if row.RefundedOrder {
+				d.RefundedOrderCount = 1
+				var err error
+				snap, err = DecodePlanSnapshot(row.PlanSnapshot)
+				if err == nil {
+					d.ExpectedRefundAmount, err = subscriptionRefundAmount(&PaymentOrder{MoneyCents: row.MoneyCents, Currency: row.Currency}, snap)
+				}
+				if err != nil {
+					markPartial("refund price "+row.TradeNo, err)
+					continue
+				}
+				if row.ReversalLedgerCount == 1 && d.ExpectedRefundAmount == row.ReversalLedgerAmount {
+					continue
+				}
+			}
+			d.AmountDiff = d.ExpectedRefundAmount - row.ReversalLedgerAmount
+			if row.RefundedOrder {
+				cents := float64(d.AmountDiff) * 100
+				if snap.PriceConversion != nil {
+					cents = float64(d.AmountDiff) / snap.PriceConversion.RechargeMultiplier / 100
+				}
+				if cents >= float64(math.MaxInt64) || cents < float64(math.MinInt64) {
+					markPartial("refund cents "+row.TradeNo, fmt.Errorf("refund difference is out of range"))
+				} else {
+					d.MoneyCentsDiff = int64(math.Round(cents))
+				}
+			}
+			result.RefundInconsistencies = append(result.RefundInconsistencies, d)
 		}
 	} else {
-		apploggerError(rerr, "count refunded orders for reconciliation")
-		markPartial("refunded orders", rerr)
+		markPartial("refund reversals", rerr)
 	}
 
 	// Step 8 (new): stuck asset-issuance detection (code-review M1). A paid

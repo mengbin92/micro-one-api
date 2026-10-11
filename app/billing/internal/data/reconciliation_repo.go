@@ -278,37 +278,59 @@ func (r *reconciliationRepo) SumOverdraftBalances(ctx context.Context) (int64, e
 	return total, nil
 }
 
-// SumReversalLedgerAmounts returns the total amount of reversal ledger entries
-// (type=refund, cost_source=reversal). This is the wallet-side view of refunds
-// used by the phase 2.3 reconciliation coverage check.
-func (r *reconciliationRepo) SumReversalLedgerAmounts(ctx context.Context) (int64, error) {
+func (r *reconciliationRepo) ListRefundReconciliations(ctx context.Context) ([]*biz.RefundReconciliation, error) {
 	if r.data == nil || r.data.db == nil {
-		return 0, nil
+		return nil, nil
 	}
-	var total int64
-	err := r.data.db.WithContext(ctx).Table("billing_ledgers").
-		Select("COALESCE(SUM(amount), 0)").
-		Where("type = ? AND cost_source = ?", biz.LedgerTypeRefund, biz.CostSourceReversal).
-		Scan(&total).Error
-	return total, err
-}
-
-// CountRefundedOrders returns the count and total money_cents of payment orders
-// in the refunded terminal state (phase 2.3 reconciliation coverage).
-func (r *reconciliationRepo) CountRefundedOrders(ctx context.Context) (int64, int64, error) {
-	if r.data == nil || r.data.db == nil {
-		return 0, 0, nil
+	var rows []struct {
+		TradeNo, UserID      string
+		RefundedOrder        bool
+		MoneyCents           int64
+		Currency             string
+		PlanSnapshot         string
+		ReversalLedgerCount  int64
+		ReversalLedgerAmount int64
 	}
-	type agg struct {
-		Count int64 `gorm:"column:cnt"`
-		Total int64 `gorm:"column:total_cents"`
+	// One statement observes orders and credits consistently. Matching the
+	// user as well as the trade prevents another user's credit hiding a gap.
+	err := r.data.db.WithContext(ctx).Raw(`
+		SELECT o.trade_no AS trade_no, o.user_id AS user_id, TRUE AS refunded_order, o.money_cents, o.currency,
+		       COALESCE(o.plan_snapshot, '') AS plan_snapshot,
+		       COALESCE(l.ledger_count, 0) AS reversal_ledger_count,
+		       COALESCE(l.amount, 0) AS reversal_ledger_amount
+		FROM payment_orders o
+		LEFT JOIN (
+		    SELECT reference_id, user_id, COUNT(*) AS ledger_count, SUM(amount) AS amount
+		    FROM billing_ledgers WHERE type = ? AND cost_source = ?
+		    GROUP BY reference_id, user_id
+		) l ON l.reference_id = o.trade_no AND l.user_id = o.user_id
+		WHERE o.status = ? AND o.asset_type = ?
+		UNION ALL
+		SELECT COALESCE(l.reference_id, '') AS trade_no, l.user_id AS user_id, FALSE AS refunded_order,
+		       0 AS money_cents, '' AS currency, '' AS plan_snapshot, COUNT(*) AS reversal_ledger_count,
+		       SUM(l.amount) AS reversal_ledger_amount
+		FROM billing_ledgers l
+		LEFT JOIN payment_orders o ON o.trade_no = l.reference_id AND o.user_id = l.user_id
+		    AND o.status = ? AND o.asset_type = ?
+		WHERE l.type = ? AND l.cost_source = ? AND o.id IS NULL
+		GROUP BY l.reference_id, l.user_id
+		ORDER BY trade_no, user_id`,
+		biz.LedgerTypeRefund, biz.CostSourceReversal,
+		biz.PaymentOrderStatusRefunded, biz.PaymentAssetTypeSubscription,
+		biz.PaymentOrderStatusRefunded, biz.PaymentAssetTypeSubscription,
+		biz.LedgerTypeRefund, biz.CostSourceReversal).Scan(&rows).Error
+	if err != nil {
+		return nil, err
 	}
-	var row agg
-	err := r.data.db.WithContext(ctx).Table("payment_orders").
-		Select("COUNT(*) AS cnt, COALESCE(SUM(money_cents), 0) AS total_cents").
-		Where("status = ?", biz.PaymentOrderStatusRefunded).
-		Scan(&row).Error
-	return row.Count, row.Total, err
+	out := make([]*biz.RefundReconciliation, len(rows))
+	for i, row := range rows {
+		out[i] = &biz.RefundReconciliation{
+			TradeNo: row.TradeNo, UserID: row.UserID, RefundedOrder: row.RefundedOrder,
+			MoneyCents: row.MoneyCents, Currency: row.Currency, PlanSnapshot: row.PlanSnapshot,
+			ReversalLedgerCount: row.ReversalLedgerCount, ReversalLedgerAmount: row.ReversalLedgerAmount,
+		}
+	}
+	return out, nil
 }
 
 // ListStuckIssuedOrders returns paid SUBSCRIPTION payment orders whose asset

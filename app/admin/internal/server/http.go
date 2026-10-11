@@ -493,6 +493,9 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 	srv.HandleFunc("/api/v1/admin/subscriptions", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleUserSubscriptions(w, r, svc)
 	}))
+	srv.HandleFunc("/api/v1/admin/subscriptions/progress", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleManagedSubscriptionProgress(w, r, svc)
+	}))
 	srv.HandleFunc("/api/v1/admin/subscriptions/assign", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleAssignSubscription(w, r, svc)
 	}))

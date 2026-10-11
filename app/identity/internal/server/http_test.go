@@ -845,7 +845,7 @@ func TestIdentityHTTPDashboardTodayAmountUsesLedgerAmount(t *testing.T) {
 	// Simulate mimo-v2.5-pro pricing: 1M input-only tokens at $0.435/1M tokens.
 	// 1000000 * $0.435/1000000 = $0.435 -> 0.435 * 10000 = 4350 amount units.
 	// The aggregate RPC returns |amount| (4350) directly, not raw token count (1000000).
-	todayStr := time.Now().Format("2006-01-02")
+	todayStr := time.Now().UTC().Format("2006-01-02")
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
 			Balance:      100000,
@@ -1224,33 +1224,48 @@ func TestIdentityHTTPOnlinePaymentCompatibilityRoutesAreDisabled(t *testing.T) {
 }
 
 func TestIdentityHTTPCreatePaymentOrderUsesRechargeMultiplier(t *testing.T) {
-	t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", "3")
-	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo, nil)
-	_, authToken := registerAndLoginForHTTPTest(t, uc)
-	billingClient := &identityHTTPBillingClient{}
-	srv := NewHTTPServer(":0", uc, nil, billingClient)
+	for _, tc := range []struct {
+		rate       string
+		input      string
+		moneyCents int64
+		amount     int64
+	}{
+		{"3", "10", 1000, 300000},
+		{"NaN", "10", 1000, 1000000},
+		{"+Inf", "10", 1000, 1000000},
+		{"10", "1.001", 100, 100000},
+		{"1.00185", "1", 100, 10019},
+	} {
+		t.Run(tc.rate, func(t *testing.T) {
+			t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", tc.rate)
+			repo := identitydata.NewMemoryRepositoryForTest()
+			uc := biz.NewIdentityUsecase(repo, nil)
+			_, authToken := registerAndLoginForHTTPTest(t, uc)
+			billingClient := &identityHTTPBillingClient{}
+			srv := NewHTTPServer(":0", uc, nil, billingClient)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/user/pay", strings.NewReader(`{"amount":10,"payment_method":"alipay"}`))
-	req.Header.Set("Authorization", "Bearer "+authToken)
-	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req)
+			req := httptest.NewRequest(http.MethodPost, "/api/user/pay", strings.NewReader(`{"amount":`+tc.input+`,"payment_method":"alipay"}`))
+			req.Header.Set("Authorization", "Bearer "+authToken)
+			rec := httptest.NewRecorder()
+			srv.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
-	}
-	if !strings.Contains(rec.Body.String(), `"success":true`) {
-		t.Fatalf("payment response mismatch: %s", rec.Body.String())
-	}
-	if len(billingClient.createOrderCalls) != 1 {
-		t.Fatalf("CreatePaymentOrder calls = %d, want 1", len(billingClient.createOrderCalls))
-	}
-	call := billingClient.createOrderCalls[0]
-	if call.GetMoneyCents() != 1000 {
-		t.Fatalf("money cents = %d, want 1000", call.GetMoneyCents())
-	}
-	if call.GetAssetAmount() != 300000 {
-		t.Fatalf("asset amount = %d, want 300000", call.GetAssetAmount())
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), `"success":true`) {
+				t.Fatalf("payment response mismatch: %s", rec.Body.String())
+			}
+			if len(billingClient.createOrderCalls) != 1 {
+				t.Fatalf("CreatePaymentOrder calls = %d, want 1", len(billingClient.createOrderCalls))
+			}
+			call := billingClient.createOrderCalls[0]
+			if call.GetMoneyCents() != tc.moneyCents {
+				t.Fatalf("money cents = %d, want %d", call.GetMoneyCents(), tc.moneyCents)
+			}
+			if call.GetAssetAmount() != tc.amount {
+				t.Fatalf("asset amount = %d, want %d", call.GetAssetAmount(), tc.amount)
+			}
+		})
 	}
 }
 

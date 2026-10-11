@@ -19,11 +19,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/EmptyState';
 import { ChartSkeleton, MetricCardsSkeleton } from '@/components/LoadingStates';
 import { unwrapApiData } from '@/lib/api-response';
-import { formatAmountUnits, formatUSD } from '@/lib/amount';
+import { formatAmountUnits, formatSubscriptionUSD, formatUSD } from '@/lib/amount';
 import { cn } from '@/lib/utils';
 import { locale, t } from '@/lib/i18n';
 import {
   accountDashboardQueryOptions,
+  subscriptionProgressQueryOptions,
   userSelfQueryOptions,
   type UsageSummaryItem,
 } from '@/lib/account-queries';
@@ -156,16 +157,21 @@ function MetricCard({
 }
 
 export function DashboardPage() {
-  const { data: user, isLoading: isUserLoading } = useQuery(userSelfQueryOptions);
+  const { data: user, isLoading: isUserLoading, isError: isUserError } = useQuery(userSelfQueryOptions);
 
-  const { data: dashboard, isLoading } = useQuery(accountDashboardQueryOptions);
+  const { data: dashboard, isLoading, isError: isDashboardError } = useQuery(accountDashboardQueryOptions);
 
-  const { data: tokens, isLoading: isTokensLoading } = useQuery({
+  const { data: subscription, isLoading: isSubscriptionLoading, isError: isSubscriptionError } = useQuery(
+    subscriptionProgressQueryOptions(user ? String(user.id) : null),
+  );
+
+  const { data: tokens, isLoading: isTokensLoading, isError: isTokensError } = useQuery({
     queryKey: ['tokens'],
-    queryFn: async () => {
-      const res = await apiClient.get('/token');
+    queryFn: async ({ signal }) => {
+      const res = await apiClient.get('/token', { signal });
       return normalizeTokens(unwrapApiData<Token[] | TokenListData>(res.data));
     },
+    meta: { protected: true },
   });
 
   const items = Array.isArray(dashboard?.usage) ? dashboard.usage : [];
@@ -177,12 +183,33 @@ export function DashboardPage() {
   const totalTokens = items.reduce((sum, item) => sum + displayTotalTokens(item), 0);
   const balance = numberOrZero(dashboard?.balance);
   const usedAmount = numberOrZero(dashboard?.used_amount);
-  const requestCount = items.length > 0 ? totalCount : numberOrZero(dashboard?.request_count);
+  const requestCount = numberOrZero(dashboard?.request_count ?? totalCount);
   const todayRequests = latest?.count ?? 0;
   const todayAmount = dashboard?.today_amount ?? latest?.amount ?? 0;
   const todayPromptTokens = latest ? displayInputTokens(latest) : dashboard?.today_prompt_tokens ?? 0;
   const todayCompletionTokens = dashboard?.today_completion_tokens ?? latest?.completion_tokens ?? 0;
   const todayCacheReadTokens = dashboard?.today_cache_read_tokens ?? latest?.cache_read_tokens ?? 0;
+  const subscriptionDay = subscription?.daily_used;
+  const isDashboardUnavailable = isDashboardError || !dashboard;
+  const isSubscriptionUnavailable = isUserError || !user || isSubscriptionError || (!!subscription && !subscriptionDay);
+  const isConsumptionUnavailable = isSubscriptionUnavailable || (!subscriptionDay && isDashboardUnavailable);
+  const todayConsumption = isConsumptionUnavailable
+    ? '—'
+    : subscriptionDay
+      ? formatSubscriptionUSD(subscriptionDay.settled ?? subscriptionDay.used)
+      : `$${formatAmount(todayAmount, 4)}`;
+  const todayConsumptionSubtitle = isConsumptionUnavailable
+    ? t(isSubscriptionUnavailable ? '订阅用量暂不可用' : '用量统计暂不可用')
+    : subscriptionDay
+      ? t('已结算 · 订阅日窗口：{start} – {end} · 冻结 {frozen}', {
+          start: subscriptionDay.window_start ? new Date(subscriptionDay.window_start * 1000).toLocaleString(locale()) : t('未知'),
+          end: subscriptionDay.next_refresh ? new Date(subscriptionDay.next_refresh * 1000).toLocaleString(locale()) : t('未知'),
+          frozen: subscriptionDay.frozen == null ? t('未知') : formatSubscriptionUSD(subscriptionDay.frozen),
+        })
+      : t('UTC 自然日 · 今日 Token {tokens} / 缓存 {cache}', {
+          tokens: compactNumber(todayPromptTokens + todayCompletionTokens),
+          cache: compactNumber(todayCacheReadTokens),
+        });
   const avgLatency = dashboard?.avg_latency ?? 0;
   const chartData = items.map((item) => ({
     ...item,
@@ -195,7 +222,7 @@ export function DashboardPage() {
   }));
   const tokenCount = tokens?.length ?? 0;
   const activeTokenCount = tokens?.filter((token) => token.status === 1).length ?? tokenCount;
-  const isSummaryLoading = isUserLoading || isLoading || isTokensLoading;
+  const isSummaryLoading = isUserLoading || isLoading || isTokensLoading || isSubscriptionLoading;
   const displayName = user?.display_name || user?.username || t("用户");
 
   // Model distribution from backend
@@ -226,12 +253,12 @@ export function DashboardPage() {
             <MetricCardsSkeleton count={6} />
         ) : (
           <>
-            <MetricCard title={t("钱包余额")} value={formatMoney(balance)} subtitle={t("可用余额")} tone="orange" icon={WalletCards} />
-            <MetricCard title={t("已用金额")} value={`$${formatAmount(usedAmount, 4)}`} subtitle={t("累计消耗")} tone="purple" icon={Sparkles} />
-            <MetricCard title={t("调用次数")} value={requestCount.toLocaleString(locale())} subtitle={t(`今日 ${todayRequests.toLocaleString(locale())}`)} tone="green" icon={BarChart3} />
-            <MetricCard title={t("API 密钥")} value={tokenCount.toLocaleString(locale())} subtitle={t(`可用 ${activeTokenCount.toLocaleString(locale())}`)} tone="blue" icon={KeyRound} />
-            <MetricCard title={t("今日消耗")} value={`$${formatAmount(todayAmount, 4)}`} subtitle={t(`今日 Token ${compactNumber(todayPromptTokens + todayCompletionTokens)} / 缓存 ${compactNumber(todayCacheReadTokens)}`)} tone="amber" icon={Box} />
-            <MetricCard title={t("平均延迟")} value={avgLatency > 0 ? `${(avgLatency / 1000).toFixed(2)}s` : "-"} subtitle={avgLatency > 0 ? t(`${totalCount} 次调用`) : t("暂无数据")} tone="blue" icon={Zap} />
+            <MetricCard title={t("钱包余额")} value={isDashboardUnavailable ? '—' : formatMoney(balance)} subtitle={t(isDashboardUnavailable ? '用量统计暂不可用' : '可用余额')} tone="orange" icon={WalletCards} />
+            <MetricCard title={t("已用金额")} value={isDashboardUnavailable ? '—' : `$${formatAmount(usedAmount, 4)}`} subtitle={t(isDashboardUnavailable ? '用量统计暂不可用' : '累计消耗')} tone="purple" icon={Sparkles} />
+            <MetricCard title={t("调用次数")} value={isDashboardUnavailable ? '—' : requestCount.toLocaleString(locale())} subtitle={isDashboardUnavailable ? t('用量统计暂不可用') : t(`今日 ${todayRequests.toLocaleString(locale())}`)} tone="green" icon={BarChart3} />
+            <MetricCard title={t("API 密钥")} value={isTokensError ? '—' : tokenCount.toLocaleString(locale())} subtitle={isTokensError ? t('密钥统计暂不可用') : t(`可用 ${activeTokenCount.toLocaleString(locale())}`)} tone="blue" icon={KeyRound} />
+            <MetricCard title={t("今日消耗")} value={todayConsumption} subtitle={todayConsumptionSubtitle} tone="amber" icon={Box} />
+            <MetricCard title={t("平均延迟")} value={isDashboardUnavailable ? '—' : avgLatency > 0 ? `${(avgLatency / 1000).toFixed(2)}s` : "-"} subtitle={isDashboardUnavailable ? t('用量统计暂不可用') : avgLatency > 0 ? t(`${totalCount} 次调用`) : t("暂无数据")} tone="blue" icon={Zap} />
           </>
         )}
       </section>
@@ -296,6 +323,8 @@ export function DashboardPage() {
           <CardContent className="p-6">
             {isLoading ? (
               <ChartSkeleton />
+            ) : isDashboardUnavailable ? (
+              <EmptyState title={t('用量统计暂不可用')} />
             ) : chartData.length === 0 ? (
               <EmptyState title={t("暂无使用数据")} description={t("请求完成后会在这里展示 Token 使用趋势。")} />
             ) : (
@@ -356,6 +385,8 @@ export function DashboardPage() {
           <CardContent className="p-6">
             {isLoading ? (
               <ChartSkeleton />
+            ) : isDashboardUnavailable ? (
+              <EmptyState title={t('用量统计暂不可用')} />
             ) : totalTokens === 0 ? (
               <EmptyState title={t("暂无分布数据")} description={t("产生 Token 消耗后会展示占比。")} />
             ) : (

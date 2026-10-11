@@ -24,6 +24,7 @@ func TestCompletedIAMBusinessRouteShapes(t *testing.T) {
 		{http.MethodPut, "/api/v1/admin/routing-groups/2/user-price/3", true},
 		{http.MethodGet, "/api/v1/admin/routing-access/3/available", true},
 		{http.MethodPost, "/api/v1/admin/subscriptions/2/revoke", true},
+		{http.MethodGet, "/api/v1/admin/subscriptions/progress", true},
 		{http.MethodDelete, "/api/v1/admin/subscription-plans/2", true},
 		{http.MethodGet, "/api/admin/models/2/channels", true},
 		{http.MethodGet, "/api/channel/disable/9", true},
@@ -38,6 +39,8 @@ func TestCompletedIAMBusinessRouteShapes(t *testing.T) {
 		{http.MethodPost, "/api/v1/admin/accounts/2/balance:reset/extra", false},
 		{http.MethodGet, "/api/admin/configs/ns/key/extra", false},
 		{http.MethodPost, "/api/v1/admin/subscriptions/2/unknown", false},
+		{http.MethodPost, "/api/v1/admin/subscriptions/progress", false},
+		{http.MethodGet, "/api/v1/admin/subscriptions/progress/extra", false},
 	} {
 		t.Run(tc.method+tc.path, func(t *testing.T) {
 			require.Equal(t, tc.ready, iamUserRouteReady(httptest.NewRequest(tc.method, tc.path, nil)))

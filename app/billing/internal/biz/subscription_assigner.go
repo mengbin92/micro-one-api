@@ -104,16 +104,32 @@ func (a *paymentSubscriptionAssigner) assignGroup(ctx context.Context, tx subscr
 	if err != nil || userID <= 0 {
 		return fmt.Errorf("invalid payment order user_id %q", order.UserID)
 	}
+	snapshot, err := DecodePlanSnapshot(order.PlanSnapshot)
+	if err != nil {
+		return err
+	}
+	var pricePaid int64
+	if snapshot.PriceConversion != nil {
+		pricePaid = snapshot.PriceQuota
+	}
 	group, err := a.groups.GetGroupByID(ctx, order.GroupID)
 	if err != nil {
 		return err
 	}
-	if group.DurationDays <= 0 {
-		return fmt.Errorf("subscription group %d duration_days must be positive", order.GroupID)
-	}
 	name := group.DisplayName
 	if name == "" {
 		name = group.Name
+	}
+	durationDays := group.DurationDays
+	if snapshot.PriceConversion != nil {
+		if snapshot.GroupID != order.GroupID || snapshot.ValidityDays <= 0 {
+			return ErrRoutingContextInvalid
+		}
+		name = snapshot.Name
+		durationDays = snapshot.ValidityDays
+	}
+	if durationDays <= 0 {
+		return fmt.Errorf("subscription group %d duration_days must be positive", order.GroupID)
 	}
 	now := a.now().Unix()
 	metadata, _ := jsonx.Marshal(map[string]string{
@@ -122,11 +138,12 @@ func (a *paymentSubscriptionAssigner) assignGroup(ctx context.Context, tx subscr
 	})
 	req := &subscriptionbiz.AssignSubscriptionRequest{
 		LegacyPurchase: true, SourceOrder: order.TradeNo,
+		PricePaid:        pricePaid,
 		UserID:           userID,
 		GroupID:          order.GroupID,
 		SubscriptionName: name,
 		StartsAt:         now,
-		ExpiresAt:        now + int64(group.DurationDays)*subscriptionSecondsPerDay,
+		ExpiresAt:        now + int64(durationDays)*subscriptionSecondsPerDay,
 		Metadata:         string(metadata),
 	}
 	var sub *subscriptionbiz.UserSubscription
@@ -231,7 +248,7 @@ func (a *paymentSubscriptionAssigner) assignFromSnapshot(ctx context.Context, tx
 		return errors.New("plan snapshot group_id is required")
 	}
 	durationDays := order.AssetAmount
-	if durationDays <= 0 {
+	if snap.PriceConversion != nil || durationDays <= 0 {
 		durationDays = int64(snap.ValidityDays)
 	}
 	if durationDays <= 0 {

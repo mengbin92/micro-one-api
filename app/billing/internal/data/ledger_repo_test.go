@@ -378,7 +378,7 @@ func TestLedgerRepo_AggregateLedgerByDate(t *testing.T) {
 		sqlDB.Close()
 	}()
 
-	now := time.Now()
+	now := time.Now().UTC()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, now.Location())
 	yesterday := today.AddDate(0, 0, -1)
 
@@ -563,6 +563,45 @@ func TestLedgerRepo_AggregateUsage_ByType_AllTypes(t *testing.T) {
 	assert.Equal(t, int64(140), byType["consume"])
 	assert.Equal(t, int64(1000), byType["recharge"])
 	assert.Equal(t, int64(1140), totals.Quota)
+}
+
+func TestLedgerRepo_AggregateUsage_TimeBuckets(t *testing.T) {
+	for _, dimension := range []string{biz.UsageDimDay, biz.UsageDimHour} {
+		t.Run(dimension, func(t *testing.T) {
+			db := setupLedgerTestDB(t)
+			defer func() {
+				sqlDB, _ := db.DB()
+				_ = sqlDB.Close()
+			}()
+			start := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+			for i, offset := range []time.Duration{65 * time.Minute, 95 * time.Minute, 125 * time.Minute} {
+				require.NoError(t, db.Exec(`INSERT INTO billing_ledgers (user_id, amount, type, created_at) VALUES (?, ?, ?, ?)`, "time-buckets", -(i+1)*100, "consume", start.Add(offset)).Error)
+			}
+			repo := NewLedgerRepo(&Data{db: db})
+			buckets, totals, err := repo.AggregateUsage(context.Background(), biz.UsageFilter{GroupBy: []string{dimension}, UserID: "time-buckets", Type: "consume", StartTime: start, EndTime: start.Add(24 * time.Hour)})
+			require.NoError(t, err)
+			require.EqualValues(t, 600, totals.Quota)
+			require.EqualValues(t, 3, totals.Count)
+			if dimension == biz.UsageDimDay {
+				require.Len(t, buckets, 1)
+				require.Equal(t, "2026-10-11", buckets[0].Day)
+				require.EqualValues(t, 600, buckets[0].Quota)
+				require.EqualValues(t, 3, buckets[0].Count)
+			} else {
+				require.Len(t, buckets, 2)
+				byHour := map[string]*biz.UsageBucket{}
+				for _, bucket := range buckets {
+					byHour[bucket.Hour] = bucket
+				}
+				require.Contains(t, byHour, "2026-10-11 01")
+				require.Contains(t, byHour, "2026-10-11 02")
+				require.EqualValues(t, 300, byHour["2026-10-11 01"].Quota)
+				require.EqualValues(t, 2, byHour["2026-10-11 01"].Count)
+				require.EqualValues(t, 300, byHour["2026-10-11 02"].Quota)
+				require.EqualValues(t, 1, byHour["2026-10-11 02"].Count)
+			}
+		})
+	}
 }
 
 // TestLedgerRepo_CreateLedgerPersistsCacheCreationBuckets verifies the PR 3

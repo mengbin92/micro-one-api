@@ -32,6 +32,26 @@ func handleCurrentSubscriptionProgress(w http.ResponseWriter, r *http.Request, s
 	writeSubscriptionResponse(w, progress, err)
 }
 
+func handleManagedSubscriptionProgress(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	userID := getQueryInt64(r, "user_id", 0)
+	if userID <= 0 {
+		writeJSON(w, http.StatusBadRequest, apiResponse(false, "positive user_id is required", nil))
+		return
+	}
+	if err := svc.AuthorizeSection(r.Context(), "admin.subscription.user_subscriptions", false, "subscription.user_subscription.read"); err != nil {
+		writeSubscriptionResponse(w, nil, err)
+		return
+	}
+	// The owner checks the operator's read scope against this user's active
+	// subscription through the regular managed resource authorization.
+	progress, err := svc.GetSubscriptionProgress(r.Context(), userID)
+	writeSubscriptionResponse(w, progress, err)
+}
+
 // handlePurchasableSubscriptionGroups lists the subscription groups a user may
 // buy for themselves. Any authenticated user may read the catalogue.
 func handlePurchasableSubscriptionGroups(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -373,8 +393,8 @@ func handlePurchaseSubscriptionWithPayment(w http.ResponseWriter, r *http.Reques
 		GroupID    int64  `json:"group_id"`
 		PlanID     int64  `json:"plan_id"`
 		Channel    string `json:"channel"`     // Optional: payment channel (default: alipay)
-		MoneyCents int64  `json:"money_cents"` // Optional: amount in cents (default: price * 100)
-		Currency   string `json:"currency"`    // Optional: currency code (default: CNY)
+		MoneyCents int64  `json:"money_cents"` // Optional quote: must match the configured CNY price.
+		Currency   string `json:"currency"`    // Optional: CNY; other currencies are rejected.
 	}
 	if !decodeBody(w, r, &req) {
 		return
@@ -511,21 +531,24 @@ func subscriptionResponse(sub *subscriptionbiz.UserSubscription) subscriptionDTO
 }
 
 type subscriptionGroupDTO struct {
-	ID               int64    `json:"id"`
-	Revision         int64    `json:"revision"`
-	Name             string   `json:"name"`
-	DisplayName      string   `json:"display_name"`
-	Platform         string   `json:"platform"`
-	SubscriptionType string   `json:"subscription_type"`
-	DailyLimitUSD    *float64 `json:"daily_limit_usd"`
-	WeeklyLimitUSD   *float64 `json:"weekly_limit_usd"`
-	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
-	RateMultiplier   float64  `json:"rate_multiplier"`
-	Status           int32    `json:"status"`
-	PriceQuota       int64    `json:"price_quota"`
-	DurationDays     int32    `json:"duration_days"`
-	CreatedAt        int64    `json:"created_at"`
-	UpdatedAt        int64    `json:"updated_at"`
+	ID                int64    `json:"id"`
+	Revision          int64    `json:"revision"`
+	Name              string   `json:"name"`
+	DisplayName       string   `json:"display_name"`
+	Platform          string   `json:"platform"`
+	SubscriptionType  string   `json:"subscription_type"`
+	DailyLimitUSD     *float64 `json:"daily_limit_usd"`
+	WeeklyLimitUSD    *float64 `json:"weekly_limit_usd"`
+	MonthlyLimitUSD   *float64 `json:"monthly_limit_usd"`
+	RateMultiplier    float64  `json:"rate_multiplier"`
+	Status            int32    `json:"status"`
+	PriceQuota        int64    `json:"price_quota"`
+	PriceCurrency     string   `json:"price_currency"`
+	WalletPriceAmount *int64   `json:"wallet_price_amount"`
+	WalletCurrency    string   `json:"wallet_currency"`
+	DurationDays      int32    `json:"duration_days"`
+	CreatedAt         int64    `json:"created_at"`
+	UpdatedAt         int64    `json:"updated_at"`
 }
 
 func groupResponse(group *subscriptionbiz.SubscriptionGroup) subscriptionGroupDTO {
@@ -533,44 +556,50 @@ func groupResponse(group *subscriptionbiz.SubscriptionGroup) subscriptionGroupDT
 		return subscriptionGroupDTO{}
 	}
 	return subscriptionGroupDTO{
-		ID:               group.ID,
-		Revision:         group.Revision,
-		Name:             group.Name,
-		DisplayName:      group.DisplayName,
-		Platform:         group.Platform,
-		SubscriptionType: group.SubscriptionType,
-		DailyLimitUSD:    group.DailyLimitUSD,
-		WeeklyLimitUSD:   group.WeeklyLimitUSD,
-		MonthlyLimitUSD:  group.MonthlyLimitUSD,
-		RateMultiplier:   group.RateMultiplier,
-		Status:           group.Status,
-		PriceQuota:       group.PriceQuota,
-		DurationDays:     group.DurationDays,
-		CreatedAt:        group.CreatedAt,
-		UpdatedAt:        group.UpdatedAt,
+		ID:                group.ID,
+		Revision:          group.Revision,
+		Name:              group.Name,
+		DisplayName:       group.DisplayName,
+		Platform:          group.Platform,
+		SubscriptionType:  group.SubscriptionType,
+		DailyLimitUSD:     group.DailyLimitUSD,
+		WeeklyLimitUSD:    group.WeeklyLimitUSD,
+		MonthlyLimitUSD:   group.MonthlyLimitUSD,
+		RateMultiplier:    group.RateMultiplier,
+		Status:            group.Status,
+		PriceQuota:        group.PriceQuota,
+		PriceCurrency:     "CNY",
+		WalletPriceAmount: walletPriceQuote(group.PriceQuota),
+		WalletCurrency:    "USD",
+		DurationDays:      group.DurationDays,
+		CreatedAt:         group.CreatedAt,
+		UpdatedAt:         group.UpdatedAt,
 	}
 }
 
 type subscriptionPlanDTO struct {
-	Contract      *subscriptionbiz.SubscriptionContract `json:"contract,omitempty"`
-	Coverage      []subscriptionbiz.RoutingCoverage     `json:"coverage"`
-	Revision      int64                                 `json:"revision"`
-	QuotaPolicyID int64                                 `json:"quota_policy_id"`
-	ID            int64                                 `json:"id"`
-	GroupID       int64                                 `json:"group_id"`
-	Name          string                                `json:"name"`
-	Description   string                                `json:"description"`
-	PriceQuota    int64                                 `json:"price_quota"`
-	OriginalPrice *int64                                `json:"original_price,omitempty"`
-	ValidityDays  int32                                 `json:"validity_days"`
-	ValidityUnit  string                                `json:"validity_unit"`
-	Features      string                                `json:"features"`
-	ProductName   string                                `json:"product_name"`
-	ForSale       bool                                  `json:"for_sale"`
-	SortOrder     int32                                 `json:"sort_order"`
-	Group         *subscriptionGroupDTO                 `json:"group,omitempty"`
-	CreatedAt     int64                                 `json:"created_at"`
-	UpdatedAt     int64                                 `json:"updated_at"`
+	Contract          *subscriptionbiz.SubscriptionContract `json:"contract,omitempty"`
+	Coverage          []subscriptionbiz.RoutingCoverage     `json:"coverage"`
+	Revision          int64                                 `json:"revision"`
+	QuotaPolicyID     int64                                 `json:"quota_policy_id"`
+	ID                int64                                 `json:"id"`
+	GroupID           int64                                 `json:"group_id"`
+	Name              string                                `json:"name"`
+	Description       string                                `json:"description"`
+	PriceQuota        int64                                 `json:"price_quota"`
+	PriceCurrency     string                                `json:"price_currency"`
+	WalletPriceAmount *int64                                `json:"wallet_price_amount"`
+	WalletCurrency    string                                `json:"wallet_currency"`
+	OriginalPrice     *int64                                `json:"original_price,omitempty"`
+	ValidityDays      int32                                 `json:"validity_days"`
+	ValidityUnit      string                                `json:"validity_unit"`
+	Features          string                                `json:"features"`
+	ProductName       string                                `json:"product_name"`
+	ForSale           bool                                  `json:"for_sale"`
+	SortOrder         int32                                 `json:"sort_order"`
+	Group             *subscriptionGroupDTO                 `json:"group,omitempty"`
+	CreatedAt         int64                                 `json:"created_at"`
+	UpdatedAt         int64                                 `json:"updated_at"`
 }
 
 func planResponse(plan *subscriptionbiz.SubscriptionPlan) subscriptionPlanDTO {
@@ -584,22 +613,33 @@ func planResponse(plan *subscriptionbiz.SubscriptionPlan) subscriptionPlanDTO {
 	}
 	return subscriptionPlanDTO{
 		Contract: plan.Contract, Coverage: plan.Coverage, Revision: plan.Revision, QuotaPolicyID: plan.GroupID,
-		ID:            plan.ID,
-		GroupID:       plan.GroupID,
-		Name:          plan.Name,
-		Description:   plan.Description,
-		PriceQuota:    plan.PriceQuota,
-		OriginalPrice: plan.OriginalPrice,
-		ValidityDays:  plan.ValidityDays,
-		ValidityUnit:  plan.ValidityUnit,
-		Features:      plan.Features,
-		ProductName:   plan.ProductName,
-		ForSale:       plan.ForSale,
-		SortOrder:     plan.SortOrder,
-		Group:         group,
-		CreatedAt:     plan.CreatedAt,
-		UpdatedAt:     plan.UpdatedAt,
+		ID:                plan.ID,
+		GroupID:           plan.GroupID,
+		Name:              plan.Name,
+		Description:       plan.Description,
+		PriceQuota:        plan.PriceQuota,
+		PriceCurrency:     "CNY",
+		WalletPriceAmount: walletPriceQuote(plan.PriceQuota),
+		WalletCurrency:    "USD",
+		OriginalPrice:     plan.OriginalPrice,
+		ValidityDays:      plan.ValidityDays,
+		ValidityUnit:      plan.ValidityUnit,
+		Features:          plan.Features,
+		ProductName:       plan.ProductName,
+		ForSale:           plan.ForSale,
+		SortOrder:         plan.SortOrder,
+		Group:             group,
+		CreatedAt:         plan.CreatedAt,
+		UpdatedAt:         plan.UpdatedAt,
 	}
+}
+
+func walletPriceQuote(priceCNY int64) *int64 {
+	amount, err := subscriptionbiz.WalletPriceAmount(priceCNY)
+	if err != nil {
+		return nil
+	}
+	return &amount
 }
 
 // handleRefundPaymentOrder lets an admin reverse a paid subscription order. The

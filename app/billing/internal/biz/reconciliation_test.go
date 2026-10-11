@@ -21,12 +21,10 @@ type mockReconRepo struct {
 	ledgerConsumeSummary *ConsumeSummary
 	logConsumeSummary    *ConsumeSummary
 	// Phase 2.3 reconciliation coverage fields.
-	refundedOrderCount   int64
-	refundedOrderCents   int64
-	reversalLedgerAmount int64
-	stuckIssuedOrders    []*PaymentOrder
-	activeSubscriptions  []*SubscriptionUsageSnapshot
-	subscriptionCosts    map[int64]map[int64]int64 // subscription id -> window start unix -> amount
+	refundRows          []*RefundReconciliation
+	stuckIssuedOrders   []*PaymentOrder
+	activeSubscriptions []*SubscriptionUsageSnapshot
+	subscriptionCosts   map[int64]map[int64]int64 // subscription id -> window start unix -> amount
 }
 
 type recordingReconciliationRunStore struct {
@@ -112,12 +110,8 @@ func (m *mockReconRepo) SumOverdraftBalances(ctx context.Context) (int64, error)
 	return 0, nil
 }
 
-func (m *mockReconRepo) SumReversalLedgerAmounts(ctx context.Context) (int64, error) {
-	return m.reversalLedgerAmount, nil
-}
-
-func (m *mockReconRepo) CountRefundedOrders(ctx context.Context) (int64, int64, error) {
-	return m.refundedOrderCount, m.refundedOrderCents, nil
+func (m *mockReconRepo) ListRefundReconciliations(context.Context) ([]*RefundReconciliation, error) {
+	return m.refundRows, nil
 }
 
 func (m *mockReconRepo) ListStuckIssuedOrders(ctx context.Context) ([]*PaymentOrder, error) {
@@ -343,9 +337,10 @@ func TestRunReconciliation_LogLedgerConsistency(t *testing.T) {
 // discrepancy is reported (phase 2.3 reconciliation coverage).
 func TestRunReconciliation_RefundReversalConsistent(t *testing.T) {
 	repo := &mockReconRepo{
-		refundedOrderCount:   2,
-		refundedOrderCents:   400000, // 4000 quota
-		reversalLedgerAmount: 4000,   // matches 400000 cents / 100
+		refundRows: []*RefundReconciliation{
+			{TradeNo: "refund1", RefundedOrder: true, MoneyCents: 200000, ReversalLedgerCount: 1, ReversalLedgerAmount: 2000},
+			{TradeNo: "refund2", RefundedOrder: true, MoneyCents: 200000, ReversalLedgerCount: 1, ReversalLedgerAmount: 2000},
+		},
 	}
 	accountRepo := &mockAccountRepo{}
 	reservationRepo := &mockReservationRepo{reservations: make(map[string]*Reservation)}
@@ -360,9 +355,7 @@ func TestRunReconciliation_RefundReversalConsistent(t *testing.T) {
 // refund-specific discrepancy (phase 2.3 reconciliation coverage).
 func TestRunReconciliation_RefundReversalMismatch(t *testing.T) {
 	repo := &mockReconRepo{
-		refundedOrderCount:   1,
-		refundedOrderCents:   200000, // 2000 quota expected
-		reversalLedgerAmount: 1500,   // 500 quota short -> missing reversal
+		refundRows: []*RefundReconciliation{{TradeNo: "short-refund", RefundedOrder: true, MoneyCents: 200000, ReversalLedgerCount: 1, ReversalLedgerAmount: 1500}},
 	}
 	accountRepo := &mockAccountRepo{}
 	reservationRepo := &mockReservationRepo{reservations: make(map[string]*Reservation)}
@@ -382,9 +375,7 @@ func TestRunReconciliation_RefundReversalMismatch(t *testing.T) {
 // case where refunded orders exist but no reversal ledger was written at all.
 func TestRunReconciliation_RefundedOrdersWithoutAnyReversal(t *testing.T) {
 	repo := &mockReconRepo{
-		refundedOrderCount:   3,
-		refundedOrderCents:   600000,
-		reversalLedgerAmount: 0,
+		refundRows: []*RefundReconciliation{{TradeNo: "missing-refund", RefundedOrder: true, MoneyCents: 200000}},
 	}
 	accountRepo := &mockAccountRepo{}
 	reservationRepo := &mockReservationRepo{reservations: make(map[string]*Reservation)}
@@ -392,6 +383,65 @@ func TestRunReconciliation_RefundedOrdersWithoutAnyReversal(t *testing.T) {
 	res, err := uc.RunReconciliation(context.Background())
 	require.NoError(t, err)
 	require.Len(t, res.RefundInconsistencies, 1, "missing reversal must be reported")
+}
+
+func TestRunReconciliation_RefundMixedFrozenRates(t *testing.T) {
+	repo := &mockReconRepo{
+		refundRows: []*RefundReconciliation{
+			{TradeNo: "legacy", UserID: "1", RefundedOrder: true, MoneyCents: 10000, ReversalLedgerCount: 1, ReversalLedgerAmount: 100},
+			{TradeNo: "rate2.5", UserID: "2", RefundedOrder: true, Currency: "CNY", MoneyCents: 5001, PlanSnapshot: `{"plan_id":1,"price_quota":100,"price_conversion":{"version":1,"recharge_multiplier":2.5,"wallet_amount":2500000}}`, ReversalLedgerCount: 1, ReversalLedgerAmount: 1250250},
+			{TradeNo: "group-only-rate10", UserID: "3", RefundedOrder: true, Currency: "CNY", MoneyCents: 5999, PlanSnapshot: `{"plan_id":0,"group_id":3,"price_quota":100,"price_conversion":{"version":1,"recharge_multiplier":10,"wallet_amount":10000000}}`, ReversalLedgerCount: 1, ReversalLedgerAmount: 5999000},
+		},
+	}
+	uc := NewReconciliationUsecase(&mockAccountRepo{}, &mockReservationRepo{}, repo, nil)
+	res, err := uc.RunReconciliation(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, res.RefundInconsistencies)
+}
+
+func TestRunReconciliation_RefundPerOrderPreventsOffsettingErrors(t *testing.T) {
+	repo := &mockReconRepo{
+		refundRows: []*RefundReconciliation{
+			{TradeNo: "short", UserID: "1", RefundedOrder: true, MoneyCents: 10000, ReversalLedgerCount: 1, ReversalLedgerAmount: 99},
+			{TradeNo: "extra", UserID: "2", RefundedOrder: true, MoneyCents: 10000, ReversalLedgerCount: 1, ReversalLedgerAmount: 101},
+		},
+	}
+	res, err := NewReconciliationUsecase(&mockAccountRepo{}, &mockReservationRepo{}, repo, nil).RunReconciliation(context.Background())
+	require.NoError(t, err)
+	require.Len(t, res.RefundInconsistencies, 2)
+	require.Equal(t, int64(1), res.RefundInconsistencies[0].AmountDiff)
+	require.Equal(t, int64(-1), res.RefundInconsistencies[1].AmountDiff)
+}
+
+func TestRunReconciliation_RefundFixedAmountCountAndLegacyFallback(t *testing.T) {
+	repo := &mockReconRepo{refundRows: []*RefundReconciliation{
+		{TradeNo: "one-unit-short", UserID: "1", RefundedOrder: true, Currency: "CNY", MoneyCents: 10000,
+			PlanSnapshot:        `{"plan_id":1,"price_quota":100,"price_conversion":{"version":1,"recharge_multiplier":10,"wallet_amount":10000000}}`,
+			ReversalLedgerCount: 1, ReversalLedgerAmount: 9999999},
+		{TradeNo: "duplicate", UserID: "2", RefundedOrder: true, MoneyCents: 10000, ReversalLedgerCount: 2, ReversalLedgerAmount: 100},
+		{TradeNo: "orphan", UserID: "3", ReversalLedgerCount: 1, ReversalLedgerAmount: 40},
+		{TradeNo: "legacy-fallback", UserID: "4", RefundedOrder: true, MoneyCents: 0,
+			PlanSnapshot: `{"plan_id":1,"price_quota":100}`, ReversalLedgerCount: 1, ReversalLedgerAmount: 100},
+	}}
+	res, err := NewReconciliationUsecase(&mockAccountRepo{}, &mockReservationRepo{}, repo, nil).RunReconciliation(context.Background())
+	require.NoError(t, err)
+	require.Len(t, res.RefundInconsistencies, 3)
+	require.Equal(t, int64(1), res.RefundInconsistencies[0].AmountDiff)
+	require.Zero(t, res.RefundInconsistencies[0].MoneyCentsDiff)
+	require.Equal(t, int64(2), res.RefundInconsistencies[1].ReversalLedgerCount)
+	require.Zero(t, res.RefundInconsistencies[1].AmountDiff)
+	require.Zero(t, res.RefundInconsistencies[2].RefundedOrderCount)
+	require.Equal(t, int64(-40), res.RefundInconsistencies[2].AmountDiff)
+}
+
+func TestRunReconciliation_InvalidRefundSnapshotIsPartial(t *testing.T) {
+	repo := &mockReconRepo{refundRows: []*RefundReconciliation{{TradeNo: "invalid", RefundedOrder: true, MoneyCents: 10000,
+		PlanSnapshot:        `{"plan_id":1,"price_quota":100,"price_conversion":{"version":1,"recharge_multiplier":10,"wallet_amount":1}}`,
+		ReversalLedgerCount: 1, ReversalLedgerAmount: 100}}}
+	res, err := NewReconciliationUsecase(&mockAccountRepo{}, &mockReservationRepo{}, repo, nil).RunReconciliation(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "partial", res.Status)
+	require.Contains(t, res.ErrorMessage, "refund price invalid")
 }
 
 // TestRunReconciliation_StuckIssuance verifies that paid+issued+subscription_id=0

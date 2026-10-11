@@ -108,6 +108,7 @@ func TestPurchaseSubscription_InvalidKeyRejected(t *testing.T) {
 // charge carries the same Idempotency-Key so concurrent upgrade replays cannot
 // double-charge (the second charge is rejected by billing's unique constraint).
 func TestChangeSubscription_ForwardsRequestID(t *testing.T) {
+	t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", "10")
 	billing := &recordingPurchaseBillingClient{}
 	group := &subscriptionbiz.SubscriptionGroup{
 		ID: 5, Name: "G5", DisplayName: "G5",
@@ -138,7 +139,7 @@ func TestChangeSubscription_ForwardsRequestID(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, billing.purchaseReqs, 1, "immediate upgrade must charge the difference")
 	require.Equal(t, "idem-upgrade-1", billing.purchaseReqs[0].GetRequestId())
-	require.Equal(t, int64(1000), billing.purchaseReqs[0].GetPriceAmount())
+	require.Equal(t, int64(100_000_000), billing.purchaseReqs[0].GetPriceAmount())
 }
 
 // TestNormalizeRequestID validates the key normalization contract.

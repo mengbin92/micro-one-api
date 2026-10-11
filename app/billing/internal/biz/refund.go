@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"micro-one-api/domain/authorization"
 	"strconv"
 	"strings"
@@ -176,15 +177,9 @@ func (uc *RefundUsecase) RefundSubscriptionOrder(ctx context.Context, req Refund
 		if snapErr != nil {
 			return fmt.Errorf("decode plan snapshot for refund: %w", snapErr)
 		}
-		// Refund the amount the user actually paid (review H5 fix). The wallet
-		// credit is a store-credit reversal, so it must return what was charged,
-		// not the plan's nominal price. Using the plan's PriceQuota caused
-		// over/under-refunds whenever a discount or coupon changed the paid
-		// amount. The plan snapshot's PriceQuota is only a fallback for legacy
-		// orders that predate a populated money_cents column.
-		refundQuota := order.MoneyCents / 100
-		if refundQuota <= 0 && snap.PriceQuota > 0 {
-			refundQuota = snap.PriceQuota
+		refundQuota, err := subscriptionRefundAmount(order, snap)
+		if err != nil {
+			return fmt.Errorf("refund price conversion: %w", err)
 		}
 		// Credit the wallet back the purchase price in the same transaction that
 		// transitions the order and mutates the subscription entitlement.
@@ -253,10 +248,19 @@ func (uc *RefundUsecase) RefundSubscriptionOrder(ctx context.Context, req Refund
 
 	if !changed && result == nil {
 		// Idempotent re-entry: order was already refunded. Reconstruct a
-		// minimal result so the caller sees a stable response.
+		// minimal result with the same refunded amount, without another credit.
+		snap, err := DecodePlanSnapshot(order.PlanSnapshot)
+		if err != nil {
+			return nil, fmt.Errorf("decode plan snapshot for refunded order: %w", err)
+		}
+		amount, err := subscriptionRefundAmount(order, snap)
+		if err != nil {
+			return nil, err
+		}
 		return &RefundResult{
 			OrderID:              order.ID,
 			TradeNo:              order.TradeNo,
+			RefundedQuota:        amount,
 			ExternalRefundStatus: "unsupported",
 		}, nil
 	}
@@ -281,33 +285,33 @@ func (uc *RefundUsecase) applySubscriptionReversal(ctx context.Context, tx subsc
 		if subID <= 0 {
 			return 0, "", errors.New("shorten refund requires a subscription_id")
 		}
-		// Review M4 fix: prorate the subtraction against the REMAINING time
-		// instead of subtracting the full plan validity. The previous code
-		// subtracted the full validity_days, which (combined with the clamp
-		// at now) made "shorten" behave like "revoke" whenever the
-		// subscription had less remaining time than the full validity — the
-		// common case for any subscription consumed past the refund window.
-		// Prorating by the refund-to-purchase ratio claw back only the
-		// refunded share of the entitlement.
+		// Shorten only the refunded share of the purchased validity.
 		totalSeconds := int64(snap.ValidityDays) * subscriptionSecondsPerDay
 		if totalSeconds <= 0 {
 			return 0, "", errors.New("shorten refund requires a positive plan validity")
 		}
-		refundedQuota := order.MoneyCents / 100
-		if refundedQuota <= 0 && snap.PriceQuota > 0 {
-			refundedQuota = snap.PriceQuota
+		refundedQuota, err := subscriptionRefundAmount(order, snap)
+		if err != nil {
+			return 0, "", err
 		}
 		paidQuota := snap.PriceQuota
 		if paidQuota <= 0 {
 			paidQuota = refundedQuota
 		}
+		numerator, denominator := big.NewInt(refundedQuota), big.NewInt(paidQuota)
+		if snap.PriceConversion != nil {
+			// Wallet credits round to fixed units. Entitlement duration uses
+			// the exact CNY fraction so that rounding cannot change the term.
+			numerator.SetInt64(order.MoneyCents)
+			denominator.Mul(big.NewInt(snap.PriceQuota), big.NewInt(100))
+		}
 		subtract := totalSeconds
-		if paidQuota > 0 && refundedQuota > 0 && refundedQuota <= paidQuota {
-			// Prorate: subtract = remaining * (refunded / paid).
-			// We pass the prorated fraction to ShortenInTx; ShortenInTx
-			// clamps at now so a refund larger than the remaining time
-			// revokes the remainder (no future-dated expiry).
-			subtract = totalSeconds * refundedQuota / paidQuota
+		if denominator.Sign() > 0 && numerator.Sign() > 0 && numerator.Cmp(denominator) <= 0 {
+			// ShortenInTx clamps the resulting expiry at now.
+			// The intermediate product can overflow even when the resulting
+			// duration fits, so both price and duration products stay exact.
+			seconds := new(big.Int).Mul(big.NewInt(totalSeconds), numerator)
+			subtract = seconds.Quo(seconds, denominator).Int64()
 		}
 		if err := uc.subscriptions.ShortenInTx(ctx, tx, subID, subtract); err != nil {
 			return 0, "", fmt.Errorf("shorten subscription: %w", err)
@@ -328,6 +332,23 @@ func (uc *RefundUsecase) applySubscriptionReversal(ctx context.Context, tx subsc
 		}
 		return subID, "revoked", nil
 	}
+}
+
+// subscriptionRefundAmount preserves historical refund units. New snapshots
+// freeze the CNY-to-wallet rate so later configuration changes cannot alter
+// the store credit returned for the actual payment, including cents/discounts.
+func subscriptionRefundAmount(order *PaymentOrder, snap PlanSnapshot) (int64, error) {
+	if snap.PriceConversion != nil {
+		if order.Currency != "CNY" || order.MoneyCents <= 0 {
+			return 0, errors.New("frozen subscription refund requires a positive CNY payment")
+		}
+		return subscriptionbiz.WalletAmountForMoneyCents(order.MoneyCents, snap.PriceConversion.RechargeMultiplier)
+	}
+	amount := order.MoneyCents / 100
+	if amount <= 0 && snap.PriceQuota > 0 {
+		amount = snap.PriceQuota
+	}
+	return amount, nil
 }
 
 func (uc *RefundUsecase) refundSubscriptionID(ctx context.Context, order *PaymentOrder) int64 {

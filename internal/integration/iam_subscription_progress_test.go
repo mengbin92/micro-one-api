@@ -82,6 +82,8 @@ func TestIAMSelfSubscriptionProgressThroughRealOwners(t *testing.T) {
 	require.NoError(t, db.Table("billing_reservations").Create(map[string]any{"reservation_id": "progress-frozen", "user_id": fmt.Sprint(member.ID), "request_id": "progress-frozen", "amount": 2500, "status": "reserved", "model": "fixture", "subscription_id": sub.ID, "subscription_amount_usd": 0.25, "subscription_accounting_usd": 0.5, "subscription_daily_window_start": now, "subscription_weekly_window_start": now, "subscription_monthly_window_start": now, "created_at": time.Now(), "updated_at": time.Now(), "expired_at": time.Now().Add(time.Hour)}).Error)
 	session, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"user_id": member.ID, "role": 100, "token_type": "user_session", "pwd_epoch": 0, "jti": "progress-member", "sub": fmt.Sprint(member.ID), "iss": "micro-one-api", "aud": "micro-one-api-web", "exp": now + 3600}).SignedString([]byte("progress-isolated-jwt"))
 	require.NoError(t, err)
+	rootSession, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"user_id": 1, "token_type": "user_session", "pwd_epoch": 0, "jti": "progress-root", "sub": "1", "iss": "micro-one-api", "aud": "micro-one-api-web", "exp": now + 3600}).SignedString([]byte("progress-isolated-jwt"))
+	require.NoError(t, err)
 	key, err := identity.CreateAccessToken(context.Background(), member.ID, "progress-key", nil, 0)
 	require.NoError(t, err)
 	call := func(handler http.Handler, path, token string) *httptest.ResponseRecorder {
@@ -110,6 +112,10 @@ func TestIAMSelfSubscriptionProgressThroughRealOwners(t *testing.T) {
 		require.InDelta(t, 8.25, *reply.Data.DailyUsed.Available, 1e-9)
 	}
 	assertProgress(call(admin, "/api/v1/subscriptions/progress", session))
+	managedProgressPath := fmt.Sprintf("/api/v1/admin/subscriptions/progress?user_id=%d", member.ID)
+	assertProgress(call(admin, managedProgressPath, rootSession))
+	require.Equal(t, 403, call(admin, managedProgressPath, session).Code, "untrusted role claim cannot grant managed progress access")
+	require.Equal(t, 403, call(admin, fmt.Sprintf("/api/v1/subscriptions/progress?user_id=%d", member.ID), rootSession).Code, "self progress remains self-only even for root")
 	assertProgress(call(relayHTTP, "/v1/subscription/usage?user_id=1", key.Key))
 	rootKey, err := identity.CreateAccessToken(context.Background(), 1, "progress-no-subscription", nil, 0)
 	require.NoError(t, err)
@@ -119,6 +125,7 @@ func TestIAMSelfSubscriptionProgressThroughRealOwners(t *testing.T) {
 	require.Equal(t, 403, call(admin, "/api/v1/subscriptions/progress?user_id=1", session).Code)
 	for _, token := range []string{"", "invalid-session"} {
 		require.Equal(t, 401, call(admin, "/api/v1/subscriptions/progress", token).Code)
+		require.Equal(t, 401, call(admin, managedProgressPath, token).Code)
 		require.Equal(t, 401, call(relayHTTP, "/v1/subscription/usage", token).Code)
 	}
 	_, err = adminBilling.GetSubscriptionUsage(context.Background(), &billingv1.GetSubscriptionUsageRequest{UserId: member.ID, SelfRequest: true})
@@ -141,4 +148,6 @@ func TestIAMSelfSubscriptionProgressThroughRealOwners(t *testing.T) {
 	require.Equal(t, 401, call(admin, "/api/v1/subscriptions/progress", session).Code)
 	_, err = adminBilling.GetSubscriptionUsage(operator, &billingv1.GetSubscriptionUsageRequest{UserId: member.ID, SelfRequest: true})
 	require.Equal(t, codes.Unauthenticated, status.Code(err), "owner must independently reject the password-revoked session")
+	require.NoError(t, db.Table("users").Where("id = ?", 1).Update("password_changed_at", time.Now().UnixMilli()).Error)
+	require.Equal(t, 401, call(admin, managedProgressPath, rootSession).Code, "managed progress must also reject password-revoked operators")
 }

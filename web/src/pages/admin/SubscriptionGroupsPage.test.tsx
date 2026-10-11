@@ -61,7 +61,7 @@ describe('AdminSubscriptionGroupsPage', () => {
     expect(row?.textContent).toContain('Anthropic / Claude');
     expect(row?.textContent).toContain('$10'); // daily limit
     expect(row?.textContent).toContain('不限'); // weekly limit is null
-    expect(row?.textContent).toContain('$10.00 / 30天');
+    expect(row?.textContent).toContain('¥10.00 / 30天');
   });
 
   it('creates a group, sending null for empty limits', async () => {
@@ -85,8 +85,8 @@ describe('AdminSubscriptionGroupsPage', () => {
     await screen.findByText('暂无订阅额度策略');
     await userEvent.click(screen.getByRole('button', { name: /新建额度策略/ }));
     await userEvent.type(screen.getByLabelText('名称(唯一)'), 'team-plan');
-    await userEvent.clear(screen.getByLabelText('购买价格(USD)'));
-    await userEvent.type(screen.getByLabelText('购买价格(USD)'), '10');
+    await userEvent.clear(screen.getByLabelText('购买价格(CNY)'));
+    await userEvent.type(screen.getByLabelText('购买价格(CNY)'), '10');
     await userEvent.clear(screen.getByLabelText('有效期(天)'));
     await userEvent.type(screen.getByLabelText('有效期(天)'), '30');
     await userEvent.click(screen.getByRole('button', { name: /创建/ }));
