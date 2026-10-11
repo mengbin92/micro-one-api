@@ -93,14 +93,14 @@ func (s *suite) legacy() {
 	s.state.UserID = user.UserId
 	s.state.Session = login.Token
 	s.adminAPI("POST", "/api/channel", object{"name": "routing-legacy", "type": 1, "base_url": "http://mock-upstream:9999", "key": "sk-routing-fixture", "models": "gpt-3.5-turbo", "group": "default", "priority": 1, "weight": 1})
-	s.adminAPI("POST", "/v1/topup", object{"user_id": fmt.Sprint(user.UserId), "amount": 50000000, "remark": "isolated routing acceptance"})
+	s.adminAPI("POST", "/v1/topup", object{"user_id": fmt.Sprint(user.UserId), "amount": 1000000000, "remark": "isolated routing acceptance"})
 	v := s.api("POST", "/api/token", s.state.Session, object{"name": "routing-legacy", "models": []string{"gpt-3.5-turbo"}, "unlimited_quota": true}, "")
 	s.state.Legacy = v["key"].(string)
 	reliability := s.api("POST", "/api/token", s.state.Session, object{"name": "r-batch", "unlimited_quota": true}, "")
 	s.state.Reliability = reliability["key"].(string)
 	s.chat(s.state.Legacy, "routing-legacy", false)
 	require.Nil(s.t, s.settled("routing-legacy"))
-	require.Less(s.t, s.balance(), int64(50000000))
+	require.Less(s.t, s.balance(), int64(1000000000))
 	quota := s.adminAPI("POST", "/api/v1/admin/subscription-groups", object{"name": "legacy-policy", "display_name": "legacy-policy", "rate_multiplier": 1, "daily_limit_usd": 1, "weekly_limit_usd": 7, "monthly_limit_usd": 30, "status": 1})
 	plan := s.adminAPI("POST", "/api/v1/admin/subscription-plans", object{"group_id": quota["id"], "name": "legacy-plan", "price_quota": 1000, "validity_days": 30, "for_sale": true})
 	sub := s.purchase(num(plan["id"]), "routing-legacy-purchase")
