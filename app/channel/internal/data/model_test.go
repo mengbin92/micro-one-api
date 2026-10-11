@@ -277,6 +277,10 @@ func TestRepository_ListModelsFiltering(t *testing.T) {
 	require.NoError(t, repo.CreateModel(ctx, &biz.Model{ModelID: "openai-1", DisplayName: "O1", Provider: "openai", Status: biz.ModelStatusEnabled}))
 	require.NoError(t, repo.CreateModel(ctx, &biz.Model{ModelID: "anthropic-1", DisplayName: "A1", Provider: "anthropic", Status: biz.ModelStatusEnabled}))
 	require.NoError(t, repo.CreateModel(ctx, &biz.Model{ModelID: "openai-2", DisplayName: "O2", Provider: "openai", Status: biz.ModelStatusDisabled}))
+	require.NoError(t, repo.db.Exec(`INSERT INTO channels (id, name, status) VALUES (1, 'active', 1)`).Error)
+	active, err := repo.GetModelByID(ctx, "openai-1")
+	require.NoError(t, err)
+	require.NoError(t, repo.UpsertChannelMapping(ctx, &biz.ModelChannelMapping{ChannelID: 1, ModelPK: active.ID, Enabled: true, EnabledHasValue: true}))
 
 	models, total, err := repo.ListModels(ctx, 1, 10, biz.ListModelsFilter{Provider: "openai"})
 	require.NoError(t, err)

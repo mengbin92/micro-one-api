@@ -212,19 +212,3 @@ func TestStatusCodeFromError(t *testing.T) {
 		})
 	}
 }
-
-func TestChunkReadCloserSkipsEmptyChunks(t *testing.T) {
-	chunks := make(chan []byte, 3)
-	chunks <- nil
-	chunks <- []byte{}
-	chunks <- []byte("ok")
-	close(chunks)
-
-	body, err := io.ReadAll(newChunkReadCloser(chunks))
-	if err != nil {
-		t.Fatalf("ReadAll() error = %v", err)
-	}
-	if string(body) != "ok" {
-		t.Fatalf("body = %q, want ok", string(body))
-	}
-}

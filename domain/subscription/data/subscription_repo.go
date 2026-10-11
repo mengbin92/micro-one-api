@@ -288,7 +288,11 @@ func (r *Repository) createSubscriptionInTxDB(ctx context.Context, tx *gorm.DB, 
 			}
 		}
 		if !biz.EntitlementsEnabled() && subscription.Contract == nil {
-			if err := db.Omit("ContractSnapshot", "EntitlementRevision", "SourceOrder", "PricePaid").Create(&model).Error; err != nil {
+			omit := []string{"ContractSnapshot", "EntitlementRevision", "SourceOrder"}
+			if subscription.PricePaid == 0 {
+				omit = append(omit, "PricePaid")
+			}
+			if err := db.Omit(omit...).Create(&model).Error; err != nil {
 				return err
 			}
 			return auditOperations(ctx, db, model.ID, subscriptionWriteOps...)

@@ -386,16 +386,7 @@ func (r *ledgerRepo) AggregateLedgerByDate(ctx context.Context, userID string, l
 		ledgerType = biz.LedgerTypeConsume
 	}
 
-	// Build dialect-specific date expression
-	var dateExpr string
-	switch r.data.db.Dialector.Name() {
-	case "postgres":
-		dateExpr = `TO_CHAR(created_at, 'YYYY-MM-DD')`
-	case "mysql":
-		dateExpr = `DATE_FORMAT(created_at, '%Y-%m-%d')`
-	default: // sqlite
-		dateExpr = `strftime('%Y-%m-%d', created_at)`
-	}
+	dateExpr := ledgerTimeBucketSQL(r.data.db.Dialector.Name(), false)
 
 	dailyQuery := r.data.db.WithContext(ctx).Model(&ledgerModel{}).
 		Select(dateExpr+` as date,
@@ -492,7 +483,7 @@ func (r *ledgerRepo) AggregateUsage(ctx context.Context, filter biz.UsageFilter)
 	// Empty Type means "all types"; the previous default-to-consume
 	// behaviour was a bug in the dual-track port. The caller decides
 	// whether to scope the aggregate; we never impose a default.
-	groupCols, selectCols, joinSQL := usageQueryParts(filter.GroupBy)
+	groupCols, selectCols, joinSQL := usageQueryParts(filter.GroupBy, r.data.db.Dialector.Name())
 	if groupCols == "" {
 		return nil, nil, fmt.Errorf("no group_by dimensions")
 	}
@@ -624,7 +615,23 @@ func (r *ledgerRepo) AggregateUsage(ctx context.Context, filter biz.UsageFilter)
 	return buckets, totals, nil
 }
 
-func usageQueryParts(groupBy []string) (groupCols, selectCols, joinSQL string) {
+func ledgerTimeBucketSQL(dialect string, hourly bool) string {
+	format, postgresFormat := "%Y-%m-%d", "YYYY-MM-DD"
+	if hourly {
+		format += " %H"
+		postgresFormat += " HH24"
+	}
+	switch dialect {
+	case "postgres":
+		return "TO_CHAR(created_at AT TIME ZONE 'UTC', '" + postgresFormat + "')"
+	case "mysql":
+		return "DATE_FORMAT(created_at, '" + format + "')"
+	default:
+		return "strftime('" + format + "', created_at)"
+	}
+}
+
+func usageQueryParts(groupBy []string, dialect string) (groupCols, selectCols, joinSQL string) {
 	cols := []string{
 		"COALESCE(SUM(ABS(amount)), 0) as quota",
 		"COALESCE(SUM(upstream_cost), 0) as upstream_cost",
@@ -654,19 +661,14 @@ func usageQueryParts(groupBy []string) (groupCols, selectCols, joinSQL string) {
 		case biz.UsageDimType:
 			cols = append(cols, "type")
 		case biz.UsageDimDay:
-			// Use DATE_FORMAT for MySQL, strftime for SQLite
-			cols = append(cols, "DATE_FORMAT(created_at, '%Y-%m-%d') as day")
+			cols = append(cols, ledgerTimeBucketSQL(dialect, false)+" as day")
 		case biz.UsageDimHour:
-			// Use DATE_FORMAT for MySQL, strftime for SQLite
-			cols = append(cols, "DATE_FORMAT(created_at, '%Y-%m-%d %H') as hour")
+			cols = append(cols, ledgerTimeBucketSQL(dialect, true)+" as hour")
 		case biz.UsageDimSubscriptionAccount:
 			cols = append(cols, "subscription_account_id")
 		}
 	}
-	// The original code grouped by the user-facing dimension string
-	// (e.g. "channel") which is not a real column; map each
-	// dimension to its bare column name so SQLite's strict
-	// GROUP BY resolution is happy.
+	// Resource dimensions use storage columns; time dimensions use bucket aliases.
 	dimColumn := func(dim string) string {
 		switch dim {
 		case biz.UsageDimUser:
@@ -679,8 +681,6 @@ func usageQueryParts(groupBy []string) (groupCols, selectCols, joinSQL string) {
 			return "token_name"
 		case biz.UsageDimType:
 			return "type"
-		case biz.UsageDimDay, biz.UsageDimHour:
-			return "created_at"
 		case biz.UsageDimSubscriptionAccount:
 			return "subscription_account_id"
 		}

@@ -324,7 +324,7 @@ func (m *mockIdentityRepo) ListTokens(ctx context.Context, userID int64, page, p
 	return result[start:end], total, nil
 }
 
-func (m *mockIdentityRepo) UpdateToken(ctx context.Context, token *Token) error {
+func (m *mockIdentityRepo) UpdateToken(ctx context.Context, token *Token, _ UpdateAccessTokenOptions) error {
 	for key, existing := range m.tokens {
 		if existing.ID == token.ID && existing.UserID == token.UserID {
 			if key != token.Key {

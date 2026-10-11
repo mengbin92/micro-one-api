@@ -26,6 +26,7 @@ const (
 )
 
 type UserSubscription struct {
+	// PricePaid is the nominal CNY plan price used for future upgrade credit.
 	PricePaid           int64                 `json:"price_paid"`
 	Contract            *SubscriptionContract `json:"contract,omitempty"`
 	SourceOrder         string                `json:"source_order,omitempty"`
@@ -105,7 +106,7 @@ type SubscriptionGroup struct {
 	// RateMultiplier scales quota-window consumption, after routing-group pricing.
 	RateMultiplier float64 `json:"rate_multiplier"`
 	Status         int32   `json:"status"`
-	// PriceQuota stores the configured self-purchase price amount. The JSON/DB
+	// PriceQuota stores the configured self-purchase price in whole CNY. The JSON/DB
 	// name is kept for compatibility with earlier quota-based pricing.
 	PriceQuota   int64 `json:"price_quota"`
 	DurationDays int32 `json:"duration_days"`
@@ -122,7 +123,7 @@ type SubscriptionPlan struct {
 	GroupID       int64                 `json:"group_id"`
 	Name          string                `json:"name"`
 	Description   string                `json:"description"`
-	PriceQuota    int64                 `json:"price_quota"`
+	PriceQuota    int64                 `json:"price_quota"` // nominal whole CNY
 	OriginalPrice *int64                `json:"original_price,omitempty"`
 	ValidityDays  int32                 `json:"validity_days"`
 	ValidityUnit  string                `json:"validity_unit"`

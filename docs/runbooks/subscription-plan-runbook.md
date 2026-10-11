@@ -2,7 +2,7 @@
 
 > 对应 `docs/design/subscription-follow-up-roadmap.md` 阶段 4：文档与 Runbook。
 > 适用版本：v0.5.0+（含 `subscription_groups`、`subscription_plans`、`user_subscriptions`、`payment_orders.plan_snapshot`）。
-> 相关语义文档：[续费语义](../design/subscription-renewal-semantics.md)、[退款/冲正语义](../design/subscription-refund-reversal-semantics.md)。
+> 相关语义文档：[售价与钱包金额](../design/subscription-price-units.md)、[续费语义](../design/subscription-renewal-semantics.md)、[退款/冲正语义](../design/subscription-refund-reversal-semantics.md)。
 > 相关 runbook：[生产发布 Runbook](./subscription-production-runbook.md)、[订阅账号 OAuth 绑定 Runbook](./subscription-oauth-binding-runbook.md)。
 
 本 runbook 让新部署人员只按本文档即可完成订阅套餐的上架、测试购买、支付回调发放与下架，并验证已下架套餐不影响已下单订单。
@@ -31,7 +31,7 @@
 | `daily_limit_usd` / `weekly_limit_usd` / `monthly_limit_usd` | ⬜ | 用户订阅的窗口额度（USD），留空=不限 |
 | `rate_multiplier` | ⬜ | 用户侧订阅扣费倍率，默认 1 |
 | `status` | ✅ | `1`=启用，`0`=禁用。禁用分组上的套餐不可购买 |
-| `price_quota` | ✅（自购） | 自购价格（quota 单位）。`isPurchasableGroup` 要求 > 0 |
+| `price_quota` | ✅（自购） | 自购价格（人民币元，保留历史字段名）。`isPurchasableGroup` 要求 > 0 |
 | `duration_days` | ✅（自购） | 有效期天数。`isPurchasableGroup` 要求 > 0 |
 
 可购买判定（`internal/admin/service/subscription.go` 的 `isPurchasableGroup`）：`status==1 && price_quota>0 && duration_days>0`。
@@ -43,7 +43,7 @@
 | `group_id` | ✅ | 挂载的分组 |
 | `name` | ✅ | 套餐名 |
 | `description` | ⬜ | 描述 |
-| `price_quota` | ✅ | 价格（quota 单位） |
+| `price_quota` | ✅ | 价格（人民币元，保留历史字段名） |
 | `original_price` | ⬜ | 划线原价，留空不展示 |
 | `validity_days` | ✅ | 有效期天数 |
 | `validity_unit` | ⬜ | 单位展示，默认 `day` |

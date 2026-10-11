@@ -43,6 +43,7 @@ services:
     - 123_add_iam_permission_metadata
 
   channel:
+    - 124_backfill_subscription_account_revision
     - 121_usage_semantic_block_revision
     - 120_model_routing_revision
     - 118_channel_resource_revisions
@@ -161,6 +162,7 @@ services:
     - 000_create_core_tables
     - 105_add_config_revision
     - 122_config_tombstones
+    - 125_backfill_config_revision
 
   notify:
     - 113_notification_management

@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"errors"
+	"math"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/database/authzquery"
 	"strconv"
@@ -64,6 +65,7 @@ func (r *accountRepo) UpdateBalance(ctx context.Context, userID string, delta in
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
@@ -84,10 +86,13 @@ func (r *accountRepo) UpdateBalanceInTx(ctx context.Context, tx subscriptionbiz.
 	if err != nil {
 		return 0, err
 	}
-	newBalance := account.Balance + delta
-	if newBalance < 0 {
+	if delta < 0 && (account.Balance < 0 || delta < -account.Balance) {
 		return 0, biz.ErrInsufficientQuota
 	}
+	if delta > 0 && account.Balance > math.MaxInt64-delta {
+		return 0, errors.New("balance overflow")
+	}
+	newBalance := account.Balance + delta
 
 	if err := db.Table("users").Where("id = ?", userID).Update("balance", newBalance).Error; err != nil {
 		return 0, err

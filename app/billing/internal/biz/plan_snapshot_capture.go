@@ -14,6 +14,33 @@ type PlanSnapshotter interface {
 	CapturePlanSnapshot(ctx context.Context, planID int64) (PlanSnapshot, error)
 }
 
+// GroupSnapshotter captures the canonical CNY price of a legacy group order.
+type GroupSnapshotter interface {
+	CaptureGroupSnapshot(ctx context.Context, groupID int64) (PlanSnapshot, error)
+}
+
+func (a *paymentSubscriptionAssigner) CaptureGroupSnapshot(ctx context.Context, groupID int64) (PlanSnapshot, error) {
+	if a == nil || a.groups == nil {
+		return PlanSnapshot{}, ErrRequestSnapshotUnavailable
+	}
+	group, err := a.groups.GetGroupByID(ctx, groupID)
+	if err != nil {
+		return PlanSnapshot{}, err
+	}
+	if group == nil || group.Status != subscriptionbiz.SubscriptionGroupStatusEnabled || group.PriceQuota <= 0 || group.DurationDays <= 0 {
+		return PlanSnapshot{}, subscriptionbiz.ErrSubscriptionPlanNotSaleable
+	}
+	conversion, err := subscriptionbiz.CapturePriceConversion(group.PriceQuota)
+	if err != nil {
+		return PlanSnapshot{}, err
+	}
+	name := group.DisplayName
+	if name == "" {
+		name = group.Name
+	}
+	return PlanSnapshot{GroupID: group.ID, Name: name, PriceQuota: group.PriceQuota, ValidityDays: group.DurationDays, PriceConversion: conversion}, nil
+}
+
 // paymentPlanSnapshotter is the default implementation backed by the
 // subscription plan repository. It reads the live plan row once and copies the
 // fulfilment-relevant fields into a PlanSnapshot via the canonical
@@ -48,10 +75,10 @@ func (s *paymentPlanSnapshotter) CapturePlanSnapshot(ctx context.Context, planID
 	if plan == nil || plan.ID <= 0 {
 		return PlanSnapshot{}, nil
 	}
+	if !plan.ForSale || plan.PriceQuota <= 0 || plan.ValidityDays <= 0 || plan.Group == nil || plan.Group.Status != subscriptionbiz.SubscriptionGroupStatusEnabled {
+		return PlanSnapshot{}, subscriptionbiz.ErrSubscriptionPlanNotSaleable
+	}
 	if subscriptionbiz.EntitlementsEnabled() {
-		if !plan.ForSale || plan.PriceQuota <= 0 || plan.Group == nil || plan.Group.Status != subscriptionbiz.SubscriptionGroupStatusEnabled {
-			return PlanSnapshot{}, subscriptionbiz.ErrSubscriptionPlanNotSaleable
-		}
 		if plan.Contract != nil {
 			if plan.Contract.Validate() != nil || s.validator == nil {
 				return PlanSnapshot{}, subscriptionbiz.ErrSubscriptionContractInvalid
@@ -63,16 +90,21 @@ func (s *paymentPlanSnapshotter) CapturePlanSnapshot(ctx context.Context, planID
 			}
 		}
 	}
-	return plan.ToPlanSnapshot(), nil
+	snapshot := plan.ToPlanSnapshot()
+	snapshot.PriceConversion, err = subscriptionbiz.CapturePriceConversion(plan.PriceQuota)
+	if err != nil {
+		return PlanSnapshot{}, err
+	}
+	return snapshot, nil
 }
 
-// ApplyPlanSnapshotToOrder encodes the snapshot onto the order's PlanSnapshot
-// field. It is a no-op when the order has no plan_id or the snapshot is zero.
+// ApplyPlanSnapshotToOrder stores a plan or priced legacy-group snapshot.
+// It is a no-op when the snapshot has neither a plan nor a price conversion.
 func ApplyPlanSnapshotToOrder(order *PaymentOrder, snapshot PlanSnapshot) {
 	if order == nil {
 		return
 	}
-	if snapshot.PlanID == 0 {
+	if snapshot.PlanID == 0 && snapshot.PriceConversion == nil {
 		return
 	}
 	order.PlanSnapshot = EncodePlanSnapshot(snapshot)

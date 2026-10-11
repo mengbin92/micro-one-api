@@ -5,7 +5,6 @@ import (
 	"math"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"micro-one-api/pkg/safecast"
@@ -21,6 +20,7 @@ type WeightedSelector struct {
 
 // channelState holds runtime state for a channel.
 type channelState struct {
+	executionSlotLeases
 	consecutiveFailures int
 	failureThreshold    int
 	channel             *Channel
@@ -28,10 +28,10 @@ type channelState struct {
 	currentWeight       int64           // smooth WRR current weight (fixed-point scale)
 	recentLatency       *SlidingWindow  // last 100 request latencies
 	recentErrors        *SlidingCounter // last 60s error count
-	inflight            atomic.Int32    // current in-flight requests
 	maxConcurrent       int32           // max concurrent requests
 	lastFailure         time.Time       // last failure time
 	circuitOpenUntil    int64           // Unix timestamp for circuit open
+	circuitProbeUntil   int64           // UnixNano deadline for a half-open probe lease
 }
 
 // SlidingWindow tracks recent latency values using a fixed-capacity ring
@@ -306,10 +306,11 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 		if !ok {
 			continue
 		}
+		state.reapSlotLeases(now)
 
 		// channel-H1: skip open channels; half-open channels (sentinel) are
 		// eligible but we arm exactly one probe below.
-		if st := state.breakerState(now); st == circuitOpen || state.circuitOpenUntil == circuitHalfOpenSentinel {
+		if st := state.breakerState(now); st == circuitOpen || (state.circuitOpenUntil == circuitHalfOpenSentinel && state.circuitProbeUntil > now) {
 			continue
 		}
 
@@ -342,9 +343,9 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 	// (recordBreakerOutcome in RecordHealth).
 	if best.breakerState(now) == circuitHalfOpen {
 		best.circuitOpenUntil = circuitHalfOpenSentinel
+		best.circuitProbeUntil = now + circuitBreakerOpenDuration.Nanoseconds()
 	}
 
-	best.inflight.Add(1)
 	return best.channel, nil
 }
 
@@ -365,7 +366,7 @@ func (s *WeightedSelector) totalEffectiveWeight(candidates []*Channel, now int64
 			continue
 		}
 		if state, ok := s.channels[ch.ID]; ok {
-			if state.circuitOpenUntil > 0 && state.circuitOpenUntil > now {
+			if state.breakerState(now) == circuitOpen || (state.circuitOpenUntil == circuitHalfOpenSentinel && state.circuitProbeUntil > now) {
 				continue
 			}
 			if state.inflight.Load() >= state.maxConcurrent {
@@ -377,8 +378,25 @@ func (s *WeightedSelector) totalEffectiveWeight(candidates []*Channel, now int64
 	return total
 }
 
+// RecordSlot atomically admits actual execution, including cached selections.
+// Released IDs remain cancelled for a lease period so delayed RPCs cannot
+// resurrect an acquisition after its caller has already cleaned it up.
+func (s *WeightedSelector) RecordSlot(channelID int64, slotID string, acquired bool) bool {
+	if channelID <= 0 || slotID == "" {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state, ok := s.channels[channelID]
+	if !ok {
+		s.updateChannelLocked(&Channel{ID: channelID})
+		state = s.channels[channelID]
+	}
+	return state.recordSlot(slotID, acquired, state.maxConcurrent)
+}
+
 // RecordHealth records a health check result for a channel.
-func (s *WeightedSelector) RecordHealth(channelID int64, success bool, latency int64, err string, releaseSlot ...bool) {
+func (s *WeightedSelector) RecordHealth(channelID int64, success bool, latency int64, err string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -400,11 +418,6 @@ func (s *WeightedSelector) RecordHealth(channelID int64, success bool, latency i
 	}
 	if !success {
 		state.lastFailure = time.Now()
-	}
-
-	// Decrement in-flight
-	if (len(releaseSlot) == 0 || releaseSlot[0]) && state.inflight.Load() > 0 {
-		state.inflight.Add(-1)
 	}
 
 	// channel-H1: if this channel is half-open, the just-recorded outcome is
@@ -434,10 +447,8 @@ func (cs *channelState) healthFactor() int32 {
 
 // loadFactor proportionally de-rates a channel as its in-flight count climbs
 // toward maxConcurrent, so a saturated channel receives less traffic than an
-// idle one. Unlike the subscription-account selector (which tracks load in the
-// relay gateway, a different process), the channel WeightedSelector owns the
-// full in-flight lifecycle in-process: Select increments inflight and
-// RecordHealth decrements it, so this factor is live, not inert.
+// idle one. Relay execution slot reports update inflight independently of
+// candidate selection and health probes.
 //
 // Bands are relative to maxConcurrent (default 100) so the same thresholds apply
 // regardless of the configured ceiling: <40% load keeps full weight, ≥90%
@@ -505,12 +516,8 @@ const (
 	circuitHalfOpen
 )
 
-// halfOpenUntil is encoded inside circuitOpenUntil: when the open window
-// elapses the channel flips to half-open by setting circuitOpenUntil to a
-// sentinel far in the future and arming halfOpenProbes; a probe success closes
-// the circuit, a probe failure re-opens it. This keeps the existing
-// "circuitOpenUntil > now means skip" invariant in Select intact while adding
-// a graduated recovery path.
+// An elapsed open window admits one half-open probe. circuitProbeUntil bounds
+// its admission lease when no outcome is reported.
 
 // updateCircuitBreaker updates the circuit breaker state based on recent errors.
 // channel-H1: enforces a minimum-sample threshold and implements a half-open
@@ -553,8 +560,8 @@ func (cs *channelState) breakerState(now int64) circuitState {
 }
 
 // circuitHalfOpenSentinel marks a channel as half-open. It is an arbitrarily
-// large timestamp so the "circuitOpenUntil > now" skip in Select keeps working
-// until a probe resolves the state.
+// large timestamp; circuitProbeUntil bounds admission until a probe resolves
+// or its lease expires after an unreported outcome.
 const circuitHalfOpenSentinel = math.MaxInt64
 
 // recordBreakerOutcome advances the half-open state machine from RecordHealth.
@@ -565,6 +572,7 @@ func (cs *channelState) recordBreakerOutcome(success bool) {
 	if cs.breakerState(now) != circuitHalfOpen {
 		return
 	}
+	cs.circuitProbeUntil = 0
 	if success {
 		cs.recentErrors = NewSlidingCounter(60 * time.Second)
 		cs.consecutiveFailures = 0
@@ -589,7 +597,9 @@ func (s *WeightedSelector) GetStats() map[int64]ChannelStats {
 	defer s.mu.Unlock()
 
 	stats := make(map[int64]ChannelStats)
+	now := time.Now().UnixNano()
 	for id, state := range s.channels {
+		state.reapSlotLeases(now)
 		stats[id] = ChannelStats{
 			ChannelID:     id,
 			Weight:        state.weight,

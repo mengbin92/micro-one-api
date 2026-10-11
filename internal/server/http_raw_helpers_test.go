@@ -154,6 +154,10 @@ func (c rawChannelClient) RecordChannelHealth(ctx context.Context, req *channelv
 	return &channelv1.RecordChannelHealthResponse{Success: true, Message: "ok"}, nil
 }
 
+func (c rawChannelClient) RecordChannelSlot(context.Context, *channelv1.RecordChannelSlotRequest, ...grpc.CallOption) (*channelv1.RecordChannelSlotResponse, error) {
+	return &channelv1.RecordChannelSlotResponse{Success: true}, nil
+}
+
 func (c rawChannelClient) RecordModelUsage(ctx context.Context, req *channelv1.RecordModelUsageRequest, opts ...grpc.CallOption) (*channelv1.RecordModelUsageResponse, error) {
 	return &channelv1.RecordModelUsageResponse{Success: true, Message: "ok"}, nil
 }

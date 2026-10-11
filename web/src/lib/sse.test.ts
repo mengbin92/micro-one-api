@@ -71,6 +71,19 @@ describe('parseSSEStream', () => {
     await expect(collect([`data: ${'x'.repeat(MAX_SSE_EVENT_BYTES)}`])).rejects.toBeInstanceOf(SSEProtocolError);
   });
 
+  it.each([
+    [`data: ${'x'.repeat(MAX_SSE_EVENT_BYTES)}\n\n`],
+    [`data: ${'x'.repeat(MAX_SSE_EVENT_BYTES - 6)}`, 'x\n\n'],
+    [`data: ${'中'.repeat(Math.ceil(MAX_SSE_EVENT_BYTES / 3))}\n\n`],
+  ])('rejects oversized completed events regardless of chunk framing', async (...chunks) => {
+    await expect(collect(chunks).then(events => events.length)).rejects.toBeInstanceOf(SSEProtocolError);
+  });
+
+  it('accepts a large chunk containing several events below the per-event limit', async () => {
+    const data = 'x'.repeat(MAX_SSE_EVENT_BYTES / 2);
+    await expect(collect([`data: ${data}\n\ndata: ${data}\n\n`])).resolves.toHaveLength(2);
+  });
+
   it('cancels the reader when the consumer stops early', async () => {
     let cancelled = false;
     const encoder = new TextEncoder();

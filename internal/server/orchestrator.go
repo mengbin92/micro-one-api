@@ -3,13 +3,13 @@ package server
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"micro-one-api/domain/requesttrace"
 	"net/http"
 	"time"
 
-	"micro-one-api/pkg/jsonx"
 	"micro-one-api/pkg/safecast"
 
 	"google.golang.org/grpc/codes"
@@ -374,6 +374,20 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 					return err
 				}
 			}
+			releaseChannel, slotErr := o.relayUsecase.AcquireChannelSlot(attemptCtx, attemptPlan.Channel)
+			if slotErr != nil {
+				if o.quotaPort != nil {
+					_ = o.quotaPort.Release(attemptCtx, reservation, "channel slot admission rejected")
+				}
+				releaseAdmission()
+				lastFailureStatus = http.StatusServiceUnavailable
+				return slotErr
+			}
+			releaseAccount := releaseAdmission
+			releaseAdmission = func() {
+				releaseChannel()
+				releaseAccount()
+			}
 			if o.streamPort == nil {
 				err := fmt.Errorf("relay stream forwarder unavailable")
 				if o.quotaPort != nil {
@@ -557,6 +571,15 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			}
 		}
 
+		releaseChannel, slotErr := o.relayUsecase.AcquireChannelSlot(attemptCtx, attemptPlan.Channel)
+		if slotErr != nil {
+			if o.quotaPort != nil {
+				_ = o.quotaPort.Release(attemptCtx, reservation, "channel slot admission rejected")
+			}
+			lastFailureStatus = http.StatusServiceUnavailable
+			return slotErr
+		}
+		defer releaseChannel()
 		if o.forwardPort == nil {
 			err := fmt.Errorf("relay forwarder unavailable")
 			if o.quotaPort != nil {
@@ -679,6 +702,10 @@ func statusCodeFromError(err error) int {
 	if err == nil {
 		return http.StatusOK
 	}
+	var retryable *relaybiz.RetryableError
+	if errors.As(err, &retryable) && retryable.Status >= http.StatusBadRequest && retryable.Status <= 599 {
+		return retryable.Status
+	}
 	if apperrors.IsUnauthorized(err) {
 		return http.StatusUnauthorized
 	}
@@ -721,19 +748,7 @@ func endpointPath(endpoint APIEndpoint) string {
 }
 
 func rewriteRequestModel(body []byte, model string) []byte {
-	if model == "" || len(body) == 0 {
-		return body
-	}
-	var payload map[string]any
-	if err := jsonx.Unmarshal(body, &payload); err != nil {
-		return body
-	}
-	payload["model"] = model
-	rewritten, err := jsonx.Marshal(payload)
-	if err != nil {
-		return body
-	}
-	return rewritten
+	return ensureRawModel(body, model)
 }
 
 func mapUpstreamOrInternalStatus(err error) int {
@@ -747,51 +762,6 @@ func mapUpstreamOrInternalStatus(err error) int {
 		return upstreamErr.StatusCode
 	}
 	return http.StatusBadGateway
-}
-
-type chunkReadCloser struct {
-	chunks   <-chan []byte
-	buf      *bytes.Reader
-	onClose  func(relaybiz.UsageEnvelope) error
-	usage    rawUsage
-	closeErr error
-	closed   bool
-}
-
-func newChunkReadCloser(chunks <-chan []byte, onClose ...func(relaybiz.UsageEnvelope) error) io.ReadCloser {
-	var closeFn func(relaybiz.UsageEnvelope) error
-	if len(onClose) > 0 {
-		closeFn = onClose[0]
-	}
-	return &chunkReadCloser{chunks: chunks, buf: bytes.NewReader(nil), onClose: closeFn}
-}
-
-func (r *chunkReadCloser) Read(p []byte) (int, error) {
-	for r.buf.Len() == 0 {
-		chunk, ok := <-r.chunks
-		if !ok {
-			return 0, io.EOF
-		}
-		if len(chunk) == 0 {
-			continue
-		}
-		r.usage = mergeRawUsage(extractRawUsage(chunk, 0), r.usage)
-		r.buf = bytes.NewReader(chunk)
-	}
-	return r.buf.Read(p)
-}
-
-func (r *chunkReadCloser) Close() error {
-	if r.closed {
-		return r.closeErr
-	}
-	r.closed = true
-	for range r.chunks {
-	}
-	if r.onClose != nil {
-		r.closeErr = r.onClose(envelopeFromRawUsage(normalizeRawUsage(r.usage, 0)))
-	}
-	return r.closeErr
 }
 
 func (o *relayOrchestrator) releaseReservedQuota(ctx context.Context, reservation *Reservation, reason string) {

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"micro-one-api/domain/authorization"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/authz"
 	"micro-one-api/platform/iamdto"
@@ -35,12 +36,6 @@ import (
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 	"google.golang.org/protobuf/types/known/timestamppb"
-)
-
-const (
-	amountScale                         = int64(10000)
-	defaultRechargeAmountMultiplier     = 10
-	rechargeAmountMultiplierEnvVariable = "RECHARGE_AMOUNT_MULTIPLIER"
 )
 
 type TurnstileVerifier interface {
@@ -631,7 +626,7 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 	account := resp.GetSnapshot()
 
 	// Fetch aggregated ledger data for usage trend (last 7 days, server-side aggregation)
-	now := time.Now()
+	now := time.Now().UTC()
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	sevenDaysAgo := startOfDay.AddDate(0, 0, -6)
 
@@ -988,19 +983,14 @@ func handleCreatePaymentOrder(w http.ResponseWriter, r *http.Request, uc *biz.Id
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "invalid payment_method"})
 		return
 	}
-	assetUnits := math.Round(req.Amount * rechargeAmountMultiplier() * float64(amountScale))
-	if math.IsNaN(assetUnits) || math.IsInf(assetUnits, 0) || assetUnits >= float64(math.MaxInt64) {
-		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "amount exceeds supported range"})
-		return
-	}
-	assetAmount := int64(assetUnits)
-	if assetAmount <= 0 {
-		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "amount too small"})
-		return
-	}
 	moneyCents := int64(math.Round(req.Amount * 100))
 	if moneyCents <= 0 {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "amount too small"})
+		return
+	}
+	assetAmount, err := subscriptionbiz.WalletAmountForMoneyCents(moneyCents, subscriptionbiz.RechargeAmountMultiplier())
+	if err != nil {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "amount exceeds supported range"})
 		return
 	}
 	resp, err := billingClient.CreatePaymentOrder(billingSelfContext(r.Context()), &billingv1.CreatePaymentOrderRequest{
@@ -1037,18 +1027,6 @@ func handleCreatePaymentOrder(w http.ResponseWriter, r *http.Request, uc *biz.Id
 			"asset_type": resp.GetOrder().GetAssetType(),
 		},
 	})
-}
-
-func rechargeAmountMultiplier() float64 {
-	raw := strings.TrimSpace(os.Getenv(rechargeAmountMultiplierEnvVariable))
-	if raw == "" {
-		return defaultRechargeAmountMultiplier
-	}
-	value, err := strconv.ParseFloat(raw, 64)
-	if err != nil || value <= 0 {
-		return defaultRechargeAmountMultiplier
-	}
-	return value
 }
 
 func handleUserPaymentOrders(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase, billingClient billingv1.BillingServiceClient) {
@@ -1626,7 +1604,7 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 			ExpiredAt      int64    `json:"expired_time"`
 			Status         int32    `json:"status"`
 			RemainQuota    int64    `json:"remain_quota"`
-			UnlimitedQuota bool     `json:"unlimited_quota"`
+			UnlimitedQuota *bool    `json:"unlimited_quota"`
 			Subnet         *string  `json:"subnet"`
 		}
 		req.RemainQuota = -1

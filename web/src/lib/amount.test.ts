@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AMOUNT_SCALE, amountUnitsToCurrencyUnits, currencyUnitsToAmountUnits, formatAmountUnits, formatUSD, quotaPerUnitFromOptions, quotaToCurrencyUnits } from './amount';
+import { AMOUNT_SCALE, amountUnitsToCurrencyUnits, currencyUnitsToAmountUnits, formatAmountUnits, formatCNY, formatSubscriptionUSD, formatUSD, quotaPerUnitFromOptions, quotaToCurrencyUnits } from './amount';
 
 describe('ledger amount display boundaries', () => {
   it('uses the fixed ledger scale even when old quota options are present', () => {
@@ -20,5 +20,32 @@ describe('ledger amount display boundaries', () => {
     expect(formatUSD(1)).toBe('$0.0001');
     expect(formatUSD(-1, 4)).toBe('$-0.0001');
     expect(formatAmountUnits('12345', 2)).toBe('1.23');
+  });
+});
+
+describe('subscription USD display', () => {
+  it.each([
+    [0, '$0.00'],
+    [0.00000001, '$0.00000001'],
+    [1.0249, '$1.0249'],
+    [499.999998, '$499.999998'],
+    [500, '$500.00'],
+    [-1.0249, '$-1.0249'],
+  ] as const)('preserves the stored precision of %s USD', (value, expected) => {
+    expect(formatSubscriptionUSD(value)).toBe(expected);
+  });
+
+  it.each([NaN, Infinity, -Infinity])('does not show an unknown amount %s as zero', value => {
+    expect(formatSubscriptionUSD(value)).toBe('—');
+  });
+});
+
+describe('CNY price display', () => {
+  it.each([[0, '¥0.00'], [100, '¥100.00'], [1.005, '¥1.00'], [-2.5, '¥-2.50']] as const)('rounds %s CNY to fen', (value, expected) => {
+    expect(formatCNY(value)).toBe(expected);
+  });
+
+  it.each([NaN, Infinity, -Infinity])('does not show an unknown price %s as zero', value => {
+    expect(formatCNY(value)).toBe('—');
   });
 });

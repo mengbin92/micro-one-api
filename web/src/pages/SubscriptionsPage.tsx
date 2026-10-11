@@ -4,42 +4,38 @@ import { apiClient } from '@/lib/api';
 import { EmptyState } from '@/components/EmptyState';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  SubscriptionProgressCard,
-  type SubscriptionProgressData,
-} from '@/components/SubscriptionProgress';
+import { SubscriptionProgressCard } from '@/components/SubscriptionProgress';
+import { subscriptionProgressQueryOptions } from '@/lib/account-queries';
+import { unwrapApiData } from '@/lib/api-response';
 import { t } from '@/lib/i18n';
 
 interface UserLimits {
-  user_rpm_limit?: number;
+  user_rpm_limit: number;
 }
 
-function formatRPMLimit(limit?: number) {
-  if (!limit || limit <= 0) return t("不限");
+function formatRPMLimit(limit: number) {
+  if (limit === 0) return t("不限");
   return t(`${limit} 次/分钟`);
 }
 
 export function SubscriptionsPage() {
   const userId = localStorage.getItem('userId');
 
-  const { data: progress, isLoading } = useQuery({
-    queryKey: ['my-subscription-progress', userId],
-    enabled: !!userId && userId !== '0',
-    queryFn: async () => {
-      const res = await apiClient.get(`/v1/subscriptions/progress?user_id=${userId}`);
-      if (res.data?.success === false) return null;
-      return (res.data?.data as SubscriptionProgressData | null) ?? null;
-    },
-  });
+  const { data: progress, isLoading, isSuccess } = useQuery(subscriptionProgressQueryOptions(userId));
 
-  const { data: limits, isLoading: limitsLoading } = useQuery({
+  const { data: limits, isLoading: limitsLoading, isSuccess: limitsSuccess } = useQuery({
     queryKey: ['user-limits'],
-    queryFn: async () => {
-      const res = await apiClient.get('/user/limits');
-      return (res.data?.data as UserLimits | null) ?? null;
+    queryFn: async ({ signal }) => {
+      const res = await apiClient.get('/user/limits', { signal });
+      const limits = unwrapApiData<UserLimits>(res.data);
+      if (!limits || !Number.isInteger(limits.user_rpm_limit) || limits.user_rpm_limit < 0) {
+        throw new Error('Invalid user RPM limit');
+      }
+      return limits;
     },
     retry: false,
     throwOnError: false,
+    meta: { protected: true },
   });
 
   return (
@@ -64,7 +60,7 @@ export function SubscriptionsPage() {
             <Skeleton className="h-6 w-20" />
           ) : (
             <div className="shrink-0 text-right text-lg font-semibold tabular-nums text-slate-900 dark:text-white">
-              {formatRPMLimit(limits?.user_rpm_limit)}
+              {limitsSuccess ? formatRPMLimit(limits.user_rpm_limit) : t('请求频率暂不可用')}
             </div>
           )}
         </CardContent>
@@ -79,6 +75,11 @@ export function SubscriptionsPage() {
             <Skeleton className="h-2 w-full" />
           </div>
         </div>
+      ) : !isSuccess ? (
+        <EmptyState
+          title={t('订阅用量暂不可用')}
+          description={t('暂时无法确认当前订阅，请稍后重试。')}
+        />
       ) : progress ? (
         <SubscriptionProgressCard progress={progress} title={progress.subscription_name || t("当前订阅")} />
       ) : (

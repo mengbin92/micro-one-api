@@ -101,6 +101,12 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				return fmt.Errorf("failed to create provider: %w", provErr)
 			}
 
+			releaseChannel, slotErr := s.relayUsecase.AcquireChannelSlot(ctx, ch)
+			if slotErr != nil {
+				_ = s.releaseQuota(ctx, reservation.ReservationId, "channel slot admission rejected")
+				return slotErr
+			}
+			defer releaseChannel()
 			resp, forwardErr := provider.Forward(ctx, &relayprovider.RawRequest{
 				Method: r.Method,
 				Path:   upstreamPath,

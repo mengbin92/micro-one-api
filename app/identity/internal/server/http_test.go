@@ -568,7 +568,7 @@ func TestIdentityHTTPEmailBindRejectsInvalidCode(t *testing.T) {
 func TestIdentityHTTPEmailBindUpdatesEmail(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo, nil)
-	_, authToken := registerAndLoginForHTTPTest(t, uc)
+	user, authToken := registerAndLoginForHTTPTest(t, uc)
 	deliverer := newCapturingCodeDeliverer()
 	srv := newHTTPServerWithDeliverer(":0", uc, deliverer)
 
@@ -601,6 +601,17 @@ func TestIdentityHTTPEmailBindUpdatesEmail(t *testing.T) {
 	selfReq := httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
 	selfReq.Header.Set("Authorization", "Bearer "+authToken)
 	selfRec := httptest.NewRecorder()
+	srv.ServeHTTP(selfRec, selfReq)
+	if selfRec.Code != http.StatusUnauthorized {
+		t.Fatalf("old session status = %d, want 401 after changing recovery email", selfRec.Code)
+	}
+	_, authToken, err := uc.Login(context.Background(), user.Username, "password123", "127.0.0.1")
+	if err != nil {
+		t.Fatalf("login after email change: %v", err)
+	}
+	selfReq = httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+	selfReq.Header.Set("Authorization", "Bearer "+authToken)
+	selfRec = httptest.NewRecorder()
 	srv.ServeHTTP(selfRec, selfReq)
 	if selfRec.Code != http.StatusOK {
 		t.Fatalf("self status = %d, body=%s", selfRec.Code, selfRec.Body.String())
@@ -834,7 +845,7 @@ func TestIdentityHTTPDashboardTodayAmountUsesLedgerAmount(t *testing.T) {
 	// Simulate mimo-v2.5-pro pricing: 1M input-only tokens at $0.435/1M tokens.
 	// 1000000 * $0.435/1000000 = $0.435 -> 0.435 * 10000 = 4350 amount units.
 	// The aggregate RPC returns |amount| (4350) directly, not raw token count (1000000).
-	todayStr := time.Now().Format("2006-01-02")
+	todayStr := time.Now().UTC().Format("2006-01-02")
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
 			Balance:      100000,
@@ -1213,33 +1224,48 @@ func TestIdentityHTTPOnlinePaymentCompatibilityRoutesAreDisabled(t *testing.T) {
 }
 
 func TestIdentityHTTPCreatePaymentOrderUsesRechargeMultiplier(t *testing.T) {
-	t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", "3")
-	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo, nil)
-	_, authToken := registerAndLoginForHTTPTest(t, uc)
-	billingClient := &identityHTTPBillingClient{}
-	srv := NewHTTPServer(":0", uc, nil, billingClient)
+	for _, tc := range []struct {
+		rate       string
+		input      string
+		moneyCents int64
+		amount     int64
+	}{
+		{"3", "10", 1000, 300000},
+		{"NaN", "10", 1000, 1000000},
+		{"+Inf", "10", 1000, 1000000},
+		{"10", "1.001", 100, 100000},
+		{"1.00185", "1", 100, 10019},
+	} {
+		t.Run(tc.rate, func(t *testing.T) {
+			t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", tc.rate)
+			repo := identitydata.NewMemoryRepositoryForTest()
+			uc := biz.NewIdentityUsecase(repo, nil)
+			_, authToken := registerAndLoginForHTTPTest(t, uc)
+			billingClient := &identityHTTPBillingClient{}
+			srv := NewHTTPServer(":0", uc, nil, billingClient)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/user/pay", strings.NewReader(`{"amount":10,"payment_method":"alipay"}`))
-	req.Header.Set("Authorization", "Bearer "+authToken)
-	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req)
+			req := httptest.NewRequest(http.MethodPost, "/api/user/pay", strings.NewReader(`{"amount":`+tc.input+`,"payment_method":"alipay"}`))
+			req.Header.Set("Authorization", "Bearer "+authToken)
+			rec := httptest.NewRecorder()
+			srv.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
-	}
-	if !strings.Contains(rec.Body.String(), `"success":true`) {
-		t.Fatalf("payment response mismatch: %s", rec.Body.String())
-	}
-	if len(billingClient.createOrderCalls) != 1 {
-		t.Fatalf("CreatePaymentOrder calls = %d, want 1", len(billingClient.createOrderCalls))
-	}
-	call := billingClient.createOrderCalls[0]
-	if call.GetMoneyCents() != 1000 {
-		t.Fatalf("money cents = %d, want 1000", call.GetMoneyCents())
-	}
-	if call.GetAssetAmount() != 300000 {
-		t.Fatalf("asset amount = %d, want 300000", call.GetAssetAmount())
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), `"success":true`) {
+				t.Fatalf("payment response mismatch: %s", rec.Body.String())
+			}
+			if len(billingClient.createOrderCalls) != 1 {
+				t.Fatalf("CreatePaymentOrder calls = %d, want 1", len(billingClient.createOrderCalls))
+			}
+			call := billingClient.createOrderCalls[0]
+			if call.GetMoneyCents() != tc.moneyCents {
+				t.Fatalf("money cents = %d, want %d", call.GetMoneyCents(), tc.moneyCents)
+			}
+			if call.GetAssetAmount() != tc.amount {
+				t.Fatalf("asset amount = %d, want %d", call.GetAssetAmount(), tc.amount)
+			}
+		})
 	}
 }
 
@@ -2202,5 +2228,35 @@ func TestIdentityHTTPTokenCreateDefaultsUnlimited(t *testing.T) {
 	_, err := uc.GetAuthSnapshot(context.Background(), tokenKey, "")
 	if err != nil {
 		t.Fatalf("default-created token failed validation (would be 401 in production): %v", err)
+	}
+}
+
+func TestIdentityHTTPTokenRenamePreservesQuotaMode(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo, nil)
+	user, session := registerAndLoginForHTTPTest(t, uc)
+	token, err := uc.CreateAccessToken(context.Background(), user.ID, "unlimited", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := NewHTTPServer(":0", uc, nil)
+	for _, tt := range []struct {
+		body      string
+		unlimited bool
+	}{
+		{`{"name":"renamed"}`, true},
+		{`{"unlimited_quota":false,"remain_quota":250}`, false},
+	} {
+		req := httptest.NewRequest(http.MethodPut, "/api/token/"+strconv.FormatInt(token.ID, 10), strings.NewReader(tt.body))
+		req.Header.Set("Authorization", "Bearer "+session)
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) {
+			t.Fatalf("update status=%d body=%s", rec.Code, rec.Body.String())
+		}
+		got, err := repo.FindTokenByID(context.Background(), user.ID, token.ID)
+		if err != nil || got.UnlimitedQuota != tt.unlimited {
+			t.Fatalf("quota mode after %s = %+v, %v", tt.body, got, err)
+		}
 	}
 }

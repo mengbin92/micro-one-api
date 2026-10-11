@@ -215,20 +215,20 @@ func TestSubscriptionAccountSelector_CircuitOpenExcludesAccount(t *testing.T) {
 
 func TestSubscriptionAccountSelector_AcquireRelease(t *testing.T) {
 	sel := NewSubscriptionAccountSelector()
-	sel.Acquire(1)
-	sel.Acquire(1)
+	sel.RecordSlot(1, "first", true)
+	sel.RecordSlot(1, "second", true)
 	stats := sel.GetStats()
 	if stats[1].Inflight != 2 {
 		t.Fatalf("inflight = %d, want 2", stats[1].Inflight)
 	}
-	sel.Release(1)
+	sel.RecordSlot(1, "first", false)
 	stats = sel.GetStats()
 	if stats[1].Inflight != 1 {
 		t.Fatalf("inflight after release = %d, want 1", stats[1].Inflight)
 	}
-	// Release below zero is a no-op.
-	sel.Release(1)
-	sel.Release(1)
+	// Releasing one ID twice never decrements a different execution.
+	sel.RecordSlot(1, "second", false)
+	sel.RecordSlot(1, "second", false)
 	stats = sel.GetStats()
 	if stats[1].Inflight != 0 {
 		t.Fatalf("inflight after over-release = %d, want 0", stats[1].Inflight)

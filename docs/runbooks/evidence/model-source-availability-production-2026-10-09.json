@@ -1,0 +1,167 @@
+{
+  "verified_at": "2026-10-09T21:16:48.613076+08:00",
+  "source_digest": "f0d97c882eedfe74e1e89f87fe247b74b249ba689818b157c46a6d8cbf08aac5",
+  "containers": [
+    {
+      "service": "channel-service",
+      "image_id": "sha256:841fb815f2954af95e2d3874fbc07490d02dec30a3880873419db8e132b8a2e2",
+      "image_ref": "docker-compose-channel-service:deploy-20261009-205505-4c486b00",
+      "architecture": "linux/amd64",
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false,
+      "environment_unchanged": true,
+      "source_digest_matches": true,
+      "rollback_image": "docker-compose-channel-service:rollback-20261009-205505",
+      "rollback_image_id": "sha256:3b84b5de10e0391d3d749032af56f0d4e2bb6fe5f051d6aba70283f05e46fec4",
+      "rollback_verified": true
+    },
+    {
+      "service": "admin-api",
+      "image_id": "sha256:2e12cc87d3d0cc748e72c18f1ef26bdc90295c930368ce29db367749a718223d",
+      "image_ref": "docker-compose-admin-api:deploy-20261009-205505-4c486b00",
+      "architecture": "linux/amd64",
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false,
+      "environment_unchanged": true,
+      "source_digest_matches": true,
+      "rollback_image": "docker-compose-admin-api:rollback-20261009-205505",
+      "rollback_image_id": "sha256:6065f8bae5837eebf7afe765d0fcb87f57e1583b9ea0a5b54a2d19c86f961d1f",
+      "rollback_verified": true
+    }
+  ],
+  "models": {
+    "step-5-preview": {
+      "id": "518",
+      "model_id": "step-5-preview",
+      "status": 0,
+      "configured_status": 1,
+      "channel_count": 0,
+      "subscription_count": 0,
+      "suppliers": []
+    },
+    "step-3.7-flash": {
+      "id": "496",
+      "model_id": "step-3.7-flash",
+      "status": 0,
+      "configured_status": 1,
+      "channel_count": 0,
+      "subscription_count": 0,
+      "suppliers": []
+    },
+    "glm-5.3": {
+      "id": "427",
+      "model_id": "glm-5.3",
+      "status": 1,
+      "configured_status": 1,
+      "channel_count": 1,
+      "subscription_count": 0,
+      "suppliers": [
+        "test"
+      ]
+    }
+  },
+  "before": {
+    "step-5-preview": [
+      {
+        "id": "518",
+        "model_id": "step-5-preview",
+        "status": 1,
+        "configured_status": null,
+        "channel_count": 1,
+        "subscription_count": 0,
+        "suppliers": [
+          "StepFun"
+        ]
+      }
+    ],
+    "step-3.7-flash": [
+      {
+        "id": "496",
+        "model_id": "step-3.7-flash",
+        "status": 1,
+        "configured_status": null,
+        "channel_count": 1,
+        "subscription_count": 0,
+        "suppliers": [
+          "StepFun"
+        ]
+      }
+    ],
+    "glm-5.3": [
+      {
+        "id": "427",
+        "model_id": "glm-5.3",
+        "status": 1,
+        "configured_status": null,
+        "channel_count": 1,
+        "subscription_count": 1,
+        "suppliers": [
+          "test",
+          "z.ai"
+        ]
+      }
+    ],
+    "checked_at": "2026-10-09T12:55:07.109039+00:00"
+  },
+  "source_status_baseline": {
+    "channel": [
+      {
+        "id": 1,
+        "name": "test",
+        "status": 1
+      },
+      {
+        "id": 9,
+        "name": "StepFun",
+        "status": 2
+      }
+    ],
+    "subscription": [
+      {
+        "id": 4,
+        "name": "z.ai",
+        "status": 2,
+        "platform": "zhipu"
+      }
+    ]
+  },
+  "checks": {
+    "service_health": true,
+    "model_list_detail_status_counts_filters_export": true,
+    "public_catalog": true,
+    "public_frontend_index_and_assets": true
+  },
+  "frontend": {
+    "activated_at": "2026-10-09T21:08:44.868360+08:00",
+    "backup": "/opt/web/dist.bak.model-availability-20261009-210844",
+    "release_files": 77,
+    "remote_manifest_matches": true,
+    "index_sha256": "fd532097bd94ad2d52d1c3738e6c23faddf7a2921d0d72e8fe24f4b318dc2917",
+    "old_hash_assets_retained": true,
+    "appledouble_metadata_removed": 81
+  },
+  "compose": {
+    "compose_backup": "/opt/micro-one-api/docker-compose/docker-compose.yml.model-availability-before-20261009-210023",
+    "selected_service_source_digest": "f0d97c882eedfe74e1e89f87fe247b74b249ba689818b157c46a6d8cbf08aac5"
+  },
+  "date": "2026-10-09",
+  "timezone": "Asia/Shanghai",
+  "build_base_commit": "4c486b001d78f02a1ae75afd543ed6cc30483bc2",
+  "build_platform": "linux/amd64",
+  "server_build_used": false,
+  "database_migration_required": false,
+  "business_source_states_modified_for_verification": false,
+  "local_validation": {
+    "backend": "make test passed",
+    "frontend_test_files": 66,
+    "frontend_tests_passed": 335,
+    "frontend_recheck_max_workers": 2,
+    "frontend_lint": "passed",
+    "frontend_build": "passed",
+    "asset_budgets_passed": 6,
+    "architecture": "passed",
+    "rbac_contract_rows": 831
+  }
+}

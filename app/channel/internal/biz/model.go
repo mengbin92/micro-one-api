@@ -80,6 +80,19 @@ type Model struct {
 	ChannelCount      int32
 	SubscriptionCount int32
 	Suppliers         []string
+	// HasEnabledSource is global availability, independent of the caller's
+	// permission to view individual mappings and supplier counts.
+	HasEnabledSource bool
+}
+
+// EffectiveStatus combines the registry switch with source availability.
+// Keep Status as the configured value so edits/exports preserve operator intent
+// and re-enabling a source restores availability without another model write.
+func (m *Model) EffectiveStatus() int32 {
+	if m.Status == ModelStatusEnabled && !m.HasEnabledSource {
+		return ModelStatusDisabled
+	}
+	return m.Status
 }
 
 // ModelAlias is an alternative name that resolves to a model.
@@ -247,13 +260,14 @@ func truncateModelHealthError(message string) string {
 
 // ListModelsFilter holds the optional filters for listing models.
 type ListModelsFilter struct {
-	Keyword    string
-	Provider   string
-	ModelType  string
-	Status     int32
-	Category   string
-	Tier       string
-	PublicOnly bool
+	Keyword        string
+	Provider       string
+	ModelType      string
+	Status         int32
+	StatusHasValue bool // Explicit zero filters disabled models; omitted means all.
+	Category       string
+	Tier           string
+	PublicOnly     bool
 }
 
 // Typed errors. The data layer maps driver errors onto these so callers
@@ -306,6 +320,13 @@ type ModelRepo interface {
 	// collide on the survivor's unique keys.
 	CanonicalModelPreflight(ctx context.Context) (*PreflightReport, error)
 	MergeCanonicalModels(ctx context.Context, group DuplicateModelGroup) (*MergeResult, error)
+}
+
+// ModelIdentityRepo is the narrow lookup needed by usage recording. Keeping
+// it separate lets existing registry implementations continue to work without
+// forcing the relay path to load the admin model projection and source counts.
+type ModelIdentityRepo interface {
+	GetModelPKByID(ctx context.Context, modelID string) (int64, error)
 }
 
 // ModelHealthRepo is an additive persistence capability. Keeping it separate
@@ -874,7 +895,17 @@ func (uc *ModelUsecase) RecordModelUsage(ctx context.Context, modelID string, re
 	if modelID == "" {
 		return nil
 	}
-	model, err := uc.repo.GetModelByID(ctx, NormalizeModelID(modelID))
+	var modelPK int64
+	var err error
+	if identities, ok := uc.repo.(ModelIdentityRepo); ok {
+		modelPK, err = identities.GetModelPKByID(ctx, NormalizeModelID(modelID))
+	} else {
+		var model *Model
+		model, err = uc.repo.GetModelByID(ctx, NormalizeModelID(modelID))
+		if err == nil {
+			modelPK = model.ID
+		}
+	}
 	if err != nil {
 		if errors.Is(err, ErrModelNotFound) {
 			metrics.ModelUsageDropped.WithLabelValues("unregistered_model").Inc()
@@ -886,14 +917,14 @@ func (uc *ModelUsecase) RecordModelUsage(ctx context.Context, modelID string, re
 		date = uc.now().Format("2006-01-02")
 	}
 	stat := &ModelUsageStat{
-		ModelPK:      model.ID,
+		ModelPK:      modelPK,
 		Date:         date,
 		RequestCount: requestCount,
 		TokenCount:   tokenCount,
 		ErrorCount:   errorCount,
 		AvgLatency:   avgLatency,
 	}
-	return uc.repo.RecordModelUsage(ctx, model.ID, stat)
+	return uc.repo.RecordModelUsage(ctx, modelPK, stat)
 }
 
 // ListModelUsageStats returns paginated usage statistics for a model (or all

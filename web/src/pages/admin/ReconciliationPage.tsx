@@ -14,6 +14,7 @@ import { TableSkeleton } from '@/components/LoadingStates';
 import { AdminPagination } from '@/components/admin/AdminPagination';
 import { adminApiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
+import { formatCNY, formatSubscriptionUSD, formatUSD } from '@/lib/amount';
 import {
   Table,
   TableBody,
@@ -110,29 +111,37 @@ function discrepancyObject(item: ReconciliationDiscrepancy) {
   return t(`用户 ${item.user_id ?? '-'}`);
 }
 
+function isPerOrderRefund(item: ReconciliationDiscrepancy) {
+  return !!(item.trade_no || item.user_id || item.expected_quota || item.difference);
+}
+
 function discrepancyExpected(item: ReconciliationDiscrepancy) {
   if (item.type === 'channel_usage') return formatQuota(item.expected_used_quota ?? 0);
   if (item.type === 'ledger_log_consume') return t(`${formatQuota(item.ledger_count ?? 0)} 条 / ${formatQuota(item.ledger_quota ?? 0)}`);
-  if (item.type === 'subscription_absorption') return formatQuota(item.ledger_subscription_cost ?? 0);
+  if (item.type === 'subscription_absorption') return formatUSD(item.ledger_subscription_cost ?? 0);
   if (item.type === 'receivable_mirror') return formatQuota(item.pending_receivable_quota ?? 0);
-  if (item.type === 'refund_reversal') return formatQuota(item.refunded_order_money_cents ?? 0);
+  if (item.type === 'refund_reversal') return isPerOrderRefund(item)
+    ? formatUSD(item.expected_quota ?? 0)
+    : formatCNY((item.refunded_order_money_cents ?? 0) / 100);
   return formatQuota(item.expected_quota ?? 0);
 }
 
 function discrepancyActual(item: ReconciliationDiscrepancy) {
   if (item.type === 'channel_usage') return formatQuota(item.actual_used_quota ?? 0);
   if (item.type === 'ledger_log_consume') return t(`${formatQuota(item.log_count ?? 0)} 条 / ${formatQuota(item.log_quota ?? 0)}`);
-  if (item.type === 'subscription_absorption') return formatQuota(item.subscription_used_usd ?? 0);
+  if (item.type === 'subscription_absorption') return formatSubscriptionUSD(item.subscription_used_usd ?? 0);
   if (item.type === 'receivable_mirror') return formatQuota(item.overdraft_quota ?? 0);
-  if (item.type === 'refund_reversal') return formatQuota(item.reversal_ledger_amount ?? 0);
+  if (item.type === 'refund_reversal') return formatUSD(isPerOrderRefund(item) ? item.actual_quota ?? 0 : item.reversal_ledger_amount ?? 0);
   return formatQuota(item.actual_quota ?? 0);
 }
 
 function discrepancyDiff(item: ReconciliationDiscrepancy) {
   if (item.type === 'channel_usage') return formatQuota(item.difference ?? 0);
   if (item.type === 'ledger_log_consume') return t(`${formatQuota(item.count_diff ?? 0)} 条 / ${formatQuota(item.quota_diff ?? 0)}`);
-  if (item.type === 'subscription_absorption') return formatQuota(item.subscription_difference ?? 0);
-  if (item.type === 'refund_reversal') return formatQuota(item.money_cents_diff ?? 0);
+  if (item.type === 'subscription_absorption') return formatSubscriptionUSD(item.subscription_difference ?? 0);
+  if (item.type === 'refund_reversal') return isPerOrderRefund(item)
+    ? formatUSD(item.difference ?? 0)
+    : formatCNY((item.money_cents_diff ?? 0) / 100);
   return formatQuota((item.actual_quota ?? 0) - (item.expected_quota ?? 0));
 }
 
@@ -140,6 +149,10 @@ function discrepancyDetail(item: ReconciliationDiscrepancy) {
   if (item.type === 'channel_usage') return t(`成本 ${formatQuota(item.upstream_cost ?? 0)}`);
   if (item.type === 'ledger_log_consume') return t("consume 记录数 / quota");
   if (item.type === 'subscription_absorption') return t(`${item.window ?? '-'} / ${formatDate(item.window_start ?? 0)}`);
+  if (item.type === 'refund_reversal') return t('退款订单 {orders} 条 / 冲正账本 {ledgers} 条', {
+    orders: item.refunded_order_count ?? 0,
+    ledgers: item.reversal_ledger_count ?? 0,
+  });
   if (item.type === 'stuck_issuance') return t(`金额 ${formatQuota(item.money_cents ?? 0)} / ${formatDate(item.stuck_since ?? 0)}`);
   return t(`账目净额 ${formatQuota(item.ledger_net_amount ?? 0)}，冻结金额 ${formatQuota(item.frozen_quota ?? 0)}`);
 }

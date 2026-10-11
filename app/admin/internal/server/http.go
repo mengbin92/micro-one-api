@@ -493,6 +493,9 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 	srv.HandleFunc("/api/v1/admin/subscriptions", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleUserSubscriptions(w, r, svc)
 	}))
+	srv.HandleFunc("/api/v1/admin/subscriptions/progress", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleManagedSubscriptionProgress(w, r, svc)
+	}))
 	srv.HandleFunc("/api/v1/admin/subscriptions/assign", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleAssignSubscription(w, r, svc)
 	}))
@@ -2071,6 +2074,9 @@ func httpStatusForAdminError(err error) int {
 	if errors.Is(err, service.ErrSubscriptionServiceNotConfigured) {
 		return http.StatusNotImplemented
 	}
+	if code, ok := resourceHTTPErrorCode(err); ok {
+		return code
+	}
 	if st, ok := status.FromError(err); ok {
 		switch st.Code() {
 		case codes.AlreadyExists:
@@ -2892,8 +2898,10 @@ type batchSubscriptionAccountQuotaResponse struct {
 }
 
 type batchResetSubscriptionAccountQuotaRequest struct {
-	AccountIDs []int64 `json:"account_ids"`
-	Scope      string  `json:"scope"`
+	AccountIDs        []int64         `json:"account_ids"`
+	Scope             string          `json:"scope"`
+	ExpectedRevisions map[int64]int64 `json:"expected_revisions"`
+	Reason            string          `json:"reason"`
 }
 
 type subscriptionAccountQuotaTemplatePatch struct {
@@ -2909,8 +2917,10 @@ type subscriptionAccountQuotaTemplatePatch struct {
 }
 
 type batchApplySubscriptionAccountQuotaTemplateRequest struct {
-	AccountIDs []int64                               `json:"account_ids"`
-	Template   subscriptionAccountQuotaTemplatePatch `json:"template"`
+	AccountIDs        []int64                               `json:"account_ids"`
+	Template          subscriptionAccountQuotaTemplatePatch `json:"template"`
+	ExpectedRevisions map[int64]int64                       `json:"expected_revisions"`
+	Reason            string                                `json:"reason"`
 }
 
 func normalizeBatchSubscriptionAccountIDs(ids []int64) []int64 {
@@ -2950,8 +2960,10 @@ func handleBatchResetSubscriptionAccountQuota(w http.ResponseWriter, r *http.Req
 	resp := batchSubscriptionAccountQuotaResponse{Success: true, Message: "ok"}
 	for _, accountID := range accountIDs {
 		resetResp, err := svc.ResetSubscriptionAccountQuota(r.Context(), &adminv1.AdminResetSubscriptionAccountQuotaRequest{
-			AccountId: accountID,
-			Scope:     req.Scope,
+			AccountId:        accountID,
+			Scope:            req.Scope,
+			ExpectedRevision: req.ExpectedRevisions[accountID],
+			Reason:           req.Reason,
 		})
 		if err != nil || resetResp == nil || !resetResp.GetSuccess() {
 			resp.FailedIDs = append(resp.FailedIDs, accountID)
@@ -2987,7 +2999,7 @@ func handleBatchApplySubscriptionAccountQuotaTemplate(w http.ResponseWriter, r *
 
 	resp := batchSubscriptionAccountQuotaResponse{Success: true, Message: "ok"}
 	for _, accountID := range accountIDs {
-		updateReq := &adminv1.AdminUpdateSubscriptionAccountRequest{Id: accountID}
+		updateReq := &adminv1.AdminUpdateSubscriptionAccountRequest{Id: accountID, ExpectedRevision: req.ExpectedRevisions[accountID], Reason: req.Reason}
 		req.Template.applyTo(updateReq)
 		updateResp, err := svc.UpdateSubscriptionAccount(r.Context(), updateReq)
 		if err != nil || updateResp == nil || !updateResp.GetSuccess() {

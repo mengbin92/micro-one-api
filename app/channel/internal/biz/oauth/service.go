@@ -325,7 +325,7 @@ func (s *Service) exchangeCode(ctx context.Context, session *Session, code strin
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
-		return nil, err
+		return nil, errors.New("oauth token exchange failed: invalid token endpoint")
 	}
 	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	httpReq.Header.Set("Accept", "application/json")
@@ -335,16 +335,19 @@ func (s *Service) exchangeCode(ctx context.Context, session *Session, code strin
 
 	resp, err := s.client.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("oauth token exchange failed: %w", err)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, errors.New("oauth token exchange failed: transport failure")
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("oauth token exchange failed: status=%d body=%s", resp.StatusCode, truncate(body))
+		return nil, fmt.Errorf("oauth token exchange failed: status=%d", resp.StatusCode)
 	}
 	var token tokenResponse
 	if err := jsonx.Unmarshal(body, &token); err != nil {
-		return nil, fmt.Errorf("decode oauth token response: %w", err)
+		return nil, errors.New("oauth token exchange failed: malformed token response")
 	}
 	if token.AccessToken == "" {
 		return nil, fmt.Errorf("oauth token exchange returned empty access_token")
@@ -509,14 +512,6 @@ func metadataMap(raw string) map[string]any {
 		return map[string]any{"raw_metadata": raw}
 	}
 	return m
-}
-
-func truncate(body []byte) string {
-	s := string(body)
-	if len(s) > 300 {
-		return s[:300]
-	}
-	return s
 }
 
 func oauthCredentialDigest(ctx context.Context) string {

@@ -20,6 +20,8 @@ type BatchLogWriter struct {
 	repo      LogRepo
 	batch     []*LogEntry
 	batchMu   sync.Mutex
+	queueMu   sync.Mutex // Keep shutdown and Flush from overtaking an enqueue.
+	flushMu   sync.Mutex // A flush must also wait for a batch already being written.
 	queue     chan *LogEntry
 	flushChan chan struct{}
 	batchSize int
@@ -76,10 +78,13 @@ func (w *BatchLogWriter) Start() {
 // Stop stops the batch writer, drains any entries still queued behind the
 // processor, and flushes them in the final batch. It is idempotent.
 func (w *BatchLogWriter) Stop() {
+	w.queueMu.Lock()
 	if !w.closed.CompareAndSwap(false, true) {
+		w.queueMu.Unlock()
 		// Already stopped: avoid double close of stopChan.
 		return
 	}
+	w.queueMu.Unlock()
 	close(w.stopChan)
 	w.wg.Wait()
 
@@ -105,6 +110,8 @@ func (w *BatchLogWriter) IngestLog(ctx context.Context, entry *LogEntry) error {
 	if entry.CreatedAt.IsZero() {
 		entry.CreatedAt = time.Now()
 	}
+	w.queueMu.Lock()
+	defer w.queueMu.Unlock()
 
 	// After Stop() the background workers have exited and nothing will drain
 	// the queue. Persist synchronously so the caller still observes a durable
@@ -192,6 +199,8 @@ func (w *BatchLogWriter) addToBatch(entry *LogEntry) {
 
 // flush writes all pending entries to the repository.
 func (w *BatchLogWriter) flush() {
+	w.flushMu.Lock()
+	defer w.flushMu.Unlock()
 	w.batchMu.Lock()
 	if len(w.batch) == 0 {
 		w.batchMu.Unlock()
@@ -244,43 +253,13 @@ func (w *BatchLogWriter) createBatch(ctx context.Context, entries []*LogEntry) e
 	return nil
 }
 
-// Flush synchronously persists every entry accepted so far and returns only
-// after the write completes.
-//
-// IngestLog only enqueues asynchronously, so when Flush is called an accepted
-// entry may still be in w.queue, or "in flight" in the queue processor (taken
-// off the channel but not yet batched). Flush first blocks on w.inflight until
-// every queued entry has been moved into w.batch, then swaps and writes the
-// batch inline. This removes the race — the periodic flusher signalling path
-// could observe an empty queue AND empty batch and skip the write — that made
-// TestLogUsecase_IngestLogBatchRouting flaky under CPU contention.
-//
-// Flush takes batchMu after the wait and must not be called while holding it.
+// Flush waits for accepted entries to reach the batch and for all active
+// writes to complete. It must not be called while holding batchMu.
 func (w *BatchLogWriter) Flush() {
-	// Wait for every entry IngestLog has already queued to be moved into the
-	// batch by the queue processor. This closes the "in flight" window where an
-	// entry has been taken off the channel but not yet batched — without it a
-	// concurrent Flush could observe an empty queue AND an empty batch and skip
-	// the write entirely.
+	w.queueMu.Lock()
 	w.inflight.Wait()
-	// All accepted entries are now in w.batch (nothing left in w.queue).
-	w.batchMu.Lock()
-	if len(w.batch) == 0 {
-		w.batchMu.Unlock()
-		return
-	}
-	batch := w.batch
-	w.batch = make([]*LogEntry, 0, w.batchSize)
-	w.batchMu.Unlock()
-
-	// Persist outside the lock; a write error drops the batch (same policy as
-	// the periodic flusher — usage logs are best-effort, off the billing path).
-	if err := w.createBatch(context.Background(), batch); err != nil {
-		metrics.UsageLogIngestTotal.WithLabelValues("error").Inc()
-		w.dropped.Add(int64(len(batch)))
-		return
-	}
-	metrics.UsageLogIngestTotal.WithLabelValues("success").Inc()
+	w.queueMu.Unlock()
+	w.flush()
 }
 
 // Stats returns statistics about the batch writer.

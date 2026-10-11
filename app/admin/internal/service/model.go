@@ -207,6 +207,7 @@ func channelToAdminModelRouting(r *channelv1.ModelRouting) *adminv1.ModelRouting
 		Priority:              r.GetPriority(),
 		CreatedAt:             r.GetCreatedAt(),
 		UpdatedAt:             r.GetUpdatedAt(),
+		Revision:              r.GetRevision(),
 	}
 }
 

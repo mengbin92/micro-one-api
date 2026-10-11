@@ -67,7 +67,13 @@ func (a *SubscriptionAccount) RecoveryState() AccountRecoveryState {
 // CanAutoRecoverAt is rechecked under the repository's write lock. An upstream
 // probe cannot authorize clearing a newer incident or exhausted local quota.
 func (a *SubscriptionAccount) CanAutoRecoverAt(now time.Time) bool {
-	if !a.IsSchedulableAt(now) {
+	if a == nil || a.Status != ChannelStatusEnabled {
+		return false
+	}
+	if a.RateLimitedUntil > 0 && now.Unix() < a.RateLimitedUntil {
+		return false
+	}
+	if a.LocalQuotaExceededAt(now) {
 		return false
 	}
 	// Missing policy is the legacy rolling case. Malformed metadata or an

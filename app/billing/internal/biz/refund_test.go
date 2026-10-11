@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/stretchr/testify/require"
+	"math"
 	"micro-one-api/domain/authorization"
 	authztest "micro-one-api/domain/authorization/testutil"
 	"sync"
@@ -218,6 +219,23 @@ func newRefundOrder(tradeNo string, paid bool) *PaymentOrder {
 	}
 }
 
+func TestRefund_RejectsUnknownPolicyBeforeMutating(t *testing.T) {
+	repo := &fakeRefundRepo{order: newRefundOrder("invalid-policy", true)}
+	repo.order.SubscriptionID = 5
+	accounts := &stubAccountRepo{}
+	ledger := &recordingLedgerRepo{}
+	reverter := &stubSubscriptionReverter{}
+	uc := NewRefundUsecase(repo, accounts, ledger, reverter)
+
+	_, err := uc.RefundSubscriptionOrder(context.Background(), RefundRequest{TradeNo: repo.order.TradeNo, Policy: "keeep"})
+	require.Error(t, err)
+	require.Zero(t, repo.calls)
+	require.Zero(t, accounts.balanceCalls)
+	require.Empty(t, ledger.created)
+	require.Zero(t, reverter.revokeCalls)
+	require.Equal(t, PaymentOrderStatusPaid, repo.order.Status)
+}
+
 func TestRefund_RevokePolicyRevokesSubscription(t *testing.T) {
 	repo := &fakeRefundRepo{order: newRefundOrder("PAY-RF-1", true)}
 	// Stash the subscription id in ProviderPayload so the reverter can find it.
@@ -286,7 +304,8 @@ func TestRefund_IdempotentAcrossReplays(t *testing.T) {
 	reverter := &stubSubscriptionReverter{}
 	uc := NewRefundUsecase(repo, accounts, ledger, reverter)
 
-	if _, err := uc.RefundSubscriptionOrder(context.Background(), RefundRequest{TradeNo: "PAY-RF-2", Policy: RefundPolicyRevoke}); err != nil {
+	firstResult, err := uc.RefundSubscriptionOrder(context.Background(), RefundRequest{TradeNo: "PAY-RF-2", Policy: RefundPolicyRevoke})
+	if err != nil {
 		t.Fatalf("first refund: %v", err)
 	}
 	firstBalanceCalls := accounts.balanceCalls
@@ -294,9 +313,11 @@ func TestRefund_IdempotentAcrossReplays(t *testing.T) {
 	firstRevoke := reverter.revokeCalls
 
 	// Replay the refund callback.
-	if _, err := uc.RefundSubscriptionOrder(context.Background(), RefundRequest{TradeNo: "PAY-RF-2", Policy: RefundPolicyRevoke}); err != nil {
+	replayedResult, err := uc.RefundSubscriptionOrder(context.Background(), RefundRequest{TradeNo: "PAY-RF-2", Policy: RefundPolicyRevoke})
+	if err != nil {
 		t.Fatalf("replay refund: %v", err)
 	}
+	require.Equal(t, firstResult.RefundedQuota, replayedResult.RefundedQuota)
 	if accounts.balanceCalls != firstBalanceCalls {
 		t.Fatalf("wallet credited again on replay: %d -> %d", firstBalanceCalls, accounts.balanceCalls)
 	}
@@ -476,6 +497,110 @@ func TestRefund_FallsBackToPlanPriceWhenMoneyCentsZero(t *testing.T) {
 	if res.RefundedQuota != 2000 {
 		t.Fatalf("refunded quota = %d, want 2000 (plan snapshot fallback)", res.RefundedQuota)
 	}
+}
+
+func TestRefund_UsesFrozenConversionForActualCNYPayment(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		cents, amount int64
+		planID        int64
+	}{
+		{"whole price", 10000, 2500000, 7},
+		{"discount with cents", 5001, 1250250, 7},
+		{"group-only order", 5001, 1250250, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", "99")
+			order := newRefundOrder("frozen-rate", true)
+			order.Currency = "CNY"
+			order.SubscriptionID = 7
+			order.PlanID = tc.planID
+			order.MoneyCents = tc.cents
+			order.PlanSnapshot = EncodePlanSnapshot(PlanSnapshot{PlanID: tc.planID, GroupID: 3, PriceQuota: 100, ValidityDays: 30,
+				PriceConversion: &subscriptionbiz.PriceConversion{Version: 1, RechargeMultiplier: 2.5, WalletAmount: 2500000}})
+			repo := &fakeRefundRepo{order: order}
+			accounts, ledger := &stubAccountRepo{}, &recordingLedgerRepo{}
+			reverter := &stubSubscriptionReverter{}
+			uc := NewRefundUsecase(repo, accounts, ledger, reverter)
+			result, err := uc.RefundSubscriptionOrder(context.Background(), RefundRequest{TradeNo: order.TradeNo, Policy: RefundPolicyShorten})
+			require.NoError(t, err)
+			require.Equal(t, tc.amount, result.RefundedQuota)
+			require.Equal(t, tc.amount, accounts.lastDelta)
+			require.Len(t, ledger.created, 1)
+			require.Equal(t, tc.amount, ledger.created[0].Amount)
+			require.Equal(t, int64(30*86400)*tc.cents/10000, reverter.lastSubtract)
+			replayed, err := uc.RefundSubscriptionOrder(context.Background(), RefundRequest{TradeNo: order.TradeNo, Policy: RefundPolicyShorten})
+			require.NoError(t, err)
+			require.Equal(t, result.RefundedQuota, replayed.RefundedQuota)
+			require.Equal(t, 1, accounts.balanceCalls)
+			require.Len(t, ledger.created, 1)
+			require.Equal(t, 1, reverter.shortenCalls)
+		})
+	}
+}
+
+func TestRefund_FrozenConversionRequiresActualCNYPayment(t *testing.T) {
+	for _, tc := range []struct {
+		currency string
+		cents    int64
+	}{
+		{"USD", 10000}, {"", 10000}, {"CNY", 0}, {"CNY", -1},
+	} {
+		t.Run(fmt.Sprintf("%s-%d", tc.currency, tc.cents), func(t *testing.T) {
+			order := newRefundOrder("invalid-payment", true)
+			order.Currency, order.MoneyCents = tc.currency, tc.cents
+			order.PlanSnapshot = `{"plan_id":7,"price_quota":100,"price_conversion":{"version":1,"recharge_multiplier":2.5,"wallet_amount":2500000}}`
+			accounts, ledger := &stubAccountRepo{}, &recordingLedgerRepo{}
+			_, err := NewRefundUsecase(&fakeRefundRepo{order: order}, accounts, ledger, nil).
+				RefundSubscriptionOrder(context.Background(), RefundRequest{TradeNo: order.TradeNo, Policy: RefundPolicyKeep})
+			require.Error(t, err)
+			require.Zero(t, accounts.balanceCalls)
+			require.Empty(t, ledger.created)
+		})
+	}
+}
+
+func TestRefund_ShortenUsesExactCNYRatioWithoutWalletRoundingOrOverflow(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		price, paidCents int64
+		rate             float64
+		wantSeconds      int64
+	}{
+		{"wallet rounding", 1, 50, 1.00185, 15 * 86400},
+		{"large paid amount", math.MaxInt64 / 100, math.MaxInt64 / 100 * 50, 0.001, 15 * 86400},
+		{"nominal cents product overflow", math.MaxInt64 / 50, math.MaxInt64 / 100 * 50, 0.001, 648000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			order := newRefundOrder("exact-CNY", true)
+			order.Currency, order.MoneyCents, order.SubscriptionID = "CNY", tc.paidCents, 7
+			t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", fmt.Sprintf("%g", tc.rate))
+			conversion, err := subscriptionbiz.CapturePriceConversion(tc.price)
+			require.NoError(t, err)
+			order.PlanSnapshot = EncodePlanSnapshot(PlanSnapshot{PlanID: 7, GroupID: 3, PriceQuota: tc.price, ValidityDays: 30,
+				PriceConversion: conversion})
+			reverter := &stubSubscriptionReverter{}
+			accounts := &stubAccountRepo{}
+			_, err = NewRefundUsecase(&fakeRefundRepo{order: order}, accounts, &recordingLedgerRepo{}, reverter).
+				RefundSubscriptionOrder(context.Background(), RefundRequest{TradeNo: order.TradeNo, Policy: RefundPolicyShorten})
+			require.NoError(t, err)
+			require.Equal(t, tc.wantSeconds, reverter.lastSubtract)
+			if tc.name == "wallet rounding" {
+				require.Equal(t, int64(5009), accounts.lastDelta, "wallet credit keeps its fixed-amount rounding")
+			}
+		})
+	}
+}
+
+func TestRefund_RejectsInvalidFrozenConversionBeforeWalletMutation(t *testing.T) {
+	order := newRefundOrder("invalid-rate", true)
+	order.PlanSnapshot = `{"plan_id":7,"price_quota":100,"validity_days":30,"price_conversion":{"version":1,"recharge_multiplier":2.5,"wallet_amount":1}}`
+	accounts, ledger := &stubAccountRepo{}, &recordingLedgerRepo{}
+	_, err := NewRefundUsecase(&fakeRefundRepo{order: order}, accounts, ledger, nil).
+		RefundSubscriptionOrder(context.Background(), RefundRequest{TradeNo: order.TradeNo})
+	require.Error(t, err)
+	require.Zero(t, accounts.balanceCalls)
+	require.Empty(t, ledger.created)
 }
 
 func (s *stubAccountRepo) GetAccountSnapshotInTx(ctx context.Context, _ subscriptionbiz.Tx, userID string) (*Account, error) {

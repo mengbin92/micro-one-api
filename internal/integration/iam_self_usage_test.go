@@ -62,7 +62,7 @@ func TestIAMSelfUsageThroughDedicatedIdentityCaller(t *testing.T) {
 	http := identitytest.NewSelfBillingHTTP(identity, billing)
 	for _, uid := range []int64{1, member.ID} {
 		require.NoError(t, db.Table("users").Where("id = ?", uid).Updates(map[string]any{"used_amount": uid * 100, "request_count": uid * 10}).Error)
-		require.NoError(t, db.Table("billing_ledgers").Create(map[string]any{"user_id": fmt.Sprint(uid), "amount": -uid * 100, "balance_after": 0, "quota": uid * 100, "upstream_cost": 30, "type": "consume", "model_name": "usage-model", "ledger_dedupe_key": fmt.Sprint("self-usage-", uid), "created_at": time.Now().Add(-time.Hour).UTC()}).Error)
+		require.NoError(t, db.Table("billing_ledgers").Create(map[string]any{"user_id": fmt.Sprint(uid), "amount": -uid * 100, "balance_after": 0, "quota": uid * 100, "upstream_cost": 30, "type": "consume", "model_name": "usage-model", "ledger_dedupe_key": fmt.Sprint("self-usage-", uid), "created_at": time.Now().UTC().Truncate(24 * time.Hour)}).Error)
 	}
 	// A session JTI identifies one immutable signed token. Re-signing on each
 	// request changes exp across a wall-clock second and violates that binding.
@@ -116,6 +116,32 @@ func TestIAMSelfUsageThroughDedicatedIdentityCaller(t *testing.T) {
 					require.Len(t, response.Data.Logs, 1)
 					require.Equal(t, -uid*100, response.Data.Logs[0].Amount)
 				}
+			}
+			for _, offset := range []int{14 * 3600, -12 * 3600} {
+				t.Run(fmt.Sprint("dashboard-local-offset-", offset), func(t *testing.T) {
+					originalLocal := time.Local
+					time.Local = time.FixedZone("dashboard-test", offset)
+					defer func() { time.Local = originalLocal }()
+					req := httptest.NewRequest("GET", "/api/user/dashboard", nil)
+					req.Header.Set("Authorization", "Bearer "+session(uid))
+					w := httptest.NewRecorder()
+					http.ServeHTTP(w, req)
+					require.Equal(t, 200, w.Code, w.Body.String())
+					var response struct {
+						Success bool `json:"success"`
+						Data    struct {
+							TodayAmount int64 `json:"today_amount"`
+							Usage       []struct {
+								Date string `json:"date"`
+							} `json:"usage"`
+						} `json:"data"`
+					}
+					require.NoError(t, jsonx.Unmarshal(w.Body.Bytes(), &response))
+					require.True(t, response.Success, w.Body.String())
+					require.Equal(t, uid*100, response.Data.TodayAmount, w.Body.String())
+					require.Len(t, response.Data.Usage, 7)
+					require.Equal(t, time.Now().UTC().Format("2006-01-02"), response.Data.Usage[6].Date)
+				})
 			}
 		})
 	}

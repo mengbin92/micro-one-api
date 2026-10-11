@@ -8,7 +8,6 @@ import (
 	"math"
 	"math/big"
 	"micro-one-api/domain/authorization"
-	"micro-one-api/platform/security/serviceidentity"
 	"os"
 	"sort"
 	"strconv"
@@ -691,21 +690,25 @@ func (uc *ChannelUsecase) RecordSubscriptionAccountHealth(accountID int64, succe
 	uc.accountSelector.RecordAccountHealth(accountID, success)
 }
 
+// RecordChannelSlot reports actual execution independently of routing/health.
+func (uc *ChannelUsecase) RecordChannelSlot(channelID int64, slotID string, acquired bool) bool {
+	if uc == nil || uc.selector == nil || channelID <= 0 {
+		return false
+	}
+	return uc.selector.RecordSlot(channelID, slotID, acquired)
+}
+
 // RecordSubscriptionAccountSlot feeds the relay-gateway's local in-flight slot
 // changes into the selector's per-process inflight counter (weight loop
 // closure): the cross-replica LoadOracle covers Redis-backed limiters, while
 // Acquire/Release here cover the memory limiter and Redis-fallback windows
 // where the oracle reads zero. loadFactor takes max(local, crossReplica), so
 // the two never double-count.
-func (uc *ChannelUsecase) RecordSubscriptionAccountSlot(accountID int64, acquired bool) {
+func (uc *ChannelUsecase) RecordSubscriptionAccountSlot(accountID int64, slotID string, acquired bool) bool {
 	if uc == nil || uc.accountSelector == nil || accountID <= 0 {
-		return
+		return false
 	}
-	if acquired {
-		uc.accountSelector.Acquire(accountID)
-		return
-	}
-	uc.accountSelector.Release(accountID)
+	return uc.accountSelector.RecordSlot(accountID, slotID, acquired)
 }
 
 func (uc *ChannelUsecase) SelectSubscriptionAccount(ctx context.Context, group, model, platform string, excludeFirstPriority bool) (*SubscriptionAccount, error) {
@@ -1303,7 +1306,7 @@ func (uc *ChannelUsecase) RecordHealth(ctx context.Context, event ChannelHealthE
 		return err
 	}
 	if uc.selector != nil {
-		uc.selector.RecordHealth(event.ChannelID, event.Success, event.ResponseTime, event.Error, !authorization.External(ctx) || serviceidentity.FromContext(ctx).Name == "relay")
+		uc.selector.RecordHealth(event.ChannelID, event.Success, event.ResponseTime, event.Error)
 	}
 	// §10.2 contract — RecordHealth must NOT invalidate the
 	// /v1/models L1 cache or publish a TopicChannelChanged event. Health
@@ -1404,13 +1407,7 @@ func (c *Channel) SelectableAt(now time.Time) bool {
 }
 
 func (a *SubscriptionAccount) IsSchedulableAt(now time.Time) bool {
-	if a == nil || a.Status != ChannelStatusEnabled {
-		return false
-	}
-	if a.RateLimitedUntil > 0 && now.Unix() < a.RateLimitedUntil {
-		return false
-	}
-	return !a.LocalQuotaExceededAt(now)
+	return a.CanAutoRecoverAt(now)
 }
 
 func (a *SubscriptionAccount) LocalQuotaExceededAt(now time.Time) bool {

@@ -5,6 +5,16 @@
 
 channel-service 进程内运行三个订阅账号治理后台任务，全部默认关闭，通过环境变量按需开启。它们复用现有 channel-service 的 `ChannelRepo`（数据库直连）和 notify-worker 的 gRPC 通道（告警投递），不引入新的存储或投递链路。
 
+## 管理员启用／停用报 RESOURCE_WRITE_PRECONDITION
+
+若错误包含 `revision context expected=0 actual=0`，检查账号的 `credential_revision`。迁移 108 将老账号的初始值设为 0，而 IAM 管理写入要求正数版本；新建账号已经从 1 开始。
+
+执行迁移 `124_backfill_subscription_account_revision`（MySQL：`make migrate`，SQLite：`make migrate-sqlite`，PostgreSQL：`make migrate-postgres`；沿用部署的 DSN 和迁移流程）。该迁移只把零版本补为 1，已有正数版本不变。刷新管理员账号列表后，再填写原因并启用／停用；请求应携带列表返回的 `expected_revision`，状态变更成功后版本加 1。保留旧版本的请求应报版本冲突。
+
+迁移会使正在使用零版本的凭据刷新或编辑请求失效，应重新读取账号后操作；不要降低原因或版本校验来绕过错误。
+
+同批修复还包括：配置历史零版本由迁移 `125_backfill_config_revision` 补为 1，解除管理员删除配置的冲突；订阅账号批量用量重置和额度模板逐项传递 `expected_revisions`；订阅额度策略列表返回 `revision`，策略／套餐编辑保留编辑时版本；模型别名删除传递 `expected_model_revision`，写入优先使用当前页面／详情缓存；模型路由列表保留 `revision`；渠道操作从渠道列表读取版本，排除健康缓存，编辑保留打开时的版本并按更新接口要求提交数字。这些接口仍拒绝缺失或过期版本。部署时应用 124、125，更新 admin-api 和前端文件，并刷新管理员页面。
+
 ## 扫描分片与副本配置
 
 额度重置和账号恢复共用以下配置，默认保持一个扫描 worker：

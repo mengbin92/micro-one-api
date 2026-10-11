@@ -48,6 +48,7 @@ import (
 // The public payment route must reach billing's real coverage interceptor,
 // session resolver, plan snapshotter and order repository under IAM mode.
 func TestIAMSubscriptionPaymentThroughRealOwners(t *testing.T) {
+	t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", "10")
 	t.Setenv("SERVICE_TOKEN", "payment-shared")
 	t.Setenv("SERVICE_CALLER_TOKENS", `{"admin":"payment-admin","billing":"payment-billing","channel":"payment-channel","relay":"payment-relay","monitor":"payment-monitor"}`)
 	t.Setenv("JWT_SECRET_KEY", "payment-isolated-jwt")
@@ -219,6 +220,11 @@ func TestIAMSubscriptionPaymentThroughRealOwners(t *testing.T) {
 	require.NoError(t, db.Table("payment_orders").Where("trade_no = ?", reply.Data.Payment.TradeNo).Take(&paid).Error)
 	require.Equal(t, "paid", paid.Status)
 	require.Equal(t, "issued", paid.AssetIssueStatus)
+	frozen, err := subscriptionbiz.DecodePlanSnapshot(paid.PlanSnapshot)
+	require.NoError(t, err)
+	require.NotNil(t, frozen.PriceConversion)
+	require.EqualValues(t, 10, frozen.PriceConversion.RechargeMultiplier)
+	require.EqualValues(t, 10000000, frozen.PriceConversion.WalletAmount)
 	sub, err := repo.GetSubscriptionByID(context.Background(), paid.SubscriptionID)
 	require.NoError(t, err)
 	require.EqualValues(t, 100, sub.PricePaid)
@@ -267,7 +273,7 @@ func TestIAMSubscriptionPaymentThroughRealOwners(t *testing.T) {
 	// price, and replay the persisted commerce claim without a second debit.
 	row.ForSale = true
 	require.NoError(t, repo.UpdatePlan(context.Background(), row))
-	require.NoError(t, db.Table("users").Where("id = ?", member.ID).Update("balance", 1000).Error)
+	require.NoError(t, db.Table("users").Where("id = ?", member.ID).Update("balance", 20_000_000).Error)
 	for i := 0; i < 2; i++ {
 		r := httptest.NewRequest(http.MethodPost, "/api/v1/subscriptions/purchase", strings.NewReader(fmt.Sprintf(`{"plan_id":%d,"user_id":1,"price_amount":1}`, plan.ID)))
 		r.Header.Set("Authorization", "Bearer "+session)
@@ -279,7 +285,7 @@ func TestIAMSubscriptionPaymentThroughRealOwners(t *testing.T) {
 	}
 	var balance int64
 	require.NoError(t, db.Table("users").Select("balance").Where("id = ?", member.ID).Scan(&balance).Error)
-	require.EqualValues(t, 900, balance)
+	require.EqualValues(t, 10_000_000, balance, "CNY 100 consumes USD 1000 wallet credit once")
 	current, err = repo.GetSubscriptionByID(context.Background(), sub.ID)
 	require.NoError(t, err)
 	require.EqualValues(t, sub.ExpiresAt+30*86400, current.ExpiresAt)

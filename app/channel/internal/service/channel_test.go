@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -207,6 +209,73 @@ func TestChannelService_RecordSubscriptionAccountHealth(t *testing.T) {
 	stats := uc.AccountSelectorStats()[42]
 	if stats.AccountID != 42 || stats.ErrorRate <= 0 {
 		t.Fatalf("account health was not recorded: %+v", stats)
+	}
+}
+
+func TestChannelService_RecordChannelSlot(t *testing.T) {
+	ctx := context.Background()
+	uc := biz.NewChannelUsecase(&channelServiceRepo{}, nil)
+	svc := NewChannelService(uc)
+	invalid, err := svc.RecordChannelSlot(ctx, &channelv1.RecordChannelSlotRequest{})
+	if err != nil || invalid.GetSuccess() {
+		t.Fatalf("invalid channel slot result = %v, %v", invalid, err)
+	}
+	for _, req := range []*channelv1.RecordChannelSlotRequest{
+		{ChannelId: 7, SlotId: "unknown", Acquired: false},
+		{ChannelId: 7, SlotId: "execution", Acquired: true},
+		{ChannelId: 7, SlotId: "execution", Acquired: true},
+		{ChannelId: 7, SlotId: "execution", Acquired: false},
+		{ChannelId: 7, SlotId: "execution", Acquired: false},
+	} {
+		reply, err := svc.RecordChannelSlot(ctx, req)
+		if err != nil || !reply.GetSuccess() {
+			t.Fatalf("RecordChannelSlot(acquired=%v) = %v, %v", req.Acquired, reply, err)
+		}
+		want := int32(0)
+		if req.Acquired {
+			want = 1
+		}
+		stats := uc.SelectorStats()[7]
+		if stats.Inflight != want || stats.ErrorRate != 0 || stats.P95Latency != 0 {
+			t.Fatalf("slot feedback changed health or failed to update load: %+v", stats)
+		}
+	}
+	for _, slotID := range []string{"", " ", strings.Repeat("x", 129)} {
+		reply, err := svc.RecordChannelSlot(ctx, &channelv1.RecordChannelSlotRequest{ChannelId: 7, SlotId: slotID, Acquired: true})
+		if err != nil || reply.GetSuccess() {
+			t.Fatalf("invalid slot_id %q result = %v, %v", slotID, reply, err)
+		}
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := svc.RecordChannelSlot(cancelled, &channelv1.RecordChannelSlotRequest{ChannelId: 7, SlotId: "cancelled", Acquired: true}); err == nil {
+		t.Fatal("cancelled acquire must not mutate owner slots")
+	}
+	if got := uc.SelectorStats()[7].Inflight; got != 0 {
+		t.Fatalf("cancelled or invalid acquire retained inflight=%d", got)
+	}
+}
+
+func TestChannelService_RecordChannelSlotCapacity(t *testing.T) {
+	ctx := context.Background()
+	uc := biz.NewChannelUsecase(&channelServiceRepo{}, nil)
+	svc := NewChannelService(uc)
+	for i := range 100 {
+		reply, err := svc.RecordChannelSlot(ctx, &channelv1.RecordChannelSlotRequest{ChannelId: 7, SlotId: fmt.Sprintf("execution-%d", i), Acquired: true})
+		if err != nil || !reply.GetSuccess() {
+			t.Fatalf("acquire %d rejected before capacity: %v, %v", i, reply, err)
+		}
+	}
+	reply, err := svc.RecordChannelSlot(ctx, &channelv1.RecordChannelSlotRequest{ChannelId: 7, SlotId: "over-capacity", Acquired: true})
+	if err != nil || reply.GetSuccess() || !strings.Contains(reply.GetMessage(), "concurrency limit") {
+		t.Fatalf("capacity rejection = %v, %v", reply, err)
+	}
+	reply, err = svc.RecordChannelSlot(ctx, &channelv1.RecordChannelSlotRequest{ChannelId: 7, SlotId: "execution-0", Acquired: true})
+	if err != nil || !reply.GetSuccess() {
+		t.Fatalf("renewal at capacity rejected: %v, %v", reply, err)
+	}
+	if got := uc.SelectorStats()[7].Inflight; got != 100 {
+		t.Fatalf("rejection or renewal changed capacity: inflight=%d", got)
 	}
 }
 

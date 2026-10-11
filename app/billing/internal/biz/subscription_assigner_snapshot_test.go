@@ -134,6 +134,24 @@ func TestAssignPlan_SnapshotUsesOrderAssetAmountWhenPresent(t *testing.T) {
 	}
 }
 
+func TestAssignPlan_FrozenPriceUsesSnapshotDuration(t *testing.T) {
+	t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", "10")
+	now := time.Unix(1_700_000_000, 0)
+	a, fake := newSnapshotAssigner(t, &stubPlanGetter{err: subscriptionbiz.ErrSubscriptionPlanNotFound}, now)
+	conversion, err := subscriptionbiz.CapturePriceConversion(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := PlanSnapshot{PlanID: 7, Name: "P", GroupID: 3, PriceQuota: 100, ValidityDays: 30, PriceConversion: conversion}
+	order := &PaymentOrder{UserID: "42", TradeNo: "PAY-FROZEN-DAYS", AssetType: PaymentAssetTypeSubscription, AssetAmount: 1, PlanID: 7, PlanSnapshot: EncodePlanSnapshot(snapshot)}
+	if err := a.AssignSubscriptionAfterPayment(context.Background(), order); err != nil {
+		t.Fatal(err)
+	}
+	if fake.lastReq.ExpiresAt != now.Unix()+30*subscriptionSecondsPerDay {
+		t.Fatalf("frozen purchase duration was overwritten: %+v", fake.lastReq)
+	}
+}
+
 func TestAssignPlan_FallsBackToLivePlanWhenNoSnapshot(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	plan := &subscriptionbiz.SubscriptionPlan{
@@ -184,6 +202,7 @@ func TestPaymentPlanSnapshotter_CapturesPlan(t *testing.T) {
 	plan := &subscriptionbiz.SubscriptionPlan{
 		ID: 7, GroupID: 3, Name: "Pro", ProductName: "codex-pro",
 		PriceQuota: 2000, ValidityDays: 30,
+		ForSale: true, Group: &subscriptionbiz.SubscriptionGroup{ID: 3, Status: 1},
 	}
 	live := &stubPlanGetter{plan: plan}
 	s := NewPaymentPlanSnapshotter(live)

@@ -15,10 +15,11 @@ import (
 // and adds the ModelRepo methods for model service handler tests.
 type modelServiceRepo struct {
 	channelServiceRepo
-	models  map[int64]*biz.Model
-	nextID  int64
-	aliases map[int64]*biz.ModelAlias
-	health  []*biz.ModelHealthState
+	models     map[int64]*biz.Model
+	nextID     int64
+	aliases    map[int64]*biz.ModelAlias
+	health     []*biz.ModelHealthState
+	lastFilter biz.ListModelsFilter
 }
 
 func newModelServiceRepo() *modelServiceRepo {
@@ -30,6 +31,7 @@ func newModelServiceRepo() *modelServiceRepo {
 }
 
 func (r *modelServiceRepo) ListModels(ctx context.Context, page, pageSize int32, filter biz.ListModelsFilter) ([]*biz.Model, int64, error) {
+	r.lastFilter = filter
 	var out []*biz.Model
 	for _, m := range r.models {
 		out = append(out, m)
@@ -195,13 +197,70 @@ func newModelService() *ChannelService {
 	return svc
 }
 
+func TestChannelService_ModelStatusFilterPresence(t *testing.T) {
+	repo := newModelServiceRepo()
+	svc := NewChannelService(biz.NewChannelUsecase(repo, nil))
+	svc.SetModelUsecase(biz.NewModelUsecase(repo))
+	ctx := context.Background()
+	for _, filter := range []*int32{nil, new(int32(0)), new(int32(1)), new(int32(2))} {
+		_, err := svc.ListModels(ctx, &channelv1.ListModelsRequest{Status: filter})
+		require.NoError(t, err)
+		require.Equal(t, filter != nil, repo.lastFilter.StatusHasValue)
+		if filter != nil {
+			require.Equal(t, *filter, repo.lastFilter.Status)
+		}
+		_, err = svc.ExportModels(ctx, &channelv1.ExportModelsRequest{Status: filter})
+		require.NoError(t, err)
+		require.Equal(t, filter != nil, repo.lastFilter.StatusHasValue)
+		if filter != nil {
+			require.Equal(t, *filter, repo.lastFilter.Status)
+		}
+	}
+}
+
+func TestChannelService_ModelStatusReflectsSourceAvailability(t *testing.T) {
+	repo := newModelServiceRepo()
+	model := &biz.Model{ID: 1, ModelID: "glm-5.3", Status: biz.ModelStatusEnabled, HasEnabledSource: true}
+	repo.models[model.ID] = model
+	svc := NewChannelService(biz.NewChannelUsecase(repo, nil))
+	svc.SetModelUsecase(biz.NewModelUsecase(repo))
+	ctx := context.Background()
+	for _, available := range []bool{true, false, true} {
+		model.HasEnabledSource = available
+		want := int32(biz.ModelStatusDisabled)
+		if available {
+			want = biz.ModelStatusEnabled
+		}
+		list, err := svc.ListModels(ctx, &channelv1.ListModelsRequest{})
+		require.NoError(t, err)
+		require.Len(t, list.Models, 1)
+		require.Equal(t, want, list.Models[0].Status)
+		require.NotNil(t, list.Models[0].ConfiguredStatus)
+		require.EqualValues(t, biz.ModelStatusEnabled, list.Models[0].GetConfiguredStatus())
+		for _, req := range []*channelv1.GetModelRequest{{ModelPk: model.ID}, {ModelId: model.ModelID}} {
+			detail, err := svc.GetModel(ctx, req)
+			require.NoError(t, err)
+			require.Equal(t, want, detail.Model.Status)
+			require.NotNil(t, detail.Model.ConfiguredStatus)
+			require.EqualValues(t, biz.ModelStatusEnabled, detail.Model.GetConfiguredStatus())
+		}
+		require.EqualValues(t, biz.ModelStatusEnabled, model.Status, "projection must preserve the registry switch")
+	}
+	model.Status = biz.ModelStatusDisabled
+	list, err := svc.ListModels(ctx, &channelv1.ListModelsRequest{})
+	require.NoError(t, err)
+	require.EqualValues(t, biz.ModelStatusDisabled, list.Models[0].Status)
+	require.NotNil(t, list.Models[0].ConfiguredStatus)
+	require.Zero(t, list.Models[0].GetConfiguredStatus())
+}
+
 func TestPublicModelCatalogProjectsOnlyPublicMetadata(t *testing.T) {
 	repo := newModelServiceRepo()
 	repo.models[1] = &biz.Model{ModelID: "public", Status: 1, IsPublic: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}, PricingInput: 123, Description: "internal details", AuthorizationRevision: 10}
 	svc := NewChannelService(biz.NewChannelUsecase(repo, nil))
 	svc.SetModelUsecase(biz.NewModelUsecase(repo))
 	ctx := serviceidentity.WithRPCMethod(serviceidentity.WithPrincipal(authorization.WithExternal(context.Background()), serviceidentity.Principal{Name: "admin", Dedicated: true}), channelv1.ChannelService_ListPublicModels_FullMethodName)
-	out, err := svc.ListPublicModels(ctx, &channelv1.ListModelsRequest{PublicOnly: false, Status: 0})
+	out, err := svc.ListPublicModels(ctx, &channelv1.ListModelsRequest{PublicOnly: false, Status: new(int32(0))})
 	require.NoError(t, err)
 	require.Equal(t, &channelv1.ListModelsResponse{Total: 1, Models: []*channelv1.ModelSummary{{ModelId: "public", Status: 1, IsPublic: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}}}}, out)
 }
@@ -589,6 +648,7 @@ func TestChannelService_RecordModelUsageNilUC(t *testing.T) {
 // ExportAllModels and ImportModels satisfy biz.ModelExchangeRepo so the
 // service handler tests can exercise the DTO↔DO round-trip.
 func (r *modelServiceRepo) ExportAllModels(ctx context.Context, filter biz.ListModelsFilter) ([]*biz.ModelExportModel, error) {
+	r.lastFilter = filter
 	out := make([]*biz.ModelExportModel, 0, len(r.models))
 	for _, m := range r.models {
 		out = append(out, &biz.ModelExportModel{

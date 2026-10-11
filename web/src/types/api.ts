@@ -1248,6 +1248,7 @@ export interface components {
             priority?: number;
             createdAt?: string;
             updatedAt?: string;
+            revision?: string;
         };
         "api.admin.v1.RedeemCodeInfo": {
             code?: string;

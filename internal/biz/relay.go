@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/routing"
@@ -57,10 +60,13 @@ type ChannelClient interface {
 // subscription-account selector de-rates on the per-process view (memory
 // limiter / Redis-fallback scenarios where the cross-replica LoadOracle reads
 // zero). It is OPTIONAL: relay asserts the interface before calling, so
-// existing fakes and clients that do not implement it keep working. Calls are
-// fire-and-forget best-effort.
+// existing fakes and clients that do not implement it keep working.
 type SubscriptionAccountSlotReporter interface {
-	RecordSubscriptionAccountSlot(ctx context.Context, accountID int64, acquired bool) error
+	RecordSubscriptionAccountSlot(ctx context.Context, accountID int64, slotID string, acquired bool) error
+}
+
+type ChannelSlotReporter interface {
+	RecordChannelSlot(ctx context.Context, channelID int64, slotID string, acquired bool) error
 }
 
 type SubscriptionAccountClient interface {
@@ -397,14 +403,90 @@ func (uc *RelayUsecase) RecordSubscriptionAccountHealth(ctx context.Context, acc
 // The client is optional (interface assertion): channel clients that do not
 // implement the reporter simply skip the feedback, so single-replica or
 // legacy setups are unaffected.
-func (uc *RelayUsecase) RecordSubscriptionAccountSlot(ctx context.Context, accountID int64, acquired bool) error {
+func (uc *RelayUsecase) RecordSubscriptionAccountSlot(ctx context.Context, accountID int64, slotID string, acquired bool) error {
 	if uc == nil || uc.channel == nil || accountID <= 0 {
 		return nil
 	}
 	if reporter, ok := uc.channel.(SubscriptionAccountSlotReporter); ok {
-		return reporter.RecordSubscriptionAccountSlot(ctx, accountID, acquired)
+		return reporter.RecordSubscriptionAccountSlot(ctx, accountID, slotID, acquired)
 	}
 	return nil
+}
+
+func (uc *RelayUsecase) RecordChannelSlot(ctx context.Context, channelID int64, slotID string, acquired bool) error {
+	if uc == nil || uc.channel == nil || channelID <= 0 {
+		return nil
+	}
+	if reporter, ok := uc.channel.(ChannelSlotReporter); ok {
+		return reporter.RecordChannelSlot(ctx, channelID, slotID, acquired)
+	}
+	return nil
+}
+
+// AcquireChannelSlot tracks execution, including the full lifetime of a stream.
+// Reports are ordered and detached so cancellation cannot skip the release.
+func (uc *RelayUsecase) AcquireChannelSlot(ctx context.Context, ch *Channel) (func(), error) {
+	if uc == nil || uc.channel == nil || ch == nil || ch.ID <= 0 || ch.SubscriptionAccountID > 0 {
+		return func() {}, nil
+	}
+	if _, ok := uc.channel.(ChannelSlotReporter); !ok {
+		return func() {}, nil
+	}
+	channelID := ch.ID
+	release, err := acquireExecutionSlotLease(ctx, func(reportCtx context.Context, slotID string, acquired bool) error {
+		return uc.RecordChannelSlot(reportCtx, channelID, slotID, acquired)
+	})
+	if err != nil {
+		return nil, &RetryableError{Status: 503, Err: fmt.Errorf("channel slot admission: %w", err), NoUpstreamAttempt: true}
+	}
+	return release, nil
+}
+
+// Account slots are load telemetry; the local/Redis limiter owns admission.
+func (uc *RelayUsecase) AcquireSubscriptionAccountSlot(ctx context.Context, accountID int64) func() {
+	if uc == nil || uc.channel == nil || accountID <= 0 {
+		return func() {}
+	}
+	if _, ok := uc.channel.(SubscriptionAccountSlotReporter); !ok {
+		return func() {}
+	}
+	release, _ := acquireExecutionSlotLease(ctx, func(reportCtx context.Context, slotID string, acquired bool) error {
+		return uc.RecordSubscriptionAccountSlot(reportCtx, accountID, slotID, acquired)
+	})
+	return release
+}
+
+func acquireExecutionSlotLease(ctx context.Context, record func(context.Context, string, bool) error) (func(), error) {
+	slotID := uuid.NewString()
+	report := func(acquired bool) error {
+		reportCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 200*time.Millisecond)
+		defer cancel()
+		return record(reportCtx, slotID, acquired)
+	}
+	if err := report(true); err != nil {
+		// The owner may have acquired the slot before its reply was lost.
+		_ = report(false)
+		return sync.OnceFunc(func() { _ = report(false) }), err
+	}
+	done, renewed := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(renewed)
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				_ = report(true)
+			}
+		}
+	}()
+	return sync.OnceFunc(func() {
+		close(done)
+		<-renewed
+		_ = report(false)
+	}), nil
 }
 
 func (uc *RelayUsecase) SetSessionAccountStore(store SessionAccountStore, ttl time.Duration, enabled bool) {

@@ -42,6 +42,7 @@ import {
   type SubscriptionAccountSummary,
 } from '@/lib/subscription-account';
 import { locale, t } from '@/lib/i18n';
+import { formatSubscriptionUSD as formatUSD } from '@/lib/amount';
 
 // Mirrors common.v1.SubscriptionAccountInfo JSON tags returned by
 // GET /api/subscription-accounts/{id}. The protobuf-generated JSON uses
@@ -244,12 +245,6 @@ function formatResetAfter(seconds?: number | null) {
   if (hours > 0) return t(`${hours}小时${minutes > 0 ? `${minutes}分钟` : ''}后`);
   if (minutes > 0) return t(`${minutes}分钟后`);
   return t("1分钟内");
-}
-
-function formatUSD(value?: number | null) {
-  const n = Number(value ?? 0);
-  if (!Number.isFinite(n)) return '$0.00';
-  return `$${n.toFixed(2)}`;
 }
 
 function parseNumberInput(value: string) {
@@ -511,6 +506,8 @@ export function AdminSubscriptionAccountsPage() {
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['admin-subscription-accounts'] });
+    queryClient.invalidateQueries({ queryKey: ['admin-models'] });
+    queryClient.invalidateQueries({ queryKey: ['admin-model-detail'] });
   };
 
   const sort = {

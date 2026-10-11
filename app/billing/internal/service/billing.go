@@ -1508,7 +1508,17 @@ func reconciliationRunToProto(run *biz.ReconciliationResult) (*billingv1.Reconci
 		out.Discrepancies = append(out.Discrepancies, &billingv1.ReconciliationDiscrepancy{Type: biz.ReconciliationDiscrepancyTypeReceivable, UserId: d.UserID, PendingReceivableQuota: d.PendingReceivableQuota, OverdraftQuota: d.OverdraftQuota, Difference: d.Difference})
 	}
 	for _, d := range run.RefundInconsistencies {
-		out.Discrepancies = append(out.Discrepancies, &billingv1.ReconciliationDiscrepancy{Type: biz.ReconciliationDiscrepancyTypeRefund, RefundedOrderCount: d.RefundedOrderCount, RefundedOrderMoneyCents: d.RefundedOrderMoneyCents, ReversalLedgerCount: d.ReversalLedgerCount, ReversalLedgerAmount: d.ReversalLedgerAmount, MoneyCentsDiff: d.MoneyCentsDiff})
+		item := &billingv1.ReconciliationDiscrepancy{
+			Type: biz.ReconciliationDiscrepancyTypeRefund, TradeNo: d.TradeNo, UserId: d.UserID,
+			RefundedOrderCount: d.RefundedOrderCount, RefundedOrderMoneyCents: d.RefundedOrderMoneyCents,
+			ReversalLedgerCount: d.ReversalLedgerCount, ReversalLedgerAmount: d.ReversalLedgerAmount, MoneyCentsDiff: d.MoneyCentsDiff,
+		}
+		// Historical runs contain only the aggregate CNY-cent difference.
+		// Do not imply they also recorded the newer fixed-amount comparison.
+		if d.TradeNo != "" || d.UserID != "" || d.ExpectedRefundAmount != 0 || d.AmountDiff != 0 {
+			item.ExpectedQuota, item.ActualQuota, item.Difference = d.ExpectedRefundAmount, d.ReversalLedgerAmount, d.AmountDiff
+		}
+		out.Discrepancies = append(out.Discrepancies, item)
 	}
 	for _, d := range run.StuckIssuanceInconsistencies {
 		out.Discrepancies = append(out.Discrepancies, &billingv1.ReconciliationDiscrepancy{Type: biz.ReconciliationDiscrepancyTypeStuckIssuance, TradeNo: d.TradeNo, UserId: d.UserID, GroupId: d.GroupID, PlanId: d.PlanID, MoneyCents: d.MoneyCents, StuckSince: d.StuckSince.Unix()})

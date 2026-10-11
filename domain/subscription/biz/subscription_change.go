@@ -110,6 +110,9 @@ func (uc *SubscriptionUsecase) changeSubscription(ctx context.Context, tx Tx, re
 	if req.UserID <= 0 || req.ToGroupID <= 0 {
 		return nil, fmt.Errorf("user_id and to_group_id are required")
 	}
+	if req.NewPriceQuota < 0 || req.OldPriceQuota < 0 {
+		return nil, fmt.Errorf("subscription prices must not be negative")
+	}
 	var sub *UserSubscription
 	var err error
 	if tx != nil {
@@ -159,8 +162,11 @@ func (uc *SubscriptionUsecase) changeSubscription(ctx context.Context, tx Tx, re
 		// Mutate the active row in place. expires_at is preserved (a change
 		// is not a renewal). The audit metadata records the from→to transition.
 		fromGroupID := sub.GroupID
-		if req.Contract != nil {
+		planPriceChanged := req.ToPlanID > 0 || req.Contract != nil || req.OldPriceQuota > 0 || req.NewPriceQuota > 0
+		if planPriceChanged {
 			sub.PricePaid = req.NewPriceQuota
+		}
+		if req.Contract != nil {
 			sub.Contract = CloneContract(req.Contract)
 		}
 		sub.GroupID = req.ToGroupID
@@ -190,7 +196,10 @@ func (uc *SubscriptionUsecase) changeSubscription(ctx context.Context, tx Tx, re
 			SubscriptionFieldMetadata,
 		}
 		if req.Contract != nil {
-			fields = append(fields, SubscriptionFieldContract, SubscriptionFieldPricePaid)
+			fields = append(fields, SubscriptionFieldContract)
+		}
+		if planPriceChanged {
+			fields = append(fields, SubscriptionFieldPricePaid)
 		}
 		// Only write subscription_name when the request actually changes it;
 		// writing the read-snapshot value back would violate the narrow-write

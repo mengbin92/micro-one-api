@@ -92,7 +92,7 @@ describe('SubscriptionsPage', () => {
   it('shows an empty state when there is no active subscription', async () => {
     server.use(
       http.get('/api/v1/subscriptions/progress', () =>
-        HttpResponse.json({ success: false, message: 'not found' }),
+        HttpResponse.json({ success: false, message: 'subscription not found' }),
       ),
     );
 
@@ -103,5 +103,49 @@ describe('SubscriptionsPage', () => {
     );
 
     expect(await screen.findByText('暂无活跃订阅')).toBeInTheDocument();
+  });
+
+  it.each([503, 200])('shows unavailable usage instead of an empty subscription on a %s failure', async (status) => {
+    server.use(http.get('/api/v1/subscriptions/progress', () =>
+      HttpResponse.json({ success: false, message: 'subscription service not configured' }, { status }),
+    ));
+
+    renderWithQuery(<MemoryRouter><SubscriptionsPage /></MemoryRouter>);
+
+    expect(await screen.findByText('订阅用量暂不可用')).toBeInTheDocument();
+    expect(screen.queryByText('暂无活跃订阅')).not.toBeInTheDocument();
+  });
+
+  it.each([503, 200])('shows unavailable RPM instead of unlimited on a %s failure', async (status) => {
+    server.use(
+      http.get('/api/user/limits', () => HttpResponse.json({ success: false, data: { user_rpm_limit: 0 } }, { status })),
+      http.get('/api/v1/subscriptions/progress', () => HttpResponse.json({ success: false, message: 'subscription not found' })),
+    );
+    renderWithQuery(<MemoryRouter><SubscriptionsPage /></MemoryRouter>);
+
+    expect(await screen.findByText('请求频率暂不可用')).toBeInTheDocument();
+    expect(screen.queryByText('不限')).not.toBeInTheDocument();
+  });
+
+  it.each([null, {}])('does not treat missing RPM data %j as unlimited', async (data) => {
+    server.use(
+      http.get('/api/user/limits', () => HttpResponse.json({ success: true, data })),
+      http.get('/api/v1/subscriptions/progress', () => HttpResponse.json({ success: false, message: 'subscription not found' })),
+    );
+    renderWithQuery(<MemoryRouter><SubscriptionsPage /></MemoryRouter>);
+
+    expect(await screen.findByText('请求频率暂不可用')).toBeInTheDocument();
+    expect(screen.queryByText('不限')).not.toBeInTheDocument();
+  });
+
+  it('shows unlimited RPM only for a confirmed zero limit', async () => {
+    server.use(
+      http.get('/api/user/limits', () => HttpResponse.json({ success: true, data: { user_rpm_limit: 0 } })),
+      http.get('/api/v1/subscriptions/progress', () => HttpResponse.json({ success: false, message: 'subscription not found' })),
+    );
+    renderWithQuery(<MemoryRouter><SubscriptionsPage /></MemoryRouter>);
+
+    expect(await screen.findByText('不限')).toBeInTheDocument();
+    expect(screen.queryByText('请求频率暂不可用')).not.toBeInTheDocument();
   });
 });

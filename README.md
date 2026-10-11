@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.34.15 发布公告](./docs/releases/release-v0.34.15.md)（鉴权、计费与 HTTP/2 安全修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.15)
+> 📣 **最新发布**：[v0.34.16 发布公告](./docs/releases/release-v0.34.16.md)（订阅价格契约、写前置条件与模型可用性修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.16)
 
 ## 功能概览
 
@@ -17,7 +17,7 @@
 - 钱包与账务：提供金额预扣、释放、结算、ledger、兑换码、支付订单和用量记录等能力。
 - 订阅套餐与用量查询：支持订阅套餐购买、续费、退款/冲正、购买时套餐快照，以及 API Key 鉴权的 `/v1/subscription/usage` 查询（额度、已用量、剩余额度和下次刷新时间）。
 - 订阅账号治理：支持订阅账号本地额度、fixed daily/weekly 重置、账号恢复、额度告警、单用户单 active 订阅约束和多副本幂等治理记录。
-- 模型管理系统：提供独立的模型管理后台，支持按账户配置模型映射、通配符模型匹配、模型别名管理、使用统计分析、缓存优化等功能，彻底解决多渠道模型管理复杂性。
+- 模型管理系统：提供独立的模型管理后台，支持模型映射、通配符匹配、别名和使用统计；渠道或上游订阅账号禁用后同步扣减可用来源，来源归零后模型同步禁用，保留模型手动开关。详见[模型管理设计](docs/model-management-design.md)。
 - 国内订阅账户支持：新增对智谱 GLM、MiniMax、Kimi 等国内平台订阅账户的支持，包括动态模型发现、配额状态查询、路由恢复探测等能力。
 - 成本与利润分析：`billing_ledgers` 记录上游成本，账本聚合支持收入/成本/毛利维度，可按模型、渠道、用户、Token、时间下钻。
 - 多维用量聚合：用量统计改为 SQL `GROUP BY` 聚合（按用户/渠道/模型/Token/分组/小时|日），告别 admin 抽样估算。
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.34.16
+
+v0.34.16 统一订阅配额窗口与 CNY 价格契约，修复钱包购买少扣 10,000 倍的资金问题；保留管理台写前置条件并回填零版本号（迁移 124/125），按来源状态同步模型可用性，修复中文操作原因的 gRPC 元数据拒绝，并交付跨服务并发与支付 review 修复。**无 API/proto 破坏性变更**；迁移 096、124、125 均已在生产应用，billing/admin 需配置 `RECHARGE_AMOUNT_MULTIPLIER`。依次更新 billing、channel、identity、admin、relay 与宿主机前端；模型可用性与写前置条件修复已热部署的环境可跳过对应服务。详见 [release-v0.34.16.md](./docs/releases/release-v0.34.16.md)。
 
 ### 升级到 v0.34.15
 

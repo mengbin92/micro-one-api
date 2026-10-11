@@ -52,13 +52,18 @@ func handleModels(w http.ResponseWriter, r *http.Request, svc *service.AdminServ
 }
 
 func handleListModels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	status, valid := modelStatusQuery(r)
+	if !valid {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid model status"})
+		return
+	}
 	resp, err := svc.ListModels(r.Context(), &channelv1.ListModelsRequest{
 		Page:       getQueryInt32(r, "page", 1),
 		PageSize:   getQueryInt32(r, "page_size", 20),
 		Keyword:    r.URL.Query().Get("keyword"),
 		Provider:   r.URL.Query().Get("provider"),
 		ModelType:  r.URL.Query().Get("model_type"),
-		Status:     getQueryInt32(r, "status", 0),
+		Status:     status,
 		Category:   r.URL.Query().Get("category"),
 		Tier:       r.URL.Query().Get("tier"),
 		PublicOnly: r.URL.Query().Get("public_only") == "true",
@@ -68,6 +73,19 @@ func handleListModels(w http.ResponseWriter, r *http.Request, svc *service.Admin
 		return
 	}
 	writeModelResponse(w, r, resp)
+}
+
+// modelStatusQuery preserves an explicit disabled filter through protobuf RPC.
+func modelStatusQuery(r *http.Request) (*int32, bool) {
+	raw := r.URL.Query().Get("status")
+	if raw == "" {
+		return nil, true
+	}
+	value, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || value < 0 || value > 2 {
+		return nil, false
+	}
+	return new(int32(value)), true
 }
 
 func handleCreateModel(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -642,7 +660,9 @@ func handleMigrateUpstreamCostKeys(w http.ResponseWriter, r *http.Request, svc *
 		ExpectedRevision string `json:"expected_revision"`
 		Reason           string `json:"reason"`
 	}
-	_ = jsonx.NewDecoder(r.Body).Decode(&body)
+	if r.ContentLength != 0 && !decodeBody(w, r, &body) {
+		return
+	}
 	if body.DryRun != nil {
 		dryRun = *body.DryRun
 	}

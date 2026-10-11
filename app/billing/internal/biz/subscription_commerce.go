@@ -124,6 +124,15 @@ func (uc *SubscriptionCommerce) Execute(ctx context.Context, req SubscriptionCom
 				return nil, err
 			}
 		}
+		// PricePaid and the upgrade difference stay nominal CNY for historical
+		// credit; only the wallet debit and its receipt use fixed USD units.
+		charge, err = subscriptionbiz.WalletPriceAmount(charge)
+		if err != nil {
+			return nil, err
+		}
+		if result.Change != nil {
+			result.Change.ChargedQuota = charge
+		}
 		user := strconv.FormatInt(req.UserID, 10)
 		if charge > 0 {
 			result.Balance, err = uc.billing.accountRepo.UpdateBalanceInTx(ctx, tx, user, -charge, LedgerTypeSubscription)

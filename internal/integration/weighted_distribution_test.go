@@ -118,8 +118,8 @@ func TestRelaySelectChannel_WeightedDistribution(t *testing.T) {
 	// Fire N sequential relay requests. Each goes through the full path:
 	// handleChatCompletions -> RelayUsecase.Plan -> ChannelAdapter.SelectChannel
 	// -> channel-service SelectChannel -> ChannelUsecase.SelectChannel ->
-	// WeightedSelector.Select. The selector increments inflight and adjusts
-	// currentWeight; RetryExecutor.recordHealth then calls back into
+	// WeightedSelector.Select. Selection adjusts currentWeight; execution slot
+	// reports track inflight, and RetryExecutor.recordHealth calls back into
 	// ChannelUsecase.RecordHealth -> WeightedSelector.RecordHealth.
 	const total = 40
 	body := `{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}`
@@ -157,7 +157,7 @@ func TestRelaySelectChannel_WeightedDistribution(t *testing.T) {
 	// selector was actually on the selection path (not bypassed). Both
 	// channels must be registered (Select registers every candidate) with the
 	// configured weights, and CurrentWeight must be non-zero (Select mutates
-	// it). After all requests complete, RecordHealth has run for each attempt
+	// it). After all requests complete, execution slots have been released,
 	// so inflight is back to 0.
 	stats := channeltestutil.SelectorStats(channelUc)
 	if len(stats) != 2 {

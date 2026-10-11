@@ -15,6 +15,7 @@ import {
   type SubscriptionProgressData,
 } from '@/components/SubscriptionProgress';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
+import { subscriptionProgressRefreshInterval } from '@/lib/account-queries';
 import {
   Table,
   TableBody,
@@ -110,16 +111,16 @@ export function AdminSubscriptionsPage() {
     },
   });
 
-  // Progress is per-user and best-effort: only fetched when filtering to a single
-  // user; success:false (no active subscription) is surfaced as "no progress".
-  const { data: progress } = useAuthorizedQuery({
-    permission: 'subscription.user_subscription.report.read', queryKey: ['admin-subscription-progress', filterUserId],
+  const { data: progress, isError: isProgressError } = useAuthorizedQuery({
+    permission: 'subscription.user_subscription.read', queryKey: ['admin-subscription-progress', filterUserId],
     enabled: filterUserId != null && filterUserId > 0,
-    queryFn: async () => {
-      const res = await adminApiClient.get(`/v1/subscriptions/progress?user_id=${filterUserId}`);
-      if (res.data?.success === false) return null;
-      return (res.data?.data as SubscriptionProgressData | null) ?? null;
+    queryFn: async ({ signal }) => {
+      const res = await adminApiClient.get(`/v1/admin/subscriptions/progress?user_id=${filterUserId}`, { signal });
+      if (res.data?.success === false && res.data.message === 'subscription not found') return null;
+      return unwrapApiData<SubscriptionProgressData | null>(res.data) ?? null;
     },
+    refetchOnWindowFocus: true,
+    refetchInterval: (query) => query.state.status === 'error' ? false : subscriptionProgressRefreshInterval(query.state.data),
   });
 
   const { data: groups } = useAuthorizedQuery({
@@ -283,7 +284,9 @@ export function AdminSubscriptionsPage() {
         )}
       </div>
 
-      {filterUserId != null && progress && (
+      {filterUserId != null && isProgressError ? (
+        <p role="alert" className="text-sm text-destructive">{t('订阅用量暂不可用')}</p>
+      ) : filterUserId != null && progress && (
         <SubscriptionProgressCard
           progress={progress}
           title={t(`用户 ${filterUserId} 当前活跃订阅配额`)}

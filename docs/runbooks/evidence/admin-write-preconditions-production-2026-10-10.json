@@ -1,0 +1,79 @@
+{
+  "date": "2026-10-10",
+  "timezone": "Asia/Shanghai",
+  "verified_at": "2026-10-10T10:23:07.208668+08:00",
+  "build_base_commit": "57ef42f3727d125629d9df61b3182d359e939ba7",
+  "source_digest": "a0246ad4ccb550446b44aa594b04f2218759ca823eda6e9fead16753d38d5406",
+  "server_build_used": false,
+  "container": {
+    "verified_at": "2026-10-10T10:23:07.208668+08:00",
+    "service": "admin-api",
+    "image_ref": "docker-compose-admin-api:deploy-20261010-101641-57ef42f3",
+    "image_id": "sha256:6b3b63d05128b9d530f3dc5553b4de0123901b78b5dece7ee1f376f145ab35e0",
+    "architecture": "linux/amd64",
+    "source_digest": "a0246ad4ccb550446b44aa594b04f2218759ca823eda6e9fead16753d38d5406",
+    "container_source_digest_matches": true,
+    "running": true,
+    "restart_count": 0,
+    "oom_killed": false,
+    "runtime_configuration_unchanged": true,
+    "compose_backup": "/opt/micro-one-api/docker-compose/docker-compose.yml.rollback-20261010-101641",
+    "rollback_image": "docker-compose-admin-api:rollback-20261010-101641",
+    "rollback_image_id": "sha256:2e12cc87d3d0cc748e72c18f1ef26bdc90295c930368ce29db367749a718223d",
+    "rollback_verified": true
+  },
+  "migrations": {
+    "backup": "/opt/micro-one-api/backups/admin-write-preconditions-20261010-021750",
+    "channel": {
+      "schema": "oneapi_channel",
+      "version": "124_backfill_subscription_account_revision",
+      "applied": true,
+      "zero_revision_accounts_before": 3,
+      "zero_revision_accounts_after": 0,
+      "account_5": {
+        "status": 1,
+        "credential_revision_before": 0,
+        "credential_revision_after": 1
+      }
+    },
+    "config": {
+      "schema": "oneapi_config",
+      "version": "125_backfill_config_revision",
+      "applied": true,
+      "zero_revision_configs_before": 0,
+      "zero_revision_configs_after": 0
+    },
+    "shared_legacy_schema_modified": false
+  },
+  "frontend": {
+    "backup": "/opt/web/dist.bak.admin-write-20261010-021857",
+    "release_files": 77,
+    "manifest_matches": true,
+    "index_sha256": "80a666c0c9ed15523811d4f67144575320eab79ac0835e996e1f628cfb6d7ed2",
+    "old_hash_assets_retained": true
+  },
+  "checks": {
+    "healthz": true,
+    "frontend_index_matches": true,
+    "initial_assets_verified": 7,
+    "admin_spa_routes": true,
+    "business_status_write_tested": false
+  },
+  "local_validation": {
+    "backend_packages_passed": 5,
+    "frontend_test_files": 9,
+    "frontend_tests_passed": 82,
+    "frontend_lint": "passed",
+    "frontend_typecheck": "passed",
+    "frontend_build": "passed",
+    "asset_budgets_passed": 6,
+    "architecture": "passed",
+    "formatting": "passed",
+    "migration_governance": "passed",
+    "rbac_contract_rows": 831
+  },
+  "limitations": [
+    "No enable/disable replay on live business accounts",
+    "No authenticated admin API checks: local initial administrator credentials were not available"
+  ]
+}

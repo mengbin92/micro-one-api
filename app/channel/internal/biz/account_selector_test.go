@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -308,9 +309,9 @@ func TestSubscriptionAccountSelector_LoadFactorDegradesWhenAcquireCalled(t *test
 		t.Fatalf("Select err = %v", err)
 	}
 
-	// Simulate a future seam that reports in-flight load.
-	for range 25 {
-		s.Acquire(1)
+	// Report distinct executing attempts.
+	for i := range 25 {
+		s.RecordSlot(1, fmt.Sprintf("execution-%d", i), true)
 	}
 	st := s.accounts[1]
 	if got := st.inflight.Load(); got != 25 {
@@ -322,8 +323,8 @@ func TestSubscriptionAccountSelector_LoadFactorDegradesWhenAcquireCalled(t *test
 	}
 
 	// Release back to neutral.
-	for range 25 {
-		s.Release(1)
+	for i := range 25 {
+		s.RecordSlot(1, fmt.Sprintf("execution-%d", i), false)
 	}
 	if got := st.loadFactor(); got != 100 {
 		t.Fatalf("loadFactor after full Release = %d, want 100", got)
@@ -479,7 +480,7 @@ func TestChannelUsecase_RecordSubscriptionAccountSlot(t *testing.T) {
 
 	// Acquire slots up to 50% of maxConcurrent... maxConcurrent is 0 here
 	// (unset), so the legacy absolute bands apply: inflight 1..9 → 80.
-	uc.RecordSubscriptionAccountSlot(9, true)
+	uc.RecordSubscriptionAccountSlot(9, "execution", true)
 	if got := st.inflight.Load(); got != 1 {
 		t.Fatalf("inflight after acquire = %d, want 1", got)
 	}
@@ -488,7 +489,7 @@ func TestChannelUsecase_RecordSubscriptionAccountSlot(t *testing.T) {
 	}
 
 	// Release restores neutrality.
-	uc.RecordSubscriptionAccountSlot(9, false)
+	uc.RecordSubscriptionAccountSlot(9, "execution", false)
 	if got := st.inflight.Load(); got != 0 {
 		t.Fatalf("inflight after release = %d, want 0", got)
 	}
@@ -497,7 +498,7 @@ func TestChannelUsecase_RecordSubscriptionAccountSlot(t *testing.T) {
 	}
 
 	// Non-positive ids and nil selector are safe no-ops.
-	uc.RecordSubscriptionAccountSlot(0, true)
-	uc.RecordSubscriptionAccountSlot(9, true)
-	(&ChannelUsecase{}).RecordSubscriptionAccountSlot(9, true)
+	uc.RecordSubscriptionAccountSlot(0, "execution", true)
+	uc.RecordSubscriptionAccountSlot(9, "another", true)
+	(&ChannelUsecase{}).RecordSubscriptionAccountSlot(9, "execution", true)
 }

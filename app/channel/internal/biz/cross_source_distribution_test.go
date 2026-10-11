@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,7 +32,7 @@ func TestPhase3_ChannelSelector_WeightDistribution(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Select err = %v", err)
 		}
-		// Select increments inflight; simulate completion so it stays selectable.
+		// Keep latency and health feedback representative of successful traffic.
 		s.RecordHealth(selected.ID, true, 10, "")
 		counts[selected.ID]++
 	}
@@ -122,14 +123,15 @@ func TestPhase3_ChannelSelector_ConcurrencySaturation(t *testing.T) {
 	open := &Channel{ID: 2, Weight: 1, Priority: 1}
 	candidates := []*Channel{limited, open}
 
-	// Prime the selector so channel 1 exists in state, then artificially
-	// saturate it to its default maxConcurrent (100) by bumping inflight
-	// directly. This simulates the production condition where relay dispatch
-	// (a future Acquire seam) reports in-flight load.
+	// Actual relay leases saturate channel 1 at its default cap of 100.
 	if _, err := s.Select(context.Background(), "g", candidates); err != nil {
 		t.Fatalf("prime Select err = %v", err)
 	}
-	s.channels[1].inflight.Store(100) // == default maxConcurrent
+	for i := range 100 {
+		if !s.RecordSlot(1, fmt.Sprintf("execution-%d", i), true) {
+			t.Fatal("execution slot rejected before capacity")
+		}
+	}
 	if got := s.channels[1].inflight.Load(); got != 100 {
 		t.Fatalf("limited channel inflight = %d, want 100 (saturated)", got)
 	}

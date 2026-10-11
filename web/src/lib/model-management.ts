@@ -14,7 +14,8 @@ export interface ModelSummary {
   display_name: string;
   provider: string;
   model_type: string;
-  status: number; // 0=disabled, 1=enabled, 2=testing
+  status: number; // Effective status: 0=disabled, 1=enabled, 2=testing.
+  configured_status?: number; // Registry switch, independent of available sources.
   category: string;
   tier: string;
   is_public: boolean;
@@ -42,6 +43,7 @@ export interface ModelInfo {
   pricing_output: number;
   pricing_cache_read: number;
   status: number;
+  configured_status?: number;
   is_public: boolean;
   capabilities: string[];
   input_modalities: string[];
@@ -196,6 +198,8 @@ export async function getModel(modelPk: number): Promise<GetModelResponse> {
     model: data.model ? {
       ...data.model,
       status: data.model.status ?? 0,
+      channel_count: data.model.channel_count ?? 0,
+      subscription_count: data.model.subscription_count ?? 0,
       pricing_input: data.model.pricing_input ?? 0,
       pricing_output: data.model.pricing_output ?? 0,
       pricing_cache_read: data.model.pricing_cache_read ?? 0,
@@ -206,13 +210,14 @@ export async function getModel(modelPk: number): Promise<GetModelResponse> {
   };
 }
 
-// The admin API serializes proto3 responses with omitempty, so a disabled model
-// (status=0) is absent from the JSON body. Normalize it back to an explicit
-// status so tables/badges don't render "undefined".
+// Older API responses may omit proto3 zero values. Normalize them so state
+// badges and source counts remain explicit across rolling upgrades.
 function normalizeModelSummary(model: ModelSummary): ModelSummary {
   return {
     ...model,
     status: model.status ?? 0,
+    channel_count: model.channel_count ?? 0,
+    subscription_count: model.subscription_count ?? 0,
     pricing_input: model.pricing_input ?? 0,
     pricing_output: model.pricing_output ?? 0,
     pricing_cache_read: model.pricing_cache_read ?? 0,

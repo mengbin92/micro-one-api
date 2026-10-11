@@ -22,9 +22,11 @@ func TestPublicModelCatalogFiltersBeforePagination(t *testing.T) {
 		{ModelID: "private", IsPublic: false, Status: biz.ModelStatusEnabled},
 		{ModelID: "public-a", IsPublic: true, Status: biz.ModelStatusEnabled, InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}},
 		{ModelID: "public-b", IsPublic: true, Status: biz.ModelStatusEnabled},
+		{ModelID: "public-unavailable", IsPublic: true, Status: biz.ModelStatusEnabled},
 	} {
 		require.NoError(t, repo.CreateModel(context.Background(), model))
 	}
+	require.NoError(t, repo.CreateChannel(context.Background(), &biz.Channel{Name: "catalog", Status: biz.ChannelStatusEnabled, Models: []string{"public-a", "public-b"}, Group: "default"}))
 	uc := biz.NewModelUsecase(repo)
 	ctx := serviceidentity.WithRPCMethod(serviceidentity.WithPrincipal(authorization.WithExternal(context.Background()), serviceidentity.Principal{Name: "admin", Dedicated: true}), "/api.channel.v1.ChannelService/ListPublicModels")
 	rows, total, err := uc.ListPublicModels(ctx, 1, 1)

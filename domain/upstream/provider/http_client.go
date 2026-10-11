@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -84,7 +85,28 @@ func (d *ssrfSafeDialer) DialContext(ctx context.Context, network, address strin
 }
 
 func upstreamRedirectPolicy(allowLocal bool) func(*http.Request, []*http.Request) error {
-	return func(req *http.Request, _ []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		if len(via) > 0 {
+			origin := via[0].URL
+			port, originPort := req.URL.Port(), origin.Port()
+			defaultPort := "443"
+			if req.URL.Scheme == "http" {
+				defaultPort = "80"
+			}
+			if port == "" {
+				port = defaultPort
+			}
+			if originPort == "" {
+				originPort = defaultPort
+			}
+			if req.URL.Scheme != origin.Scheme || !strings.EqualFold(req.URL.Hostname(), origin.Hostname()) || port != originPort {
+				// Custom API-key headers and 307/308 request bodies retain secrets.
+				return errors.New("upstream redirect cannot change origin")
+			}
+		}
 		if allowLocal || localNetworkAccessAllowed(req.Context()) || os.Getenv("PROVIDER_DISABLE_SSRF_CHECK") == "true" {
 			return validateBaseURLAllowLocal(req.URL.String())
 		}

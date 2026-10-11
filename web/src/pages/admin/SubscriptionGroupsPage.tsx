@@ -4,6 +4,7 @@ import { Layers, Pencil, Save } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
+import { formatCNY } from '@/lib/amount';
 import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,6 +37,7 @@ import { t } from '@/lib/i18n';
 // /api/v1/admin/subscription-groups (internal/admin/server/subscription.go).
 interface SubscriptionGroup {
   id: number;
+  revision?: number;
   name: string;
   display_name: string;
   platform: string;
@@ -54,6 +56,7 @@ interface SubscriptionGroup {
 // Payload decoded into subscription.biz.SubscriptionGroup on create/update.
 interface GroupPayload {
   id?: number;
+  expected_revision?: number;
   name: string;
   display_name: string;
   platform: string;
@@ -76,6 +79,7 @@ const PLATFORM_OPTIONS: Array<{ value: string; label: string }> = [
 
 interface GroupDraft {
   id?: number;
+  revision?: number;
   name: string;
   displayName: string;
   platform: string;
@@ -112,7 +116,7 @@ function formatLimit(value: number | null) {
 }
 
 function formatPrice(value: number) {
-  return `$${Number(value || 0).toFixed(2)}`;
+  return formatCNY(value);
 }
 
 function parsePrice(value: string) {
@@ -124,6 +128,7 @@ function parsePrice(value: string) {
 function toDraft(group: SubscriptionGroup): GroupDraft {
   return {
     id: group.id,
+    revision: group.revision,
     name: group.name,
     displayName: group.display_name,
     platform: group.platform,
@@ -149,6 +154,7 @@ function parseLimit(value: string): number | null {
 function draftToPayload(draft: GroupDraft): GroupPayload {
   return {
     ...(draft.id ? { id: draft.id } : {}),
+    expected_revision: draft.revision,
     name: draft.name.trim(),
     display_name: draft.displayName.trim(),
     platform: draft.platform,
@@ -462,7 +468,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
         </div>
         <p className="text-xs text-muted-foreground sm:col-span-2">{t("额度消耗倍率只影响订阅额度消耗速度；用户请求的价格由模型价格和路由分组价格倍率决定。平台是策略描述，不限制可调用模型。")}</p>
         <div className="space-y-2">
-          <Label htmlFor="grp-price">{t("购买价格(USD)")}</Label>
+          <Label htmlFor="grp-price">{t("购买价格(CNY)")}</Label>
           <Input
             id="grp-price"
             type="number"

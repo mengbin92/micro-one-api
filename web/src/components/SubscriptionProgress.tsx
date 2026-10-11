@@ -2,6 +2,7 @@ import { ContractSummary, type SubscriptionContract } from '@/components/Subscri
 import { Infinity as InfinityIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { locale, t } from '@/lib/i18n';
+import { formatSubscriptionUSD as formatUsd } from '@/lib/amount';
 
 // Mirrors subscription.biz.QuotaDimension JSON tags returned inside
 // SubscriptionProgress (GET /api/v1/subscriptions/progress). `limit` is a
@@ -41,18 +42,9 @@ export interface SubscriptionProgressData {
   remaining_seconds: number;
 }
 
-function formatUsd(value: number) {
-  const safeValue = Number.isFinite(value) ? value : 0;
-  const digits = Math.abs(safeValue) > 0 && Math.abs(safeValue) < 1 ? 8 : 2;
-  const fixed = safeValue.toFixed(digits);
-  const [whole, fraction = ''] = fixed.split('.');
-  const trimmed = fraction.replace(/0+$/, '');
-  if (trimmed.length <= 2) return `$${whole}.${fraction.slice(0, 2)}`;
-  return `$${whole}.${trimmed}`;
-}
-
 function usageRatio(used: number, limit: number | null) {
-  if (limit == null || limit <= 0) return 0;
+  if (limit == null) return 0;
+  if (limit <= 0) return used > 0 ? 1 : 0;
   return Math.min(used / limit, 1);
 }
 
@@ -79,7 +71,8 @@ function formatNextRefresh(ts?: number): string | null {
 function QuotaBar({ label, dimension }: { label: string; dimension: QuotaDimension | null }) {
   if (!dimension) return null;
   const unlimited = dimension.unlimited ?? dimension.limit == null;
-  const ratio = usageRatio(dimension.used + (dimension.frozen ?? 0), dimension.limit);
+  const settled = dimension.settled ?? dimension.used;
+  const ratio = usageRatio(settled + (dimension.frozen ?? 0), dimension.limit);
   const refreshLabel = formatNextRefresh(dimension.next_refresh);
 
   return (
@@ -98,7 +91,7 @@ function QuotaBar({ label, dimension }: { label: string; dimension: QuotaDimensi
             />
           </div>
           <span className="w-36 shrink-0 whitespace-nowrap text-right text-xs text-muted-foreground">
-            {formatUsd(dimension.used)} / {formatUsd(dimension.limit ?? 0)}
+            {formatUsd(settled)} / {formatUsd(dimension.limit ?? 0)}
           </span>
         </>
       )}
@@ -109,7 +102,7 @@ function QuotaBar({ label, dimension }: { label: string; dimension: QuotaDimensi
       )}
     </div>
     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground sm:pl-13">
-      <span>{t('已结算')} {formatUsd(dimension.settled ?? dimension.used)}</span>
+      <span>{t('已结算')} {formatUsd(settled)}</span>
       <span>{t('冻结')} {dimension.frozen == null ? t('未知') : formatUsd(dimension.frozen)}</span>
       <span>{t('可用')} {unlimited ? t('无限制') : dimension.available == null ? t('未知') : formatUsd(dimension.available)}</span>
       {dimension.over_limit && <span className="text-destructive">{t('已超限')}</span>}

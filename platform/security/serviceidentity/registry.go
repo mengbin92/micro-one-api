@@ -115,6 +115,7 @@ var rpcPolicies = map[string]RPCPolicy{
 	"/api.channel.v1.ChannelService/RecordChannelHealth":                     {Owner: "channel", UserCallers: []string{}, SystemCallers: []string{"relay", "monitor"}},
 	"/api.channel.v1.ChannelService/RecordSubscriptionAccountHealth":         {Owner: "channel", UserCallers: []string{}, SystemCallers: []string{"relay"}},
 	"/api.channel.v1.ChannelService/RecordSubscriptionAccountSlot":           {Owner: "channel", UserCallers: []string{}, SystemCallers: []string{"relay"}},
+	"/api.channel.v1.ChannelService/RecordChannelSlot":                       {Owner: "channel", UserCallers: []string{}, SystemCallers: []string{"relay"}},
 	"/api.channel.v1.ChannelService/DeleteChannel":                           {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.channel.v1.ChannelService/ChangeChannelStatus":                     {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.channel.v1.ChannelService/ListModels":                              {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{}},

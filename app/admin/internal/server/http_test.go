@@ -756,6 +756,13 @@ func TestAdminHTTPSubscriptionManagement(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"subscription_name":"alice-pro"`) {
 		t.Fatalf("list all subscriptions status=%d body=%s", rec.Code, rec.Body.String())
 	}
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/subscriptions/progress?user_id=42", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"remaining_seconds"`) {
+		t.Fatalf("managed local progress status=%d body=%s", rec.Code, rec.Body.String())
+	}
 
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/subscriptions/1/reset-quota", strings.NewReader(`{"scope":"all"}`))
 	req.Header.Set("Authorization", "Bearer admin-token")

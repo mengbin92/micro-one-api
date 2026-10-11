@@ -3120,7 +3120,7 @@ func subscriptionAccountErrorMetadata(raw, message string) string {
 		// policy together with the incident so the sweeper does not guess.
 		return stampRecoveryMetadata(raw, message, 0, now())
 	}
-	return setSubscriptionAccountMetadataValue(raw, "last_error", "")
+	return clearSubscriptionAccountRecoveryMetadata(setSubscriptionAccountMetadataValue(raw, "last_error", ""))
 }
 
 func setSubscriptionAccountMetadataValue(raw, key, value string) string {
@@ -3463,7 +3463,8 @@ func stampRecoveryMetadata(raw, reason string, untilUnix, nowUnix int64) string 
 func recoveryPolicyForReason(reason string) string {
 	lower := strings.ToLower(reason)
 	switch {
-	case strings.Contains(lower, "401"), strings.Contains(lower, "403"), strings.Contains(lower, "unauthorized"), strings.Contains(lower, "forbidden"):
+	case strings.Contains(lower, "401"), strings.Contains(lower, "403"), strings.Contains(lower, "unauthorized"), strings.Contains(lower, "forbidden"),
+		strings.Contains(lower, "invalid_grant"), strings.Contains(lower, "invalid grant"), strings.Contains(lower, "invalid refresh"), strings.Contains(lower, "no refresh_token"):
 		return biz.RecoveryPolicyManual
 	// Codex snapshot exhaustion: a transient upstream quota condition that
 	// clears when the upstream snapshot resets. Must NOT be treated as manual

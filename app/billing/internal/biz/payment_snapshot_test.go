@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
+	"micro-one-api/pkg/jsonx"
 )
 
 // stubPlanGetterForCreate returns a configured plan so CreateOrder can capture
@@ -57,9 +58,11 @@ func (r *capturingPaymentRepo) UnmarkOrderAssetIssued(ctx context.Context, trade
 }
 
 func TestCreateOrder_CapturesPlanSnapshotForSubscriptionPlanOrder(t *testing.T) {
+	t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", "10")
 	plan := &subscriptionbiz.SubscriptionPlan{
 		ID: 7, GroupID: 3, Name: "Pro", ProductName: "codex-pro",
 		PriceQuota: 2000, ValidityDays: 30,
+		ForSale: true, Group: &subscriptionbiz.SubscriptionGroup{ID: 3, Status: 1},
 	}
 	getter := &stubPlanGetterForCreate{plan: plan}
 	snap := NewPaymentPlanSnapshotter(getter)
@@ -91,6 +94,18 @@ func TestCreateOrder_CapturesPlanSnapshotForSubscriptionPlanOrder(t *testing.T) 
 	}
 	if decoded.Name != "Pro" || decoded.ProductName != "codex-pro" {
 		t.Fatalf("decoded names = %q/%q", decoded.Name, decoded.ProductName)
+	}
+	var raw struct {
+		PriceConversion *subscriptionbiz.PriceConversion `json:"price_conversion"`
+	}
+	if err := jsonx.Unmarshal([]byte(order.PlanSnapshot), &raw); err != nil {
+		t.Fatalf("decode price conversion: %v", err)
+	}
+	if raw.PriceConversion == nil || raw.PriceConversion.Version != 1 || raw.PriceConversion.RechargeMultiplier != 10 || raw.PriceConversion.WalletAmount != 200_000_000 {
+		t.Fatalf("new order did not freeze CNY 2000 -> USD 20000: %+v", raw.PriceConversion)
+	}
+	if order.MoneyCents != 200000 {
+		t.Fatalf("Alipay amount changed: %d", order.MoneyCents)
 	}
 	if getter.calls != 1 {
 		t.Fatalf("expected 1 plan read at creation, got %d", getter.calls)
@@ -144,5 +159,83 @@ func TestCreateOrder_NoSnapshotWhenSnapshotterAbsent(t *testing.T) {
 	}
 	if order.PlanSnapshot != "" {
 		t.Fatalf("order captured snapshot without snapshotter = %q", order.PlanSnapshot)
+	}
+}
+
+func TestCreateOrder_CNYPlanPriceIsAuthoritative(t *testing.T) {
+	t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", "10")
+	for _, currency := range []string{"CNY", "USD"} {
+		t.Run(currency, func(t *testing.T) {
+			getter := &stubPlanGetterForCreate{plan: &subscriptionbiz.SubscriptionPlan{ID: 7, GroupID: 3, PriceQuota: 100, ValidityDays: 30, ForSale: true, Group: &subscriptionbiz.SubscriptionGroup{ID: 3, Status: 1}}}
+			repo := &capturingPaymentRepo{}
+			uc := NewPaymentUsecaseWithSnapshotter(repo, NewMockPaymentProvider(), &countingPaymentIssuer{}, NewPaymentPlanSnapshotter(getter))
+			order, err := uc.CreateOrder(context.Background(), CreatePaymentOrderRequest{UserID: "42", Channel: PaymentChannelMock, AssetType: PaymentAssetTypeSubscription, PlanID: 7, AssetAmount: 1, MoneyCents: 1, Currency: currency})
+			if currency == "USD" {
+				if err == nil || repo.created != nil {
+					t.Fatal("CNY plan must reject a USD order before contacting the provider")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if order.MoneyCents != 10000 || order.Currency != "CNY" || order.AssetAmount != 30 {
+				t.Fatalf("untrusted request changed the CNY plan charge: %+v", order)
+			}
+		})
+	}
+}
+
+type stubGroupGetterForCreate struct {
+	group *subscriptionbiz.SubscriptionGroup
+}
+
+func (s stubGroupGetterForCreate) GetGroupByID(context.Context, int64) (*subscriptionbiz.SubscriptionGroup, error) {
+	return s.group, nil
+}
+
+func TestCreateOrder_CNYGroupPriceIsAuthoritative(t *testing.T) {
+	t.Setenv("SUBSCRIPTION_ENTITLEMENTS_V2", "false")
+	t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", "10")
+	for _, currency := range []string{"CNY", "USD"} {
+		t.Run(currency, func(t *testing.T) {
+			getter := stubGroupGetterForCreate{group: &subscriptionbiz.SubscriptionGroup{ID: 3, Status: 1, PriceQuota: 100, DurationDays: 30}}
+			repo := &capturingPaymentRepo{}
+			uc := NewPaymentUsecaseWithAssigner(repo, NewMockPaymentProvider(), nil, NewPaymentSubscriptionAssigner(nil, getter))
+			order, err := uc.CreateOrder(context.Background(), CreatePaymentOrderRequest{UserID: "42", Channel: PaymentChannelMock, AssetType: PaymentAssetTypeSubscription, GroupID: 3, AssetAmount: 1, MoneyCents: 1, Currency: currency})
+			if currency == "USD" {
+				if err == nil || repo.created != nil {
+					t.Fatal("CNY group must reject a USD order before contacting the provider")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if order.MoneyCents != 10000 || order.AssetAmount != 30 || order.PlanSnapshot == "" {
+				t.Fatalf("untrusted request changed the canonical CNY group charge: %+v", order)
+			}
+		})
+	}
+}
+
+func TestPaymentPlanSnapshotterRejectsUnsaleableLegacyPlan(t *testing.T) {
+	t.Setenv("SUBSCRIPTION_ENTITLEMENTS_V2", "false")
+	for _, name := range []string{"zero duration", "off shelf", "disabled group"} {
+		t.Run(name, func(t *testing.T) {
+			plan := &subscriptionbiz.SubscriptionPlan{ID: 7, GroupID: 3, Group: &subscriptionbiz.SubscriptionGroup{ID: 3, Status: 1}, ForSale: true, PriceQuota: 100, ValidityDays: 30}
+			switch name {
+			case "zero duration":
+				plan.ValidityDays = 0
+			case "off shelf":
+				plan.ForSale = false
+			case "disabled group":
+				plan.Group.Status = 2
+			}
+			_, err := NewPaymentPlanSnapshotter(&stubPlanGetterForCreate{plan: plan}).CapturePlanSnapshot(context.Background(), plan.ID)
+			if err == nil {
+				t.Fatal("new legacy cash order must be saleable and fulfillable before payment")
+			}
+		})
 	}
 }

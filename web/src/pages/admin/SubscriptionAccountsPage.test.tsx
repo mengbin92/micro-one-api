@@ -53,6 +53,17 @@ const detailAccount = {
 };
 
 describe('AdminSubscriptionAccountsPage', () => {
+  it('preserves local subscription quota precision', async () => {
+    server.use(http.get('/api/subscription-accounts', () => HttpResponse.json({ accounts: [{
+      ...baseAccount,
+      quotaDailyUsedUsd: 0.000002,
+      quotaDailyLimitUsd: 1.0249,
+    }], total: 1 })));
+    renderWithQuery(<MemoryRouter><AdminSubscriptionAccountsPage /></MemoryRouter>);
+
+    expect(await screen.findByText('$0.000002 / $1.0249')).toBeInTheDocument();
+  });
+
   it('filters manual recovery on the server and shows waiting time', async () => {
     const policies: string[] = [];
     server.use(http.get('/api/subscription-accounts', ({ request }) => {
