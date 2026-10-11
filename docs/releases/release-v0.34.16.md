@@ -87,3 +87,4 @@ v0.34.16 是 v0.34.15 之后的 **PATCH 修复版本**，包含 10 个提交（6
 - `fix(ci): refresh RBAC digests and exclude historical checksum false positives`
 - `fix(admin): support Unicode channel action reasons`
 - `docs(release): v0.34.16`
+- `test(e2e): align routing acceptance wallet fixture with CNY price contract`
