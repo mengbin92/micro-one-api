@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.34.15 发布公告](./docs/releases/release-v0.34.15.md)（鉴权、计费与 HTTP/2 安全修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.15)
+> 📣 **最新发布**：[v0.34.16 发布公告](./docs/releases/release-v0.34.16.md)（订阅价格契约、写前置条件与模型可用性修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.16)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.34.16
+
+v0.34.16 统一订阅配额窗口与 CNY 价格契约，修复钱包购买少扣 10,000 倍的资金问题；保留管理台写前置条件并回填零版本号（迁移 124/125），按来源状态同步模型可用性，修复中文操作原因的 gRPC 元数据拒绝，并交付跨服务并发与支付 review 修复。**无 API/proto 破坏性变更**；迁移 096、124、125 均已在生产应用，billing/admin 需配置 `RECHARGE_AMOUNT_MULTIPLIER`。依次更新 billing、channel、identity、admin、relay 与宿主机前端；模型可用性与写前置条件修复已热部署的环境可跳过对应服务。详见 [release-v0.34.16.md](./docs/releases/release-v0.34.16.md)。
 
 ### 升级到 v0.34.15
 

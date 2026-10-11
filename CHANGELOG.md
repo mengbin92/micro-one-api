@@ -7,13 +7,27 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.34.16] - 2026-10-11
+
+v0.34.16 是 v0.34.15 之后的 **PATCH 修复版本**：统一订阅配额窗口与 CNY 价格契约，修复钱包购买少扣 10,000 倍的资金问题；保留管理台写前置条件并回填零版本号；按来源状态同步模型可用性；修复中文操作原因被 gRPC 元数据拒绝；并交付一批跨服务并发、支付与可靠性 review 修复。无 API/proto 破坏性变更；迁移 096、124、125 均已在生产应用，billing/admin 需配置 `RECHARGE_AMOUNT_MULTIPLIER`。详见 [release-v0.34.16.md](docs/releases/release-v0.34.16.md)。
+
 ### Fixed
 
+- 订阅配额窗口与价格契约：钱包扣费将 CNY 套餐价／升级差价经 `RECHARGE_AMOUNT_MULTIPLIER` 换算，新订单冻结价格、倍率与时长快照，支付请求不再覆盖套餐价；连续升级只收差价，拒绝负价格溢出免费升级；部分退款按退款比例缩短时长。
+- 仪表盘展示当前订阅窗口的已结算用量与冻结配额，无订阅时保留 UTC 自然日并标注；购买确认弹窗重读目录，过期报价或下架套餐阻止提交；金额保留最多 8 位小数。
+- 新增 `GET /api/v1/admin/subscriptions/progress` 按用户订阅进度查询；RBAC 事实矩阵复审至 833 行。
+- 管理台写前置条件：迁移 124、125 回填历史零版本号，批量配额写入转发逐账号 CAS，保留编辑起始版本并读取当前属主缓存，后台刷新不再掩盖编辑冲突。
 - 模型管理按启用映射及启用来源计算渠道数、订阅账号数、供应商和有效状态；来源全部禁用后模型同步禁用，仍有可用来源时保持启用，同一账号跨分组只计数一次。来源恢复保留模型的手动禁用设置。
 - 列表和详情新增 `configured_status`，单行按钮按配置开关操作；列表与导出的显式 `status=0` 正确筛选有效禁用模型，公共目录排除无可用来源的模型。渠道、订阅账号变更后同步刷新模型缓存。
 - 模型用量记录改为仅读取模型 ID，避免每次请求执行来源可用性及供应商聚合查询。
+- 跨服务 review 修复：租约化尝试跟踪与原子容量上限、WebSocket 逐轮准入、并发 Token 扣费保留、邮箱变更后会话失效、余额／退款／事务边界加固、重定向凭据与 OAuth 错误防泄露、JSON 数字保留、流取消与日志关闭竞争修复。
+- Unicode 操作原因经二进制 gRPC 元数据传输，滚动升级期间 ASCII 保留文本键；IAM 路由白名单接受控制台启用／禁用渠道的 POST。
 
-上述修复已于 2026-10-09 更新生产 channel-service、admin-api 和前端，并使用渠道 9、智谱账号 4 的现有禁用状态完成只读验收。详见[生产更新记录](docs/runbooks/model-source-availability-production-2026-10-09.md)。
+上述模型可用性修复已于 2026-10-09 更新生产 channel-service、admin-api 和前端，写前置条件修复及对应前端已于 2026-10-10 热部署；两批均完成生产验收。详见[生产更新记录](docs/runbooks/model-source-availability-production-2026-10-09.md)。
+
+### Changed
+
+- Compose 为 billing/admin 增加 `RECHARGE_AMOUNT_MULTIPLIER` 环境变量（默认 10），lite/postgres 变体对齐；取值直接决定钱包扣费金额，升级时勿顺带调整。
 
 ## [0.34.15] - 2026-10-09
 
