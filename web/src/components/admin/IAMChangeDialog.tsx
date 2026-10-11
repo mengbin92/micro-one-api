@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { PreviewView } from '@/components/admin/IAMDetails';
 import { writeIAM } from '@/lib/iam-api';
 import { useAuthorization } from '@/lib/authorization';
@@ -45,8 +46,8 @@ export function IAMChangeDialog({ change, onClose }: { change: IAMChange; onClos
   };
   return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }}><DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto"><DialogHeader><DialogTitle>{change.title}</DialogTitle></DialogHeader>
     <details open><summary>{t('拟提交变更')}</summary><pre className="overflow-auto rounded bg-muted p-3 text-xs">{JSON.stringify(change.request, null, 2)}</pre></details>
-    <label>{t('变更原因')}<input aria-label={t('变更原因')} className="mt-2 w-full rounded border p-2" value={reason} onChange={e => { setReason(e.target.value); setPreview(undefined); setRequest(undefined); }} /></label>
-    {error && <p role="alert">{error}</p>}{conflict && <Button onClick={onClose}>{t('关闭并重新加载后预检')}</Button>}{preview && <PreviewView reply={preview} />}
-    <div className="flex gap-3"><Button disabled={busy || conflict || !reason.trim() || !currentVersion || !auth.can(change.permission) || !auth.can('iam.authorization.simulate')} onClick={() => void prepare()}>{t('预检变更')}</Button><Button disabled={busy || !preview?.content_digest || !!preview.conflicts?.length || preview.base_policy_revision !== currentVersion || !auth.can(change.permission)} onClick={() => void commit()}>{t('确认提交')}</Button></div>
+    <label className="space-y-2 text-sm font-medium">{t('变更原因')}<Input aria-label={t('变更原因')} value={reason} onChange={e => { setReason(e.target.value); setPreview(undefined); setRequest(undefined); }} /></label>
+    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}{conflict && <Button variant="outline" onClick={onClose}>{t('关闭并重新加载后预检')}</Button>}{preview && <PreviewView reply={preview} />}
+    <DialogFooter><Button variant="outline" disabled={busy || conflict || !reason.trim() || !currentVersion || !auth.can(change.permission) || !auth.can('iam.authorization.simulate')} onClick={() => void prepare()}>{t('预检变更')}</Button><Button disabled={busy || !preview?.content_digest || !!preview.conflicts?.length || preview.base_policy_revision !== currentVersion || !auth.can(change.permission)} onClick={() => void commit()}>{t('确认提交')}</Button></DialogFooter>
   </DialogContent></Dialog>;
 }
