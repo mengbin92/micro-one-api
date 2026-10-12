@@ -26,7 +26,7 @@
 
 **11:16 CST 部署验收完成**：[部署后证据](evidence/next-stage-production-after-2026-10-12.json)确认仅 Billing 镜像变化。新镜像 `docker-compose-billing-service:deploy-20261012-110921-5c08d26e`，image ID `sha256:9dee76888f7582d54ed2569d088582a7529baf3304dcf429417d693c3914b5de`，源码摘要 `3c0844a197d050e75508978a06f1a9aedb5b822c45c65806eb4e3ab1d850c791`；回滚标签 `rollback-20261012-110921` 保留旧实际运行镜像。服务器仅加载镜像和重建该容器，未构建/拉取。
 
-启动对账 completed/0 差异 1 轮，九服务 health 200、restart/OOM 为零，全部环境指纹与前端保持；903 条消费关联及金额检查无差异。历史 partial 继续保留，不将启动轮当作自然小时轮验收。下一次自然小时轮待实际产生后核对。
+启动对账 completed/0 差异 1 轮，九服务 health 200、restart/OOM 为零，全部环境指纹与前端保持；903 条消费关联及金额检查无差异。历史 partial 继续保留，不将启动轮当作自然小时轮验收。**12:18 CST 自然小时复核通过**：12:15:35 CST 的 #494 completed/0 差异，与启动轮 #493 一致；[只读证据](evidence/refund-reconciliation-hourly-2026-10-12.json)已归档，未手动触发对账。
 
 ## 2. 当前前端与全仓门禁
 
@@ -93,3 +93,9 @@ assert billing['container_source_digest'] != billing['source_digest']
 ```
 
 本轮未扩 allowlist、关闭灰度、发付费对照请求或删除 legacy。下一步只有生产对照/起点条件齐备才进入 N5 连续七天，条件项继续保留。
+
+## 5. 正式发布及最终生产复核
+
+v0.34.17 已按 develop → main → tag 完整交付，tag 指向 `e8839266`，**13:15:55 CST 正式发布**。[Release](https://github.com/mengbin92/micro-one-api/actions/runs/38201074940) 17 项任务全部成功，含真实 IAM owner 浏览器、前端 smoke、Compose、MySQL/SQLite 路由门禁、九服务多架构推送及 GitHub Release。develop/main CI 和安全流水线均成功；[完整确认与独立注册表清单核对](evidence/release-v0.34.17-confirmation-2026-10-12.json)保留九服务 linux/amd64、linux/arm64 验证结果。生产保留已经验证的 Billing 热补丁镜像，没有为改变标签重复部署。
+
+[发布后复核](evidence/executor-n5-post-release-2026-10-12.json)及 [传输区分](evidence/executor-transport-disambiguation-2026-10-12.json)已归档。legacy POST Responses SSE 出现约 63 次增量，但同一时间区间 orchestrator success 没有增长，仍缺同时段可比对照和确认起点。N5 继续 INSUFFICIENT，不回填七天窗口；生产运行事实以观察手册最新条目为准。Billing #493/#494/#495 均 completed/0 差异，其中两轮为自然小时运行；本轮没有手动触发对账、付费请求或扩大灰度。

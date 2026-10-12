@@ -1,0 +1,1653 @@
+{
+  "checked_at": "2026-10-12T13:17:25.192888+08:00",
+  "query_end": "2026-10-12T13:15:24+08:00",
+  "windows": {
+    "last_24h_start": "2026-10-11T13:15:24+08:00",
+    "historical_7d_start": "2026-10-05T13:15:24+08:00"
+  },
+  "runtime": [
+    {
+      "service": "relay-gateway",
+      "container_id": "571f839c40e3a739ccd000102f07be69437093b7b1f10510a6c880072f06b869",
+      "image_id": "sha256:091b64480b54714d28598eed8be00efe1c173762f7296394c30034443b2f5efc",
+      "image_ref": "docker-compose-relay-gateway:deploy-20261011-140115-7560b413",
+      "source_digest": "2aa4e38191228951380c8d2d702ff7ea4621bf9fc8a3bd64c82bfe0c41a24fe1",
+      "container_source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "started_at": "2026-10-11T06:07:02.242995754Z",
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false
+    },
+    {
+      "service": "admin-api",
+      "container_id": "f03dcbbbafc9a202fd2298903c9adc3117045d48f23f99f878a446a0dcb56f47",
+      "image_id": "sha256:504142df7c8c11af29f8dc6e3c340854c49b7f997bc3a24c694fea47e69a0351",
+      "image_ref": "docker-compose-admin-api:deploy-20261011-140115-7560b413",
+      "source_digest": "2aa4e38191228951380c8d2d702ff7ea4621bf9fc8a3bd64c82bfe0c41a24fe1",
+      "container_source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "started_at": "2026-10-11T06:05:38.360331624Z",
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false
+    },
+    {
+      "service": "identity-service",
+      "container_id": "60eb4536b5c5c8358eb612aafcdef2929b0c09fd9dcc7cf6ece1d30f7197f3e7",
+      "image_id": "sha256:fafb4a77a908da60d51d8988e03b745528c34d06973db43318d7cdde6a591ae1",
+      "image_ref": "docker-compose-identity-service:deploy-20261011-140115-7560b413",
+      "source_digest": "2aa4e38191228951380c8d2d702ff7ea4621bf9fc8a3bd64c82bfe0c41a24fe1",
+      "container_source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "started_at": "2026-10-11T06:02:48.649813355Z",
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false
+    },
+    {
+      "service": "channel-service",
+      "container_id": "b8f4a07a7bd173a400010ced0c026fc4451dda718366a07a87721b89bac59f19",
+      "image_id": "sha256:806846552ce5c3bce365352d73315dc2f4f3cfe3c297931121ca0899e07523fe",
+      "image_ref": "docker-compose-channel-service:deploy-20261010-213239-7560b413",
+      "source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "container_source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "started_at": "2026-10-10T13:37:48.536498439Z",
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false
+    },
+    {
+      "service": "billing-service",
+      "container_id": "a283dfc05495dd510ee3b8bff19a2e578ef24d5ff733951d80d70e2baf83f900",
+      "image_id": "sha256:9dee76888f7582d54ed2569d088582a7529baf3304dcf429417d693c3914b5de",
+      "image_ref": "docker-compose-billing-service:deploy-20261012-110921-5c08d26e",
+      "source_digest": "3c0844a197d050e75508978a06f1a9aedb5b822c45c65806eb4e3ab1d850c791",
+      "container_source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "started_at": "2026-10-12T03:15:35.584625256Z",
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false
+    },
+    {
+      "service": "config-service",
+      "container_id": "10d71e0624ae25184c3226b5b84627f59d16d3f3dcf3c36d8560cbd02e818d62",
+      "image_id": "sha256:0971566be3e7d228670a87714594cf54815d57a85191a8963597c52305ba8bbd",
+      "image_ref": "docker-compose-config-service:deploy-20261010-213239-7560b413",
+      "source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "container_source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "started_at": "2026-10-10T13:37:54.608384895Z",
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false
+    },
+    {
+      "service": "log-service",
+      "container_id": "f21c16974478c86d7efc38d2cc9a852ff4ec3f9e4e954cb60187f422f24591e2",
+      "image_id": "sha256:7c5d51a48d2684f269dcc2ef68342f6236eabeb7dc4f48b11ae7c42f6adc843c",
+      "image_ref": "docker-compose-log-service:deploy-20261010-213239-7560b413",
+      "source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "container_source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "started_at": "2026-10-10T13:37:52.162600923Z",
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false
+    },
+    {
+      "service": "monitor-worker",
+      "container_id": "a62bdc52344fc098610d292f153cfb1b8515e3e31ed64ce810a658a81bd38232",
+      "image_id": "sha256:bc54804a89f77974307b79e483704ef918700c6463f552df622524e013ae6451",
+      "image_ref": "docker-compose-monitor-worker:deploy-20261010-213239-7560b413",
+      "source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "container_source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "started_at": "2026-10-10T13:37:53.797237634Z",
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false
+    },
+    {
+      "service": "notify-worker",
+      "container_id": "0b64b65a87ed2b1baad769e88f5b18639c2e62a3743b12264883e6bffd9c2995",
+      "image_id": "sha256:6cdecd0a038ccd34ae1969ada672c5f30311203f6a1e4565de504d2f341f7bc2",
+      "image_ref": "docker-compose-notify-worker:deploy-20261010-213239-7560b413",
+      "source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "container_source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "started_at": "2026-10-10T13:37:55.347070248Z",
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false
+    }
+  ],
+  "relay": {
+    "flag": "true",
+    "allowlist_count": 2,
+    "health": 200,
+    "target_health": "up",
+    "target_last_error": "",
+    "scrape_interval_seconds": 15.0,
+    "current_process_age_hours": 23.139376945826744
+  },
+  "scrape_continuity": {
+    "24h": {
+      "start": "2026-10-11T13:15:24+08:00",
+      "end": "2026-10-12T13:15:24+08:00",
+      "samples": 5760,
+      "first": "2026-10-11T13:15:26.508000+08:00",
+      "last": "2026-10-12T13:15:11.508000+08:00",
+      "failed_samples": 0,
+      "failed_sample_times": [],
+      "maximum_gap_seconds": 15.004000186920166,
+      "gaps_over_interval_plus_one_second": [],
+      "boundary_covered": true,
+      "expected_samples_approx": 5760
+    },
+    "7d_historical_only": {
+      "start": "2026-10-05T13:15:24+08:00",
+      "end": "2026-10-12T13:15:24+08:00",
+      "samples": 40320,
+      "first": "2026-10-05T13:15:26.507000+08:00",
+      "last": "2026-10-12T13:15:11.508000+08:00",
+      "failed_samples": 1,
+      "failed_sample_times": [
+        "2026-10-10T21:32:56.508000+08:00"
+      ],
+      "maximum_gap_seconds": 15.007000207901001,
+      "gaps_over_interval_plus_one_second": [],
+      "boundary_covered": true,
+      "expected_samples_approx": 40320
+    },
+    "current_process": {
+      "start": "2026-10-11T14:07:02.242995+08:00",
+      "end": "2026-10-12T13:15:24+08:00",
+      "samples": 5553,
+      "first": "2026-10-11T14:07:11.508000+08:00",
+      "last": "2026-10-12T13:15:11.508000+08:00",
+      "failed_samples": 0,
+      "failed_sample_times": [],
+      "maximum_gap_seconds": 15.004000186920166,
+      "gaps_over_interval_plus_one_second": [],
+      "boundary_covered": true,
+      "expected_samples_approx": 5553
+    }
+  },
+  "process_segments": [
+    {
+      "value": "1791164882.47",
+      "process_start": "2026-10-05T09:48:02.470000+08:00",
+      "first_scraped": "2026-10-05T13:15:26.507000+08:00",
+      "last_scraped": "2026-10-05T18:29:56.507000+08:00"
+    },
+    {
+      "value": "1791196198.1",
+      "process_start": "2026-10-05T18:29:58.100000+08:00",
+      "first_scraped": "2026-10-05T18:30:11.507000+08:00",
+      "last_scraped": "2026-10-05T18:36:26.507000+08:00"
+    },
+    {
+      "value": "1791196592.6",
+      "process_start": "2026-10-05T18:36:32.600000+08:00",
+      "first_scraped": "2026-10-05T18:36:41.507000+08:00",
+      "last_scraped": "2026-10-09T11:11:11.508000+08:00"
+    },
+    {
+      "value": "1791515472.95",
+      "process_start": "2026-10-09T11:11:12.950000+08:00",
+      "first_scraped": "2026-10-09T11:11:26.508000+08:00",
+      "last_scraped": "2026-10-09T15:53:56.508000+08:00"
+    },
+    {
+      "value": "1791532446.17",
+      "process_start": "2026-10-09T15:54:06.170000+08:00",
+      "first_scraped": "2026-10-09T15:54:11.508000+08:00",
+      "last_scraped": "2026-10-10T21:32:41.508000+08:00"
+    },
+    {
+      "value": "1791639177.52",
+      "process_start": "2026-10-10T21:32:57.520000+08:00",
+      "first_scraped": "2026-10-10T21:33:11.508000+08:00",
+      "last_scraped": "2026-10-10T21:37:41.508000+08:00"
+    },
+    {
+      "value": "1791639468.89",
+      "process_start": "2026-10-10T21:37:48.890000+08:00",
+      "first_scraped": "2026-10-10T21:37:56.508000+08:00",
+      "last_scraped": "2026-10-11T14:06:56.508000+08:00"
+    },
+    {
+      "value": "1791698821.54",
+      "process_start": "2026-10-11T14:07:01.540000+08:00",
+      "first_scraped": "2026-10-11T14:07:11.508000+08:00",
+      "last_scraped": "2026-10-12T13:15:11.508000+08:00"
+    }
+  ],
+  "queries": {
+    "24h": {
+      "requests": {
+        "promql": "sum by(endpoint,stream,execution_path,result,status)(increase(micro_one_api_relay_executor_requests_total{instance=\"relay-gateway:8080\"}[24h]))",
+        "result": [
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "result": "canceled",
+              "status": "502",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "result": "success",
+              "status": "200",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "63.2352"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "canceled",
+              "status": "200",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "canceled",
+              "status": "400",
+              "stream": "unknown"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "canceled",
+              "status": "502",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "14.00330878183529"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "stream_error",
+              "status": "200",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "6.001525233644859"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "success",
+              "status": "200",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "895.1554089251606"
+            ]
+          }
+        ]
+      },
+      "p95_seconds": {
+        "promql": "histogram_quantile(0.95,sum by(le,endpoint,stream,execution_path)(rate(micro_one_api_relay_executor_request_duration_seconds_bucket{instance=\"relay-gateway:8080\"}[24h])))",
+        "result": [
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "186.66605928955312"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "87.9767441860465"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "stream": "unknown"
+            },
+            "value": [
+              1791782124,
+              "NaN"
+            ]
+          }
+        ]
+      },
+      "quota": {
+        "promql": "sum by(endpoint,stream,execution_path,outcome)(increase(micro_one_api_relay_executor_quota_outcome_total{instance=\"relay-gateway:8080\"}[24h]))",
+        "result": [
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "outcome": "commit_async",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "63.2352"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "outcome": "release_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "2.0077714285714285"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "outcome": "reserve_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "66.2377427027027"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "outcome": "commit_async",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "895.1554089251606"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "outcome": "release_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "41.009690003946204"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "outcome": "reserve_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "937.1627018579615"
+            ]
+          }
+        ]
+      },
+      "failover": {
+        "promql": "sum by(endpoint,stream,execution_path,result,reason)(increase(micro_one_api_relay_executor_failover_total{instance=\"relay-gateway:8080\"}[24h]))",
+        "result": []
+      },
+      "counter_resets": {
+        "promql": "sum(resets(micro_one_api_relay_executor_requests_total{instance=\"relay-gateway:8080\"}[24h]))",
+        "result": [
+          {
+            "metric": {},
+            "value": [
+              1791782124,
+              "1"
+            ]
+          }
+        ]
+      }
+    },
+    "7d_historical_only": {
+      "requests": {
+        "promql": "sum by(endpoint,stream,execution_path,result,status)(increase(micro_one_api_relay_executor_requests_total{instance=\"relay-gateway:8080\"}[7d]))",
+        "result": [
+          {
+            "metric": {
+              "endpoint": "/v1/chat/completions",
+              "execution_path": "legacy",
+              "result": "canceled",
+              "status": "200",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/chat/completions",
+              "execution_path": "orchestrator",
+              "result": "error",
+              "status": "500",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/chat/completions",
+              "execution_path": "orchestrator",
+              "result": "error",
+              "status": "502",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "4.000406917599187"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/chat/completions",
+              "execution_path": "orchestrator",
+              "result": "success",
+              "status": "200",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "103.00451992276638"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/chat/completions",
+              "execution_path": "orchestrator",
+              "result": "timeout",
+              "status": "502",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "result": "canceled",
+              "status": "200",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "result": "canceled",
+              "status": "500",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "1.0000939496429913"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "result": "canceled",
+              "status": "502",
+              "stream": "false"
+            },
+            "value": [
+              1791782124,
+              "19.00179093222735"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "result": "canceled",
+              "status": "502",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "result": "error",
+              "status": "500",
+              "stream": "false"
+            },
+            "value": [
+              1791782124,
+              "9.000845785170565"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "result": "error",
+              "status": "500",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "44.00413300770242"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "result": "error",
+              "status": "503",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "3.000281795979711"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "result": "success",
+              "status": "200",
+              "stream": "false"
+            },
+            "value": [
+              1791782124,
+              "133.0125035254301"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "result": "success",
+              "status": "200",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "152.00966675146273"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "result": "canceled",
+              "status": "502",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "result": "success",
+              "status": "200",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "63.2352"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "canceled",
+              "status": "200",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "5.0004220030547675"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "canceled",
+              "status": "400",
+              "stream": "unknown"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "canceled",
+              "status": "500",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "canceled",
+              "status": "502",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "21.001079727576318"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "error",
+              "status": "400",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "1.0001789549033644"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "error",
+              "status": "402",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "error",
+              "status": "403",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "error",
+              "status": "500",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "100.00993936984398"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "error",
+              "status": "503",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "56.00557324840766"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "stream_error",
+              "status": "200",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "17.001401141189206"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "success",
+              "status": "200",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "4169.24364354015"
+            ]
+          }
+        ]
+      },
+      "p95_seconds": {
+        "promql": "histogram_quantile(0.95,sum by(le,endpoint,stream,execution_path)(rate(micro_one_api_relay_executor_request_duration_seconds_bucket{instance=\"relay-gateway:8080\"}[7d])))",
+        "result": [
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "186.66605928955335"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "68.09693877551007"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "stream": "unknown"
+            },
+            "value": [
+              1791782124,
+              "NaN"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/chat/completions",
+              "execution_path": "legacy",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "NaN"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/chat/completions",
+              "execution_path": "orchestrator",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "105.21428571428575"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "stream": "false"
+            },
+            "value": [
+              1791782124,
+              "29.801655665139396"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "28.785714285714285"
+            ]
+          }
+        ]
+      },
+      "quota": {
+        "promql": "sum by(endpoint,stream,execution_path,outcome)(increase(micro_one_api_relay_executor_quota_outcome_total{instance=\"relay-gateway:8080\"}[7d]))",
+        "result": [
+          {
+            "metric": {
+              "endpoint": "/v1/chat/completions",
+              "execution_path": "legacy",
+              "outcome": "commit_async",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/chat/completions",
+              "execution_path": "legacy",
+              "outcome": "reserve_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/chat/completions",
+              "execution_path": "orchestrator",
+              "outcome": "commit_async",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "103.00451992276638"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/chat/completions",
+              "execution_path": "orchestrator",
+              "outcome": "release_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "9.000577367205544"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/chat/completions",
+              "execution_path": "orchestrator",
+              "outcome": "reserve_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "112.00482675400795"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "outcome": "commit_async",
+              "stream": "false"
+            },
+            "value": [
+              1791782124,
+              "133.0125035254301"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "outcome": "commit_async",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "152.00966675146273"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "outcome": "release_success",
+              "stream": "false"
+            },
+            "value": [
+              1791782124,
+              "49.0046043976696"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "outcome": "release_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "139.00883998982448"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "outcome": "reserve_success",
+              "stream": "false"
+            },
+            "value": [
+              1791782124,
+              "183.01719601578648"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/messages",
+              "execution_path": "orchestrator",
+              "outcome": "reserve_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "292.01856915739273"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "outcome": "commit_async",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "63.2352"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "outcome": "release_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "2.0077714285714285"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "outcome": "reserve_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "66.2377427027027"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "outcome": "commit_async",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "4169.24364354015"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "outcome": "release_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "454.0233164594399"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "outcome": "reserve_error",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "outcome": "reserve_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "4625.230607926099"
+            ]
+          }
+        ]
+      },
+      "failover": {
+        "promql": "sum by(endpoint,stream,execution_path,result,reason)(increase(micro_one_api_relay_executor_failover_total{instance=\"relay-gateway:8080\"}[7d]))",
+        "result": []
+      },
+      "counter_resets": {
+        "promql": "sum(resets(micro_one_api_relay_executor_requests_total{instance=\"relay-gateway:8080\"}[7d]))",
+        "result": [
+          {
+            "metric": {},
+            "value": [
+              1791782124,
+              "12"
+            ]
+          }
+        ]
+      }
+    },
+    "current_process": {
+      "requests": {
+        "promql": "sum by(endpoint,stream,execution_path,result,status)(increase(micro_one_api_relay_executor_requests_total{instance=\"relay-gateway:8080\"}[83301s]))",
+        "result": [
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "result": "canceled",
+              "status": "502",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "result": "success",
+              "status": "200",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "63.2352"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "canceled",
+              "status": "200",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "canceled",
+              "status": "400",
+              "stream": "unknown"
+            },
+            "value": [
+              1791782124,
+              "0"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "canceled",
+              "status": "502",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "14.003440117994101"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "stream_error",
+              "status": "200",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "6.001525233644859"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "result": "success",
+              "status": "200",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "830.1993196396397"
+            ]
+          }
+        ]
+      },
+      "p95_seconds": {
+        "promql": "histogram_quantile(0.95,sum by(le,endpoint,stream,execution_path)(rate(micro_one_api_relay_executor_request_duration_seconds_bucket{instance=\"relay-gateway:8080\"}[83301s])))",
+        "result": [
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "stream": "unknown"
+            },
+            "value": [
+              1791782124,
+              "NaN"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "186.6660592895532"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "92.58139534883705"
+            ]
+          }
+        ]
+      },
+      "quota": {
+        "promql": "sum by(endpoint,stream,execution_path,outcome)(increase(micro_one_api_relay_executor_quota_outcome_total{instance=\"relay-gateway:8080\"}[83301s]))",
+        "result": [
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "outcome": "commit_async",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "63.2352"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "outcome": "release_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "2.0077714285714285"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "legacy",
+              "outcome": "reserve_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "66.2377427027027"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "outcome": "commit_async",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "830.1993196396397"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "outcome": "release_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "39.00958318584071"
+            ]
+          },
+          {
+            "metric": {
+              "endpoint": "/v1/responses",
+              "execution_path": "orchestrator",
+              "outcome": "reserve_success",
+              "stream": "true"
+            },
+            "value": [
+              1791782124,
+              "870.2193804034582"
+            ]
+          }
+        ]
+      },
+      "failover": {
+        "promql": "sum by(endpoint,stream,execution_path,result,reason)(increase(micro_one_api_relay_executor_failover_total{instance=\"relay-gateway:8080\"}[83301s]))",
+        "result": []
+      },
+      "counter_resets": {
+        "promql": "sum(resets(micro_one_api_relay_executor_requests_total{instance=\"relay-gateway:8080\"}[83301s]))",
+        "result": [
+          {
+            "metric": {},
+            "value": [
+              1791782124,
+              "0"
+            ]
+          }
+        ]
+      }
+    },
+    "requests_total_snapshot": {
+      "promql": "micro_one_api_relay_executor_requests_total{instance=\"relay-gateway:8080\"}",
+      "result": [
+        {
+          "metric": {
+            "__name__": "micro_one_api_relay_executor_requests_total",
+            "endpoint": "/v1/responses",
+            "execution_path": "orchestrator",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "result": "success",
+            "stack": "micro-one-api",
+            "status": "200",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "831"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "micro_one_api_relay_executor_requests_total",
+            "endpoint": "/v1/responses",
+            "execution_path": "orchestrator",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "result": "canceled",
+            "stack": "micro-one-api",
+            "status": "502",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "15"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "micro_one_api_relay_executor_requests_total",
+            "endpoint": "/v1/responses",
+            "execution_path": "orchestrator",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "result": "stream_error",
+            "stack": "micro-one-api",
+            "status": "200",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "7"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "micro_one_api_relay_executor_requests_total",
+            "endpoint": "/v1/responses",
+            "execution_path": "orchestrator",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "result": "canceled",
+            "stack": "micro-one-api",
+            "status": "200",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "1"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "micro_one_api_relay_executor_requests_total",
+            "endpoint": "/v1/responses",
+            "execution_path": "orchestrator",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "result": "canceled",
+            "stack": "micro-one-api",
+            "status": "400",
+            "stream": "unknown"
+          },
+          "value": [
+            1791782124,
+            "1"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "micro_one_api_relay_executor_requests_total",
+            "endpoint": "/v1/responses",
+            "execution_path": "legacy",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "result": "success",
+            "stack": "micro-one-api",
+            "status": "200",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "64"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "micro_one_api_relay_executor_requests_total",
+            "endpoint": "/v1/responses",
+            "execution_path": "legacy",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "result": "canceled",
+            "stack": "micro-one-api",
+            "status": "502",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "1"
+          ]
+        }
+      ]
+    },
+    "quota_outcome_total_snapshot": {
+      "promql": "micro_one_api_relay_executor_quota_outcome_total{instance=\"relay-gateway:8080\"}",
+      "result": [
+        {
+          "metric": {
+            "__name__": "micro_one_api_relay_executor_quota_outcome_total",
+            "endpoint": "/v1/responses",
+            "execution_path": "orchestrator",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "outcome": "reserve_success",
+            "stack": "micro-one-api",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "871"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "micro_one_api_relay_executor_quota_outcome_total",
+            "endpoint": "/v1/responses",
+            "execution_path": "orchestrator",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "outcome": "commit_async",
+            "stack": "micro-one-api",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "831"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "micro_one_api_relay_executor_quota_outcome_total",
+            "endpoint": "/v1/responses",
+            "execution_path": "orchestrator",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "outcome": "release_success",
+            "stack": "micro-one-api",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "40"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "micro_one_api_relay_executor_quota_outcome_total",
+            "endpoint": "/v1/responses",
+            "execution_path": "legacy",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "outcome": "reserve_success",
+            "stack": "micro-one-api",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "67"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "micro_one_api_relay_executor_quota_outcome_total",
+            "endpoint": "/v1/responses",
+            "execution_path": "legacy",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "outcome": "commit_async",
+            "stack": "micro-one-api",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "64"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "micro_one_api_relay_executor_quota_outcome_total",
+            "endpoint": "/v1/responses",
+            "execution_path": "legacy",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "outcome": "release_success",
+            "stack": "micro-one-api",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "3"
+          ]
+        }
+      ]
+    },
+    "failover_total_snapshot": {
+      "promql": "micro_one_api_relay_executor_failover_total{instance=\"relay-gateway:8080\"}",
+      "result": []
+    }
+  },
+  "accounting": {
+    "transaction": "read-only consistent snapshot; UTC",
+    "start": "2026-10-11T13:15:24+08:00",
+    "end": "2026-10-12T13:15:24+08:00",
+    "aggregate_rows": [
+      "consume_summary\t959\t959\t0\t0\t0",
+      "consume_group\t/v1/responses\t1\tchannel\t959\t2\t2",
+      "ledger_links\t959\t0\t0\t0\t0\t0",
+      "reservations\tcommitted\t959",
+      "reservations\treleased\t45",
+      "expired_reserved\t0",
+      "released_with_consume\t0",
+      "reconciliation\t493\t1791774935\tcompleted\t0",
+      "reconciliation\t494\t1791778535\tcompleted\t0",
+      "reconciliation\t495\t1791782135\tcompleted\t0"
+    ],
+    "columns": {
+      "consume_summary": [
+        "count",
+        "distinct_dedupe",
+        "empty_dedupe",
+        "unverified_canonical",
+        "missing_source_or_upstream_model"
+      ],
+      "consume_group": [
+        "endpoint",
+        "stream",
+        "source_kind",
+        "count",
+        "distinct_models",
+        "distinct_sources"
+      ],
+      "ledger_links": [
+        "joined_rows",
+        "missing_reservation",
+        "non_committed_reservation",
+        "missing_consume_log",
+        "log_attribution_mismatch",
+        "actual_cost_mismatch"
+      ],
+      "reservations": [
+        "status",
+        "count"
+      ],
+      "expired_reserved": [
+        "count"
+      ],
+      "released_with_consume": [
+        "count"
+      ],
+      "reconciliation": [
+        "id",
+        "run_at_unix",
+        "status",
+        "discrepancy_count"
+      ]
+    }
+  },
+  "service_container_ids_preserved": true,
+  "limitations": [
+    "Historical 7d includes deployments and is not an admission window.",
+    "Prometheus increase is extrapolated; first nonzero samples may not count as increases.",
+    "Ledger lacks durable execution_path; token_name is not a unique caller identity.",
+    "Success/settlement aggregates do not prove natural traffic or matching payload/output length.",
+    "WebSocket legacy samples are not SSE executor comparison samples.",
+    "Reconciliation rows are collected since Billing startup without an upper query_end bound; their collection time is checked_at, distinct from the closed metrics/accounting window."
+  ]
+}

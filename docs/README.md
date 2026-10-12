@@ -42,9 +42,9 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——本表明确指向且头部标注「当前执行入口」的计划。未定发布版本时使用 `design/next-stage-plan-YYYY-MM-DD.md`，已定版本时使用 `design/vX.Y-roadmap.md`。新阶段立项时：新建计划 → 旧路线图标为「已归档」并指回新入口 → 同步本表、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-最新发布登记：[v0.34.17](./releases/release-v0.34.17.md)（2026-10-12），退款对账恢复、只读取证超时及 IAM 入口/布局修复。本轮制品状态以 Release 流水线实际结果为准；v0.34.16 及中止候选保留历史记录。
+最新发布登记：[v0.34.17](./releases/release-v0.34.17.md)（2026-10-12），退款对账恢复、只读取证超时及 IAM 入口/布局修复。正式 Release 17 项任务全部成功，九服务 amd64/arm64 清单已独立核对；v0.34.16 及中止候选保留历史记录。
 
-**当前实施（2026-10-12）**：按 [当前计划](./design/next-stage-plan-2026-10-12.md) 依次核对生产、收口 IAM 前端与文档、复验当前代码长流、评估 N5 起点。N1–N4 已交付；生产发现的退款对账 partial 已修复并部署 Billing，启动对账 completed/0 差异，三库回归及前端门禁通过。复验和七天条件结果见 [本轮记录](./runbooks/next-stage-acceptance-2026-10-12.md)，生产事实见 [观察手册](./design/v0.23-executor-observation.md)。
+**当前实施（2026-10-12）**：按 [当前计划](./design/next-stage-plan-2026-10-12.md) 依次核对生产、收口 IAM 前端与文档、复验当前代码长流、评估 N5 起点。N1–N4 已交付；生产发现的退款对账 partial 已修复并部署 Billing，启动对账 completed/0 差异，三库回归及前端门禁通过。当前代码 600 对长流/24 项故障复验 PASS；N5 已有 legacy SSE，但缺同时段可比对照和确认起点。完整结果见 [本轮记录](./runbooks/next-stage-acceptance-2026-10-12.md)，生产事实见 [观察手册](./design/v0.23-executor-observation.md)。
 
 **以下为 2026-10-07 的历史过程**；未提交/未发版/待部署表述仅对应当轮时点，当前状态以上方及发布记录为准。
 

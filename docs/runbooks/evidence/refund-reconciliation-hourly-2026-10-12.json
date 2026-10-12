@@ -1,0 +1,19 @@
+{
+  "checked_at": "2026-10-12T12:18:18.456471+08:00",
+  "runs": [
+    {
+      "id": 493,
+      "run_at": "2026-10-12T11:15:35+08:00",
+      "status": "completed",
+      "discrepancy_count": 0
+    },
+    {
+      "id": 494,
+      "run_at": "2026-10-12T12:15:35+08:00",
+      "status": "completed",
+      "discrepancy_count": 0
+    }
+  ],
+  "read_only": true,
+  "manual_reconciliation_triggered": false
+}
