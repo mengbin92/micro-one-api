@@ -9,9 +9,13 @@ import (
 var ErrCredentialConflict = errors.Conflict(channelv1.CredentialErrorReason_CREDENTIAL_REVISION_CONFLICT.String(), "credential revision conflict; reload authorization")
 
 func (uc *ChannelUsecase) StoreSubscriptionCredentials(ctx context.Context, account *SubscriptionAccount) error {
+	uc.runtimeControlMu.Lock()
+	defer uc.runtimeControlMu.Unlock()
 	return uc.repo.StoreSubscriptionCredentials(ctx, account)
 }
 
 func (uc *ChannelUsecase) ClaimSubscriptionCredentialRefresh(ctx context.Context, account *SubscriptionAccount) error {
+	uc.runtimeControlMu.Lock()
+	defer uc.runtimeControlMu.Unlock()
 	return uc.repo.ClaimSubscriptionCredentialRefresh(ctx, account)
 }

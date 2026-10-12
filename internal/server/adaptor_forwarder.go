@@ -66,12 +66,12 @@ func (f relayAdaptorForwarder) Forward(ctx context.Context, plan *relaybiz.Relay
 
 	rc, client, err := f.relayContext(ctx, plan, req)
 	if err != nil {
-		return nil, err
+		return nil, relayprovider.BeforeForward(err)
 	}
 	ad.Init(rc)
 	upstreamFormat, upstreamBody, err := ad.ConvertRequest(rc, rc.InboundFormat, req.Body)
 	if err != nil {
-		return nil, fmt.Errorf("adaptor convert request: %w", err)
+		return nil, relayprovider.BeforeForward(fmt.Errorf("adaptor convert request: %w", err))
 	}
 	if client == nil {
 		client = relayprovider.NewHTTPClient(30 * time.Second)
@@ -87,12 +87,12 @@ func (f relayAdaptorForwarder) Forward(ctx context.Context, plan *relaybiz.Relay
 		if readErr != nil {
 			return nil, fmt.Errorf("read upstream error response: %w", readErr)
 		}
-		return nil, classifyExecutorCapabilityError(req.Endpoint, &relayprovider.UpstreamHTTPError{StatusCode: resp.StatusCode, Body: body})
+		return nil, classifyExecutorCapabilityError(req.Endpoint, &relayprovider.UpstreamHTTPError{StatusCode: resp.StatusCode, Body: body, RetryAfter: relayprovider.ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())})
 	}
 
 	_, body, err := ad.ConvertResponse(rc, upstreamFormat, resp)
 	if err != nil {
-		return nil, relaybiz.MarkPostForwardError(fmt.Errorf("adaptor convert response: %w", err))
+		return nil, relaybiz.MarkUnverifiedResponseError(fmt.Errorf("adaptor convert response: %w", err))
 	}
 	env := usage.ExtractEnvelopeFromJSON(body, 0)
 	var parsed *relaybiz.UsageEnvelope
@@ -124,12 +124,12 @@ func (f relayAdaptorForwarder) ForwardStream(ctx context.Context, plan *relaybiz
 	}
 	rc, client, err := f.relayContext(ctx, plan, req)
 	if err != nil {
-		return nil, err
+		return nil, relayprovider.BeforeForward(err)
 	}
 	ad.Init(rc)
 	upstreamFormat, upstreamBody, err := ad.ConvertRequest(rc, rc.InboundFormat, req.Body)
 	if err != nil {
-		return nil, fmt.Errorf("adaptor convert stream request: %w", err)
+		return nil, relayprovider.BeforeForward(fmt.Errorf("adaptor convert stream request: %w", err))
 	}
 	if client == nil {
 		client = relayprovider.NewStreamHTTPClient(30 * time.Second)
@@ -145,12 +145,12 @@ func (f relayAdaptorForwarder) ForwardStream(ctx context.Context, plan *relaybiz
 		if readErr != nil {
 			return nil, fmt.Errorf("read upstream stream error response: %w", readErr)
 		}
-		return nil, classifyExecutorCapabilityError(req.Endpoint, &relayprovider.UpstreamHTTPError{StatusCode: resp.StatusCode, Body: body})
+		return nil, classifyExecutorCapabilityError(req.Endpoint, &relayprovider.UpstreamHTTPError{StatusCode: resp.StatusCode, Body: body, RetryAfter: relayprovider.ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())})
 	}
 	_, reader, err := ad.ConvertStreamResponse(rc, upstreamFormat, resp)
 	if err != nil {
 		_ = resp.Body.Close()
-		return nil, relaybiz.MarkPostForwardError(fmt.Errorf("adaptor convert stream response: %w", err))
+		return nil, relaybiz.MarkUnverifiedResponseError(fmt.Errorf("adaptor convert stream response: %w", err))
 	}
 	return &relaybiz.StreamForwardResponse{
 		StatusCode: resp.StatusCode,
@@ -163,7 +163,7 @@ func (f relayAdaptorForwarder) sendAdaptorRequest(ctx context.Context, rc *relay
 	for {
 		upstreamReq, err := ad.BuildUpstreamRequest(ctx, rc, format, body)
 		if err != nil {
-			return format, nil, err
+			return format, nil, relayprovider.BeforeForward(err)
 		}
 		if upstreamReq == nil || upstreamReq.URL == nil {
 			return format, nil, fmt.Errorf("adaptor returned an incomplete upstream request")
@@ -179,7 +179,7 @@ func (f relayAdaptorForwarder) sendAdaptorRequest(ctx context.Context, rc *relay
 			copyRelayExecutorHeaders(upstreamReq.Header, rc.InboundHeader)
 		}
 		if err := relayprovider.ValidateBaseURLForChannel(rc.Channel.Type, upstreamReq.URL.String()); err != nil {
-			return format, nil, fmt.Errorf("validate upstream URL: %w", err)
+			return format, nil, relayprovider.InvalidConfiguration(fmt.Errorf("validate upstream URL: %w", err))
 		}
 		if rc.Channel.Type == relayprovider.ChannelTypeOllama {
 			upstreamReq = relayprovider.WithLocalNetworkAccess(upstreamReq)

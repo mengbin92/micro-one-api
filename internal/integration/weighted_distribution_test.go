@@ -96,14 +96,15 @@ func TestRelaySelectChannel_WeightedDistribution(t *testing.T) {
 	}
 	channelUc := channeltestutil.NewChannelUsecase(channelRepo, nil)
 	channelSvc := channeltestutil.NewChannelService(channelUc)
-	channelGrpc := grpc.NewServer()
+	serverAuth, clientAuth := channelRelayCredentials(t)
+	channelGrpc := grpc.NewServer(serverAuth)
 	channelv1.RegisterChannelServiceServer(channelGrpc, channelSvc)
 	channelLis, err := net.Listen("tcp", "127.0.0.1:19602")
 	if err != nil {
 		t.Fatalf("failed to listen: %v", err)
 	}
 	go channelGrpc.Serve(channelLis)
-	channelConn, _ := grpc.NewClient("127.0.0.1:19602", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	channelConn, _ := grpc.NewClient("127.0.0.1:19602", grpc.WithTransportCredentials(insecure.NewCredentials()), clientAuth)
 	channelClient := channelv1.NewChannelServiceClient(channelConn)
 	defer func() { channelConn.Close(); channelGrpc.Stop(); channelLis.Close() }()
 

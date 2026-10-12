@@ -54,7 +54,7 @@ func (c *CachedChannelClient) SelectChannel(ctx context.Context, req *channelv1.
 	group := req.GetGroup()
 	model := req.GetModel()
 	channels, err := c.cache.Get(ctx, group, model)
-	if err == nil && len(channels) > 0 {
+	if err == nil && len(channels) > 0 && channels[0].GetUpstreamConfigurationRevision() == "" && channels[0].GetHealthProbeId() == "" {
 		// A cached selection is not an authorization grant. Mapping/group
 		// changes must take effect even if an invalidation event was missed.
 		permission, checkErr := checkRoute(ctx, c.ChannelServiceClient, group, model, routing.Source{Kind: routing.Channel, ID: channels[0].GetId()})
@@ -76,7 +76,9 @@ func (c *CachedChannelClient) SelectChannel(ctx context.Context, req *channelv1.
 
 	// Populate the cache on success. A Set failure is non-fatal: the selection
 	// still succeeds, the next request simply misses again.
-	_ = c.cache.Set(ctx, group, model, []*commonv1.ChannelInfo{reply.GetChannel()})
+	if reply.GetChannel().GetUpstreamConfigurationRevision() == "" && reply.GetChannel().GetHealthProbeId() == "" {
+		_ = c.cache.Set(ctx, group, model, []*commonv1.ChannelInfo{reply.GetChannel()})
+	}
 	return reply, nil
 }
 
@@ -88,19 +90,21 @@ func channelInfoToBizChannel(ch *commonv1.ChannelInfo) *relaybiz.Channel {
 		return nil
 	}
 	c := &relaybiz.Channel{
-		ID:              ch.Id,
-		Type:            ch.Type,
-		Name:            ch.Name,
-		Status:          ch.Status,
-		BaseURL:         ch.BaseUrl,
-		Group:           ch.Group,
-		Models:          splitModels(ch.Models),
-		Priority:        ch.Priority,
-		Weight:          ch.Weight,
-		Key:             ch.Key,
-		ModelMapping:    ch.GetModelMapping(),
-		UpstreamModelID: ch.GetUpstreamModelId(),
-		RestrictModels:  ch.GetRestrictModels(),
+		UpstreamConfigurationRevision: ch.GetUpstreamConfigurationRevision(),
+		HealthProbeID:                 ch.GetHealthProbeId(),
+		ID:                            ch.Id,
+		Type:                          ch.Type,
+		Name:                          ch.Name,
+		Status:                        ch.Status,
+		BaseURL:                       ch.BaseUrl,
+		Group:                         ch.Group,
+		Models:                        splitModels(ch.Models),
+		Priority:                      ch.Priority,
+		Weight:                        ch.Weight,
+		Key:                           ch.Key,
+		ModelMapping:                  ch.GetModelMapping(),
+		UpstreamModelID:               ch.GetUpstreamModelId(),
+		RestrictModels:                ch.GetRestrictModels(),
 	}
 	if ch.Config != nil {
 		c.Config.APIVersion = ch.Config.ApiVersion

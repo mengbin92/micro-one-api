@@ -81,14 +81,15 @@ func setupChannelSlotOwner(t *testing.T, upstreamURL string, opts ...grpc.Server
 		},
 	}
 	uc := channeltestutil.NewChannelUsecase(&channelSlotRepo{testChannelRepo: repo}, nil)
-	srv := grpc.NewServer(opts...)
+	serverAuth, clientAuth := channelRelayCredentials(t)
+	srv := grpc.NewServer(append(opts, serverAuth)...)
 	channelv1.RegisterChannelServiceServer(srv, channeltestutil.NewChannelService(uc))
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	go srv.Serve(lis)
-	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()), clientAuth)
 	if err != nil {
 		srv.Stop()
 		_ = lis.Close()

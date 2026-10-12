@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"math"
+	"math/rand/v2"
 	"micro-one-api/domain/requesttrace"
 	"strings"
 	"time"
@@ -64,11 +65,14 @@ func (e *RetryableError) Unwrap() error {
 	return e.Err
 }
 
+func (e *RetryableError) UpstreamStatusCode() int { return e.Status }
+
 // PostForwardError marks a local lifecycle failure that happened after the
 // upstream already returned a response. Retrying such an error would duplicate
 // the upstream request, and it must not count against upstream channel health.
 type PostForwardError struct {
-	Err error
+	Err                error
+	UnverifiedResponse bool
 }
 
 func (e *PostForwardError) Error() string {
@@ -86,6 +90,14 @@ func MarkPostForwardError(err error) error {
 		return err
 	}
 	return &PostForwardError{Err: err}
+}
+
+// A conversion failure cannot prove completed inference, even after HTTP 2xx.
+func MarkUnverifiedResponseError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &PostForwardError{Err: err, UnverifiedResponse: true}
 }
 
 // IsPostForwardError reports whether the upstream call already completed
@@ -124,7 +136,7 @@ func (p *RetryPolicy) IsRetryable(err error) bool {
 	if err == nil {
 		return false
 	}
-	if IsPostForwardError(err) || IsProtocolCapabilityMismatch(err) {
+	if IsPostForwardError(err) || IsProtocolCapabilityMismatch(err) || relayprovider.IsPreForwardError(err) {
 		return false
 	}
 	var retryable *RetryableError
@@ -177,42 +189,20 @@ func IsProtocolCapabilityMismatch(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "reasoning_content in the thinking mode must be passed back")
 }
 
-// upstreamAttemptHealthy distinguishes channel failures from request/local
-// failures. A 4xx response proves the channel is reachable without advancing
-// its circuit breaker. Rate limits,
-// 5xx responses, timeouts, and transport failures still count as unhealthy.
-func upstreamAttemptHealthy(err error) bool {
-	if err == nil {
-		return true
+// UpstreamHealthDisposition is shared by HTTP, subscription and WebSocket paths.
+func UpstreamHealthDisposition(ctx context.Context, err error) relayprovider.HealthOutcome {
+	if IsLocalAdmissionError(err) || IsProtocolCapabilityMismatch(err) || isUpstreamModelUnavailable(err) || isUpstreamPolicyRejection(err) {
+		return relayprovider.HealthNeutral
 	}
-	if IsPostForwardError(err) || IsProtocolCapabilityMismatch(err) {
-		return true
+	var postForward *PostForwardError
+	if errors.As(err, &postForward) {
+		if postForward.UnverifiedResponse {
+			return relayprovider.HealthNeutral
+		}
+		// The successful upstream response is known even if local settlement fails.
+		return relayprovider.HealthSuccess
 	}
-	// A model-specific outage proves the channel itself is reachable. Keep
-	// fallback enabled, but do not let one unavailable model open the
-	// channel-wide circuit and remove unrelated models from routing.
-	if isUpstreamModelUnavailable(err) {
-		return true
-	}
-	// Some upstreams encode request-specific policy rejection as HTTP 500.
-	// The source is reachable and may still be useful for other prompts, so
-	// keep failover enabled without poisoning channel health.
-	if isUpstreamPolicyRejection(err) {
-		return true
-	}
-	status := UpstreamStatus(err)
-	if status > 0 {
-		return status < 500 && status != 429
-	}
-	if errors.Is(err, context.Canceled) {
-		return true
-	}
-	if errors.Is(err, context.DeadlineExceeded) || isRetryableNetworkError(err) {
-		return false
-	}
-	// Conversion, billing, and other local failures are not channel health
-	// evidence. Record them as neutral/healthy.
-	return true
+	return relayprovider.HealthDisposition(ctx, err)
 }
 
 func isUpstreamModelUnavailable(err error) bool {
@@ -251,13 +241,21 @@ func isUpstreamPolicyRejection(err error) bool {
 	if !errors.As(err, &upstreamErr) {
 		return false
 	}
-	return strings.Contains(strings.ToLower(string(upstreamErr.Body)), "sensitive_words_detected")
+	body := strings.ToLower(string(upstreamErr.Body))
+	return strings.Contains(body, "sensitive_words_detected") || strings.Contains(body, "cyber_policy") || strings.Contains(body, "cyber safety")
 }
 
 // BackoffDuration calculates the sleep duration for the given attempt (0-indexed).
 func (p *RetryPolicy) BackoffDuration(attempt int) time.Duration {
 	d := min(time.Duration(float64(p.InitialInterval)*math.Pow(p.Multiplier, float64(attempt))), p.MaxInterval)
 	return d
+}
+
+func JitteredRetryDelay(delay time.Duration) time.Duration {
+	if delay <= 0 {
+		return 0
+	}
+	return time.Duration(rand.Int64N(int64(delay))) // #nosec G404 -- retry jitter is not a credential or security decision.
 }
 
 // AsRetryableError is a helper to unwrap RetryableError from the error chain.
@@ -352,8 +350,11 @@ type RoutingFallbackSelector interface {
 // It is a biz-layer concern: each retry re-selects a channel (excluding the
 // first-priority tier) before calling the upstream provider.
 type RetryExecutor struct {
-	policy   *RetryPolicy
-	selector ChannelSelector
+	executionAdmission func(context.Context, *Channel) (*Channel, error)
+	budget             *retryBudget
+	deferStreamHealth  bool
+	policy             *RetryPolicy
+	selector           ChannelSelector
 	// fallback, when wired, is the unified cross-namespace fallback used after
 	// the request-scoped candidate list is exhausted (sub2api #2). It replaces
 	// the coarse excludeFirstPriority tier-skip with per-candidate exclusion.
@@ -374,6 +375,11 @@ func (e *RetryExecutor) WithCrossSourceFallback() *RetryExecutor {
 // adaptor already records each subscription attempt, including local retries.
 func (e *RetryExecutor) WithExternalSubscriptionHealth() *RetryExecutor {
 	e.externalSubscriptionHealth = true
+	return e
+}
+
+func (e *RetryExecutor) WithDeferredStreamHealth() *RetryExecutor {
+	e.deferStreamHealth = true
 	return e
 }
 
@@ -454,8 +460,11 @@ func (e *RetryExecutor) ExecuteWithAccountHealth(
 	// separately; this generic path records only the known initial attempt.
 	wrapped := func(ctx context.Context, ch *Channel) error {
 		err := fn(ctx, ch)
-		if ch == initialChannel && !IsLocalAdmissionError(err) {
-			e.RecordAccountHealth(ctx, accountID, upstreamAttemptHealthy(err))
+		if e.deferStreamHealth && err == nil {
+			return nil
+		}
+		if outcome := UpstreamHealthDisposition(ctx, err); ch == initialChannel && outcome != relayprovider.HealthNeutral {
+			e.RecordAccountHealth(ctx, accountID, outcome == relayprovider.HealthSuccess)
 		}
 		return err
 	}
@@ -492,12 +501,12 @@ func (e *RetryExecutor) ExecuteWithCandidates(
 			return err
 		}
 		err := fn(ctx, ch)
-		if !e.externalSubscriptionHealth && !IsLocalAdmissionError(err) {
+		if outcome := UpstreamHealthDisposition(ctx, err); !e.externalSubscriptionHealth && !(e.deferStreamHealth && err == nil) && ch.UpstreamConfigurationRevision == "" && outcome != relayprovider.HealthNeutral {
 			id := ch.SubscriptionAccountID
 			if id <= 0 && ch == initialChannel {
 				id = accountID
 			}
-			e.RecordAccountHealth(ctx, id, upstreamAttemptHealthy(err))
+			e.RecordAccountHealth(ctx, id, outcome == relayprovider.HealthSuccess)
 		}
 		return err
 	}
@@ -533,32 +542,44 @@ func (e *RetryExecutor) execute(
 	var lastChannel *Channel
 	var firstErr error // first failure that triggered a source switch
 	switched := false  // true when executor selected a DIFFERENT channel
+	primaryRecorded := false
 	// excluded accumulates every source that failed in this request so retries
 	// never re-select it (sub2api #2 request-level exclusion set).
 	excluded := make(map[RoutingSourceIdentity]bool)
 	type healthOutcome struct {
-		channel      *Channel
-		channelOK    bool
-		modelRecord  bool
-		modelOK      bool
-		message      string
-		responseTime int64
+		channel        *Channel
+		channelOutcome relayprovider.HealthOutcome
+		err            error
+		startedAt      time.Time
+		modelRecord    bool
+		modelOK        bool
+		message        string
+		responseTime   int64
 	}
 	var pendingHealth *healthOutcome
 	flushHealth := func() {
 		if pendingHealth == nil {
 			return
 		}
-		e.recordHealth(ctx, healthModel, model, pendingHealth.channel, pendingHealth.channelOK, pendingHealth.modelRecord, pendingHealth.modelOK, pendingHealth.message, pendingHealth.responseTime)
+		observed := false
+		if !e.externalSubscriptionHealth || pendingHealth.channel.SubscriptionAccountID <= 0 {
+			ch := *pendingHealth.channel
+			ch.UpstreamModelID = ResolveChannelModel(&ch, model)
+			observed = recordUpstreamObservation(ctx, e.selector, &ch, pendingHealth.err, pendingHealth.responseTime, pendingHealth.startedAt)
+		}
+		e.recordHealth(ctx, healthModel, model, pendingHealth.channel, pendingHealth.channelOutcome, pendingHealth.modelRecord, pendingHealth.modelOK, pendingHealth.message, pendingHealth.responseTime, observed)
 		pendingHealth = nil
 	}
-	queueHealth := func(ch *Channel, err error, responseTime int64) {
+	queueHealth := func(ch *Channel, err error, responseTime int64, startedAt time.Time) {
 		if IsLocalAdmissionError(err) {
 			flushHealth()
+			if ch != nil && ch.HealthProbeID != "" {
+				recordUpstreamObservation(ctx, e.selector, ch, err, responseTime, startedAt)
+			}
 			return
 		}
-		channelOK := upstreamAttemptHealthy(err)
-		modelRecord, modelOK := modelHealthDisposition(err)
+		channelOutcome := UpstreamHealthDisposition(ctx, err)
+		modelRecord, modelOK := modelHealthDisposition(ctx, err)
 		message := ""
 		if err != nil {
 			message = err.Error()
@@ -567,7 +588,9 @@ func (e *RetryExecutor) execute(
 			// Same-source retries are one logical channel outcome. Accumulate only
 			// upstream time (backoff is intentionally excluded) and let the latest
 			// attempt determine the terminal result.
-			pendingHealth.channelOK = channelOK
+			pendingHealth.channelOutcome = channelOutcome
+			pendingHealth.err = err
+			pendingHealth.startedAt = startedAt
 			pendingHealth.modelRecord = modelRecord
 			pendingHealth.modelOK = modelOK
 			pendingHealth.message = message
@@ -575,13 +598,17 @@ func (e *RetryExecutor) execute(
 			return
 		}
 		flushHealth()
-		pendingHealth = &healthOutcome{channel: ch, channelOK: channelOK, modelRecord: modelRecord, modelOK: modelOK, message: message, responseTime: responseTime}
+		pendingHealth = &healthOutcome{channel: ch, channelOutcome: channelOutcome, err: err, startedAt: startedAt, modelRecord: modelRecord, modelOK: modelOK, message: message, responseTime: responseTime}
 	}
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		// On retry, wait with backoff
 		if attempt > 0 {
-			wait := e.policy.BackoffDuration(attempt - 1)
+			if lastChannel != nil && lastChannel.UpstreamConfigurationRevision != "" && e.budget != nil && !IsLocalAdmissionError(lastErr) && !e.budget.allow() {
+				flushHealth()
+				return &ExecuteResult{Channel: lastChannel, Err: lastErr, Attempt: attempt - 1, Fallback: switched, FirstErr: firstErr, FallbackReason: ClassifyRetryFallbackReason(firstErr)}
+			}
+			wait := JitteredRetryDelay(e.policy.BackoffDuration(attempt - 1))
 			select {
 			case <-ctx.Done():
 				flushHealth()
@@ -635,10 +662,29 @@ func (e *RetryExecutor) execute(
 			trace.SourceKind = UpstreamSourceSubscription
 		}
 		trace.UpstreamModelID = ResolveChannelModel(lastChannel, model)
-		err := fn(requesttrace.WithAttempt(ctx, trace), lastChannel)
-		responseTime := time.Since(startedAt).Milliseconds()
+		var err error
+		if e.executionAdmission != nil {
+			candidate := *lastChannel
+			candidate.UpstreamModelID = trace.UpstreamModelID
+			var admitted *Channel
+			admitted, err = e.executionAdmission(ctx, &candidate)
+			if err == nil {
+				lastChannel = admitted
+			}
+		}
 		if err == nil {
-			queueHealth(lastChannel, nil, responseTime)
+			trace.HealthProbeID = lastChannel.HealthProbeID
+			err = fn(requesttrace.WithAttempt(ctx, trace), lastChannel)
+		}
+		responseTime := time.Since(startedAt).Milliseconds()
+		if !primaryRecorded && e.budget != nil && lastChannel.UpstreamConfigurationRevision != "" && !IsLocalAdmissionError(err) && !relayprovider.IsPreForwardError(err) && (!e.externalSubscriptionHealth || lastChannel.SubscriptionAccountID <= 0) {
+			e.budget.primary()
+			primaryRecorded = true
+		}
+		if err == nil {
+			if !e.deferStreamHealth {
+				queueHealth(lastChannel, nil, responseTime, startedAt)
+			}
 			flushHealth()
 			return &ExecuteResult{
 				Channel:        lastChannel,
@@ -650,7 +696,7 @@ func (e *RetryExecutor) execute(
 		}
 
 		lastErr = err
-		queueHealth(lastChannel, err, responseTime)
+		queueHealth(lastChannel, err, responseTime, startedAt)
 
 		// If not retryable, fail immediately
 		if !e.policy.IsRetryable(err) {
@@ -820,14 +866,15 @@ func isTimeoutError(err error) bool {
 	return strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded")
 }
 
-func (e *RetryExecutor) recordHealth(ctx context.Context, modelID, baseModel string, ch *Channel, channelOK, modelRecord, modelOK bool, message string, responseTime int64) {
+func (e *RetryExecutor) recordHealth(ctx context.Context, modelID, baseModel string, ch *Channel, channelOutcome relayprovider.HealthOutcome, modelRecord, modelOK bool, message string, responseTime int64, observed bool) {
 	if e.selector == nil || ch == nil {
 		return
 	}
 	if e.externalSubscriptionHealth && ch.SubscriptionAccountID > 0 {
 		return
 	}
-	if ch.ID > 0 && ch.SubscriptionAccountID <= 0 {
+	if !observed && ch.ID > 0 && ch.SubscriptionAccountID <= 0 && channelOutcome != relayprovider.HealthNeutral {
+		channelOK := channelOutcome == relayprovider.HealthSuccess
 		channelMessage := message
 		if channelOK {
 			channelMessage = ""
@@ -853,21 +900,17 @@ func (e *RetryExecutor) recordHealth(ctx context.Context, modelID, baseModel str
 
 // modelHealthDisposition excludes caller/local failures and records only
 // outcomes that say something about the concrete upstream model route.
-func modelHealthDisposition(err error) (record, success bool) {
+func modelHealthDisposition(ctx context.Context, err error) (record, success bool) {
 	if err == nil {
 		return true, true
 	}
-	if IsLocalAdmissionError(err) || IsPostForwardError(err) || IsProtocolCapabilityMismatch(err) || isUpstreamPolicyRejection(err) || errors.Is(err, context.Canceled) {
+	if ctx.Err() != nil || IsLocalAdmissionError(err) || IsPostForwardError(err) || IsProtocolCapabilityMismatch(err) || isUpstreamPolicyRejection(err) || relayprovider.IsPreForwardError(err) || errors.Is(err, context.Canceled) {
 		return false, false
 	}
 	if isUpstreamModelUnavailable(err) {
 		return true, false
 	}
-	status := UpstreamStatus(err)
-	if status > 0 && status < 500 && status != 429 {
-		return false, false
-	}
-	if status >= 500 || status == 429 || errors.Is(err, context.DeadlineExceeded) || isRetryableNetworkError(err) {
+	if relayprovider.HealthDisposition(ctx, err) == relayprovider.HealthFailure {
 		return true, false
 	}
 	return false, false

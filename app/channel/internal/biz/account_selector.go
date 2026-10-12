@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -30,6 +31,7 @@ import (
 // See docs/model-management-design.md §12.2.
 
 type accountState struct {
+	control upstreamControl
 	executionSlotLeases
 	consecutiveFailures  int
 	failureThreshold     int
@@ -156,6 +158,9 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 		// weight, errors, in-flight count) is preserved by updateAccountLocked,
 		// while admin changes such as a new priority take effect immediately.
 		state := s.updateAccountLocked(acct)
+		if state.control.blocked(acct.UpstreamModelID, now) || state.control.capacityUntil > now {
+			continue
+		}
 		state.reapSlotLeases(now)
 		// Store the cross-replica snapshot unconditionally (MEDIUM-1): an idle
 		// account reads 0, which must overwrite a previously-high value so the
@@ -175,6 +180,13 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 		}
 	}
 	if best == nil {
+		for _, acct := range candidates {
+			if acct != nil {
+				if state := s.accounts[acct.ID]; state != nil && state.control.capacityUntil > now && !state.control.blocked(acct.UpstreamModelID, now) {
+					return nil, ErrUpstreamRateLimit
+				}
+			}
+		}
 		return nil, ErrSubscriptionAccountNotFound
 	}
 	totalWeight := s.totalEffectiveWeight(candidates, now)
@@ -185,11 +197,14 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 	// half-open sentinel so the breaker resolves on the first probe outcome.
 	if best.breakerState(now) == circuitHalfOpen {
 		best.circuitOpenUntil = circuitHalfOpenSentinel
-		best.circuitProbeUntil = now + circuitBreakerOpenDuration.Nanoseconds()
+		best.circuitProbeUntil = now + circuitBreakerProbeLeaseDuration.Nanoseconds()
+		best.control.probeID = uuid.NewString()
 	}
 	for _, acct := range candidates {
 		if acct != nil && acct.ID == best.accountID {
-			return acct, nil
+			selected := *acct
+			selected.HealthProbeID = best.control.probeID
+			return &selected, nil
 		}
 	}
 	return nil, ErrSubscriptionAccountNotFound
@@ -214,7 +229,11 @@ func (s *SubscriptionAccountSelector) RecordSlot(accountID int64, slotID string,
 		}
 		s.accounts[accountID] = state
 	}
-	return state.recordSlot(slotID, acquired, 0)
+	accepted := state.recordSlot(slotID, acquired, 0)
+	if accepted && acquired && slotID == state.control.probeID && slotID != "" && state.circuitProbeUntil > time.Now().UnixNano() {
+		state.circuitProbeUntil = time.Now().Add(circuitBreakerProbeLeaseDuration).UnixNano()
+	}
+	return accepted
 }
 
 // RecordAccountHealth records a real upstream outcome for an account. A
@@ -239,8 +258,21 @@ func (s *SubscriptionAccountSelector) RecordAccountHealth(accountID int64, succe
 		s.accounts[accountID] = state
 	}
 	// channel-H1: record both totals and errors so Rate() is a true error
+	if state.breakerState(time.Now().UnixNano()) != circuitClosed || state.control.recoverySuccesses > 0 {
+		return
+	}
+	state.recordHealth(success)
+}
+
+func (state *accountState) recordHealth(success bool) {
+	// Record both totals and errors so Rate() is a true error
 	// ratio; the breaker enforces a min-sample threshold before tripping.
 	state.recentErrors.RecordOutcome(success)
+	if !success && state.control.recoverySuccesses > 0 && state.control.recoverySuccesses < 5 {
+		state.control.recoverySuccesses = 0
+		state.circuitOpenUntil = time.Now().Add(circuitBreakerOpenDuration).UnixNano()
+		state.control.incidentAt = time.Now().UnixNano()
+	}
 	if success {
 		state.consecutiveFailures = 0
 	} else {
@@ -290,6 +322,12 @@ type AccountSelectorStats struct {
 
 func (s *SubscriptionAccountSelector) updateAccountLocked(acct *SubscriptionAccount) *accountState {
 	if existing, ok := s.accounts[acct.ID]; ok {
+		if existing.control.refresh(acct.UpstreamRevision()) {
+			existing.consecutiveFailures = 0
+			existing.recentErrors = NewSlidingCounter(60 * time.Second)
+			existing.circuitOpenUntil = 0
+			existing.circuitProbeUntil = 0
+		}
 		existing.weight = accountSelectorWeight(acct)
 		// Always sync maxConcurrent so an admin edit (including lowering the
 		// cap back to 0 = unlimited) takes effect. Gating on >0 would leave a
@@ -298,6 +336,7 @@ func (s *SubscriptionAccountSelector) updateAccountLocked(acct *SubscriptionAcco
 		return existing
 	}
 	state := &accountState{
+		control:          upstreamControl{revision: acct.UpstreamRevision()},
 		accountID:        acct.ID,
 		failureThreshold: s.failureThreshold,
 		weight:           accountSelectorWeight(acct),
@@ -333,7 +372,7 @@ func accountEffectiveWeight(state *accountState) int64 {
 	if state == nil {
 		return 0
 	}
-	return int64(state.weight) * int64(state.healthFactor()) * int64(state.loadFactor())
+	return int64(state.weight) * int64(state.healthFactor()) * int64(state.loadFactor()) * state.control.recoveryFactor() / 100
 }
 
 func (s *SubscriptionAccountSelector) totalEffectiveWeight(candidates []*SubscriptionAccount, now int64) int64 {
@@ -343,6 +382,9 @@ func (s *SubscriptionAccountSelector) totalEffectiveWeight(candidates []*Subscri
 			continue
 		}
 		if state, ok := s.accounts[acct.ID]; ok {
+			if state.control.blocked(acct.UpstreamModelID, now) || state.control.capacityUntil > now {
+				continue
+			}
 			if state.breakerState(now) == circuitOpen || (state.circuitOpenUntil == circuitHalfOpenSentinel && state.circuitProbeUntil > now) {
 				continue
 			}
@@ -446,6 +488,7 @@ func (st *accountState) updateCircuitBreaker() {
 		}
 		if st.consecutiveFailures >= threshold || (st.recentErrors.Total() >= circuitBreakerMinRequests && st.recentErrors.Rate() > circuitBreakerErrorThreshold) {
 			st.circuitOpenUntil = now + int64(circuitBreakerOpenDuration)
+			st.control.incidentAt = now
 		}
 	}
 }
@@ -471,12 +514,17 @@ func (st *accountState) recordAccountBreakerOutcome(success bool) {
 	if st.breakerState(now) != circuitHalfOpen {
 		return
 	}
+	if st.control.probeID != "" {
+		return
+	}
 	st.circuitProbeUntil = 0
 	if success {
+		st.control.recoverySuccesses = 1
 		st.recentErrors = NewSlidingCounter(60 * time.Second)
 		st.consecutiveFailures = 0
 		st.circuitOpenUntil = 0
 	} else {
 		st.circuitOpenUntil = now + int64(circuitBreakerOpenDuration)
+		st.control.incidentAt = now
 	}
 }

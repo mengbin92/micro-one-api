@@ -200,7 +200,7 @@ func (p *GeminiProvider) ChatCompletions(ctx context.Context, req *ChatCompletio
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody, RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())} // domain-L4
 	}
 
 	var geminiResp geminiResponse
@@ -236,7 +236,7 @@ func (p *GeminiProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamErrorBody))
 		_ = resp.Body.Close()
-		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody, RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())} // domain-L4
 	}
 
 	chunkChan := make(chan StreamChunk, 10)

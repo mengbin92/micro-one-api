@@ -127,7 +127,7 @@ func (p *AnthropicProvider) Forward(ctx context.Context, req *RawRequest) (*RawR
 		return nil, fmt.Errorf("failed to read raw response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody}
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody, RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())}
 	}
 	return &RawResponse{
 		StatusCode: resp.StatusCode,
@@ -167,7 +167,7 @@ func (p *AnthropicProvider) ForwardStream(ctx context.Context, req *RawRequest) 
 		if readErr != nil {
 			return nil, fmt.Errorf("failed to read raw stream response: %w", readErr)
 		}
-		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody}
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody, RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())}
 	}
 	return &RawStreamResponse{
 		StatusCode: resp.StatusCode,
@@ -426,7 +426,7 @@ func (p *AnthropicProvider) ChatCompletions(ctx context.Context, req *ChatComple
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody, RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())} // domain-L4
 	}
 
 	var anthropicResp anthropicResponse
@@ -465,7 +465,7 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamErrorBody))
 		_ = resp.Body.Close()
-		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody, RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())} // domain-L4
 	}
 
 	chunkChan := make(chan StreamChunk, 10)

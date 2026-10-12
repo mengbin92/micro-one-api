@@ -118,6 +118,32 @@ func TestLocalSlotAdmissionFailureDoesNotRecordUpstreamHealth(t *testing.T) {
 	assert.Empty(t, selector.modelHealth)
 }
 
+func TestRetryExecutorNeutralOutcomesDoNotRecordHealth(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"rate limit", &relayprovider.UpstreamHTTPError{StatusCode: 429}},
+		{"overload", &relayprovider.UpstreamHTTPError{StatusCode: 529}},
+		{"invalid credential", &relayprovider.UpstreamHTTPError{StatusCode: 401}},
+		{"invalid request", &relayprovider.UpstreamHTTPError{StatusCode: 400}},
+		{"policy rejection", &relayprovider.UpstreamHTTPError{StatusCode: 500, Body: []byte(`{"code":"sensitive_words_detected"}`)}},
+		{"caller cancellation", context.Canceled},
+		{"local conversion", errors.New("cannot convert request")},
+		{"unverified upstream conversion", MarkUnverifiedResponseError(errors.New("cannot convert response"))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			selector := &mockChannelSelector{channels: []*Channel{{ID: 1}}}
+			executor := NewRetryExecutor(&RetryPolicy{MaxAttempts: 1}, selector)
+			result := executor.Execute(context.Background(), "default", "model", func(context.Context, *Channel) error { return tc.err })
+			assert.ErrorIs(t, result.Err, tc.err)
+			assert.Empty(t, selector.healthEvents, "neutral errors must not reset failures or close a half-open circuit")
+			assert.Empty(t, selector.modelHealth)
+		})
+	}
+}
+
 type healthEvent struct {
 	channelID    int64
 	success      bool
@@ -171,8 +197,7 @@ func TestRetryExecutor_RecordsModelSpecificOutageWithoutPoisoningChannel(t *test
 	})
 
 	assert.Error(t, result.Err)
-	assert.Len(t, selector.healthEvents, 1)
-	assert.True(t, selector.healthEvents[0].success, "model outage must stay neutral for channel health")
+	assert.Empty(t, selector.healthEvents, "model outage must stay neutral for channel health")
 	assert.Equal(t, []modelHealthEvent{{"channel", 7, "Kimi-K3", "kimi-k3-prod", false}}, selector.modelHealth)
 }
 
@@ -189,15 +214,13 @@ func TestRetryExecutor_RecordsUpstreamModelNotFound(t *testing.T) {
 	})
 
 	assert.Error(t, result.Err)
-	assert.Len(t, selector.healthEvents, 1)
-	assert.True(t, selector.healthEvents[0].success, "model-specific 404 must stay neutral for channel health")
+	assert.Empty(t, selector.healthEvents, "model-specific 404 must stay neutral for channel health")
 	assert.Equal(t, []modelHealthEvent{{"channel", 7, "gpt-4o", "gpt-4o", false}}, selector.modelHealth)
 }
 
 func TestRetryExecutor_DoesNotRecordProxy404AsModelUnavailable(t *testing.T) {
 	// A misconfigured base_url yields a proxy/HTML 404 page. That is
-	// channel-level breakage, not proof the model is unservable, so it must
-	// not poison model health while channel health stays green.
+	// configuration evidence, not proof the model or dependency is unavailable.
 	selector := &mockChannelSelector{channels: []*Channel{{ID: 9}}}
 	exec := NewRetryExecutor(&RetryPolicy{MaxAttempts: 1}, selector)
 	errProxy404 := &relayprovider.UpstreamHTTPError{
@@ -211,8 +234,7 @@ func TestRetryExecutor_DoesNotRecordProxy404AsModelUnavailable(t *testing.T) {
 
 	assert.Error(t, result.Err)
 	assert.Empty(t, selector.modelHealth, "proxy 404 page must not be recorded as model unavailability")
-	assert.Len(t, selector.healthEvents, 1)
-	assert.True(t, selector.healthEvents[0].success, "4xx still proves the channel is reachable")
+	assert.Empty(t, selector.healthEvents, "a proxy 404 must not authorize health recovery")
 }
 
 func TestUpstream404IndicatesModel(t *testing.T) {
@@ -332,8 +354,8 @@ func TestRetryExecutor_Execute_NonRetryableFailsImmediately(t *testing.T) {
 
 	assert.Error(t, result.Err)
 	assert.Equal(t, 0, result.Attempt)
-	if len(selector.healthEvents) != 1 || !selector.healthEvents[0].success {
-		t.Fatalf("client 400 health events = %+v, want one healthy transport outcome", selector.healthEvents)
+	if len(selector.healthEvents) != 0 {
+		t.Fatalf("client 400 health events = %+v, want no availability sample", selector.healthEvents)
 	}
 }
 
@@ -359,7 +381,7 @@ func TestRetryExecutor_MethodNotAllowedStopsWithoutPoisoningHealth(t *testing.T)
 	if result.Err == nil || result.Channel.ID != 1 || result.Fallback || result.Attempt != 0 {
 		t.Fatalf("capability error executed an alternative: %+v", result)
 	}
-	if len(selector.healthEvents) != 1 || !selector.healthEvents[0].success {
+	if len(selector.healthEvents) != 0 {
 		t.Fatalf("capability error poisoned health: %+v", selector.healthEvents)
 	}
 }
@@ -389,7 +411,7 @@ func TestRetryExecutor_ReasoningProtocolMismatchStopsWithoutPoisoningHealth(t *t
 	if result.Err == nil || result.Channel.ID != 1 || result.Fallback || result.Attempt != 0 {
 		t.Fatalf("capability error executed an alternative: %+v", result)
 	}
-	if len(selector.healthEvents) != 1 || !selector.healthEvents[0].success {
+	if len(selector.healthEvents) != 0 {
 		t.Fatalf("capability error poisoned health: %+v", selector.healthEvents)
 	}
 }
@@ -422,7 +444,7 @@ func TestRetryExecutor_PolicyRejectionFallsBackWithoutPoisoningHealth(t *testing
 	if result.FallbackReason != "policy_rejection" {
 		t.Fatalf("fallback reason = %q, want policy_rejection", result.FallbackReason)
 	}
-	if len(selector.healthEvents) != 2 || !selector.healthEvents[0].success || !selector.healthEvents[1].success {
+	if len(selector.healthEvents) != 1 || selector.healthEvents[0].channelID != 1 || !selector.healthEvents[0].success {
 		t.Fatalf("health events = %+v, request policy rejection must not record a channel failure", selector.healthEvents)
 	}
 }
@@ -455,7 +477,7 @@ func TestRetryExecutor_ModelUnavailableFallsBackWithoutPoisoningChannelHealth(t 
 	if result.FallbackReason != "model_unavailable" {
 		t.Fatalf("fallback reason = %q, want model_unavailable", result.FallbackReason)
 	}
-	if len(selector.healthEvents) != 2 || !selector.healthEvents[0].success || !selector.healthEvents[1].success {
+	if len(selector.healthEvents) != 1 || selector.healthEvents[0].channelID != 2 || !selector.healthEvents[0].success {
 		t.Fatalf("health events = %+v, model outage must not record a channel failure", selector.healthEvents)
 	}
 }
@@ -602,17 +624,13 @@ func TestRetryExecutor_ExecuteWithAccountHealth_FeedsSelector(t *testing.T) {
 		t.Fatalf("expected (42,true), got %+v", sel.accountHealthCalls[0])
 	}
 
-	// A request-scoped 4xx proves that the account is reachable. It must
-	// release selector inflight state without advancing the circuit breaker.
+	// A request-scoped 4xx must not reset failures or close a half-open circuit.
 	sel.accountHealthCalls = nil
 	_ = exec.ExecuteWithAccountHealth(context.Background(), "default", "gpt-4", &Channel{ID: 1}, 42, func(_ context.Context, _ *Channel) error {
 		return &relayprovider.UpstreamHTTPError{StatusCode: 400, Body: []byte("invalid request")}
 	})
-	if len(sel.accountHealthCalls) != 1 {
-		t.Fatalf("expected 1 account-health call for 400, got %d", len(sel.accountHealthCalls))
-	}
-	if sel.accountHealthCalls[0].id != 42 || !sel.accountHealthCalls[0].success {
-		t.Fatalf("expected neutral 400 to record (42,true), got %+v", sel.accountHealthCalls[0])
+	if len(sel.accountHealthCalls) != 0 {
+		t.Fatalf("neutral 400 must not record account health, got %+v", sel.accountHealthCalls)
 	}
 
 	// accountID<=0 degrades to plain execute — no account-health recording.

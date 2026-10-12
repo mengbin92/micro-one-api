@@ -113,6 +113,8 @@ var rpcPolicies = map[string]RPCPolicy{
 	"/api.channel.v1.ChannelService/UpdateChannel":                           {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.channel.v1.ChannelService/RecordChannelUsage":                      {Owner: "channel", UserCallers: []string{}, SystemCallers: []string{"relay"}},
 	"/api.channel.v1.ChannelService/RecordChannelHealth":                     {Owner: "channel", UserCallers: []string{}, SystemCallers: []string{"relay", "monitor"}},
+	"/api.channel.v1.ChannelService/RecordUpstreamObservation":               {Owner: "channel", UserCallers: []string{}, SystemCallers: []string{"relay", "monitor"}},
+	"/api.channel.v1.ChannelService/ClaimUpstreamExecution":                  {Owner: "channel", UserCallers: []string{}, SystemCallers: []string{"relay"}},
 	"/api.channel.v1.ChannelService/RecordSubscriptionAccountHealth":         {Owner: "channel", UserCallers: []string{}, SystemCallers: []string{"relay"}},
 	"/api.channel.v1.ChannelService/RecordSubscriptionAccountSlot":           {Owner: "channel", UserCallers: []string{}, SystemCallers: []string{"relay"}},
 	"/api.channel.v1.ChannelService/RecordChannelSlot":                       {Owner: "channel", UserCallers: []string{}, SystemCallers: []string{"relay"}},

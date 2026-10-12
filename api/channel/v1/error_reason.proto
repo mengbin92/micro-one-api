@@ -12,3 +12,8 @@ enum RoutingGroupErrorReason {
 }
 
 enum CredentialErrorReason { CREDENTIAL_ERROR_UNSPECIFIED = 0; CREDENTIAL_REVISION_CONFLICT = 1; }
+
+enum UpstreamControlErrorReason {
+  UPSTREAM_CONTROL_ERROR_UNSPECIFIED = 0;
+  UPSTREAM_RATE_LIMIT = 1;
+}

@@ -72,6 +72,28 @@ func (f *fakeChannelClient) SelectChannel(ctx context.Context, req *channelv1.Se
 	return &channelv1.SelectChannelReply{Channel: f.channelToRet}, nil
 }
 
+func TestCachedChannelClientDoesNotReuseFencedConfigurationOrProbe(t *testing.T) {
+	for _, cached := range []*commonv1.ChannelInfo{
+		{Id: 7, UpstreamConfigurationRevision: "old-revision"},
+		{Id: 7, HealthProbeId: "other-request-probe"},
+	} {
+		cache, err := appcache.NewChannelCache(nil, nil, func(context.Context, string) ([]*commonv1.ChannelInfo, error) {
+			return []*commonv1.ChannelInfo{cached}, nil
+		})
+		require.NoError(t, err)
+		fake := &fakeChannelClient{channelToRet: &commonv1.ChannelInfo{Id: 8, UpstreamConfigurationRevision: "fresh-revision", HealthProbeId: "fresh-probe"}, permission: &channelv1.CheckRouteReply{Allowed: true}}
+		wrapper := &CachedChannelClient{ChannelServiceClient: fake, cache: cache}
+		for range 2 {
+			reply, err := wrapper.SelectChannel(context.Background(), &channelv1.SelectChannelRequest{Group: "default", Model: "gpt-5"})
+			require.NoError(t, err)
+			require.EqualValues(t, 8, reply.Channel.Id)
+			require.Equal(t, "fresh-revision", reply.Channel.UpstreamConfigurationRevision)
+		}
+		require.Equal(t, 2, fake.calls, "another request must claim its own source/probe")
+		cache.Close()
+	}
+}
+
 // TestCachedChannelClient_NilCachePassthrough ensures that a nil cache (the
 // feature-flag-off path) delegates straight to the underlying client.
 func TestCachedChannelClient_NilCachePassthrough(t *testing.T) {

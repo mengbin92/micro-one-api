@@ -55,6 +55,7 @@ type RawStreamResponse struct {
 // UpstreamHTTPError preserves the upstream status and response body for callers
 // that need endpoint-specific fallback behavior.
 type UpstreamHTTPError struct {
+	RetryAfter time.Duration
 	StatusCode int
 	Body       []byte
 }
@@ -426,7 +427,7 @@ func (p *OpenAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawResp
 		return nil, fmt.Errorf("failed to read raw response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody}
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody, RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())}
 	}
 
 	return &RawResponse{
@@ -502,7 +503,7 @@ func (p *OpenAIProvider) ForwardStream(ctx context.Context, req *RawRequest) (*R
 		if readErr != nil {
 			return nil, fmt.Errorf("failed to read raw response: %w", readErr)
 		}
-		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody}
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody, RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())}
 	}
 
 	return &RawStreamResponse{
@@ -552,7 +553,7 @@ func (p *OpenAIProvider) ChatCompletions(ctx context.Context, req *ChatCompletio
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody}
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody, RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())}
 	}
 
 	var response ChatCompletionsResponse
@@ -589,7 +590,7 @@ func (p *OpenAIProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamErrorBody))
 		_ = resp.Body.Close()
-		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody}
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody, RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())}
 	}
 
 	return readOpenAIStream(resp, ctx), nil

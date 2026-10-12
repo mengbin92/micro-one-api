@@ -93,14 +93,15 @@ func setupChannelWithUpstream(t *testing.T, addr, upstreamURL string) (func(), c
 	}
 	uc := channeltestutil.NewChannelUsecase(repo, nil)
 	svc := channeltestutil.NewChannelService(uc)
-	grpcSrv := grpc.NewServer()
+	serverAuth, clientAuth := channelRelayCredentials(t)
+	grpcSrv := grpc.NewServer(serverAuth)
 	channelv1.RegisterChannelServiceServer(grpcSrv, svc)
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		t.Fatalf("failed to listen: %v", err)
 	}
 	go grpcSrv.Serve(lis)
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()), clientAuth)
 	if err != nil {
 		t.Fatalf("failed to connect: %v", err)
 	}
@@ -246,11 +247,12 @@ func TestChatCompletions_ModelMapping(t *testing.T) {
 	}
 	channelUc := channeltestutil.NewChannelUsecase(channelRepo, nil)
 	channelSvc := channeltestutil.NewChannelService(channelUc)
-	channelGrpc := grpc.NewServer()
+	serverAuth, clientAuth := channelRelayCredentials(t)
+	channelGrpc := grpc.NewServer(serverAuth)
 	channelv1.RegisterChannelServiceServer(channelGrpc, channelSvc)
 	channelLis, _ := net.Listen("tcp", "127.0.0.1:19202")
 	go channelGrpc.Serve(channelLis)
-	channelConn, _ := grpc.NewClient("127.0.0.1:19202", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	channelConn, _ := grpc.NewClient("127.0.0.1:19202", grpc.WithTransportCredentials(insecure.NewCredentials()), clientAuth)
 	channelClient := channelv1.NewChannelServiceClient(channelConn)
 	defer func() { channelConn.Close(); channelGrpc.Stop(); channelLis.Close() }()
 

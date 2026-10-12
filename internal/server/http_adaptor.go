@@ -133,6 +133,10 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 		result := s.runSubscriptionAttempt(r.WithContext(attemptCtx), current, clientModel, rawBody, inbound, sessionHash)
 		attemptNumber += result.attemptCount
 		if result.retryable {
+			if !s.relayUsecase.AllowUpstreamRetry(current.Channel) {
+				result.write(w)
+				return
+			}
 			accountID := subscriptionAccountIDFromPlan(current)
 			if accountID > 0 {
 				failedAccounts[accountID] = true
@@ -223,8 +227,11 @@ func (s *HTTPServer) runSubscriptionAttempt(r *http.Request, current *relaybiz.R
 	attemptCount := int32(1)
 	result := s.executeAndMeter(r.Context(), current, clientModel, r.Header.Clone(), rawBody, inbound, sessionHash)
 	for tries := 0; result.retryableSameAccount && tries < subscriptionSameAccountMaxRetries; tries++ {
+		if !s.relayUsecase.AllowUpstreamRetry(current.Channel) {
+			break
+		}
 		metrics.RelaySubscriptionFailoverTotal.WithLabelValues("same_account", "retried").Inc()
-		if !sleepCtx(r.Context(), subscriptionSameAccountRetryDelay) {
+		if !sleepCtx(r.Context(), relaybiz.JitteredRetryDelay(subscriptionSameAccountRetryDelay)) {
 			break // client/context cancelled: stop retrying
 		}
 		trace.Number++
@@ -246,18 +253,19 @@ func (s *HTTPServer) runSubscriptionAttempt(r *http.Request, current *relaybiz.R
 func (s *HTTPServer) executeAndMeter(ctx context.Context, current *relaybiz.RelayPlan, clientModel string, header http.Header, rawBody []byte, inbound relayadaptor.Format, sessionHash string) subscriptionAdaptorResult {
 	attemptStartedAt := time.Now()
 	result := s.executeSubscriptionAccountViaAdaptor(ctx, current, clientModel, header, rawBody, inbound, sessionHash)
+	if result.upstreamAttempted && requesttrace.FromContext(ctx).Number <= 1 {
+		s.relayUsecase.RecordPrimaryAttempt(current.Channel)
+	}
 	metrics.RelaySubscriptionAdaptorRequestsTotal.WithLabelValues(subscriptionMetricPlatform(current), string(inbound), subscriptionAdaptorMetricResult(result)).Inc()
-	// Feed a real upstream outcome into the account circuit breaker — but never
-	// a rate-limit (429/423/529) outcome. Rate limits mean "the account is busy",
-	// not "the account is broken": under concurrency (which the config model
-	// intentionally does not gate locally) a burst of requests naturally trips
-	// upstream rate limits, and counting those as breaker errors would open the
-	// circuit on a healthy account, surfacing as "no available channel" for
-	// every concurrent request until the open window expires. Rate-limited
-	// accounts still get a short runtime cool-down (blockRuntimeAccount) and
-	// fail over to a sibling.
-	if result.upstreamAttempted && s != nil && s.relayUsecase != nil && !isSubscriptionRateLimitStatus(result.statusCode) {
-		_ = s.relayUsecase.RecordSubscriptionAccountHealth(ctx, subscriptionAccountIDFromPlan(current), result.upstreamSucceeded)
+	// Capacity/configuration controls are separate from availability counters.
+	// Successful streams report only after a verified terminal, below.
+	if result.upstreamAttempted && (!result.upstreamSucceeded || !result.streaming || result.err != nil) && s != nil && s.relayUsecase != nil {
+		outcome := relaybiz.UpstreamHealthDisposition(ctx, subscriptionAdaptorModelHealthError(result))
+		if current.Account != nil && current.Account.UpstreamConfigurationRevision != "" {
+			s.relayUsecase.RecordUpstreamResult(ctx, subscriptionObservationChannel(current), subscriptionAdaptorModelHealthError(result), time.Since(attemptStartedAt).Milliseconds(), attemptStartedAt)
+		} else if outcome != relayprovider.HealthNeutral {
+			_ = s.relayUsecase.RecordSubscriptionAccountHealth(ctx, subscriptionAccountIDFromPlan(current), outcome == relayprovider.HealthSuccess)
+		}
 	}
 	// Passive MODEL health. This path replaces RetryExecutor wholesale for
 	// subscription-account channels, so without an explicit record here the
@@ -265,7 +273,7 @@ func (s *HTTPServer) executeAndMeter(ctx context.Context, current *relaybiz.Rela
 	// route while only the account dimension above is populated. Guarded on
 	// upstreamAttempted so local admission failures (concurrency / RPM / session
 	// window / credential resolution) never masquerade as model-route evidence.
-	if result.upstreamAttempted && s != nil && s.relayUsecase != nil {
+	if result.upstreamAttempted && (!result.upstreamSucceeded || !result.streaming || result.err != nil) && s != nil && s.relayUsecase != nil {
 		s.relayUsecase.RecordSubscriptionModelHealth(
 			ctx,
 			current.Channel,
@@ -291,6 +299,9 @@ func (s *HTTPServer) executeAndMeter(ctx context.Context, current *relaybiz.Rela
 // recorded as no evidence, matching the RetryExecutor path.
 func subscriptionAdaptorModelHealthError(result subscriptionAdaptorResult) error {
 	if result.upstreamSucceeded {
+		if relaybiz.IsPostForwardError(result.err) {
+			return result.err
+		}
 		return nil
 	}
 	cause := result.err
@@ -298,6 +309,20 @@ func subscriptionAdaptorModelHealthError(result subscriptionAdaptorResult) error
 		cause = fmt.Errorf("subscription adaptor upstream attempt failed")
 	}
 	return &relaybiz.RetryableError{Status: result.statusCode, Err: cause}
+}
+
+func subscriptionObservationChannel(plan *relaybiz.RelayPlan) *relaybiz.Channel {
+	if plan == nil || plan.Channel == nil {
+		return nil
+	}
+	ch := *plan.Channel
+	ch.SubscriptionAccountID = subscriptionAccountIDFromPlan(plan)
+	if plan.Account != nil {
+		ch.UpstreamConfigurationRevision = plan.Account.UpstreamConfigurationRevision
+		ch.HealthProbeID = plan.Account.HealthProbeID
+	}
+	ch.UpstreamModelID = relaybiz.ResolveChannelModel(&ch, plan.BaseModel())
+	return &ch
 }
 
 // isSubscriptionRateLimitStatus reports whether an upstream status means "the
@@ -351,6 +376,7 @@ type subscriptionAdaptorResult struct {
 	// upstreamAttempted distinguishes real provider outcomes from local
 	// admission/conversion failures. Only real attempts feed account health.
 	upstreamAttempted bool
+	streaming         bool
 	upstreamSucceeded bool
 	body              []byte
 	header            http.Header
@@ -622,6 +648,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		}
 	}
 	result.upstreamAttempted = true
+	result.streaming = isStream
 	resp, err := client.Do(upstreamReq) // #nosec G704 -- the adaptor URL is validated immediately above.
 	if err != nil {
 		if accountUsage {
@@ -657,7 +684,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		result.statusCode = resp.StatusCode
 		result.body = body
 		result.header = resp.Header.Clone()
-		result.err = classifyExecutorCapabilityError(formatToEndpoint(inbound), &relayprovider.UpstreamHTTPError{StatusCode: resp.StatusCode})
+		result.err = classifyExecutorCapabilityError(formatToEndpoint(inbound), &relayprovider.UpstreamHTTPError{StatusCode: resp.StatusCode, Body: body, RetryAfter: relayprovider.ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())})
 		result.retryable = upstreamErr.RetryableAcrossAccounts()
 		result.retryableSameAccount = upstreamErr.RetryableOnSameAccount()
 		if relaybiz.IsProtocolCapabilityMismatch(result.err) {
@@ -689,7 +716,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 				_ = s.releaseQuota(ctx, reservation.ReservationId, "adaptor convert stream error")
 			}
 			result.statusCode = http.StatusInternalServerError
-			result.err = fmt.Errorf("adaptor convert stream: %w", err)
+			result.err = relaybiz.MarkUnverifiedResponseError(fmt.Errorf("adaptor convert stream: %w", err))
 			result.write = func(w http.ResponseWriter) {
 				s.writeError(w, http.StatusInternalServerError, gatewayErrorMessage(http.StatusInternalServerError))
 			}
@@ -725,12 +752,15 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 				_ = closer.Close()
 			}
 			if copyErr != nil || ctx.Err() != nil || !terminal.Success() {
+				s.relayUsecase.RecordUpstreamResult(ctx, subscriptionObservationChannel(plan), fmt.Errorf("stream closed before verified completion"), time.Since(startedAt).Milliseconds(), startedAt)
 				setRelayObservationResult(ctx, "stream_error")
 				if accountUsage {
 					_ = s.releaseQuota(ctx, reservation.ReservationId, "incomplete upstream stream")
 				}
 				return
 			}
+			s.relayUsecase.RecordUpstreamResult(ctx, subscriptionObservationChannel(plan), nil, time.Since(startedAt).Milliseconds(), startedAt)
+			s.relayUsecase.RecordSubscriptionModelHealth(ctx, plan.Channel, subscriptionAccountIDFromPlan(plan), plan.ModelHealthID(), plan.BaseModel(), nil, time.Since(startedAt).Milliseconds())
 			if accountUsage {
 				actualUsage := usageTracker.Usage()
 				logInput := usageLogInput{
@@ -793,7 +823,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 			_ = s.releaseQuota(ctx, reservation.ReservationId, "adaptor convert response error")
 		}
 		result.statusCode = http.StatusInternalServerError
-		result.err = fmt.Errorf("adaptor convert response: %w", err)
+		result.err = relaybiz.MarkUnverifiedResponseError(fmt.Errorf("adaptor convert response: %w", err))
 		result.write = func(w http.ResponseWriter) {
 			s.writeError(w, http.StatusInternalServerError, gatewayErrorMessage(http.StatusInternalServerError))
 		}

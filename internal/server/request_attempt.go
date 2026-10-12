@@ -14,5 +14,13 @@ func channelAttemptContext(ctx context.Context, root string, number int32, chann
 	}
 	return requesttrace.WithAttempt(ctx, requesttrace.Attempt{
 		RootRequestID: root, Number: number, SourceKind: source, UpstreamModelID: model,
+		HealthProbeID: channelHealthProbeID(channel),
 	})
+}
+
+func channelHealthProbeID(channel *relaybiz.Channel) string {
+	if channel == nil {
+		return ""
+	}
+	return channel.HealthProbeID
 }

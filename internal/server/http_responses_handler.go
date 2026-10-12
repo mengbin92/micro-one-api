@@ -328,6 +328,18 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		return
 	}
 	route = refreshed
+	admitted, admissionErr := s.relayUsecase.AdmitUpstreamExecution(r.Context(), &route.Channel)
+	if admissionErr != nil {
+		s.writeResponsesUpstreamError(w, admissionErr)
+		return
+	}
+	route.Channel = *admitted
+	healthReported := false
+	defer func() {
+		if !healthReported && route.Channel.HealthProbeID != "" {
+			s.relayUsecase.RecordUpstreamResult(r.Context(), &route.Channel, fmt.Errorf("upstream attempt ended before verified completion"), 0, time.Now())
+		}
+	}()
 	if err := s.checkUserRPM(r.Context(), authSnapshot.UserId); err != nil {
 		s.writeUserRPMError(w)
 		return
@@ -364,6 +376,8 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 	if stream {
 		streamResp, err := s.forwardResponsesRawStream(r.Context(), &route.Channel, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
 		if err != nil {
+			s.relayUsecase.RecordUpstreamResult(r.Context(), &route.Channel, err, time.Since(startedAt).Milliseconds(), startedAt)
+			healthReported = true
 			terminalErr := err
 			logResponsesUpstreamFailure(r.Context(), r.URL.Path, true, "native", err)
 			_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream stream error")
@@ -378,6 +392,8 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 			_ = relayStreamInterrupted(r.Context(), nil)
 			return
 		}
+		s.relayUsecase.RecordUpstreamResult(r.Context(), &route.Channel, nil, time.Since(startedAt).Milliseconds(), startedAt)
+		healthReported = true
 		actualUsage := usage.Usage()
 		logInput := usageLogInput{
 			UserID:                authSnapshot.UserId,
@@ -412,6 +428,12 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 	}
 
 	resp, err := s.forwardResponsesRaw(r.Context(), &route.Channel, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
+	healthErr := err
+	if healthErr == nil && (r.Method != http.MethodPost || upstreamPath != "/responses") {
+		healthErr = fmt.Errorf("stored response metadata does not verify inference recovery")
+	}
+	s.relayUsecase.RecordUpstreamResult(r.Context(), &route.Channel, healthErr, time.Since(startedAt).Milliseconds(), startedAt)
+	healthReported = true
 	if err != nil {
 		terminalErr := err
 		logResponsesUpstreamFailure(r.Context(), r.URL.Path, false, "native", err)

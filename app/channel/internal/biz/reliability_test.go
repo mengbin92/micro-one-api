@@ -6,6 +6,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"micro-one-api/domain/upstream/provider"
 )
 
 func TestLowTrafficConsecutiveFailuresAcrossWindows(t *testing.T) {
@@ -58,15 +60,26 @@ func TestHalfOpenAdmitsOneConcurrentProbe(t *testing.T) {
 
 func TestSuccessfulProbeClearsFailureWindow(t *testing.T) {
 	channel, account := NewWeightedSelector(), NewSubscriptionAccountSelector()
-	channel.UpdateChannel(&Channel{ID: 1})
+	ch, ac := &Channel{ID: 1}, &SubscriptionAccount{ID: 1}
+	channel.UpdateChannel(ch)
 	for range 12 {
 		channel.RecordHealth(1, false, 1, "")
 		account.RecordAccountHealth(1, false)
 	}
-	channel.channels[1].circuitOpenUntil = circuitHalfOpenSentinel
-	account.accounts[1].circuitOpenUntil = circuitHalfOpenSentinel
-	channel.RecordHealth(1, true, 1, "")
-	account.RecordAccountHealth(1, true)
+	channel.channels[1].circuitOpenUntil = time.Now().Add(-time.Second).UnixNano()
+	account.accounts[1].circuitOpenUntil = time.Now().Add(-time.Second).UnixNano()
+	selectedChannel, err := channel.Select(context.Background(), "g", []*Channel{ch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selectedAccount, err := account.Select(context.Background(), "g", []*SubscriptionAccount{ac})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !channel.RecordObservation(provider.Observation{ID: "channel-probe", SourceID: 1, ConfigurationRevision: ch.UpstreamRevision(), ProbeID: selectedChannel.HealthProbeID, StartedAt: time.Now(), Outcome: provider.HealthSuccess}) ||
+		!account.RecordObservation(provider.Observation{ID: "account-probe", SourceID: 1, ConfigurationRevision: ac.UpstreamRevision(), ProbeID: selectedAccount.HealthProbeID, StartedAt: time.Now(), Outcome: provider.HealthSuccess}) {
+		t.Fatal("matching half-open probe was rejected")
+	}
 	if channel.channels[1].circuitOpenUntil != 0 || account.accounts[1].circuitOpenUntil != 0 {
 		t.Fatal("successful probe immediately retripped on old failures")
 	}
@@ -122,10 +135,13 @@ func TestHalfOpenLeaseAndHealthDoNotReleaseExecutionSlot(t *testing.T) {
 	}
 	s.RecordSlot(1, "execution", true)
 	s.channels[1].circuitProbeUntil = time.Now().Add(-time.Second).UnixNano()
-	if _, err := s.Select(context.Background(), "g", []*Channel{ch}); err != nil {
+	selected, err := s.Select(context.Background(), "g", []*Channel{ch})
+	if err != nil {
 		t.Fatal(err)
 	}
-	s.RecordHealth(1, true, 1, "")
+	if !s.RecordObservation(provider.Observation{ID: "probe", SourceID: 1, ConfigurationRevision: ch.UpstreamRevision(), ProbeID: selected.HealthProbeID, StartedAt: time.Now(), Outcome: provider.HealthSuccess}) {
+		t.Fatal("matching half-open probe was rejected")
+	}
 	if got := s.channels[1].inflight.Load(); got != 1 {
 		t.Fatalf("lease expiry or health released a running execution: inflight=%d", got)
 	}

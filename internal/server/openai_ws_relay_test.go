@@ -60,6 +60,8 @@ func TestOpenAIWSTerminalModelHealth(t *testing.T) {
 		{name: "failed moderation via message", turn: openAIWSTurnResult{terminalEventType: "response.failed", errorMessage: "prompt flagged by moderation system"}},
 		{name: "failed sensitive words via message", turn: openAIWSTurnResult{terminalEventType: "response.failed", errorCode: "upstream_error", errorMessage: "sensitive_words_detected"}},
 		{name: "failed invalid request is client-caused", turn: openAIWSTurnResult{terminalEventType: "response.failed", errorCode: "invalid_request_error"}},
+		{name: "failed rate limit is capacity evidence", turn: openAIWSTurnResult{terminalEventType: "response.failed", errorCode: "rate_limit_exceeded"}},
+		{name: "failed overloaded is capacity evidence", turn: openAIWSTurnResult{terminalEventType: "response.failed", errorCode: "server_busy", errorMessage: "overloaded"}},
 		{name: "incomplete", turn: openAIWSTurnResult{terminalEventType: "response.incomplete"}},
 		{name: "cancelled", turn: openAIWSTurnResult{terminalEventType: "response.cancelled"}},
 		{name: "canceled", turn: openAIWSTurnResult{terminalEventType: "response.canceled"}},
@@ -146,8 +148,8 @@ func TestRelayOpenAIWSFramesTerminalOutcomePropagation(t *testing.T) {
 	if turns[1].responseStatus != "completed" || turns[1].errorCode != "" {
 		t.Fatalf("turn 1 outcome leaked from previous turn: %+v", turns[1])
 	}
-	if record, success := openAIWSTerminalModelHealth(turns[0]); !record || success {
-		t.Fatalf("response.done + failed status must classify as failure, got record=%v success=%v", record, success)
+	if record, success := openAIWSTerminalModelHealth(turns[0]); record || success {
+		t.Fatalf("response.done + overloaded must stay neutral for availability, got record=%v success=%v", record, success)
 	}
 }
 

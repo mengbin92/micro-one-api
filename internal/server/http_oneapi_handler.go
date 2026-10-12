@@ -67,19 +67,34 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clientModel := extractRawModel(body)
+	ch := &relaybiz.Channel{
+		ID: channelReply.Channel.Id, Type: channelReply.Channel.Type, BaseURL: channelReply.Channel.BaseUrl,
+		Key: channelReply.Channel.Key, Models: strings.Split(channelReply.Channel.Models, ","), ModelMapping: channelReply.Channel.ModelMapping,
+		UpstreamModelID: channelReply.Channel.UpstreamModelId, UpstreamConfigurationRevision: channelReply.Channel.GetUpstreamConfigurationRevision(),
+		Config: relaybiz.ChannelConfig{APIVersion: channelReply.Channel.GetConfig().GetApiVersion()},
+	}
 	model := clientModel
 	if clientModel == "" {
 		model = "proxy"
 	} else {
-		model = relaybiz.ResolveChannelModel(&relaybiz.Channel{
-			Models:          strings.Split(channelReply.Channel.Models, ","),
-			ModelMapping:    channelReply.Channel.ModelMapping,
-			UpstreamModelID: channelReply.Channel.UpstreamModelId,
-		}, clientModel)
+		model = relaybiz.ResolveChannelModel(ch, clientModel)
 		body = rewriteRawModel(body, model)
+		ch.UpstreamModelID = model
 	}
+	ch, err = s.relayUsecase.AdmitUpstreamExecution(r.Context(), ch)
+	if err != nil {
+		s.writeError(w, http.StatusServiceUnavailable, "channel unavailable")
+		return
+	}
+	healthReported := false
+	defer func() {
+		if !healthReported && ch.HealthProbeID != "" {
+			s.relayUsecase.RecordUpstreamResult(r.Context(), ch, fmt.Errorf("upstream attempt was not dispatched"), 0, time.Now())
+		}
+	}()
 
 	requestID := generateRequestID()
+	r = r.WithContext(channelAttemptContext(r.Context(), requestID, 1, ch, ch.UpstreamModelID))
 	startedAt := time.Now()
 	billingClientModel := clientModel
 	if billingClientModel == "" {
@@ -104,12 +119,14 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 
 	provider, err := s.providerFactory.CreateProviderWithConfig(channelReply.Channel.Type, channelReply.Channel.BaseUrl, channelReply.Channel.Key, providerConfigFromChannelInfo(channelReply.Channel))
 	if err != nil {
+		s.relayUsecase.RecordUpstreamResult(r.Context(), ch, relayprovider.BeforeForward(err), time.Since(startedAt).Milliseconds(), startedAt)
+		healthReported = true
 		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "failed to create provider")
 		s.writeError(w, http.StatusInternalServerError, "failed to create provider")
 		return
 	}
 
-	releaseChannel, slotErr := s.relayUsecase.AcquireChannelSlot(r.Context(), &relaybiz.Channel{ID: channelReply.Channel.Id})
+	releaseChannel, slotErr := s.relayUsecase.AcquireChannelSlot(r.Context(), ch)
 	if slotErr != nil {
 		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "channel slot admission rejected")
 		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(slotErr)), "channel unavailable")
@@ -123,6 +140,12 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		Header: r.Header.Clone(),
 		Body:   body,
 	})
+	healthErr := err
+	if healthErr == nil && (clientModel == "" || strings.HasPrefix(strings.Trim(targetPart, "/"), "models")) {
+		healthErr = fmt.Errorf("diagnostic upstream response does not verify inference recovery")
+	}
+	s.relayUsecase.RecordUpstreamResult(r.Context(), ch, healthErr, time.Since(startedAt).Milliseconds(), startedAt)
+	healthReported = true
 	if err != nil {
 		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream error")
 		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(err)), "upstream service error")
