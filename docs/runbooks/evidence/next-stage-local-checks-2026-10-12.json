@@ -1,0 +1,47 @@
+{
+  "code_commit": "5c08d26e",
+  "make_verify_exit": 0,
+  "integration_exit": 0,
+  "refund_regression": {
+    "before": {
+      "sqlite": "PASS",
+      "mysql": "FAIL Error 1267",
+      "postgres": "PASS"
+    },
+    "after": {
+      "sqlite": "PASS",
+      "mysql": "PASS",
+      "postgres": "PASS"
+    },
+    "race": {
+      "sqlite": "PASS",
+      "mysql": "PASS",
+      "postgres": "PASS"
+    },
+    "skipped": 0
+  },
+  "frontend": {
+    "unit_tests": 441,
+    "unit_files": 75,
+    "critical_tests": 186,
+    "critical_files": 16,
+    "critical_coverage": {
+      "statements": 92.2,
+      "branches": 85.71,
+      "functions": 92.69,
+      "lines": 93.31
+    },
+    "smoke_passed": 79,
+    "smoke_skipped": 1,
+    "smoke_exit": 0,
+    "lint_exit": 0,
+    "build_exit": 0,
+    "budget_passed": 6,
+    "production_manifest_files": 77,
+    "production_manifest_mismatches": 0
+  },
+  "limitations": [
+    "Smoke uses mocked APIs; the release real-owner matrix is separate.",
+    "Recent production payment orders are empty; no live purchase or refund was executed."
+  ]
+}
