@@ -121,7 +121,7 @@ SELECT 'consume_group',endpoint,is_stream,source_kind,COUNT(*),COUNT(DISTINCT mo
  COUNT(DISTINCT CONCAT(source_kind,':',channel_id,':',subscription_account_id,':',upstream_model_id))
 FROM oneapi_billing.billing_ledgers WHERE type='consume' AND created_at>='%s' AND created_at<'%s'
 GROUP BY endpoint,is_stream,source_kind;
-SELECT 'ledger_links',COUNT(*),COALESCE(SUM(r.id IS NULL),0),COALESCE(SUM(r.status<>'committed'),0),
+SELECT /*+ NO_INDEX(g) */ 'ledger_links',COUNT(*),COALESCE(SUM(r.id IS NULL),0),COALESCE(SUM(r.status<>'committed'),0),
  COALESCE(SUM(g.id IS NULL),0),COALESCE(SUM(g.quota<>l.quota OR g.is_stream<>l.is_stream OR g.model_name<>l.model_name
  OR g.source_kind<>l.source_kind OR g.upstream_model_id<>l.upstream_model_id
  OR g.channel_id<>l.channel_id OR g.subscription_account_id<>l.subscription_account_id),0),
