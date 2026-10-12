@@ -110,6 +110,7 @@ def collect():
     mysql_env = env(inspect('mysql'))
     start_sql = datetime.datetime.fromtimestamp(end - 86400, datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     end_sql = datetime.datetime.fromtimestamp(end, datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    # Avoid rescanning the low-selectivity log level index for every ledger.
     sql = """SET SESSION time_zone='+00:00';
 SET SESSION MAX_EXECUTION_TIME=15000;
 START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY;
@@ -157,7 +158,8 @@ COMMIT;
     report = dict(checked_at=stamp(time.time()), query_end=stamp(end),
                   windows=dict(last_24h_start=stamp(end - 86400), historical_7d_start=stamp(end - 604800)),
                   runtime=[dict(service=name, container_id=c['Id'], image_id=c['Image'], image_ref=c['Config']['Image'],
-                                source_digest=c['Config'].get('Labels', {}).get('micro-one-api.source.digest'),
+                                source_digest=(inspect(c['Image'])['Config'].get('Labels') or {}).get('micro-one-api.source.digest'),
+                                container_source_digest=c['Config'].get('Labels', {}).get('micro-one-api.source.digest'),
                                 started_at=c['State']['StartedAt'], running=c['State']['Running'],
                                 restart_count=c['RestartCount'], oom_killed=c['State']['OOMKilled'])
                            for name, c in containers.items()],
