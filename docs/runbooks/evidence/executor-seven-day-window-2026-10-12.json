@@ -1,0 +1,29 @@
+{
+  "armed_at": "2026-10-12T13:47:03.446329+08:00",
+  "initial_orchestrator_success_counter": 831.0,
+  "endpoint": "/v1/responses",
+  "stream": true,
+  "runtime": {
+    "container_id": "571f839c40e3a739ccd000102f07be69437093b7b1f10510a6c880072f06b869",
+    "image_id": "sha256:091b64480b54714d28598eed8be00efe1c173762f7296394c30034443b2f5efc",
+    "started_at": "2026-10-11T06:07:02.242995754Z"
+  },
+  "flag": true,
+  "allowlist_count": 2,
+  "start_confirmed": false,
+  "paid_requests_sent": false,
+  "checked_at": "2026-10-12T14:05:53.251290+08:00",
+  "limitations": [
+    "The starting control is naturally observed and is not a matched-payload performance benchmark.",
+    "Every carried endpoint/stream needs sufficient comparable samples during the window; zero or noncomparable samples remain INSUFFICIENT.",
+    "Interruptions or executor/config changes invalidate this window; previous windows cannot be joined."
+  ],
+  "status": "ARMED",
+  "automation_id": "executor",
+  "schedule": "Every 10 minutes until the starting sample; hourly after confirmation",
+  "user_trigger": "User will send Responses SSE with an existing canary Key; no raw credential requested",
+  "notification_policy": "Only meaningful start, anomaly, interruption, action-required or completion",
+  "start_at": null,
+  "end_at": null,
+  "arming_timeout_hours": 24
+}
