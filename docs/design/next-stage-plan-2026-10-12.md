@@ -30,5 +30,7 @@ O5 缓存/回源、多副本/真实 OAuth、平台实际重发、原生 provider
 - [x] 当前前端全部门禁、生产 77 文件一致及文档入口同步。
 - [x] 当前代码 600 对长流与 24 项故障矩阵复验，全部 PASS。
 - [x] N5 起点复核完成，结论 INSUFFICIENT，正式七天未启动。
-- [ ] v0.34.17 develop → main → tag 交付及 Release 制品确认（以流水线实际结果为准）。
+- [x] v0.34.17 develop → main → tag 交付及正式 Release 确认；17 任务全部成功，九服务 amd64/arm64 清单独立核对通过。
 - [ ] N5 条件齐备后的连续七天准入（保留条件项）。
+
+发布后复核已出现 legacy POST Responses SSE，但同窗 orchestrator 成功增量为零，仍缺同时段可比对照和确认起点；不回填七天窗口。详见观察手册最新条目。

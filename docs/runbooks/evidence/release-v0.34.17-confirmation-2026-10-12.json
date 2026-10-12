@@ -1,0 +1,201 @@
+{
+  "release": {
+    "isDraft": false,
+    "publishedAt": "2026-10-12T05:15:55Z",
+    "tagName": "v0.34.17",
+    "url": "https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.17"
+  },
+  "published_at_cst": "2026-10-12T13:15:55+08:00",
+  "tag_commit": "e8839266a208da7f33873042d644a3a3c21dd18a",
+  "release_run": {
+    "id": 38201074940,
+    "url": "https://github.com/mengbin92/micro-one-api/actions/runs/38201074940",
+    "status": "completed",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "name": "Load service matrix",
+        "conclusion": "success"
+      },
+      {
+        "name": "Resolve release context",
+        "conclusion": "success"
+      },
+      {
+        "name": "Release E2E gate / IAM browser matrix (real owners)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Release E2E gate / Playwright admin smoke",
+        "conclusion": "success"
+      },
+      {
+        "name": "Release E2E gate / Compose E2E suite",
+        "conclusion": "success"
+      },
+      {
+        "name": "Release E2E gate / Routing v2 acceptance (mysql)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Release E2E gate / Routing v2 acceptance (sqlite3)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Build and Push identity-service",
+        "conclusion": "success"
+      },
+      {
+        "name": "Build and Push config-service",
+        "conclusion": "success"
+      },
+      {
+        "name": "Build and Push billing-service",
+        "conclusion": "success"
+      },
+      {
+        "name": "Build and Push admin-api",
+        "conclusion": "success"
+      },
+      {
+        "name": "Build and Push notify-worker",
+        "conclusion": "success"
+      },
+      {
+        "name": "Build and Push channel-service",
+        "conclusion": "success"
+      },
+      {
+        "name": "Build and Push monitor-worker",
+        "conclusion": "success"
+      },
+      {
+        "name": "Build and Push relay-gateway",
+        "conclusion": "success"
+      },
+      {
+        "name": "Build and Push log-service",
+        "conclusion": "success"
+      },
+      {
+        "name": "Publish GitHub Release",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "image_platform_verification": [
+    {
+      "service": "relay-gateway",
+      "image": "docker.io/mengbin92/micro-one-api-relay-gateway:v0.34.17",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "verified": true
+    },
+    {
+      "service": "admin-api",
+      "image": "docker.io/mengbin92/micro-one-api-admin-api:v0.34.17",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "verified": true
+    },
+    {
+      "service": "identity-service",
+      "image": "docker.io/mengbin92/micro-one-api-identity-service:v0.34.17",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "verified": true
+    },
+    {
+      "service": "billing-service",
+      "image": "docker.io/mengbin92/micro-one-api-billing-service:v0.34.17",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "verified": true
+    },
+    {
+      "service": "config-service",
+      "image": "docker.io/mengbin92/micro-one-api-config-service:v0.34.17",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "verified": true
+    },
+    {
+      "service": "log-service",
+      "image": "docker.io/mengbin92/micro-one-api-log-service:v0.34.17",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "verified": true
+    },
+    {
+      "service": "monitor-worker",
+      "image": "docker.io/mengbin92/micro-one-api-monitor-worker:v0.34.17",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "verified": true
+    },
+    {
+      "service": "notify-worker",
+      "image": "docker.io/mengbin92/micro-one-api-notify-worker:v0.34.17",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "verified": true
+    },
+    {
+      "service": "channel-service",
+      "image": "docker.io/mengbin92/micro-one-api-channel-service:v0.34.17",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "verified": true
+    }
+  ],
+  "production_rebuilt_from_formal_registry_images": false,
+  "production_deployment_evidence": "next-stage-production-after-2026-10-12.json",
+  "ci_and_security": [
+    {
+      "conclusion": "success",
+      "databaseId": 38201071882,
+      "headSha": "e8839266a208da7f33873042d644a3a3c21dd18a",
+      "status": "completed",
+      "url": "https://github.com/mengbin92/micro-one-api/actions/runs/38201071882"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38201069816,
+      "headSha": "a35b389d9c2c42b3e5b4587bdb7cff9aed92963c",
+      "status": "completed",
+      "url": "https://github.com/mengbin92/micro-one-api/actions/runs/38201069816"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38201071976,
+      "headSha": "e8839266a208da7f33873042d644a3a3c21dd18a",
+      "status": "completed",
+      "url": "https://github.com/mengbin92/micro-one-api/actions/runs/38201071976"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38201069814,
+      "headSha": "a35b389d9c2c42b3e5b4587bdb7cff9aed92963c",
+      "status": "completed",
+      "url": "https://github.com/mengbin92/micro-one-api/actions/runs/38201069814"
+    }
+  ]
+}

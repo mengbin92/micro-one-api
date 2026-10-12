@@ -1,0 +1,199 @@
+{
+  "fixed_query_end": "2026-10-12T13:15:24+08:00",
+  "queries": {
+    "http_since_last_check": {
+      "promql": "sum by(method,path,status)(increase(micro_one_api_http_requests_total{instance=\"relay-gateway:8080\",path=\"/v1/responses\"}[5851s]))",
+      "result": [
+        {
+          "metric": {
+            "method": "POST",
+            "path": "/v1/responses",
+            "status": "200"
+          },
+          "value": [
+            1791782124,
+            "64.17549271636675"
+          ]
+        },
+        {
+          "metric": {
+            "method": "POST",
+            "path": "/v1/responses",
+            "status": "400"
+          },
+          "value": [
+            1791782124,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "method": "POST",
+            "path": "/v1/responses",
+            "status": "502"
+          },
+          "value": [
+            1791782124,
+            "1.0027420736932304"
+          ]
+        }
+      ]
+    },
+    "http_snapshot": {
+      "promql": "micro_one_api_http_requests_total{instance=\"relay-gateway:8080\",path=\"/v1/responses\"}",
+      "result": [
+        {
+          "metric": {
+            "__name__": "micro_one_api_http_requests_total",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "method": "POST",
+            "path": "/v1/responses",
+            "service": "relay-gateway",
+            "stack": "micro-one-api",
+            "status": "200"
+          },
+          "value": [
+            1791782124,
+            "903"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "micro_one_api_http_requests_total",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "method": "POST",
+            "path": "/v1/responses",
+            "service": "relay-gateway",
+            "stack": "micro-one-api",
+            "status": "502"
+          },
+          "value": [
+            1791782124,
+            "16"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "micro_one_api_http_requests_total",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "method": "POST",
+            "path": "/v1/responses",
+            "service": "relay-gateway",
+            "stack": "micro-one-api",
+            "status": "400"
+          },
+          "value": [
+            1791782124,
+            "1"
+          ]
+        }
+      ]
+    },
+    "legacy_since_last_check": {
+      "promql": "sum by(endpoint,stream,result,status)(increase(micro_one_api_relay_executor_requests_total{instance=\"relay-gateway:8080\",execution_path=\"legacy\",endpoint=\"/v1/responses\"}[5851s]))",
+      "result": [
+        {
+          "metric": {
+            "endpoint": "/v1/responses",
+            "result": "canceled",
+            "status": "502",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "endpoint": "/v1/responses",
+            "result": "success",
+            "status": "200",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "63.2352"
+          ]
+        }
+      ]
+    },
+    "orchestrator_since_last_check": {
+      "promql": "sum by(endpoint,stream,result,status)(increase(micro_one_api_relay_executor_requests_total{instance=\"relay-gateway:8080\",execution_path=\"orchestrator\",endpoint=\"/v1/responses\"}[5851s]))",
+      "result": [
+        {
+          "metric": {
+            "endpoint": "/v1/responses",
+            "result": "canceled",
+            "status": "200",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "endpoint": "/v1/responses",
+            "result": "canceled",
+            "status": "400",
+            "stream": "unknown"
+          },
+          "value": [
+            1791782124,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "endpoint": "/v1/responses",
+            "result": "canceled",
+            "status": "502",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "endpoint": "/v1/responses",
+            "result": "stream_error",
+            "status": "200",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "endpoint": "/v1/responses",
+            "result": "success",
+            "status": "200",
+            "stream": "true"
+          },
+          "value": [
+            1791782124,
+            "0"
+          ]
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "HTTP method aggregates do not carry execution_path; GET upgrades must not be treated as SSE legacy controls."
+  ],
+  "conclusion": {
+    "new_legacy_traffic": "HTTP POST Responses (SSE), not observed GET/WebSocket traffic",
+    "same_window_orchestrator_success_increase": 0,
+    "n5": "INSUFFICIENT",
+    "formal_window_start_confirmed": false
+  }
+}
