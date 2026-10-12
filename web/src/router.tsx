@@ -173,6 +173,7 @@ export const router = createBrowserRouter([
         path: 'admin',
         element: <AdminRoute />,
         children: [
+          { path: 'iam', element: withSuspense(<IAMPage />) },
           ...['permissions', 'roles', 'assignments', 'delegations', 'constraints', 'menus', 'explain', 'audits'].map(section => ({ path: `iam/${section}`, element: withSuspense(<IAMPage />) })),
           {
             index: true,

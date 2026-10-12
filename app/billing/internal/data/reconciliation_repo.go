@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -293,7 +294,7 @@ func (r *reconciliationRepo) ListRefundReconciliations(ctx context.Context) ([]*
 	}
 	// One statement observes orders and credits consistently. Matching the
 	// user as well as the trade prevents another user's credit hiding a gap.
-	err := r.data.db.WithContext(ctx).Raw(`
+	query := `
 		SELECT o.trade_no AS trade_no, o.user_id AS user_id, TRUE AS refunded_order, o.money_cents, o.currency,
 		       COALESCE(o.plan_snapshot, '') AS plan_snapshot,
 		       COALESCE(l.ledger_count, 0) AS reversal_ledger_count,
@@ -313,8 +314,16 @@ func (r *reconciliationRepo) ListRefundReconciliations(ctx context.Context) ([]*
 		LEFT JOIN payment_orders o ON o.trade_no = l.reference_id AND o.user_id = l.user_id
 		    AND o.status = ? AND o.asset_type = ?
 		WHERE l.type = ? AND l.cost_source = ? AND o.id IS NULL
-		GROUP BY l.reference_id, l.user_id
-		ORDER BY trade_no, user_id`,
+		GROUP BY COALESCE(l.reference_id, ''), l.user_id
+		ORDER BY trade_no, user_id`
+	if r.data.db.Dialector.Name() == "mysql" {
+		// Use one collation for joins and UNIONs across upgraded MySQL tables.
+		query = strings.NewReplacer(
+			"o.trade_no", "o.trade_no COLLATE utf8mb4_unicode_ci", "o.user_id", "o.user_id COLLATE utf8mb4_unicode_ci",
+			"l.reference_id", "l.reference_id COLLATE utf8mb4_unicode_ci", "l.user_id", "l.user_id COLLATE utf8mb4_unicode_ci",
+		).Replace(query)
+	}
+	err := r.data.db.WithContext(ctx).Raw(query,
 		biz.LedgerTypeRefund, biz.CostSourceReversal,
 		biz.PaymentOrderStatusRefunded, biz.PaymentAssetTypeSubscription,
 		biz.PaymentOrderStatusRefunded, biz.PaymentAssetTypeSubscription,

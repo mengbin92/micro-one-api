@@ -72,6 +72,46 @@ describe('IAM independent reads and metadata', () => {
 
 
 describe('IAM page presentation', () => {
+  it('shows loading before the empty state and preserves token pagination when filtering', async () => {
+    authorize(['iam.permission.list']);
+    let release: (() => void) | undefined;
+    const requests: Array<{ filter: string; token: string }> = [];
+    server.use(http.get('/api/v1/admin/iam/permissions', async ({ request }) => {
+      const url = new URL(request.url);
+      const filter = url.searchParams.get('filter') ?? '';
+      const token = url.searchParams.get('page_token') ?? '';
+      requests.push({ filter, token });
+      if (requests.length === 1) await new Promise<void>(resolve => { release = resolve; });
+      return HttpResponse.json(filter
+        ? { permissions: [], total: '0' }
+        : { permissions: [{ id: token ? '2' : '1', name: token ? 'Second page' : 'First page' }], total: '2', next_page_token: token ? '' : 'next' });
+    }));
+    const view = renderWithQuery(<MemoryRouter initialEntries={['/admin/iam/permissions']}><IAMPage /></MemoryRouter>);
+    try {
+      expect(await screen.findByRole('status', { name: '加载中...' })).toBeVisible();
+      expect(screen.queryByText('暂无数据')).not.toBeInTheDocument();
+      await waitFor(() => expect(release).toBeDefined());
+      release?.();
+      await screen.findByText('First page');
+      await userEvent.click(screen.getByRole('button', { name: '下一页' }));
+      await screen.findByText('Second page');
+      expect(screen.getByRole('button', { name: '上一页' })).toBeEnabled();
+      await userEvent.type(screen.getByRole('textbox', { name: '筛选表达式' }), 'status="disabled"');
+      await userEvent.click(screen.getByRole('button', { name: /^查询$/ }));
+      expect(await screen.findByText('暂无数据')).toBeVisible();
+      expect(screen.getByRole('button', { name: '上一页' })).toBeDisabled();
+      expect(requests).toEqual([{ filter: '', token: '' }, { filter: '', token: 'next' }, { filter: 'status="disabled"', token: '' }]);
+    } finally { release?.(); view.unmount(); }
+  });
+
+  it('shows read failures instead of presenting them as an empty result', async () => {
+    authorize(['iam.permission.list']);
+    server.use(http.get('/api/v1/admin/iam/permissions', () => HttpResponse.json({ message: 'Catalog unavailable' }, { status: 500 })));
+    renderWithQuery(<MemoryRouter initialEntries={['/admin/iam/permissions']}><IAMPage /></MemoryRouter>);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Catalog unavailable');
+    expect(screen.queryByText('暂无数据')).not.toBeInTheDocument();
+  });
+
   it('uses the sidebar navigation without repeating every IAM page above the table', async () => {
     authorize(['iam.permission.list', 'iam.role.list', 'identity.user_role.read']);
     server.use(http.get('/api/v1/admin/iam/permissions', () => HttpResponse.json({ permissions: [{ id: '1', name: 'Visible permission' }] })));
