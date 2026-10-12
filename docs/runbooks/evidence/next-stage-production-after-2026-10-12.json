@@ -1,0 +1,239 @@
+{
+  "checked_at": "2026-10-12T11:16:24.801292+08:00",
+  "runtime": [
+    {
+      "service": "relay-gateway",
+      "image_ref": "docker-compose-relay-gateway:deploy-20261011-140115-7560b413",
+      "image_id": "sha256:091b64480b54714d28598eed8be00efe1c173762f7296394c30034443b2f5efc",
+      "architecture": "amd64",
+      "source_digest": "2aa4e38191228951380c8d2d702ff7ea4621bf9fc8a3bd64c82bfe0c41a24fe1",
+      "revision": null,
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-11T06:07:02.242995754Z",
+      "env_digest": "21f461902732cd95274ecefd4dead7076da610d16286aefc165c01a7892f12b7",
+      "recharge_multiplier": null,
+      "health_http": 200,
+      "fatal_or_panic_log_lines": 0
+    },
+    {
+      "service": "admin-api",
+      "image_ref": "docker-compose-admin-api:deploy-20261011-140115-7560b413",
+      "image_id": "sha256:504142df7c8c11af29f8dc6e3c340854c49b7f997bc3a24c694fea47e69a0351",
+      "architecture": "amd64",
+      "source_digest": "2aa4e38191228951380c8d2d702ff7ea4621bf9fc8a3bd64c82bfe0c41a24fe1",
+      "revision": null,
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-11T06:05:38.360331624Z",
+      "env_digest": "21cfa6095c11e0506c0fa50348098c4e6765035f8b239cd25febd5350fbf3289",
+      "recharge_multiplier": "10",
+      "health_http": 200,
+      "fatal_or_panic_log_lines": 0
+    },
+    {
+      "service": "identity-service",
+      "image_ref": "docker-compose-identity-service:deploy-20261011-140115-7560b413",
+      "image_id": "sha256:fafb4a77a908da60d51d8988e03b745528c34d06973db43318d7cdde6a591ae1",
+      "architecture": "amd64",
+      "source_digest": "2aa4e38191228951380c8d2d702ff7ea4621bf9fc8a3bd64c82bfe0c41a24fe1",
+      "revision": null,
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-11T06:02:48.649813355Z",
+      "env_digest": "006b3b37756a5b0ff1fc7c6206bf423874ca7e31feca1ddeec2802fa561b6649",
+      "recharge_multiplier": "10",
+      "health_http": 200,
+      "fatal_or_panic_log_lines": 0
+    },
+    {
+      "service": "channel-service",
+      "image_ref": "docker-compose-channel-service:deploy-20261010-213239-7560b413",
+      "image_id": "sha256:806846552ce5c3bce365352d73315dc2f4f3cfe3c297931121ca0899e07523fe",
+      "architecture": "amd64",
+      "source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "revision": null,
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-10T13:37:48.536498439Z",
+      "env_digest": "2ffd13507413b832c734e80aa62487f32c5e343b1d3f2aedcf229c719ea532f2",
+      "recharge_multiplier": null,
+      "health_http": 200,
+      "fatal_or_panic_log_lines": 0
+    },
+    {
+      "service": "billing-service",
+      "image_ref": "docker-compose-billing-service:deploy-20261012-110921-5c08d26e",
+      "image_id": "sha256:9dee76888f7582d54ed2569d088582a7529baf3304dcf429417d693c3914b5de",
+      "architecture": "amd64",
+      "source_digest": "3c0844a197d050e75508978a06f1a9aedb5b822c45c65806eb4e3ab1d850c791",
+      "revision": null,
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-12T03:15:35.584625256Z",
+      "env_digest": "db1d3fb420132a11892a09a2ab14d5d8ea544590ad04f25056e19017d15eb454",
+      "recharge_multiplier": "10",
+      "health_http": 200,
+      "fatal_or_panic_log_lines": 0
+    },
+    {
+      "service": "config-service",
+      "image_ref": "docker-compose-config-service:deploy-20261010-213239-7560b413",
+      "image_id": "sha256:0971566be3e7d228670a87714594cf54815d57a85191a8963597c52305ba8bbd",
+      "architecture": "amd64",
+      "source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "revision": null,
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-10T13:37:54.608384895Z",
+      "env_digest": "912c406eabba6fc72b93d1eb696b1730a384c3433f8311628f3c2af17a4b4ee2",
+      "recharge_multiplier": null,
+      "health_http": 200,
+      "fatal_or_panic_log_lines": 0
+    },
+    {
+      "service": "log-service",
+      "image_ref": "docker-compose-log-service:deploy-20261010-213239-7560b413",
+      "image_id": "sha256:7c5d51a48d2684f269dcc2ef68342f6236eabeb7dc4f48b11ae7c42f6adc843c",
+      "architecture": "amd64",
+      "source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "revision": null,
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-10T13:37:52.162600923Z",
+      "env_digest": "4fe774e84d82d49d6bee83119209f8f5e1acf1927130bc1c937f7f3d7f99e2fd",
+      "recharge_multiplier": null,
+      "health_http": 200,
+      "fatal_or_panic_log_lines": 0
+    },
+    {
+      "service": "monitor-worker",
+      "image_ref": "docker-compose-monitor-worker:deploy-20261010-213239-7560b413",
+      "image_id": "sha256:bc54804a89f77974307b79e483704ef918700c6463f552df622524e013ae6451",
+      "architecture": "amd64",
+      "source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "revision": null,
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-10T13:37:53.797237634Z",
+      "env_digest": "3a0b3f07900d3381a52050efe987337b0063d923002c5608827c4db08b7e9429",
+      "recharge_multiplier": null,
+      "health_http": 200,
+      "fatal_or_panic_log_lines": 0
+    },
+    {
+      "service": "notify-worker",
+      "image_ref": "docker-compose-notify-worker:deploy-20261010-213239-7560b413",
+      "image_id": "sha256:6cdecd0a038ccd34ae1969ada672c5f30311203f6a1e4565de504d2f341f7bc2",
+      "architecture": "amd64",
+      "source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "revision": null,
+      "running": true,
+      "restart_count": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-10T13:37:55.347070248Z",
+      "env_digest": "5cabe160f3831976bd3b9682e0ffd19e6718cd75cb6d531638df9c7a24241a5e",
+      "recharge_multiplier": null,
+      "health_http": 200,
+      "fatal_or_panic_log_lines": 0
+    }
+  ],
+  "sql": {
+    "migration_096_billing": {
+      "exit": 0,
+      "rows": [
+        "1"
+      ]
+    },
+    "migration_124_channel": {
+      "exit": 0,
+      "rows": [
+        "1"
+      ]
+    },
+    "migration_125_config": {
+      "exit": 0,
+      "rows": [
+        "1"
+      ]
+    },
+    "zero_account_revisions": {
+      "exit": 0,
+      "rows": [
+        "0"
+      ]
+    },
+    "zero_config_revisions": {
+      "exit": 0,
+      "rows": [
+        "0"
+      ]
+    },
+    "orders_24h": {
+      "exit": 0,
+      "rows": []
+    },
+    "snapshot_orders": {
+      "exit": 0,
+      "rows": [
+        "0\t0\t0"
+      ]
+    },
+    "consume_links": {
+      "exit": 0,
+      "rows": [
+        "903\t0\t0\t0\t0"
+      ]
+    },
+    "recent_reconciliation": {
+      "exit": 0,
+      "rows": [
+        "completed\t0\t4",
+        "partial\t0\t22"
+      ]
+    },
+    "table_metadata": {
+      "exit": 0,
+      "rows": [
+        "oneapi_billing\tbilling_ledgers\tBASE TABLE",
+        "oneapi_billing\tbilling_reservations\tBASE TABLE",
+        "oneapi_billing\tlogs\tVIEW",
+        "oneapi_billing\tpayment_orders\tBASE TABLE",
+        "oneapi_billing\treconciliation_runs\tBASE TABLE",
+        "oneapi_billing\tsubscription_commerce_receipts\tBASE TABLE",
+        "oneapi_billing\tuser_subscriptions\tBASE TABLE",
+        "oneapi_config\tconfigs\tBASE TABLE",
+        "oneapi_log\tlogs\tBASE TABLE"
+      ]
+    },
+    "reconciliation_since_billing_start": {
+      "exit": 0,
+      "rows": [
+        "completed\t0\t1"
+      ]
+    }
+  },
+  "frontend": {
+    "index_sha256": "005ffc771328035a1d7e63e8f183ba9c0a0c502a3977499469d50accfc7fdf42",
+    "index_mtime": "2026-10-11T09:30:06.014428+00:00"
+  },
+  "checks": {
+    "only_billing_image_changed": true,
+    "all_environment_fingerprints_preserved": true,
+    "frontend_preserved": true,
+    "server_build_used": false
+  },
+  "deployment": {
+    "code_commit": "5c08d26e",
+    "rollback_image": "docker-compose-billing-service:rollback-20261012-110921",
+    "previous_image_id": "sha256:c864d504e95ef4907a5e7bd9d4609cb5383102450a6645bcd692d555c0e8bcab"
+  }
+}

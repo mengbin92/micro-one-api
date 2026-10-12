@@ -22,7 +22,7 @@ docs/
 |---------|--------|
 | 个人单机，创建首个渠道和 Token | [quickstart-lite.md](./quickstart-lite.md) |
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
-| 查看下一阶段执行路线与条件保留项 | [design/next-stage-plan-2026-10-08.md](./design/next-stage-plan-2026-10-08.md) |
+| 查看下一阶段执行路线与条件保留项 | [design/next-stage-plan-2026-10-12.md](./design/next-stage-plan-2026-10-12.md) |
 | 复核 executor 有限灰度与第二批条件结论 | [观察手册](./design/v0.23-executor-observation.md) · [第二批记录](./runbooks/executor-second-batch-acceptance-2026-10-07.md) |
 | 查看当前待办和历史完成记录 | [TODO.md](./TODO.md) |
 | 查看 Playground 安全 Markdown、字体与关键分支验收 | [D7 本地验收记录](./runbooks/d7-experience-acceptance-2026-10-07.md) |
@@ -42,9 +42,9 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——本表明确指向且头部标注「当前执行入口」的计划。未定发布版本时使用 `design/next-stage-plan-YYYY-MM-DD.md`，已定版本时使用 `design/vX.Y-roadmap.md`。新阶段立项时：新建计划 → 旧路线图标为「已归档」并指回新入口 → 同步本表、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-最新发布登记：[v0.34.9](./releases/release-v0.34.9.md)（2026-10-07），纳入用户可用组、订阅购买/支付与权限页面修复，同步 Release 授权刷新冒烟。v0.34.5 / v0.34.8 为中止候选，原 tag 保留；v0.34.6–v0.34.7 已交付对账恢复、IAM 门禁及 D7/刷新修复。
+最新发布登记：[v0.34.17](./releases/release-v0.34.17.md)（2026-10-12），退款对账恢复、只读取证超时及 IAM 入口/布局修复。本轮制品状态以 Release 流水线实际结果为准；v0.34.16 及中止候选保留历史记录。
 
-**当前实施（2026-10-08）**：仓库基线 `develop@bf083b28`；N1–N4 验收完成：隔离/沙箱购买、本地门禁/通用 smoke、部署脚本 stub、600 对长流及 24 项故障矩阵。N5 生产只读复核仍为 INSUFFICIENT，正式七天起点未成立。详见 [当前计划](./design/next-stage-plan-2026-10-08.md)和 [实施记录](./runbooks/next-stage-acceptance-2026-10-08.md)。本轮代码未提交或部署。
+**当前实施（2026-10-12）**：按 [当前计划](./design/next-stage-plan-2026-10-12.md) 依次核对生产、收口 IAM 前端与文档、复验当前代码长流、评估 N5 起点。N1–N4 已交付；生产发现的退款对账 partial 已修复并部署 Billing，启动对账 completed/0 差异，三库回归及前端门禁通过。复验和七天条件结果见 [本轮记录](./runbooks/next-stage-acceptance-2026-10-12.md)，生产事实见 [观察手册](./design/v0.23-executor-observation.md)。
 
 **以下为 2026-10-07 的历史过程**；未提交/未发版/待部署表述仅对应当轮时点，当前状态以上方及发布记录为准。
 
@@ -90,7 +90,7 @@ docs/
 - [v0.30.0](./releases/release-v0.30.0.md) · [v0.30.1](./releases/release-v0.30.1.md) · [v0.31.0](./releases/release-v0.31.0.md) · [v0.31.1](./releases/release-v0.31.1.md)
 - [v0.32.0](./releases/release-v0.32.0.md) · [v0.32.1](./releases/release-v0.32.1.md) · [v0.32.2](./releases/release-v0.32.2.md)
 - [v0.33.0](./releases/release-v0.33.0.md) · [v0.33.1](./releases/release-v0.33.1.md) · [v0.33.2](./releases/release-v0.33.2.md) · [v0.33.3](./releases/release-v0.33.3.md) · [v0.33.4](./releases/release-v0.33.4.md) · [v0.33.5](./releases/release-v0.33.5.md) · [v0.33.6](./releases/release-v0.33.6.md)
-- [v0.34.0](./releases/release-v0.34.0.md) · [v0.34.1](./releases/release-v0.34.1.md) · [v0.34.2](./releases/release-v0.34.2.md) · [v0.34.3](./releases/release-v0.34.3.md) · [v0.34.4](./releases/release-v0.34.4.md) · [v0.34.5 中止候选](./releases/release-v0.34.5.md) · [v0.34.6](./releases/release-v0.34.6.md) · [v0.34.7](./releases/release-v0.34.7.md) · [v0.34.8 中止候选](./releases/release-v0.34.8.md) · [v0.34.9](./releases/release-v0.34.9.md)（最新）
+- [v0.34.0](./releases/release-v0.34.0.md) · [v0.34.1](./releases/release-v0.34.1.md) · [v0.34.2](./releases/release-v0.34.2.md) · [v0.34.3](./releases/release-v0.34.3.md) · [v0.34.4](./releases/release-v0.34.4.md) · [v0.34.5 中止候选](./releases/release-v0.34.5.md) · [v0.34.6](./releases/release-v0.34.6.md) · [v0.34.7](./releases/release-v0.34.7.md) · [v0.34.8 中止候选](./releases/release-v0.34.8.md) · [v0.34.9](./releases/release-v0.34.9.md) · [v0.34.10](./releases/release-v0.34.10.md) · [v0.34.11](./releases/release-v0.34.11.md) · [v0.34.12 中止候选](./releases/release-v0.34.12.md) · [v0.34.13 中止候选](./releases/release-v0.34.13.md) · [v0.34.14 中止候选](./releases/release-v0.34.14.md) · [v0.34.15](./releases/release-v0.34.15.md) · [v0.34.16](./releases/release-v0.34.16.md) · [v0.34.17](./releases/release-v0.34.17.md)（最新）
 
 ### runbooks/ — 运维操作手册
 
@@ -127,7 +127,8 @@ docs/
 | [v0.23-roadmap.md](./design/v0.23-roadmap.md) | v0.23 路线图：上线观察与 Relay executor 首切片（已归档） |
 | [v0.23-executor-observation.md](./design/v0.23-executor-observation.md) | executor 新旧路径 7 天生产观察与回滚事实源 |
 | [v0.24-web-release-readiness.md](./design/v0.24-web-release-readiness.md) | v0.24 双语 Web、中国法律协议与发布隔离准备清单 |
-| [next-stage-plan-2026-10-08.md](./design/next-stage-plan-2026-10-08.md) | 当前计划：用户购买闭环、本地门禁/部署一致性与 executor 长流及七天验收 |
+| [next-stage-plan-2026-10-12.md](./design/next-stage-plan-2026-10-12.md) | 当前计划：发布与生产收口、当前代码长流复验及 N5 准入 |
+| [next-stage-plan-2026-10-08.md](./design/next-stage-plan-2026-10-08.md) | 已归档：用户购买闭环、本地门禁/部署一致性与 executor 长流及七天验收 |
 | [next-stage-plan-2026-10-07.md](./design/next-stage-plan-2026-10-07.md) | 已归档：IAM 第一批、executor 条件评估与 D7 交付；后续由 10 月 8 日计划接管 |
 | [rbac-permission-management-implementation-plan.md](./design/rbac-permission-management-implementation-plan.md) | RBAC A–D 实施与交接记录，已纳入 v0.34.0；后续补丁见发布说明 |
 | [next-stage-plan-2026-09-22.md](./design/next-stage-plan-2026-09-22.md) | 已归档：R/O/Q 可靠性与观测交付；外部证据和条件项由新计划接管 |

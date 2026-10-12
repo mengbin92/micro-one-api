@@ -110,6 +110,7 @@ def collect():
     mysql_env = env(inspect('mysql'))
     start_sql = datetime.datetime.fromtimestamp(end - 86400, datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     end_sql = datetime.datetime.fromtimestamp(end, datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    # Avoid rescanning the low-selectivity log level index for every ledger.
     sql = """SET SESSION time_zone='+00:00';
 SET SESSION MAX_EXECUTION_TIME=15000;
 START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY;
@@ -121,7 +122,7 @@ SELECT 'consume_group',endpoint,is_stream,source_kind,COUNT(*),COUNT(DISTINCT mo
  COUNT(DISTINCT CONCAT(source_kind,':',channel_id,':',subscription_account_id,':',upstream_model_id))
 FROM oneapi_billing.billing_ledgers WHERE type='consume' AND created_at>='%s' AND created_at<'%s'
 GROUP BY endpoint,is_stream,source_kind;
-SELECT 'ledger_links',COUNT(*),COALESCE(SUM(r.id IS NULL),0),COALESCE(SUM(r.status<>'committed'),0),
+SELECT /*+ NO_INDEX(g) */ 'ledger_links',COUNT(*),COALESCE(SUM(r.id IS NULL),0),COALESCE(SUM(r.status<>'committed'),0),
  COALESCE(SUM(g.id IS NULL),0),COALESCE(SUM(g.quota<>l.quota OR g.is_stream<>l.is_stream OR g.model_name<>l.model_name
  OR g.source_kind<>l.source_kind OR g.upstream_model_id<>l.upstream_model_id
  OR g.channel_id<>l.channel_id OR g.subscription_account_id<>l.subscription_account_id),0),
@@ -157,7 +158,8 @@ COMMIT;
     report = dict(checked_at=stamp(time.time()), query_end=stamp(end),
                   windows=dict(last_24h_start=stamp(end - 86400), historical_7d_start=stamp(end - 604800)),
                   runtime=[dict(service=name, container_id=c['Id'], image_id=c['Image'], image_ref=c['Config']['Image'],
-                                source_digest=c['Config'].get('Labels', {}).get('micro-one-api.source.digest'),
+                                source_digest=(inspect(c['Image'])['Config'].get('Labels') or {}).get('micro-one-api.source.digest'),
+                                container_source_digest=c['Config'].get('Labels', {}).get('micro-one-api.source.digest'),
                                 started_at=c['State']['StartedAt'], running=c['State']['Running'],
                                 restart_count=c['RestartCount'], oom_killed=c['State']['OOMKilled'])
                            for name, c in containers.items()],

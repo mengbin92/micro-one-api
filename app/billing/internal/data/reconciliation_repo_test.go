@@ -2,12 +2,14 @@ package data
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"micro-one-api/app/billing/internal/biz"
+	dbtest "micro-one-api/platform/database/testutil"
 )
 
 func TestGetLedgerConsumeSummaryCollapsesDualTrackRows(t *testing.T) {
@@ -33,9 +35,21 @@ func TestGetLedgerConsumeSummaryCollapsesDualTrackRows(t *testing.T) {
 }
 
 func TestListRefundReconciliationsPairsTradeAndUserAndFindsOrphans(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&PaymentOrder{}, &ledgerModel{}))
+	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(driver, func(t *testing.T) {
+			db := dbtest.RoutingContextDB(t, driver)
+			if driver == "mysql" {
+				// Reproduce the collations on upgraded production tables.
+				require.NoError(t, db.Exec("ALTER TABLE payment_orders MODIFY trade_no VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL, MODIFY user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL").Error)
+				require.NoError(t, db.Exec("ALTER TABLE billing_ledgers MODIFY reference_id VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci, MODIFY user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL").Error)
+			}
+			testRefundReconciliations(t, db)
+		})
+	}
+}
+
+func testRefundReconciliations(t *testing.T, db *gorm.DB) {
+	t.Helper()
 	require.NoError(t, db.Create([]*PaymentOrder{
 		{UserID: "1", TradeNo: "matched", Status: biz.PaymentOrderStatusRefunded, AssetType: biz.PaymentAssetTypeSubscription, MoneyCents: 10000, PlanSnapshot: "frozen-snapshot"},
 		{UserID: "2", TradeNo: "wrong-user", Status: biz.PaymentOrderStatusRefunded, AssetType: biz.PaymentAssetTypeSubscription, MoneyCents: 20000},
@@ -43,13 +57,13 @@ func TestListRefundReconciliationsPairsTradeAndUserAndFindsOrphans(t *testing.T)
 		{UserID: "4", TradeNo: "paid", Status: biz.PaymentOrderStatusPaid, AssetType: biz.PaymentAssetTypeSubscription, MoneyCents: 40000},
 	}).Error)
 	ledger := func(userID, referenceID string, amount int64) *ledgerModel {
-		return &ledgerModel{UserID: userID, ReferenceID: &referenceID, Type: biz.LedgerTypeRefund, CostSource: biz.CostSourceReversal, Amount: amount}
+		return &ledgerModel{UserID: userID, ReferenceID: &referenceID, Type: biz.LedgerTypeRefund, CostSource: biz.CostSourceReversal, Amount: amount, LedgerDedupeKey: fmt.Sprintf("%s:%s:%d", userID, referenceID, amount)}
 	}
 	require.NoError(t, db.Create([]*ledgerModel{
 		ledger("1", "matched", 100), ledger("99", "wrong-user", 200),
 		ledger("3", "duplicate", 100), ledger("3", "duplicate", 200),
 		ledger("4", "paid", 400), ledger("5", "missing-order", 500),
-		{UserID: "1", Type: biz.LedgerTypeRefund, CostSource: biz.CostSourceBalance, Amount: 999},
+		{UserID: "1", Type: biz.LedgerTypeRefund, CostSource: biz.CostSourceBalance, Amount: 999, LedgerDedupeKey: "unrelated-refund"},
 	}).Error)
 	rows, err := NewReconciliationRepo(&Data{db: db}).ListRefundReconciliations(context.Background())
 	require.NoError(t, err)

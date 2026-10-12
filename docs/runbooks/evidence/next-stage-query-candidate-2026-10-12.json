@@ -1,0 +1,21 @@
+{
+  "candidate_plan": {
+    "exit": 0,
+    "elapsed_seconds": 0.097,
+    "rows": [
+      "1\tSIMPLE\tl\tNULL\trange\tidx_type,idx_created_at,idx_billing_ledgers_type_created\tidx_created_at\t8\tNULL\t899\t50.00\tUsing index condition; Using where",
+      "1\tSIMPLE\tg\tNULL\tALL\tNULL\tNULL\tNULL\tNULL\t38136\t100.00\tUsing where; Using join buffer (hash join)"
+    ]
+  },
+  "candidate_links": {
+    "exit": 0,
+    "elapsed_seconds": 0.346,
+    "rows": [
+      "899\t0\t0\t0\t0\t0"
+    ]
+  },
+  "frontend_manifest": {
+    "files": 77,
+    "mismatches": []
+  }
+}

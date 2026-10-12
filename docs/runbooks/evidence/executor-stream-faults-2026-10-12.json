@@ -1,0 +1,236 @@
+{
+  "verdict": "PASS",
+  "date": "2026-10-12",
+  "timezone": "Asia/Shanghai",
+  "code_commit": "5c08d26e",
+  "driver": "sqlite3",
+  "command": "python3 scripts/test-routing-e2e.py --driver sqlite3 --reliability-only --skip-build",
+  "exit_code": 0,
+  "cases": [
+    {
+      "executor": "legacy",
+      "first": "channel",
+      "fault": "500",
+      "status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 2
+    },
+    {
+      "executor": "legacy",
+      "first": "channel",
+      "fault": "refused",
+      "status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "channel",
+      "fault": "partial",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "channel",
+      "fault": "cancel",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "channel",
+      "fault": "paused-cancel",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "subscription",
+      "fault": "500",
+      "status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 2
+    },
+    {
+      "executor": "legacy",
+      "first": "subscription",
+      "fault": "refused",
+      "status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "subscription",
+      "fault": "partial",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "subscription",
+      "fault": "cancel",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "subscription",
+      "fault": "paused-cancel",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "channel",
+      "fault": "budget",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "legacy",
+      "first": "subscription",
+      "fault": "budget",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "channel",
+      "fault": "500",
+      "status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 2
+    },
+    {
+      "executor": "orchestrator",
+      "first": "channel",
+      "fault": "refused",
+      "status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "channel",
+      "fault": "partial",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "channel",
+      "fault": "cancel",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "channel",
+      "fault": "paused-cancel",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "subscription",
+      "fault": "500",
+      "status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 2
+    },
+    {
+      "executor": "orchestrator",
+      "first": "subscription",
+      "fault": "refused",
+      "status": 200,
+      "commits": 1,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "subscription",
+      "fault": "partial",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "subscription",
+      "fault": "cancel",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "subscription",
+      "fault": "paused-cancel",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "channel",
+      "fault": "budget",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    },
+    {
+      "executor": "orchestrator",
+      "first": "subscription",
+      "fault": "budget",
+      "status": 200,
+      "commits": 0,
+      "releases": 1,
+      "upstream_calls": 1
+    }
+  ],
+  "source_sha256": {
+    "scripts/test-routing-e2e.py": "1f527fc3ca1fb5ac99584be038bf5821b3cc6c6d5c2817de822ee46ecb4d9fa5",
+    "test/e2e/routing/stream_reliability_test.go": "8fe657f87f9f38ab405bc587320833b6f13c67d57c93ce2d9b63cb4a371bf6e7"
+  },
+  "limitations": [
+    "The slow-downstream case pauses reads for 100ms then cancels; it is not sustained TCP-buffer exhaustion.",
+    "The upstream is a local mock; this does not prove production admission."
+  ],
+  "project_containers_network_and_volumes_removed": true
+}
