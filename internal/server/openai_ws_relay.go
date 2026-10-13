@@ -17,6 +17,8 @@ import (
 
 // openAIWSRelayOptions configures the bidirectional Responses WebSocket relay.
 type openAIWSRelayOptions struct {
+	durableRecord   func(evidence.Record) error
+	durableBefore   func() error
 	beforeWriteUp   func(context.Context, coderws.MessageType, []byte) ([]byte, error)
 	writeTimeout    time.Duration
 	idleTimeout     time.Duration
@@ -420,6 +422,11 @@ func relayOpenAIWSFrames(
 				return err
 			}
 		}
+		if opts.durableBefore != nil {
+			if err := opts.durableBefore(); err != nil {
+				return err
+			}
+		}
 		writeCtx, cancel := context.WithTimeout(relayCtx, writeTimeout)
 		defer cancel()
 		return upstreamConn.WriteFrame(writeCtx, msgType, payload)
@@ -473,17 +480,29 @@ func relayOpenAIWSFrames(
 		defer pumps.Done()
 		wroteDownstream := false
 		recorder := evidence.RecorderFromContext(relayCtx)
+		durable := opts.durableRecord
+		emit := func(record evidence.Record) error {
+			if durable != nil {
+				if err := durable(record); err != nil {
+					return err
+				}
+			}
+			if recorder != nil {
+				recorder(record)
+			}
+			return nil
+		}
 		var shadow *evidence.Tracker
 		var shadowResponseOrder []string
 		var seenShadowResponses map[string]bool
-		if recorder != nil {
+		if recorder != nil || durable != nil {
 			shadow = evidence.NewTracker("responses")
 			seenShadowResponses = map[string]bool{}
 		}
 		defer func() {
-			if recorder != nil && shadow.EventCount > 0 {
+			if (recorder != nil || durable != nil) && shadow.EventCount > 0 {
 				o, _ := shadow.Finish()
-				recorder(evidence.Record{Observation: o, Execution: "incomplete", Stream: true, Events: shadow.Events, EventCount: shadow.EventCount, DroppedEvents: shadow.DroppedEvents})
+				_ = emit(evidence.Record{Observation: o, Execution: "incomplete", Stream: true, Events: shadow.Events, EventCount: shadow.EventCount, DroppedEvents: shadow.DroppedEvents})
 			}
 		}()
 		for {
@@ -498,18 +517,25 @@ func relayOpenAIWSFrames(
 				return
 			}
 			markActivity()
-			if recorder != nil && msgType == coderws.MessageText {
+			if (recorder != nil || durable != nil) && msgType == coderws.MessageText {
 				o := evidence.Parse(payload, "responses")
 				if o.ProviderRequestID == "" || !seenShadowResponses[o.ProviderRequestID] {
 					shadow.ObserveFrame(payload)
 					if o.Terminal != "" {
 						observation, complete := shadow.Finish()
-						recorder(evidence.Record{Observation: observation, Execution: "response_received", Stream: true, Complete: complete, Events: shadow.Events, EventCount: shadow.EventCount, DroppedEvents: shadow.DroppedEvents})
+						if err := emit(evidence.Record{Observation: observation, Execution: "response_received", Stream: true, Complete: complete, Events: shadow.Events, EventCount: shadow.EventCount, DroppedEvents: shadow.DroppedEvents}); err != nil {
+							exitCh <- openAIWSRelayExit{stage: "durable_evidence", err: err, wroteDownstream: wroteDownstream}
+							return
+						}
 						if o.ProviderRequestID != "" {
 							// shortcut: retain 32 completed IDs, use durable attempt evidence in P1.
 							seenShadowResponses[o.ProviderRequestID] = true
 							shadowResponseOrder = append(shadowResponseOrder, o.ProviderRequestID)
 							if len(shadowResponseOrder) > evidence.MaxEvents {
+								if durable != nil {
+									exitCh <- openAIWSRelayExit{stage: "durable_history_limit", err: errors.New("durable websocket history limit reached"), wroteDownstream: wroteDownstream}
+									return
+								}
 								delete(seenShadowResponses, shadowResponseOrder[0])
 								shadowResponseOrder = shadowResponseOrder[1:]
 							}

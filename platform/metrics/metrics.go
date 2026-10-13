@@ -327,6 +327,7 @@ func init() {
 		RelayUpstreamPassthroughTotal,
 		TokenUsageParseAnomaly,
 		NativeUsageShadowTotal,
+		ExecutionOutboxPending, ExecutionOutboxOldestAge, UpstreamProbeRuns, UpstreamProbeCoverage,
 		TokenUsageShadowCost,
 		TokenUsageSemanticsTotal,
 		TokenUsageInvariantMismatchTotal,

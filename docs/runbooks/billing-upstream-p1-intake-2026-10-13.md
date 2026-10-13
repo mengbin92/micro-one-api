@@ -1,6 +1,6 @@
 # P1.1：billing 持久结算接收前置闭环
 
-日期：2026-10-13。基线：`57153a1e`。状态：P1 工程已开始，本切片本地验证通过；尚未部署，不代表完整 P1 或收费门禁通过。
+日期：2026-10-13。基线：`57153a1e`。状态：P1.1 本地验证通过；后续全部 P1 工程已完成，见 [P1 完整交付](billing-upstream-p1-completion-2026-10-13.md)。尚未部署或放行收费。
 
 关联：[计费方案](../design/billing-accuracy-and-upstream-evidence-plan-2026-10-13.md)、[上游方案](../design/upstream-contract-evolution-plan-2026-10-13.md)、[P0 生产基线](billing-upstream-p0-baseline-2026-10-13.md)。Neo 已指令开始下一阶段并继续实施；P0 完整窗口与独立费用验收仍保持原状态。
 
@@ -53,6 +53,6 @@ MySQL/Postgres 的已有可选测试需要专用 test DSN；本次默认环境�
 
 ## 后续 P1 切片与放行边界
 
-本次尚未交付或启用：relay SQLite/WAL 发件箱、before-forward 双方 execution intent、lease/最大补证期限、采购证据及可信 purpose/费率快照、usage v2 和 reserve 协商、nil/zero/ambiguous 传播修正、inventory/canary/预算与 L2 报告。
+本切片交付时尚未完成（现已在 [P1 完整交付](billing-upstream-p1-completion-2026-10-13.md) 中实现，仍未生产启用）：relay SQLite/WAL 发件箱、before-forward 双方 execution intent、lease/最大补证期限、采购证据及可信 purpose/费率快照、usage v2 和 reserve 协商、nil/zero/ambiguous 传播修正、inventory/canary/预算与 L2 报告。
 
-下一切片将基于本 ACK seam 完成 intent/lease 与 relay 发件箱，再补原生 usage 的受控路径及探测。不能只打开本 receipt 开关就宣称解决送达前丢失、主机损毁、未知供应商成本，或放行新收费。P0 窗口与独立费用门禁继续保留。
+后续全部工程已基于本 ACK seam 完成，具体实现与验收以 P1 完整交付记录为准。不能只打开本 receipt 开关就宣称解决送达前丢失、主机损毁、未知供应商成本，或放行新收费。P0 窗口与独立费用门禁继续保留。

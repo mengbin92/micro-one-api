@@ -1,0 +1,161 @@
+?   	micro-one-api/api/admin/v1	[no test files]
+?   	micro-one-api/api/billing/v1	[no test files]
+?   	micro-one-api/api/channel/v1	[no test files]
+ok  	micro-one-api/api/common/v1	(cached)
+?   	micro-one-api/api/config/v1	[no test files]
+?   	micro-one-api/api/identity/v1	[no test files]
+?   	micro-one-api/api/log/v1	[no test files]
+?   	micro-one-api/api/monitor/v1	[no test files]
+?   	micro-one-api/api/notify/v1	[no test files]
+?   	micro-one-api/api/relay/v1	[no test files]
+?   	micro-one-api/app/admin/cmd/admin	[no test files]
+ok  	micro-one-api/app/admin/internal/biz	(cached)
+ok  	micro-one-api/app/admin/internal/conf	(cached)
+ok  	micro-one-api/app/admin/internal/data	(cached)
+ok  	micro-one-api/app/admin/internal/data/channelclient	(cached)
+?   	micro-one-api/app/admin/internal/data/iam	[no test files]
+?   	micro-one-api/app/admin/internal/data/routingaccess	[no test files]
+?   	micro-one-api/app/admin/internal/data/routingrpc	[no test files]
+ok  	micro-one-api/app/admin/internal/server	(cached)
+ok  	micro-one-api/app/admin/internal/service	(cached)
+?   	micro-one-api/app/admin/testutil	[no test files]
+?   	micro-one-api/app/billing/cmd/billing	[no test files]
+ok  	micro-one-api/app/billing/internal/biz	0.764s
+ok  	micro-one-api/app/billing/internal/conf	(cached)
+ok  	micro-one-api/app/billing/internal/data	(cached)
+ok  	micro-one-api/app/billing/internal/server	(cached)
+ok  	micro-one-api/app/billing/internal/service	(cached)
+?   	micro-one-api/app/billing/testutil	[no test files]
+ok  	micro-one-api/app/channel/cmd/channel	(cached)
+?   	micro-one-api/app/channel/cmd/channel-credentials	[no test files]
+ok  	micro-one-api/app/channel/cmd/group-audit	(cached)
+ok  	micro-one-api/app/channel/cmd/group-backfill	(cached)
+ok  	micro-one-api/app/channel/internal/biz	(cached)
+ok  	micro-one-api/app/channel/internal/biz/oauth	(cached)
+ok  	micro-one-api/app/channel/internal/conf	(cached)
+ok  	micro-one-api/app/channel/internal/data	(cached)
+ok  	micro-one-api/app/channel/internal/server	(cached)
+ok  	micro-one-api/app/channel/internal/service	(cached)
+?   	micro-one-api/app/channel/testutil	[no test files]
+?   	micro-one-api/app/config/cmd/config	[no test files]
+ok  	micro-one-api/app/config/internal/biz	(cached)
+ok  	micro-one-api/app/config/internal/conf	(cached)
+ok  	micro-one-api/app/config/internal/data	(cached)
+?   	micro-one-api/app/config/internal/server	[no test files]
+?   	micro-one-api/app/config/internal/service	[no test files]
+?   	micro-one-api/app/config/testutil	[no test files]
+ok  	micro-one-api/app/identity/cmd/iam-migrate	(cached)
+ok  	micro-one-api/app/identity/cmd/identity	(cached)
+?   	micro-one-api/app/identity/cmd/routing-backfill	[no test files]
+ok  	micro-one-api/app/identity/internal/biz	(cached)
+ok  	micro-one-api/app/identity/internal/conf	(cached)
+ok  	micro-one-api/app/identity/internal/data	(cached)
+ok  	micro-one-api/app/identity/internal/server	(cached)
+ok  	micro-one-api/app/identity/internal/service	(cached)
+?   	micro-one-api/app/identity/testutil	[no test files]
+?   	micro-one-api/app/log/cmd/log	[no test files]
+ok  	micro-one-api/app/log/internal/biz	(cached)
+ok  	micro-one-api/app/log/internal/conf	(cached)
+ok  	micro-one-api/app/log/internal/data	(cached)
+ok  	micro-one-api/app/log/internal/server	(cached)
+?   	micro-one-api/app/log/internal/service	[no test files]
+?   	micro-one-api/app/log/testutil	[no test files]
+?   	micro-one-api/app/monitor/cmd/monitor	[no test files]
+?   	micro-one-api/app/monitor/cmd/upstream-report	[no test files]
+ok  	micro-one-api/app/monitor/internal/biz	(cached)
+ok  	micro-one-api/app/monitor/internal/conf	(cached)
+ok  	micro-one-api/app/monitor/internal/data	(cached)
+?   	micro-one-api/app/monitor/internal/server	[no test files]
+ok  	micro-one-api/app/monitor/internal/service	(cached)
+?   	micro-one-api/app/monitor/testutil	[no test files]
+ok  	micro-one-api/app/notify/cmd/notify	(cached)
+ok  	micro-one-api/app/notify/internal/biz	(cached)
+ok  	micro-one-api/app/notify/internal/conf	(cached)
+ok  	micro-one-api/app/notify/internal/data	(cached)
+ok  	micro-one-api/app/notify/internal/server	(cached)
+?   	micro-one-api/app/notify/internal/service	[no test files]
+?   	micro-one-api/app/notify/testutil	[no test files]
+ok  	micro-one-api/cmd/admin-reset	(cached)
+?   	micro-one-api/cmd/migrate	[no test files]
+?   	micro-one-api/cmd/migrate-check	[no test files]
+ok  	micro-one-api/cmd/rbac-contract-check	0.703s
+ok  	micro-one-api/cmd/relay-gateway	(cached)
+ok  	micro-one-api/domain/authorization	(cached)
+?   	micro-one-api/domain/authorization/management	[no test files]
+?   	micro-one-api/domain/authorization/testutil	[no test files]
+ok  	micro-one-api/domain/billing	(cached)
+ok  	micro-one-api/domain/execution	0.358s
+?   	micro-one-api/domain/requesttrace	[no test files]
+ok  	micro-one-api/domain/routing	(cached)
+ok  	micro-one-api/domain/subscription/biz	(cached)
+ok  	micro-one-api/domain/subscription/data	(cached)
+ok  	micro-one-api/domain/upstream/credential	(cached)
+ok  	micro-one-api/domain/upstream/evidence	(cached)
+ok  	micro-one-api/domain/upstream/provider	(cached)
+ok  	micro-one-api/internal/adaptor	(cached)
+ok  	micro-one-api/internal/apicompat	(cached)
+ok  	micro-one-api/internal/biz	(cached)
+ok  	micro-one-api/internal/conf	(cached)
+ok  	micro-one-api/internal/data	(cached)
+ok  	micro-one-api/internal/identity	(cached)
+ok  	micro-one-api/internal/passthrough	(cached)
+ok  	micro-one-api/internal/quota	(cached)
+ok  	micro-one-api/internal/server	(cached)
+ok  	micro-one-api/internal/server/forwarder	(cached)
+ok  	micro-one-api/internal/server/handler	0.539s
+ok  	micro-one-api/internal/server/usage	(cached)
+ok  	micro-one-api/internal/service	(cached)
+ok  	micro-one-api/internal/stresstest	(cached)
+ok  	micro-one-api/internal/validation	(cached)
+ok  	micro-one-api/pkg/errors	(cached)
+ok  	micro-one-api/pkg/filtering	(cached)
+ok  	micro-one-api/pkg/jsonx	(cached)
+ok  	micro-one-api/pkg/ordering	(cached)
+ok  	micro-one-api/pkg/pagination	(cached)
+ok  	micro-one-api/pkg/safecast	(cached)
+ok  	micro-one-api/pkg/safefile	(cached)
+ok  	micro-one-api/pkg/timeout	(cached)
+ok  	micro-one-api/pkg/usage	(cached)
+ok  	micro-one-api/pkg/wildcard	(cached)
+ok  	micro-one-api/platform/audit	(cached)
+ok  	micro-one-api/platform/authz	(cached)
+?   	micro-one-api/platform/billingdto	[no test files]
+ok  	micro-one-api/platform/cache	(cached)
+ok  	micro-one-api/platform/config	(cached)
+ok  	micro-one-api/platform/database/authzquery	(cached)
+ok  	micro-one-api/platform/database/migrate	(cached)
+ok  	micro-one-api/platform/database/partition	(cached)
+?   	micro-one-api/platform/database/testutil	[no test files]
+ok  	micro-one-api/platform/database/xdb	(cached)
+ok  	micro-one-api/platform/events	(cached)
+ok  	micro-one-api/platform/grpc	(cached)
+ok  	micro-one-api/platform/grpc/xgrpc	(cached)
+ok  	micro-one-api/platform/http	(cached)
+ok  	micro-one-api/platform/iamdto	(cached)
+?   	micro-one-api/platform/logging	[no test files]
+ok  	micro-one-api/platform/metrics	(cached)
+ok  	micro-one-api/platform/middleware	(cached)
+ok  	micro-one-api/platform/registry	(cached)
+?   	micro-one-api/platform/routingclient	[no test files]
+?   	micro-one-api/platform/routingdto	[no test files]
+ok  	micro-one-api/platform/routingoutbox	(cached)
+ok  	micro-one-api/platform/security	(cached)
+ok  	micro-one-api/platform/security/auth	(cached)
+ok  	micro-one-api/platform/security/crypto	(cached)
+ok  	micro-one-api/platform/security/serviceidentity	(cached)
+?   	micro-one-api/platform/security/sessionguard	[no test files]
+ok  	micro-one-api/platform/subscriptiondto	(cached)
+ok  	micro-one-api/platform/tls	(cached)
+ok  	micro-one-api/platform/tracing	(cached)
+ok  	micro-one-api/platform/upstreamclient	(cached)
+ok  	micro-one-api/platform/websocket	(cached)
+?   	micro-one-api/scripts	[no test files]
+?   	micro-one-api/scripts/benchmark/mock-upstream	[no test files]
+?   	micro-one-api/scripts/reconcile	[no test files]
+ok  	micro-one-api/scripts/reconcile/history-audit	(cached)
+ok  	micro-one-api/scripts/routing-preflight	(cached)
+ok  	micro-one-api/scripts/verify	(cached)
+?   	micro-one-api/test/e2e	[no test files]
+ok  	micro-one-api/test/e2e/routing	(cached)
+?   	micro-one-api/test/e2e/routingmock	[no test files]
+?   	micro-one-api/test/mockupstream	[no test files]

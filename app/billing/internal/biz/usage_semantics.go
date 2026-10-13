@@ -1,6 +1,9 @@
 package biz
 
-import "math"
+import (
+	"math"
+	billingdomain "micro-one-api/domain/billing"
+)
 
 // Billing-side view of the v1 usage-semantics contract
 // (token-usage-billing-semantics-remediation §4.1/§5). These mirror the
@@ -37,38 +40,8 @@ const (
 // CanonicalBuckets is exactly the five mutually-exclusive billing buckets.
 // UncachedInputTokens is already net of cache-read: the billing layer NEVER
 // subtracts cache from prompt (§5.1).
-type CanonicalBuckets struct {
-	UncachedInputTokens   int64
-	CacheReadTokens       int64
-	CacheCreation5mTokens int64
-	CacheCreation1hTokens int64
-	OutputTokens          int64
-}
-
-// BillableTotal is the sum of the five buckets.
-func (b CanonicalBuckets) BillableTotal() int64 {
-	return b.UncachedInputTokens + b.CacheReadTokens +
-		b.CacheCreation5mTokens + b.CacheCreation1hTokens + b.OutputTokens
-}
-
-// UsageEnvelopeData is the wire envelope delivered with CommitQuotaRequest.
-type UsageEnvelopeData struct {
-	ParseStatus    string
-	Semantics      string
-	Protocol       string
-	FieldShape     string
-	DecisionReason string
-	// Reported values as the upstream sent them; never used for cost math.
-	ReportedPromptTokens          int64
-	ReportedOutputTokens          int64
-	ReportedCacheReadTokens       int64
-	ReportedCacheCreation5mTokens int64
-	ReportedCacheCreation1hTokens int64
-	ReportedTotalTokens           int64
-	Canonical                     *CanonicalBuckets
-	SubsetCandidate               *CanonicalBuckets
-	ExclusiveCandidate            *CanonicalBuckets
-}
+type CanonicalBuckets = billingdomain.CanonicalBuckets
+type UsageEnvelopeData = billingdomain.UsageEnvelopeData
 
 // validateV1Envelope enforces the financial wire invariants at the billing
 // boundary. Relay parsing is not a substitute for consumer-side validation:
@@ -266,4 +239,20 @@ func (a ledgerUsageAudit) applyTo(l *Ledger) {
 	l.SubsetCandidateCost = a.SubsetCandidateCost
 	l.ExclusiveCandidateCost = a.ExclusiveCandidateCost
 	l.PricingConfigHash = a.PricingConfigHash
+}
+
+// ValidateV2Envelope preserves absence and rejects unproven canonical buckets.
+func ValidateV2Envelope(env *UsageEnvelopeData) string {
+	if env == nil {
+		return UsageReasonV1ContractError
+	}
+	switch env.ParseStatus {
+	case "missing", "invalid", "unsupported":
+		if env.Canonical != nil || env.SubsetCandidate != nil || env.ExclusiveCandidate != nil || env.DecisionReason == "" || env.Semantics != "" {
+			return UsageReasonV1ContractError
+		}
+		return ""
+	default:
+		return validateV1Envelope(env)
+	}
 }

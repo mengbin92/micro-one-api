@@ -1,0 +1,3 @@
+command: bash scripts/check-architecture.sh
+exit_code: 0
+stdout: (empty)

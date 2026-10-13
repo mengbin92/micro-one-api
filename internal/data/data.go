@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"errors"
+	"gorm.io/gorm"
 	"micro-one-api/platform/security/serviceidentity"
 	"strings"
 	"time"
@@ -24,9 +25,11 @@ import (
 
 // Data aggregates downstream clients and provider adaptors for relay-gateway.
 type Data struct {
-	Identity biz.IdentityClient
-	Channel  biz.ChannelClient
-	Accounts relaycredential.SubscriptionAccountResolver
+	ExecutionDB     *gorm.DB
+	ExecutionSender biz.ExecutionSender
+	Identity        biz.IdentityClient
+	Channel         biz.ChannelClient
+	Accounts        relaycredential.SubscriptionAccountResolver
 }
 
 // dataClientTimeout is the per-call timeout applied to the circuit-breaker

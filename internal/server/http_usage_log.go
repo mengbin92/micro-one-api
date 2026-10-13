@@ -130,6 +130,9 @@ func (in *usageLogInput) applyEnvelope(env relaybiz.UsageEnvelope) {
 	in.CacheCreation5mTokens = reported.CacheCreation5mTokens
 	in.CacheCreation1hTokens = reported.CacheCreation1hTokens
 	in.Quota = reported.TotalTokens
+	if env.ContractVersion == 2 {
+		in.Quota = env.BillableTotal()
+	}
 	if in.Quota <= 0 {
 		in.Quota = env.BillableTotal()
 	}
@@ -153,6 +156,16 @@ func (in *usageLogInput) applyEnvelope(env relaybiz.UsageEnvelope) {
 // billableTokens is the token count used as CommitQuota actual_tokens: the
 // canonical billable total when an envelope exists, else the legacy quota.
 func (in usageLogInput) billableTokens() int64 {
+	if in.Usage != nil && in.Usage.ContractVersion == 2 {
+		if in.Usage.ParseStatus != relaybiz.UsageParseVerified {
+			return 0
+		}
+		total, ok := safeRelayCanonicalTotal(in.Usage.Canonical)
+		if ok {
+			return total
+		}
+		return 0
+	}
 	if in.Usage != nil {
 		if total, ok := safeRelayCanonicalTotal(in.Usage.Canonical); ok && total > 0 {
 			return total
@@ -184,6 +197,17 @@ func safeRelayCanonicalTotal(u *relaybiz.CanonicalUsage) (int64, bool) {
 }
 
 func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
+	key := in.ReservationID
+	if key == "" {
+		key = in.RequestID
+	}
+	if value, ok := s.executionAttempts.Load(key); ok {
+		a := value.(*durableAttempt)
+		a.mu.Lock()
+		native := nativeV2Envelope(a.last)
+		a.mu.Unlock()
+		in.applyEnvelope(native)
+	}
 	trace := requesttrace.FromContext(ctx)
 	if in.RootRequestID == "" {
 		in.RootRequestID = trace.RootRequestID

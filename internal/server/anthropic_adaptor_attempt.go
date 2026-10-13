@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"micro-one-api/domain/upstream/evidence"
 	"micro-one-api/domain/upstream/provider"
 	"micro-one-api/internal/adaptor"
 	"micro-one-api/internal/apicompat"
@@ -64,6 +65,7 @@ func (s *HTTPServer) executeAnthropicChannelAttempt(
 		return fmt.Errorf("validate upstream URL: %w", err)
 	}
 
+	ctx = channelAttemptContext(ctx, requestID, 1, channel, resolvedModel)
 	estimatedUsage := estimateRawUsage(upstreamBody)
 	reservation, err := s.reserveQuota(
 		ctx,
@@ -100,7 +102,9 @@ func (s *HTTPServer) executeAnthropicChannelAttempt(
 		return slotErr
 	}
 	defer releaseChannel()
-	response, err := client.Do(upstreamRequest) // #nosec G704 -- adaptor URL validated above.
+	ctx = s.observeNativeUsage(ctx, channel, requestID, resolvedModel)
+	upstreamRequest = upstreamRequest.WithContext(ctx)
+	response, err := evidence.Do(client, upstreamRequest, evidence.ProtocolForPath(upstreamRequest.URL.Path)) // #nosec G704 -- adaptor URL validated above.
 	if err != nil {
 		_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream error")
 		return fmt.Errorf("upstream call: %w", err)

@@ -15,6 +15,7 @@ import (
 	coderws "github.com/coder/websocket"
 	"go.uber.org/zap"
 	"micro-one-api/domain/requesttrace"
+	"micro-one-api/domain/upstream/evidence"
 	relayprovider "micro-one-api/domain/upstream/provider"
 	"micro-one-api/pkg/jsonx"
 
@@ -807,7 +808,25 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		if v2Turns != nil {
 			relayOptions.beforeWriteUp = v2Turns.beforeWrite
 		}
-		shadowCtx := withNativeUsageShadow(ctx, currentChannel, requestID, resolvedModel)
+		relayOptions.durableRecord = func(record evidence.Record) error {
+			v2Turns.mu.Lock()
+			active := v2Turns.active
+			v2Turns.mu.Unlock()
+			if active == nil {
+				return nil
+			}
+			return evidence.RecordDurable(s.executionContext(ctx, active.RequestId), record)
+		}
+		relayOptions.durableBefore = func() error {
+			v2Turns.mu.Lock()
+			active := v2Turns.active
+			v2Turns.mu.Unlock()
+			if active == nil {
+				return nil
+			}
+			return evidence.CheckDurable(s.executionContext(ctx, active.RequestId))
+		}
+		shadowCtx := s.observeNativeUsage(ctx, currentChannel, requestID, resolvedModel)
 		relayResult, relayExit := relayOpenAIWSFrames(shadowCtx, clientFrameConn, pooledConn.FrameConn(), rewrittenFirstMessage, relayOptions)
 
 		// Release the pooled connection. Mark broken if the relay errored so the

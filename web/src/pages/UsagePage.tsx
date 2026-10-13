@@ -47,6 +47,7 @@ interface UsageLog {
   cache_creation_1h_tokens?: number;
   usage_semantics?: string;
   usage_parse_status?: string;
+  usage_contract_version?: number;
   usage_decision_reason?: string;
 }
 
@@ -101,6 +102,7 @@ function uncachedInputTokens(log: UsageLog) {
 }
 
 function displayTotalTokens(log: UsageLog) {
+  if (log.usage_contract_version === 2) return log.billable_total_tokens ?? 0;
   if (!isLegacyRow(log)) {
     // billable total is the financial total (includes every cache bucket).
     if ((log.billable_total_tokens || 0) > 0) return log.billable_total_tokens || 0;

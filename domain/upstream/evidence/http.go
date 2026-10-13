@@ -22,6 +22,30 @@ type Record struct {
 	APIVersion       string        `json:"api_version,omitempty"`
 }
 
+type durableKey struct{}
+type durableRecorder struct {
+	Before func() error
+	Record func(Record) error
+}
+
+func WithDurableRecorder(ctx context.Context, before func() error, record func(Record) error) context.Context {
+	return context.WithValue(ctx, durableKey{}, durableRecorder{before, record})
+}
+func CheckDurable(ctx context.Context) error {
+	r, _ := ctx.Value(durableKey{}).(durableRecorder)
+	if r.Before != nil {
+		return r.Before()
+	}
+	return nil
+}
+func RecordDurable(ctx context.Context, record Record) error {
+	r, _ := ctx.Value(durableKey{}).(durableRecorder)
+	if r.Record != nil {
+		return r.Record(record)
+	}
+	return nil
+}
+
 type recorderKey struct{}
 type Recorder func(Record)
 
@@ -53,20 +77,41 @@ func RecorderFromContext(ctx context.Context) Recorder {
 // Do captures the original response before any provider/adaptor projection.
 // Without a recorder it is the original client call with no body overhead.
 func Do(client *http.Client, req *http.Request, protocol string) (*http.Response, error) {
+	if req != nil {
+		if err := CheckDurable(req.Context()); err != nil {
+			return nil, err
+		}
+	}
 	resp, err := client.Do(req) // #nosec G704 -- caller owns the existing URL/SSRF validation.
 	if req == nil {
 		return resp, err
 	}
 	recorder := RecorderFromContext(req.Context())
-	if recorder == nil {
+	durable, _ := req.Context().Value(durableKey{}).(durableRecorder)
+	if recorder == nil && durable.Record == nil {
 		return resp, err
 	}
 	if err != nil {
-		recorder(Record{Observation: Observation{Protocol: protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: "missing", Reason: "transport_error"}, Execution: "execution_unknown", UpstreamEndpoint: req.URL.EscapedPath(), APIVersion: apiVersion(req)})
+		record := Record{Observation: Observation{Protocol: protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: "missing", Reason: "transport_error"}, Execution: "execution_unknown", UpstreamEndpoint: req.URL.EscapedPath(), APIVersion: apiVersion(req)}
+		if recorder != nil {
+			recorder(record)
+		}
+		if durable.Record != nil {
+			if failure := durable.Record(record); failure != nil {
+				return resp, failure
+			}
+		}
 		return resp, err
 	}
 	stream := strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream")
-	resp.Body = &observedBody{ReadCloser: resp.Body, recorder: recorder, protocol: protocol, status: resp.StatusCode, stream: stream, tracker: NewTracker(protocol), providerID: providerRequestID(resp.Header), endpoint: req.URL.EscapedPath(), apiVersion: apiVersion(req)}
+	if durable.Record != nil {
+		header := Record{Observation: Observation{Protocol: protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: "missing", Reason: "response_headers_only", ProviderRequestID: providerRequestID(resp.Header)}, Execution: "checkpoint", HTTPStatus: resp.StatusCode, Stream: stream, UpstreamEndpoint: req.URL.EscapedPath(), APIVersion: apiVersion(req)}
+		if err := durable.Record(header); err != nil {
+			_ = resp.Body.Close()
+			return nil, err
+		}
+	}
+	resp.Body = &observedBody{ReadCloser: resp.Body, recorder: recorder, durable: durable.Record, protocol: protocol, status: resp.StatusCode, stream: stream, tracker: NewTracker(protocol), providerID: providerRequestID(resp.Header), endpoint: req.URL.EscapedPath(), apiVersion: apiVersion(req)}
 	return resp, nil
 }
 
@@ -93,8 +138,11 @@ func providerRequestID(header http.Header) string {
 }
 
 type observedBody struct {
+	checkpointEvents int
 	io.ReadCloser
 	recorder             Recorder
+	durable              func(Record) error
+	persistErr           error
 	protocol             string
 	status               int
 	stream               bool
@@ -134,14 +182,34 @@ func (b *observedBody) Read(p []byte) (int, error) {
 	} else if err != nil {
 		b.readFailed = true
 	}
+	var checkpoint *Record
+	if b.durable != nil && b.stream && b.tracker.EventCount > b.checkpointEvents && b.checkpointEvents < MaxEvents && err == nil {
+		b.checkpointEvents = b.tracker.EventCount
+		checkpoint = &Record{Observation: b.tracker.Snapshot(), Execution: "checkpoint", HTTPStatus: b.status, Stream: true, Events: append([]Observation(nil), b.tracker.Events...), EventCount: b.tracker.EventCount, DroppedEvents: b.tracker.DroppedEvents, UpstreamEndpoint: b.endpoint, APIVersion: b.apiVersion}
+	}
 	b.mu.Unlock()
+	if checkpoint != nil {
+		if failure := b.durable(*checkpoint); failure != nil {
+			return n, failure
+		}
+	}
 	if err != nil {
 		b.finish()
+		if b.persistErr != nil {
+			return n, b.persistErr
+		}
 	}
 	return n, err
 }
 
-func (b *observedBody) Close() error { err := b.ReadCloser.Close(); b.finish(); return err }
+func (b *observedBody) Close() error {
+	err := b.ReadCloser.Close()
+	b.finish()
+	if b.persistErr != nil {
+		return b.persistErr
+	}
+	return err
+}
 
 func (b *observedBody) finish() {
 	b.once.Do(func() {
@@ -169,6 +237,29 @@ func (b *observedBody) finish() {
 		}
 		b.body = nil
 		b.mu.Unlock()
-		b.recorder(r)
+		if b.durable != nil {
+			b.persistErr = b.durable(r)
+		}
+		if b.recorder != nil {
+			b.recorder(r)
+		}
 	})
+}
+
+func HasDurableRecorder(ctx context.Context) bool {
+	r, _ := ctx.Value(durableKey{}).(durableRecorder)
+	return r.Record != nil
+}
+
+type observationReaderKey struct{}
+
+func WithObservationReader(ctx context.Context, read func() *Record) context.Context {
+	return context.WithValue(ctx, observationReaderKey{}, read)
+}
+func NativeObservation(ctx context.Context) (*Record, bool) {
+	read, ok := ctx.Value(observationReaderKey{}).(func() *Record)
+	if !ok {
+		return nil, false
+	}
+	return read(), true
 }

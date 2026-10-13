@@ -70,7 +70,7 @@ func (p relayQuotaPort) Reserve(ctx context.Context, plan *relaybiz.RelayPlan, r
 	if err != nil || reservation == nil {
 		return nil, err
 	}
-	return &relaybiz.QuotaReservation{ID: reservation.ID}, nil
+	return &relaybiz.QuotaReservation{ID: reservation.ID, Context: reservation.Context}, nil
 }
 
 func (p relayQuotaPort) Commit(ctx context.Context, plan *relaybiz.RelayPlan, req relaybiz.ExecutorRequest, reservation *relaybiz.QuotaReservation, usage relaybiz.UsageEnvelope, success bool, latency time.Duration) error {

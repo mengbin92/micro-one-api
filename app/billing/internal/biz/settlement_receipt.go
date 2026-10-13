@@ -63,10 +63,13 @@ func (t *SettleTask) ValidateReceipt() error {
 	if t.SettlementReceiptVersion != SettlementReceiptVersionV1 || !t.Success || t.ActualTokens < 0 || t.SettlementEventID != t.ReservationID+"/final/0" {
 		return ErrSettlementReceiptInvalid
 	}
-	if t.Usage.UsageContractVersion != UsageContractVersionLegacy && t.Usage.UsageContractVersion != UsageContractVersionV1 {
+	if t.Usage.UsageContractVersion != UsageContractVersionLegacy && t.Usage.UsageContractVersion != UsageContractVersionV1 && t.Usage.UsageContractVersion != 2 {
 		return ErrSettlementReceiptInvalid
 	}
 	if t.Usage.UsageContractVersion == UsageContractVersionV1 && validateV1Envelope(t.Usage.Envelope) != "" {
+		return ErrSettlementReceiptInvalid
+	}
+	if t.Usage.UsageContractVersion == 2 && ValidateV2Envelope(t.Usage.Envelope) != "" {
 		return ErrSettlementReceiptInvalid
 	}
 	if hasNegative(t.Usage.PromptTokens, t.Usage.CompletionTokens, t.Usage.CacheReadTokens, t.Usage.CacheCreation5mTokens, t.Usage.CacheCreation1hTokens, t.Usage.UpstreamCost) {

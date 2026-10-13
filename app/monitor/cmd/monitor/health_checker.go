@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"micro-one-api/platform/security/serviceidentity"
+	"os"
 	"time"
 
 	"google.golang.org/grpc"
@@ -22,6 +23,9 @@ import (
 // that polls the channel-service. It returns a no-op cleanup when health
 // checking is disabled.
 func newChannelHealthCheckerImpl(cfg *Config) (*biz.ChannelHealthChecker, func()) {
+	if os.Getenv("UPSTREAM_PROBES_ENABLED") == "true" {
+		return nil, nil
+	}
 	if cfg == nil || cfg.Bootstrap == nil || cfg.Bootstrap.MonitorSvc == nil {
 		return nil, nil
 	}

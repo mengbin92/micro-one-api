@@ -9,6 +9,8 @@ import "google/protobuf/empty.proto";
 option go_package = "micro-one-api/api/channel/v1;channelv1";
 
 service ChannelService {
+ rpc GetUsageCapabilities(GetUsageCapabilitiesRequest) returns (GetUsageCapabilitiesResponse);
+ rpc RecordUpstreamInventory(RecordUpstreamInventoryRequest) returns (RecordUpstreamInventoryResponse);
  rpc ArchiveRoutingGroup(ArchiveRoutingGroupRequest) returns (RoutingGroupMutationReply);
  rpc ReplaceRoutingGroupMembers(ReplaceRoutingGroupMembersRequest) returns (RoutingGroupMutationReply);
  rpc ExecuteChannelAction(ExecuteChannelActionRequest) returns (ExecuteChannelActionReply);
@@ -1489,3 +1491,9 @@ message ExecuteChannelActionReply {
 message BatchDeleteChannelsRequest { repeated int64 channel_ids = 1; map<int64,int64> expected_revisions = 2; string reason = 3; }
 message BatchDeleteChannelsResponse { bool success = 1; repeated int64 deleted_channel_ids = 2; }
 message ChannelExportArtifact { string content_type = 1; string file_name = 2; bytes body = 3; }
+
+message RecordUpstreamInventoryRequest { string source_kind = 1; int64 source_id = 2; repeated string exact_model_ids = 3; string attempt_id = 4; int64 observed_at = 5; bool manual = 6; }
+message RecordUpstreamInventoryResponse { bool received = 1; repeated string added = 2; repeated string missing = 3; }
+
+message GetUsageCapabilitiesRequest {}
+message GetUsageCapabilitiesResponse { int32 usage_contract_version = 1; }

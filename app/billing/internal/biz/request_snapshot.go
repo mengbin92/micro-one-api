@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"math"
 	"micro-one-api/domain/authorization"
+	"micro-one-api/domain/execution"
 	"micro-one-api/platform/security/serviceidentity"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-kratos/kratos/v3/errors"
 	billingv1 "micro-one-api/api/billing/v1"
@@ -113,6 +115,7 @@ func (uc *BillingUsecase) frozenSubscriptionAbsorbUSD(ctx context.Context, tx su
 // readable and unchanged. The legacy_live policy is captured per request, not
 // retroactively applied to the customer's purchased contract.
 type RequestSnapshot struct {
+	Execution            *execution.Intent  `json:",omitempty"`
 	CostBound            *routing.CostBound `json:",omitempty"`
 	MaxCost              int64              `json:",omitempty"`
 	Version              int32
@@ -253,6 +256,11 @@ func (s *RequestSnapshot) Validate() (err error) {
 			}
 		}
 		if !covered {
+			return ErrRequestSnapshotInvalid
+		}
+	}
+	if s.Execution != nil {
+		if execution.NewIntentEvent(*s.Execution, time.Now()).Validate() != nil {
 			return ErrRequestSnapshotInvalid
 		}
 	}

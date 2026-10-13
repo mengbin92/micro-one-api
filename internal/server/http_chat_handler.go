@@ -162,7 +162,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 			return slotErr
 		}
 		defer releaseChannel()
-		ctx = withNativeUsageShadow(ctx, ch, requestID, currentResolvedModel)
+		ctx = s.observeNativeUsage(ctx, ch, requestID, currentResolvedModel)
 
 		if req.Stream {
 			streamLogInput := usageLogInput{

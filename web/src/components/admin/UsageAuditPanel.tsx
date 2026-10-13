@@ -92,6 +92,9 @@ const PARSE_STATUS_BADGES: Record<string, { label: string; className: string }> 
   verified: { label: 'verified', className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200' },
   estimated: { label: 'estimated', className: 'bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200' },
   ambiguous: { label: 'ambiguous', className: 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200' },
+  missing: { label: 'missing', className: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200' },
+  invalid: { label: 'invalid', className: 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200' },
+  unsupported: { label: 'unsupported', className: 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200' },
   legacy: { label: '历史口径', className: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200' },
 };
 

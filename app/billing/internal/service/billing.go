@@ -6,16 +6,17 @@ import (
 	"errors"
 	"fmt"
 	"micro-one-api/domain/authorization"
+	"micro-one-api/domain/execution"
 	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
+	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/authz"
+	"micro-one-api/platform/billingdto"
 	"net/http"
 	"time"
 
 	"micro-one-api/platform/routingdto"
-
-	"micro-one-api/pkg/jsonx"
 
 	billingv1 "micro-one-api/api/billing/v1"
 	commonv1 "micro-one-api/api/common/v1"
@@ -133,6 +134,19 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 		trace.Number = 1
 	}
 	ctx = requesttrace.WithAttempt(ctx, trace)
+	if req.ExecutionDeliveryVersion != 0 || req.UsageContractVersion != 0 || req.SettlementPolicyVersion != "" {
+		if req.ExecutionDeliveryVersion != execution.Version || req.UsageContractVersion != 2 || req.SettlementPolicyVersion != execution.Policy {
+			return nil, biz.ErrSettlementReceiptInvalid
+		}
+		var err error
+		if s.asyncUc == nil {
+			return nil, biz.ErrSettlementReceiptUnavailable
+		}
+		ctx, err = s.uc.PrepareExecution(ctx, req.RequestId, req.ChannelId, req.SubscriptionAccountId)
+		if err != nil {
+			return nil, err
+		}
+	}
 	reservation, err := s.uc.ReserveQuota(ctx, req.UserId, req.RequestId, req.EstimatedTokens, req.Model, req.ChannelId, req.SubscriptionAccountId, routingdto.ContextFromProto(req.RoutingContext))
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
@@ -145,6 +159,9 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 			Success:      false,
 			ErrorMessage: err.Error(),
 		}, nil
+	}
+	if req.ExecutionDeliveryVersion != 0 && (!reservation.IsReserved() || reservation.RequestSnapshot == nil || reservation.RequestSnapshot.Execution == nil) {
+		return nil, biz.ErrSettlementReservationClosed
 	}
 	// The relay layer and any debugging tools read the cost-dimension
 	// split off the response. We forward the raw float USD as int64
@@ -165,6 +182,19 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 		BalanceAmount:      reservation.BalanceAmount,
 	}
 	if snapshot := reservation.RequestSnapshot; snapshot != nil {
+		if snapshot.Execution != nil {
+			full, loadErr := s.uc.StoredExecutionIntent(ctx, reservation.ReservationID)
+			if loadErr != nil {
+				return nil, loadErr
+			}
+			resp.ExecutionIntentJson, err = jsonx.Marshal(full)
+			if err != nil {
+				return nil, err
+			}
+			resp.ExecutionDeliveryVersion = 1
+			resp.UsageContractVersion = 2
+			resp.SettlementPolicyVersion = snapshot.Execution.Policy
+		}
 		resp.RequestSnapshotVersion = snapshot.Version
 		resp.RequestSnapshotHash, err = snapshot.Digest()
 		if err != nil {
@@ -190,7 +220,12 @@ func (s *BillingService) GetRoutingCapabilities(ctx context.Context, _ *billingv
 	if s.asyncUc.DurableReceiptsAvailable(ctx) {
 		receiptVersion = biz.SettlementReceiptVersionV1
 	}
-	return &billingv1.GetRoutingCapabilitiesResponse{SettlementReceiptVersion: receiptVersion, RequestSnapshotVersion: version, FixedRouting: version == 2, SubscriptionContracts: version == 2 && subscriptionbiz.EntitlementsEnabled(), UserPriceOverrides: version == 2 && subscriptionbiz.EntitlementsEnabled()}, nil
+	executionVersion, usageVersion := int32(0), int32(0)
+	policy := ""
+	if s.asyncUc != nil && s.uc.ExecutionAvailable(ctx) {
+		executionVersion, usageVersion, policy = 1, 2, execution.Policy
+	}
+	return &billingv1.GetRoutingCapabilitiesResponse{ExecutionDeliveryVersion: executionVersion, UsageContractVersion: usageVersion, SettlementPolicyVersion: policy, SettlementReceiptVersion: receiptVersion, RequestSnapshotVersion: version, FixedRouting: version == 2, SubscriptionContracts: version == 2 && subscriptionbiz.EntitlementsEnabled(), UserPriceOverrides: version == 2 && subscriptionbiz.EntitlementsEnabled()}, nil
 }
 
 func (s *BillingService) SetUserRoutingPrice(ctx context.Context, req *billingv1.SetUserRoutingPriceRequest) (*billingv1.SetUserRoutingPriceReply, error) {
@@ -232,32 +267,10 @@ func (s *BillingService) CheckRoutingSettlement(ctx context.Context, req *billin
 }
 
 func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQuotaRequest) (*billingv1.CommitQuotaResponse, error) {
-	if req == nil {
+	if req == nil || req.UsageContractVersion == 2 {
 		return nil, biz.ErrSettlementReceiptInvalid
 	}
-	usage := biz.LedgerUsage{
-		TokenName:             req.TokenName,
-		Endpoint:              req.Endpoint,
-		PromptTokens:          req.PromptTokens,
-		CompletionTokens:      req.CompletionTokens,
-		CacheReadTokens:       req.CacheReadTokens,
-		CacheCreation5mTokens: req.CacheCreation_5MTokens,
-		CacheCreation1hTokens: req.CacheCreation_1HTokens,
-		UpstreamCost:          firstPositiveInt64(req.UpstreamCost, req.ActualCost),
-		ElapsedTime:           req.ElapsedTime,
-		IsStream:              req.IsStream,
-		SubscriptionAccountID: req.SubscriptionAccountId,
-		// v0.11.0 Phase 2 §2.2: thread the stable upstream cost-key inputs
-		// through to the cost calculator. Empty values keep the legacy
-		// <channel_id>:<public_model_id> key resolution.
-		UpstreamModelID: req.UpstreamModelId,
-		SourceKind:      req.SourceKind,
-		PromptExclusive: req.PromptExclusive,
-		// §5.3: the v1 envelope is authoritative for pricing when present;
-		// the legacy fields above only serve the version=0 branch.
-		UsageContractVersion: req.UsageContractVersion,
-		Envelope:             usageEnvelopeFromProto(req.Usage),
-	}
+	usage := billingdto.CommitUsage(req)
 
 	task := &biz.SettleTask{
 		RequestID: req.ReservationId, ReservationID: req.ReservationId,
@@ -1556,3 +1569,18 @@ func (s *BillingService) SetOwnerAuthorization(c *authz.Client) {
 	}
 }
 func (s *BillingService) OwnerAuthorizationClient() *authz.Client { return s.ownerAuth }
+
+func (s *BillingService) RecordExecutionEvidence(ctx context.Context, req *billingv1.RecordExecutionEvidenceRequest) (*billingv1.RecordExecutionEvidenceResponse, error) {
+	if req == nil || len(req.EventJson) == 0 || len(req.EventJson) > execution.MaxEventBytes {
+		return nil, biz.ErrSettlementReceiptInvalid
+	}
+	var e execution.Event
+	if jsonx.Unmarshal(req.EventJson, &e) != nil {
+		return nil, biz.ErrSettlementReceiptInvalid
+	}
+	r, err := s.uc.AcceptExecution(ctx, e, req.PayloadSha256)
+	if err != nil {
+		return nil, err
+	}
+	return &billingv1.RecordExecutionEvidenceResponse{Received: r.Received, SettlementAccepted: r.SettlementAccepted, Settled: r.Settled, Status: r.Status, PayloadSha256: r.Digest, CommittedAmount: r.Amount, RealTrafficComparisonJson: r.Comparison}, nil
+}

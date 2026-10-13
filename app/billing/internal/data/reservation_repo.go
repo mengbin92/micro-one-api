@@ -70,6 +70,21 @@ func (r *reservationRepo) CreateReservationInTx(ctx context.Context, tx subscrip
 	}
 
 	if reservation.RequestSnapshot != nil {
+		if i := reservation.RequestSnapshot.Execution; i != nil {
+			full := *i
+			if original := biz.ExecutionIntent(ctx); original != nil {
+				full = *original
+			}
+			full.ReservationID = reservation.ReservationID
+			if full.CostBasis == "tariff_estimate" {
+				full.TariffSnapshotID = full.ReservationID + "/supplier-tariff"
+			}
+			if err := saveExecutionIntent(db, full); err != nil {
+				return err
+			}
+			*i = full
+			i.Tariff = nil
+		}
 		if err := reservation.RequestSnapshot.Validate(); err != nil {
 			return err
 		}
@@ -177,6 +192,18 @@ func (r *reservationRepo) CASExpiredReservationStatus(ctx context.Context, tx su
 		return false, nil
 	}
 	db := txDB(tx).WithContext(ctx)
+	if i := reservation.RequestSnapshot; i != nil && i.Execution != nil {
+		if now.Unix() < i.Execution.EvidenceDeadline {
+			if err := db.Model(&executionIntentModel{}).Where("id = ? AND lease_until < ?", id, now.Unix()).Update("status", "evidence_pending").Error; err != nil {
+				return false, err
+			}
+			return false, nil
+		}
+		if err := db.Model(&settlementTaskModel{}).Where("reservation_id = ? AND status IN ?", id, []string{"pending", "failed", "processing"}).Updates(map[string]any{"status": "expired", "last_error": "evidence deadline elapsed"}).Error; err != nil {
+			return false, err
+		}
+		return r.CASReservationStatus(ctx, tx, id, biz.ReservationStatusReserved, biz.ReservationStatusReleasing)
+	}
 	var pending int64
 	err = db.Model(&settlementTaskModel{}).Where("reservation_id = ? AND status IN ?", id, []string{"pending", "failed", "processing"}).Count(&pending).Error
 	if err != nil && !missingSettlementTaskTable(err) {
@@ -313,6 +340,21 @@ func (r *reservationRepo) GetExpiredReservations(ctx context.Context) ([]*biz.Re
 		}
 	}
 
+	if r.data.db.Migrator().HasTable(&executionIntentModel{}) {
+		var deadlineRows []reservationModel
+		if err := r.data.db.WithContext(ctx).Where("status = ? AND reservation_id IN (SELECT reservation_id FROM billing_execution_intents WHERE evidence_deadline <= ?)", biz.ReservationStatusReserved, now.Unix()).Find(&deadlineRows).Error; err != nil {
+			return nil, err
+		}
+		seen := map[string]bool{}
+		for _, m := range models {
+			seen[m.ReservationID] = true
+		}
+		for _, m := range deadlineRows {
+			if !seen[m.ReservationID] {
+				models = append(models, m)
+			}
+		}
+	}
 	reservations := make([]*biz.Reservation, len(models))
 	for i := range models {
 		var err error

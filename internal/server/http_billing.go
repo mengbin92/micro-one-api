@@ -4,6 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"micro-one-api/domain/execution"
 	"micro-one-api/domain/requesttrace"
 	"os"
 	"strings"
@@ -163,6 +164,29 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 	if bound.Valid() {
 		req.CostBound = &billingv1.RequestCostBound{Protocol: bound.Protocol, InputTokens: bound.InputTokens, UpstreamModel: bound.UpstreamModel}
 	}
+	pilot := executionPilot(trace.SourceKind, channelID, subscriptionAccountID, trace.UpstreamModelID)
+	if pilot {
+		if s.executionDelivery == nil {
+			return nil, fmt.Errorf("durable execution storage unavailable")
+		}
+		caps, err := s.billingClient.GetRoutingCapabilities(ctx, &billingv1.GetRoutingCapabilitiesRequest{})
+		if err != nil {
+			return nil, err
+		}
+		if caps == nil || caps.ExecutionDeliveryVersion != 1 || caps.UsageContractVersion != 2 || caps.SettlementPolicyVersion != execution.Policy {
+			return nil, fmt.Errorf("billing execution capability unavailable")
+		}
+		channelCaps, err := s.channelClient.GetUsageCapabilities(ctx, &channelv1.GetUsageCapabilitiesRequest{})
+		if err != nil {
+			return nil, err
+		}
+		if channelCaps == nil || channelCaps.UsageContractVersion != 2 {
+			return nil, fmt.Errorf("channel usage v2 capability unavailable")
+		}
+		req.ExecutionDeliveryVersion = 1
+		req.UsageContractVersion = 2
+		req.SettlementPolicyVersion = execution.Policy
+	}
 	resp, err := s.billingClient.ReserveQuota(ctx, req)
 	if err != nil {
 		recordRelayQuotaOutcome(ctx, "reserve_error")
@@ -195,6 +219,12 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 	if resp.UpstreamModelId == "" {
 		resp.UpstreamModelId = req.UpstreamModelId
 	}
+	if err := s.prepareDurableAttempt(ctx, resp); err != nil {
+		if !stderrors.Is(err, relaybiz.ErrExecutionAlreadyAdmitted) {
+			_ = s.releaseQuota(ctx, resp.ReservationId, "local execution intent unavailable")
+		}
+		return nil, err
+	}
 	recordRelayQuotaOutcome(ctx, "reserve_success")
 	return resp, nil
 }
@@ -205,6 +235,14 @@ func (s *HTTPServer) commitQuota(ctx context.Context, reservationID string, actu
 }
 
 func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID string, actualTokens int64, success bool, details ...usageLogInput) (*billingv1.CommitQuotaResponse, error) {
+	if value, ok := s.executionAttempts.Load(reservationID); ok && len(details) > 0 {
+		a := value.(*durableAttempt)
+		a.mu.Lock()
+		u := nativeV2Envelope(a.last)
+		a.mu.Unlock()
+		details[0].applyEnvelope(u)
+		actualTokens = u.BillableTotal()
+	}
 	if len(details) > 0 && details[0].Usage != nil {
 		// Canonical (or conservative ambiguous-candidate) total is the only
 		// count allowed into settlement and downstream usage counters. Raw
@@ -245,7 +283,14 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 	}
 	billingCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
-	resp, err := s.billingClient.CommitQuota(billingCtx, req)
+	var resp *billingv1.CommitQuotaResponse
+	var err error
+	_, durable := s.executionAttempts.Load(reservationID)
+	if durable && success {
+		resp, err = s.durableCommit(billingCtx, req)
+	} else {
+		resp, err = s.billingClient.CommitQuota(billingCtx, req)
+	}
 	if err != nil {
 		recordRelayQuotaOutcome(ctx, "commit_error")
 		setRelayObservationResult(ctx, "quota_error")
@@ -513,7 +558,7 @@ func (s *HTTPServer) reportUsageSemanticVerdict(ctx context.Context, detail usag
 		return
 	}
 	env := detail.Usage
-	if env.ParseStatus != relaybiz.UsageParseVerified && env.ParseStatus != relaybiz.UsageParseAmbiguous {
+	if env.ParseStatus != relaybiz.UsageParseVerified && env.ParseStatus != relaybiz.UsageParseAmbiguous && env.ParseStatus != "unsupported" && env.ParseStatus != "invalid" && env.ParseStatus != "missing" {
 		return
 	}
 	sourceKind := detail.SourceKind
@@ -557,6 +602,14 @@ func (s *HTTPServer) reportUsageSemanticVerdict(ctx context.Context, detail usag
 }
 
 func (s *HTTPServer) releaseQuota(ctx context.Context, reservationID, reason string) error {
+	if value, ok := s.executionAttempts.Load(reservationID); ok {
+		a := value.(*durableAttempt)
+		a.mu.Lock()
+		if a.expiry != nil {
+			a.expiry.Reset(time.Minute)
+		}
+		a.mu.Unlock()
+	}
 	req := &billingv1.ReleaseQuotaRequest{
 		ReservationId: reservationID,
 		Reason:        reason,

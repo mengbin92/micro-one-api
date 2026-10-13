@@ -133,7 +133,7 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer releaseChannel()
-	shadowCtx := withNativeUsageShadow(r.Context(), ch, requestID, ch.UpstreamModelID)
+	shadowCtx := s.observeNativeUsage(r.Context(), ch, requestID, ch.UpstreamModelID)
 	resp, err := provider.Forward(shadowCtx, &relayprovider.RawRequest{
 		Method: r.Method,
 		Path:   "/" + targetPart,

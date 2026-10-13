@@ -30,7 +30,7 @@ func (s *HTTPServer) forwardResponsesRaw(ctx context.Context, ch *relaybiz.Chann
 	if err != nil {
 		return nil, fmt.Errorf("failed to create provider: %w", err)
 	}
-	ctx = withNativeUsageShadow(ctx, ch, "", extractRawModel(body))
+	ctx = s.observeNativeUsage(ctx, ch, "", extractRawModel(body))
 	resp, err := provider.Forward(ctx, &relayprovider.RawRequest{
 		Method: method,
 		Path:   path,
@@ -62,7 +62,7 @@ func (s *HTTPServer) forwardResponsesRawStream(ctx context.Context, ch *relaybiz
 	if err != nil {
 		return nil, fmt.Errorf("failed to create provider: %w", err)
 	}
-	ctx = withNativeUsageShadow(ctx, ch, "", extractRawModel(body))
+	ctx = s.observeNativeUsage(ctx, ch, "", extractRawModel(body))
 	resp, err := provider.ForwardStream(ctx, &relayprovider.RawRequest{
 		Method: method,
 		Path:   path,

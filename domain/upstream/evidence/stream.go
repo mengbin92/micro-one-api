@@ -174,3 +174,13 @@ func (t *Tracker) Finish() (Observation, bool) {
 	}
 	return t.latest, t.success && !t.failed
 }
+
+func (t *Tracker) Snapshot() Observation {
+	if t.fault != nil {
+		return *t.fault
+	}
+	if t.latest.Status != "" {
+		return t.latest
+	}
+	return Observation{Protocol: t.protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: "missing", Reason: "usage_absent"}
+}

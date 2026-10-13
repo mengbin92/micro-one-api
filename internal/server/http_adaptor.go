@@ -650,7 +650,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	}
 	result.upstreamAttempted = true
 	result.streaming = isStream
-	ctx = withNativeUsageShadow(ctx, plan.Channel, requestID, plan.ResolvedModel)
+	ctx = s.observeNativeUsage(ctx, plan.Channel, requestID, plan.ResolvedModel)
 	upstreamReq = upstreamReq.WithContext(ctx)
 	protocol := string(upstreamFmt)
 	if upstreamFmt == relayadaptor.FormatOpenAIChatCompletions {

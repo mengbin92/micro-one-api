@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"github.com/stretchr/testify/require"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -152,4 +155,32 @@ func TestHTTPObservationConcurrentReadAndClose(t *testing.T) {
 		t.Fatal("duplicate observation")
 	default:
 	}
+}
+
+func TestDurableEvidenceFailurePreventsForwardAndFinalSuccess(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_, _ = w.Write([]byte(`{"usage":{"prompt_tokens":1,"completion_tokens":0,"total_tokens":1}}`))
+	}))
+	defer server.Close()
+	failure := fmt.Errorf("disk full")
+	ctx := WithDurableRecorder(context.Background(), func() error { return failure }, func(Record) error { return nil })
+	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+	_, err := Do(server.Client(), request, "openai_chat")
+	require.ErrorIs(t, err, failure)
+	require.Zero(t, calls)
+	ctx = WithDurableRecorder(context.Background(), func() error { return nil }, func(r Record) error {
+		if r.Execution == "checkpoint" {
+			return nil
+		}
+		return failure
+	})
+	request, _ = http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+	resp, err := Do(server.Client(), request, "openai_chat")
+	require.NoError(t, err)
+	_, err = io.ReadAll(resp.Body)
+	require.ErrorIs(t, err, failure)
+	require.ErrorIs(t, resp.Body.Close(), failure)
+	require.Equal(t, 1, calls)
 }

@@ -134,7 +134,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			return slotErr
 		}
 		defer releaseChannel()
-		ctx = withNativeUsageShadow(ctx, ch, requestID, currentResolvedModel)
+		ctx = s.observeNativeUsage(ctx, ch, requestID, currentResolvedModel)
 
 		if isRawStreamRequest(body) {
 			streamResp, streamErr := s.forwardResponsesRawStream(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), retriedBody)
@@ -376,7 +376,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		return
 	}
 	defer releaseChannel()
-	r = r.WithContext(withNativeUsageShadow(r.Context(), &route.Channel, requestID, resolvedModel))
+	r = r.WithContext(s.observeNativeUsage(r.Context(), &route.Channel, requestID, resolvedModel))
 	if stream {
 		streamResp, err := s.forwardResponsesRawStream(r.Context(), &route.Channel, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
 		if err != nil {

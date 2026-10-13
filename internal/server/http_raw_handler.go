@@ -107,7 +107,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				return slotErr
 			}
 			defer releaseChannel()
-			ctx = withNativeUsageShadow(ctx, ch, requestID, currentResolvedModel)
+			ctx = s.observeNativeUsage(ctx, ch, requestID, currentResolvedModel)
 			resp, forwardErr := provider.Forward(ctx, &relayprovider.RawRequest{
 				Method: r.Method,
 				Path:   upstreamPath,
