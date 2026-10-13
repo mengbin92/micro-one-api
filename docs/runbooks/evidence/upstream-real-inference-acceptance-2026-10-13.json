@@ -1,0 +1,211 @@
+{
+  "started_at": "2026-10-13T09:25:25.556315+08:00",
+  "source_commit": "4c83d2a4",
+  "endpoint": "/v1/chat/completions",
+  "requests": [
+    {
+      "stream": false,
+      "request_id": "health-acceptance-c3fbb4d2a52e4b5197db639c69b1c8ad",
+      "started_at": "2026-10-13T09:25:25.866292+08:00",
+      "max_tokens": 128,
+      "http_status": 200,
+      "response_request_id": "health-acceptance-c3fbb4d2a52e4b5197db639c69b1c8ad",
+      "source_kind": null,
+      "source_id": null,
+      "content_type": "application/json",
+      "response_model": "qwen3.8-flash",
+      "finish_reasons": [
+        "stop"
+      ],
+      "usage": {
+        "prompt_tokens": 66,
+        "completion_tokens": 27,
+        "total_tokens": 93,
+        "prompt_tokens_details": {},
+        "input_tokens_details": {}
+      },
+      "visible_output": "OK",
+      "body_sha256": "4bb0873a3e0318c5560079d6182c1e8aab57ff37fd1de6470d459a51f4cf5b73",
+      "protocol_complete": true,
+      "elapsed_seconds": 3.921,
+      "response_pass": true
+    },
+    {
+      "stream": true,
+      "request_id": "health-acceptance-a5082daf1ef24cbc9d8202e9e5841e38",
+      "started_at": "2026-10-13T09:25:29.787657+08:00",
+      "max_tokens": 128,
+      "http_status": 200,
+      "response_request_id": "health-acceptance-a5082daf1ef24cbc9d8202e9e5841e38",
+      "source_kind": null,
+      "source_id": null,
+      "content_type": "text/event-stream",
+      "response_model": "qwen3.8-flash",
+      "sse_frames": 11,
+      "done_frame": true,
+      "finish_reasons": [
+        "stop"
+      ],
+      "usage": {
+        "prompt_tokens": 66,
+        "completion_tokens": 25,
+        "total_tokens": 91,
+        "prompt_tokens_details": {},
+        "input_tokens_details": {}
+      },
+      "visible_output": "OK",
+      "body_sha256": "099bb28e7af0f3ba61ae828d681dd6b2984cf08c469945ebf84fa3ffaea1a50f",
+      "protocol_complete": true,
+      "elapsed_seconds": 1.316,
+      "response_pass": true
+    }
+  ],
+  "limitations": [
+    "Normal inference only; no injected 429, configuration error, 5xx or half-open recovery.",
+    "Health decision counters are aggregate; concurrent traffic may contribute.",
+    "Existing executor allowlist unchanged; temporary token uses its existing default execution path."
+  ],
+  "user_id": 1,
+  "requested_model": "qwen3.8-flash",
+  "temporary_token_id": 39,
+  "model_visible": true,
+  "metrics_before": {
+    "micro_one_api_channel_upstream_observation_decisions_total{kind=\"availability\",result=\"accepted\",source_kind=\"channel\"}": 2.0,
+    "micro_one_api_relay_upstream_observation_failures_total": 0.0,
+    "micro_one_api_relay_executor_requests_total{endpoint=\"/v1/messages\",execution_path=\"legacy\",result=\"success\",status=\"200\",stream=\"true\"}": 2.0
+  },
+  "health_before": [
+    [
+      "1",
+      "healthy",
+      "0",
+      "0",
+      "1791854544"
+    ]
+  ],
+  "accounting_columns": [
+    "root_request_id",
+    "request_id",
+    "reservation_id",
+    "attempt_number",
+    "status",
+    "source_kind",
+    "channel_id",
+    "subscription_account_id",
+    "upstream_model_id",
+    "is_stream",
+    "model_name",
+    "prompt_tokens",
+    "completion_tokens",
+    "quota",
+    "usage_parse_status",
+    "canonical_present",
+    "consume_rows",
+    "dedupe_keys",
+    "billed_amount",
+    "actual_cost",
+    "consume_logs",
+    "log_attribution_matches"
+  ],
+  "accounting": [
+    [
+      "health-acceptance-c3fbb4d2a52e4b5197db639c69b1c8ad",
+      "req_d6db12f3ac5f2ccd9691c008f7559352",
+      "res_1791854725914021153_1791854725",
+      "1",
+      "committed",
+      "channel",
+      "1",
+      "0",
+      "qwen3.8-flash",
+      "0",
+      "qwen3.8-flash",
+      "66",
+      "27",
+      "93",
+      "verified",
+      "1",
+      "1",
+      "1",
+      "1",
+      "1",
+      "1",
+      "1"
+    ],
+    [
+      "health-acceptance-a5082daf1ef24cbc9d8202e9e5841e38",
+      "req_e4d51d2d6f37b543e1c92c261969c0fb",
+      "res_1791854729830426271_1791854729",
+      "1",
+      "committed",
+      "channel",
+      "1",
+      "0",
+      "qwen3.8-flash",
+      "1",
+      "qwen3.8-flash",
+      "66",
+      "25",
+      "91",
+      "verified",
+      "1",
+      "1",
+      "1",
+      "1",
+      "1",
+      "1",
+      "1"
+    ]
+  ],
+  "ledger_duplicate_groups": [],
+  "metrics_after": {
+    "micro_one_api_channel_upstream_observation_decisions_total{kind=\"availability\",result=\"accepted\",source_kind=\"channel\"}": 4.0,
+    "micro_one_api_relay_upstream_observation_failures_total": 0.0,
+    "micro_one_api_relay_executor_requests_total{endpoint=\"/v1/chat/completions\",execution_path=\"legacy\",result=\"success\",status=\"200\",stream=\"false\"}": 1.0,
+    "micro_one_api_relay_executor_requests_total{endpoint=\"/v1/chat/completions\",execution_path=\"legacy\",result=\"success\",status=\"200\",stream=\"true\"}": 1.0,
+    "micro_one_api_relay_executor_requests_total{endpoint=\"/v1/messages\",execution_path=\"legacy\",result=\"success\",status=\"200\",stream=\"true\"}": 2.0
+  },
+  "metrics_delta": {
+    "micro_one_api_channel_upstream_observation_decisions_total{kind=\"availability\",result=\"accepted\",source_kind=\"channel\"}": 2.0,
+    "micro_one_api_relay_executor_requests_total{endpoint=\"/v1/chat/completions\",execution_path=\"legacy\",result=\"success\",status=\"200\",stream=\"false\"}": 1.0,
+    "micro_one_api_relay_executor_requests_total{endpoint=\"/v1/chat/completions\",execution_path=\"legacy\",result=\"success\",status=\"200\",stream=\"true\"}": 1.0
+  },
+  "health_after": [
+    [
+      "1",
+      "healthy",
+      "0",
+      "0",
+      "1791854731"
+    ]
+  ],
+  "response_pass": true,
+  "accounting_pass": true,
+  "health_delivery_pass": true,
+  "verdict": "PASS",
+  "temporary_token_deleted": true,
+  "completed_at": "2026-10-13T09:25:34.086087+08:00",
+  "postcheck": {
+    "temporary_token_absent": true,
+    "services": [
+      {
+        "service": "channel-service",
+        "running": true,
+        "restart_count": 0,
+        "image": "docker-compose-channel-service:deploy-20261013-090748-4c83d2a4"
+      },
+      {
+        "service": "relay-gateway",
+        "running": true,
+        "restart_count": 0,
+        "image": "docker-compose-relay-gateway:deploy-20261013-090748-4c83d2a4"
+      },
+      {
+        "service": "monitor-worker",
+        "running": true,
+        "restart_count": 0,
+        "image": "docker-compose-monitor-worker:deploy-20261013-090748-4c83d2a4"
+      }
+    ]
+  }
+}

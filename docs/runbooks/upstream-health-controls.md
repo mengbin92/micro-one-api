@@ -68,3 +68,11 @@ make format-check migration-check rbac-contract-check iam-browser-gate-check
 外部 `test/e2e/suite` 需要启动 identity/admin/relay/billing 等完整服务栈，未启动依赖时的连接拒绝不能计为上游恢复逻辑的通过结果。
 
 2026-10-12 本地结果：`make test-unit`、完整 `internal/integration`、上述相关包及上游集成场景的 race、格式/架构/迁移/RBAC/IAM 契约、相关 `go vet` 通过；API 与前端 API 类型已再生成。另一次全量 `internal/integration -race` 暴露既有 `iam_self_usage_test.go` 在 gRPC 后台运行时写全局 `time.Local` 的竞态，未将这个无关测试改写算入本次变更；完整外部 E2E 因服务栈未启动没有通过。
+
+### 2026-10-13 线上真实推理验收
+
+三个服务已部署 `4c83d2a4`。09:25 CST 通过普通渠道 1 调用 `qwen3.8-flash`，分别执行一次非流式和一次 SSE Chat 请求，每次限制 128 输出 token；均 HTTP 200、返回 `OK`、finish_reason 为 `stop`，SSE 收到 `[DONE]`。上游报告总 token 分别为 93、91。
+
+两次请求各有一笔 committed 预留、一条 consume 账本和一条来源一致的消费日志；usage 为 verified、去重键无重复、账本扣费与预留 actual_cost 一致。channel 的 availability/accepted 计数增加 2，Relay 观察投递失败计数保持 0；渠道仍 healthy，三个服务无重启。临时 Token 限定目标模型、4096 配额及 15 分钟有效期，验收后删除并回查确认不存在。
+
+[脱敏验收证据](evidence/upstream-real-inference-acceptance-2026-10-13.json)记录请求 ID、usage、账务关联及指标前后值。此轮实际路径为 legacy，未更改 executor allowlist；健康指标为聚合口径。通过结论仅覆盖普通渠道的正常 Chat 非流式/SSE 链路，未覆盖订阅、Messages、Responses、WS、orchestrator 或故障注入和半开恢复。
