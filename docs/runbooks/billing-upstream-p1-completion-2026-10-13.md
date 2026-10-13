@@ -1,6 +1,6 @@
 # P1：原生证据、可靠送达与受控探测工程交付
 
-日期：2026-10-13。基线：`9f096fcf`，接续 `076b056b` 的 P1.1。状态：P1 剩余工程功能已实现并完成本地验证；未部署、未开启新收费或 canary。P0 生产窗口与独立供应商费用验收维持原状态。
+日期：2026-10-13。基线：`9f096fcf`，接续 `076b056b` 的 P1.1。状态：P1 剩余工程功能已实现、验证并部署生产；可靠送达与 canary 已开启。收费灰度按精确来源/模型独立受控，见 [部署记录](billing-upstream-p1-deploy-2026-10-13.md)。P0 生产窗口与独立供应商费用验收维持原状态。
 
 关联：[计费方案](../design/billing-accuracy-and-upstream-evidence-plan-2026-10-13.md)、[上游方案](../design/upstream-contract-evolution-plan-2026-10-13.md)、[P1.1](billing-upstream-p1-intake-2026-10-13.md)、[验收索引](evidence/billing-upstream-p1-completion-2026-10-13.json)。本次仅提交方案实现与验收资料，不包含无关自动观察文件。
 
@@ -20,15 +20,15 @@
 | canary | monitor 的独立身份调用受控 relay gRPC；仅配置的 source/model/protocol/JSON/SSE/text/tools 目标。复用已注册 adaptor 和原生 parser；固定最小输入，最多 16 输出 token，fake tool 只验证返回，不执行外部工具。内部 intent 无用户 reservation，不能写用户 consume |
 | 预算与许可 | 按来源、UTC 日期共享 calls/input/output/cost/unknown exposure 持久预算，来源并发 1；预留完整配置上界，失败不退款预算。未知道成本必须显式允许 unknown calls；不是零成本。relay 通过专用 RPC 原子认领持久、一次性、target SHA 绑定的 permit，跨实例或直接内部调用不能重复发起同一 attempt；剩余 lease 不够有界调用时拒绝 |
 | L2 漂移与覆盖 | 有界周期、抖动、失败 backoff；预算/lease/backoff 导致覆盖不足单列。incident first/last、source/model/protocol/revision、新增/缺失/类型变化、脱敏样本、真实流量对照、证据引用、内部费用/预算均持久化。普通真实用户 400 不作漂移；固定有效 canary 的 400 记待核查的契约拒绝。只生成报告，不发布新规则、改价格或扩大收费 |
-| 运维与分层 | 三种 dialect 的 126/127/128/130 迁移与 ownership；三种 Compose 默认关闭；Wire/Proto 生成。biz 使用 DO/repo port、data 拥有 PO/WAL/数据库、service 拥有新增 gRPC DTO 转换；新增 RPC 都是 exact dedicated system capability |
+| 运维与分层 | 三种 dialect 的 126/127/128/130/131 迁移与 ownership；三种 Compose 默认关闭；Wire/Proto 生成。biz 使用 DO/repo port、data 拥有 PO/WAL/数据库、service 拥有新增 gRPC DTO 转换；新增 RPC 都是 exact dedicated system capability |
 
 原生静态契约沿用 P0 验证基线。混合 Chat/Responses 别名、未独立验证的 Gemini thinking 和未知维度保持 unsupported；没有按字段名字猜计费意义，没有第六个推理桶，也没有 P2 契约发布表/DSL。
 
 ## 开关与上线顺序
 
-当前没有修改生产 `.env`、容器或 allowlist。本功能可构建交付，但本次没有创建生产 amd64 镜像或执行部署。
+2026-10-13 已按 Neo 指令跨构建并部署四个 amd64 服务镜像及前端，生产 P1 布尔开关已开启。下面保留上线顺序；实际开关、名单与现场结果见 [生产部署记录](billing-upstream-p1-deploy-2026-10-13.md)。
 
-1. 先应用 billing 126、channel 127/130、monitor 128 的所属迁移，更新消费者及 relay/monitor；新开关保持 false。`130` 将 MySQL 来源隔离模型键改为大小写精确 VARCHAR(255)，Postgres 扩长度，SQLite 原有 TEXT/BINARY 不需改型。
+1. 先应用 billing 126/131、channel 127/130、monitor 128 的所属迁移，更新消费者及 relay/monitor；新开关保持 false。`130` 将 MySQL 来源隔离模型键改为大小写精确 VARCHAR(255)，Postgres 扩长度，SQLite 原有 TEXT/BINARY 不需改型。
 2. 为每个 relay 实例准备独立持久目录。模板使用 `./data/relay-outbox:/var/lib/relay-outbox`，实例不能共享 WAL 文件。远程 `scripts/deploy-update.sh relay-gateway` 预检会以 65534:65534、0700 创建目录；手工 Compose 启动需要先完成相同准备。
 3. 验证新的 exact 身份链：relay→billing RecordExecutionEvidence、relay→channel GetUsageCapabilities/RecordUpstreamInventory、monitor→relay ProbeUpstream、relay→monitor ClaimProbePermit。复用已独立配置的 SERVICE_IDENTITY_TOKEN / receiver SERVICE_CALLER_TOKENS；shared token 不能取得这些权限。
 4. 收费修正只在 `BILLING_EXECUTION_DELIVERY_V1=true`、`RELAY_EXECUTION_DELIVERY_V1=true`，且 `RELAY_NATIVE_USAGE_V2_ALLOWLIST=source_kind:source_id:exact_upstream_model` 命中的受控路径生效。空白名单保持旧请求路径。它包括异常释放和合法零费用，属于真实政策变化，必须先验收费用差异再选来源启用；不能借工程交付自动放行。
@@ -57,4 +57,4 @@
 
 本地测试覆盖完整 P1 工程闭环：WAL/FULL/权限/磁盘满、重启保留与 duplicate admit、digest/原生证明/账户 override、零费用与重放、冻结用户/供应商价格、lease/最大期限、关闭后的迟到证据、独立 canary 无用户 quota、同来源预算/重启/旧 completion 竞态、一次性 permit/剩余 lease、库存不改授权、unsupported 人工解除、L2 及前端零/未知状态。具体命令与通过情况以验收索引为准。
 
-P0 完整生产窗口、独立供应商账单核验、生产灰度费用差异及新镜像 linux/amd64 现场部署验证仍未完成。磁盘/进程崩溃可恢复已同步写入事件；单节点持久卷和主机同时损毁不能保证取回原文，billing intent/期限仍保护用户资金。这些边界不由本地单元回归替代。
+新镜像 linux/amd64 现场部署、消费者能力协商、许可拒绝、内部证据送达及健康检查已完成。P0 完整生产窗口、独立供应商账单核验与生产灰度费用差异仍需独立验收。磁盘/进程崩溃可恢复已同步写入事件；单节点持久卷和主机同时损毁不能保证取回原文，billing intent/期限仍保护用户资金。这些边界不由本地单元回归替代。

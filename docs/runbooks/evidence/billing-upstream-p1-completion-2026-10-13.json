@@ -1,5 +1,5 @@
 {
-  "scope": "All remaining P1 engineering functions; default-off and source/model pilot controlled. No production deployment or fee/canary activation.",
+  "scope": "All remaining P1 engineering functions; deployed linux/amd64 with delivery and controlled probes enabled. Fee rollout remains exact source/model gated.",
   "date": "2026-10-13",
   "baseline": "9f096fcf",
   "branch": "codex/billing-upstream-p1-intake-20261013",
@@ -44,8 +44,7 @@
   "independent_acceptance_pending": [
     "P0 full production observation window",
     "supplier-reported/invoice verification",
-    "actual production fee gray rollout comparison",
-    "new P1 linux/amd64 production image and deployment verification"
+    "actual production fee gray rollout comparison"
   ],
   "evidence_files": [
     "billing-upstream-p1-completion-2026-10-13-unit.txt",
@@ -58,5 +57,6 @@
     "billing-upstream-p1-completion-2026-10-13-architecture.txt",
     "billing-upstream-p1-completion-2026-10-13-race-additions.txt"
   ],
-  "source_digest": "f64ca45ebde6aac796639bed0d757f60086c493ed52c1fee596118e315605450"
+  "source_digest": "f64ca45ebde6aac796639bed0d757f60086c493ed52c1fee596118e315605450",
+  "production_deployment": "billing-upstream-p1-deploy-2026-10-13.json"
 }
