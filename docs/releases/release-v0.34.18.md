@@ -2,7 +2,7 @@
 
 > 2026-10-13 · 上一版：[v0.34.17](./release-v0.34.17.md)（2026-10-12）· [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.18)
 
-v0.34.18 是 v0.34.17 的 **PATCH 可靠性修复版本**：区分真实上游故障、本地调用失败、容量限制和配置错误，避免限流误开熔断、中性结果清除失败及独立探活错误授权恢复。增加具名执行许可、配置与事故版本校验、共享重试预算和渐进恢复，并记录部署后的真实模型推理验收。
+v0.34.18 是 v0.34.17 的 **PATCH 可靠性修复版本**：区分真实上游故障、本地调用失败、容量限制和配置错误，避免限流误开熔断、中性结果清除失败及独立探活错误授权恢复。增加具名执行许可、配置与事故版本校验、共享重试预算和渐进恢复，并记录部署后的真实模型推理验收；补齐 Compose E2E 专用服务身份后重新发布。
 
 **无公开 API 破坏性变更，无新增数据库迁移或业务配置项**。新增内部 RPC 和兼容 proto 字段，运行时涉及 `channel-service`、`relay-gateway`、`monitor-worker`；必须先更新 Channel。当前生产已部署业务提交 `4c83d2a4`，前端不变。
 
@@ -40,6 +40,14 @@ v0.34.18 是 v0.34.17 的 **PATCH 可靠性修复版本**：区分真实上游�
 
 **影响服务**：上述三个服务；[脱敏证据](../runbooks/evidence/upstream-real-inference-acceptance-2026-10-13.json)及[运行手册](../runbooks/upstream-health-controls.md)记录验收范围。
 
+### 5. Compose E2E 发布门禁身份夹具
+
+**根因**：首次发布的 Compose E2E 仅使用共享 `SERVICE_TOKEN`，未配置具名 Relay 凭证；新增执行许可 RPC 拒绝共享身份，ChatCompletion 返回 503，扣费和账本断言随之失败。其余 IAM、前端和 MySQL/SQLite 路由验收已通过。
+
+**修复**：复用现有服务身份生成器，为测试栈生成独立临时凭证并同步所有接收方映射，退出时清理凭证文件；在构建容器前增加实际 Compose 渲染回归检查。首次流水线未发布镜像或 GitHub Release，修复经 develop → main 合入后更新同名 `v0.34.18` 标签重新执行发布门禁。
+
+**影响服务**：仅 Compose E2E 夹具及发布验证流程；无新增运行时代码或生产配置变更。
+
 ## 兼容性说明
 
 - 公开接口兼容；内部新增执行许可与观察 RPC，渠道/账号信息新增配置指纹和探针 ID。先更新 Channel，再更新 Relay 和 monitor，避免新调用方访问旧服务端。
@@ -65,6 +73,7 @@ v0.34.18 是 v0.34.17 的 **PATCH 可靠性修复版本**：区分真实上游�
 
 ## 验证
 
+- `python3 scripts/test-e2e-flow-identities.py` 在修复前稳定失败、修复后通过；检查真实启动脚本渲染出的 Relay 身份及 Channel/Identity/Billing/Log/Config 接收方映射，不启动容器。定向执行许可权限和 Chat 集成回归通过。
 - 本地 `make test-unit`、完整 `internal/integration`、相关包及上游集成场景 race、相关 `go vet`、格式/架构/迁移/RBAC/IAM 契约检查通过；API 与前端 API 类型已再生成。
 - 提交前 gosec 扫描通过，新增 retry jitter 仅用于退避，不参与凭证或安全决策。
 - 三个生产服务均运行、无异常重启，健康与指标接口正常，镜像均对应 `4c83d2a4`；实际普通渠道 legacy Chat 非流式/SSE 与账务核对通过，上游总 token 分别为 93、91。
@@ -78,3 +87,5 @@ v0.34.18 是 v0.34.17 的 **PATCH 可靠性修复版本**：区分真实上游�
 - `fix(relay): separate upstream health and execution controls`
 - `docs: record production upstream inference acceptance`
 - `docs(release): v0.34.18`
+- `fix(e2e): provision dedicated service identities for compose flow`
+- `docs(release): v0.34.18 republish`
