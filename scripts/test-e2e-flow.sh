@@ -26,6 +26,7 @@ COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
 COMPOSE_TEST="$COMPOSE_DIR/docker-compose.test.yml"
 E2E_DIR="$PROJECT_ROOT/test/e2e"
 ENV_FILE="$COMPOSE_DIR/.env"
+identity_dir=""
 
 # Parse flags
 RUN_SUITE=false
@@ -71,6 +72,9 @@ cleanup() {
 # the next `up` would fail on ports/volumes.
 on_exit() {
     local code=$?
+    if [ -n "$identity_dir" ]; then
+        rm -rf "$identity_dir"
+    fi
     if [ -n "${E2E_KEEP_ON_FAILURE:-}" ] && [ "$code" -ne 0 ]; then
         # CI diagnostics mode (nightly workflow): keep the containers alive on
         # failure so a later step can collect logs and container state.
@@ -106,6 +110,15 @@ if [ -z "${CHANNEL_ENCRYPTION_KEY:-}" ]; then
     export CHANNEL_ENCRYPTION_KEY="0123456789abcdef0123456789abcdef"
     warn "CHANNEL_ENCRYPTION_KEY not set; using a test-only fallback key"
 fi
+
+# Execution claims require independent callers, including in legacy IAM mode.
+identity_dir="$(mktemp -d "${TMPDIR:-/tmp}/e2e-identities.XXXXXX")"
+python3 "$SCRIPT_DIR/prepare-rbac-service-identities.py" --output "$identity_dir/identities.env"
+while IFS='=' read -r key value; do
+    case "$key" in
+        *_SERVICE_IDENTITY_TOKEN|*_SERVICE_CALLER_TOKENS) export "$key=$value" ;;
+    esac
+done < "$identity_dir/identities.env"
 
 # ── Step 0: Start environment ──
 

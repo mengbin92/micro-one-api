@@ -141,6 +141,9 @@ jobs:
             echo "Seeded .env from .env.example"
           fi
 
+      - name: Verify Compose E2E service identities
+        run: python3 scripts/test-e2e-flow-identities.py
+
       - name: Run compose E2E suite
         id: e2e
         env:
