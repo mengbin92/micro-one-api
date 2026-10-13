@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	coderws "github.com/coder/websocket"
 	billingv1 "micro-one-api/api/billing/v1"
@@ -19,10 +20,11 @@ var errWSRoutingAdmission = errors.New("websocket routing admission failed")
 // Responses carries one active generation on a connection. A subsequent
 // response.create must acquire its own immutable reservation before forwarding.
 type routingWSTurns struct {
-	mu     sync.Mutex
-	first  bool
-	active *billingv1.ReserveQuotaResponse
-	admit  func(context.Context, []byte) (*billingv1.ReserveQuotaResponse, []byte, error)
+	mu        sync.Mutex
+	first     bool
+	active    *billingv1.ReserveQuotaResponse
+	execution *relaybiz.Channel
+	admit     func(context.Context, []byte) (*billingv1.ReserveQuotaResponse, []byte, error)
 }
 
 func (t *routingWSTurns) beforeWrite(ctx context.Context, kind coderws.MessageType, payload []byte) ([]byte, error) {
@@ -56,16 +58,38 @@ func (t *routingWSTurns) beforeWrite(ctx context.Context, kind coderws.MessageTy
 }
 
 func (t *routingWSTurns) take() *billingv1.ReserveQuotaResponse {
+	r, _ := t.takeExecution()
+	return r
+}
+
+func (t *routingWSTurns) takeExecution() (*billingv1.ReserveQuotaResponse, *relaybiz.Channel) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	r := t.active
 	t.active = nil
-	return r
+	ch := t.execution
+	t.execution = nil
+	return r, ch
 }
 
 func (s *HTTPServer) newRoutingWSTurns(token, clientModel, resolvedModel string, plan *relaybiz.RelayPlan, channel *relaybiz.Channel, first *billingv1.ReserveQuotaResponse) *routingWSTurns {
+	initialChannel := *channel
+	turns := &routingWSTurns{active: first, execution: &initialChannel}
+	admitExecution := func(ctx context.Context) error {
+		candidate := *channel
+		candidate.HealthProbeID = ""
+		admitted, err := s.relayUsecase.AdmitUpstreamExecution(ctx, &candidate)
+		if err == nil && admitted.HealthProbeID != "" && admitted.HealthProbeID != channel.HealthProbeID {
+			err = fmt.Errorf("upstream recovery requires a fresh websocket connection")
+			s.relayUsecase.RecordUpstreamResult(ctx, admitted, err, 0, time.Now())
+		}
+		if err == nil {
+			turns.execution = admitted
+		}
+		return err
+	}
 	if plan.Auth.RoutingContext == nil {
-		return &routingWSTurns{active: first, admit: func(ctx context.Context, payload []byte) (*billingv1.ReserveQuotaResponse, []byte, error) {
+		turns.admit = func(ctx context.Context, payload []byte) (*billingv1.ReserveQuotaResponse, []byte, error) {
 			requested := extractOpenAIWSClientModel(payload)
 			if requested != "" && requested != clientModel && requested != resolvedModel {
 				return nil, nil, fmt.Errorf("model changed; open a new websocket")
@@ -77,14 +101,28 @@ func (s *HTTPServer) newRoutingWSTurns(token, clientModel, resolvedModel string,
 			if !fresh.UserEnabled || !fresh.TokenEnabled || fresh.UserId != plan.Auth.UserID || fresh.TokenId != plan.Auth.TokenID || fresh.Group != plan.Auth.Group || !authAllowsModel(fresh.AllowedModels, clientModel) {
 				return nil, nil, fmt.Errorf("authorization changed; open a new websocket")
 			}
+			if channel.UpstreamConfigurationRevision != "" {
+				source := routing.Source{Kind: routing.Channel, ID: channel.ID}
+				if channel.SubscriptionAccountID > 0 {
+					source = routing.Source{Kind: routing.Subscription, ID: channel.SubscriptionAccountID}
+				}
+				permission, err := s.checkStoredSource(ctx, fresh.Group, clientModel, source)
+				if err != nil || !permission.Allowed {
+					return nil, nil, fmt.Errorf("routing source no longer authorized")
+				}
+			}
+			if err := admitExecution(ctx); err != nil {
+				return nil, nil, err
+			}
 			rewritten := rewriteOpenAIWSModel(payload, clientModel, resolvedModel)
 			requestID := generateRequestID()
 			ctx = channelAttemptContext(ctx, requestID, 1, channel, resolvedModel)
 			reservation, err := s.reserveQuota(ctx, strconv.FormatInt(fresh.UserId, 10), requestID, estimateRawTokens(rewritten), s.BillingModelName(clientModel, resolvedModel, resolvedModel), strconv.FormatInt(channel.ID, 10), routingSubscriptionAccountID(channel))
 			return reservation, rewritten, err
-		}}
+		}
+		return turns
 	}
-	return &routingWSTurns{active: first, admit: func(ctx context.Context, payload []byte) (*billingv1.ReserveQuotaResponse, []byte, error) {
+	turns.admit = func(ctx context.Context, payload []byte) (*billingv1.ReserveQuotaResponse, []byte, error) {
 		requested := extractOpenAIWSClientModel(payload)
 		if requested != "" && requested != clientModel && requested != resolvedModel {
 			return nil, nil, fmt.Errorf("model changed; open a new websocket")
@@ -111,10 +149,14 @@ func (s *HTTPServer) newRoutingWSTurns(token, clientModel, resolvedModel string,
 		if !permission.Allowed {
 			return nil, nil, fmt.Errorf("routing source no longer authorized")
 		}
+		if err := admitExecution(ctx); err != nil {
+			return nil, nil, err
+		}
 		rewritten := rewriteOpenAIWSModel(payload, clientModel, resolvedModel)
 		requestID := generateRequestID()
 		ctx = channelAttemptContext(ctx, requestID, 1, channel, resolvedModel)
 		reservation, err := s.reserveQuota(ctx, strconv.FormatInt(auth.UserID, 10), requestID, estimateRawTokens(rewritten), s.BillingModelName(clientModel, resolvedModel, resolvedModel), strconv.FormatInt(channel.ID, 10), routingSubscriptionAccountID(channel), auth.RoutingContext)
 		return reservation, rewritten, err
-	}}
+	}
+	return turns
 }

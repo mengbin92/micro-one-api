@@ -109,7 +109,6 @@ func (c *ChannelHealthChecker) probeChannel(ctx context.Context, channelID int64
 	})
 	if err != nil {
 		observeHealthProbe("error", healthProbeReason(err), time.Since(startedAt))
-		c.record(context.WithoutCancel(ctx), channelID, false, err.Error(), time.Since(startedAt).Milliseconds())
 		return
 	}
 	resp, err := provider.Forward(probeCtx, &relayprovider.RawRequest{
@@ -123,7 +122,9 @@ func (c *ChannelHealthChecker) probeChannel(ctx context.Context, channelID int64
 	responseTime := time.Since(startedAt).Milliseconds()
 	if err != nil {
 		observeHealthProbe("error", healthProbeReason(err), time.Since(startedAt))
-		c.record(context.WithoutCancel(ctx), channelID, false, err.Error(), responseTime)
+		if relayprovider.HealthDisposition(ctx, err) == relayprovider.HealthFailure {
+			c.record(context.WithoutCancel(ctx), channelID, false, err.Error(), responseTime)
+		}
 		return
 	}
 	observeHealthProbe("success", "none", time.Since(startedAt))

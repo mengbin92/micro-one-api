@@ -89,7 +89,7 @@ func (p *VoyageAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawRe
 		return nil, fmt.Errorf("failed to read voyageai response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("upstream error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody, RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())}
 	}
 	body := normalizeVoyageAIEmbeddingResponse(respBody)
 	return &RawResponse{StatusCode: resp.StatusCode, Header: resp.Header.Clone(), Body: body}, nil

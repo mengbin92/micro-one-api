@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"math"
 	"slices"
 	"sync"
@@ -20,6 +21,7 @@ type WeightedSelector struct {
 
 // channelState holds runtime state for a channel.
 type channelState struct {
+	control upstreamControl
 	executionSlotLeases
 	consecutiveFailures int
 	failureThreshold    int
@@ -228,10 +230,19 @@ func (s *WeightedSelector) UpdateChannel(channel *Channel) {
 // updateChannelLocked updates channel state. The caller MUST hold s.mu.
 func (s *WeightedSelector) updateChannelLocked(channel *Channel) {
 	if existing, ok := s.channels[channel.ID]; ok {
+		if existing.control.refresh(channel.UpstreamRevision()) {
+			existing.consecutiveFailures = 0
+			existing.recentErrors = NewSlidingCounter(60 * time.Second)
+			existing.circuitOpenUntil = 0
+			existing.circuitProbeUntil = 0
+		}
 		existing.channel = channel
 		existing.weight = configuredSelectorWeight(channel)
 		if openUntil := selectorCircuitOpenUntil(channel); openUntil > existing.circuitOpenUntil {
 			existing.circuitOpenUntil = openUntil
+			if openUntil > time.Now().UnixNano() {
+				existing.control.incidentAt = time.Now().UnixNano()
+			}
 		}
 		// Keep runtime state (latency, errors, etc.)
 		return
@@ -239,6 +250,7 @@ func (s *WeightedSelector) updateChannelLocked(channel *Channel) {
 
 	// Initialize new channel state
 	s.channels[channel.ID] = &channelState{
+		control:          upstreamControl{revision: channel.UpstreamRevision()},
 		channel:          channel,
 		failureThreshold: s.failureThreshold,
 		weight:           configuredSelectorWeight(channel),
@@ -307,6 +319,9 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 			continue
 		}
 		state.reapSlotLeases(now)
+		if state.control.blocked(ch.UpstreamModelID, now) || state.control.capacityUntil > now {
+			continue
+		}
 
 		// channel-H1: skip open channels; half-open channels (sentinel) are
 		// eligible but we arm exactly one probe below.
@@ -329,6 +344,14 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 	}
 
 	if best == nil {
+		for _, ch := range candidates {
+			if ch == nil {
+				continue
+			}
+			if state := s.channels[ch.ID]; state != nil && state.control.capacityUntil > now && !state.control.blocked(ch.UpstreamModelID, now) {
+				return nil, ErrUpstreamRateLimit
+			}
+		}
 		return nil, ErrChannelNotFound
 	}
 
@@ -343,10 +366,12 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 	// (recordBreakerOutcome in RecordHealth).
 	if best.breakerState(now) == circuitHalfOpen {
 		best.circuitOpenUntil = circuitHalfOpenSentinel
-		best.circuitProbeUntil = now + circuitBreakerOpenDuration.Nanoseconds()
+		best.circuitProbeUntil = now + circuitBreakerProbeLeaseDuration.Nanoseconds()
+		best.control.probeID = uuid.NewString()
 	}
-
-	return best.channel, nil
+	selected := *best.channel
+	selected.HealthProbeID = best.control.probeID
+	return &selected, nil
 }
 
 // channelEffectiveWeight keeps health/latency factors in fixed-point form so
@@ -356,7 +381,7 @@ func channelEffectiveWeight(state *channelState) int64 {
 	if state == nil {
 		return 0
 	}
-	return int64(state.weight) * int64(state.healthFactor()) * int64(state.latencyFactor()) * int64(state.loadFactor())
+	return int64(state.weight) * int64(state.healthFactor()) * int64(state.latencyFactor()) * int64(state.loadFactor()) * state.control.recoveryFactor() / 100
 }
 
 func (s *WeightedSelector) totalEffectiveWeight(candidates []*Channel, now int64) int64 {
@@ -366,6 +391,9 @@ func (s *WeightedSelector) totalEffectiveWeight(candidates []*Channel, now int64
 			continue
 		}
 		if state, ok := s.channels[ch.ID]; ok {
+			if state.control.blocked(ch.UpstreamModelID, now) || state.control.capacityUntil > now {
+				continue
+			}
 			if state.breakerState(now) == circuitOpen || (state.circuitOpenUntil == circuitHalfOpenSentinel && state.circuitProbeUntil > now) {
 				continue
 			}
@@ -392,7 +420,11 @@ func (s *WeightedSelector) RecordSlot(channelID int64, slotID string, acquired b
 		s.updateChannelLocked(&Channel{ID: channelID})
 		state = s.channels[channelID]
 	}
-	return state.recordSlot(slotID, acquired, state.maxConcurrent)
+	accepted := state.recordSlot(slotID, acquired, state.maxConcurrent)
+	if accepted && acquired && slotID == state.control.probeID && slotID != "" && state.circuitProbeUntil > time.Now().UnixNano() {
+		state.circuitProbeUntil = time.Now().Add(circuitBreakerProbeLeaseDuration).UnixNano()
+	}
+	return accepted
 }
 
 // RecordHealth records a health check result for a channel.
@@ -404,6 +436,13 @@ func (s *WeightedSelector) RecordHealth(channelID int64, success bool, latency i
 	if !ok {
 		return
 	}
+	if state.breakerState(time.Now().UnixNano()) != circuitClosed || state.control.recoverySuccesses > 0 {
+		return
+	}
+	state.recordHealth(success, latency)
+}
+
+func (state *channelState) recordHealth(success bool, latency int64) {
 
 	// Update latency
 	state.recentLatency.Add(latency)
@@ -411,6 +450,11 @@ func (s *WeightedSelector) RecordHealth(channelID int64, success bool, latency i
 	// Update error rate (channel-H1: record both totals and errors so the
 	// circuit breaker sees a true error ratio, not errors-per-second).
 	state.recentErrors.RecordOutcome(success)
+	if !success && state.control.recoverySuccesses > 0 && state.control.recoverySuccesses < 5 {
+		state.control.recoverySuccesses = 0
+		state.circuitOpenUntil = time.Now().Add(circuitBreakerOpenDuration).UnixNano()
+		state.control.incidentAt = time.Now().UnixNano()
+	}
 	if success {
 		state.consecutiveFailures = 0
 	} else {
@@ -500,10 +544,11 @@ func (cs *channelState) latencyFactor() int32 {
 // fixed timer — so low-traffic channels blew on a couple of errors and a sick
 // channel was re-drowned the instant the timer expired.
 const (
-	circuitBreakerErrorThreshold = 0.5 // trip when >50% of requests fail
-	circuitBreakerMinRequests    = 10  // but only after this many samples
-	circuitBreakerOpenDuration   = 30 * time.Second
-	circuitBreakerHalfOpenProbes = 1 // requests let through while half-open
+	circuitBreakerErrorThreshold     = 0.5 // trip when >50% of requests fail
+	circuitBreakerMinRequests        = 10  // but only after this many samples
+	circuitBreakerOpenDuration       = 30 * time.Second
+	circuitBreakerHalfOpenProbes     = 1 // requests let through while half-open
+	circuitBreakerProbeLeaseDuration = executionSlotLeaseDuration
 )
 
 // circuitState is the breaker state of a channel/account: closed (healthy),
@@ -540,6 +585,7 @@ func (cs *channelState) updateCircuitBreaker() {
 		}
 		if cs.consecutiveFailures >= threshold || (cs.recentErrors.Total() >= circuitBreakerMinRequests && cs.recentErrors.Rate() > circuitBreakerErrorThreshold) {
 			cs.circuitOpenUntil = now + circuitBreakerOpenDuration.Nanoseconds()
+			cs.control.incidentAt = now
 		}
 	}
 }
@@ -572,14 +618,19 @@ func (cs *channelState) recordBreakerOutcome(success bool) {
 	if cs.breakerState(now) != circuitHalfOpen {
 		return
 	}
+	if cs.control.probeID != "" {
+		return
+	}
 	cs.circuitProbeUntil = 0
 	if success {
+		cs.control.recoverySuccesses = 1
 		cs.recentErrors = NewSlidingCounter(60 * time.Second)
 		cs.consecutiveFailures = 0
 		cs.circuitOpenUntil = 0 // half-open → closed
 	} else {
 		// half-open → reopened
 		cs.circuitOpenUntil = now + circuitBreakerOpenDuration.Nanoseconds()
+		cs.control.incidentAt = now
 	}
 }
 

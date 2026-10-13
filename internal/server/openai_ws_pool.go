@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	relayprovider "micro-one-api/domain/upstream/provider"
+
 	coderws "github.com/coder/websocket"
 )
 
@@ -199,8 +201,11 @@ func (p *openAIWSConnPool) dialNew(ctx context.Context, poolKey string, wsURL st
 	defer cancel()
 	hdr := make(map[string][]string, len(headers))
 	maps.Copy(hdr, headers)
-	conn, _, _, err := dialer.Dial(dialCtx, wsURL, hdr)
+	conn, statusCode, _, err := dialer.Dial(dialCtx, wsURL, hdr)
 	if err != nil {
+		if statusCode > 0 {
+			return nil, errors.Join(&relayprovider.UpstreamHTTPError{StatusCode: statusCode}, err)
+		}
 		return nil, err
 	}
 	pc := &openAIWSPooledConn{

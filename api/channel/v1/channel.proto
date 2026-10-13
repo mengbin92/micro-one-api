@@ -56,6 +56,10 @@ service ChannelService {
   rpc UpdateChannel(UpdateChannelRequest) returns (UpdateChannelResponse);
   rpc RecordChannelUsage(RecordChannelUsageRequest) returns (RecordChannelUsageResponse);
   rpc RecordChannelHealth(RecordChannelHealthRequest) returns (RecordChannelHealthResponse);
+  // Fenced data-plane outcomes; capacity/configuration/probes never count as health failures.
+  rpc RecordUpstreamObservation(RecordUpstreamObservationRequest) returns (RecordUpstreamObservationReply);
+  // Relay-only admission for cached, pinned and preselected execution sources.
+  rpc ClaimUpstreamExecution(ClaimUpstreamExecutionRequest) returns (ClaimUpstreamExecutionReply);
   // Reports actual relay execution slots, independently of selection/health.
   rpc RecordChannelSlot(RecordChannelSlotRequest) returns (RecordChannelSlotResponse);
   rpc RecordSubscriptionAccountHealth(RecordSubscriptionAccountHealthRequest) returns (RecordSubscriptionAccountHealthResponse);
@@ -594,6 +598,40 @@ message RecordChannelHealthRequest {
   bool success = 2;
   string error = 3;
   int64 response_time = 4;
+}
+
+message RecordUpstreamObservationRequest {
+  string source_kind = 1;
+  int64 source_id = 2;
+  string configuration_revision = 3;
+  string probe_id = 4;
+  string observation_id = 5;
+  int64 started_at_unix_nano = 6;
+  // 0=neutral, 1=success, 2=availability failure.
+  int32 outcome = 7;
+  // Empty, capacity, configuration, model, or probe.
+  string failure_kind = 8;
+  string upstream_model_id = 9;
+  int64 response_time = 10;
+  int64 retry_after_ms = 11;
+  string error = 12;
+}
+
+message RecordUpstreamObservationReply {
+  bool accepted = 1;
+}
+
+message ClaimUpstreamExecutionRequest {
+  string source_kind = 1;
+  int64 source_id = 2;
+  string configuration_revision = 3;
+  string upstream_model_id = 4;
+  string probe_id = 5;
+}
+
+message ClaimUpstreamExecutionReply {
+  string configuration_revision = 1;
+  string probe_id = 2;
 }
 
 message RecordChannelHealthResponse {

@@ -970,6 +970,30 @@ func TestSubscriptionAdaptorRecordsOnlyRealUpstreamHealth(t *testing.T) {
 		}
 	})
 
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"invalid credential", 401, `{"error":"bad key"}`},
+		{"invalid request", 400, `{"error":"bad request"}`},
+		{"overloaded", 529, `{"error":"busy"}`},
+		{"content rejection", 500, `{"code":"sensitive_words_detected"}`},
+		{"model outage", 500, `{"message":"no healthy model"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := &adaptorFailoverChannelClient{}
+			server := NewHTTPServer(nil, nil, nil, nil, relaybiz.NewRelayUsecase(adaptorFailoverIdentity{}, client, nil, nil))
+			server.SetOAuthHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return newStatusResponse(tc.status, tc.body), nil
+			})})
+			server.executeAndMeter(context.Background(), stickyCodexPlan(42, 0), "gpt-5", make(http.Header), body, relayadaptor.FormatOpenAIChatCompletions, "")
+			if len(client.health) != 0 {
+				t.Fatalf("neutral outcome must not affect account health: %+v", client.health)
+			}
+		})
+	}
+
 	t.Run("local concurrency rejection", func(t *testing.T) {
 		client := &adaptorFailoverChannelClient{}
 		server := NewHTTPServer(nil, nil, nil, nil, relaybiz.NewRelayUsecase(adaptorFailoverIdentity{}, client, nil, nil))
@@ -1003,7 +1027,7 @@ func TestSubscriptionAdaptorRecordsModelHealth(t *testing.T) {
 	}{
 		{name: "success records a healthy model route", status: http.StatusOK, wantSamples: 1, wantSuccess: true},
 		{name: "upstream 5xx records a failure", status: http.StatusBadGateway, wantSamples: 1},
-		{name: "upstream 429 records a failure", status: http.StatusTooManyRequests, wantSamples: 1},
+		{name: "upstream 429 records no availability evidence", status: http.StatusTooManyRequests, wantSamples: 0},
 		// A 4xx that is not a rate limit proves the route is reachable and says
 		// nothing about model health, exactly as modelHealthDisposition rules
 		// for the RetryExecutor path.

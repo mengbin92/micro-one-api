@@ -2,10 +2,11 @@ package data
 
 import (
 	"context"
-	"fmt"
 
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/monitor/internal/biz"
+	"micro-one-api/domain/upstream/provider"
+	"micro-one-api/platform/upstreamclient"
 )
 
 // ChannelProbeAdapter implements biz.ChannelProbeClient by wrapping the
@@ -60,19 +61,7 @@ func (a *ChannelProbeAdapter) GetChannelDetail(ctx context.Context, channelID in
 }
 
 func (a *ChannelProbeAdapter) RecordChannelHealth(ctx context.Context, channelID int64, success bool, errMsg string, responseTimeMs int64) error {
-	resp, err := a.client.RecordChannelHealth(ctx, &channelv1.RecordChannelHealthRequest{
-		ChannelId:    channelID,
-		Success:      success,
-		Error:        errMsg,
-		ResponseTime: responseTimeMs,
-	})
-	if err != nil {
-		return err
-	}
-	if resp != nil && !resp.GetSuccess() {
-		return fmt.Errorf("record channel health failed: %s", resp.GetMessage())
-	}
-	return nil
+	return upstreamclient.ReportObservation(ctx, a.client, provider.Observation{SourceKind: "channel", SourceID: channelID, FailureKind: "probe", Error: errMsg, ResponseTime: responseTimeMs})
 }
 
 // Ensure the adapter satisfies the biz interface.

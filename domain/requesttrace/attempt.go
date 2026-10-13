@@ -5,6 +5,7 @@ package requesttrace
 import "context"
 
 type Attempt struct {
+	HealthProbeID   string
 	RootRequestID   string
 	Number          int32
 	SourceKind      string

@@ -39,7 +39,8 @@ func (f *ProviderFactory) CreateProvider(channelType int32, baseURL, apiKey stri
 	return f.CreateProviderWithConfig(channelType, baseURL, apiKey, ProviderConfig{})
 }
 
-func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, apiKey string, config ProviderConfig) (Provider, error) {
+func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, apiKey string, config ProviderConfig) (p Provider, err error) {
+	defer func() { err = InvalidConfiguration(err) }()
 	switch channelType {
 	case ChannelTypeAnthropic: // Anthropic Claude
 		return NewAnthropicProvider(baseURL, apiKey, f.defaultTimeout)

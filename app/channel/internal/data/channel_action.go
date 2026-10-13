@@ -38,8 +38,9 @@ func (r *Repository) SaveChannelAction(ctx context.Context, expected *biz.Channe
 		}
 		updates := map[string]any{}
 		if operation == "channel.channel.test" {
-			applyHealthEvent(stored, biz.ChannelHealthEvent{ChannelID: stored.ID, Success: result.Success, Error: result.Message, ResponseTime: result.ResponseTime, CheckedAt: time.Unix(result.CheckedAt, 0)}, threshold, cooldown)
-			updates = map[string]any{"test_time": stored.TestTime, "response_time": stored.ResponseTime, "health_status": stored.HealthStatus, "health_last_error": stored.HealthLastError, "health_last_success_time": stored.HealthLastSuccessTime, "health_last_failure_time": stored.HealthLastFailureTime, "health_consecutive_failures": stored.HealthConsecutiveFailures, "circuit_opened_until": stored.CircuitOpenedUntil}
+			// Manual probes are diagnostics; real traffic owns health recovery.
+			stored.TestTime, stored.ResponseTime = result.CheckedAt, result.ResponseTime
+			updates = map[string]any{"test_time": stored.TestTime, "response_time": stored.ResponseTime}
 		} else if operation == "channel.channel.balance.refresh" {
 			stored.BalanceRefreshLastError = result.BalanceRefreshLastError
 			if result.Success {

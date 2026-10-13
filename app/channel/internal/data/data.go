@@ -997,6 +997,9 @@ func (r *Repository) RecordHealth(ctx context.Context, event biz.ChannelHealthEv
 	if !ok {
 		return nil, biz.ErrChannelNotFound
 	}
+	if event.ConfigurationRevision != "" && event.ConfigurationRevision != channel.UpstreamRevision() {
+		return nil, biz.ErrChannelNotFound
+	}
 	applyHealthEvent(channel, event, threshold, cooldown)
 	cloned := *channel
 	cloned.Models = append([]string(nil), channel.Models...)
@@ -1694,7 +1697,7 @@ func (r *Repository) recordHealthDB(ctx context.Context, event biz.ChannelHealth
 	var updated *biz.Channel
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var model channelModel
-		if err := tx.Where("id = ?", event.ChannelID).First(&model).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", event.ChannelID).First(&model).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return biz.ErrChannelNotFound
 			}
@@ -1703,6 +1706,9 @@ func (r *Repository) recordHealthDB(ctx context.Context, event biz.ChannelHealth
 		channel, err := r.modelToChannel(&model)
 		if err != nil {
 			return err
+		}
+		if event.ConfigurationRevision != "" && event.ConfigurationRevision != channel.UpstreamRevision() {
+			return biz.ErrChannelNotFound
 		}
 		applyHealthEvent(channel, event, threshold, cooldown)
 		if err := tx.Model(&channelModel{}).Where("id = ?", event.ChannelID).Updates(map[string]any{
@@ -3158,6 +3164,9 @@ func subscriptionAccountMetadata(raw string) map[string]any {
 }
 
 func applyHealthEvent(channel *biz.Channel, event biz.ChannelHealthEvent, threshold int32, cooldown time.Duration) {
+	if event.Success && event.ConfigurationRevision == "" && channel.EffectiveHealthStatus() == biz.ChannelHealthUnavailable {
+		return
+	}
 	if event.CheckedAt.IsZero() {
 		event.CheckedAt = time.Now()
 	}

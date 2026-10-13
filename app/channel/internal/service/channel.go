@@ -4,6 +4,8 @@ import (
 	"context"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/authz"
+	"micro-one-api/platform/metrics"
+	"micro-one-api/platform/security/serviceidentity"
 	"strings"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/app/channel/internal/biz"
 	relaycredential "micro-one-api/domain/upstream/credential"
+	"micro-one-api/domain/upstream/provider"
 	"micro-one-api/pkg/errors"
 )
 
@@ -238,8 +241,10 @@ func toSubscriptionAccountInfoWithSecrets(account *biz.SubscriptionAccount, incl
 		refreshToken = account.RefreshToken
 	}
 	return &commonv1.SubscriptionAccountInfo{
-		PermittedActions:         account.PermittedActions,
-		CredentialRefreshPending: account.CredentialRefreshPending,
+		UpstreamConfigurationRevision: account.UpstreamRevision(),
+		HealthProbeId:                 account.HealthProbeID,
+		PermittedActions:              account.PermittedActions,
+		CredentialRefreshPending:      account.CredentialRefreshPending,
 
 		CredentialRevision:     account.CredentialRevision,
 		Id:                     account.ID,
@@ -352,6 +357,8 @@ func toChannelInfo(channel *biz.Channel) *commonv1.ChannelInfo {
 		return nil
 	}
 	return &commonv1.ChannelInfo{
+		UpstreamConfigurationRevision:     channel.UpstreamRevision(),
+		HealthProbeId:                     channel.HealthProbeID,
 		PermittedActions:                  channel.PermittedActions,
 		HealthFieldsVisible:               channel.HealthFieldsVisible,
 		AuthorizationRevision:             channel.AuthorizationRevision,
@@ -1157,6 +1164,75 @@ func (s *ChannelService) RecordSubscriptionAccountHealth(ctx context.Context, re
 	}
 	s.uc.RecordSubscriptionAccountHealth(req.GetAccountId(), req.GetSuccess())
 	return &channelv1.RecordSubscriptionAccountHealthResponse{Success: true, Message: "ok"}, nil
+}
+
+func (s *ChannelService) RecordUpstreamObservation(ctx context.Context, req *channelv1.RecordUpstreamObservationRequest) (*channelv1.RecordUpstreamObservationReply, error) {
+	if err := authz.RequireSystem(ctx, s.authz, "channel.channels.list", channelv1.ChannelService_RecordUpstreamObservation_FullMethodName); err != nil {
+		return nil, err
+	}
+	if serviceidentity.FromContext(ctx).Name == "monitor" && req.GetFailureKind() != "probe" {
+		return nil, authorization.ErrDenied
+	}
+	if req.GetSourceId() <= 0 || (req.GetSourceKind() != "channel" && req.GetSourceKind() != "subscription") {
+		return nil, errors.Newf(errors.ReasonInvalidRequest, "invalid upstream source")
+	}
+	if req.GetFailureKind() == "probe" {
+		// Reachability probes are diagnostics, never authority to close a data-plane circuit.
+		return &channelv1.RecordUpstreamObservationReply{}, nil
+	}
+	if len(req.GetConfigurationRevision()) != 64 || req.GetObservationId() == "" || len(req.GetObservationId()) > 128 || req.GetStartedAtUnixNano() <= 0 || req.GetStartedAtUnixNano() > time.Now().Add(time.Minute).UnixNano() || req.GetOutcome() < 0 || req.GetOutcome() > 2 || req.GetRetryAfterMs() < 0 || req.GetRetryAfterMs() > int64((5*time.Minute)/time.Millisecond) {
+		return nil, errors.Newf(errors.ReasonInvalidRequest, "invalid upstream observation")
+	}
+	switch req.GetFailureKind() {
+	case "", "capacity", "configuration", "model":
+	default:
+		return nil, errors.Newf(errors.ReasonInvalidRequest, "invalid upstream failure kind")
+	}
+	if req.GetFailureKind() != "" && req.GetOutcome() != 0 {
+		return nil, errors.Newf(errors.ReasonInvalidRequest, "control outcomes must be neutral")
+	}
+	if req.GetFailureKind() == "model" && req.GetUpstreamModelId() == "" {
+		return nil, errors.Newf(errors.ReasonInvalidRequest, "model is required")
+	}
+	accepted, err := s.uc.RecordUpstreamObservation(ctx, provider.Observation{
+		SourceKind: req.GetSourceKind(), SourceID: req.GetSourceId(), ConfigurationRevision: req.GetConfigurationRevision(),
+		ProbeID: req.GetProbeId(), ID: req.GetObservationId(), StartedAt: time.Unix(0, req.GetStartedAtUnixNano()),
+		Outcome: provider.HealthOutcome(req.GetOutcome()), FailureKind: req.GetFailureKind(), UpstreamModelID: req.GetUpstreamModelId(),
+		ResponseTime: req.GetResponseTime(), RetryAfter: time.Duration(req.GetRetryAfterMs()) * time.Millisecond, Error: req.GetError(),
+	})
+	result := "ignored"
+	if accepted {
+		result = "accepted"
+	}
+	if err != nil {
+		result = "error"
+	}
+	kind := req.GetFailureKind()
+	if kind == "" {
+		kind = "availability"
+	}
+	metrics.UpstreamObservationDecisions.WithLabelValues(req.GetSourceKind(), kind, result).Inc()
+	if err != nil {
+		return nil, err
+	}
+	return &channelv1.RecordUpstreamObservationReply{Accepted: accepted}, nil
+}
+
+func (s *ChannelService) ClaimUpstreamExecution(ctx context.Context, req *channelv1.ClaimUpstreamExecutionRequest) (*channelv1.ClaimUpstreamExecutionReply, error) {
+	if !serviceidentity.HasSystemCapability(ctx, channelv1.ChannelService_ClaimUpstreamExecution_FullMethodName) {
+		return nil, authorization.ErrDenied
+	}
+	if req.GetSourceId() <= 0 || (req.GetSourceKind() != "channel" && req.GetSourceKind() != "subscription") || len(req.GetConfigurationRevision()) != 64 || len(req.GetProbeId()) > 128 || len(req.GetUpstreamModelId()) > 1024 {
+		return nil, errors.Newf(errors.ReasonInvalidRequest, "invalid upstream execution claim")
+	}
+	lease, err := s.uc.ClaimUpstreamExecution(ctx, provider.ExecutionClaim{
+		SourceKind: req.GetSourceKind(), SourceID: req.GetSourceId(), ConfigurationRevision: req.GetConfigurationRevision(),
+		UpstreamModelID: req.GetUpstreamModelId(), ProbeID: req.GetProbeId(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &channelv1.ClaimUpstreamExecutionReply{ConfigurationRevision: lease.ConfigurationRevision, ProbeId: lease.ProbeID}, nil
 }
 
 func (s *ChannelService) RecordChannelSlot(ctx context.Context, req *channelv1.RecordChannelSlotRequest) (*channelv1.RecordChannelSlotResponse, error) {

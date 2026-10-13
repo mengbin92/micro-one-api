@@ -329,9 +329,11 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		var finalRequest relaybiz.ExecutorRequest
 		var finalReservation *relaybiz.QuotaReservation
 		var finalReleaseAdmission func()
+		var finalAttemptStartedAt time.Time
 		lastFailureStatus := 0
 		attemptNumber := 0
 		executeStreamAttempt := func(attemptCtx context.Context, channel *relaybiz.Channel) error {
+			attemptStartedAt := time.Now()
 			attemptPlan, planErr := relayPlanForAttempt(attemptCtx, o.relayUsecase, plan, channel, req.Model)
 			if planErr != nil {
 				lastFailureStatus = statusCodeFromError(planErr)
@@ -371,7 +373,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 				if err != nil {
 					releaseAdmission()
 					lastFailureStatus = http.StatusPaymentRequired
-					return err
+					return relayprovider.BeforeForward(err)
 				}
 			}
 			releaseChannel, slotErr := o.relayUsecase.AcquireChannelSlot(attemptCtx, attemptPlan.Channel)
@@ -416,6 +418,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 				return err
 			}
 			finalStream = streamResponse
+			finalAttemptStartedAt = attemptStartedAt
 			finalPlan = attemptPlan
 			finalRequest = attemptRequest
 			finalReservation = reservation
@@ -427,7 +430,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		if _, ok := o.streamPort.(relayAdaptorForwarder); ok {
 			retryExecutor.WithCrossSourceFallback()
 		}
-		retryResult := retryExecutor.ExecuteWithCandidates(ctx, plan, subscriptionAccountIDFromPlan(plan), executeStreamAttempt)
+		retryResult := retryExecutor.WithDeferredStreamHealth().ExecuteWithCandidates(ctx, plan, subscriptionAccountIDFromPlan(plan), executeStreamAttempt)
 		if retryResult != nil && retryResult.Err != nil {
 			latency := time.Since(startTime)
 			o.finalizeSelectionFromRetryResult(plan, retryResult, latency)
@@ -477,7 +480,11 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			}
 			latency := time.Since(startTime)
 			settleCtx := settlementContext(ctx)
+			if completed && ctx.Err() == nil {
+				o.relayUsecase.RecordUpstreamResult(ctx, finalPlan.Channel, nil, time.Since(finalAttemptStartedAt).Milliseconds(), finalAttemptStartedAt)
+			}
 			if !completed || ctx.Err() != nil {
+				o.relayUsecase.RecordUpstreamResult(ctx, finalPlan.Channel, fmt.Errorf("stream closed before verified completion"), time.Since(finalAttemptStartedAt).Milliseconds(), finalAttemptStartedAt)
 				interrupted := *retryResult
 				interrupted.Err = relayStreamInterrupted(ctx, nil)
 				o.finalizeSelectionFromRetryResult(plan, &interrupted, latency)
@@ -567,7 +574,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			reservation, err = o.quotaPort.Reserve(attemptCtx, attemptPlan, attemptReq, estimatedUsage)
 			if err != nil {
 				lastFailureStatus = http.StatusPaymentRequired
-				return err
+				return relayprovider.BeforeForward(err)
 			}
 		}
 
@@ -822,7 +829,12 @@ func relayPlanForAttempt(ctx context.Context, usecase *relaybiz.RelayUsecase, ba
 		return plan, nil
 	}
 	if plan.Account != nil && plan.Account.ID == channel.SubscriptionAccountID {
-		return plan, nil
+		if channel.UpstreamConfigurationRevision == "" || plan.Account.UpstreamConfigurationRevision == channel.UpstreamConfigurationRevision {
+			account := *plan.Account
+			account.HealthProbeID = channel.HealthProbeID
+			plan.Account = &account
+			return plan, nil
+		}
 	}
 	if usecase == nil || base == nil || base.Auth == nil {
 		return nil, fmt.Errorf("subscription routing source cannot be materialized")
@@ -835,7 +847,17 @@ func relayPlanForAttempt(ctx context.Context, usecase *relaybiz.RelayUsecase, ba
 		base.BaseModel(),
 	)
 	if err != nil {
-		return nil, err
+		return nil, relayprovider.BeforeForward(err)
+	}
+	if channel.UpstreamConfigurationRevision != "" {
+		if resolvedChannel.UpstreamConfigurationRevision != channel.UpstreamConfigurationRevision {
+			retryable := true
+			return nil, &relaybiz.RetryableError{Status: 503, Err: fmt.Errorf("subscription configuration changed after execution claim"), Retryable: &retryable, NoUpstreamAttempt: true}
+		}
+		resolvedCopy, accountCopy := *resolvedChannel, *account
+		resolvedCopy.HealthProbeID = channel.HealthProbeID
+		accountCopy.HealthProbeID = channel.HealthProbeID
+		resolvedChannel, account = &resolvedCopy, &accountCopy
 	}
 	plan.Channel = resolvedChannel
 	plan.Account = account

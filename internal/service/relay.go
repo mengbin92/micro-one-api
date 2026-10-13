@@ -114,7 +114,7 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 			if err != nil || capability.GetRequestSnapshotVersion() != 2 || (plan.Auth.RoutingContext.TokenMode == "fixed" && !capability.GetFixedRouting()) || (subscriptionbiz.EntitlementsEnabled() && !capability.GetSubscriptionContracts()) {
 				metrics.RoutingAdmissionRejected.WithLabelValues("reserve", "billing_capability").Inc()
 				applogger.Log.Warn("routing admission rejected", zap.String("operation", "reserve"), zap.String("reason", "billing_capability"), zap.Int64("user_id", plan.Auth.UserID), zap.Int64("token_id", plan.Auth.TokenID), zap.String("request_id", requestID), zap.Error(err))
-				return fmt.Errorf("billing routing capability unavailable")
+				return relayprovider.BeforeForward(fmt.Errorf("billing routing capability unavailable"))
 			}
 		}
 
@@ -131,10 +131,10 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 			ChannelId:       fmt.Sprintf("%d", ch.ID),
 		})
 		if reserveErr != nil {
-			return reserveErr
+			return relayprovider.BeforeForward(reserveErr)
 		}
 		if reservation == nil || !reservation.Success {
-			return fmt.Errorf("quota reservation failed")
+			return relayprovider.BeforeForward(fmt.Errorf("quota reservation failed"))
 		}
 		if c := plan.Auth.RoutingContext; c != nil && (reservation.RequestSnapshotVersion != 2 || reservation.RoutingContextHash != c.Digest() || len(reservation.RequestSnapshotHash) != 64) {
 			_, _ = s.billingClient.ReleaseQuota(ctx, &billingv1.ReleaseQuotaRequest{ReservationId: reservation.ReservationId, Reason: "routing snapshot mismatch"})

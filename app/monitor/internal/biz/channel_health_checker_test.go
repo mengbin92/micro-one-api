@@ -127,8 +127,8 @@ func TestChannelHealthChecker_CheckOnceRejectsHTMLSuccess(t *testing.T) {
 	checker := NewChannelHealthChecker(client, ChannelHealthCheckerConfig{Enabled: true, Timeout: time.Second})
 	checker.CheckOnce(context.Background())
 
-	if len(client.healthReqs) != 1 || client.healthReqs[0].Success || client.healthReqs[0].ChannelID != 1 {
-		t.Fatalf("health requests = %+v, want one invalid-response failure", client.healthReqs)
+	if len(client.healthReqs) != 0 {
+		t.Fatalf("invalid response must not be attributed to dependency availability: %+v", client.healthReqs)
 	}
 	probeAfter := testutil.ToFloat64(metrics.ChannelHealthProbeTotal.WithLabelValues("error", "invalid_response"))
 	assertMonitorMetricDelta(t, probeBefore, probeAfter, 1)

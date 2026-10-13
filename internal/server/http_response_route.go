@@ -27,6 +27,12 @@ func (s *HTTPServer) storeResponseRoute(responseID string, route responseRoute) 
 	if responseID == "" {
 		return
 	}
+	route.Channel.HealthProbeID = ""
+	if route.Account != nil {
+		account := *route.Account
+		account.HealthProbeID = ""
+		route.Account = &account
+	}
 	now := time.Now()
 	s.responsesMu.Lock()
 	defer s.responsesMu.Unlock()

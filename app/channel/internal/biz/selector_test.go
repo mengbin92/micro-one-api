@@ -303,7 +303,7 @@ func TestWeightedSelector_RefreshesConfiguredChannel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("updated Select err = %v", err)
 	}
-	if selected != updated || selected.Name != "new" {
+	if selected.ID != updated.ID || selected.Name != "new" || selected.Priority != updated.Priority {
 		t.Fatalf("selector returned stale channel snapshot: got %+v, want %+v", selected, updated)
 	}
 	if got := s.GetStats()[7].Weight; got != 9 {

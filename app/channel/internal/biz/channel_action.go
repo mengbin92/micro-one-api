@@ -102,6 +102,8 @@ func (uc *ChannelUsecase) ExecuteChannelAction(ctx context.Context, id int64, ac
 	if !ok {
 		return nil, authorization.ErrDenied
 	}
+	uc.runtimeControlMu.Lock()
+	defer uc.runtimeControlMu.Unlock()
 	stored, err := writer.SaveChannelAction(ctx, channel, operation, result, uc.healthFailureThreshold, uc.healthCooldown)
 	if err != nil {
 		return nil, err

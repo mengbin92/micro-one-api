@@ -15,8 +15,6 @@ import (
 	billingdomain "micro-one-api/domain/billing"
 	relayprovider "micro-one-api/domain/upstream/provider"
 	apperrors "micro-one-api/pkg/errors"
-	"micro-one-api/pkg/jsonx"
-	"micro-one-api/pkg/wildcard"
 	"micro-one-api/platform/metrics"
 	xtrace "micro-one-api/platform/tracing"
 )
@@ -129,17 +127,19 @@ type AuthSnapshot struct {
 }
 
 type Channel struct {
-	ID       int64
-	Type     int32
-	Name     string
-	Status   int32
-	BaseURL  string
-	Group    string
-	Models   []string
-	Priority int64
-	Weight   uint32
-	Key      string
-	Config   ChannelConfig
+	UpstreamConfigurationRevision string
+	HealthProbeID                 string
+	ID                            int64
+	Type                          int32
+	Name                          string
+	Status                        int32
+	BaseURL                       string
+	Group                         string
+	Models                        []string
+	Priority                      int64
+	Weight                        uint32
+	Key                           string
+	Config                        ChannelConfig
 
 	// ModelMapping is a JSON {"src":"dst"} channel-level model remap.
 	ModelMapping string
@@ -251,15 +251,17 @@ type ChannelConfig struct {
 }
 
 type SubscriptionAccount struct {
-	ID          int64
-	Name        string
-	Platform    string
-	AccountType string
-	Status      int32
-	BaseURL     string
-	Group       string
-	Models      []string
-	Priority    int64
+	UpstreamConfigurationRevision string
+	HealthProbeID                 string
+	ID                            int64
+	Name                          string
+	Platform                      string
+	AccountType                   string
+	Status                        int32
+	BaseURL                       string
+	Group                         string
+	Models                        []string
+	Priority                      int64
 	// Weight is the explicit within-tier WRR weight (v0.11.0 Phase 3 §3.1).
 	// 0 = unset, falls back to priority-derived in subscriptionRouteWeight.
 	Weight      int32
@@ -369,6 +371,7 @@ type RelayUsecase struct {
 	subscription        SubscriptionAccountClient
 	modelMapper         *ModelMapper
 	retryPolicy         *RetryPolicy
+	retryBudget         *retryBudget
 	blocker             RuntimeBlocker
 	accountPool         *AccountPool
 	routeSelector       *UpstreamRouteSelector
@@ -457,7 +460,10 @@ func (uc *RelayUsecase) AcquireSubscriptionAccountSlot(ctx context.Context, acco
 }
 
 func acquireExecutionSlotLease(ctx context.Context, record func(context.Context, string, bool) error) (func(), error) {
-	slotID := uuid.NewString()
+	slotID := requesttrace.FromContext(ctx).HealthProbeID
+	if slotID == "" {
+		slotID = uuid.NewString()
+	}
 	report := func(acquired bool) error {
 		reportCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 200*time.Millisecond)
 		defer cancel()
@@ -514,6 +520,7 @@ func NewRelayUsecase(identity IdentityClient, channel ChannelClient, modelMapper
 		subscription:  subscription,
 		modelMapper:   modelMapper,
 		retryPolicy:   retryPolicy,
+		retryBudget:   newRetryBudget(),
 		blocker:       NoopRuntimeBlocker{},
 		accountPool:   NewAccountPool(NoopRuntimeBlocker{}),
 		routeSelector: NewUpstreamRouteSelector(),
@@ -1100,18 +1107,20 @@ func subscriptionAccountToChannel(account *SubscriptionAccount) (*Channel, error
 		return nil, fmt.Errorf("unsupported subscription platform %q", account.Platform)
 	}
 	return &Channel{
-		ID:                    account.ID,
-		SubscriptionAccountID: account.ID,
-		Type:                  channelType,
-		Name:                  account.Name,
-		Status:                account.Status,
-		BaseURL:               account.BaseURL,
-		Group:                 account.Group,
-		Models:                append([]string(nil), account.Models...),
-		Priority:              account.Priority,
-		ModelMapping:          account.ModelMapping,
-		UpstreamModelID:       account.UpstreamModelID,
-		RestrictModels:        true, // subscription accounts require explicit abilities; never catch-all
+		UpstreamConfigurationRevision: account.UpstreamConfigurationRevision,
+		HealthProbeID:                 account.HealthProbeID,
+		ID:                            account.ID,
+		SubscriptionAccountID:         account.ID,
+		Type:                          channelType,
+		Name:                          account.Name,
+		Status:                        account.Status,
+		BaseURL:                       account.BaseURL,
+		Group:                         account.Group,
+		Models:                        append([]string(nil), account.Models...),
+		Priority:                      account.Priority,
+		ModelMapping:                  account.ModelMapping,
+		UpstreamModelID:               account.UpstreamModelID,
+		RestrictModels:                true, // subscription accounts require explicit abilities; never catch-all
 		// Key intentionally left empty: the access token is NOT projected onto
 		// the generic Channel.Key field. The server layer resolves it via the
 		// SubscriptionAccountResolver (plan.Account) / credential store so it
@@ -1151,91 +1160,14 @@ func ApplyChannelModelMapping(mappingJSON, model string) string {
 // case-sensitive. Wildcard abilities remain routing-only and are never sent as
 // model identifiers.
 func ResolveChannelModel(channel *Channel, model string) string {
-	model = RelayModelName(model)
 	if channel == nil {
-		return model
+		return RelayModelName(model)
 	}
-	if mapped, ok := resolvePerAccountModelMapping(channel.ModelMapping, model); ok {
-		return RelayModelName(mapped)
-	}
-	if upstream := strings.TrimSpace(channel.UpstreamModelID); upstream != "" {
-		return RelayModelName(upstream)
-	}
-	for _, configured := range channel.Models {
-		configured = RelayModelName(configured)
-		if configured != "" && !wildcard.IsPattern(configured) && strings.EqualFold(configured, model) {
-			return configured
-		}
-	}
-	return model
+	return relayprovider.ResolveModel(model, channel.ModelMapping, channel.UpstreamModelID, channel.Models)
 }
 
 func applyPerAccountModelMapping(mappingJSON, model string) string {
-	model = RelayModelName(model)
-	if mapped, ok := resolvePerAccountModelMapping(mappingJSON, model); ok {
-		return RelayModelName(mapped)
-	}
-	return model
-}
-
-func resolvePerAccountModelMapping(mappingJSON, model string) (string, bool) {
-	model = RelayModelName(model)
-	mappingJSON = strings.TrimSpace(mappingJSON)
-	if mappingJSON == "" {
-		return "", false
-	}
-	var mapping map[string]string
-	if err := jsonx.UnmarshalFromString(mappingJSON, &mapping); err != nil {
-		return "", false
-	}
-	// 1) Exact (case-insensitive) match — fast path.
-	if dst, ok := mapping[model]; ok && dst != "" {
-		return dst, true
-	}
-	if dst, ok := mapping[strings.ToLower(model)]; ok && dst != "" {
-		return dst, true
-	}
-	// A JSON object may contain mixed-case keys. Map lookup cannot express a
-	// true case-insensitive comparison, so finish the exact pass explicitly.
-	for key, dst := range mapping {
-		if !wildcard.IsPattern(key) && dst != "" && strings.EqualFold(RelayModelName(key), model) {
-			return dst, true
-		}
-	}
-	// 2) Wildcard keys: specific patterns before the "*" catch-all. When
-	// several specific patterns match, pick the MOST SPECIFIC one (by
-	// non-wildcard char count, ties by full length) so per-account
-	// remapping is deterministic — same as ModelMapper.Resolve. See
-	// docs/model-management-design.md §11.1.
-	var catchAll string
-	var bestSpecific string
-	var bestSpecificKey string
-	var bestSpecificity int
-	for key, dst := range mapping {
-		if !wildcard.IsPattern(key) || dst == "" {
-			continue
-		}
-		if key == "*" {
-			catchAll = dst
-			continue
-		}
-		if !wildcard.Match(key, model) {
-			continue
-		}
-		spec := wildcard.Specificity(key)
-		if spec > bestSpecificity || (spec == bestSpecificity && len(key) > len(bestSpecificKey)) {
-			bestSpecificity = spec
-			bestSpecific = dst
-			bestSpecificKey = key
-		}
-	}
-	if bestSpecific != "" {
-		return bestSpecific, true
-	}
-	if catchAll != "" {
-		return catchAll, true
-	}
-	return "", false
+	return relayprovider.ResolveModel(model, mappingJSON, "", nil)
 }
 
 func subscriptionPlatformChannelType(platform string) int32 {
@@ -1261,7 +1193,10 @@ func subscriptionPlatformChannelType(platform string) int32 {
 // request-scoped candidate list first and only re-select with per-candidate
 // exclusion when it is exhausted.
 func (uc *RelayUsecase) NewRetryExecutor() *RetryExecutor {
-	return NewRetryExecutor(uc.retryPolicy, uc.channel).WithFallbackSelector(uc).WithRouteAuthorization(uc.authorizeRetry)
+	executor := NewRetryExecutor(uc.retryPolicy, uc.channel).WithFallbackSelector(uc).WithRouteAuthorization(uc.authorizeRetry)
+	executor.budget = uc.retryBudget
+	executor.executionAdmission = uc.AdmitUpstreamExecution
+	return executor
 }
 
 // SelectFallbackChannel selects from a lower-priority channel tier. It is a
@@ -1356,9 +1291,18 @@ func (uc *RelayUsecase) SelectFallbackRoutingSource(
 // RecordRoutingSourceHealth records an execution result in the correct source
 // namespace. Subscription projections must never update an ordinary channel
 // that happens to have the same numeric ID.
-func (uc *RelayUsecase) RecordRoutingSourceHealth(ctx context.Context, ch *Channel, success bool, errMessage string, responseTime int64) {
+func (uc *RelayUsecase) RecordRoutingSourceHealth(ctx context.Context, ch *Channel, relayErr error, responseTime int64) {
 	if uc == nil || uc.channel == nil || ch == nil {
 		return
+	}
+	outcome := UpstreamHealthDisposition(ctx, relayErr)
+	if outcome == relayprovider.HealthNeutral {
+		return
+	}
+	success := outcome == relayprovider.HealthSuccess
+	errMessage := ""
+	if relayErr != nil {
+		errMessage = relayErr.Error()
 	}
 	if ch.SubscriptionAccountID > 0 {
 		_ = uc.channel.RecordSubscriptionAccountHealth(ctx, ch.SubscriptionAccountID, success)
@@ -1406,7 +1350,7 @@ func (uc *RelayUsecase) recordModelHealth(ctx context.Context, ch *Channel, sour
 	if uc == nil || uc.channel == nil || sourceID <= 0 {
 		return
 	}
-	record, success := modelHealthDisposition(relayErr)
+	record, success := modelHealthDisposition(ctx, relayErr)
 	if !record {
 		return
 	}

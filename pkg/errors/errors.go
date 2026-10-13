@@ -3,6 +3,7 @@ package errors
 import (
 	"errors"
 	"fmt"
+	kerrors "github.com/go-kratos/kratos/v3/errors"
 	"strings"
 
 	"google.golang.org/grpc/codes"
@@ -248,6 +249,9 @@ func MapIdentityError(err error) error {
 func MapChannelError(err error) error {
 	if err == nil {
 		return nil
+	}
+	if kerrors.FromError(err).Reason == ReasonUpstreamRateLimit {
+		return &Error{Reason: ReasonUpstreamRateLimit, Message: "upstream capacity temporarily exhausted"}
 	}
 
 	errorMsg := err.Error()

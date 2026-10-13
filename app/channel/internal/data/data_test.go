@@ -923,11 +923,15 @@ func TestRecordHealth_OpensAndResetsCircuit(t *testing.T) {
 	assert.Equal(t, int64(1500), stored.ResponseTime)
 
 	succeededAt := time.Unix(500, 0)
+	updated, err = repo.RecordHealth(ctx, biz.ChannelHealthEvent{ChannelID: ch.ID, Success: true, CheckedAt: succeededAt}, 1, 5*time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, biz.ChannelHealthUnavailable, updated.HealthStatus, "unfenced probe success cannot authorize recovery")
 	updated, err = repo.RecordHealth(ctx, biz.ChannelHealthEvent{
-		ChannelID:    ch.ID,
-		Success:      true,
-		ResponseTime: 120,
-		CheckedAt:    succeededAt,
+		ConfigurationRevision: ch.UpstreamRevision(),
+		ChannelID:             ch.ID,
+		Success:               true,
+		ResponseTime:          120,
+		CheckedAt:             succeededAt,
 	}, 1, 5*time.Minute)
 	require.NoError(t, err)
 	assert.Equal(t, biz.ChannelHealthHealthy, updated.HealthStatus)

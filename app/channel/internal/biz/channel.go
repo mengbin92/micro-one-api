@@ -51,6 +51,7 @@ type ChannelConfig struct {
 
 // Channel describes the channel snapshot selected for relay.
 type Channel struct {
+	HealthProbeID                     string
 	PermittedActions                  []string
 	AuthorizationRevision             int64
 	HealthFieldsVisible               bool
@@ -90,6 +91,7 @@ type Channel struct {
 // It is selected separately from API-key channels but uses the same group,
 // model and priority semantics for routing.
 type SubscriptionAccount struct {
+	HealthProbeID string
 	// RecoveryBaseline is captured on read and retained across management
 	// edits, fencing a full update against a newer incident or recovery.
 	RecoveryBaseline         *AccountRecoveryState
@@ -207,11 +209,12 @@ type SubscriptionAccountAbility struct {
 }
 
 type ChannelHealthEvent struct {
-	ChannelID    int64
-	Success      bool
-	Error        string
-	ResponseTime int64
-	CheckedAt    time.Time
+	ConfigurationRevision string
+	ChannelID             int64
+	Success               bool
+	Error                 string
+	ResponseTime          int64
+	CheckedAt             time.Time
 }
 
 type Notifier interface {
@@ -367,6 +370,8 @@ func (c *modelsListCache) invalidateGroup(group string) {
 }
 
 type ChannelUsecase struct {
+	// Hash revisions cannot order snapshots; keep owner refreshes and writes serialized.
+	runtimeControlMu       sync.Mutex
 	authorization          authorization.Resolver
 	repo                   ChannelRepo
 	eventBus               events.EventBus
@@ -447,6 +452,8 @@ func (uc *ChannelUsecase) ConfigureHealthAlert(notifier Notifier, cfg HealthAler
 }
 
 func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string, excludeFirstPriority bool) (*Channel, error) {
+	uc.runtimeControlMu.Lock()
+	defer uc.runtimeControlMu.Unlock()
 	abilities, err := uc.routeChannelAbilities(ctx, group, model)
 	if err != nil {
 		return nil, err
@@ -511,7 +518,7 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 		}
 		for _, channel := range tier {
 			if channel.ID == selected.ID {
-				return channel, nil
+				return selected, nil
 			}
 		}
 	}
@@ -528,6 +535,8 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 // widens to catch-all channels: failover must not silently route unregistered
 // models.
 func (uc *ChannelUsecase) SelectChannelExcluding(ctx context.Context, group, model string, excluded map[int64]bool) (*Channel, error) {
+	uc.runtimeControlMu.Lock()
+	defer uc.runtimeControlMu.Unlock()
 	abilities, err := uc.routeChannelAbilities(ctx, group, model)
 	if err != nil {
 		return nil, err
@@ -577,7 +586,7 @@ func (uc *ChannelUsecase) SelectChannelExcluding(ctx context.Context, group, mod
 		}
 		for _, channel := range tier {
 			if channel.ID == selected.ID {
-				return channel, nil
+				return selected, nil
 			}
 		}
 	}
@@ -611,7 +620,7 @@ func (uc *ChannelUsecase) selectUnrestrictedChannel(ctx context.Context, group s
 	}
 	for _, ch := range tier {
 		if ch.ID == selected.ID {
-			return ch, nil
+			return selected, nil
 		}
 	}
 	return nil, ErrChannelNotFound
@@ -725,6 +734,8 @@ func (uc *ChannelUsecase) SelectSubscriptionAccountExcluding(ctx context.Context
 }
 
 func (uc *ChannelUsecase) selectSubscriptionAccount(ctx context.Context, group, model, platform string, excludeFirstPriority bool, excluded map[int64]bool) (*SubscriptionAccount, error) {
+	uc.runtimeControlMu.Lock()
+	defer uc.runtimeControlMu.Unlock()
 	abilities, err := uc.routeSubscriptionAbilities(ctx, group, model, platform)
 	if err != nil {
 		return nil, err
@@ -784,6 +795,9 @@ func (uc *ChannelUsecase) selectSubscriptionAccount(ctx context.Context, group, 
 			selected, selErr := uc.accountSelector.Select(ctx, group, tier)
 			if selErr == nil && selected != nil {
 				return selected, nil
+			}
+			if errors.Is(selErr, ErrUpstreamRateLimit) {
+				return nil, selErr
 			}
 			// accountSelector exhausted the tier (all circuit-opened / no
 			// effective weight). Fail closed for THIS tier and keep
@@ -1051,6 +1065,8 @@ func (uc *ChannelUsecase) CreateSubscriptionAccount(ctx context.Context, account
 }
 
 func (uc *ChannelUsecase) UpdateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error {
+	uc.runtimeControlMu.Lock()
+	defer uc.runtimeControlMu.Unlock()
 	if !authorization.HasExpectedRevision(ctx, "account", account.ID) && account.CredentialRevision > 0 {
 		ctx = authorization.WithExpectedRevision(ctx, "account", account.ID, account.CredentialRevision)
 	}
@@ -1091,6 +1107,8 @@ func (uc *ChannelUsecase) UpdateSubscriptionAccount(ctx context.Context, account
 }
 
 func (uc *ChannelUsecase) DeleteSubscriptionAccount(ctx context.Context, accountID int64) error {
+	uc.runtimeControlMu.Lock()
+	defer uc.runtimeControlMu.Unlock()
 	var err error
 	ctx, err = uc.authorizeObject(ctx, "channel.accounts.delete", "channel.account.delete", accountID, true)
 	if err != nil {
@@ -1113,6 +1131,8 @@ func (uc *ChannelUsecase) DeleteSubscriptionAccount(ctx context.Context, account
 }
 
 func (uc *ChannelUsecase) ChangeSubscriptionAccountStatus(ctx context.Context, accountID int64, status int32) error {
+	uc.runtimeControlMu.Lock()
+	defer uc.runtimeControlMu.Unlock()
 	op := "channel.account.disable"
 	if status == ChannelStatusEnabled {
 		op = "channel.account.enable"
@@ -1228,6 +1248,8 @@ func (uc *ChannelUsecase) CreateChannel(ctx context.Context, channel *Channel) e
 }
 
 func (uc *ChannelUsecase) UpdateChannel(ctx context.Context, channel *Channel) error {
+	uc.runtimeControlMu.Lock()
+	defer uc.runtimeControlMu.Unlock()
 	if !authorization.HasExpectedRevision(ctx, "channel", channel.ID) && channel.AuthorizationRevision > 0 {
 		ctx = authorization.WithExpectedRevision(ctx, "channel", channel.ID, channel.AuthorizationRevision)
 	}
@@ -1289,6 +1311,8 @@ func (uc *ChannelUsecase) RecordUsageOnce(ctx context.Context, reservationID str
 }
 
 func (uc *ChannelUsecase) RecordHealth(ctx context.Context, event ChannelHealthEvent) error {
+	uc.runtimeControlMu.Lock()
+	defer uc.runtimeControlMu.Unlock()
 	if event.ChannelID <= 0 {
 		return ErrChannelNotFound
 	}
@@ -1300,6 +1324,10 @@ func (uc *ChannelUsecase) RecordHealth(ctx context.Context, event ChannelHealthE
 		return err
 	}
 	previousSnapshot := *previous
+	if event.Success && event.ConfigurationRevision == "" && previous.EffectiveHealthStatus() == ChannelHealthUnavailable {
+		// Unfenced legacy/probe successes cannot authorize recovery.
+		return nil
+	}
 	previousSnapshot.Models = append([]string(nil), previous.Models...)
 	channel, err := uc.repo.RecordHealth(ctx, event, uc.healthFailureThreshold, uc.healthCooldown)
 	if err != nil {
@@ -1321,6 +1349,8 @@ func (uc *ChannelUsecase) RecordHealth(ctx context.Context, event ChannelHealthE
 }
 
 func (uc *ChannelUsecase) DeleteChannel(ctx context.Context, channelID int64) error {
+	uc.runtimeControlMu.Lock()
+	defer uc.runtimeControlMu.Unlock()
 	var err error
 	ctx, err = uc.authorizeObject(ctx, "channel.channels.delete", "channel.channel.delete", channelID, false)
 	if err != nil {
@@ -1343,6 +1373,8 @@ func (uc *ChannelUsecase) DeleteChannel(ctx context.Context, channelID int64) er
 }
 
 func (uc *ChannelUsecase) ChangeChannelStatus(ctx context.Context, channelID int64, status int32) error {
+	uc.runtimeControlMu.Lock()
+	defer uc.runtimeControlMu.Unlock()
 	op := "channel.channel.disable"
 	if status == ChannelStatusEnabled {
 		op = "channel.channel.enable"

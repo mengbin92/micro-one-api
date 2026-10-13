@@ -138,6 +138,17 @@ func TestRelayOrchestratorFailureMatrixQuotaReserveErrorStopsBeforeForward(t *te
 	}
 }
 
+func TestRelayOrchestratorReserveTimeoutDoesNotAffectUpstreamHealth(t *testing.T) {
+	channel := &matrixChannelClient{channel: &relaybiz.Channel{ID: 11}}
+	hooks := &matrixLifecycleHooks{reserveErr: context.DeadlineExceeded}
+	forwarder := &matrixForwarder{}
+	executor := newMatrixExecutor(matrixUsecase(channel, &relaybiz.RetryPolicy{MaxAttempts: 3}), hooks, forwarder)
+	_, err := executor.Execute(context.Background(), matrixRequest())
+	if !errors.Is(err, context.DeadlineExceeded) || hooks.reserve != 1 || forwarder.calls != 0 || channel.healthCalls != 0 {
+		t.Fatalf("err:%v reserve:%d forward:%d health:%d", err, hooks.reserve, forwarder.calls, channel.healthCalls)
+	}
+}
+
 func TestRelayOrchestratorFailureMatrixContextCancellationReleasesOnce(t *testing.T) {
 	channel := &matrixChannelClient{channel: &relaybiz.Channel{ID: 11}}
 	hooks := &matrixLifecycleHooks{}

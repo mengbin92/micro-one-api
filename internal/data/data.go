@@ -194,17 +194,19 @@ func channelInfoToBiz(info *commonv1.ChannelInfo) *biz.Channel {
 		return nil
 	}
 	return &biz.Channel{
-		ID:             info.Id,
-		Type:           info.Type,
-		Name:           info.Name,
-		Status:         info.Status,
-		BaseURL:        info.BaseUrl,
-		Group:          info.Group,
-		Models:         splitCSV(info.Models),
-		Priority:       info.Priority,
-		Key:            info.Key,
-		ModelMapping:   info.GetModelMapping(),
-		RestrictModels: info.GetRestrictModels(),
+		UpstreamConfigurationRevision: info.GetUpstreamConfigurationRevision(),
+		HealthProbeID:                 info.GetHealthProbeId(),
+		ID:                            info.Id,
+		Type:                          info.Type,
+		Name:                          info.Name,
+		Status:                        info.Status,
+		BaseURL:                       info.BaseUrl,
+		Group:                         info.Group,
+		Models:                        splitCSV(info.Models),
+		Priority:                      info.Priority,
+		Key:                           info.Key,
+		ModelMapping:                  info.GetModelMapping(),
+		RestrictModels:                info.GetRestrictModels(),
 	}
 }
 
