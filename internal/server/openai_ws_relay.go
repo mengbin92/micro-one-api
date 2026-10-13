@@ -9,6 +9,7 @@ import (
 	"time"
 
 	coderws "github.com/coder/websocket"
+	"micro-one-api/domain/upstream/evidence"
 	relaybiz "micro-one-api/internal/biz"
 	usagepkg "micro-one-api/internal/server/usage"
 	"micro-one-api/pkg/jsonx"
@@ -471,6 +472,20 @@ func relayOpenAIWSFrames(
 	go func() {
 		defer pumps.Done()
 		wroteDownstream := false
+		recorder := evidence.RecorderFromContext(relayCtx)
+		var shadow *evidence.Tracker
+		var shadowResponseOrder []string
+		var seenShadowResponses map[string]bool
+		if recorder != nil {
+			shadow = evidence.NewTracker("responses")
+			seenShadowResponses = map[string]bool{}
+		}
+		defer func() {
+			if recorder != nil && shadow.EventCount > 0 {
+				o, _ := shadow.Finish()
+				recorder(evidence.Record{Observation: o, Execution: "incomplete", Stream: true, Events: shadow.Events, EventCount: shadow.EventCount, DroppedEvents: shadow.DroppedEvents})
+			}
+		}()
 		for {
 			msgType, payload, err := upstreamConn.ReadFrame(relayCtx)
 			if err != nil {
@@ -483,6 +498,26 @@ func relayOpenAIWSFrames(
 				return
 			}
 			markActivity()
+			if recorder != nil && msgType == coderws.MessageText {
+				o := evidence.Parse(payload, "responses")
+				if o.ProviderRequestID == "" || !seenShadowResponses[o.ProviderRequestID] {
+					shadow.ObserveFrame(payload)
+					if o.Terminal != "" {
+						observation, complete := shadow.Finish()
+						recorder(evidence.Record{Observation: observation, Execution: "response_received", Stream: true, Complete: complete, Events: shadow.Events, EventCount: shadow.EventCount, DroppedEvents: shadow.DroppedEvents})
+						if o.ProviderRequestID != "" {
+							// shortcut: retain 32 completed IDs, use durable attempt evidence in P1.
+							seenShadowResponses[o.ProviderRequestID] = true
+							shadowResponseOrder = append(shadowResponseOrder, o.ProviderRequestID)
+							if len(shadowResponseOrder) > evidence.MaxEvents {
+								delete(seenShadowResponses, shadowResponseOrder[0])
+								shadowResponseOrder = shadowResponseOrder[1:]
+							}
+						}
+						shadow = evidence.NewTracker("responses")
+					}
+				}
+			}
 
 			if opts.beforeWriteDown != nil {
 				if err := opts.beforeWriteDown(msgType, payload); err != nil {

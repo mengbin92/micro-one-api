@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "date": "2026-10-13",
+  "stage": "P0",
+  "status": "local_verified_acceptance_pending",
+  "source_base_commit": "ab59a042eb1bbfa65f2d54f4e78874d48175f098",
+  "source_digest": "4a9174c9a17c59411802df719acbaf483fc21e1b453aa401c1a6754ade8efdb5",
+  "parser_revision": "native-shadow-2026-10-13.1",
+  "contract_revision": "native-static-2026-10-13.1",
+  "runtime": "go version go1.27.2 darwin/arm64",
+  "native_fixture_count": 24,
+  "native_fixture_sha256": "6fa2878cbd4bdf46677cf1b77d6e332b7e68d4966677ee2b4b6cd64ffc72cc6e",
+  "focused_passed_tests": 73,
+  "focused_archive": "filtered original events from final full regression; package final outcomes retained",
+  "regression": {
+    "micro-one-api/domain/upstream/evidence": {
+      "status": "pass",
+      "elapsed_seconds": 0.366
+    },
+    "micro-one-api/domain/upstream/provider": {
+      "status": "pass",
+      "elapsed_seconds": 1.112
+    },
+    "micro-one-api/pkg/jsonx": {
+      "status": "pass",
+      "elapsed_seconds": 0.251
+    },
+    "micro-one-api/internal/apicompat": {
+      "status": "pass",
+      "elapsed_seconds": 0.279
+    },
+    "micro-one-api/internal/adaptor": {
+      "status": "pass",
+      "elapsed_seconds": 0.28
+    },
+    "micro-one-api/platform/metrics": {
+      "status": "pass",
+      "elapsed_seconds": 0.317
+    },
+    "micro-one-api/scripts/reconcile/history-audit": {
+      "status": "pass",
+      "elapsed_seconds": 0.334
+    },
+    "micro-one-api/app/billing/internal/biz": {
+      "status": "pass",
+      "elapsed_seconds": 0.54
+    },
+    "micro-one-api/internal/server": {
+      "status": "pass",
+      "elapsed_seconds": 5.74
+    }
+  },
+  "race_command": "go test -race ./domain/upstream/evidence ./domain/upstream/provider ./internal/server ./pkg/jsonx",
+  "static_checks": {
+    "architecture": "passed",
+    "git_diff_check": "passed",
+    "deploy_script_bash_n": "passed",
+    "workflow_yaml": "passed",
+    "compose_environment_entry": "passed",
+    "compose_full_parse": "not_verified: legacy Ruby rejects baseline and working file at the same existing line 184"
+  },
+  "billing_behavior_changed": false,
+  "usage_wire_contract_changed": false,
+  "shadow_default_enabled": false,
+  "amd64_execution": {
+    "status": "not_verified",
+    "attempt": "GOARCH=amd64 CGO_ENABLED=0 go test ./domain/upstream/evidence ./pkg/jsonx ./app/billing/internal/biz -run Test(Native|RequestSnapshotFreezesFiveBucketsAndChargeModes|CalculateCanonicalCost|FloatRounding) -count=1",
+    "error": "bad CPU type in executable",
+    "next_gate": "archive actual Ubuntu amd64 CI results"
+  },
+  "pending_gates": [
+    "amd64 runtime replay",
+    "fixed production shadow window and independent review",
+    "same-view production funds baseline",
+    "actual provider evidence and scope"
+  ],
+  "not_implemented": [
+    "P1 delivery/evidence protocol and producer changes",
+    "inventory inference canary and budget",
+    "P2 immutable contracts and external report reconciliation",
+    "P3 bounded repair candidates"
+  ]
+}

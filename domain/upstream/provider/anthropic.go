@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"micro-one-api/domain/upstream/evidence"
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/pkg/usage"
 	applogger "micro-one-api/platform/logging"
@@ -116,7 +117,7 @@ func (p *AnthropicProvider) Forward(ctx context.Context, req *RawRequest) (*RawR
 	}
 	p.anthropicSetForwardHeaders(httpReq.Header, req.Header)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := evidence.Do(p.httpClient, httpReq, evidence.ProtocolForPath(httpReq.URL.Path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send raw request: %w", err)
 	}
@@ -157,7 +158,7 @@ func (p *AnthropicProvider) ForwardStream(ctx context.Context, req *RawRequest) 
 	}
 	p.anthropicSetForwardHeaders(httpReq.Header, req.Header)
 
-	resp, err := p.streamClient.Do(httpReq)
+	resp, err := evidence.Do(p.streamClient, httpReq, evidence.ProtocolForPath(httpReq.URL.Path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send raw stream request: %w", err)
 	}
@@ -414,7 +415,7 @@ func (p *AnthropicProvider) ChatCompletions(ctx context.Context, req *ChatComple
 	httpReq.Header.Set("x-api-key", p.apiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := evidence.Do(p.httpClient, httpReq, evidence.ProtocolForPath(httpReq.URL.Path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -457,7 +458,7 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 	httpReq.Header.Set("x-api-key", p.apiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
-	resp, err := p.streamClient.Do(httpReq)
+	resp, err := evidence.Do(p.streamClient, httpReq, evidence.ProtocolForPath(httpReq.URL.Path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}

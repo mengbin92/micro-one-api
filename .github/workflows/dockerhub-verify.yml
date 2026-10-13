@@ -54,6 +54,7 @@ jobs:
           build-args: |
             SERVICE_NAME=${{ matrix.service }}
             SERVICE_PATH=${{ matrix.path }}
+            BUILD_REVISION=git:${{ github.sha }}
           # Reuse the GitHub Actions cache (code-review L5).
           # Per-service scope avoids parallel matrix jobs racing on the
           # shared default scope; ignore-error keeps cache export failures

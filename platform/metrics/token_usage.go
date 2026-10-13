@@ -2,6 +2,15 @@ package metrics
 
 import "github.com/prometheus/client_golang/prometheus"
 
+// NativeUsageShadowTotal describes only observation, never billing trust.
+// Exact paths, source/model/request IDs stay in controlled evidence logs.
+var NativeUsageShadowTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "micro_one_api", Subsystem: "relay", Name: "native_usage_shadow_total",
+		Help: "Native usage shadow observations by protocol, trust status and source kind",
+	}, []string{"protocol", "status", "source_kind", "execution"},
+)
+
 // TokenUsageParseAnomaly counts token-usage parsing anomalies observed by the
 // relay/provider layers, as defined by docs/design/token-usage-semantics.md
 // §4 (v0.11.0 ADR).

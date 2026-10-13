@@ -134,6 +134,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			return slotErr
 		}
 		defer releaseChannel()
+		ctx = withNativeUsageShadow(ctx, ch, requestID, currentResolvedModel)
 
 		if isRawStreamRequest(body) {
 			streamResp, streamErr := s.forwardResponsesRawStream(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), retriedBody)
@@ -169,6 +170,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			logInput.applyChannelInputs(ch)
 			logInput.applyReservation(reservation)
 			logInput.applyEnvelope(envelopeFromRawUsage(actualUsage))
+			compareNativeUsageShadow(ctx, logInput.Usage)
 			if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 				s.logPostResponseCommitError(err)
 			} else {
@@ -211,6 +213,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		logInput.applyChannelInputs(ch)
 		logInput.applyReservation(reservation)
 		logInput.applyEnvelope(envelopeFromRawUsage(usage))
+		compareNativeUsageShadow(ctx, logInput.Usage)
 		if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 			return relaybiz.MarkPostForwardError(err)
 		}
@@ -373,6 +376,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		return
 	}
 	defer releaseChannel()
+	r = r.WithContext(withNativeUsageShadow(r.Context(), &route.Channel, requestID, resolvedModel))
 	if stream {
 		streamResp, err := s.forwardResponsesRawStream(r.Context(), &route.Channel, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
 		if err != nil {
@@ -415,6 +419,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		logInput.applyChannelInputs(&route.Channel)
 		logInput.applyReservation(reservation)
 		logInput.applyEnvelope(envelopeFromRawUsage(actualUsage))
+		compareNativeUsageShadow(r.Context(), logInput.Usage)
 		if err := s.commitQuotaAfterResponseObserved(r.Context(), reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 			s.logPostResponseCommitError(err)
 		} else {
@@ -464,6 +469,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 	logInput.applyChannelInputs(&route.Channel)
 	logInput.applyReservation(reservation)
 	logInput.applyEnvelope(envelopeFromRawUsage(usage))
+	compareNativeUsageShadow(r.Context(), logInput.Usage)
 	if err := s.commitQuota(r.Context(), reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 		s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
 		return

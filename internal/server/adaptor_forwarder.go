@@ -10,6 +10,7 @@ import (
 	"time"
 
 	relaycredential "micro-one-api/domain/upstream/credential"
+	"micro-one-api/domain/upstream/evidence"
 	relayprovider "micro-one-api/domain/upstream/provider"
 	relayadaptor "micro-one-api/internal/adaptor"
 	relaybiz "micro-one-api/internal/biz"
@@ -55,6 +56,7 @@ func (f relayAdaptorForwarder) Forward(ctx context.Context, plan *relaybiz.Relay
 	if err := relayprovider.ValidateEndpoint(plan.Channel.Type, req.Endpoint); err != nil {
 		return nil, err
 	}
+	ctx = withNativeUsageShadow(ctx, plan.Channel, req.RequestID, plan.ResolvedModel)
 	ad, ok := relayadaptor.GetAdaptor(plan.Channel.Type)
 	if !ok {
 		if f.fallback == nil {
@@ -114,6 +116,7 @@ func (f relayAdaptorForwarder) ForwardStream(ctx context.Context, plan *relaybiz
 	if err := relayprovider.ValidateEndpoint(plan.Channel.Type, req.Endpoint); err != nil {
 		return nil, err
 	}
+	ctx = withNativeUsageShadow(ctx, plan.Channel, req.RequestID, plan.ResolvedModel)
 	ad, ok := relayadaptor.GetAdaptor(plan.Channel.Type)
 	if !ok {
 		if f.streamFallback == nil {
@@ -184,7 +187,11 @@ func (f relayAdaptorForwarder) sendAdaptorRequest(ctx context.Context, rc *relay
 		if rc.Channel.Type == relayprovider.ChannelTypeOllama {
 			upstreamReq = relayprovider.WithLocalNetworkAccess(upstreamReq)
 		}
-		resp, err := client.Do(upstreamReq) // #nosec G704 -- adaptor URL is validated above.
+		protocol := string(format)
+		if format == relayadaptor.FormatOpenAIChatCompletions {
+			protocol = "openai_chat"
+		}
+		resp, err := evidence.Do(client, upstreamReq, protocol)
 		if err != nil {
 			return format, nil, err
 		}

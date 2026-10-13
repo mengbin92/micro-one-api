@@ -107,6 +107,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				return slotErr
 			}
 			defer releaseChannel()
+			ctx = withNativeUsageShadow(ctx, ch, requestID, currentResolvedModel)
 			resp, forwardErr := provider.Forward(ctx, &relayprovider.RawRequest{
 				Method: r.Method,
 				Path:   upstreamPath,
@@ -144,6 +145,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 			logInput.applyReservation(reservation)
 			logUpstreamUsage(logInput)
 			logInput.applyEnvelope(envelopeFromRawUsage(usage))
+			compareNativeUsageShadow(ctx, logInput.Usage)
 			if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				return relaybiz.MarkPostForwardError(err)
 			}

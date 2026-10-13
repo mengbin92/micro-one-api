@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"micro-one-api/domain/upstream/evidence"
 	"micro-one-api/pkg/jsonx"
 )
 
@@ -78,7 +79,7 @@ func (p *VoyageAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawRe
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := evidence.Do(p.httpClient, httpReq, evidence.ProtocolForPath(httpReq.URL.Path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send voyageai request: %w", err)
 	}

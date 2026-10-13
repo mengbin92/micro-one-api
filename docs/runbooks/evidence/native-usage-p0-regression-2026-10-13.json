@@ -1,0 +1,43 @@
+{
+  "commands": [
+    "go test -json ./domain/upstream/evidence ./domain/upstream/provider ./internal/server ./internal/adaptor ./internal/apicompat ./app/billing/internal/biz ./scripts/reconcile/history-audit ./pkg/jsonx ./platform/metrics -count=1"
+  ],
+  "packages": {
+    "micro-one-api/domain/upstream/evidence": {
+      "status": "pass",
+      "elapsed_seconds": 0.366
+    },
+    "micro-one-api/domain/upstream/provider": {
+      "status": "pass",
+      "elapsed_seconds": 1.112
+    },
+    "micro-one-api/pkg/jsonx": {
+      "status": "pass",
+      "elapsed_seconds": 0.251
+    },
+    "micro-one-api/internal/apicompat": {
+      "status": "pass",
+      "elapsed_seconds": 0.279
+    },
+    "micro-one-api/internal/adaptor": {
+      "status": "pass",
+      "elapsed_seconds": 0.28
+    },
+    "micro-one-api/platform/metrics": {
+      "status": "pass",
+      "elapsed_seconds": 0.317
+    },
+    "micro-one-api/scripts/reconcile/history-audit": {
+      "status": "pass",
+      "elapsed_seconds": 0.334
+    },
+    "micro-one-api/app/billing/internal/biz": {
+      "status": "pass",
+      "elapsed_seconds": 0.54
+    },
+    "micro-one-api/internal/server": {
+      "status": "pass",
+      "elapsed_seconds": 5.74
+    }
+  }
+}

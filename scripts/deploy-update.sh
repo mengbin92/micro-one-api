@@ -147,6 +147,7 @@ deploy_service() {
         --label "micro-one-api.source.digest=${SOURCE_DIGEST}" \
         -f "$(service_dockerfile "$service")" \
         --build-arg "SERVICE_NAME=${service}" --build-arg "SERVICE_PATH=$(service_path "$service")" \
+        --build-arg "BUILD_REVISION=source:${SOURCE_DIGEST}" \
         -t "$image_name" \
         .)
 

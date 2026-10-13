@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"micro-one-api/domain/upstream/evidence"
 	"micro-one-api/pkg/jsonx"
 )
 
@@ -64,7 +65,7 @@ func (p *AzureProvider) ChatCompletions(ctx context.Context, req *ChatCompletion
 	}
 	p.setHeaders(httpReq.Header, nil)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := evidence.Do(p.httpClient, httpReq, evidence.ProtocolForPath(httpReq.URL.Path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -102,7 +103,7 @@ func (p *AzureProvider) ChatCompletionsStream(ctx context.Context, req *ChatComp
 	}
 	p.setHeaders(httpReq.Header, nil)
 
-	resp, err := p.streamClient.Do(httpReq)
+	resp, err := evidence.Do(p.streamClient, httpReq, evidence.ProtocolForPath(httpReq.URL.Path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -134,7 +135,7 @@ func (p *AzureProvider) Forward(ctx context.Context, req *RawRequest) (*RawRespo
 	}
 	p.setHeaders(httpReq.Header, req.Header)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := evidence.Do(p.httpClient, httpReq, evidence.ProtocolForPath(httpReq.URL.Path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send raw request: %w", err)
 	}

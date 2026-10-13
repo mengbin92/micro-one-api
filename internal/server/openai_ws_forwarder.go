@@ -807,7 +807,8 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		if v2Turns != nil {
 			relayOptions.beforeWriteUp = v2Turns.beforeWrite
 		}
-		relayResult, relayExit := relayOpenAIWSFrames(ctx, clientFrameConn, pooledConn.FrameConn(), rewrittenFirstMessage, relayOptions)
+		shadowCtx := withNativeUsageShadow(ctx, currentChannel, requestID, resolvedModel)
+		relayResult, relayExit := relayOpenAIWSFrames(shadowCtx, clientFrameConn, pooledConn.FrameConn(), rewrittenFirstMessage, relayOptions)
 
 		// Release the pooled connection. Mark broken if the relay errored so the
 		// pool doesn't hand a dead conn to the next request.

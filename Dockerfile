@@ -80,8 +80,9 @@ RUN make proto
 # platform, Go's host detection yields the correct GOOS/GOARCH and the
 # platform-native gcc is used — no manual CC/CXX selection is needed.
 ARG SERVICE_PATH
+ARG BUILD_REVISION=unknown
 RUN CGO_ENABLED=1 go build \
-      -ldflags='-s -w -extldflags "-static"' \
+      -ldflags="-s -w -extldflags '-static' -X micro-one-api/domain/upstream/evidence.BuildRevision=${BUILD_REVISION}" \
       -o /app/bin/service ${SERVICE_PATH}
 
 # ---------------------------------------------------------------------------

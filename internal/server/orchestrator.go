@@ -330,6 +330,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		var finalReservation *relaybiz.QuotaReservation
 		var finalReleaseAdmission func()
 		var finalAttemptStartedAt time.Time
+		var finalShadowContext context.Context
 		lastFailureStatus := 0
 		attemptNumber := 0
 		executeStreamAttempt := func(attemptCtx context.Context, channel *relaybiz.Channel) error {
@@ -399,6 +400,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 				lastFailureStatus = http.StatusInternalServerError
 				return err
 			}
+			attemptCtx = withNativeUsageShadow(attemptCtx, attemptPlan.Channel, attemptRequest.RequestID, attemptPlan.ResolvedModel)
 			streamResponse, forwardErr := o.streamPort.ForwardStream(attemptCtx, attemptPlan, attemptRequest)
 			if forwardErr != nil {
 				if o.quotaPort != nil {
@@ -419,6 +421,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			}
 			finalStream = streamResponse
 			finalAttemptStartedAt = attemptStartedAt
+			finalShadowContext = attemptCtx
 			finalPlan = attemptPlan
 			finalRequest = attemptRequest
 			finalReservation = reservation
@@ -465,6 +468,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		result.ChannelID = finalPlan.Channel.ID
 		result.SubscriptionAccountID = subscriptionAccountIDFromPlan(finalPlan)
 		result.Response = newFinalizingRelayStream(req.Endpoint, finalStream.Stream, estimatedUsage, func(streamUsage relaybiz.UsageEnvelope, responseID string, completed bool) error {
+			compareNativeUsageShadow(finalShadowContext, &streamUsage)
 			if finalReleaseAdmission != nil {
 				defer finalReleaseAdmission()
 			}
@@ -595,6 +599,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			lastFailureStatus = http.StatusInternalServerError
 			return err
 		}
+		attemptCtx = withNativeUsageShadow(attemptCtx, attemptPlan.Channel, attemptReq.RequestID, attemptPlan.ResolvedModel)
 		forwardResp, forwardErr := o.forwardPort.Forward(attemptCtx, attemptPlan, attemptReq)
 		if forwardErr != nil {
 			if o.quotaPort != nil {
@@ -625,6 +630,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		if attemptResult.Usage == nil || attemptResult.Usage.BillableTotal() == 0 {
 			attemptResult.Usage = &estimatedUsage
 		}
+		compareNativeUsageShadow(attemptCtx, attemptResult.Usage)
 		if o.quotaPort != nil {
 			latency := time.Since(startTime)
 			if err := o.quotaPort.Commit(attemptCtx, attemptPlan, attemptReq, reservation, *attemptResult.Usage, forwardResp.StatusCode < http.StatusBadRequest, latency); err != nil {
