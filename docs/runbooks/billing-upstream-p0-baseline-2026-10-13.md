@@ -4,7 +4,7 @@
 
 配套方案：[计费准确性](../design/billing-accuracy-and-upstream-evidence-plan-2026-10-13.md)、[上游契约演进](../design/upstream-contract-evolution-plan-2026-10-13.md)。
 
-**状态：P0 工程与本地回归已交付；生产观测、独立费用核验及 amd64 执行结果尚未验收。** 本记录不批准 P1 收费变更，不补签旧观察窗口，也不改变任何 charge allowlist。
+**状态：P0 已部署（`0fe3436f`）并开启影子观测；生产窗口及独立费用证据待验收。** 本记录不批准 P1 收费变更，不补签旧观察窗口，也不改变任何 charge allowlist。
 
 ## 本次交付
 
@@ -21,13 +21,13 @@
 
 `RELAY_USAGE_SHADOW=true` 开启 relay 影子观测，默认 false。主 Compose、lite、Postgres 配置均已传入该开关。关闭时直接调用原 HTTP client，不包装响应 body；没有第二次上游推理，也没有新财务写入。
 
-生产尚未启用。部署时沿用已有本地跨平台构建流程；实际开启须在固定范围、日志留存与观察窗口明确后进行。撤回只需关闭该开关，不改变在途请求的原结算路径。
+2026-10-13 已按 Neo 指令在本机跨构建 linux/amd64 镜像并部署到线上，`RELAY_USAGE_SHADOW=true`。作用范围是当前 relay 已有 HTTP/SSE/WS 路径及既有获准来源，不扩大模型映射或用户收费范围。撤回观测只需关闭该开关并重建 relay 容器，不改变请求的原结算政策。详见下方线上部署记录。
 
 Docker 构建接受 `BUILD_REVISION` 并嵌入二进制：部署脚本复用已有 source digest，CI 使用构建 commit，Release 使用实际 checkout 的 tag commit。源码直接构建优先读取 Go VCS revision。取不到版本时明确记录 unknown，不能据此批准新 parser。该 metadata 不从公网 header 获取。
 
 ## 现行产品政策冻结描述
 
-这里只记录源码与仓库默认值，**没有读取生产环境变量或配置**。
+下表冻结 P0 工程交付时的源码与仓库默认能力，不代表线上取值。本次部署只读取必要的生产开关、镜像及运行状态；实际值与前后对照单独记在下方线上部署记录。
 
 | 项目 | 现行基线 |
 |---|---|
@@ -89,7 +89,31 @@ v2 尚未冻结异常政策、采购费率或 parser/算法 revision。本次影
 
 部署脚本的 shell 语法、修改的 workflow YAML、新增 Compose 环境变量及分层检查通过。本机旧 Ruby YAML parser 对原始和修改后的 Compose 主文件均在既有第 184 行失败，不能据此宣称已完成 Compose 全量解析或镜像运行验证。
 
-本地环境为 Go 1.27.2、darwin/arm64。尝试执行 amd64 测试得到 `bad CPU type in executable`，机器没有可用的 amd64 执行支持；不能把成功交叉编译当成 amd64 回放通过。现有 Ubuntu CI 会执行相同 golden fixture 和 billing 算法测试，须归档其实际结果后才满足跨架构关卡。
+本地环境为 Go 1.27.2、darwin/arm64。初次直接执行 amd64 测试得到 `bad CPU type in executable`；本次使用本机 Docker Desktop 的 linux/amd64/QEMU 容器、禁用网络，实际运行了相同 native/jsonx/计价快照 golden 测试，3 个包通过。见 [amd64 原始输出](evidence/native-usage-p0-amd64-2026-10-13.txt)。这不替代独立生产费用核验或完整 CI 验收。
+
+## 线上部署与首轮观测
+
+2026-10-13 11:36:02（北京时间）已开启影子观测，镜像在本机跨构建，生产机仅加载并启动。
+
+| 项目 | 结果 |
+|---|---|
+| 实现提交 | `0fe3436f` |
+| 线上镜像 | `docker-compose-relay-gateway:deploy-20261013-113200-0fe3436f` |
+| 镜像 ID | `sha256:f6b00e33edbacde555326fe5b77e1fe21fa586852760db5e0f044c6d6d67067a` |
+| 平台与构建证据 | linux/amd64；source digest 与本地 P0 索引一致 |
+| 开关与服务 | `RELAY_USAGE_SHADOW=true`；healthz、metrics 均为 HTTP 200 |
+| 账务开关 | 保持原 canonical/cache charge、allowlist `5:k3`、snapshot v2 与 async 配置；billing 容器未重启 |
+| 日志保留 | 仅 relay 设置 `json-file` 20m × 5，约 100 MiB 滚动上限；不能据此保证全窗口原始证据完整 |
+| 回滚镜像 | `docker-compose-relay-gateway:rollback-20261013-113200` |
+| 配置备份 | `p0-shadow-config-20261013T033600Z`（启用观测前）；`docker-compose.yml.rollback-20261013-113200`（镜像更新前） |
+
+初始固定观测窗口为 **2026-10-13 11:36:02 至 2026-10-15 11:36:02（北京时间）**。观测范围是现有 relay 路径与既有获准来源；不新增推理探测、不修改价目或收费 allowlist。窗口结束后按实际样本、来源/协议覆盖、原始日志保留、同一一致视图资金基线及供应商可见证据独立验收，不能仅因时间到或服务正常就晋级 P1。
+
+本次已捕获真实流量：相同请求关联下，Responses 返回 405 后沿既有路径回退到 Chat，HTTP 200 且流终结完整；native 影子记录与结算对照日志均存在，parser/build revision 正确。成功 usage 同时包含 Chat 与 Responses 的 input/output/details 别名，采样中的成对数值相等；当前静态影子契约将其保守标为 `unsupported/unknown_usage_field`，当前结算解析为 verified。字段值相等不能自行证明供应商包含关系或成本，后续需作为有依据的契约候选验证；P0 不直接修改解析/收费。
+
+拒绝端点的非 JSON 错误体另记 `upstream_rejected + invalid/malformed_json`，不能将其与成功响应的 usage 错误混合，也不能把多个执行观察记录计为多次用户扣费。
+
+[线上部署与验证索引](evidence/native-usage-p0-production-2026-10-13.json)只保存脱敏元数据；含真实请求/供应商 ID 的原始日志保存在受控本地 evidence 目录，不进入 Git。旧七天自动观察文件未纳入本次提交。生产完整窗口、独立费用与 P1 门禁仍为待验收。
 
 ## P0 验收后再推进 P1
 

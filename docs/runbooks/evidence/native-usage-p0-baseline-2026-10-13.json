@@ -2,7 +2,7 @@
   "version": 1,
   "date": "2026-10-13",
   "stage": "P0",
-  "status": "local_verified_acceptance_pending",
+  "status": "production_observation_in_progress",
   "source_base_commit": "ab59a042eb1bbfa65f2d54f4e78874d48175f098",
   "source_digest": "4a9174c9a17c59411802df719acbaf483fc21e1b453aa401c1a6754ade8efdb5",
   "parser_revision": "native-shadow-2026-10-13.1",
@@ -63,13 +63,13 @@
   "usage_wire_contract_changed": false,
   "shadow_default_enabled": false,
   "amd64_execution": {
-    "status": "not_verified",
-    "attempt": "GOARCH=amd64 CGO_ENABLED=0 go test ./domain/upstream/evidence ./pkg/jsonx ./app/billing/internal/biz -run Test(Native|RequestSnapshotFreezesFiveBucketsAndChargeModes|CalculateCanonicalCost|FloatRounding) -count=1",
-    "error": "bad CPU type in executable",
-    "next_gate": "archive actual Ubuntu amd64 CI results"
+    "status": "passed",
+    "execution": "local Docker Desktop linux/amd64 via QEMU; network disabled",
+    "runtime": "go version go1.27.2 linux/amd64",
+    "command": "go test -p 1 ./domain/upstream/evidence ./pkg/jsonx ./app/billing/internal/biz -run Test(Native|Marshal|Unmarshal|RequestSnapshotFreezesFiveBucketsAndChargeModes|CalculateCanonicalCost|FloatRounding) -count=1",
+    "evidence": "native-usage-p0-amd64-2026-10-13.txt"
   },
   "pending_gates": [
-    "amd64 runtime replay",
     "fixed production shadow window and independent review",
     "same-view production funds baseline",
     "actual provider evidence and scope"
@@ -79,5 +79,12 @@
     "inventory inference canary and budget",
     "P2 immutable contracts and external report reconciliation",
     "P3 bounded repair candidates"
-  ]
+  ],
+  "host_amd64_execution_attempt": {
+    "status": "not_verified",
+    "attempt": "GOARCH=amd64 CGO_ENABLED=0 go test ./domain/upstream/evidence ./pkg/jsonx ./app/billing/internal/biz -run Test(Native|RequestSnapshotFreezesFiveBucketsAndChargeModes|CalculateCanonicalCost|FloatRounding) -count=1",
+    "error": "bad CPU type in executable",
+    "next_gate": "archive actual Ubuntu amd64 CI results"
+  },
+  "production_evidence": "native-usage-p0-production-2026-10-13.json"
 }
