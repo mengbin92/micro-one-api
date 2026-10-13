@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -80,9 +81,13 @@ type SettleTask struct {
 	// Success mirrors CommitQuotaRequest.Success: false → release reservation.
 	Success bool
 	// Usage carries the per-request usage detail forwarded from the relay.
-	Usage     LedgerUsage
-	Cost      int64
-	Timestamp time.Time
+	Usage                    LedgerUsage
+	Cost                     int64
+	Timestamp                time.Time
+	SettlementReceiptVersion int32  `json:",omitempty"`
+	SettlementEventID        string `json:",omitempty"`
+	SettlementPayloadDigest  string `json:",omitempty"`
+	AcceptedPayloadDigest    string `json:",omitempty"`
 }
 
 // SettlementTaskStore is the durable recovery boundary for async settlement.
@@ -364,10 +369,30 @@ func (uc *AsyncBillingUsecase) Settle(ctx context.Context, task *SettleTask) err
 	if task == nil {
 		return fmt.Errorf("settlement task is nil")
 	}
+	if err := task.ValidateReceipt(); err != nil {
+		return err
+	}
 	if store := uc.getTaskStore(); store != nil {
-		if err := store.SaveTask(context.WithoutCancel(ctx), task); err != nil {
+		var persistErr error
+		if intake, ok := store.(DurableSettlementTaskStore); ok {
+			var receipt *SettlementReceipt
+			receipt, persistErr = intake.AcceptTask(context.WithoutCancel(ctx), task)
+			if persistErr == nil && receipt != nil && !receipt.SettlementAccepted {
+				return ErrSettlementReservationClosed
+			}
+			if persistErr == nil && receipt != nil {
+				// Recovery claims the immutable stored payload.
+				return nil
+			}
+		} else {
+			persistErr = store.SaveTask(context.WithoutCancel(ctx), task)
+		}
+		if err := persistErr; err != nil {
 			metrics.AsyncBillingDroppedFlushes.Inc()
 			applogger.Log.Error("persist async settlement before enqueue", zap.String("reservation_id", task.ReservationID), zap.Error(err))
+			if errors.Is(err, ErrSettlementPayloadConflict) || errors.Is(err, ErrSettlementReservationClosed) || errors.Is(err, ErrSettlementReceiptInvalid) || task.SettlementReceiptVersion > 0 {
+				return err
+			}
 			fallbackCtx, cancel := detachedSettleContext(ctx)
 			fallbackErr := uc.settleSync(fallbackCtx, task)
 			cancel()
@@ -466,6 +491,9 @@ func (uc *AsyncBillingUsecase) settleSync(ctx context.Context, task *SettleTask)
 //	BillingUsecase.commitQuotaInternal (see the "Concurrent or retry" branch).
 //	If that CAS guard is ever weakened, this async path becomes unsafe.
 func (uc *AsyncBillingUsecase) runCommitPipeline(ctx context.Context, task *SettleTask) error {
+	if err := task.ValidateReceipt(); err != nil {
+		return err
+	}
 	// v0.18 P2 C5: observe the async commit duration. The sync entry point
 	// (BillingService.CommitQuota, service layer) observes mode=sync after the
 	// async branch returns early. The Observe is deliberately NOT in

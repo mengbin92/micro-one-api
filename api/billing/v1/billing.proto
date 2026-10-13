@@ -25,6 +25,7 @@ service BillingService {
  // (never advances to a pricier group) when the user cannot settle in a group.
  rpc CheckRoutingSettlement(CheckRoutingSettlementRequest) returns (CheckRoutingSettlementReply);
   rpc GetRoutingCapabilities(GetRoutingCapabilitiesRequest) returns (GetRoutingCapabilitiesResponse);
+  rpc RecordExecutionEvidence(RecordExecutionEvidenceRequest) returns (RecordExecutionEvidenceResponse);
   rpc ReserveQuota(ReserveQuotaRequest) returns (ReserveQuotaResponse);
   rpc ListRequestAttempts(ListRequestAttemptsRequest) returns (ListRequestAttemptsResponse);
   rpc CommitQuota(CommitQuotaRequest) returns (CommitQuotaResponse);
@@ -99,7 +100,7 @@ message SubscriptionUsage {
 message GetSubscriptionUsageResponse { SubscriptionUsage usage = 1; }
 
 message GetRoutingCapabilitiesRequest {}
-message GetRoutingCapabilitiesResponse { int32 request_snapshot_version = 1; bool fixed_routing = 2; bool subscription_contracts = 3; bool user_price_overrides = 4; }
+message GetRoutingCapabilitiesResponse { int32 request_snapshot_version = 1; bool fixed_routing = 2; bool subscription_contracts = 3; bool user_price_overrides = 4; int32 settlement_receipt_version = 5; int32 execution_delivery_version = 6; int32 usage_contract_version = 7; string settlement_policy_version = 8; }
 message SetUserRoutingPriceRequest { int64 user_id = 1; int64 routing_group_id = 2; double price_ratio = 3; optional int64 expected_version = 4; string reason = 5; }
 message SetUserRoutingPriceReply { int64 version = 1; }
 message ClearUserRoutingPriceRequest { int64 user_id = 1; int64 routing_group_id = 2; optional int64 expected_version = 3; string reason = 4; }
@@ -122,6 +123,9 @@ message ReserveQuotaRequest {
   int32 attempt_number = 10;
   string source_kind = 11;
   string upstream_model_id = 12;
+  int32 execution_delivery_version = 13;
+  int32 usage_contract_version = 14;
+  string settlement_policy_version = 15;
 }
 
 message ListRequestAttemptsRequest {
@@ -171,6 +175,10 @@ message ReserveQuotaResponse {
   string request_id = 14;
   string source_kind = 15;
   string upstream_model_id = 16;
+  bytes execution_intent_json = 17;
+  int32 execution_delivery_version = 18;
+  int32 usage_contract_version = 19;
+  string settlement_policy_version = 20;
 }
 
 message CommitQuotaRequest {
@@ -227,6 +235,11 @@ message CommitQuotaRequest {
   // producer did not send the new contract). Legacy fields 7-18 keep their old
   // meanings and are dual-written during the rolling upgrade.
   UsageEnvelope usage = 26;
+  // Optional durable final-settlement receipt. Producers must negotiate this
+  // capability before forwarding. Version 0 retains the existing RPC contract.
+  int32 settlement_receipt_version = 27;
+  string settlement_event_id = 28; // reservation_id + "/final/0"
+  string settlement_payload_sha256 = 29;
 }
 
 // ========== Usage 语义契约（token-usage-billing-semantics-remediation §4.1/§6.2） ==========
@@ -277,6 +290,9 @@ message UsageEnvelope {
   // decision_reason records why the verdict was reached (e.g.
   // "cached_exceeds_reported_prompt", "v1_contract_error"), for ledger audit.
   string decision_reason = 7;
+  string parser_revision = 8;
+  string contract_revision = 9;
+  repeated string present_paths = 10;
 }
 
 message CommitQuotaResponse {
@@ -295,6 +311,19 @@ message CommitQuotaResponse {
   // and the authoritative values are written by the worker. Callers should
   // not use the returned amounts for final accounting when this flag is set.
   bool async_enqueued = 7;
+  SettlementReceipt settlement_receipt = 8;
+}
+
+// A durable receipt is not a financial completion acknowledgment. Released
+// and expired reservations never report settlement_accepted or settled.
+message SettlementReceipt {
+  int32 version = 1;
+  string event_id = 2;
+  string payload_sha256 = 3;
+  string status = 4; // accepted | processing | settled | released | expired
+  bool received = 5;
+  bool settlement_accepted = 6;
+  bool settled = 7;
 }
 
 // LedgerEntry is the wire-side view of a billing_ledgers row. The
@@ -854,3 +883,7 @@ message ExportArtifactReply { string content_type = 1; string file_name = 2; byt
 message RunReconciliationRequest { string reason = 1; }
 
 message ResetAccountBalanceRequest { string user_id = 1; int64 target_balance = 2; int64 expected_balance = 3; string reason = 4; string request_id = 5; }
+
+// Exact relay system capability; JSON is a bounded domain execution event.
+message RecordExecutionEvidenceRequest { bytes event_json = 1; string payload_sha256 = 2; }
+message RecordExecutionEvidenceResponse { bool received = 1; bool settlement_accepted = 2; bool settled = 3; string status = 4; string payload_sha256 = 5; int64 committed_amount = 6; bytes real_traffic_comparison_json = 7; }

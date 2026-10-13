@@ -131,6 +131,11 @@ if printf '%s\n' "$negative_output" | grep -q '^applied 1 migration'; then
   exit 1
 fi
 
+if [ "$dialect" = "mysql" ]; then
+  echo "== execution reservation collation compatibility =="
+  MIGRATIONS_RESERVATION_INTEGRATION=1 go test ./platform/database/migrate -run '^TestExecutionReservationCollationIntegration$'
+fi
+
 echo "== legacy schema_migrations metadata preflight =="
 
 # Reuse the real service database with a minimal, isolated migration set. The

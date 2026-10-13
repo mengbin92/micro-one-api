@@ -113,6 +113,9 @@ set -euo pipefail
 cd "$1"; shift
 docker compose config --quiet
 for service in "$@"; do
+    if [[ "$service" == relay-gateway ]]; then
+        install -d -m 0700 -o 65534 -g 65534 data/relay-outbox
+    fi
     cid=$(docker compose ps -q "$service")
     [[ -n "$cid" && "$cid" != *$'\n'* ]]
     test "$(docker inspect "$cid" --format '{{.State.Running}}')" = true
@@ -147,6 +150,7 @@ deploy_service() {
         --label "micro-one-api.source.digest=${SOURCE_DIGEST}" \
         -f "$(service_dockerfile "$service")" \
         --build-arg "SERVICE_NAME=${service}" --build-arg "SERVICE_PATH=$(service_path "$service")" \
+        --build-arg "BUILD_REVISION=source:${SOURCE_DIGEST}" \
         -t "$image_name" \
         .)
 

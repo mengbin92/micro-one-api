@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -122,6 +123,9 @@ func (s *ChannelModelProbeService) syncModelsForChannel(ctx context.Context, cha
 	channel, err := s.uc.GetChannel(ctx, channelID)
 	if err != nil {
 		return err
+	}
+	if os.Getenv("UPSTREAM_PROBES_ENABLED") == "true" {
+		return nil
 	}
 	// A manual model list is authoritative. This also makes the async create
 	// probe harmless if an operator edits the channel while discovery is running.

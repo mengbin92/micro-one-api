@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "date": "2026-10-13",
+  "stage": "P1.1 consumer final settlement intake",
+  "status": "local_verified_not_deployed",
+  "source_base_commit": "57153a1ead345967def2904923dbcd22e40a698b",
+  "source_digest": "6c792576936af60571872e3266d147299dfd007cbb0c83ba5f8d37aba69f52b3",
+  "focused_passed_tests": 27,
+  "focused_archive_sha256": "e4c98df027f03eb7570f3a577c20e8b2b2b0e48087f7d952fbeabcfa8b21b555",
+  "commands": [
+    "make api",
+    "go test ./app/billing/internal/data -run ^TestSettlementIntake -count=1 (red before fix)",
+    "go test ./domain/billing ./app/billing/internal/biz ./app/billing/internal/data ./app/billing/internal/service -run ^Test(Settlement|AsyncBillingConflictingIntake) -count=1",
+    "go test -race ./domain/billing ./app/billing/internal/biz ./app/billing/internal/data ./app/billing/internal/service",
+    "go test $(go list ./... | rg -v /test/e2e/suite$|/web/node_modules/|/internal/integration$)",
+    "./scripts/check-architecture.sh",
+    "go test ./cmd/rbac-contract-check -count=1",
+    "git diff --check"
+  ],
+  "unit_regression": {
+    "status": "passed",
+    "packages_passed": 110
+  },
+  "race_regression": {
+    "status": "passed",
+    "packages": 4
+  },
+  "receipt_flag": "BILLING_SETTLEMENT_RECEIPTS_V1=false by default",
+  "no_new_tables": true,
+  "producer_enabled": false,
+  "pricing_algorithm_changed": false,
+  "scope": "immutable final financial inbox and durable ACK only; not full execution evidence/outbox/lease protocol",
+  "remaining_p1": [
+    "relay outbox",
+    "before-forward intent and bounded lease/deadline",
+    "procurement evidence/purpose and tariff snapshots",
+    "usage v2 negotiation and propagation",
+    "inventory inference canary budgets and L2 reports"
+  ],
+  "not_verified": [
+    "real MySQL/Postgres concurrency without dedicated test DSNs",
+    "production receipt rollout",
+    "full P0 fixed window and independent financial/provider acceptance"
+  ]
+}

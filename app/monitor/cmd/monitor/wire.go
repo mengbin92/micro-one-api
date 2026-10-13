@@ -51,7 +51,11 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	))
 }
 
-func newApp(cfg *Config, svc *service.MonitorService, reg registrarResult) (*kratos.App, func()) {
+func newApp(cfg *Config, svc *service.MonitorService, reg registrarResult, repo *data.Repository) (*kratos.App, func(), error) {
+	stopProbes, err := startUpstreamProbes(repo)
+	if err != nil {
+		return nil, nil, err
+	}
 	ownerAuth, _ := authz.FromEnvironment("monitor")
 	svc.SetAuthorization(ownerAuth)
 	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
@@ -66,11 +70,12 @@ func newApp(cfg *Config, svc *service.MonitorService, reg registrarResult) (*kra
 	}
 	app := kratos.New(opts...)
 	return app, func() {
+		stopProbes()
 		_ = ownerAuth.Close()
 		if channelCleanup != nil {
 			channelCleanup()
 		}
-	}
+	}, nil
 }
 
 func newChannelHealthChecker(cfg *Config) (*biz.ChannelHealthChecker, func()) {

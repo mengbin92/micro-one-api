@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"micro-one-api/domain/authorization"
+	"micro-one-api/domain/execution"
 	"micro-one-api/platform/security/serviceidentity"
 	"os"
 	"sort"
@@ -352,6 +353,13 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 	snapshot, err := uc.prepareRequestSnapshot(ctx, userID, account.Group, model, routingContext)
 	if err != nil {
 		return nil, err
+	}
+	if i := ExecutionIntent(ctx); i != nil {
+		if snapshot == nil {
+			return nil, ErrRequestSnapshotUnavailable
+		}
+		copy := *i
+		snapshot.Execution = &copy
 	}
 	calculator, priceGroup := uc, account.Group
 	if snapshot != nil {
@@ -746,7 +754,7 @@ func committedAmountFromReservation(r *Reservation) int64 {
 	if r == nil {
 		return 0
 	}
-	if r.ActualCost > 0 {
+	if r.ActualCost > 0 || r.RequestSnapshot != nil && r.RequestSnapshot.Execution != nil {
 		return r.ActualCost
 	}
 	return r.Amount
@@ -820,50 +828,34 @@ func (uc *BillingUsecase) CommitQuotaWithUsageAndSplit(ctx context.Context, rese
 	}, nil
 }
 
-type LedgerUsage struct {
-	TokenName             string
-	Endpoint              string
-	PromptTokens          int64
-	CompletionTokens      int64
-	CacheReadTokens       int64
-	CacheCreation5mTokens int64
-	CacheCreation1hTokens int64
-	UpstreamCost          int64
-	ElapsedTime           int64
-	IsStream              bool
-	SubscriptionAccountID int64 // optional override; 0 = use the reservation's account
-
-	// PromptExclusive (v0.11.0 Phase 0/1, ADR §3.3): when true, prompt_tokens
-	// and cache_read_tokens are mutually exclusive buckets (Anthropic / GLM
-	// Messages API). The pricing function must NOT subtract cacheRead from
-	// prompt because prompt already excludes cached tokens. When false
-	// (default, OpenAI subset semantics), cacheRead IS a subset of prompt and
-	// the classic input = prompt - cacheRead subtraction applies.
-	//
-	// Deprecated (token-usage-billing-semantics-remediation §5.3): only the
-	// legacy (UsageContractVersion=0) branch may consult it. v1 requests are
-	// priced from Envelope canonical buckets exclusively.
-	PromptExclusive bool
-
-	// UsageContractVersion selects the usage contract the producer honors:
-	// 0 = legacy flat fields above; 1 = Envelope is authoritative (§5.3).
-	UsageContractVersion int32
-	// Envelope carries the parser verdict and canonical buckets for v1
-	// producers. Nil for legacy producers. A v1 request with a nil/invalid
-	// envelope is a producer contract error and is settled via the ambiguous
-	// conservative policy (NEVER via a silent legacy fallback).
-	Envelope *UsageEnvelopeData
-
-	// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs. UpstreamModelID
-	// is the exact identifier the selected upstream requires (e.g.
-	// "z-ai/glm-5.2"); SourceKind is CostSourceChannel or CostSourceSubscription
-	// so the cost-key prefix is unambiguous. When either is empty, billing
-	// falls back to the legacy <channel_id>:<public_model_id> key.
-	UpstreamModelID string
-	SourceKind      string
-}
+type LedgerUsage = billingdomain.LedgerUsage
 
 func (uc *BillingUsecase) CommitQuotaWithUsage(ctx context.Context, reservationID string, actualTokens int64, success bool, usage LedgerUsage) (int64, int64, error) {
+	if usage.UsageContractVersion != 2 {
+		r, err := uc.reservationRepo.GetReservation(ctx, reservationID)
+		if err != nil {
+			return 0, 0, err
+		}
+		if success && r.RequestSnapshot != nil && r.RequestSnapshot.Execution != nil {
+			return 0, 0, ErrSettlementReceiptInvalid
+		}
+	}
+	if usage.UsageContractVersion == 2 {
+		r, err := uc.reservationRepo.GetReservation(ctx, reservationID)
+		if err != nil {
+			return 0, 0, err
+		}
+		if r.RequestSnapshot == nil || r.RequestSnapshot.Execution == nil || r.RequestSnapshot.Execution.Policy != execution.Policy || ValidateV2Envelope(usage.Envelope) != "" {
+			return 0, 0, ErrSettlementReceiptInvalid
+		}
+		if r.Status == ReservationStatusReleased || r.Status == ReservationStatusExpired {
+			return 0, 0, ErrSettlementReservationClosed
+		}
+		if uc.Now().Unix() >= r.RequestSnapshot.Execution.EvidenceDeadline || usage.Envelope.ParseStatus != "verified" {
+			return 0, 0, uc.ReleaseQuota(ctx, reservationID, "frozen native v2 policy: unproven usage")
+		}
+	}
+
 	// Code-review 2026-07-30 billing-C2: the legacy (non-subscription)
 	// commit path used a non-atomic, non-CAS sequence (autocommit read ->
 	// unfreeze -> refund/charge -> status update -> ledger -> usage, each an
@@ -919,7 +911,7 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 	if err != nil {
 		return 0, 0, err
 	}
-	if actualCost <= 0 {
+	if actualCost <= 0 && usage.UsageContractVersion != 2 {
 		actualCost = 1
 	}
 
@@ -1089,6 +1081,9 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 				resultRefundAmount = 0
 				return nil
 			case ReservationStatusReleased, ReservationStatusExpired:
+				if usage.UsageContractVersion == 2 {
+					return ErrSettlementReservationClosed
+				}
 				resultActualCost = 0
 				resultRefundAmount = reservation.Amount
 				return nil
@@ -1098,6 +1093,9 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		reservation, err := uc.reservationRepo.GetReservationInTx(ctx, tx, reservationID)
 		if err != nil {
 			return fmt.Errorf("get reservation in tx: %w", err)
+		}
+		if usage.UsageContractVersion == 2 && (reservation.RequestSnapshot == nil || reservation.RequestSnapshot.Execution == nil || uc.Now().Unix() >= reservation.RequestSnapshot.Execution.EvidenceDeadline) {
+			return ErrSettlementReservationClosed
 		}
 		account, err := uc.accountRepo.GetAccountSnapshotInTx(ctx, tx, reservation.UserID)
 		if err != nil {
@@ -1109,7 +1107,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		if err != nil {
 			return err
 		}
-		if actualCost <= 0 {
+		if actualCost <= 0 && usage.UsageContractVersion != 2 {
 			actualCost = 1
 		}
 		if reservation.RequestSnapshot != nil && reservation.RequestSnapshot.BillingMode == routing.SubscriptionOnly && actualCost > reservation.Amount {
@@ -1424,7 +1422,16 @@ func (uc *BillingUsecase) releaseReservation(ctx context.Context, reservationID,
 		return uc.releaseReservationLegacy(ctx, reservationID, reason, finalStatus)
 	}
 	return runner.RunInTx(ctx, func(ctx context.Context, tx subscriptionbiz.Tx) error {
-		won, err := uc.reservationRepo.CASReservationStatus(ctx, tx, reservationID, ReservationStatusReserved, ReservationStatusReleasing)
+		var won bool
+		var err error
+		if guard, ok := uc.reservationRepo.(ReservationExpiryGuard); ok && finalStatus == ReservationStatusExpired {
+			won, err = guard.CASExpiredReservationStatus(ctx, tx, reservationID, uc.Now())
+			if err == nil && !won {
+				return ErrReservationExpiryDeferred
+			}
+		} else {
+			won, err = uc.reservationRepo.CASReservationStatus(ctx, tx, reservationID, ReservationStatusReserved, ReservationStatusReleasing)
+		}
 		if err != nil {
 			return fmt.Errorf("cas to releasing: %w", err)
 		}

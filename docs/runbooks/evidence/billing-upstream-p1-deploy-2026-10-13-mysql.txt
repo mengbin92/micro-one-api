@@ -1,0 +1,264 @@
+mysql database is ready
+== mysql migration smoke: expecting 124 migrations ==
+== fresh apply ==
+applied 124 migration(s):
+  - 000_create_core_tables
+  - 007_create_system_options
+  - 008_create_billing_reservations
+  - 009_create_billing_ledgers
+  - 010_create_billing_redeem_codes
+  - 011_create_billing_redeem_records
+  - 013_add_redeem_code_indexes
+  - 014_add_token_management_fields
+  - 015_add_user_aff_fields
+  - 016_add_usage_log_fields
+  - 017_add_token_oneapi_fields
+  - 018_add_channel_oneapi_fields
+  - 019_create_user_oauth_identities
+  - 020_add_channel_balance_refresh_tracking
+  - 021_create_reconciliation_runs
+  - 022_create_schema_migrations
+  - 023_create_payment_orders
+  - 024_add_billing_ledger_usage_fields
+  - 025_add_user_role
+  - 026_fix_users_status_comment
+  - 027_remove_placeholder_seed_data
+  - 028_add_billing_ledger_aggregation_indexes
+  - 029_add_billing_ledger_upstream_cost
+  - 030_add_reconciliation_run_phase3_fields
+  - 031_add_cache_read_token_usage_fields
+  - 032_add_channel_health_fields
+  - 033_add_notification_last_error
+  - 034_create_subscription_accounts
+  - 035_add_subscription_account_quota_fields
+  - 036_add_subscription_account_id_to_billing_ledgers
+  - 037_add_subscription_account_id_to_logs
+  - 038_add_subscription_account_id_to_billing_reservations
+  - 039_create_user_subscriptions
+  - 040_create_subscription_groups
+  - 041_create_account_quota_snapshots
+  - 042_add_subscription_group_pricing
+  - 043_add_group_id_to_payment_orders
+  - 044_add_reservation_subscription_fields
+  - 045_add_ledger_cost_source_and_dedupe_key
+  - 046_create_account_receivables
+  - 047_backfill_empty_ledger_dedupe_keys
+  - 048_increase_subscription_usage_precision
+  - 049_backfill_subscription_usage_from_ledgers
+  - 050_create_subscription_plans
+  - 051_add_subscription_account_local_quota
+  - 052_create_subscription_account_quota_events
+  - 053_add_subscription_account_5h_quota
+  - 054_add_subscription_account_rpm_limit
+  - 055_add_subscription_account_session_window_limit
+  - 056_add_subscription_account_quota_reset_config
+  - 057_add_plan_snapshot_to_payment_orders
+  - 057_create_subscription_account_quota_reset_runs
+  - 058_add_subscription_id_to_payment_orders
+  - 059_enforce_single_active_subscription
+  - 061_add_billing_schema_system_options
+  - 062_create_model_management_tables
+  - 063_add_subscription_account_model_mapping
+  - 064_add_channel_restrict_models
+  - 065_add_model_routings
+  - 066_add_upstream_model_ids
+  - 067_add_cache_creation_token_usage_fields
+  - 068_add_canonical_model_id_constraint
+  - 069_add_subscription_account_weight
+  - 070_clean_orphan_model_mappings
+  - 071_add_per_bucket_cost
+  - 072_add_unique_request_id_billing_reservations
+  - 073_add_refund_reason_to_payment_orders
+  - 074_add_actual_cost_to_billing_reservations
+  - 075_add_password_changed_at_to_users
+  - 076_add_key_hash_to_tokens
+  - 077_add_subscription_renewal_strategy
+  - 078_create_billing_ledger_dedupe_claims
+  - 079_add_balance_amount_to_billing_reservations
+  - 080_add_billing_ledger_cost_audit_fields
+  - 081_create_channel_usage_events
+  - 082_create_log_ingest_dedupe_claims
+  - 083_add_model_modalities
+  - 084_add_model_pricing_cache_read
+  - 085_add_billing_usage_semantics
+  - 086_add_log_usage_semantics
+  - 087_create_usage_semantic_source_blocks
+  - 088_create_billing_pricing_snapshots
+  - 089_add_billing_ledger_dashboard_index
+  - 091_create_model_health_states
+  - 092_create_routing_groups
+  - 093_add_request_snapshots
+  - 094_add_identity_routing_facts
+  - 095_create_routing_change_outbox
+  - 096_add_subscription_contracts
+  - 097_create_routing_billing_policies
+  - 098_identity_ordered_token_groups
+  - 099_billing_user_routing_price_overrides
+  - 100_channel_routing_relation_overrides
+  - 101_add_reconciliation_run_status
+  - 102_create_billing_settlement_tasks
+  - 103_create_identity_token_quota_dedupe
+  - 104_add_notification_processing_lease
+  - 105_add_config_revision
+  - 106_add_reservation_request_trace
+  - 107_add_log_request_trace
+  - 108_add_credential_revision
+  - 109_add_credential_refresh_pending
+  - 110_create_identity_iam
+  - 111_add_iam_cardinality_limits
+  - 112_create_resource_write_audits
+  - 113_notification_management
+  - 114_alert_rule_revision
+  - 115_subscription_quota_policy_revision
+  - 116_billing_redeem_revision
+  - 117_system_options_revision
+  - 118_channel_resource_revisions
+  - 119_upstream_cost_resource_ids
+  - 120_model_routing_revision
+  - 121_usage_semantic_block_revision
+  - 122_config_tombstones
+  - 123_add_iam_permission_metadata
+  - 124_backfill_subscription_account_revision
+  - 125_backfill_config_revision
+  - 126_upstream_execution_evidence
+  - 127_upstream_inventory
+  - 128_upstream_probe_budgets
+  - 130_exact_usage_semantic_model_keys
+  - 131_match_execution_reservation_collation
+  - phase1_indexes
+== repeat apply (idempotence) ==
+nothing to apply
+== migration status audit ==
+VERSION                                             APPLIED
+000_create_core_tables                              yes
+007_create_system_options                           yes
+008_create_billing_reservations                     yes
+009_create_billing_ledgers                          yes
+010_create_billing_redeem_codes                     yes
+011_create_billing_redeem_records                   yes
+013_add_redeem_code_indexes                         yes
+014_add_token_management_fields                     yes
+015_add_user_aff_fields                             yes
+016_add_usage_log_fields                            yes
+017_add_token_oneapi_fields                         yes
+018_add_channel_oneapi_fields                       yes
+019_create_user_oauth_identities                    yes
+020_add_channel_balance_refresh_tracking            yes
+021_create_reconciliation_runs                      yes
+022_create_schema_migrations                        yes
+023_create_payment_orders                           yes
+024_add_billing_ledger_usage_fields                 yes
+025_add_user_role                                   yes
+026_fix_users_status_comment                        yes
+027_remove_placeholder_seed_data                    yes
+028_add_billing_ledger_aggregation_indexes          yes
+029_add_billing_ledger_upstream_cost                yes
+030_add_reconciliation_run_phase3_fields            yes
+031_add_cache_read_token_usage_fields               yes
+032_add_channel_health_fields                       yes
+033_add_notification_last_error                     yes
+034_create_subscription_accounts                    yes
+035_add_subscription_account_quota_fields           yes
+036_add_subscription_account_id_to_billing_ledgers  yes
+037_add_subscription_account_id_to_logs             yes
+038_add_subscription_account_id_to_billing_reservations  yes
+039_create_user_subscriptions                       yes
+040_create_subscription_groups                      yes
+041_create_account_quota_snapshots                  yes
+042_add_subscription_group_pricing                  yes
+043_add_group_id_to_payment_orders                  yes
+044_add_reservation_subscription_fields             yes
+045_add_ledger_cost_source_and_dedupe_key           yes
+046_create_account_receivables                      yes
+047_backfill_empty_ledger_dedupe_keys               yes
+048_increase_subscription_usage_precision           yes
+049_backfill_subscription_usage_from_ledgers        yes
+050_create_subscription_plans                       yes
+051_add_subscription_account_local_quota            yes
+052_create_subscription_account_quota_events        yes
+053_add_subscription_account_5h_quota               yes
+054_add_subscription_account_rpm_limit              yes
+055_add_subscription_account_session_window_limit   yes
+056_add_subscription_account_quota_reset_config     yes
+057_add_plan_snapshot_to_payment_orders             yes
+057_create_subscription_account_quota_reset_runs    yes
+058_add_subscription_id_to_payment_orders           yes
+059_enforce_single_active_subscription              yes
+061_add_billing_schema_system_options               yes
+062_create_model_management_tables                  yes
+063_add_subscription_account_model_mapping          yes
+064_add_channel_restrict_models                     yes
+065_add_model_routings                              yes
+066_add_upstream_model_ids                          yes
+067_add_cache_creation_token_usage_fields           yes
+068_add_canonical_model_id_constraint               yes
+069_add_subscription_account_weight                 yes
+070_clean_orphan_model_mappings                     yes
+071_add_per_bucket_cost                             yes
+072_add_unique_request_id_billing_reservations      yes
+073_add_refund_reason_to_payment_orders             yes
+074_add_actual_cost_to_billing_reservations         yes
+075_add_password_changed_at_to_users                yes
+076_add_key_hash_to_tokens                          yes
+077_add_subscription_renewal_strategy               yes
+078_create_billing_ledger_dedupe_claims             yes
+079_add_balance_amount_to_billing_reservations      yes
+080_add_billing_ledger_cost_audit_fields            yes
+081_create_channel_usage_events                     yes
+082_create_log_ingest_dedupe_claims                 yes
+083_add_model_modalities                            yes
+084_add_model_pricing_cache_read                    yes
+085_add_billing_usage_semantics                     yes
+086_add_log_usage_semantics                         yes
+087_create_usage_semantic_source_blocks             yes
+088_create_billing_pricing_snapshots                yes
+089_add_billing_ledger_dashboard_index              yes
+091_create_model_health_states                      yes
+092_create_routing_groups                           yes
+093_add_request_snapshots                           yes
+094_add_identity_routing_facts                      yes
+095_create_routing_change_outbox                    yes
+096_add_subscription_contracts                      yes
+097_create_routing_billing_policies                 yes
+098_identity_ordered_token_groups                   yes
+099_billing_user_routing_price_overrides            yes
+100_channel_routing_relation_overrides              yes
+101_add_reconciliation_run_status                   yes
+102_create_billing_settlement_tasks                 yes
+103_create_identity_token_quota_dedupe              yes
+104_add_notification_processing_lease               yes
+105_add_config_revision                             yes
+106_add_reservation_request_trace                   yes
+107_add_log_request_trace                           yes
+108_add_credential_revision                         yes
+109_add_credential_refresh_pending                  yes
+110_create_identity_iam                             yes
+111_add_iam_cardinality_limits                      yes
+112_create_resource_write_audits                    yes
+113_notification_management                         yes
+114_alert_rule_revision                             yes
+115_subscription_quota_policy_revision              yes
+116_billing_redeem_revision                         yes
+117_system_options_revision                         yes
+118_channel_resource_revisions                      yes
+119_upstream_cost_resource_ids                      yes
+120_model_routing_revision                          yes
+121_usage_semantic_block_revision                   yes
+122_config_tombstones                               yes
+123_add_iam_permission_metadata                     yes
+124_backfill_subscription_account_revision          yes
+125_backfill_config_revision                        yes
+126_upstream_execution_evidence                     yes
+127_upstream_inventory                              yes
+128_upstream_probe_budgets                          yes
+130_exact_usage_semantic_model_keys                 yes
+131_match_execution_reservation_collation           yes
+phase1_indexes                                      yes
+== negative failure injection ==
+error: apply 999_migration_smoke_failure_injection: exec stmt: Error 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '"TABLE" migration_smoke_failure_injection (id BIGINT)' at line 1
+statement: CREATE "TABLE" migration_smoke_failure_injection (id BIGINT)
+exit status 1
+== legacy schema_migrations metadata preflight ==
+ok  	micro-one-api/platform/database/migrate	0.622s
+ok  	micro-one-api/platform/database/migrate	0.275s
+== mysql migration smoke passed =

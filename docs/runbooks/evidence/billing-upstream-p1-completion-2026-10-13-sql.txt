@@ -1,0 +1,129 @@
+=== RUN   TestExecutionInboxFinalAtomicIdempotenceAndLateEvidence
+--- PASS: TestExecutionInboxFinalAtomicIdempotenceAndLateEvidence (0.02s)
+=== RUN   TestExecutionInboxRejectsFinancialBypassAndPreservesInternalCosts
+
+2026/10/13 19:07:15 [31;1m/Users/neo/vscode/mengbin/micro-one-api/app/billing/internal/data/execution_repo.go:75 [35;1mrecord not found
+[0m[33m[0.010ms] [34;1m[rows:0][0m SELECT * FROM `billing_execution_intents` WHERE id = "attempt-1/canary" ORDER BY `billing_execution_intents`.`id` LIMIT 1
+--- PASS: TestExecutionInboxRejectsFinancialBypassAndPreservesInternalCosts (0.01s)
+=== RUN   TestExecutionEvidenceDeadlineCannotBeExtendedByFinal
+--- PASS: TestExecutionEvidenceDeadlineCannotBeExtendedByFinal (0.01s)
+=== RUN   TestNativeV2ReservationFreezesMoneyAndExpiresAtomically
+=== RUN   TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/sqlite/verified
+=== RUN   TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/sqlite/missing
+=== RUN   TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/sqlite/invalid
+=== RUN   TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/sqlite/unsupported
+=== RUN   TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/mysql/verified
+=== RUN   TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/mysql/missing
+=== RUN   TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/mysql/invalid
+=== RUN   TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/mysql/unsupported
+=== RUN   TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/postgres/verified
+=== RUN   TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/postgres/missing
+=== RUN   TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/postgres/invalid
+=== RUN   TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/postgres/unsupported
+--- PASS: TestNativeV2ReservationFreezesMoneyAndExpiresAtomically (15.47s)
+    --- PASS: TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/sqlite/verified (0.38s)
+    --- PASS: TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/sqlite/missing (0.18s)
+    --- PASS: TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/sqlite/invalid (0.16s)
+    --- PASS: TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/sqlite/unsupported (0.15s)
+    --- PASS: TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/mysql/verified (3.91s)
+    --- PASS: TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/mysql/missing (3.14s)
+    --- PASS: TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/mysql/invalid (2.99s)
+    --- PASS: TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/mysql/unsupported (2.30s)
+    --- PASS: TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/postgres/verified (0.59s)
+    --- PASS: TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/postgres/missing (0.57s)
+    --- PASS: TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/postgres/invalid (0.55s)
+    --- PASS: TestNativeV2ReservationFreezesMoneyAndExpiresAtomically/postgres/unsupported (0.55s)
+=== RUN   TestExecutionLeaseAndDeadlineExpiryGuard
+--- PASS: TestExecutionLeaseAndDeadlineExpiryGuard (0.08s)
+=== RUN   TestNativeV2PositivePricingAndSupplierTariffStayFrozen
+--- PASS: TestNativeV2PositivePricingAndSupplierTariffStayFrozen (0.06s)
+=== RUN   TestRequestSnapshotFrozenPricing
+=== RUN   TestRequestSnapshotFrozenPricing/sqlite/ratio/sync
+=== RUN   TestRequestSnapshotFrozenPricing/sqlite/ratio/async
+=== RUN   TestRequestSnapshotFrozenPricing/sqlite/model_price/sync
+=== RUN   TestRequestSnapshotFrozenPricing/sqlite/model_price/async
+=== RUN   TestRequestSnapshotFrozenPricing/mysql/ratio/sync
+=== RUN   TestRequestSnapshotFrozenPricing/mysql/ratio/async
+=== RUN   TestRequestSnapshotFrozenPricing/mysql/model_price/sync
+=== RUN   TestRequestSnapshotFrozenPricing/mysql/model_price/async
+=== RUN   TestRequestSnapshotFrozenPricing/postgres/ratio/sync
+=== RUN   TestRequestSnapshotFrozenPricing/postgres/ratio/async
+=== RUN   TestRequestSnapshotFrozenPricing/postgres/model_price/sync
+=== RUN   TestRequestSnapshotFrozenPricing/postgres/model_price/async
+--- PASS: TestRequestSnapshotFrozenPricing (11.40s)
+    --- PASS: TestRequestSnapshotFrozenPricing/sqlite/ratio/sync (0.07s)
+    --- PASS: TestRequestSnapshotFrozenPricing/sqlite/ratio/async (0.07s)
+    --- PASS: TestRequestSnapshotFrozenPricing/sqlite/model_price/sync (0.07s)
+    --- PASS: TestRequestSnapshotFrozenPricing/sqlite/model_price/async (0.07s)
+    --- PASS: TestRequestSnapshotFrozenPricing/mysql/ratio/sync (2.19s)
+    --- PASS: TestRequestSnapshotFrozenPricing/mysql/ratio/async (2.24s)
+    --- PASS: TestRequestSnapshotFrozenPricing/mysql/model_price/sync (2.29s)
+    --- PASS: TestRequestSnapshotFrozenPricing/mysql/model_price/async (2.21s)
+    --- PASS: TestRequestSnapshotFrozenPricing/postgres/ratio/sync (0.55s)
+    --- PASS: TestRequestSnapshotFrozenPricing/postgres/ratio/async (0.54s)
+    --- PASS: TestRequestSnapshotFrozenPricing/postgres/model_price/sync (0.55s)
+    --- PASS: TestRequestSnapshotFrozenPricing/postgres/model_price/async (0.55s)
+=== RUN   TestRequestSnapshotFrozenSubscription
+=== RUN   TestRequestSnapshotFrozenSubscription/sqlite
+=== RUN   TestRequestSnapshotFrozenSubscription/mysql
+=== RUN   TestRequestSnapshotFrozenSubscription/postgres
+--- PASS: TestRequestSnapshotFrozenSubscription (2.80s)
+    --- PASS: TestRequestSnapshotFrozenSubscription/sqlite (0.08s)
+    --- PASS: TestRequestSnapshotFrozenSubscription/mysql (2.17s)
+    --- PASS: TestRequestSnapshotFrozenSubscription/postgres (0.55s)
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/sqlite/day
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/sqlite/week
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/sqlite/month
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/sqlite/revoke_and_replace
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/sqlite/replace_policy
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/sqlite/expire
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/mysql/day
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/mysql/week
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/mysql/month
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/mysql/revoke_and_replace
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/mysql/replace_policy
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/mysql/expire
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/postgres/day
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/postgres/week
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/postgres/month
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/postgres/revoke_and_replace
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/postgres/replace_policy
+=== RUN   TestRequestSnapshotOriginalSubscriptionWindows/postgres/expire
+--- PASS: TestRequestSnapshotOriginalSubscriptionWindows (17.30s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/sqlite/day (0.08s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/sqlite/week (0.07s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/sqlite/month (0.07s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/sqlite/revoke_and_replace (0.07s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/sqlite/replace_policy (0.06s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/sqlite/expire (0.07s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/mysql/day (2.20s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/mysql/week (2.21s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/mysql/month (2.23s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/mysql/revoke_and_replace (2.32s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/mysql/replace_policy (2.30s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/mysql/expire (2.27s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/postgres/day (0.58s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/postgres/week (0.56s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/postgres/month (0.55s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/postgres/revoke_and_replace (0.56s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/postgres/replace_policy (0.55s)
+    --- PASS: TestRequestSnapshotOriginalSubscriptionWindows/postgres/expire (0.56s)
+=== RUN   TestRequestSnapshotCommitRollback
+=== RUN   TestRequestSnapshotCommitRollback/sqlite
+=== RUN   TestRequestSnapshotCommitRollback/mysql
+=== RUN   TestRequestSnapshotCommitRollback/postgres
+--- PASS: TestRequestSnapshotCommitRollback (2.86s)
+    --- PASS: TestRequestSnapshotCommitRollback/sqlite (0.08s)
+    --- PASS: TestRequestSnapshotCommitRollback/mysql (2.22s)
+    --- PASS: TestRequestSnapshotCommitRollback/postgres (0.56s)
+=== RUN   TestRequestSnapshotUserPriceOverride
+=== RUN   TestRequestSnapshotUserPriceOverride/sqlite
+=== RUN   TestRequestSnapshotUserPriceOverride/mysql
+=== RUN   TestRequestSnapshotUserPriceOverride/postgres
+--- PASS: TestRequestSnapshotUserPriceOverride (2.93s)
+    --- PASS: TestRequestSnapshotUserPriceOverride/sqlite (0.08s)
+    --- PASS: TestRequestSnapshotUserPriceOverride/mysql (2.27s)
+    --- PASS: TestRequestSnapshotUserPriceOverride/postgres (0.58s)
+PASS
+ok  	micro-one-api/app/billing/internal/data	53.558s

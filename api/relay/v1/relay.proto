@@ -7,6 +7,7 @@ import "google/api/annotations.proto";
 option go_package = "micro-one-api/api/relay/v1;relayv1";
 
 service RelayService {
+  rpc ProbeUpstream(ProbeUpstreamRequest) returns (ProbeUpstreamResponse);
   rpc ChatCompletion(ChatCompletionRequest) returns (ChatCompletionResponse) {
     option (google.api.http) = {
       post: "/v1/chat/completions"
@@ -66,3 +67,6 @@ message ModelInfo {
   int64 created = 3;
   string owned_by = 4;
 }
+
+message ProbeUpstreamRequest { string target_id = 1; string attempt_id = 2; }
+message ProbeUpstreamResponse { bytes result_json = 1; }

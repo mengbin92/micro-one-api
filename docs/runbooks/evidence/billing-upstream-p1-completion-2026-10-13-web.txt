@@ -1,0 +1,10 @@
+npm notice run web@0.0.0 test
+npm notice run vitest run src/pages/UsagePage.test.tsx src/components/admin/UsageAuditPanel.test.tsx
+
+ RUN  v5.0.0 /Users/neo/vscode/mengbin/micro-one-api/web
+
+
+ Test Files  2 passed (2)
+      Tests  17 passed (17)
+   Start at  16:05:58
+   Duration  933ms (environment 52%, import 18%, setup 12%, tests 10%, transform 9%)

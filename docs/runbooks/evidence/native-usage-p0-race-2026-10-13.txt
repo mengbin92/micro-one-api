@@ -1,0 +1,4 @@
+ok  	micro-one-api/domain/upstream/evidence	(cached)
+ok  	micro-one-api/domain/upstream/provider	(cached)
+ok  	micro-one-api/internal/server	7.113s
+ok  	micro-one-api/pkg/jsonx	(cached)

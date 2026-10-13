@@ -310,5 +310,6 @@ jobs:
           build-args: |
             SERVICE_NAME=${{ matrix.service }}
             SERVICE_PATH=${{ matrix.path }}
+            BUILD_REVISION=git:${{ github.sha }}
           push: false
           tags: micro-one-api/${{ matrix.service }}:ci

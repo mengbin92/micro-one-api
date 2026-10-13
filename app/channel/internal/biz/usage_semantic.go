@@ -22,9 +22,10 @@ const (
 	UsageSemanticSourceKindChannel      = "channel"
 	UsageSemanticSourceKindSubscription = "subscription"
 
-	UsageSemanticBlockStatusActive   = "active"
-	UsageSemanticBlockStatusBlocked  = "blocked"
-	UsageSemanticBlockStatusResolved = "resolved"
+	UsageSemanticBlockStatusUnsupported = "unsupported"
+	UsageSemanticBlockStatusActive      = "active"
+	UsageSemanticBlockStatusBlocked     = "blocked"
+	UsageSemanticBlockStatusResolved    = "resolved"
 )
 
 // UsageSemanticBlock is one quarantine row.
@@ -110,7 +111,7 @@ func (uc *ChannelUsecase) RecordUsageSemanticVerdict(ctx context.Context, verdic
 	}
 	// estimated verdicts are informational only (§5.2: the estimator never
 	// fabricates cache, so nothing is mis-billed).
-	if verdict.ParseStatus != "verified" && verdict.ParseStatus != "ambiguous" {
+	if verdict.ParseStatus != "verified" && verdict.ParseStatus != "ambiguous" && verdict.ParseStatus != "unsupported" && verdict.ParseStatus != "invalid" && verdict.ParseStatus != "missing" {
 		return false, time.Time{}, 0, nil
 	}
 	repo, ok := uc.repo.(usageSemanticBlockRepo)
@@ -118,6 +119,9 @@ func (uc *ChannelUsecase) RecordUsageSemanticVerdict(ctx context.Context, verdic
 		return false, time.Time{}, 0, nil
 	}
 	cfg := resolveUsageSemanticConfig()
+	if verdict.ParseStatus == "unsupported" || verdict.ParseStatus == "invalid" {
+		cfg.Threshold = 1
+	}
 	row, err := repo.UpsertUsageSemanticVerdict(ctx, verdict, cfg.Window, cfg.BlockDuration, cfg.Threshold, uc.now())
 	if err != nil {
 		return false, time.Time{}, 0, err
@@ -126,7 +130,7 @@ func (uc *ChannelUsecase) RecordUsageSemanticVerdict(ctx context.Context, verdic
 		return false, time.Time{}, 0, nil
 	}
 	uc.markUsageSemanticBlocksDirty()
-	blocked = row.Status == UsageSemanticBlockStatusBlocked && row.BlockedUntil.After(uc.now())
+	blocked = row.Status == UsageSemanticBlockStatusUnsupported || row.Status == UsageSemanticBlockStatusBlocked && row.BlockedUntil.After(uc.now())
 	return blocked, row.BlockedUntil, row.ConsecutiveAmbiguous, nil
 }
 
@@ -219,4 +223,9 @@ func (uc *ChannelUsecase) markUsageSemanticBlocksDirty() {
 	uc.usageSemanticBlocksMu.Lock()
 	uc.usageSemanticBlocksDirty = true
 	uc.usageSemanticBlocksMu.Unlock()
+}
+
+func (uc *ChannelUsecase) UsageV2Available(ctx context.Context) bool {
+	r, ok := uc.repo.(interface{ UsageV2Available(context.Context) bool })
+	return ok && r.UsageV2Available(ctx)
 }

@@ -244,7 +244,7 @@ func (h httpRelayLifecycleHooks) ReserveQuota(ctx context.Context, plan *relaybi
 	if err != nil {
 		return nil, err
 	}
-	return &Reservation{ID: reservation.ReservationId}, nil
+	return &Reservation{ID: reservation.ReservationId, Context: h.s.executionContext(ctx, req.RequestID)}, nil
 }
 
 func (h httpRelayLifecycleHooks) CheckUserRateLimit(ctx context.Context, plan *relaybiz.RelayPlan, _ *RelayRequest) error {

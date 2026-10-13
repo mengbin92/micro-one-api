@@ -330,6 +330,11 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	relayUsecase.SetSelectionRecorder(service.NewSelectionAuditRecorder(biz.NewMetricsSelectionRecorder(logger.Current()), logClient))
 
 	httpServer := server.NewHTTPServer(identityClient, channelClient, billingClient, providerFactory, relayUsecase, logClient)
+	delivery, stopExecution, err := newExecutionDelivery(billingClient)
+	if err != nil {
+		return nil, nil, err
+	}
+	httpServer.SetExecutionDelivery(delivery)
 	httpServer.SetTokenQuotaBlocker(identityAdapter)
 	httpServer.SetHybridAdaptorEnabled(cfg.Bootstrap.HybridAdaptor.GetHybridAdaptorEnabled())
 	httpServer.SetSubscriptionSessionStickyEnabled(cfg.Bootstrap.SessionSticky.GetSessionStickyEnabled())
@@ -424,6 +429,24 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	srv := newKratosHTTPServer(cfg, httpServer, providerTimeout)
 
 	grpcSvc := service.NewRelayGrpcService(identityClient, channelClient, logClient, billingClient, providerFactory, relayUsecase)
+	grpcSvc.SetExecutionDelivery(delivery)
+	targets, err := configuredUpstreamProbes()
+	if err != nil {
+		stopExecution()
+		return nil, nil, err
+	}
+	stopPermit := func() {}
+	if len(targets) > 0 {
+		permit, closePermit, err := newProbePermitClient()
+		if err != nil {
+			stopExecution()
+			return nil, nil, err
+		}
+		stopPermit = closePermit
+		probe := biz.NewUpstreamProbeUsecase(data.NewUpstreamProbeRepo(service.NewProbeSourceClient(channelClient), delivery, providerFactory), targets)
+		probe.SetProbePermitClient(permit)
+		grpcSvc.SetUpstreamProbe(probe)
+	}
 	var relayGRPCOpts []grpc.ServerOption
 	if cfg.Bootstrap.Mtls.Enabled {
 		mtlsOpts, mtlsErr := grpc2.MTLSServerOptions(cfg.Bootstrap.Mtls.CertFile, cfg.Bootstrap.Mtls.KeyFile, cfg.Bootstrap.Mtls.CaFile)
@@ -452,6 +475,8 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		Info("relay-gateway starting", zap.String("http_addr", cfg.Bootstrap.Server.Http.Addr))
 
 	cleanup := func() {
+		stopExecution()
+		stopPermit()
 		if modelReloadStop != nil {
 			modelReloadStop()
 		}

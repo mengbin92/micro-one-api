@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -88,6 +89,7 @@ func TestCommitRacesExpiryRelease(t *testing.T) {
 			ctx := context.Background()
 			r, err := uc.ReserveQuota(ctx, "7001", "expiry-race", 1000, "m", "1", 0, requestContext())
 			require.NoError(t, err)
+			require.NoError(t, db.Model(&reservationModel{}).Where("reservation_id = ?", r.ReservationID).Update("expired_at", time.Now().Add(-time.Minute)).Error)
 			start := make(chan struct{})
 			errs := make(chan error, 2)
 			go func() {
@@ -103,7 +105,7 @@ func TestCommitRacesExpiryRelease(t *testing.T) {
 			for i := 0; i < 2; i++ {
 				err := <-errs
 				if err != nil {
-					require.True(t, errors.Is(err, biz.ErrReservationReleased) || errors.Is(err, biz.ErrReservationCommitted), "%v", err)
+					require.True(t, errors.Is(err, biz.ErrReservationReleased) || errors.Is(err, biz.ErrReservationCommitted) || errors.Is(err, biz.ErrReservationExpiryDeferred), "%v", err)
 				}
 			}
 			stored, err := d.reservationRepo.GetReservation(ctx, r.ReservationID)

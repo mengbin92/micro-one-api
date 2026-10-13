@@ -133,6 +133,7 @@ services:
         SERVICE_NAME: channel-service
         SERVICE_PATH: ./app/channel/cmd/channel
     environment:
+      - UPSTREAM_PROBES_ENABLED=${UPSTREAM_PROBES_ENABLED:-false}
       # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
       - CHANNEL_ROUTING_GROUP_DUAL_WRITE=${CHANNEL_ROUTING_GROUP_DUAL_WRITE:-false}
       - CONF_PATH=/configs/config.yaml
@@ -212,6 +213,8 @@ services:
         SERVICE_PATH: ./app/billing/cmd/billing
     environment:
       # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
+      - BILLING_EXECUTION_DELIVERY_V1=${BILLING_EXECUTION_DELIVERY_V1:-false}
+      - BILLING_SETTLEMENT_RECEIPTS_V1=${BILLING_SETTLEMENT_RECEIPTS_V1:-false}
       - BILLING_REQUEST_SNAPSHOT_V2=${BILLING_REQUEST_SNAPSHOT_V2:-false}
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002
       - SUBSCRIPTION_ENTITLEMENTS_V2=${SUBSCRIPTION_ENTITLEMENTS_V2:-false}
@@ -350,6 +353,10 @@ services:
         SERVICE_NAME: monitor-worker
         SERVICE_PATH: ./app/monitor/cmd/monitor
     environment:
+      - UPSTREAM_PROBES_ENABLED=${UPSTREAM_PROBES_ENABLED:-false}
+      - UPSTREAM_PROBE_TARGETS_JSON=${UPSTREAM_PROBE_TARGETS_JSON:-[]}
+      - UPSTREAM_PROBE_INTERVAL=${UPSTREAM_PROBE_INTERVAL:-5m}
+      - RELAY_GRPC_ENDPOINT=relay-gateway:9003
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
       - DATABASE_DSN=${MONITOR_SQL_DSN:-${DATABASE_DSN:?DATABASE_DSN is required}}
@@ -458,6 +465,13 @@ services:
       - RELAY_HTTP_ADDR=:8080
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - RELAY_EXECUTION_DELIVERY_V1=${RELAY_EXECUTION_DELIVERY_V1:-false}
+      - RELAY_NATIVE_USAGE_V2_ALLOWLIST=${RELAY_NATIVE_USAGE_V2_ALLOWLIST:-}
+      - RELAY_EXECUTION_OUTBOX_PATH=/var/lib/relay-outbox/events.db
+      - MONITOR_GRPC_ENDPOINT=monitor-worker:9007
+      - UPSTREAM_PROBES_ENABLED=${UPSTREAM_PROBES_ENABLED:-false}
+      - UPSTREAM_PROBE_TARGETS_JSON=${UPSTREAM_PROBE_TARGETS_JSON:-[]}
+      - RELAY_USAGE_SHADOW=${RELAY_USAGE_SHADOW:-false}
       - RELAY_CANONICAL_USAGE_PRODUCER=${RELAY_CANONICAL_USAGE_PRODUCER:-false}
       - UPSTREAM_TIMEOUT=300s
       - RELAY_PROVIDER_TIMEOUT=300s
@@ -491,6 +505,7 @@ services:
     cap_add:
       - NET_BIND_SERVICE
     volumes:
+      - ./data/relay-outbox:/var/lib/relay-outbox
       - sqlite_data:/data:rw
 
   admin-api:
