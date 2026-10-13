@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.34.18 发布公告](./docs/releases/release-v0.34.18.md)（上游健康归因与熔断恢复加固） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.18)
+> 📣 **最新发布**：[v0.34.18 发布公告](./docs/releases/release-v0.34.18.md)（上游健康归因与熔断恢复加固、Compose 发布门禁修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.18)
 
 ## 功能概览
 
@@ -182,7 +182,7 @@ make web-dist
 
 ### 升级到 v0.34.18
 
-v0.34.18 分离真实上游故障、限流、配置/模型错误与本地失败，增加共享重试预算、具名探针及渐进恢复。公开接口兼容，新增内部 RPC；无数据库迁移或前端更新。依次更新 channel-service、relay-gateway、monitor-worker，Channel 必须保持单实例；当前生产已部署等价修复并通过普通渠道非流式/SSE 真实推理与账务验收。详见 [release-v0.34.18.md](./docs/releases/release-v0.34.18.md)。
+v0.34.18 分离真实上游故障、限流、配置/模型错误与本地失败，增加共享重试预算、具名探针及渐进恢复；补齐 Compose E2E 专用服务身份后重新发布。公开接口兼容，新增内部 RPC；无数据库迁移或前端更新。依次更新 channel-service、relay-gateway、monitor-worker，Channel 必须保持单实例；当前生产已部署等价修复并通过普通渠道非流式/SSE 真实推理与账务验收。详见 [release-v0.34.18.md](./docs/releases/release-v0.34.18.md)。
 
 ### 升级到 v0.34.17
 
