@@ -44,7 +44,7 @@ v0.34.18 是 v0.34.17 的 **PATCH 可靠性修复版本**：区分真实上游�
 
 **根因**：首次发布的 Compose E2E 仅使用共享 `SERVICE_TOKEN`，未配置具名 Relay 凭证；新增执行许可 RPC 拒绝共享身份，ChatCompletion 返回 503，扣费和账本断言随之失败。其余 IAM、前端和 MySQL/SQLite 路由验收已通过。
 
-**修复**：复用现有服务身份生成器，为测试栈生成独立临时凭证并同步所有接收方映射，退出时清理凭证文件；在构建容器前增加实际 Compose 渲染回归检查。首次流水线未发布镜像或 GitHub Release，修复经 develop → main 合入后更新同名 `v0.34.18` 标签重新执行发布门禁。
+**修复**：复用现有服务身份生成器，为测试栈生成独立临时凭证并同步所有接收方映射，退出时清理凭证文件；在构建容器前增加实际 Compose 渲染回归检查，并同步 RBAC 审查矩阵中的脚本摘要。首次流水线未发布镜像或 GitHub Release，修复经 develop → main 合入后更新同名 `v0.34.18` 标签重新执行发布门禁。
 
 **影响服务**：仅 Compose E2E 夹具及发布验证流程；无新增运行时代码或生产配置变更。
 
@@ -74,6 +74,7 @@ v0.34.18 是 v0.34.17 的 **PATCH 可靠性修复版本**：区分真实上游�
 ## 验证
 
 - `python3 scripts/test-e2e-flow-identities.py` 在修复前稳定失败、修复后通过；检查真实启动脚本渲染出的 Relay 身份及 Channel/Identity/Billing/Log/Config 接收方映射，不启动容器。定向执行许可权限和 Chat 集成回归通过。
+- 首次身份修复后的正式流水线 Compose E2E、前端和 SQLite 路由验收通过；发现遗漏的脚本摘要后，仅同步 RBAC 矩阵对应行，`make rbac-contract-check` 与 `go test ./cmd/rbac-contract-check -count=1` 通过（835 行）。
 - 本地 `make test-unit`、完整 `internal/integration`、相关包及上游集成场景 race、相关 `go vet`、格式/架构/迁移/RBAC/IAM 契约检查通过；API 与前端 API 类型已再生成。
 - 提交前 gosec 扫描通过，新增 retry jitter 仅用于退避，不参与凭证或安全决策。
 - 三个生产服务均运行、无异常重启，健康与指标接口正常，镜像均对应 `4c83d2a4`；实际普通渠道 legacy Chat 非流式/SSE 与账务核对通过，上游总 token 分别为 93、91。
@@ -89,3 +90,5 @@ v0.34.18 是 v0.34.17 的 **PATCH 可靠性修复版本**：区分真实上游�
 - `docs(release): v0.34.18`
 - `fix(e2e): provision dedicated service identities for compose flow`
 - `docs(release): v0.34.18 republish`
+- `fix(rbac): sync reviewed compose e2e source digest`
+- `docs(release): v0.34.18 contract validation`
