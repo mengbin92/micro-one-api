@@ -168,6 +168,34 @@ func (r *reservationRepo) CASReservationStatus(ctx context.Context, tx subscript
 	return res.RowsAffected > 0, nil
 }
 
+func (r *reservationRepo) CASExpiredReservationStatus(ctx context.Context, tx subscriptionbiz.Tx, id string, now time.Time) (bool, error) {
+	reservation, err := r.GetReservationInTx(ctx, tx, id)
+	if err != nil {
+		return false, err
+	}
+	if !reservation.IsReserved() || reservation.ExpiredAt.IsZero() || !reservation.ExpiredAt.Before(now) {
+		return false, nil
+	}
+	db := txDB(tx).WithContext(ctx)
+	var pending int64
+	err = db.Model(&settlementTaskModel{}).Where("reservation_id = ? AND status IN ?", id, []string{"pending", "failed", "processing"}).Count(&pending).Error
+	if err != nil && !missingSettlementTaskTable(err) {
+		return false, err
+	}
+	if pending > 0 {
+		return false, nil
+	}
+	return r.CASReservationStatus(ctx, tx, id, biz.ReservationStatusReserved, biz.ReservationStatusReleasing)
+}
+
+func missingSettlementTaskTable(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "billing_settlement_tasks") && (strings.Contains(message, "no such table") || strings.Contains(message, "doesn't exist") || strings.Contains(message, "undefined table") || strings.Contains(message, "does not exist"))
+}
+
 // SetActualCostInTx persists the real settlement cost on a reservation inside
 // the caller's transaction (code-review 2026-07-30 billing-L1). It only writes
 // a non-zero actual_cost so a legacy row that was never settled keeps Amount
@@ -269,8 +297,7 @@ func (r *reservationRepo) GetExpiredReservations(ctx context.Context) ([]*biz.Re
 		// Keep cleanup readable during the migration window; once the task
 		// table exists, pending settlement rows protect reservations from
 		// expiry. Older databases use the original query until migration runs.
-		errorText := strings.ToLower(err.Error())
-		if strings.Contains(errorText, "billing_settlement_tasks") && (strings.Contains(errorText, "no such table") || strings.Contains(errorText, "doesn't exist") || strings.Contains(errorText, "undefined table")) {
+		if missingSettlementTaskTable(err) {
 			models = nil
 			fallback := r.data.db.WithContext(ctx).Where("status = ?", biz.ReservationStatusReserved)
 			if isSQLite(dialectorName(r.data.db)) {

@@ -181,12 +181,16 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 	return resp, nil
 }
 
-func (s *BillingService) GetRoutingCapabilities(context.Context, *billingv1.GetRoutingCapabilitiesRequest) (*billingv1.GetRoutingCapabilitiesResponse, error) {
+func (s *BillingService) GetRoutingCapabilities(ctx context.Context, _ *billingv1.GetRoutingCapabilitiesRequest) (*billingv1.GetRoutingCapabilitiesResponse, error) {
 	var version int32
 	if s.uc.RoutingSnapshotsAvailable() {
 		version = 2
 	}
-	return &billingv1.GetRoutingCapabilitiesResponse{RequestSnapshotVersion: version, FixedRouting: version == 2, SubscriptionContracts: version == 2 && subscriptionbiz.EntitlementsEnabled(), UserPriceOverrides: version == 2 && subscriptionbiz.EntitlementsEnabled()}, nil
+	var receiptVersion int32
+	if s.asyncUc.DurableReceiptsAvailable(ctx) {
+		receiptVersion = biz.SettlementReceiptVersionV1
+	}
+	return &billingv1.GetRoutingCapabilitiesResponse{SettlementReceiptVersion: receiptVersion, RequestSnapshotVersion: version, FixedRouting: version == 2, SubscriptionContracts: version == 2 && subscriptionbiz.EntitlementsEnabled(), UserPriceOverrides: version == 2 && subscriptionbiz.EntitlementsEnabled()}, nil
 }
 
 func (s *BillingService) SetUserRoutingPrice(ctx context.Context, req *billingv1.SetUserRoutingPriceRequest) (*billingv1.SetUserRoutingPriceReply, error) {
@@ -228,6 +232,9 @@ func (s *BillingService) CheckRoutingSettlement(ctx context.Context, req *billin
 }
 
 func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQuotaRequest) (*billingv1.CommitQuotaResponse, error) {
+	if req == nil {
+		return nil, biz.ErrSettlementReceiptInvalid
+	}
 	usage := biz.LedgerUsage{
 		TokenName:             req.TokenName,
 		Endpoint:              req.Endpoint,
@@ -250,6 +257,30 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 		// the legacy fields above only serve the version=0 branch.
 		UsageContractVersion: req.UsageContractVersion,
 		Envelope:             usageEnvelopeFromProto(req.Usage),
+	}
+
+	task := &biz.SettleTask{
+		RequestID: req.ReservationId, ReservationID: req.ReservationId,
+		Model: req.UpstreamModelId, SubscriptionAccountID: req.SubscriptionAccountId,
+		ActualTokens: req.ActualTokens, Success: req.Success, Usage: usage, Timestamp: time.Now(),
+		SettlementReceiptVersion: req.SettlementReceiptVersion, SettlementEventID: req.SettlementEventId, SettlementPayloadDigest: req.SettlementPayloadSha256,
+	}
+	if req.SettlementReceiptVersion != 0 || req.SettlementEventId != "" || req.SettlementPayloadSha256 != "" {
+		if s.asyncUc == nil {
+			return nil, biz.ErrSettlementReceiptUnavailable
+		}
+		receipt, err := s.asyncUc.AcceptSettlement(ctx, task)
+		if err != nil {
+			return nil, err
+		}
+		reply := &billingv1.CommitQuotaResponse{
+			Success: receipt.SettlementAccepted, AsyncEnqueued: receipt.SettlementAccepted && !receipt.Settled, CommittedAmount: receipt.CommittedAmount,
+			SettlementReceipt: &billingv1.SettlementReceipt{Version: receipt.Version, EventId: receipt.EventID, PayloadSha256: receipt.PayloadDigest, Status: receipt.Status, Received: receipt.Received, SettlementAccepted: receipt.SettlementAccepted, Settled: receipt.Settled},
+		}
+		if !receipt.SettlementAccepted {
+			reply.ErrorMessage = "reservation is closed to settlement: " + receipt.Status
+		}
+		return reply, nil
 	}
 
 	// Async path: enqueue the settlement task and return a provisional
@@ -275,18 +306,7 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 				ErrorMessage: "reservation_id is required for async commit on the success path",
 			}, nil
 		}
-		if err := s.asyncUc.Settle(ctx, &biz.SettleTask{
-			RequestID:             req.ReservationId,
-			ReservationID:         req.ReservationId,
-			UserID:                "",
-			Model:                 req.UpstreamModelId,
-			ChannelID:             "",
-			SubscriptionAccountID: req.SubscriptionAccountId,
-			ActualTokens:          req.ActualTokens,
-			Success:               true,
-			Usage:                 usage,
-			Timestamp:             time.Now(),
-		}); err != nil {
+		if err := s.asyncUc.Settle(ctx, task); err != nil {
 			return &billingv1.CommitQuotaResponse{Success: false, ErrorMessage: fmt.Sprintf("async settlement not accepted: %v", err)}, nil
 		}
 		return &billingv1.CommitQuotaResponse{

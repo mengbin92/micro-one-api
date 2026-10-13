@@ -1,6 +1,16 @@
 package biz
 
-import "time"
+import (
+	"context"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
+	"time"
+)
+
+// ReservationExpiryGuard rechecks expiry and durable intake under the same
+// row lock used by settlement, including candidates selected before intake.
+type ReservationExpiryGuard interface {
+	CASExpiredReservationStatus(context.Context, subscriptionbiz.Tx, string, time.Time) (bool, error)
+}
 
 // Reservation lifecycle states. The committing/releasing intermediate states
 // are only visible inside an in-flight transaction; outside of the transaction

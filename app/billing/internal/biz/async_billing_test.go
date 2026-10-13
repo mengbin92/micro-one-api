@@ -4,6 +4,7 @@ import (
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -200,7 +201,7 @@ func TestAsyncBillingUsecase_SettlePreservesCtxOnQueueFull(t *testing.T) {
 	}()
 
 	// Now Settle can enqueue again (slot freed) and must NOT call settleSync.
-	uc.Settle(ctx, &SettleTask{RequestID: "r2", UserID: "1", Model: "m"})
+	uc.Settle(ctx, &SettleTask{ReservationID: "r2", RequestID: "r2", UserID: "1", Model: "m"})
 	// If Settle blocked or panicked, the test would fail via timeout.
 	select {
 	case <-done:
@@ -438,5 +439,26 @@ func TestAsyncBillingPersistsAcceptedSettlementBeforeQueueing(t *testing.T) {
 	defer store.mu.Unlock()
 	if len(store.saved) != 1 || store.saved[0].ReservationID != "res-1" {
 		t.Fatalf("saved tasks = %+v", store.saved)
+	}
+}
+
+type rejectingSettlementStore struct {
+	memorySettlementTaskStore
+	failure error
+}
+
+func (s *rejectingSettlementStore) SaveTask(context.Context, *SettleTask) error { return s.failure }
+
+func TestAsyncBillingConflictingIntakeNeverFallsBackToSync(t *testing.T) {
+	for _, failure := range []error{ErrSettlementPayloadConflict, ErrSettlementReservationClosed, ErrSettlementReceiptInvalid} {
+		uc := NewAsyncBillingUsecase(nil, nil, 1, 1, time.Hour)
+		uc.SetTaskStore(&rejectingSettlementStore{failure: failure})
+		err := uc.Settle(context.Background(), &SettleTask{ReservationID: "received", Success: true})
+		if !errors.Is(err, failure) {
+			t.Fatalf("rejected intake reached sync fallback: %v", err)
+		}
+		if err := uc.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

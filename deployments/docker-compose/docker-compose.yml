@@ -197,6 +197,7 @@ services:
     container_name: billing-service
     environment:
       # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
+      - BILLING_SETTLEMENT_RECEIPTS_V1=${BILLING_SETTLEMENT_RECEIPTS_V1:-false}
       - BILLING_REQUEST_SNAPSHOT_V2=${BILLING_REQUEST_SNAPSHOT_V2:-false}
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002
       - SUBSCRIPTION_ENTITLEMENTS_V2=${SUBSCRIPTION_ENTITLEMENTS_V2:-false}

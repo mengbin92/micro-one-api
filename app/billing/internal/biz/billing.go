@@ -1424,7 +1424,16 @@ func (uc *BillingUsecase) releaseReservation(ctx context.Context, reservationID,
 		return uc.releaseReservationLegacy(ctx, reservationID, reason, finalStatus)
 	}
 	return runner.RunInTx(ctx, func(ctx context.Context, tx subscriptionbiz.Tx) error {
-		won, err := uc.reservationRepo.CASReservationStatus(ctx, tx, reservationID, ReservationStatusReserved, ReservationStatusReleasing)
+		var won bool
+		var err error
+		if guard, ok := uc.reservationRepo.(ReservationExpiryGuard); ok && finalStatus == ReservationStatusExpired {
+			won, err = guard.CASExpiredReservationStatus(ctx, tx, reservationID, uc.Now())
+			if err == nil && !won {
+				return ErrReservationExpiryDeferred
+			}
+		} else {
+			won, err = uc.reservationRepo.CASReservationStatus(ctx, tx, reservationID, ReservationStatusReserved, ReservationStatusReleasing)
+		}
 		if err != nil {
 			return fmt.Errorf("cas to releasing: %w", err)
 		}
