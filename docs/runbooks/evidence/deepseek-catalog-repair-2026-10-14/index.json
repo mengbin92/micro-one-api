@@ -21,7 +21,7 @@
     "channel11-data-repair.json": "d9501adc5b47301ac2493899b07ed08bb7b2f27fd0a9d4fbf54367315d8fa2fd",
     "deployment.json": "65759a898ff39e87fa9f17c8ef673344ff32b0c53eba7a7c87cf4e88ee6e78e7",
     "final-regression.txt": "0878710f0569969170230ab4017acf02eb743b7a35ffeb2e90e3f7d97f0c6eef",
-    "frontend-tests.txt": "cf044b5837b9fb3bccc657d3115060f81f44524eaf869085f884ef451152220f",
+    "frontend-tests.txt": "3e267f0a49c0b117212ddab9aebb9b65646ac18dba6b52d3bcb16c651fa03831",
     "inventory-body-race.txt": "bcf4b0d424345bc93defd55f3f7d811a22d4f005234e6f4d1dbc83669546e35b",
     "isolated-backend-tests.txt": "04950edb5cda0201589f2ef956261a8df0ff5ac1311f6b1ece0ff8481127fef0",
     "live-inventory-and-catalog.txt": "df80d400ca63577c07638bab6b687b8fef4b1f62d6e00025dd1f0b1a8f8b101a",

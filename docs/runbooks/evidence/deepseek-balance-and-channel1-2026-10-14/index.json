@@ -29,12 +29,12 @@
     "web/src/pages/admin/ChannelsPage.conflict.test.tsx": "7039e7b2c9b256243f31e2db25372844d7d58d2e549749408b8536a78a2e3b7a"
   },
   "artifact_sha256": {
-    "amount-2026-09-15_2026-10-14.csv": "daf1d1cd2a65fb28cfaf8add573579bdd03efab7fe694552ba45ae32c836c258",
+    "amount-2026-09-15_2026-10-14.csv": "09e066092c2e286be00086acd36818e27bd4d101472bfd9f2e2e248c1863443b",
     "backend-regression.txt": "52c16ca1b06fbf508eb39dee937a8fa53b140e7c8b008b69fdc0a4086293b392",
     "balance-window.json": "10d75b0b99e0e41a11bd7d0bb4a87bdad89ec7ec6e09a75e43817820a3426fd8",
     "channel1-diagnostic.json": "acb1237b2e67dd945363731bfc877657679dd92cdc1bc4be7d660458d4deebd4",
-    "cost-2026-09-15_2026-10-14.csv": "9ccffb58d7433b6b952f55eaaaa4a76878d3a5e589408306ac3da1886e877987",
-    "frontend-regression.txt": "36ad4b1a6d5610023b1a5135c8ee4c9fbe42d896afae77839a54c7234044636e",
+    "cost-2026-09-15_2026-10-14.csv": "88bd8d7886f3c38865df61d3fb170ca271926594fd5ee88a249608af14b789d6",
+    "frontend-regression.txt": "ec84a590fa49ba9ddc332a7aa9771bad426d4e500c5341edd21581406755619e",
     "official-export-provenance.json": "de5355d3b8ea1bc200bebc87051825c56adbdb06a7ee91a88806d07006e2f86b",
     "race.txt": "b5d1a73ffd14312d3699ce7d42d60ba1d6778ff42bd94e1ef3a886498a528ac0"
   }
