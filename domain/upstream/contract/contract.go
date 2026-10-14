@@ -59,17 +59,18 @@ type RuleSet struct {
 	Rules []Rule `json:"rules"`
 }
 type Document struct {
-	Scope           Scope     `json:"scope"`
-	Provider        string    `json:"provider"`
-	AdapterBuild    string    `json:"adapter_build"`
-	ParserRevision  string    `json:"parser_revision"`
-	UsageRevision   string    `json:"usage_revision"`
-	APIVersion      string    `json:"api_version,omitempty"`
-	Endpoint        string    `json:"endpoint,omitempty"`
-	Inbound         []string  `json:"inbound_protocols"`
-	Sets            []RuleSet `json:"rule_sets"`
-	FixtureEvidence string    `json:"fixture_evidence_id"`
-	BasisRevision   string    `json:"basis_revision"`
+	Repair          *RepairReview `json:"repair_review,omitempty"`
+	Scope           Scope         `json:"scope"`
+	Provider        string        `json:"provider"`
+	AdapterBuild    string        `json:"adapter_build"`
+	ParserRevision  string        `json:"parser_revision"`
+	UsageRevision   string        `json:"usage_revision"`
+	APIVersion      string        `json:"api_version,omitempty"`
+	Endpoint        string        `json:"endpoint,omitempty"`
+	Inbound         []string      `json:"inbound_protocols"`
+	Sets            []RuleSet     `json:"rule_sets"`
+	FixtureEvidence string        `json:"fixture_evidence_id"`
+	BasisRevision   string        `json:"basis_revision"`
 }
 type Snapshot struct {
 	Document         Document `json:"document"`

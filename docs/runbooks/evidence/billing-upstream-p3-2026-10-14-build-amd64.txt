@@ -1,0 +1,80 @@
+#0 building with "amd64builder" instance using docker-container driver
+
+#1 [internal] load build definition from Dockerfile.upstream-evidence-tools
+#1 transferring dockerfile: 1.36kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/golang:1.27.2-alpine
+#2 DONE 1.9s
+
+#3 [internal] load metadata for docker.io/library/alpine:3.23
+#3 DONE 2.0s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 414B done
+#4 DONE 0.0s
+
+#5 [builder 1/8] FROM docker.io/library/golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
+#5 resolve docker.io/library/golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d done
+#5 DONE 0.0s
+
+#6 [stage-1 1/4] FROM docker.io/library/alpine:3.23@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0
+#6 resolve docker.io/library/alpine:3.23@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0 done
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 197.47kB 0.1s done
+#7 DONE 0.1s
+
+#8 [builder 4/8] COPY go.mod go.sum ./
+#8 CACHED
+
+#9 [builder 5/8] RUN go mod download
+#9 CACHED
+
+#10 [builder 2/8] RUN apk add --no-cache git make gcc musl-dev
+#10 CACHED
+
+#11 [builder 3/8] WORKDIR /src
+#11 CACHED
+
+#12 [builder 6/8] RUN go install github.com/bufbuild/buf/cmd/buf@v1.70.0 &&     go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 &&     go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2 &&     go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v3@v3.0.0-20260626125723-668db92c2c00 &&     go install github.com/google/gnostic/cmd/protoc-gen-openapi@v0.7.1
+#12 CACHED
+
+#13 [builder 7/8] COPY . .
+#13 DONE 0.7s
+
+#14 [builder 8/8] RUN make proto &&     CGO_ENABLED=1 go build -trimpath -ldflags '-linkmode external -extldflags -static' -o /out/vendor-reconcile ./app/billing/cmd/vendor-reconcile &&     CGO_ENABLED=1 go build -trimpath -ldflags '-linkmode external -extldflags -static' -o /out/vendor-cost-fetch ./app/billing/cmd/vendor-cost-fetch &&     CGO_ENABLED=0 go build -trimpath -o /out/upstream-repair ./cmd/upstream-repair &&     CGO_ENABLED=0 go build -trimpath -o /out/upstream-rollout ./cmd/upstream-rollout
+#14 0.162 buf generate --template buf.gen.yaml
+#14 2.967 buf generate --template buf.gen.config.yaml \
+#14 2.967 	--path internal/conf \
+#14 2.967 	--path app/admin/internal/conf \
+#14 2.967 	--path app/billing/internal/conf \
+#14 2.967 	--path app/channel/internal/conf \
+#14 2.967 	--path app/config/internal/conf \
+#14 2.967 	--path app/identity/internal/conf \
+#14 2.967 	--path app/log/internal/conf \
+#14 2.967 	--path app/monitor/internal/conf \
+#14 2.967 	--path app/notify/internal/conf
+#14 DONE 91.6s
+
+#15 [stage-1 2/4] RUN apk add --no-cache ca-certificates && adduser -D -u 10001 evidence
+#15 CACHED
+
+#16 [stage-1 3/4] COPY --from=builder /out/ /usr/local/bin/
+#16 DONE 0.1s
+
+#17 [stage-1 4/4] WORKDIR /work
+#17 DONE 0.0s
+
+#18 exporting to oci image format
+#18 exporting layers
+#18 exporting layers 2.0s done
+#18 exporting manifest sha256:ce73ede1b0cf02aeb0a5f6882074f9b66d32d1180b615ca477ead050fe05fb21 done
+#18 exporting config sha256:90e6484c6cee4e588eb7253a2822604915ffaf8695a3a815279b5890b9bea718 done
+#18 sending tarball
+#18 sending tarball 0.7s done
+#18 DONE 2.7s
+
+#19 importing to docker
+#19 DONE 0.0s

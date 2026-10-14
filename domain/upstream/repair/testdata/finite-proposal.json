@@ -1,0 +1,43 @@
+{
+  "candidate": {
+    "scope": {
+      "source_kind": "channel",
+      "source_id": 1,
+      "upstream_model_id": "vendor/Exact",
+      "protocol": "openai_chat"
+    },
+    "provider": "fixture",
+    "adapter_build": "finite-contract-runtime-2026-10-14.1",
+    "parser_revision": "native-shadow-2026-10-13.1",
+    "usage_revision": "native-static-2026-10-13.1",
+    "inbound_protocols": [
+      "openai_chat"
+    ],
+    "rule_sets": [
+      {
+        "level": "model",
+        "rules": [
+          {
+            "id": "rename",
+            "kind": "rename",
+            "path": "old_option",
+            "target": "new_option",
+            "evidence_id": "fixture-equivalence"
+          }
+        ]
+      }
+    ],
+    "fixture_evidence_id": "independent-regression",
+    "basis_revision": "fixture-schema-v2"
+  },
+  "incident_id": "fixture-incident",
+  "incident_revision": 0,
+  "binding_revision": 0,
+  "source_revision": "fixture-source",
+  "classification": "protocol_drift",
+  "contract_probe_failed": true,
+  "evidence_ids": [
+    "fixture-redacted-usage"
+  ],
+  "basis_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

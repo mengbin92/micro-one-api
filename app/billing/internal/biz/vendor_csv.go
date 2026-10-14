@@ -83,3 +83,28 @@ func ReadVendorCSV(input io.Reader, scope VendorScope) ([]VendorBillRow, error) 
 	}
 	return rows, nil
 }
+
+// WriteVendorCSV emits the exact import schema. Absent usage stays absent for
+// cost-only reports; a zero amount remains an explicit decimal zero.
+func WriteVendorCSV(output io.Writer, scope VendorScope, rows []VendorBillRow) error {
+	w := csv.NewWriter(output)
+	if err := w.Write([]string{"provider", "account", "project", "upstream_model_id", "currency", "unit", "request_id", "amount", "uncached_input_tokens", "cache_read_tokens", "cache_creation_5m_tokens", "cache_creation_1h_tokens", "output_tokens"}); err != nil {
+		return err
+	}
+	for _, row := range rows {
+		rec := []string{scope.Provider, scope.Account, scope.Project, scope.Model, scope.Currency, scope.Unit, row.RequestID, "", "", "", "", "", ""}
+		if row.Amount != nil {
+			rec[7] = *row.Amount
+		}
+		if row.Buckets != nil {
+			for i, n := range row.Buckets {
+				rec[8+i] = strconv.FormatInt(n, 10)
+			}
+		}
+		if err := w.Write(rec); err != nil {
+			return err
+		}
+	}
+	w.Flush()
+	return w.Error()
+}

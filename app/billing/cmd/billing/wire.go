@@ -271,6 +271,9 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	ctx, cancel := context.WithCancel(context.Background())
 	cleanupJob := biz.NewCleanupJob(uc, 1*time.Minute)
 	reconJobOpts := []biz.JobOption{biz.WithRecipients(recipients)}
+	if os.Getenv("BILLING_VENDOR_REPORT_MONITOR_V1") == "true" {
+		reconJobOpts = append(reconJobOpts, biz.WithVendorReportMonitoring(data.NewVendorReconciliationRepo(d)))
+	}
 	if notifier != nil {
 		reconJobOpts = append(reconJobOpts, biz.WithNotifier(notifier))
 	}

@@ -1,0 +1,35 @@
+go test -race ./domain/subscription/... ./domain/upstream/evidence/... ./domain/upstream/contract/... ./domain/upstream/repair/... ./app/channel/internal/data/... ./internal/biz/... ./internal/server/... ./app/billing/... ./app/admin/... ./platform/security/auth/... ./platform/routingoutbox/... ./platform/grpc/xgrpc/...
+ok  	micro-one-api/domain/subscription/biz	1.441s
+ok  	micro-one-api/domain/subscription/data	2.715s
+ok  	micro-one-api/domain/upstream/evidence	1.468s
+ok  	micro-one-api/domain/upstream/contract	(cached)
+ok  	micro-one-api/domain/upstream/repair	1.453s
+ok  	micro-one-api/app/channel/internal/data	8.360s
+ok  	micro-one-api/internal/biz	1.768s
+ok  	micro-one-api/internal/server	7.902s
+ok  	micro-one-api/internal/server/forwarder	1.646s
+ok  	micro-one-api/internal/server/handler	1.639s
+ok  	micro-one-api/internal/server/usage	1.630s
+?   	micro-one-api/app/billing/cmd/billing	[no test files]
+ok  	micro-one-api/app/billing/cmd/vendor-cost-fetch	(cached)
+?   	micro-one-api/app/billing/cmd/vendor-reconcile	[no test files]
+ok  	micro-one-api/app/billing/internal/biz	(cached)
+ok  	micro-one-api/app/billing/internal/conf	1.636s
+ok  	micro-one-api/app/billing/internal/data	(cached)
+ok  	micro-one-api/app/billing/internal/server	1.745s
+ok  	micro-one-api/app/billing/internal/service	(cached)
+?   	micro-one-api/app/billing/testutil	[no test files]
+?   	micro-one-api/app/admin/cmd/admin	[no test files]
+ok  	micro-one-api/app/admin/internal/biz	1.797s
+ok  	micro-one-api/app/admin/internal/conf	(cached)
+ok  	micro-one-api/app/admin/internal/data	2.127s
+ok  	micro-one-api/app/admin/internal/data/channelclient	1.777s
+?   	micro-one-api/app/admin/internal/data/iam	[no test files]
+?   	micro-one-api/app/admin/internal/data/routingaccess	[no test files]
+?   	micro-one-api/app/admin/internal/data/routingrpc	[no test files]
+ok  	micro-one-api/app/admin/internal/server	5.869s
+ok  	micro-one-api/app/admin/internal/service	1.700s
+?   	micro-one-api/app/admin/testutil	[no test files]
+ok  	micro-one-api/platform/security/auth	1.470s
+ok  	micro-one-api/platform/routingoutbox	2.302s
+ok  	micro-one-api/platform/grpc/xgrpc	1.525s

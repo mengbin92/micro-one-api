@@ -1,0 +1,22 @@
+buf generate --template buf.gen.yaml
+buf generate --template buf.gen.config.yaml \
+		--path internal/conf \
+		--path app/admin/internal/conf \
+		--path app/billing/internal/conf \
+		--path app/channel/internal/conf \
+		--path app/config/internal/conf \
+		--path app/identity/internal/conf \
+		--path app/log/internal/conf \
+		--path app/monitor/internal/conf \
+		--path app/notify/internal/conf
+go generate ./...
+wire: micro-one-api/app/admin/cmd/admin: wrote /Users/mengbin/vscode/neo/micro-one-api/app/admin/cmd/admin/wire_gen.go
+wire: micro-one-api/app/billing/cmd/billing: wrote /Users/mengbin/vscode/neo/micro-one-api/app/billing/cmd/billing/wire_gen.go
+wire: micro-one-api/app/channel/cmd/channel: wrote /Users/mengbin/vscode/neo/micro-one-api/app/channel/cmd/channel/wire_gen.go
+wire: micro-one-api/app/config/cmd/config: wrote /Users/mengbin/vscode/neo/micro-one-api/app/config/cmd/config/wire_gen.go
+wire: micro-one-api/app/identity/cmd/identity: wrote /Users/mengbin/vscode/neo/micro-one-api/app/identity/cmd/identity/wire_gen.go
+wire: micro-one-api/app/log/cmd/log: wrote /Users/mengbin/vscode/neo/micro-one-api/app/log/cmd/log/wire_gen.go
+wire: micro-one-api/app/monitor/cmd/monitor: wrote /Users/mengbin/vscode/neo/micro-one-api/app/monitor/cmd/monitor/wire_gen.go
+wire: micro-one-api/app/notify/cmd/notify: wrote /Users/mengbin/vscode/neo/micro-one-api/app/notify/cmd/notify/wire_gen.go
+wire: micro-one-api/cmd/relay-gateway: wrote /Users/mengbin/vscode/neo/micro-one-api/cmd/relay-gateway/wire_gen.go
+go mod tidy

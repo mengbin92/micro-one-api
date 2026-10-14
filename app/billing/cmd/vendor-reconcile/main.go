@@ -22,6 +22,7 @@ func main() { os.Exit(run()) }
 func run() int {
 	manifestPath := flag.String("manifest", "", "fixed supplier scope, watermarks, mappings and audit metadata JSON")
 	vendorPath := flag.String("vendor-bill", "", "normalized supplier CSV")
+	costPath := flag.String("cost-evidence", "", "complete same-scope API archive instead of supplier CSV")
 	localPath := flag.String("local-attempts", "", "offline attempt evidence JSON (omitting reads billing owner DB)")
 	attributionPath := flag.String("attributions", "", "reviewed signed differences keyed by report comparison key JSON")
 	outPath := flag.String("out", "", "absolute new JSON report file")
@@ -42,13 +43,35 @@ func run() int {
 	if err := biz.ValidateVendorManifest(manifest); err != nil {
 		return fail(err)
 	}
-	raw, err := readBounded(*vendorPath, 32<<20)
-	if err != nil {
-		return fail(err)
-	}
-	rows, err := biz.ReadVendorCSV(bytes.NewReader(raw), manifest.Scope)
-	if err != nil {
-		return fail(err)
+	var rows []biz.VendorBillRow
+	var costEvidence *biz.VendorCostEvidence
+	var err error
+	if *costPath != "" {
+		if *vendorPath != "" {
+			return fail(fmt.Errorf("choose CSV or cost evidence"))
+		}
+		var archive biz.VendorCostEvidence
+		if err := readJSON(*costPath, &archive); err != nil {
+			return fail(err)
+		}
+		replayed, err := data.ReplayVendorCostPages(archive.Query, archive.Pages, archive.FetchedAt)
+		if err != nil {
+			return fail(err)
+		}
+		if !replayed.CSVMatched || biz.CanonicalVendorScope(manifest.Scope) != biz.CanonicalVendorScope(archive.Query.Scope) || manifest.EvidenceID != replayed.ID() || manifest.CostBasis != "provider_reported" || !manifest.PagesComplete {
+			return fail(fmt.Errorf("API import needs same-scope CSV agreement, original page identity and provider_reported basis"))
+		}
+		rows = replayed.Rows
+		costEvidence = &replayed
+	} else {
+		raw, readErr := readBounded(*vendorPath, 32<<20)
+		if readErr != nil {
+			return fail(readErr)
+		}
+		rows, err = biz.ReadVendorCSV(bytes.NewReader(raw), manifest.Scope)
+		if err != nil {
+			return fail(err)
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
@@ -74,6 +97,7 @@ func run() int {
 	if err != nil {
 		return fail(err)
 	}
+	report.CostAPIEvidence = costEvidence
 	if *attributionPath != "" {
 		var attributions map[string][]biz.VendorAttribution
 		if err := readJSON(*attributionPath, &attributions); err != nil {
@@ -158,6 +182,9 @@ func readBounded(path string, limit int64) ([]byte, error) {
 func readJSON(path string, target any) error {
 	b, err := readBounded(path, 32<<20)
 	if err != nil {
+		return err
+	}
+	if err := jsonx.ValidateUnique(b); err != nil {
 		return err
 	}
 	d := jsonx.NewDecoder(bytes.NewReader(b))

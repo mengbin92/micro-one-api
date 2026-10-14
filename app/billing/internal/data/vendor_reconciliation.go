@@ -186,6 +186,15 @@ func (r *vendorReconciliationRepo) StoreVendorReconciliation(ctx context.Context
 	if report.ID != biz.VendorReportID(report.Manifest, report.Rows) {
 		return fmt.Errorf("report identity mismatch")
 	}
+	if report.CostAPIEvidence != nil {
+		e, err := r.ValidateCostEvidence(ctx, *report.CostAPIEvidence)
+		if err != nil {
+			return err
+		}
+		if !e.CSVMatched || biz.CanonicalVendorScope(e.Query.Scope) != biz.CanonicalVendorScope(report.Manifest.Scope) || report.Manifest.CostBasis != "provider_reported" || report.Manifest.EvidenceID != e.ID() || biz.VendorReportID(report.Manifest, e.Rows) != report.ID {
+			return fmt.Errorf("API report identity or basis mismatch")
+		}
+	}
 	return authzquery.RunInTx(ctx, r.data.db, 3, func(ctx context.Context, tx *gorm.DB) error {
 		scopeRaw, _ := jsonx.Marshal(biz.CanonicalVendorScope(report.Manifest.Scope))
 		scopeHash := vendorHash(scopeRaw)
@@ -283,13 +292,27 @@ func vendorCorrection(before, after []biz.VendorBillRow) *string {
 }
 
 func (r *vendorReconciliationRepo) ListVendorReconciliations(ctx context.Context, start, end time.Time, limit int) ([]biz.VendorReconciliation, error) {
+	return r.listVendorReports(ctx, start, end, limit, false)
+}
+
+func (r *vendorReconciliationRepo) ListVendorMonitoringReports(ctx context.Context, limit int) ([]biz.VendorReconciliation, error) {
+	return r.listVendorReports(ctx, time.Time{}, time.Time{}, limit, true)
+}
+
+func (r *vendorReconciliationRepo) listVendorReports(ctx context.Context, start, end time.Time, limit int, all bool) ([]biz.VendorReconciliation, error) {
+	if limit < 1 || limit > 100 {
+		return nil, fmt.Errorf("bounded vendor report limit required")
+	}
 	if err := vendorReportAuth(ctx, "billing.vendor_report.read"); err != nil {
 		return nil, err
 	}
 	// Latest immutable run for each import; corrected predecessors are excluded
 	// from current coverage, but remain in the historical import/run tables.
 	var rows []vendorRunModel
-	q := r.data.db.WithContext(ctx).Table("billing_vendor_reconciliation_runs AS r").Select("r.*").Joins("JOIN billing_vendor_reports AS p ON p.id = r.report_id").Where("r.created_at >= ? AND r.created_at < ?", start.Unix(), end.Unix()).Where("NOT EXISTS (SELECT 1 FROM billing_vendor_reports newer WHERE newer.supersedes = p.id)").Where("NOT EXISTS (SELECT 1 FROM billing_vendor_reconciliation_runs x WHERE x.report_id = r.report_id AND (x.created_at > r.created_at OR (x.created_at = r.created_at AND x.id > r.id)))").Order("r.created_at DESC, r.id ASC").Limit(limit + 1)
+	q := r.data.db.WithContext(ctx).Table("billing_vendor_reconciliation_runs AS r").Select("r.*").Joins("JOIN billing_vendor_reports AS p ON p.id = r.report_id").Where("NOT EXISTS (SELECT 1 FROM billing_vendor_reports newer WHERE newer.supersedes = p.id)").Where("NOT EXISTS (SELECT 1 FROM billing_vendor_reconciliation_runs x WHERE x.report_id = r.report_id AND (x.created_at > r.created_at OR (x.created_at = r.created_at AND x.id > r.id)))").Order("r.created_at DESC, r.id ASC").Limit(limit + 1)
+	if !all {
+		q = q.Where("r.created_at >= ? AND r.created_at < ?", start.Unix(), end.Unix())
+	}
 	if err := q.Find(&rows).Error; err != nil {
 		return nil, err
 	}
