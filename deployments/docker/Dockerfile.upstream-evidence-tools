@@ -14,7 +14,8 @@ RUN make proto && \
     CGO_ENABLED=1 go build -trimpath -ldflags '-linkmode external -extldflags -static' -o /out/vendor-reconcile ./app/billing/cmd/vendor-reconcile && \
     CGO_ENABLED=1 go build -trimpath -ldflags '-linkmode external -extldflags -static' -o /out/vendor-cost-fetch ./app/billing/cmd/vendor-cost-fetch && \
     CGO_ENABLED=0 go build -trimpath -o /out/upstream-repair ./cmd/upstream-repair && \
-    CGO_ENABLED=0 go build -trimpath -o /out/upstream-rollout ./cmd/upstream-rollout
+    CGO_ENABLED=0 go build -trimpath -o /out/upstream-rollout ./cmd/upstream-rollout && \
+    CGO_ENABLED=1 go build -trimpath -ldflags '-linkmode external -extldflags -static' -o /out/evidence-worker ./app/billing/cmd/evidence-worker
 FROM alpine:3.23
 RUN apk add --no-cache ca-certificates && adduser -D -u 10001 evidence
 COPY --from=builder /out/ /usr/local/bin/

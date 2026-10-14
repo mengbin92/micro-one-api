@@ -41,8 +41,12 @@ func handleVendorReports(w http.ResponseWriter, r *http.Request, s *service.Admi
 		for _, r := range reply.ReportsJson {
 			rows = append(rows, jsonx.RawMessage(r))
 		}
-		writeJSON(w, 200, map[string]any{"reports": rows, "daily_coverage": jsonx.RawMessage(reply.DailySummaryJson)})
+		writeJSON(w, 200, vendorReportsHTTPReply(reply, rows))
 	default:
 		writeJSON(w, 405, map[string]string{"error": "method not allowed"})
 	}
+}
+
+func vendorReportsHTTPReply(reply *v.ListVendorReportsReply, rows []jsonx.RawMessage) map[string]any {
+	return map[string]any{"reports": rows, "daily_coverage": jsonx.RawMessage(reply.DailySummaryJson), "weekly_review": jsonx.RawMessage(reply.WeeklyReviewJson)}
 }

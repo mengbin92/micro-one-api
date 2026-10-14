@@ -32,6 +32,8 @@ P1 工程进展（2026-10-13）：按 Neo 指令完成后续全部工程功能�
 P3 生产更新（2026-10-14）：billing/channel/admin/relay、operator 工具镜像及费用证据告警已更新并验证；收费名单、探测预算和候选门禁保持原值。见 [P3 部署记录](../runbooks/billing-upstream-p3-deploy-2026-10-14.md)。
 
 
+P3 运营工程补齐（2026-10-14）：费用抓取、独立 agent 生成及周复盘增加持久调用前预算/租约/uncertain 状态；修复进程无 shell/tools、无生产或 reviewer 凭据，生成结果进入独立回放与人工/CI 门禁。供应商核验页面和 Grafana 已接通；真实调用与生产门禁按用户选择保持关闭。见 [运营补齐记录](../runbooks/billing-upstream-p3-operations-completion-2026-10-14.md)。
+
 ## 1. 准确性的三个层次
 
 | 对象 | 可以保证的内容 | 所需证据 |

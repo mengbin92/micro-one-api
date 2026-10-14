@@ -1,0 +1,12 @@
+[
+  {
+    "id": "weekly-review-example",
+    "kind": "weekly",
+    "enabled": false,
+    "payload_file": "weekly-payload",
+    "payload_digest": "e8ebcd331e12f2f09a60dcb0a012f30cd8db82688ebdea357750d4a50a33b408",
+    "interval_seconds": 604800,
+    "expires_at": 1792022400,
+    "max_runs": 4
+  }
+]

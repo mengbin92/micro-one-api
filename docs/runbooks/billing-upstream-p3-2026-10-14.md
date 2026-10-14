@@ -98,4 +98,6 @@ docker buildx build --platform linux/amd64 --load --progress=plain \
 
 验证记录见 [P3 本地验收](evidence/billing-upstream-p3-2026-10-14.json)。新增用例覆盖 decimal/cents、合法零、无金额、分页与重复 key、credential redirect、固定 CSV identity、原始页篡改、重复导入/更正、未审候选、过期/内容/范围签名、旧事故、独立 fixture 失败、未知 patch 不执行、重复流终结及资金/通知告警。全仓 `go test ./...` 中真实 e2e suite 需要本机 9001/3000 等运行栈；本轮使用仓库 `make test` 和 `make test-integration` 门禁，真实外部 e2e 未用空栈冒充通过。
 
-尚需现场资料：OpenAI/Anthropic 真实 admin 权限与 credential binding、独立完整同窗 CSV/API、官方水位/更正/排除项，以及已审候选的生产预算、至少 30 分钟/100 完整样本和发布/回滚收敛。未部署、未付费推理、未扩大收费、未修改用户账本。
+历史现场边界（本段记录部署前状态，当前部署见文首链接）：尚需现场资料：OpenAI/Anthropic 真实 admin 权限与 credential binding、独立完整同窗 CSV/API、官方水位/更正/排除项，以及已审候选的生产预算、至少 30 分钟/100 完整样本和发布/回滚收敛。当时未部署；后续部署已完成。真实费用/灰度仍按独立门禁核对，未扩大收费或修改用户账本。
+
+运营接缝已在后续 [工程补齐记录](billing-upstream-p3-operations-completion-2026-10-14.md) 中接通；外部真实调用按用户指令仍关闭。

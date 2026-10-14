@@ -35,6 +35,7 @@ export const routeLoaders = {
   '/admin/model-health': () => import('@/pages/admin/ModelHealthPage'),
   '/admin/cost-analysis': () => import('@/pages/admin/CostAnalysisPage'),
   '/admin/routing-ops': () => import('@/pages/admin/RoutingOpsPage'),
+  '/admin/vendor-reports': () => import('@/pages/admin/VendorReportsPage'),
   '/admin/upstream-costs': () => import('@/pages/admin/UpstreamCostsPage'),
 } as const;
 
