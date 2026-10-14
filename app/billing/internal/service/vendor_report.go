@@ -17,9 +17,8 @@ func (s *BillingService) ImportVendorReport(ctx context.Context, p *v.ImportVend
 	if len(p.GetCsv()) > 2<<20 {
 		return nil, biz.ErrSettlementReceiptInvalid
 	}
-	rows, err := biz.ReadVendorCSV(bytes.NewReader(p.GetCsv()), m.Scope)
-	if err != nil {
-		return nil, err
+	if len(p.GetCostEvidenceJson()) > 0 && len(p.GetCsv()) > 0 {
+		return nil, biz.ErrSettlementReceiptInvalid
 	}
 	var attrs map[string][]biz.VendorAttribution
 	if len(p.GetAttributionsJson()) > 0 {
@@ -27,7 +26,21 @@ func (s *BillingService) ImportVendorReport(ctx context.Context, p *v.ImportVend
 			return nil, err
 		}
 	}
-	report, err := s.uc.ImportVendorReport(ctx, m, rows, p.GetExpectedReportId(), p.GetReason(), attrs)
+	var report biz.VendorReconciliation
+	var err error
+	if len(p.GetCostEvidenceJson()) > 0 {
+		var archive biz.VendorCostEvidence
+		if err := biz.DecodeVendorJSON(p.GetCostEvidenceJson(), &archive); err != nil {
+			return nil, err
+		}
+		report, err = s.uc.ImportVendorCostReport(ctx, m, archive, p.GetExpectedReportId(), p.GetReason(), attrs)
+	} else {
+		rows, readErr := biz.ReadVendorCSV(bytes.NewReader(p.GetCsv()), m.Scope)
+		if readErr != nil {
+			return nil, readErr
+		}
+		report, err = s.uc.ImportVendorReport(ctx, m, rows, p.GetExpectedReportId(), p.GetReason(), attrs)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -48,5 +61,9 @@ func (s *BillingService) ListVendorReports(ctx context.Context, p *v.ListVendorR
 		out.ReportsJson = append(out.ReportsJson, raw)
 	}
 	out.DailySummaryJson, err = jsonx.Marshal(daily)
+	if err != nil {
+		return nil, err
+	}
+	out.WeeklyReviewJson, err = jsonx.Marshal(biz.SummarizeVendorWeekly(rows, time.Unix(p.GetEnd(), 0)))
 	return out, err
 }

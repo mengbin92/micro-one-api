@@ -4,7 +4,8 @@ option go_package = "micro-one-api/api/channel/v1;channelv1";
 message ContractScope { string source_kind=1; int64 source_id=2; string upstream_model_id=3; string protocol=4; }
 message ContractRule { string id=1; string kind=2; string path=3; string target=4; bytes value_json=5; string type=6; optional double min=7; optional double max=8; string replaces=9; string evidence_id=10; }
 message ContractRuleSet { string level=1; repeated ContractRule rules=2; }
-message UpstreamContractDocument { ContractScope scope=1; string provider=2; string adapter_build=3; string parser_revision=4; string usage_revision=5; string api_version=6; string endpoint=7; repeated string inbound_protocols=8; repeated ContractRuleSet rule_sets=9; string fixture_evidence_id=10; string basis_revision=11; }
+message UpstreamRepairReview { string proposal_id=1; string base_revision=2; int64 binding_revision=3; int64 incident_revision=4; string source_revision=5; string replay_id=6; string ci_evidence_id=7; string reviewer=8; string key_id=9; int64 expires_at=10; string signature=11; }
+message UpstreamContractDocument { ContractScope scope=1; string provider=2; string adapter_build=3; string parser_revision=4; string usage_revision=5; string api_version=6; string endpoint=7; repeated string inbound_protocols=8; repeated ContractRuleSet rule_sets=9; string fixture_evidence_id=10; string basis_revision=11; UpstreamRepairReview repair_review=12; }
 message UpstreamContractSnapshot { UpstreamContractDocument document=1; string revision=2; int64 binding_revision=3; int64 incident_revision=4; }
 message UpstreamContractBinding { ContractScope scope=1; string current_revision=2; string previous_revision=3; int64 revision=4; int64 incident_revision=5; string status=6; int32 gray_percent=7; int64 started_at=8; int64 complete_attempts=9; int64 failures=10; int64 cooldown_until=11; }
 message CreateUpstreamContractRequest { UpstreamContractDocument document=1; string reason=2; }

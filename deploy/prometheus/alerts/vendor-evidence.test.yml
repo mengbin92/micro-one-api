@@ -1,0 +1,36 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+tests:
+  - name: absent cost coverage is not healthy zero and recovery clears alert
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",state="empty"}'
+        values: '0 1+0x6 0+0x3'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VendorEvidenceMonitorUnavailable
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: VendorEvidenceMonitorUnavailable
+        exp_alerts:
+          - exp_labels: {instance: billing, state: empty, severity: warning}
+            exp_annotations:
+              summary: Supplier cost evidence monitoring needs attention
+              description: 'Restore bounded report coverage and notification delivery. Unknown costs do not authorize expansion. See docs/runbooks/billing-upstream-p3-2026-10-14.md.'
+      - eval_time: 8m
+        alertname: VendorEvidenceMonitorUnavailable
+        exp_alerts: []
+  - name: overdue evidence triggers review without inventing loss
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",state="overdue"}'
+        values: '0 1+0x6'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: VendorEvidenceNeedsReview
+        exp_alerts:
+          - exp_labels: {instance: billing, state: overdue, severity: warning}
+            exp_annotations:
+              summary: Supplier cost reports need review
+              description: 'Investigate unexplained differences and overdue evidence; keep customer ledgers and frozen policies unchanged. See docs/runbooks/billing-upstream-p3-2026-10-14.md.'

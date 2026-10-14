@@ -130,6 +130,7 @@ type VendorComparison struct {
 }
 
 type VendorReconciliation struct {
+	CostAPIEvidence     *VendorCostEvidence  `json:"cost_api_evidence,omitempty"`
 	ID                  string               `json:"id"`
 	Manifest            VendorManifest       `json:"manifest"`
 	Rows                []VendorBillRow      `json:"rows"`

@@ -1,0 +1,5 @@
+tool=vendor-reconcile offline_help_started=true exit=0
+tool=vendor-cost-fetch offline_help_started=true exit=2
+tool=upstream-repair offline_help_started=true exit=2
+tool=upstream-rollout offline_help_started=true exit=0
+tools_image=sha256:ce73ede1b0cf02aeb0a5f6882074f9b66d32d1180b615ca477ead050fe05fb21

@@ -1,0 +1,5 @@
+original_compose_restored_and_validated
+billing-service environment format=map
+channel-service environment format=map
+P3 config replacement validated; running containers unchanged
+config_backup=/opt/micro-one-api/docker-compose/backups/p3-20261014-104640

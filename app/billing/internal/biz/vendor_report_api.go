@@ -25,6 +25,29 @@ func (uc *BillingUsecase) vendorAuth(ctx context.Context, op string) (context.Co
 	return ctx, err
 }
 func (uc *BillingUsecase) ImportVendorReport(ctx context.Context, m VendorManifest, rows []VendorBillRow, expected, reason string, attrs map[string][]VendorAttribution) (VendorReconciliation, error) {
+	return uc.importVendorReport(ctx, m, rows, expected, reason, attrs, nil)
+}
+
+func (uc *BillingUsecase) ImportVendorCostReport(ctx context.Context, m VendorManifest, archive VendorCostEvidence, expected, reason string, attrs map[string][]VendorAttribution) (VendorReconciliation, error) {
+	ctx, err := uc.vendorAuth(ctx, "billing.vendor_report.import")
+	if err != nil {
+		return VendorReconciliation{}, err
+	}
+	validator, ok := uc.vendorReports.(VendorCostValidator)
+	if !ok {
+		return VendorReconciliation{}, fmt.Errorf("cost evidence validation unavailable")
+	}
+	e, err := validator.ValidateCostEvidence(ctx, archive)
+	if err != nil {
+		return VendorReconciliation{}, err
+	}
+	if !e.CSVMatched || CanonicalVendorScope(m.Scope) != CanonicalVendorScope(e.Query.Scope) || m.EvidenceID != e.ID() || m.CostBasis != "provider_reported" || !m.PagesComplete {
+		return VendorReconciliation{}, fmt.Errorf("same-scope API/CSV evidence and provider_reported basis required")
+	}
+	return uc.importVendorReport(ctx, m, e.Rows, expected, reason, attrs, &e)
+}
+
+func (uc *BillingUsecase) importVendorReport(ctx context.Context, m VendorManifest, rows []VendorBillRow, expected, reason string, attrs map[string][]VendorAttribution, apiEvidence *VendorCostEvidence) (VendorReconciliation, error) {
 	var out VendorReconciliation
 	ctx, err := uc.vendorAuth(ctx, "billing.vendor_report.import")
 	if err != nil {
@@ -56,6 +79,7 @@ func (uc *BillingUsecase) ImportVendorReport(ctx context.Context, m VendorManife
 	if err != nil {
 		return out, err
 	}
+	out.CostAPIEvidence = apiEvidence
 	seen := map[string]bool{}
 	for i := range out.Comparisons {
 		c := &out.Comparisons[i]
@@ -96,6 +120,9 @@ func (uc *BillingUsecase) ListVendorReports(ctx context.Context, start, end time
 func DecodeVendorJSON(raw []byte, value any) error {
 	if len(raw) > 2<<20 {
 		return fmt.Errorf("vendor document too large")
+	}
+	if err := jsonx.ValidateUnique(raw); err != nil {
+		return err
 	}
 	d := jsonx.NewDecoder(bytes.NewReader(raw))
 	d.DisallowUnknownFields()

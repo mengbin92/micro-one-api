@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -267,13 +268,36 @@ func (r *Repository) TransitionContract(ctx context.Context, t biz.ContractTrans
 			b.Status = "quarantined"
 			b.IncidentRevision++
 			b.CooldownUntil = now.Add(time.Minute).Unix()
+			if b.Current != "" {
+				snapshot, err := contractVersion(tx, t.Scope, b.Current)
+				if err != nil {
+					return err
+				}
+				if snapshot.Document.Repair != nil {
+					b.AutoUntil = 0
+				}
+			}
 		} else {
-			if _, err := contractVersion(tx, t.Scope, t.Revision); err != nil {
+			snapshot, err := contractVersion(tx, t.Scope, t.Revision)
+			if err != nil {
 				return err
 			}
 			source, err := r.sourceContractRevision(tx, t.Scope)
 			if err != nil {
 				return err
+			}
+			if t.Action == "publish" && snapshot.Document.Repair != nil {
+				var keys map[string]string
+				if jsonx.Unmarshal([]byte(os.Getenv("UPSTREAM_REPAIR_REVIEW_KEYS")), &keys) != nil || contract.VerifyRepairReview(snapshot.Document, keys, now) != nil {
+					return biz.ErrContractGate
+				}
+				review := snapshot.Document.Repair
+				if t.AutomaticUntil > review.ExpiresAt {
+					return biz.ErrContractGate
+				}
+				if review.BaseRevision != b.Current || review.BindingRevision != b.Revision || review.IncidentRevision != b.IncidentRevision || review.SourceRevision != source {
+					return biz.ErrContractConflict
+				}
 			}
 			if !freshProbe(tx, b, t.Revision, now, source) {
 				return biz.ErrContractGate
@@ -295,6 +319,9 @@ func (r *Repository) TransitionContract(ctx context.Context, t biz.ContractTrans
 				b.CompleteAttempts = 0
 				b.Failures = 0
 			case "promote":
+				if snapshot.Document.Repair != nil && b.AutoUntil > 0 && now.Unix() >= b.AutoUntil {
+					return biz.ErrContractGate
+				}
 				if b.Status != "gray" || t.Revision != b.Current || now.Unix()-b.StartedAt < 1800 || b.CompleteAttempts < 100 || b.Failures != 0 {
 					return biz.ErrContractGate
 				}
@@ -361,7 +388,27 @@ func (r *Repository) ResolveContracts(ctx context.Context, kind string, id int64
 		if err := tx.Where("source_kind = ? AND source_id = ? AND upstream_model_id = ?", kind, id, model).Order("protocol ASC").Find(&rows).Error; err != nil {
 			return err
 		}
-		for _, b := range rows {
+		for i := range rows {
+			b := rows[i]
+			// P3 gray authority is bounded in durable owner state. Coordinator
+			// loss cannot leave a reviewed candidate running past its deadline.
+			if b.Status == "gray" && b.AutoRevision == b.Current && b.AutoUntil > 0 && time.Now().Unix() >= b.AutoUntil {
+				// Re-read under the same owner lock used for publication before
+				// writing; a stale selector must not overwrite a concurrent CAS.
+				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", b.ID).First(&b).Error; err != nil {
+					return err
+				}
+				snap, err := contractVersion(tx, contract.Scope{Kind: b.SourceKind, ID: b.SourceID, Model: b.Model, Protocol: b.Protocol}, b.Current)
+				if err != nil {
+					return err
+				}
+				if snap.Document.Repair != nil && b.Status == "gray" && b.AutoRevision == b.Current && b.AutoUntil > 0 && time.Now().Unix() >= b.AutoUntil {
+					if err := expireRepairGray(ctx, tx, &b, time.Now()); err != nil {
+						return err
+					}
+				}
+				rows[i] = b
+			}
 			if b.Status == "quarantined" {
 				blocked = append(blocked, b.Protocol)
 				continue
@@ -532,8 +579,19 @@ func (r *Repository) RecordContractResult(ctx context.Context, result biz.Contra
 				b.CompleteAttempts++
 			} else {
 				b.Failures++
+				if b.Status == "gray" && b.AutoRevision == b.Current && b.AutoUntil > 0 {
+					snap, err := contractVersion(tx, result.Scope, b.Current)
+					if err != nil {
+						return err
+					}
+					if snap.Document.Repair != nil {
+						if err := expireRepairGray(ctx, tx, &b, now); err != nil {
+							return err
+						}
+					}
+				}
 			}
-			if native.Complete && (native.HTTPStatus == 0 || native.HTTPStatus >= 200 && native.HTTPStatus < 300) && native.Observation.Status != "verified" {
+			if b.Status != "quarantined" && native.Complete && (native.HTTPStatus == 0 || native.HTTPStatus >= 200 && native.HTTPStatus < 300) && native.Observation.Status != "verified" {
 				before := b.Current
 				b.Status = "quarantined"
 				b.IncidentRevision++
@@ -554,6 +612,21 @@ func (r *Repository) RecordContractResult(ctx context.Context, result biz.Contra
 		return nil
 	})
 	return
+}
+
+func expireRepairGray(ctx context.Context, tx *gorm.DB, b *contractBindingModel, now time.Time) error {
+	before := b.Current
+	b.Status = "quarantined"
+	b.IncidentRevision++
+	b.Revision++
+	b.CooldownUntil = now.Add(time.Minute).Unix()
+	// Revoke automatic recovery of the failed candidate; only an explicit
+	// new review or the still-valid previous contract may restore traffic.
+	b.AutoUntil = 0
+	if err := tx.Save(b).Error; err != nil {
+		return err
+	}
+	return contractAudit(ctx, tx, *b, "repair_gray_stop", before, "reviewed repair gray deadline or failure boundary", b.Current, now)
 }
 func (r *Repository) sourceContractRevision(tx *gorm.DB, s contract.Scope) (string, error) {
 	ctx := context.Background()

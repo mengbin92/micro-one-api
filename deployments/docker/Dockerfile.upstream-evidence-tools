@@ -1,0 +1,23 @@
+# Build locally/CI with buildx --platform linux/amd64; production never builds.
+FROM golang:1.27.2-alpine AS builder
+RUN apk add --no-cache git make gcc musl-dev
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+RUN go install github.com/bufbuild/buf/cmd/buf@v1.70.0 && \
+    go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 && \
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2 && \
+    go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v3@v3.0.0-20260626125723-668db92c2c00 && \
+    go install github.com/google/gnostic/cmd/protoc-gen-openapi@v0.7.1
+COPY . .
+RUN make proto && \
+    CGO_ENABLED=1 go build -trimpath -ldflags '-linkmode external -extldflags -static' -o /out/vendor-reconcile ./app/billing/cmd/vendor-reconcile && \
+    CGO_ENABLED=1 go build -trimpath -ldflags '-linkmode external -extldflags -static' -o /out/vendor-cost-fetch ./app/billing/cmd/vendor-cost-fetch && \
+    CGO_ENABLED=0 go build -trimpath -o /out/upstream-repair ./cmd/upstream-repair && \
+    CGO_ENABLED=0 go build -trimpath -o /out/upstream-rollout ./cmd/upstream-rollout
+FROM alpine:3.23
+RUN apk add --no-cache ca-certificates && adduser -D -u 10001 evidence
+COPY --from=builder /out/ /usr/local/bin/
+USER evidence
+WORKDIR /work
+ENTRYPOINT ["vendor-reconcile"]

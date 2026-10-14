@@ -1,0 +1,14 @@
+repair proposal a3ff3e6cada27786a8fa5c15526f2bab844e79b24e41b6175f24fe177cb0637c; replay f51dee6e3b592bbbba1b20be23b4bd8d981af76c34c19c4e0ebb8f79035dca91; review_required; failures=0
+vendor reconciliation: matched; supplier scope: none; report: /work/reference-report.json
+cost evidence e6fe7dbd5e166de95eacb198a16e7b11eb85b93e6bcc32323cf8f630e93e504f; pages=1; CSV matched=true; account_period only
+Usage of upstream-rollout:
+  -apply
+    	explicitly run the approved operator rollout; otherwise validate only
+  -gray-percent int
+    	P2 initial gray percentage, 1 through 5 (default 1)
+  -max-control-requests int
+    	control HTTP request budget, 8 through 256 (default 128)
+  -reviewed-request string
+    	signed protobuf JSON create request
+  -until int
+    	fixed rollout expiration, within signed review validity

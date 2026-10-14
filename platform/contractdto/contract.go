@@ -14,6 +14,9 @@ func ScopeProto(s contract.Scope) *v.ContractScope {
 }
 func Document(p *v.UpstreamContractDocument) contract.Document {
 	d := contract.Document{Scope: Scope(p.GetScope()), Provider: p.GetProvider(), AdapterBuild: p.GetAdapterBuild(), ParserRevision: p.GetParserRevision(), UsageRevision: p.GetUsageRevision(), APIVersion: p.GetApiVersion(), Endpoint: p.GetEndpoint(), Inbound: append([]string(nil), p.GetInboundProtocols()...), FixtureEvidence: p.GetFixtureEvidenceId(), BasisRevision: p.GetBasisRevision()}
+	if r := p.GetRepairReview(); r != nil {
+		d.Repair = &contract.RepairReview{ProposalID: r.GetProposalId(), BaseRevision: r.GetBaseRevision(), BindingRevision: r.GetBindingRevision(), IncidentRevision: r.GetIncidentRevision(), SourceRevision: r.GetSourceRevision(), ReplayID: r.GetReplayId(), CIEvidenceID: r.GetCiEvidenceId(), Reviewer: r.GetReviewer(), KeyID: r.GetKeyId(), ExpiresAt: r.GetExpiresAt(), Signature: r.GetSignature()}
+	}
 	for _, set := range p.GetRuleSets() {
 		s := contract.RuleSet{Level: set.GetLevel()}
 		for _, r := range set.GetRules() {
@@ -25,6 +28,9 @@ func Document(p *v.UpstreamContractDocument) contract.Document {
 }
 func DocumentProto(d contract.Document) *v.UpstreamContractDocument {
 	p := &v.UpstreamContractDocument{Scope: ScopeProto(d.Scope), Provider: d.Provider, AdapterBuild: d.AdapterBuild, ParserRevision: d.ParserRevision, UsageRevision: d.UsageRevision, ApiVersion: d.APIVersion, Endpoint: d.Endpoint, InboundProtocols: d.Inbound, FixtureEvidenceId: d.FixtureEvidence, BasisRevision: d.BasisRevision}
+	if r := d.Repair; r != nil {
+		p.RepairReview = &v.UpstreamRepairReview{ProposalId: r.ProposalID, BaseRevision: r.BaseRevision, BindingRevision: r.BindingRevision, IncidentRevision: r.IncidentRevision, SourceRevision: r.SourceRevision, ReplayId: r.ReplayID, CiEvidenceId: r.CIEvidenceID, Reviewer: r.Reviewer, KeyId: r.KeyID, ExpiresAt: r.ExpiresAt, Signature: r.Signature}
+	}
 	for _, set := range d.Sets {
 		s := &v.ContractRuleSet{Level: set.Level}
 		for _, r := range set.Rules {
