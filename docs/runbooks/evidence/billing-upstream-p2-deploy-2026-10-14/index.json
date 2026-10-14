@@ -126,12 +126,17 @@
   "artifact_sha256": {
     "deployment-docs.txt": "fc71dfe51223bf9ccd69942e727ddeba5d3103c651a294eb02ab68fada27d5ef",
     "integration.txt": "0cbf7773bb2d0177ca72afe4d00ff6e3ea40e579fe9405591a6dd8db629410cf",
-    "live-state.txt": "3766a29e26669481f5bf899d04fb4fccaeb6040fb02f4d7ce1c599ee4b9c5107",
+    "live-state.txt": "08ee34fe5ffaaed62012550180bb5b6d00502a08a02ec37af303c5155a799d40",
     "migrations.txt": "6898baaee4bd4fbbb4940129ace1dad3cfa49f1c0b2d03219a9f00c07df93f2b",
-    "probe-outbox.txt": "752ff29d42cce68d10f8f1c591dfa9d7e3b015215c23f4c17b09bc81783e6325",
+    "probe-outbox.txt": "20b3b3014d52eaa5bc8117ddd819db2bd83f4a6f74bda7c1456a76111e9a7754",
+    "security-scan.json": "d28cf737550a492f8cd4c710aa516becc619bef5c2c1b38b141de516105151a3",
     "three-dialect.txt": "114abebb8028142ece46548d7ef5a8bddf14f302d75345a93a02895a16efd558"
   },
-  "outbox_acknowledged": 82,
+  "outbox_acknowledged": 85,
   "outbox_pending": 0,
-  "admin_ui_verified": true
+  "admin_ui_verified": true,
+  "post_deploy_inventory_http_status": 200,
+  "post_deploy_inventory_at": "2026-10-14T05:25:51Z",
+  "security_scan_findings": 0,
+  "security_scanner_type_errors": 0
 }

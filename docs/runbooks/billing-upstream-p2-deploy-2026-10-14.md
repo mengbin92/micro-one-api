@@ -16,9 +16,11 @@ identity-service、billing-service、channel-service、admin-api、relay-gateway
 
 - 管理员登录会话正常；实际浏览器渠道管理中，渠道 1 为 OpenAI / 正常 / 启用，渠道 11 为 DeepSeek / 正常 / 启用。owner 状态均 healthy、circuit_opened_until=0。
 - 目录实际包含模型 519 `deepseek-flash`。管理员在部署期间执行启用后禁用，审计为 actor 1 的正常 model.enable/model.disable；最终配置 status=0、private，部署保持该最后决定，没有覆盖管理员操作。
-- 渠道 11 库存已有 `deepseek-flash`、`deepseek-v4-pro`，最近三次库存探测均 inventory_observed / HTTP 200。对应两条模型映射仍 disabled。渠道 1 原映射保持原值。
+- 渠道 11 库存已有 `deepseek-flash`、`deepseek-v4-pro`，最近三次库存探测均 inventory_observed / HTTP 200；新 relay/monitor 启动后 05:25:51 UTC 的实际探测再次成功。对应两条模型映射仍 disabled。渠道 1 原映射保持原值。
 - `UPSTREAM_CONTRACTS_V1_ENABLED=false` 明确配置于 channel/relay/monitor；生产 binding 数为 0。新 vendor report 数为 0，未把离线材料伪装为生产导入。
 - P1 execution delivery、receipt、probe 开关继续开启；native usage v2 收费名单仍为空。monitor 保持 5m、四个目标，未扩大每日预算或发起额外真实付费推理。
+
+持久 outbox 验证全部 ACK、pending=0。部署后追加扫描器兼容性修复和安全说明注释，运行逻辑与所部署合并版本相同；完整扫描没有发现项或类型导入错误。
 
 完整代表性供应商账期、其他计费来源和生产契约灰度/晋级窗口仍按设计方案独立验收。DeepSeek 六次受控调用的官方费用 `0.14036956 CNY` 已核对，但不能替代完整账期验收。工程部署不代表 P2 全部现场门槛已通过。
 

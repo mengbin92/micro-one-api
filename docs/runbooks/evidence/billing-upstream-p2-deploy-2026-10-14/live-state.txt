@@ -15,11 +15,11 @@ channel_id	model_id	upstream_model_id	enabled
 11	5	deepseek-v4-pro	0
 11	519	deepseek-flash	0
 id	models	attempt_id	observed_at
-channel:11	["deepseek-flash","deepseek-v4-pro"]	canary_9e9d6321-1f20-4678-823a-c16ef96076e9	1791955114
+channel:11	["deepseek-flash","deepseek-v4-pro"]	canary_4132aca6-9ab0-4d9f-9132-258170e1c259	1791955551
 target_id	outcome	http_status	created_at
+ch11-inventory-bodyless	inventory_observed	200	1791955551
 ch11-inventory-bodyless	inventory_observed	200	1791955114
 ch11-inventory-bodyless	inventory_observed	200	1791954536
-ch11-inventory-bodyless	inventory_observed	200	1791953991
 published_contract_bindings
 0
 vendor_reports

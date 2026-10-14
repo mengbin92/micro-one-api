@@ -21,3 +21,5 @@
 新增 identity-owned migration 134 仅补齐七项 P2 权限及目录 revision 2，全部为 draft/unbound，没有自动启用、授权或修改既有角色。审查矩阵补齐 19 个入口，更新变更代码的事实摘要和位置；它不生成运行时授权。
 
 关联：[P2 工程交付](billing-upstream-p2-completion-2026-10-14.md)、[DeepSeek 修复](deepseek-catalog-repair-2026-10-14.md)。
+
+推送门禁追加验证：固定 gosec v2.28.0 的原 x/tools 依赖无法读取 Go 1.27.2 的 V5 export data。共用安装脚本在隔离工具模块中固定 x/tools v0.52.0（[格式定义](https://github.com/golang/tools/blob/v0.52.0/internal/pkgbits/version.go)），不修改应用依赖或放宽规则。六处具有既有范围校验/可信配置边界的误报附逐处说明。完整扫描 699 个文件，发现数 0、类型导入错误 0；六个 pre-push 回归（含旧 reader 更新、安装失败与扫描失败阻断）通过。
