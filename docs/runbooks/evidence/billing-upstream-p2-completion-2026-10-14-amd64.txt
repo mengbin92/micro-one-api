@@ -1,0 +1,36 @@
+sha256:d1fdbf7ef288f97f5fc6e31d34c3ebaab1e8d660fedb10ab6f1aa11c31612fbe amd64 linux
+{
+  "synthetic": true,
+  "container_cases": [
+    {
+      "case": "tokens",
+      "exit_code": 0,
+      "output": "vendor reconciliation: matched; supplier scope: account_period; report: /tmp/report.json"
+    },
+    {
+      "case": "monthly",
+      "exit_code": 0,
+      "output": "vendor reconciliation: not_applicable; supplier scope: account_period; report: /tmp/report.json"
+    },
+    {
+      "case": "unknown",
+      "exit_code": 1,
+      "output": "vendor reconciliation: attention; supplier scope: none; report: /tmp/report.json"
+    },
+    {
+      "case": "balance_only",
+      "exit_code": 1,
+      "output": "vendor reconciliation: attention; supplier scope: none; report: /tmp/report.json"
+    },
+    {
+      "case": "zero-variance",
+      "exit_code": 1,
+      "output": "vendor reconciliation: attention; supplier scope: account_period; report: /tmp/report.json"
+    },
+    {
+      "case": "pending",
+      "exit_code": 1,
+      "output": "vendor reconciliation: pending; supplier scope: none; report: /tmp/report.json"
+    }
+  ]
+}

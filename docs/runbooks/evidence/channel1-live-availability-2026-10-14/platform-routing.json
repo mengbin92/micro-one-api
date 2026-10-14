@@ -1,0 +1,26 @@
+{
+  "circuit_opened_until": 1791884840,
+  "finished_at_utc": "2026-10-14T00:06:20.692531964Z",
+  "inference_performed": false,
+  "owner_read_code": "OK",
+  "persistent_health_mutated": false,
+  "selections": [
+    {
+      "code": "NotFound",
+      "error": "rpc error: code = NotFound desc = no available channel",
+      "model": "qwen3.7-max"
+    },
+    {
+      "code": "OK",
+      "half_open_probe_lease": true,
+      "model": "DeepSeek-V4-Flash-0731",
+      "selected_channel_id": 1,
+      "transient_probe_lease_release_accepted": true,
+      "transient_probe_lease_release_code": "OK"
+    }
+  ],
+  "source_id": 1,
+  "started_at_utc": "2026-10-14T00:06:20.679482879Z",
+  "stored_health_status": "unavailable",
+  "stored_status": 1
+}

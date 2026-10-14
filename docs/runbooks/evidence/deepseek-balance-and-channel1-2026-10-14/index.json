@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-14",
+  "new_deepseek_paid_calls": 2,
+  "deepseek_paid_calls_total": 6,
+  "channel1_inference_attempts": 1,
+  "deepseek_maximum_new_cost_cny": "0.50",
+  "deepseek_official_export_total_cny": "0.1403695600000000",
+  "deepseek_six_call_estimate_cny": "0.14036956",
+  "decimal_export_difference_cny": "0",
+  "deepseek_new_window_observed_debit_cny": "0.14",
+  "complete_supplier_day": false,
+  "p2_overall_acceptance": false,
+  "production_hotfix_deployed": false,
+  "checks": {
+    "backend_regression": "passed",
+    "race": "passed",
+    "vet": "passed",
+    "frontend_related_tests": 30,
+    "frontend_related_tests_status": "passed",
+    "typescript": "passed",
+    "credential_scan": "passed",
+    "diff_check": "passed"
+  },
+  "source_sha256": {
+    "app/channel/internal/biz/channel_action.go": "97c20131ff2fe75cbb9ed3698484d051e8b037b3b42bd106b89e707c7c202a28",
+    "app/channel/internal/data/channel_action_revision_test.go": "c2c8dedf840648d7d53883d222c41cfc3bb0c699cf4a89862cf8b3cfe6c53070",
+    "app/channel/internal/data/model_authorization_test.go": "a95f95faf9c10b397fb0b62b588266d82ad0a3cb60d1db1f544bc77817006050",
+    "web/src/pages/admin/ChannelsPage.tsx": "8d3e787db00e152dac1a1295ff27480877767725510b3ce288af4125ac4e6fe2",
+    "web/src/pages/admin/ChannelsPage.conflict.test.tsx": "7039e7b2c9b256243f31e2db25372844d7d58d2e549749408b8536a78a2e3b7a"
+  },
+  "artifact_sha256": {
+    "amount-2026-09-15_2026-10-14.csv": "daf1d1cd2a65fb28cfaf8add573579bdd03efab7fe694552ba45ae32c836c258",
+    "backend-regression.txt": "52c16ca1b06fbf508eb39dee937a8fa53b140e7c8b008b69fdc0a4086293b392",
+    "balance-window.json": "10d75b0b99e0e41a11bd7d0bb4a87bdad89ec7ec6e09a75e43817820a3426fd8",
+    "channel1-diagnostic.json": "acb1237b2e67dd945363731bfc877657679dd92cdc1bc4be7d660458d4deebd4",
+    "cost-2026-09-15_2026-10-14.csv": "9ccffb58d7433b6b952f55eaaaa4a76878d3a5e589408306ac3da1886e877987",
+    "frontend-regression.txt": "36ad4b1a6d5610023b1a5135c8ee4c9fbe42d896afae77839a54c7234044636e",
+    "official-export-provenance.json": "de5355d3b8ea1bc200bebc87051825c56adbdb06a7ee91a88806d07006e2f86b",
+    "race.txt": "b5d1a73ffd14312d3699ce7d42d60ba1d6778ff42bd94e1ef3a886498a528ac0"
+  }
+}

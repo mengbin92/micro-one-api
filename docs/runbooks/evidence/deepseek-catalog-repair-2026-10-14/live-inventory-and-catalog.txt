@@ -1,0 +1,9 @@
+id	models	attempt_id	observed_at
+channel:11	["deepseek-flash","deepseek-v4-pro"]	canary_4e728291-69c6-4ac4-8559-45742a81232a	1791953021
+id	model_id	provider	status	is_public
+519	deepseek-flash	deepseek	2	0
+channel_id	model_id	upstream_model_id	enabled
+11	5	deepseek-v4-pro	0
+11	519	deepseek-flash	0
+target_id	result
+ch11-inventory-bodyless	{"attempt_id":"canary_4e728291-69c6-4ac4-8559-45742a81232a","target_id":"ch11-inventory-bodyless","inventory":["deepseek-flash","deepseek-v4-pro"],"record_json":{"observation":{"protocol":"other","parser_revision":"native-shadow-2026-10-13.1","contract_revision":"native-static-2026-10-13.1","status":"missing","reason":"usage_absent"},"execution":"response_received","http_status":200,"stream":false,"complete":true,"upstream_endpoint":"/models","api_version":"unknown"},"outcome":"inventory_observed","valid_contract_probe":false,"observed_at":1791953021}

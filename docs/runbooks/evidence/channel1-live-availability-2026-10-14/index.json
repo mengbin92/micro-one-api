@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-14",
+  "verification_timezone": "Asia/Shanghai",
+  "final_owner_status": "healthy",
+  "final_owner_observed_at_utc": "2026-10-14T00:09:17.187775003Z",
+  "configuration_revision": 8,
+  "configured_models_tested": 8,
+  "externally_enabled_models": 5,
+  "direct_inference_attempts": 10,
+  "user_confirmed_all_five_enabled_models_return_normally": true,
+  "earlier_glm_5_3_failure": "two HTTP 500 snapshots; user subsequent online test passed",
+  "inventory_http200_is_valid_json": false,
+  "persistent_health_changed_by_this_diagnostic": false,
+  "synthetic_health_success_submitted": false,
+  "transient_half_open_lease_cancelled_neutrally": true,
+  "fees": "unknown_manual_gpu_nexus_probe",
+  "deployment_performed": false,
+  "artifact_sha256": {
+    "confirmed-model-and-inventory.json": "9abcd666756c1a4b9042035e1691798205479619ec2b1dec404aa45d38a8ebaa",
+    "final-owner-state.json": "4b18bce8e8f4988b9eb82bde8bb55db2f15abf719a7d03b4301e5beb802a4bf7",
+    "model-mappings.txt": "5075e9cb73aa7e661a0b209add73b002547df88b3d1850a875c1d7de004acd0a",
+    "platform-routing.json": "c517e811b7770ffb79304d094e72527a3062fccf0f808b2f9a4a3a3f8eb062f0",
+    "routing-facts.txt": "132eac8bc41e9670b31633bfa9b1ad292b38977c67cec11e44cfad64be6519b0",
+    "upstream-probes.json": "46f95f81d28aa8b74c21edef8322885c2fd40de663831a610b3d63d32e981d45"
+  }
+}

@@ -1,0 +1,8 @@
+
+ RUN  v5.0.0 /Users/mengbin/vscode/neo/micro-one-api/web
+
+
+ Test Files  4 passed (4)
+      Tests  30 passed (30)
+   Start at  07:59:52
+   Duration  2.07s (environment 53%, tests 16%, import 15%, transform 9%, setup 6%)

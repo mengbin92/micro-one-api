@@ -10,12 +10,15 @@ import (
 )
 
 type UpstreamInventory struct {
-	SourceKind    string
-	SourceID      int64
-	ExactModelIDs []string
-	AttemptID     string
-	ObservedAt    int64
-	Manual        bool
+	// DiscoveredModels is populated by the usecase, never by transport input.
+	// New models remain testing/private; new source mappings stay disabled.
+	DiscoveredModels []*Model
+	SourceKind       string
+	SourceID         int64
+	ExactModelIDs    []string
+	AttemptID        string
+	ObservedAt       int64
+	Manual           bool
 }
 type InventoryDiff struct{ Added, Missing []string }
 type UpstreamInventoryRepo interface {
@@ -38,6 +41,24 @@ func (uc *ChannelUsecase) RecordUpstreamInventory(ctx context.Context, i Upstrea
 		seen[id] = true
 	}
 	sort.Strings(i.ExactModelIDs)
+	i.DiscoveredModels = nil
+	// An inventory observation is evidence, not permission to publish a
+	// model or enable a new supplier route. Do not merge case-colliding
+	// upstream IDs into a single canonical route.
+	counts := map[string]int{}
+	for _, id := range i.ExactModelIDs {
+		counts[NormalizeModelID(id)]++
+	}
+	for _, id := range i.ExactModelIDs {
+		if counts[NormalizeModelID(id)] != 1 {
+			continue
+		}
+		provider := ""
+		if strings.HasPrefix(NormalizeModelID(id), "deepseek-") {
+			provider = "deepseek"
+		}
+		i.DiscoveredModels = append(i.DiscoveredModels, &Model{ModelID: id, DisplayName: id, Provider: provider, ModelType: "chat", Status: ModelStatusTesting, IsPublic: false, Metadata: `{"discovered":true,"discovery":"controlled_inventory"}`, CreatedAt: time.Now().Unix(), UpdatedAt: time.Now().Unix()})
+	}
 	r, ok := uc.repo.(UpstreamInventoryRepo)
 	if !ok {
 		return InventoryDiff{}, fmt.Errorf("inventory persistence unavailable")

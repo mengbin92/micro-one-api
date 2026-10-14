@@ -112,6 +112,7 @@ type SubscriptionPrimatives interface {
 }
 
 type BillingUsecase struct {
+	vendorReports       VendorReconciliationRepo
 	authorization       authorization.Resolver
 	routingPolicies     RoutingPolicyRepo
 	routingGroups       RoutingGroupReader

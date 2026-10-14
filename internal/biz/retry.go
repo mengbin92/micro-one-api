@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"micro-one-api/domain/requesttrace"
+	"micro-one-api/domain/upstream/contract"
 	"strings"
 	"time"
 
@@ -305,6 +306,13 @@ func extractStatus(msg string) int {
 // deliberately last-resort path, since any wording change in an error string
 // would silently break status-based channel failover.
 func UpstreamStatus(err error) int {
+	var rejection *contract.Rejection
+	if errors.As(err, &rejection) {
+		if errors.Is(err, contract.ErrQuarantined) {
+			return 503
+		}
+		return 400
+	}
 	if IsExplicitCapabilityError(err) {
 		return 501
 	}

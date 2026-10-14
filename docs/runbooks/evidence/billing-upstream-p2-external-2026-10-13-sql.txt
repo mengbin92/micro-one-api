@@ -1,0 +1,12 @@
+=== RUN   TestVendorImmutableReportsAndCorrectionsAcrossDialects
+=== RUN   TestVendorImmutableReportsAndCorrectionsAcrossDialects/sqlite
+=== RUN   TestVendorImmutableReportsAndCorrectionsAcrossDialects/mysql
+=== RUN   TestVendorImmutableReportsAndCorrectionsAcrossDialects/postgres
+--- PASS: TestVendorImmutableReportsAndCorrectionsAcrossDialects (3.74s)
+    --- PASS: TestVendorImmutableReportsAndCorrectionsAcrossDialects/sqlite (0.07s)
+    --- PASS: TestVendorImmutableReportsAndCorrectionsAcrossDialects/mysql (2.95s)
+    --- PASS: TestVendorImmutableReportsAndCorrectionsAcrossDialects/postgres (0.72s)
+=== RUN   TestVendorAttemptEvidenceUsesSendTimeAndDedupesTerminalFinal
+--- PASS: TestVendorAttemptEvidenceUsesSendTimeAndDedupesTerminalFinal (0.07s)
+PASS
+ok  	micro-one-api/app/billing/internal/data	4.117s

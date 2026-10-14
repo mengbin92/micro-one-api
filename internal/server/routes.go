@@ -2,6 +2,8 @@ package server
 
 import (
 	"fmt"
+	"micro-one-api/domain/upstream/contract"
+	"micro-one-api/domain/upstream/evidence"
 	xhttp "micro-one-api/platform/http"
 	"net/http"
 	"slices"
@@ -150,7 +152,8 @@ func (s *HTTPServer) wrapRoute(pattern string, declaration routeDeclaration, han
 	}
 	h = xtrace.Middleware(h)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r = r.WithContext(xhttp.WithClientIP(r.Context(), relayClientIP(r)))
+		r = r.WithContext(contract.WithInbound(xhttp.WithClientIP(r.Context(), relayClientIP(r)), evidence.ProtocolForPath(r.URL.Path)))
+		r = r.WithContext(s.withContractResults(r.Context(), ""))
 		h.ServeHTTP(w, appmiddleware.WithMetricPath(r, pattern))
 	})
 }

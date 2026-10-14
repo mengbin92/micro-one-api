@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"io"
 	"io/fs"
@@ -724,6 +723,9 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 	}))
 
 	// ── Model management (方案B) ──────────────────────────────────────────
+	srv.HandleFunc("/api/admin/vendor-reports", adminAuth(func(w http.ResponseWriter, r *http.Request) { handleVendorReports(w, r, svc) }))
+	srv.HandleFunc("/api/admin/upstream-contracts", adminAuth(func(w http.ResponseWriter, r *http.Request) { handleUpstreamContracts(w, r, svc) }))
+	srv.HandleFunc("/api/admin/upstream-contracts/transition", adminAuth(func(w http.ResponseWriter, r *http.Request) { handleUpstreamContracts(w, r, svc) }))
 	srv.HandleFunc("/api/admin/models", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleModels(w, r, svc)
 	}))
@@ -2250,7 +2252,7 @@ func handleGroupManagement(w http.ResponseWriter, r *http.Request, svc *service.
 
 func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 	if isIAMBusinessContext(r.Context()) {
-		if message, ok := dst.(proto.Message); ok {
+		if message, ok := directProtoMessage(dst); ok {
 			data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
 			if err != nil || (protojson.UnmarshalOptions{}).Unmarshal(data, message) != nil {
 				writeJSON(w, 400, apiResponse(false, "invalid request body", nil))

@@ -1,0 +1,2 @@
+provider,account,project,upstream_model_id,currency,unit,request_id,amount,uncached_input_tokens,cache_read_tokens,cache_creation_5m_tokens,cache_creation_1h_tokens,output_tokens
+fixture_supplier,fixture_account,,,CNY,currency,,199,,,,,

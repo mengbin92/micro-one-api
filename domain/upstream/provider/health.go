@@ -73,6 +73,10 @@ func BeforeForward(err error) error {
 }
 
 func IsPreForwardError(err error) bool {
+	var marker interface{ BeforeUpstream() bool }
+	if errors.As(err, &marker) && marker.BeforeUpstream() {
+		return true
+	}
 	var target *PreForwardError
 	return errors.As(err, &target)
 }

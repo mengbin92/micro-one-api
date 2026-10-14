@@ -405,6 +405,7 @@ message AdminUpdateChannelRequest {
   string system_prompt = 11;
   optional bool restrict_models = 12;                 // restrict to abilities list. Optional (proto3 presence): only applied when the caller sets it, so callers that update only balance/health never silently flip restrict_models.
   int64 expected_revision = 13; string reason = 14;
+  optional int32 type = 15; // Explicit provider correction; omitted preserves it.
 }
 
 message AdminUpdateChannelResponse {

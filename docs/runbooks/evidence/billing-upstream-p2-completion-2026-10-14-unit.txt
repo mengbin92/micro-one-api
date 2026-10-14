@@ -1,0 +1,35 @@
+ok  	micro-one-api/app/channel/internal/biz	(cached)
+ok  	micro-one-api/app/channel/internal/biz/oauth	(cached)
+ok  	micro-one-api/app/channel/internal/conf	(cached)
+ok  	micro-one-api/app/channel/internal/data	3.273s
+ok  	micro-one-api/app/channel/internal/server	(cached)
+ok  	micro-one-api/app/channel/internal/service	(cached)
+ok  	micro-one-api/app/billing/internal/biz	(cached)
+ok  	micro-one-api/app/billing/internal/conf	(cached)
+ok  	micro-one-api/app/billing/internal/data	5.272s
+ok  	micro-one-api/app/billing/internal/server	(cached)
+ok  	micro-one-api/app/billing/internal/service	(cached)
+ok  	micro-one-api/app/admin/internal/service	(cached)
+ok  	micro-one-api/app/admin/internal/server	3.767s
+ok  	micro-one-api/app/identity/internal/biz	(cached)
+ok  	micro-one-api/app/monitor/internal/biz	(cached)
+ok  	micro-one-api/app/monitor/internal/data	0.938s
+ok  	micro-one-api/internal/biz	(cached)
+ok  	micro-one-api/internal/data	(cached)
+ok  	micro-one-api/internal/service	(cached)
+ok  	micro-one-api/internal/server	(cached)
+ok  	micro-one-api/domain/upstream/contract	(cached)
+ok  	micro-one-api/domain/upstream/credential	(cached)
+ok  	micro-one-api/domain/upstream/evidence	(cached)
+ok  	micro-one-api/domain/upstream/provider	(cached)
+ok  	micro-one-api/domain/execution	(cached)
+ok  	micro-one-api/domain/authorization	(cached)
+?   	micro-one-api/domain/authorization/management	[no test files]
+?   	micro-one-api/domain/authorization/testutil	[no test files]
+?   	micro-one-api/platform/contractdto	[no test files]
+ok  	micro-one-api/platform/upstreamclient	(cached)
+ok  	micro-one-api/platform/security/serviceidentity	(cached)
+ok  	micro-one-api/platform/database/migrate	0.835s
+ok  	micro-one-api/app/billing/internal/biz	0.771s
+ok  	micro-one-api/app/billing/internal/data	4.659s
+ok  	micro-one-api/app/billing/internal/service	0.549s

@@ -4,10 +4,13 @@ package api.billing.v1;
 
 import "google/protobuf/timestamp.proto";
 import "api/common/v1/common.proto";
+import "api/billing/v1/vendor_report.proto";
 
 option go_package = "micro-one-api/api/billing/v1;billingv1";
 
 service BillingService {
+ rpc ImportVendorReport(ImportVendorReportRequest) returns (ImportVendorReportReply);
+ rpc ListVendorReports(ListVendorReportsRequest) returns (ListVendorReportsReply);
  rpc ResetAccountBalance(ResetAccountBalanceRequest) returns (TopUpQuotaResponse);
  rpc ExportLedgerEntries(ListLedgerRequest) returns (ExportArtifactReply);
  rpc ExportCostReport(ExportCostReportRequest) returns (ExportArtifactReply);

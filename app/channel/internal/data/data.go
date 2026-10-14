@@ -2289,6 +2289,7 @@ func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) 
 			return err
 		}
 		if err := tx.Model(&channelModel{}).Where("id = ?", channel.ID).Updates(map[string]any{
+			"type":                                 model.Type,
 			"name":                                 model.Name,
 			"base_url":                             model.BaseURL,
 			"key":                                  model.Key,

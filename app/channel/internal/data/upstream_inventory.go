@@ -57,7 +57,54 @@ func (r *Repository) SaveUpstreamInventory(ctx context.Context, i biz.UpstreamIn
 		}
 		models, _ := jsonx.Marshal(i.ExactModelIDs)
 		changes, _ := jsonx.Marshal(diff)
+		if err := r.registerInventoryCandidatesTx(tx, i); err != nil {
+			return err
+		}
 		return tx.Model(&row).Updates(map[string]any{"models": string(models), "diff": string(changes), "attempt_id": i.AttemptID, "observed_at": i.ObservedAt, "manual": i.Manual}).Error
 	})
 	return diff, err
+}
+
+// Candidates and the inventory receipt commit atomically. Existing catalog
+// decisions, prices, manual models and source mapping states are never updated.
+func (r *Repository) registerInventoryCandidatesTx(tx *gorm.DB, i biz.UpstreamInventory) error {
+	if len(i.DiscoveredModels) == 0 {
+		return nil
+	}
+	var source channelModel
+	var account subscriptionAccountModel
+	if i.SourceKind == "channel" {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&source, i.SourceID).Error; err != nil {
+			return err
+		}
+	} else {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&account, i.SourceID).Error; err != nil {
+			return err
+		}
+	}
+	for _, candidate := range i.DiscoveredModels {
+		po := newModelPO(candidate)
+		po.AuthorizationRevision = 1
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(po).Error; err != nil {
+			return err
+		}
+		var model modelModel
+		if err := tx.Where("LOWER(model_id) = ?", biz.NormalizeModelID(candidate.ModelID)).First(&model).Error; err != nil {
+			return err
+		}
+		if i.SourceKind == "channel" {
+			mapping := &modelChannelMappingModel{ChannelID: source.ID, ModelPK: model.ID, UpstreamModelID: candidate.ModelID, Enabled: false, Config: "{}", CreatedAt: candidate.CreatedAt, UpdatedAt: candidate.UpdatedAt}
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(mapping).Error; err != nil {
+				return err
+			}
+		} else {
+			for _, group := range biz.SplitCSV(account.Group) {
+				mapping := &modelSubscriptionMappingModel{SubscriptionAccountID: account.ID, ModelPK: model.ID, GroupName: group, UpstreamModelID: candidate.ModelID, Enabled: false, CreatedAt: candidate.CreatedAt, UpdatedAt: candidate.UpdatedAt}
+				if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(mapping).Error; err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/authz"
+	"micro-one-api/platform/contractdto"
 	"micro-one-api/platform/metrics"
 	"micro-one-api/platform/security/serviceidentity"
 	"strings"
@@ -1031,6 +1032,9 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *channelv1.Creat
 
 func (s *ChannelService) UpdateChannel(ctx context.Context, req *channelv1.UpdateChannelRequest) (*channelv1.UpdateChannelResponse, error) {
 	ctx = ownerWriteContext(ctx, req, "channel", req.ChannelId, "expected_revision")
+	if req.Type != nil && (*req.Type < 1 || *req.Type > 36) {
+		return nil, errors.Newf(errors.ReasonInvalidRequest, "invalid channel provider type")
+	}
 	channel, err := s.uc.ChannelForUpdate(ctx, req.ChannelId)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
@@ -1043,6 +1047,9 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *channelv1.Updat
 	}
 	if req.Name != "" {
 		channel.Name = req.Name
+	}
+	if req.Type != nil {
+		channel.Type = *req.Type
 	}
 	if req.BaseUrl != "" {
 		channel.BaseURL = req.BaseUrl
@@ -1226,13 +1233,17 @@ func (s *ChannelService) ClaimUpstreamExecution(ctx context.Context, req *channe
 		return nil, errors.Newf(errors.ReasonInvalidRequest, "invalid upstream execution claim")
 	}
 	lease, err := s.uc.ClaimUpstreamExecution(ctx, provider.ExecutionClaim{
-		SourceKind: req.GetSourceKind(), SourceID: req.GetSourceId(), ConfigurationRevision: req.GetConfigurationRevision(),
+		RuntimeBuild: req.GetRuntimeBuild(), AttemptID: req.GetAttemptId(), SourceKind: req.GetSourceKind(), SourceID: req.GetSourceId(), ConfigurationRevision: req.GetConfigurationRevision(),
 		UpstreamModelID: req.GetUpstreamModelId(), ProbeID: req.GetProbeId(),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &channelv1.ClaimUpstreamExecutionReply{ConfigurationRevision: lease.ConfigurationRevision, ProbeId: lease.ProbeID}, nil
+	reply := &channelv1.ClaimUpstreamExecutionReply{ConfigurationRevision: lease.ConfigurationRevision, ProbeId: lease.ProbeID, BlockedProtocols: lease.BlockedProtocols, ExecutionRevision: lease.ExecutionRevision}
+	for _, s := range lease.Contracts {
+		reply.Contracts = append(reply.Contracts, contractdto.SnapshotProto(s))
+	}
+	return reply, nil
 }
 
 func (s *ChannelService) RecordChannelSlot(ctx context.Context, req *channelv1.RecordChannelSlotRequest) (*channelv1.RecordChannelSlotResponse, error) {

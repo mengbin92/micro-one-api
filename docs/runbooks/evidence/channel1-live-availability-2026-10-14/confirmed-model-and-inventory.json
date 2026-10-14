@@ -1,0 +1,31 @@
+{
+  "source_id": 1,
+  "configuration_revision": 8,
+  "automatic_retries": 0,
+  "tests": [
+    {
+      "path": "/models",
+      "model": null,
+      "started_at_utc": "2026-10-14T00:06:54.774859+00:00",
+      "http_status": 200,
+      "content_type": "text/html",
+      "response_sha256": "14ef1b7a81b1a83a06580124c5bf917eaf8223d388ab749e3e75917d4be1fe80",
+      "response_bytes": 489,
+      "body_looks_like_html": true,
+      "finished_at_utc": "2026-10-14T00:06:55.299548+00:00"
+    },
+    {
+      "path": "/chat/completions",
+      "model": "glm-5.3",
+      "started_at_utc": "2026-10-14T00:06:55.299649+00:00",
+      "http_status": 500,
+      "content_type": "application/json",
+      "response_sha256": "08f4ee169f6d6f45e110f66e22f387c393f52729ebf72f3ce69c6f2e6b0d0758",
+      "response_bytes": 70,
+      "body_looks_like_html": false,
+      "provider_code": 500,
+      "provider_message": "service do not have healthy model glm-5.3 now",
+      "finished_at_utc": "2026-10-14T00:06:55.537133+00:00"
+    }
+  ]
+}

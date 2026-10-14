@@ -1102,6 +1102,7 @@ func (s *AdminService) UpdateChannel(ctx context.Context, req *adminv1.AdminUpda
 		Reason:           requestWriteReason(ctx, req.Reason),
 		ExpectedRevision: req.ExpectedRevision,
 		ChannelId:        req.ChannelId,
+		Type:             req.Type,
 		Name:             req.Name,
 		BaseUrl:          req.BaseUrl,
 		Key:              req.Key,

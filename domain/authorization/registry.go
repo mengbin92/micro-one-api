@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-const CatalogRevision uint64 = 1
+const CatalogRevision uint64 = 2
 
 // Operation declarations are code-owned and start unbound. Runtime execution
 // bindings are registered separately; metadata cannot publish an execution
@@ -80,6 +80,7 @@ var registry = func() map[string]Operation {
 		{"channel.model", "list read create update enable disable delete batch_update import export canonical.preflight canonical.merge", "channel", resources},
 		{"channel.model_alias", "read create delete", "channel", resources},
 		{"channel.model_usage", "read", "channel", resources},
+		{"channel.upstream_contract", "read create publish quarantine", "channel", global},
 		{"channel.usage_semantic_block", "list resolve", "channel", resources},
 		{"log.selection_event", "list", "log", users},
 		{"channel.model_mapping", "read create update delete", "channel", resourcesGroups},
@@ -91,6 +92,7 @@ var registry = func() map[string]Operation {
 		{"billing.routing_policy", "read publish user_override.read user_override.update user_override.delete", "billing", userGroups},
 		{"billing.account", "read balance.adjust balance.reset ledger.read cost.read", "billing", users},
 		{"billing.payment", "list read refund", "billing", users},
+		{"billing.vendor_report", "read import attribute", "billing", global},
 		{"billing.reconciliation", "read run issues.read", "billing", global},
 		{"billing.redemption", "list read create batch_create update delete export", "billing", resources},
 		{"subscription.quota_policy", "list read create update delete", "billing", resources},
