@@ -1204,7 +1204,7 @@ func (s *ChannelService) RecordUpstreamObservation(ctx context.Context, req *cha
 	accepted, err := s.uc.RecordUpstreamObservation(ctx, provider.Observation{
 		SourceKind: req.GetSourceKind(), SourceID: req.GetSourceId(), ConfigurationRevision: req.GetConfigurationRevision(),
 		ProbeID: req.GetProbeId(), ID: req.GetObservationId(), StartedAt: time.Unix(0, req.GetStartedAtUnixNano()),
-		Outcome: provider.HealthOutcome(req.GetOutcome()), FailureKind: req.GetFailureKind(), UpstreamModelID: req.GetUpstreamModelId(),
+		Outcome: provider.HealthOutcome(req.GetOutcome()), FailureKind: req.GetFailureKind(), UpstreamModelID: req.GetUpstreamModelId(), // #nosec G115 -- The boundary validation above only accepts outcome 0..2.
 		ResponseTime: req.GetResponseTime(), RetryAfter: time.Duration(req.GetRetryAfterMs()) * time.Millisecond, Error: req.GetError(),
 	})
 	result := "ignored"

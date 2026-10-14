@@ -387,6 +387,7 @@ func checkVendorBill(_ *sql.DB, _ time.Time, opts options, rep *report) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
+	// #nosec G204 -- The executable/package and flags are fixed; operator file paths are separate argv values, never shell input.
 	cmd := exec.CommandContext(ctx, "go", "run", "./app/billing/cmd/vendor-reconcile", "-manifest", opts.vendorManifest, "-vendor-bill", opts.vendorBill, "-out", opts.vendorOutput)
 	cmd.Env = append(os.Environ(), "VENDOR_RECONCILE_DSN="+opts.dsn)
 	output, err := cmd.CombinedOutput()

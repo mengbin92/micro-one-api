@@ -43,7 +43,7 @@ jobs:
         # shared with `make security-*` locally — never @latest.
         run: |
           set -a; . scripts/tool-versions.env; set +a
-          go install github.com/securego/gosec/v2/cmd/gosec@${GOSEC_VERSION}
+          ./scripts/install-gosec.sh
           gosec -fmt sarif -out gosec.sarif -no-fail -exclude-generated -exclude=G104 ./...
 
       - name: Upload gosec results

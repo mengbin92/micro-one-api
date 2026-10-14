@@ -26,6 +26,7 @@ func newExecutionDelivery(client billingv1.BillingServiceClient) (*relaybiz.Exec
 		path = "/var/lib/relay-outbox/events.db"
 	}
 	if os.Getenv("RELAY_EXECUTION_DELIVERY_V1") != "true" && os.Getenv("UPSTREAM_PROBES_ENABLED") != "true" {
+		// #nosec G703 -- This path is trusted server configuration, not request input; retained outbox data must survive disabling the feature.
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			return nil, func() {}, nil
 		} else if err != nil {

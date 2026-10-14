@@ -36,6 +36,7 @@ func (s *UpstreamProbeScheduler) Run(ctx context.Context, onError func(error)) {
 	failures := map[string]int{}
 	due := map[string]time.Time{}
 	for {
+		// #nosec G404 -- Scheduling jitter does not generate credentials, permits or security decisions.
 		wait := s.interval - time.Duration(rand.Int64N(int64(s.interval/10)))
 		timer := time.NewTimer(wait)
 		select {

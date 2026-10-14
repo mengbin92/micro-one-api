@@ -41,12 +41,14 @@ func NewExecutionData(path string, client biz.ExecutionSender) (*Data, func(), e
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, nil, err
 	}
+	// #nosec G302 -- This is a private directory; owner execute permission is required to access its 0600 database.
 	if err := os.Chmod(dir, 0700); err != nil {
 		return nil, nil, err
 	}
 	if info, err := os.Lstat(path); err == nil && (!info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0) {
 		return nil, nil, fmt.Errorf("outbox must be a regular file")
 	}
+	// #nosec G304 -- The absolute path is trusted server configuration, not request input; existing symlinks are rejected above.
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, nil, err
