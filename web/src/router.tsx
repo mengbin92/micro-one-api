@@ -84,6 +84,8 @@ const AdminUpstreamCostsPage = lazy(() =>
   routeLoaders['/admin/upstream-costs']().then((m) => ({ default: m.AdminUpstreamCostsPage }))
 );
 
+const VendorReportsPage = lazy(() => routeLoaders['/admin/vendor-reports']().then(m => ({ default: m.VendorReportsPage })));
+
 const SessionRolesPage = lazy(() => import('@/pages/SessionRolesPage').then(m => ({ default: m.SessionRolesPage })));
 const IAMPage = lazy(() => import('@/pages/admin/IAMPage').then(m => ({ default: m.IAMPage })));
 
@@ -173,6 +175,7 @@ export const router = createBrowserRouter([
         path: 'admin',
         element: <AdminRoute />,
         children: [
+          { path: 'vendor-reports', element: withSuspense(<VendorReportsPage />) },
           { path: 'iam', element: withSuspense(<IAMPage />) },
           ...['permissions', 'roles', 'assignments', 'delegations', 'constraints', 'menus', 'explain', 'audits'].map(section => ({ path: `iam/${section}`, element: withSuspense(<IAMPage />) })),
           {

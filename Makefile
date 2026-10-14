@@ -188,7 +188,7 @@ test-integration: proto
 # platform/security/auth carries the in-process JWT revocation blocklist
 # (global map + RWMutex) so its concurrent-access test runs under race too.
 test-race:
-	go test -race ./domain/subscription/... ./domain/upstream/evidence/... ./domain/upstream/contract/... ./domain/upstream/repair/... ./app/channel/internal/data/... ./internal/biz/... ./internal/server/... ./app/billing/... ./app/admin/... ./platform/security/auth/... ./platform/routingoutbox/... ./platform/grpc/xgrpc/...
+	go test -race ./domain/operations/... ./domain/subscription/... ./domain/upstream/evidence/... ./domain/upstream/contract/... ./domain/upstream/repair/... ./app/channel/internal/data/... ./internal/biz/... ./internal/server/... ./app/billing/... ./app/admin/... ./platform/security/auth/... ./platform/routingoutbox/... ./platform/grpc/xgrpc/...
 
 .PHONY: run-identity
 # run identity-service

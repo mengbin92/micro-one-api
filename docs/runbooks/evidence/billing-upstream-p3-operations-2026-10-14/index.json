@@ -1,0 +1,93 @@
+{
+  "date": "2026-10-14",
+  "baseline": "cfa2fc3b",
+  "scope": "engineering completion only; user selected preserve production gates",
+  "status": "local_engineering_verified",
+  "supplier_api_called": false,
+  "paid_generation_called": false,
+  "production_gate_changed": false,
+  "production_deployed_this_iteration": false,
+  "capabilities": [
+    "durable_fixed_plan_scheduler",
+    "claim_before_call_budget",
+    "uncertain_without_paid_replay",
+    "isolated_responses_agent_adapter",
+    "independent_candidate_replay_and_unsigned_artifact",
+    "weekly_owner_projection_archive",
+    "iam_guarded_supplier_ui",
+    "grafana_unknown_and_task_views"
+  ],
+  "tests": {
+    "unit_packages": 119,
+    "race_packages": 29,
+    "web_files": 80,
+    "web_tests": 456,
+    "web_build": "passed with asset budget",
+    "security": "full gosec passed",
+    "architecture": "passed",
+    "rbac_rows": 863,
+    "docker_operator_profiles": "valid; disabled by default",
+    "browser_visual": "desktop 1440x1050 / mobile 390x844 synthetic owner data",
+    "amd64_network_none": "disabled plans passed under read-only root and no capabilities"
+  },
+  "image": {
+    "tag": "micro-one-api/upstream-evidence-tools:p3-ops-20261014",
+    "id": "sha256:f8614e61deda3e88bf617f4a3588d0dfebdbdf1e89ecc6bcc1ee937cb1bd019a",
+    "platform": "linux/amd64"
+  },
+  "evidence": [
+    {
+      "check": "unit",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-operations-2026-10-14/unit.txt",
+      "sha256": "8caf9eab972b854dfb8f1e433d4865b767786361806a6bd11bea035a9aecec72"
+    },
+    {
+      "check": "race",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-operations-2026-10-14/race.txt",
+      "sha256": "8c10e7dae18fe173f6d66179dc2eac1303c78c04eea9eb3b6a0fae46a706dee9"
+    },
+    {
+      "check": "worker-race",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-operations-2026-10-14/worker-race.txt",
+      "sha256": "c43a1fb52d3cc9381c4a2d05877438d4c751e46edcd8808eea24d267957ebf95"
+    },
+    {
+      "check": "integration",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-operations-2026-10-14/integration.txt",
+      "sha256": "81ed3591fc92ab09cae5000b257e260f8213d3abd8c8f56586801c87457a2a04"
+    },
+    {
+      "check": "web-tests",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-operations-2026-10-14/web-tests.txt",
+      "sha256": "3846d4841b81f0d1d5c8f35d840f144ddcdab90ef66614b3fea30ca1735f2cb0"
+    },
+    {
+      "check": "web-build",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-operations-2026-10-14/web-build.txt",
+      "sha256": "ec2e78a851551d6515fdca23d1a97f775962a6dff83d563ddd88dae8205aa6ca"
+    },
+    {
+      "check": "amd64",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-operations-2026-10-14/amd64.txt",
+      "sha256": "63c2da47a26e6e8b5fd7be9f988f141cec20f07a3e9e559e10aa63cf62500714"
+    },
+    {
+      "check": "container-smoke",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-operations-2026-10-14/container-smoke.txt",
+      "sha256": "4a87d6ae2d0042aa2af388da618a59fd0b0a4c3373c9cdd2422336586e7dac74"
+    },
+    {
+      "check": "gates",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-operations-2026-10-14/gates.txt",
+      "sha256": "5152a2ea3cb7e1cea20338b71fa178f755c6ca75cbbc176b2796de0f66ff86d6"
+    }
+  ],
+  "remaining_field_gates": [
+    "real admin/model credentials and account binding",
+    "complete independent supplier period CSV/API",
+    "production reviewer/IAM/canary budgets",
+    "30-minute and 100-complete-attempt promotion window",
+    "five-minute multi-instance convergence and real notification evidence",
+    "two-week operational baseline"
+  ]
+}

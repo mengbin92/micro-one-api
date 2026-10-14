@@ -50,8 +50,12 @@ func (r *vendorReconciliationRepo) ValidateCostEvidence(ctx context.Context, e b
 	return replayed, nil
 }
 
-func NewVendorCostAPIData() *Data {
-	return &Data{vendorCostClient: &http.Client{Timeout: 20 * time.Second}}
+func NewVendorCostAPIData(clients ...*http.Client) *Data {
+	client := &http.Client{Timeout: 20 * time.Second}
+	if len(clients) > 0 && clients[0] != nil {
+		client = clients[0]
+	}
+	return &Data{vendorCostClient: client}
 }
 
 func NewVendorCostReader(d *Data, key string) biz.VendorCostReader {

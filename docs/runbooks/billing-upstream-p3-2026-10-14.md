@@ -2,6 +2,8 @@
 
 后续部署：按用户指令已完成 [P3 生产更新](billing-upstream-p3-deploy-2026-10-14.md)，四个服务、工具镜像和告警已更新；以下保留部署前的工程验收边界。
 
+运营遗留工程随后补齐，已完成[运营生产更新](billing-upstream-p3-operations-deploy-2026-10-14.md)：发布 identity/billing/admin、前端、Grafana 和工具镜像，生产 profiles 与真实调用门禁继续关闭。
+
 2026-10-14。以 P0/P1/P2 已完成为接续基线，在 `90a818ce` 上继续两份方案的 P3。本文记录本地工程与可审查制品；真实供应商权限、同窗 API/CSV 和生产灰度使用新的证据窗口验证。工程实现不会替代来源收费、模型公开或发票确认门禁。
 
 关联：[计费方案](../design/billing-accuracy-and-upstream-evidence-plan-2026-10-13.md)、[契约方案](../design/upstream-contract-evolution-plan-2026-10-13.md)、[P2 工程](billing-upstream-p2-completion-2026-10-14.md)。
@@ -98,4 +100,6 @@ docker buildx build --platform linux/amd64 --load --progress=plain \
 
 验证记录见 [P3 本地验收](evidence/billing-upstream-p3-2026-10-14.json)。新增用例覆盖 decimal/cents、合法零、无金额、分页与重复 key、credential redirect、固定 CSV identity、原始页篡改、重复导入/更正、未审候选、过期/内容/范围签名、旧事故、独立 fixture 失败、未知 patch 不执行、重复流终结及资金/通知告警。全仓 `go test ./...` 中真实 e2e suite 需要本机 9001/3000 等运行栈；本轮使用仓库 `make test` 和 `make test-integration` 门禁，真实外部 e2e 未用空栈冒充通过。
 
-尚需现场资料：OpenAI/Anthropic 真实 admin 权限与 credential binding、独立完整同窗 CSV/API、官方水位/更正/排除项，以及已审候选的生产预算、至少 30 分钟/100 完整样本和发布/回滚收敛。未部署、未付费推理、未扩大收费、未修改用户账本。
+历史现场边界（本段记录部署前状态，当前部署见文首链接）：尚需现场资料：OpenAI/Anthropic 真实 admin 权限与 credential binding、独立完整同窗 CSV/API、官方水位/更正/排除项，以及已审候选的生产预算、至少 30 分钟/100 完整样本和发布/回滚收敛。当时未部署；后续部署已完成。真实费用/灰度仍按独立门禁核对，未扩大收费或修改用户账本。
+
+运营接缝已在后续 [工程补齐记录](billing-upstream-p3-operations-completion-2026-10-14.md) 中接通；外部真实调用按用户指令仍关闭。
