@@ -18,6 +18,9 @@ P1 工程进展（2026-10-13）：按 Neo 指令完成后续全部工程功能�
 
 P3 工程接续（2026-10-14）：按本轮指令以 P0/P1/P2 已完成为基线。agent 输出采用无执行权限的候选封装，固定独立 fixtures 回放和 CI/reviewer Ed25519 签名；channel 在 CAS 发布事务核对当前 source/binding/incident revision。全新 Go patch 不自动执行或配置生效，先审查与 CI/跨平台制品，再接既有有预算 canary/gray/promote/rollback。费用 API、原始分页/CSV 核验及周复盘共用 billing 报告链。见 [P3 工程与验收边界](../runbooks/billing-upstream-p3-2026-10-14.md)。
 
+P3 生产更新（2026-10-14）：billing/channel/admin/relay、operator 工具镜像及费用证据告警已更新并验证；收费名单、探测预算和候选门禁保持原值。见 [P3 部署记录](../runbooks/billing-upstream-p3-deploy-2026-10-14.md)。
+
+
 ## 1. 结论与适应边界
 
 采用“原生协议保真透传 + 版本化上游契约 + 持续发现与契约测试”。复用当前 Adaptor、模型注册表、UsageEnvelope 和来源隔离能力，不新增微服务。

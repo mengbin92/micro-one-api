@@ -1,0 +1,457 @@
+[INFO] ======================================
+[INFO]   Micro-One-API Production Deploy
+[INFO] ======================================
+[INFO] Services: billing-service channel-service admin-api relay-gateway
+[INFO] Server: root@43.133.65.212
+[INFO] Project root: /Users/mengbin/vscode/neo/micro-one-api/scripts/..
+
+[STEP] Checking prerequisites...
+bash: warning: setlocale: LC_ALL: cannot change locale (zh_CN.UTF-8)
+[INFO] Prerequisites OK
+
+[STEP] ========================================
+[STEP] Building billing-service (linux/amd64)...
+[STEP] ========================================
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 4.97kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/golang:1.27.2-alpine
+#2 DONE 2.5s
+
+#3 [internal] load metadata for docker.io/library/alpine:3.20
+#3 DONE 2.5s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 414B done
+#4 DONE 0.0s
+
+#5 [go-deps 1/6] FROM docker.io/library/golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
+#5 resolve docker.io/library/golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d done
+#5 DONE 0.0s
+
+#6 [stage-2 1/5] FROM docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+#6 resolve docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc done
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 1.73MB 0.1s done
+#7 DONE 0.1s
+
+#8 [go-deps 6/6] RUN go install github.com/bufbuild/buf/cmd/buf@v1.70.0 &&     go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 &&     go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2 &&     go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v3@v3.0.0-20260626125723-668db92c2c00 &&     go install github.com/google/gnostic/cmd/protoc-gen-openapi@v0.7.1
+#8 CACHED
+
+#9 [go-deps 2/6] RUN apk add --no-cache git ca-certificates
+#9 CACHED
+
+#10 [go-deps 4/6] COPY go.mod go.sum ./
+#10 CACHED
+
+#11 [go-deps 5/6] RUN go mod download && go mod verify
+#11 CACHED
+
+#12 [builder 4/8] COPY --from=go-deps /go/pkg/mod /go/pkg/mod
+#12 CACHED
+
+#13 [builder 2/8] RUN apk add --no-cache       git ca-certificates make       build-base sqlite-libs sqlite-dev
+#13 CACHED
+
+#14 [go-deps 3/6] WORKDIR /deps
+#14 CACHED
+
+#15 [builder 3/8] WORKDIR /app
+#15 CACHED
+
+#16 [builder 5/8] COPY --from=go-deps /go/bin/buf /go/bin/protoc-gen-go      /go/bin/protoc-gen-go-grpc /go/bin/protoc-gen-go-http      /go/bin/protoc-gen-openapi /usr/local/bin/
+#16 CACHED
+
+#17 [builder 6/8] COPY . .
+#17 DONE 1.0s
+
+#18 [builder 7/8] RUN make proto
+#18 0.293 buf generate --template buf.gen.yaml
+#18 4.135 buf generate --template buf.gen.config.yaml \
+#18 4.135 	--path internal/conf \
+#18 4.135 	--path app/admin/internal/conf \
+#18 4.135 	--path app/billing/internal/conf \
+#18 4.135 	--path app/channel/internal/conf \
+#18 4.135 	--path app/config/internal/conf \
+#18 4.135 	--path app/identity/internal/conf \
+#18 4.135 	--path app/log/internal/conf \
+#18 4.135 	--path app/monitor/internal/conf \
+#18 4.135 	--path app/notify/internal/conf
+#18 DONE 4.7s
+
+#19 [builder 8/8] RUN CGO_ENABLED=1 go build       -ldflags='-s -w -extldflags "-static"'       -o /app/bin/service ./app/billing/cmd/billing
+#19 DONE 80.2s
+
+#20 [stage-2 2/5] RUN apk add --no-cache ca-certificates sqlite-libs
+#20 CACHED
+
+#21 [stage-2 3/5] COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+#21 CACHED
+
+#22 [stage-2 4/5] COPY --from=builder /app/bin/service /service
+#22 DONE 0.0s
+
+#23 [stage-2 5/5] COPY --from=builder /app/app/billing/configs /configs
+#23 DONE 0.0s
+
+#24 exporting to image
+#24 exporting layers
+#24 exporting layers 0.7s done
+#24 exporting manifest sha256:28c3536b85579166be6261a9b56656992880c100a174a90e1bc14edf154ef49c done
+#24 exporting config sha256:c56d3aa2c248e4d79f755fe94e9bd31565ac718b7a5c4d197306f91f8e960d05 done
+#24 exporting attestation manifest sha256:75f4a28d137c64870d1868546e46c7252f7160be33528de23822a8b1163de726 done
+#24 exporting manifest list sha256:8a15b62968a35a8aa565ad7a36793b2a0585f4c437e7962f89cfd16bb6e32e07 done
+#24 naming to docker.io/library/docker-compose-billing-service:deploy-20261014-184908-070c6a45 done
+#24 DONE 0.8s
+[INFO] Saving billing-service image...
+[INFO] Uploading to server...
+[INFO] Deploying on server (rollback tag: rollback-20261014-184908)...
+bash: warning: setlocale: LC_ALL: cannot change locale (zh_CN.UTF-8)
+Loaded image: docker-compose-billing-service:deploy-20261014-184908-070c6a45
+ Container billing-service Recreate 
+ Container billing-service Recreated 
+ Container billing-service Starting 
+ Container billing-service Started 
+billing-service image=sha256:8a15b62968a35a8aa565ad7a36793b2a0585f4c437e7962f89cfd16bb6e32e07 state=running none rollback=rollback-20261014-184908
+[INFO] billing-service deployed successfully!
+
+[STEP] ========================================
+[STEP] Building channel-service (linux/amd64)...
+[STEP] ========================================
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 4.97kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/alpine:3.20
+#2 ...
+
+#3 [internal] load metadata for docker.io/library/golang:1.27.2-alpine
+#3 DONE 1.4s
+
+#2 [internal] load metadata for docker.io/library/alpine:3.20
+#2 DONE 1.4s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 414B done
+#4 DONE 0.0s
+
+#5 [go-deps 1/6] FROM docker.io/library/golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
+#5 resolve docker.io/library/golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d done
+#5 DONE 0.0s
+
+#6 [stage-2 1/5] FROM docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+#6 resolve docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc done
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 177.08kB 0.1s done
+#7 DONE 0.1s
+
+#8 [go-deps 4/6] COPY go.mod go.sum ./
+#8 CACHED
+
+#9 [builder 5/8] COPY --from=go-deps /go/bin/buf /go/bin/protoc-gen-go      /go/bin/protoc-gen-go-grpc /go/bin/protoc-gen-go-http      /go/bin/protoc-gen-openapi /usr/local/bin/
+#9 CACHED
+
+#10 [go-deps 2/6] RUN apk add --no-cache git ca-certificates
+#10 CACHED
+
+#11 [go-deps 3/6] WORKDIR /deps
+#11 CACHED
+
+#12 [builder 4/8] COPY --from=go-deps /go/pkg/mod /go/pkg/mod
+#12 CACHED
+
+#13 [builder 2/8] RUN apk add --no-cache       git ca-certificates make       build-base sqlite-libs sqlite-dev
+#13 CACHED
+
+#14 [go-deps 5/6] RUN go mod download && go mod verify
+#14 CACHED
+
+#15 [builder 6/8] COPY . .
+#15 CACHED
+
+#16 [builder 3/8] WORKDIR /app
+#16 CACHED
+
+#17 [go-deps 6/6] RUN go install github.com/bufbuild/buf/cmd/buf@v1.70.0 &&     go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 &&     go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2 &&     go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v3@v3.0.0-20260626125723-668db92c2c00 &&     go install github.com/google/gnostic/cmd/protoc-gen-openapi@v0.7.1
+#17 CACHED
+
+#18 [builder 7/8] RUN make proto
+#18 CACHED
+
+#19 [builder 8/8] RUN CGO_ENABLED=1 go build       -ldflags='-s -w -extldflags "-static"'       -o /app/bin/service ./app/channel/cmd/channel
+#19 DONE 79.9s
+
+#20 [stage-2 2/5] RUN apk add --no-cache ca-certificates sqlite-libs
+#20 CACHED
+
+#21 [stage-2 3/5] COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+#21 CACHED
+
+#22 [stage-2 4/5] COPY --from=builder /app/bin/service /service
+#22 DONE 0.0s
+
+#23 [stage-2 5/5] COPY --from=builder /app/app/channel/configs /configs
+#23 DONE 0.0s
+
+#24 exporting to image
+#24 exporting layers
+#24 exporting layers 0.7s done
+#24 exporting manifest sha256:cd531a67073aeea238384ad359542b15eb7b0c3c2825b6d86c0a219647c1c2e5 done
+#24 exporting config sha256:921eb805a6e6553ad89e37a597bbafac62f49577e9b1e3856d3c9ad08c203c55 done
+#24 exporting attestation manifest sha256:e8618708ad85c9cc57a947f19d829ccfff3f27e16b356f7e71b61c151d1ea039 done
+#24 exporting manifest list sha256:342b1b2b4268dd4e921813c4938b8afe1f0473e1e3e2a3cc7d2f5732e5a91891 done
+#24 naming to docker.io/library/docker-compose-channel-service:deploy-20261014-184908-070c6a45 done
+#24 DONE 0.7s
+[INFO] Saving channel-service image...
+[INFO] Uploading to server...
+[INFO] Deploying on server (rollback tag: rollback-20261014-184908)...
+bash: warning: setlocale: LC_ALL: cannot change locale (zh_CN.UTF-8)
+Loaded image: docker-compose-channel-service:deploy-20261014-184908-070c6a45
+ Container channel-service Recreate 
+ Container channel-service Recreated 
+ Container channel-service Starting 
+ Container channel-service Started 
+channel-service image=sha256:342b1b2b4268dd4e921813c4938b8afe1f0473e1e3e2a3cc7d2f5732e5a91891 state=running none rollback=rollback-20261014-184908
+[INFO] channel-service deployed successfully!
+
+[STEP] ========================================
+[STEP] Building admin-api (linux/amd64)...
+[STEP] ========================================
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 6.42kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/node:24-alpine
+#2 ...
+
+#3 [internal] load metadata for docker.io/library/alpine:3.20
+#3 DONE 1.3s
+
+#4 [internal] load metadata for docker.io/library/golang:1.27.2-alpine
+#4 DONE 1.3s
+
+#2 [internal] load metadata for docker.io/library/node:24-alpine
+#2 DONE 2.2s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 414B done
+#5 DONE 0.0s
+
+#6 [web-builder 1/6] FROM docker.io/library/node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#6 resolve docker.io/library/node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 done
+#6 DONE 0.0s
+
+#7 [go-deps 1/6] FROM docker.io/library/golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
+#7 resolve docker.io/library/golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d done
+#7 DONE 0.0s
+
+#8 [stage-3 1/6] FROM docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+#8 resolve docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc done
+#8 DONE 0.0s
+
+#9 [internal] load build context
+#9 transferring context: 177.08kB 0.1s done
+#9 DONE 0.1s
+
+#10 [builder 5/8] COPY --from=go-deps /go/bin/buf /go/bin/protoc-gen-go      /go/bin/protoc-gen-go-grpc /go/bin/protoc-gen-go-http      /go/bin/protoc-gen-openapi /usr/local/bin/
+#10 CACHED
+
+#11 [builder 2/8] RUN apk add --no-cache       git ca-certificates make       build-base sqlite-libs sqlite-dev
+#11 CACHED
+
+#12 [go-deps 3/6] WORKDIR /deps
+#12 CACHED
+
+#13 [go-deps 4/6] COPY go.mod go.sum ./
+#13 CACHED
+
+#14 [builder 6/8] COPY . .
+#14 CACHED
+
+#15 [go-deps 2/6] RUN apk add --no-cache git ca-certificates
+#15 CACHED
+
+#16 [builder 4/8] COPY --from=go-deps /go/pkg/mod /go/pkg/mod
+#16 CACHED
+
+#17 [builder 3/8] WORKDIR /app
+#17 CACHED
+
+#18 [go-deps 5/6] RUN go mod download && go mod verify
+#18 CACHED
+
+#19 [go-deps 6/6] RUN go install github.com/bufbuild/buf/cmd/buf@v1.70.0 &&     go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 &&     go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2 &&     go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v3@v3.0.0-20260626125723-668db92c2c00 &&     go install github.com/google/gnostic/cmd/protoc-gen-openapi@v0.7.1
+#19 CACHED
+
+#20 [builder 7/8] RUN make proto
+#20 CACHED
+
+#21 [builder 8/8] RUN CGO_ENABLED=1 go build       -ldflags='-s -w -extldflags "-static"'       -o /app/bin/service ./app/admin/cmd/admin
+#21 DONE 79.2s
+
+#22 [stage-3 2/6] RUN apk add --no-cache ca-certificates sqlite-libs
+#22 CACHED
+
+#23 [stage-3 3/6] COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+#23 CACHED
+
+#24 [web-builder 5/6] COPY web/ ./
+#24 CACHED
+
+#25 [web-builder 3/6] COPY web/package.json web/package-lock.json web/.npmrc ./
+#25 CACHED
+
+#26 [web-builder 2/6] WORKDIR /web
+#26 CACHED
+
+#27 [web-builder 4/6] RUN npm ci --no-audit --no-fund
+#27 CACHED
+
+#28 [web-builder 6/6] RUN npm run build
+#28 CACHED
+
+#29 [stage-3 4/6] COPY --from=builder /app/bin/service /service
+#29 DONE 0.0s
+
+#30 [stage-3 5/6] COPY --from=builder /app/app/admin/configs /configs
+#30 DONE 0.0s
+
+#31 [stage-3 6/6] COPY --from=web-builder /web/dist /web
+#31 DONE 0.0s
+
+#32 exporting to image
+#32 exporting layers
+#32 exporting layers 0.7s done
+#32 exporting manifest sha256:6f3b7dcd808d606d2ebde5309a5cad287c3fefde664488fc9dbb62146bdef24e done
+#32 exporting config sha256:d8e8133bc6620cc111a8e025cea0bcb5d1c6b210a40c37c29590982ae411200f done
+#32 exporting attestation manifest sha256:d6db30edb6cd1dda41b891f13e21ac986e6717bce0dd83d78b8a1e28b7872d42 done
+#32 exporting manifest list sha256:e9169750f1e00d6c03a0177577c6e7fba50875e6f73d0cd8a8b97caf47582557 done
+#32 naming to docker.io/library/docker-compose-admin-api:deploy-20261014-184908-070c6a45 done
+#32 DONE 0.7s
+[INFO] Saving admin-api image...
+[INFO] Uploading to server...
+[INFO] Deploying on server (rollback tag: rollback-20261014-184908)...
+bash: warning: setlocale: LC_ALL: cannot change locale (zh_CN.UTF-8)
+Loaded image: docker-compose-admin-api:deploy-20261014-184908-070c6a45
+ Container admin-api Recreate 
+ Container admin-api Recreated 
+ Container admin-api Starting 
+ Container admin-api Started 
+admin-api image=sha256:e9169750f1e00d6c03a0177577c6e7fba50875e6f73d0cd8a8b97caf47582557 state=running none rollback=rollback-20261014-184908
+[INFO] admin-api deployed successfully!
+
+[STEP] ========================================
+[STEP] Building relay-gateway (linux/amd64)...
+[STEP] ========================================
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 4.91kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/alpine:3.20
+#2 DONE 2.2s
+
+#3 [internal] load metadata for docker.io/library/golang:1.27.2-alpine
+#3 DONE 2.2s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 414B done
+#4 DONE 0.0s
+
+#5 [go-deps 1/6] FROM docker.io/library/golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
+#5 resolve docker.io/library/golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d done
+#5 DONE 0.0s
+
+#6 [stage-2 1/5] FROM docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+#6 resolve docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc done
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 177.08kB 0.1s done
+#7 DONE 0.1s
+
+#8 [builder 4/8] COPY --from=go-deps /go/pkg/mod /go/pkg/mod
+#8 CACHED
+
+#9 [builder 3/8] WORKDIR /app
+#9 CACHED
+
+#10 [go-deps 2/6] RUN apk add --no-cache git ca-certificates
+#10 CACHED
+
+#11 [builder 2/8] RUN apk add --no-cache       git ca-certificates make       build-base sqlite-libs sqlite-dev
+#11 CACHED
+
+#12 [go-deps 3/6] WORKDIR /deps
+#12 CACHED
+
+#13 [go-deps 5/6] RUN go mod download && go mod verify
+#13 CACHED
+
+#14 [builder 5/8] COPY --from=go-deps /go/bin/buf /go/bin/protoc-gen-go      /go/bin/protoc-gen-go-grpc /go/bin/protoc-gen-go-http      /go/bin/protoc-gen-openapi /usr/local/bin/
+#14 CACHED
+
+#15 [builder 6/8] COPY . .
+#15 CACHED
+
+#16 [go-deps 4/6] COPY go.mod go.sum ./
+#16 CACHED
+
+#17 [go-deps 6/6] RUN go install github.com/bufbuild/buf/cmd/buf@v1.70.0 &&     go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 &&     go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2 &&     go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v3@v3.0.0-20260626125723-668db92c2c00 &&     go install github.com/google/gnostic/cmd/protoc-gen-openapi@v0.7.1
+#17 CACHED
+
+#18 [builder 7/8] RUN make proto
+#18 CACHED
+
+#19 [builder 8/8] RUN CGO_ENABLED=1 go build       -ldflags="-s -w -extldflags '-static' -X micro-one-api/domain/upstream/evidence.BuildRevision=source:5de45e642410229703b2d5b19b2c83636bc3c06959512f46af01eb0d7916a171"       -o /app/bin/service ./cmd/relay-gateway
+#19 DONE 78.1s
+
+#20 [stage-2 2/5] RUN apk add --no-cache ca-certificates sqlite-libs
+#20 CACHED
+
+#21 [stage-2 3/5] COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+#21 CACHED
+
+#22 [stage-2 4/5] COPY --from=builder /app/bin/service /service
+#22 DONE 0.0s
+
+#23 [stage-2 5/5] COPY --from=builder /app/configs /configs
+#23 DONE 0.0s
+
+#24 exporting to image
+#24 exporting layers
+#24 exporting layers 0.7s done
+#24 exporting manifest sha256:6955cc469cd7b9bf9ea62c1d4ab45d31d00e790a20540620a3eea01751499e7b done
+#24 exporting config sha256:cc59b4f5097fe63440298bd108ae8c930a7abda60caeb9ebdf8ec20253a08eff done
+#24 exporting attestation manifest sha256:ab63ef0cbe0bd57807eb1394f4d5adc060dcc9a683c5246cdc8e4bbc585b3aae done
+#24 exporting manifest list sha256:da87ce42e580400488363037c03ee153c12a8aec4b96d53654ff3ec6ec139d6e done
+#24 naming to docker.io/library/docker-compose-relay-gateway:deploy-20261014-184908-070c6a45 done
+#24 DONE 0.7s
+[INFO] Saving relay-gateway image...
+[INFO] Uploading to server...
+[INFO] Deploying on server (rollback tag: rollback-20261014-184908)...
+bash: warning: setlocale: LC_ALL: cannot change locale (zh_CN.UTF-8)
+Loaded image: docker-compose-relay-gateway:deploy-20261014-184908-070c6a45
+ Container relay-gateway Recreate 
+ Container relay-gateway Recreated 
+ Container relay-gateway Starting 
+ Container relay-gateway Started 
+relay-gateway image=sha256:da87ce42e580400488363037c03ee153c12a8aec4b96d53654ff3ec6ec139d6e state=running none rollback=rollback-20261014-184908
+[INFO] relay-gateway deployed successfully!
+
+[INFO] Migrations and frontend assets use their separate release steps.
+[INFO] ========================================
+[INFO] Deployment completed!
+[INFO] ========================================
