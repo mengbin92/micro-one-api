@@ -1,0 +1,6 @@
+{"outbox_status_counts": [["acknowledged", 82]]}
+target_id	outcome	http_status	created_at
+ch11-inventory-bodyless	inventory_observed	200	1791955114
+ch11-inventory-bodyless	inventory_observed	200	1791954536
+/relay-gateway 2026-10-14T05:20:50.540701097Z
+/monitor-worker 2026-10-14T05:20:57.558609446Z

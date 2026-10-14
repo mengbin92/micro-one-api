@@ -1,0 +1,28 @@
+VERSION                                             APPLIED
+132_vendor_reconciliation                           no
+applied 1 migration(s):
+  - 132_vendor_reconciliation
+VERSION                                             APPLIED
+133_upstream_contracts                              no
+applied 1 migration(s):
+  - 133_upstream_contracts
+VERSION                                             APPLIED
+134_p2_permission_catalog                           no
+applied 1 migration(s):
+  - 134_p2_permission_catalog
+version
+132_vendor_reconciliation
+version
+133_upstream_contracts
+version
+134_p2_permission_catalog
+catalog_revision	policy_revision	authorization_mode	cutover_state
+2	7	iam	complete
+code	status	binding_state
+billing.vendor_report.attribute	draft	unbound
+billing.vendor_report.import	draft	unbound
+billing.vendor_report.read	draft	unbound
+channel.upstream_contract.create	draft	unbound
+channel.upstream_contract.publish	draft	unbound
+channel.upstream_contract.quarantine	draft	unbound
+channel.upstream_contract.read	draft	unbound

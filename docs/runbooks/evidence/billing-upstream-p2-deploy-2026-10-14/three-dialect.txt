@@ -1,0 +1,3 @@
+ok  	micro-one-api/app/channel/internal/data	73.053s
+ok  	micro-one-api/app/billing/internal/data	124.566s
+ok  	micro-one-api/app/identity/internal/data	111.299s
