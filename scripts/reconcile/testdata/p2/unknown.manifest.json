@@ -1,0 +1,37 @@
+{
+  "scope": {
+    "provider": "fixture_supplier",
+    "account": "fixture_account",
+    "currency": "USD",
+    "unit": "currency",
+    "start": "2026-10-01T00:00:00Z",
+    "end": "2026-10-02T00:00:00Z",
+    "timezone": "Asia/Shanghai",
+    "granularity": "account_period"
+  },
+  "version": "fixture-v1",
+  "evidence_id": "synthetic-invoice",
+  "cost_basis": "provider_reported",
+  "mode": "unknown",
+  "complete": true,
+  "pages_complete": true,
+  "vendor_watermark": "2026-10-02T00:00:00Z",
+  "local_watermark": "2026-10-02T00:00:00Z",
+  "coverage_evidence_id": "synthetic-complete-account",
+  "mappings": [
+    {
+      "source_kind": "channel",
+      "source_id": 1,
+      "provider": "fixture_supplier",
+      "account": "fixture_account",
+      "start": "2026-10-01T00:00:00Z",
+      "end": "2026-10-02T00:00:00Z",
+      "revision": "fixture-mapping-v1",
+      "evidence_id": "synthetic-dedicated-account"
+    }
+  ],
+  "absolute_tolerance": "0",
+  "relative_tolerance": "0",
+  "actor": "offline-regression",
+  "reason": "synthetic P2 fixture, no real supplier evidence"
+}

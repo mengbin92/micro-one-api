@@ -1,0 +1,7 @@
+ok  	micro-one-api/app/billing/internal/biz	1.755s
+ok  	micro-one-api/app/billing/internal/data	7.578s
+ok  	micro-one-api/domain/upstream/evidence	1.435s
+ok  	micro-one-api/internal/server	7.094s
+
+# Final data-only race regression after the MySQL typed-PO correction
+ok  	micro-one-api/app/billing/internal/data	6.503s

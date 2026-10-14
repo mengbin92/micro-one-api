@@ -3,23 +3,28 @@ package evidence
 import (
 	"context"
 	"io"
+	"micro-one-api/domain/upstream/contract"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Record is observation evidence, never a receipt for financial settlement.
 type Record struct {
-	Observation      Observation   `json:"observation"`
-	Execution        string        `json:"execution"`
-	HTTPStatus       int           `json:"http_status,omitempty"`
-	Stream           bool          `json:"stream"`
-	Complete         bool          `json:"complete"`
-	Events           []Observation `json:"events,omitempty"`
-	EventCount       int           `json:"event_count,omitempty"`
-	DroppedEvents    int           `json:"dropped_events,omitempty"`
-	UpstreamEndpoint string        `json:"upstream_endpoint,omitempty"`
-	APIVersion       string        `json:"api_version,omitempty"`
+	ParameterContract *contract.Trace `json:"parameter_contract,omitempty"`
+	StartedAtUnixNano int64           `json:"started_at_unix_nano,omitempty"`
+	Observation       Observation     `json:"observation"`
+	Execution         string          `json:"execution"`
+	HTTPStatus        int             `json:"http_status,omitempty"`
+	Stream            bool            `json:"stream"`
+	Complete          bool            `json:"complete"`
+	Events            []Observation   `json:"events,omitempty"`
+	EventCount        int             `json:"event_count,omitempty"`
+	DroppedEvents     int             `json:"dropped_events,omitempty"`
+	UpstreamEndpoint  string          `json:"upstream_endpoint,omitempty"`
+	APIVersion        string          `json:"api_version,omitempty"`
 }
 
 type durableKey struct{}
@@ -77,10 +82,22 @@ func RecorderFromContext(ctx context.Context) Recorder {
 // Do captures the original response before any provider/adaptor projection.
 // Without a recorder it is the original client call with no body overhead.
 func Do(client *http.Client, req *http.Request, protocol string) (*http.Response, error) {
+	var parameterTrace *contract.Trace
+	if req != nil {
+		var err error
+		req, parameterTrace, err = contract.PrepareHTTP(req, protocol)
+		if err != nil {
+			return nil, &contract.Rejection{Err: err}
+		}
+	}
 	if req != nil {
 		if err := CheckDurable(req.Context()); err != nil {
 			return nil, err
 		}
+	}
+	startedAt := int64(0)
+	if parameterTrace != nil || os.Getenv("RELAY_UPSTREAM_EXECUTION_TIME_V1") == "true" {
+		startedAt = time.Now().UnixNano()
 	}
 	resp, err := client.Do(req) // #nosec G704 -- caller owns the existing URL/SSRF validation.
 	if req == nil {
@@ -88,11 +105,12 @@ func Do(client *http.Client, req *http.Request, protocol string) (*http.Response
 	}
 	recorder := RecorderFromContext(req.Context())
 	durable, _ := req.Context().Value(durableKey{}).(durableRecorder)
-	if recorder == nil && durable.Record == nil {
+	contractReporter := contractReporterFrom(req.Context())
+	if recorder == nil && durable.Record == nil && parameterTrace == nil {
 		return resp, err
 	}
 	if err != nil {
-		record := Record{Observation: Observation{Protocol: protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: "missing", Reason: "transport_error"}, Execution: "execution_unknown", UpstreamEndpoint: req.URL.EscapedPath(), APIVersion: apiVersion(req)}
+		record := Record{ParameterContract: parameterTrace, StartedAtUnixNano: startedAt, Observation: Observation{Protocol: protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: "missing", Reason: "transport_error"}, Execution: "execution_unknown", UpstreamEndpoint: req.URL.EscapedPath(), APIVersion: apiVersion(req)}
 		if recorder != nil {
 			recorder(record)
 		}
@@ -105,13 +123,13 @@ func Do(client *http.Client, req *http.Request, protocol string) (*http.Response
 	}
 	stream := strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream")
 	if durable.Record != nil {
-		header := Record{Observation: Observation{Protocol: protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: "missing", Reason: "response_headers_only", ProviderRequestID: providerRequestID(resp.Header)}, Execution: "checkpoint", HTTPStatus: resp.StatusCode, Stream: stream, UpstreamEndpoint: req.URL.EscapedPath(), APIVersion: apiVersion(req)}
+		header := Record{ParameterContract: parameterTrace, StartedAtUnixNano: startedAt, Observation: Observation{Protocol: protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: "missing", Reason: "response_headers_only", ProviderRequestID: providerRequestID(resp.Header)}, Execution: "checkpoint", HTTPStatus: resp.StatusCode, Stream: stream, UpstreamEndpoint: req.URL.EscapedPath(), APIVersion: apiVersion(req)}
 		if err := durable.Record(header); err != nil {
 			_ = resp.Body.Close()
 			return nil, err
 		}
 	}
-	resp.Body = &observedBody{ReadCloser: resp.Body, recorder: recorder, durable: durable.Record, protocol: protocol, status: resp.StatusCode, stream: stream, tracker: NewTracker(protocol), providerID: providerRequestID(resp.Header), endpoint: req.URL.EscapedPath(), apiVersion: apiVersion(req)}
+	resp.Body = &observedBody{contractReporter: contractReporter, parameterTrace: parameterTrace, startedAt: startedAt, ReadCloser: resp.Body, recorder: recorder, durable: durable.Record, protocol: protocol, status: resp.StatusCode, stream: stream, tracker: NewTracker(protocol), providerID: providerRequestID(resp.Header), endpoint: req.URL.EscapedPath(), apiVersion: apiVersion(req)}
 	return resp, nil
 }
 
@@ -138,6 +156,9 @@ func providerRequestID(header http.Header) string {
 }
 
 type observedBody struct {
+	contractReporter func(Record)
+	parameterTrace   *contract.Trace
+	startedAt        int64
 	checkpointEvents int
 	io.ReadCloser
 	recorder             Recorder
@@ -185,7 +206,7 @@ func (b *observedBody) Read(p []byte) (int, error) {
 	var checkpoint *Record
 	if b.durable != nil && b.stream && b.tracker.EventCount > b.checkpointEvents && b.checkpointEvents < MaxEvents && err == nil {
 		b.checkpointEvents = b.tracker.EventCount
-		checkpoint = &Record{Observation: b.tracker.Snapshot(), Execution: "checkpoint", HTTPStatus: b.status, Stream: true, Events: append([]Observation(nil), b.tracker.Events...), EventCount: b.tracker.EventCount, DroppedEvents: b.tracker.DroppedEvents, UpstreamEndpoint: b.endpoint, APIVersion: b.apiVersion}
+		checkpoint = &Record{ParameterContract: b.parameterTrace, StartedAtUnixNano: b.startedAt, Observation: b.tracker.Snapshot(), Execution: "checkpoint", HTTPStatus: b.status, Stream: true, Events: append([]Observation(nil), b.tracker.Events...), EventCount: b.tracker.EventCount, DroppedEvents: b.tracker.DroppedEvents, UpstreamEndpoint: b.endpoint, APIVersion: b.apiVersion}
 	}
 	b.mu.Unlock()
 	if checkpoint != nil {
@@ -215,7 +236,7 @@ func (b *observedBody) finish() {
 	b.once.Do(func() {
 		b.mu.Lock()
 		b.done = true
-		r := Record{HTTPStatus: b.status, Stream: b.stream, Complete: b.eof && !b.readFailed, Execution: "response_received", UpstreamEndpoint: b.endpoint, APIVersion: b.apiVersion}
+		r := Record{ParameterContract: b.parameterTrace, StartedAtUnixNano: b.startedAt, HTTPStatus: b.status, Stream: b.stream, Complete: b.eof && !b.readFailed, Execution: "response_received", UpstreamEndpoint: b.endpoint, APIVersion: b.apiVersion}
 		if b.stream {
 			var terminal bool
 			r.Observation, terminal = b.tracker.Finish()
@@ -243,6 +264,9 @@ func (b *observedBody) finish() {
 		if b.recorder != nil {
 			b.recorder(r)
 		}
+		if b.contractReporter != nil && r.ParameterContract != nil {
+			b.contractReporter(r)
+		}
 	})
 }
 
@@ -262,4 +286,15 @@ func NativeObservation(ctx context.Context) (*Record, bool) {
 		return nil, false
 	}
 	return read(), true
+}
+func ContractSnapshots(ctx context.Context) []contract.Snapshot { return contract.Snapshots(ctx) }
+
+type contractReporterKey struct{}
+
+func WithContractReporter(ctx context.Context, report func(Record)) context.Context {
+	return context.WithValue(ctx, contractReporterKey{}, report)
+}
+func contractReporterFrom(ctx context.Context) func(Record) {
+	f, _ := ctx.Value(contractReporterKey{}).(func(Record))
+	return f
 }

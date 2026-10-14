@@ -1,0 +1,50 @@
+[
+  {
+    "name": "json_text",
+    "stream": false,
+    "body": "{\"id\":\"fixture_json_text\",\"model\":\"deepseek-flash\",\"object\":\"chat.completion\",\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":1,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"prompt_cache_hit_tokens\":0,\"prompt_cache_miss_tokens\":8},\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"[redacted]\"}}]}",
+    "expected_buckets": [
+      8,
+      0,
+      0,
+      0,
+      1
+    ]
+  },
+  {
+    "name": "sse_text",
+    "stream": true,
+    "body": "data: {\"id\":\"fixture_sse_text\",\"object\":\"chat.completion.chunk\",\"model\":\"deepseek-flash\",\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{}}],\"usage\":null}\n\ndata: {\"id\":\"fixture_sse_text\",\"object\":\"chat.completion.chunk\",\"model\":\"deepseek-flash\",\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{}}],\"usage\":null}\n\ndata: {\"id\":\"fixture_sse_text\",\"object\":\"chat.completion.chunk\",\"model\":\"deepseek-flash\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":1,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"prompt_cache_hit_tokens\":0,\"prompt_cache_miss_tokens\":8}}\n\ndata: [DONE]\n\n",
+    "expected_buckets": [
+      8,
+      0,
+      0,
+      0,
+      1
+    ]
+  },
+  {
+    "name": "json_tool",
+    "stream": false,
+    "body": "{\"id\":\"fixture_json_tool\",\"model\":\"deepseek-flash\",\"object\":\"chat.completion\",\"usage\":{\"prompt_tokens\":282,\"completion_tokens\":16,\"total_tokens\":298,\"prompt_tokens_details\":{\"cached_tokens\":0},\"prompt_cache_hit_tokens\":0,\"prompt_cache_miss_tokens\":282},\"choices\":[{\"index\":0,\"finish_reason\":\"length\",\"message\":{\"role\":\"assistant\",\"content\":\"[redacted]\"}}]}",
+    "expected_buckets": [
+      282,
+      0,
+      0,
+      0,
+      16
+    ]
+  },
+  {
+    "name": "json_tool64",
+    "stream": false,
+    "body": "{\"id\":\"fixture_json_tool64\",\"object\":\"chat.completion\",\"model\":\"deepseek-flash\",\"usage\":{\"prompt_tokens\":282,\"completion_tokens\":34,\"total_tokens\":316,\"prompt_tokens_details\":{\"cached_tokens\":128},\"prompt_cache_hit_tokens\":128,\"prompt_cache_miss_tokens\":154},\"choices\":[{\"index\":0,\"finish_reason\":\"tool_calls\",\"message\":{\"role\":\"assistant\",\"content\":\"[redacted]\"}}]}",
+    "expected_buckets": [
+      154,
+      128,
+      0,
+      0,
+      34
+    ]
+  }
+]

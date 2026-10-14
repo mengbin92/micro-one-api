@@ -11,6 +11,7 @@ import (
 
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/domain/authorization"
+	"micro-one-api/domain/upstream/contract"
 	"micro-one-api/platform/database/authzquery"
 )
 
@@ -124,7 +125,7 @@ func (r *Repository) UpsertUsageSemanticVerdict(ctx context.Context, verdict biz
 			updates["last_verified_at"] = now
 			if row.Status == "" {
 				updates["status"] = biz.UsageSemanticBlockStatusActive
-			} else if row.Status == biz.UsageSemanticBlockStatusBlocked && row.BlockedUntil != nil && !row.BlockedUntil.After(now) {
+			} else if row.Status == biz.UsageSemanticBlockStatusBlocked && row.BlockedUntil != nil && !row.BlockedUntil.After(now) && contractSemanticResolveAllowed(r, tx, contract.Scope{Kind: row.SourceKind, ID: row.SourceID, Model: row.UpstreamModelID, Protocol: row.AdapterProtocol}, now) {
 				// Quarantine expired and a verified verdict arrived: auto-reactivate.
 				updates["status"] = biz.UsageSemanticBlockStatusActive
 				updates["blocked_until"] = nil
@@ -170,6 +171,30 @@ func (r *Repository) ListBlockedUsageSemanticBlocks(ctx context.Context, now tim
 		return nil, nil
 	}
 	var rows []usageSemanticSourceBlockModel
+	db := r.db.WithContext(ctx)
+	if db.Migrator().HasTable(&contractBindingModel{}) {
+		var bindings []contractBindingModel
+		if err := db.Where("current_revision <> ?", "").Find(&bindings).Error; err != nil {
+			return nil, err
+		}
+		if err := db.Where("status IN ?", []string{biz.UsageSemanticBlockStatusBlocked, biz.UsageSemanticBlockStatusUnsupported}).Find(&rows).Error; err != nil {
+			return nil, err
+		}
+		var out []biz.UsageSemanticBlock
+		for _, row := range rows {
+			keep := row.Status == biz.UsageSemanticBlockStatusUnsupported || row.BlockedUntil != nil && row.BlockedUntil.After(now)
+			for _, b := range bindings {
+				if b.Current != "" && b.SourceKind == row.SourceKind && b.SourceID == row.SourceID && b.Model == row.UpstreamModelID && b.Protocol == row.AdapterProtocol {
+					keep = true
+				}
+			}
+			if keep {
+				out = append(out, usageSemanticBlockToBiz(&row))
+			}
+		}
+		return out, nil
+	}
+
 	err := r.db.WithContext(ctx).
 		Where("(status = ? AND blocked_until > ?) OR status = ?", biz.UsageSemanticBlockStatusBlocked, now, biz.UsageSemanticBlockStatusUnsupported).
 		Find(&rows).Error
@@ -210,6 +235,9 @@ func (r *Repository) ResolveUsageSemanticBlock(ctx context.Context, sourceKind s
 			if expected == 0 || expected > math.MaxInt64 || int64(expected) != row.Revision {
 				return authorization.ErrWriteConflict
 			}
+			if !contractSemanticResolveAllowed(r, tx, contract.Scope{Kind: sourceKind, ID: sourceID, Model: upstreamModelID, Protocol: adapterProtocol}, now) {
+				return biz.ErrContractGate
+			}
 			if row.Status != biz.UsageSemanticBlockStatusBlocked && row.Status != biz.UsageSemanticBlockStatusUnsupported {
 				return nil
 			}
@@ -223,6 +251,9 @@ func (r *Repository) ResolveUsageSemanticBlock(ctx context.Context, sourceKind s
 	}
 	if r.db == nil {
 		return false, nil
+	}
+	if !contractSemanticResolveAllowed(r, r.db.WithContext(ctx), contract.Scope{Kind: sourceKind, ID: sourceID, Model: upstreamModelID, Protocol: adapterProtocol}, now) {
+		return false, biz.ErrContractGate
 	}
 	res := r.db.WithContext(ctx).Model(&usageSemanticSourceBlockModel{}).
 		Where("source_kind = ? AND source_id = ? AND upstream_model_id = ? AND adapter_protocol = ? AND status IN ?",

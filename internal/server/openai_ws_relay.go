@@ -9,6 +9,7 @@ import (
 	"time"
 
 	coderws "github.com/coder/websocket"
+	"micro-one-api/domain/upstream/contract"
 	"micro-one-api/domain/upstream/evidence"
 	relaybiz "micro-one-api/internal/biz"
 	usagepkg "micro-one-api/internal/server/usage"
@@ -17,14 +18,15 @@ import (
 
 // openAIWSRelayOptions configures the bidirectional Responses WebSocket relay.
 type openAIWSRelayOptions struct {
-	durableRecord   func(evidence.Record) error
-	durableBefore   func() error
-	beforeWriteUp   func(context.Context, coderws.MessageType, []byte) ([]byte, error)
-	writeTimeout    time.Duration
-	idleTimeout     time.Duration
-	onTurnComplete  func(turn openAIWSTurnResult)
-	beforeWriteDown func(msgType coderws.MessageType, payload []byte) error
-	readClientFrame func(ctx context.Context, conn openAIWSFrameConn) (coderws.MessageType, []byte, error)
+	contractSelection func() contract.Selection
+	durableRecord     func(evidence.Record) error
+	durableBefore     func() error
+	beforeWriteUp     func(context.Context, coderws.MessageType, []byte) ([]byte, error)
+	writeTimeout      time.Duration
+	idleTimeout       time.Duration
+	onTurnComplete    func(turn openAIWSTurnResult)
+	beforeWriteDown   func(msgType coderws.MessageType, payload []byte) error
+	readClientFrame   func(ctx context.Context, conn openAIWSFrameConn) (coderws.MessageType, []byte, error)
 }
 
 // openAIWSRelayUsage is the per-turn / per-session usage accumulator. The field
@@ -409,11 +411,14 @@ func relayOpenAIWSFrames(
 	defer relayCancel()
 
 	lastActivity := atomic.Int64{}
+	turnStartedAt := atomic.Int64{}
 	lastActivity.Store(nowFn().UnixNano())
 	markActivity := func() {
 		lastActivity.Store(nowFn().UnixNano())
 	}
 
+	var traceMu sync.Mutex
+	var turnTrace *contract.Trace
 	writeUpstream := func(msgType coderws.MessageType, payload []byte) error {
 		if opts.beforeWriteUp != nil {
 			var err error
@@ -427,8 +432,37 @@ func relayOpenAIWSFrames(
 				return err
 			}
 		}
+		if msgType == coderws.MessageText {
+			var frame struct {
+				Type string `json:"type"`
+			}
+			if jsonx.Unmarshal(payload, &frame) == nil && frame.Type == "response.create" {
+				selectionCtx := relayCtx
+				if opts.contractSelection != nil {
+					selectionCtx = contract.WithSelection(selectionCtx, opts.contractSelection())
+				}
+				out, tag, err := contract.Prepare(selectionCtx, "responses", payload)
+				if err != nil {
+					return &contract.Rejection{Err: err}
+				}
+				payload = out
+				traceMu.Lock()
+				turnTrace = tag
+				traceMu.Unlock()
+			}
+		}
 		writeCtx, cancel := context.WithTimeout(relayCtx, writeTimeout)
 		defer cancel()
+		// Durable WS turns are serialized by beforeWriteUp. Capture the actual
+		// response.create send boundary, rather than reservation/inbox time.
+		if upstreamExecutionTimingEnabled() && opts.durableRecord != nil && msgType == coderws.MessageText {
+			var frame struct {
+				Type string `json:"type"`
+			}
+			if jsonx.Unmarshal(payload, &frame) == nil && frame.Type == "response.create" {
+				turnStartedAt.Store(nowFn().UnixNano())
+			}
+		}
 		return upstreamConn.WriteFrame(writeCtx, msgType, payload)
 	}
 	writeClient := func(msgType coderws.MessageType, payload []byte) error {
@@ -482,6 +516,10 @@ func relayOpenAIWSFrames(
 		recorder := evidence.RecorderFromContext(relayCtx)
 		durable := opts.durableRecord
 		emit := func(record evidence.Record) error {
+			record.StartedAtUnixNano = turnStartedAt.Load()
+			traceMu.Lock()
+			record.ParameterContract = turnTrace
+			traceMu.Unlock()
 			if durable != nil {
 				if err := durable(record); err != nil {
 					return err

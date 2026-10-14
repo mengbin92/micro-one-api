@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/require"
 	"io"
+	"micro-one-api/domain/upstream/contract"
+	"micro-one-api/pkg/jsonx"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 type testTransport func(*http.Request) (*http.Response, error)
@@ -18,6 +21,8 @@ type testTransport func(*http.Request) (*http.Response, error)
 func (f testTransport) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
 
 func TestHTTPObservationPreservesBytesAndEmitsOnce(t *testing.T) {
+	t.Setenv("RELAY_UPSTREAM_EXECUTION_TIME_V1", "true")
+	beforeSend := time.Now().UnixNano()
 	payload := []byte(`{"usage":{"prompt_tokens":0,"completion_tokens":0},"choices":[{"message":{"content":"secret-conversation"}}]}`)
 	var records []Record
 	ctx := WithRecorder(context.Background(), func(record Record) { records = append(records, record) })
@@ -42,6 +47,8 @@ func TestHTTPObservationPreservesBytesAndEmitsOnce(t *testing.T) {
 	if bytes.Contains(records[0].Observation.Usage, []byte("secret")) {
 		t.Fatal("content/credentials in usage evidence")
 	}
+	require.GreaterOrEqual(t, records[0].StartedAtUnixNano, beforeSend)
+	require.LessOrEqual(t, records[0].StartedAtUnixNano, time.Now().UnixNano())
 }
 
 func TestHTTPObserverDisabledHasNoBodyWrapper(t *testing.T) {
@@ -53,6 +60,37 @@ func TestHTTPObserverDisabledHasNoBodyWrapper(t *testing.T) {
 	resp, err := Do(client, req, "other")
 	if err != nil || resp.Body != raw {
 		t.Fatal("disabled observer changed the body")
+	}
+}
+
+func TestHTTPExecutionTimingGateAndSSECheckpoints(t *testing.T) {
+	for _, enabled := range []string{"false", "true"} {
+		t.Run(enabled, func(t *testing.T) {
+			t.Setenv("RELAY_UPSTREAM_EXECUTION_TIME_V1", enabled)
+			var records []Record
+			ctx := WithDurableRecorder(context.Background(), nil, func(r Record) error { records = append(records, r); return nil })
+			req, _ := http.NewRequestWithContext(ctx, "POST", "https://example.com/chat/completions", nil)
+			client := &http.Client{Transport: testTransport(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader("data: {\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0}}\n\ndata: [DONE]\n\n"))}, nil
+			})}
+			resp, err := Do(client, req, "openai_chat")
+			require.NoError(t, err)
+			_, err = io.Copy(io.Discard, resp.Body)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			require.GreaterOrEqual(t, len(records), 2)
+			for _, r := range records {
+				require.Equal(t, records[0].StartedAtUnixNano, r.StartedAtUnixNano)
+				if enabled == "true" {
+					require.Positive(t, r.StartedAtUnixNano)
+				} else {
+					require.Zero(t, r.StartedAtUnixNano)
+					encoded, err := jsonx.Marshal(r)
+					require.NoError(t, err)
+					require.NotContains(t, string(encoded), "started_at_unix_nano")
+				}
+			}
+		})
 	}
 }
 
@@ -182,5 +220,38 @@ func TestDurableEvidenceFailurePreventsForwardAndFinalSuccess(t *testing.T) {
 	_, err = io.ReadAll(resp.Body)
 	require.ErrorIs(t, err, failure)
 	require.ErrorIs(t, resp.Body.Close(), failure)
+	require.Equal(t, 1, calls)
+}
+
+func TestP2ContractPinsSnapshotAndRejectsBeforeSupplierIO(t *testing.T) {
+	d := contract.Document{Scope: contract.Scope{Kind: "channel", ID: 1, Model: "exact", Protocol: "openai_chat"}, Provider: "fixture", AdapterBuild: contract.BuildID, ParserRevision: ParserRevision, UsageRevision: ContractRevision, Inbound: []string{"openai_chat"}, FixtureEvidence: "independent", BasisRevision: "schema", Sets: []contract.RuleSet{{Level: "model", Rules: []contract.Rule{{ID: "rename", Kind: "rename", Path: "old_option", Target: "new_option", Evidence: "equivalence"}}}}}
+	snap, err := contract.Compile(d)
+	require.NoError(t, err)
+	snap.BindingRevision = 4
+	snap.IncidentRevision = 2
+	calls := 0
+	var record Record
+	ctx := contract.WithSelection(context.Background(), contract.Selection{Snapshots: []contract.Snapshot{snap}, Inbound: "openai_chat"})
+	ctx = WithRecorder(ctx, func(r Record) { record = r })
+	client := &http.Client{Transport: testTransport(func(r *http.Request) (*http.Response, error) {
+		calls++
+		body, _ := io.ReadAll(r.Body)
+		require.Contains(t, string(body), "new_option")
+		require.NotContains(t, string(body), "old_option")
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"usage":{"prompt_tokens":0,"completion_tokens":0}}`))}, nil
+	})}
+	req, _ := http.NewRequestWithContext(ctx, "POST", "https://fixture.invalid/chat/completions", strings.NewReader(`{"old_option":0,"unknown":null}`))
+	resp, err := Do(client, req, "openai_chat")
+	require.NoError(t, err)
+	_, err = io.Copy(io.Discard, resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, 1, calls)
+	require.Equal(t, snap.Revision, record.ParameterContract.Revision)
+	require.EqualValues(t, 4, record.ParameterContract.BindingRevision)
+	require.Positive(t, record.StartedAtUnixNano)
+	bad, _ := http.NewRequestWithContext(ctx, "POST", "https://fixture.invalid/chat/completions", strings.NewReader(`{"old_option":0,"new_option":1}`))
+	_, err = Do(client, bad, "openai_chat")
+	require.Error(t, err)
 	require.Equal(t, 1, calls)
 }

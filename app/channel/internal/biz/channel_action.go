@@ -46,6 +46,13 @@ func (uc *ChannelUsecase) ExecuteChannelAction(ctx context.Context, id int64, ac
 	if err != nil {
 		return nil, err
 	}
+	// Reject an already stale operator action before remote IO (which may be
+	// billable). SaveChannelAction still fences the commit after remote IO.
+	if _, iam := authorization.QueryScopeFromContext(ctx, operation); iam {
+		if err := authorization.CheckWriteRevision(ctx, "channel", id, channel.AuthorizationRevision); err != nil {
+			return nil, err
+		}
+	}
 	result := &ChannelActionResult{ChannelID: id, Success: true, CheckedAt: time.Now().Unix(), Balance: channel.Balance, BalanceUpdatedTime: channel.BalanceUpdatedTime, BalanceRefreshLastError: channel.BalanceRefreshLastError, BalanceRefreshLastSuccessTime: channel.BalanceRefreshLastSuccessTime, ConsecutiveBalanceRefreshFailures: channel.ConsecutiveBalanceRefreshFailures}
 	started := time.Now()
 	client := &http.Client{Timeout: 30 * time.Second}

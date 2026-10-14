@@ -95,6 +95,12 @@ func iamOwnerRouteReady(path, method string) bool {
 		return len(parts) == 2 && positivePathID(parts[0]) && parts[1] == "balance:reset" && method == http.MethodPost
 	}
 	switch path {
+	case "/api/admin/vendor-reports":
+		return oneOfMethod(method, http.MethodGet, http.MethodPost)
+	case "/api/admin/upstream-contracts":
+		return oneOfMethod(method, http.MethodGet, http.MethodPost)
+	case "/api/admin/upstream-contracts/transition":
+		return method == http.MethodPost
 	case "/api/notice", "/api/about", "/api/home_page_content":
 		return oneOfMethod(method, http.MethodPut, http.MethodPost)
 	case "/v1/system/options", "/api/option":

@@ -1,0 +1,137 @@
+{
+  "model": "deepseek-flash",
+  "official_host": "api.deepseek.com",
+  "maximum_cost_cny": "0.50",
+  "max_paid_calls": 2,
+  "max_tokens_per_call": 32,
+  "thinking": "disabled",
+  "account_exclusivity": "user_confirmed_for_test_window",
+  "cashflow_exclusivity": "not_independently_verified",
+  "calls": [
+    {
+      "case": "balance_load_1",
+      "meta": {
+        "status": 200,
+        "started_at": "2026-10-13T23:50:28.818784+00:00",
+        "finished_at": "2026-10-13T23:50:30.283565+00:00",
+        "body_sha256": "f3d8ad79c40e28b14f7298fe652ae8dd9498ee19a31b1ff73bd87ac7772290da"
+      },
+      "request_sha256": "24bcd76c81cf7c187d69cc3f7096141dff509f9ecdab64063bbe045a409848b0",
+      "request_bytes": 100255,
+      "max_tokens": 32,
+      "per_call_worst_case_cny": "0.210256",
+      "native_usage": {
+        "prompt_tokens": 69853,
+        "completion_tokens": 1,
+        "total_tokens": 69854,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 69853
+      },
+      "finish_reasons": [
+        "stop"
+      ],
+      "returned_model": "deepseek-flash",
+      "response_id_sha256": "a98586bebddf2f5c209b13de51ae6276e9dde9e9af0cac1eae0bd878e14c3e02",
+      "tariff_period": "off_peak",
+      "tariff_estimate_cny": "0.069857"
+    },
+    {
+      "case": "balance_load_2",
+      "meta": {
+        "status": 200,
+        "started_at": "2026-10-13T23:50:30.650845+00:00",
+        "finished_at": "2026-10-13T23:50:32.349216+00:00",
+        "body_sha256": "928908d8ebb27411ef5d0da73345559eac73672958a4dd3c0e663c8c52751851"
+      },
+      "request_sha256": "cd37a54937225cc90b4fcbbe86b737ebfb5023ca1699183a7720adcc7c93eacc",
+      "request_bytes": 100255,
+      "max_tokens": 32,
+      "per_call_worst_case_cny": "0.210256",
+      "native_usage": {
+        "prompt_tokens": 69846,
+        "completion_tokens": 1,
+        "total_tokens": 69847,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 69846
+      },
+      "finish_reasons": [
+        "stop"
+      ],
+      "returned_model": "deepseek-flash",
+      "response_id_sha256": "07c948fc00a70688984fa903edcb099261b44b9a540501492a78aaaea31ce5dc",
+      "tariff_period": "off_peak",
+      "tariff_estimate_cny": "0.06985"
+    }
+  ],
+  "started_at": "2026-10-13T23:50:28.448767+00:00",
+  "finished_at": "2026-10-13T23:54:48.971986+00:00",
+  "tariff_estimate_cny": "0.139707",
+  "observed_debit_cny": "0.14",
+  "estimate_minus_observed_cny": "-0.000293",
+  "balance_display_quantum_cny": "0.01",
+  "actual_precision_match": true,
+  "verification_scope": "controlled_account_interval_at_balance_display_precision",
+  "balance_snapshots": [
+    {
+      "observed_at": "2026-10-13T23:50:28.640288+00:00",
+      "debit_total_cny": "0.00",
+      "debit_granted_cny": "0.00",
+      "debit_topped_up_cny": "0.00"
+    },
+    {
+      "observed_at": "2026-10-13T23:50:30.472615+00:00",
+      "debit_total_cny": "0.00",
+      "debit_granted_cny": "0.00",
+      "debit_topped_up_cny": "0.00"
+    },
+    {
+      "observed_at": "2026-10-13T23:50:32.563965+00:00",
+      "debit_total_cny": "0.00",
+      "debit_granted_cny": "0.00",
+      "debit_topped_up_cny": "0.00"
+    },
+    {
+      "observed_at": "2026-10-13T23:50:37.720131+00:00",
+      "debit_total_cny": "0.00",
+      "debit_granted_cny": "0.00",
+      "debit_topped_up_cny": "0.00"
+    },
+    {
+      "observed_at": "2026-10-13T23:50:52.879683+00:00",
+      "debit_total_cny": "0.00",
+      "debit_granted_cny": "0.00",
+      "debit_topped_up_cny": "0.00"
+    },
+    {
+      "observed_at": "2026-10-13T23:51:23.027744+00:00",
+      "debit_total_cny": "0.00",
+      "debit_granted_cny": "0.00",
+      "debit_topped_up_cny": "0.00"
+    },
+    {
+      "observed_at": "2026-10-13T23:53:48.666030+00:00",
+      "debit_total_cny": "0.14",
+      "debit_granted_cny": "0.00",
+      "debit_topped_up_cny": "0.14"
+    },
+    {
+      "observed_at": "2026-10-13T23:54:18.813904+00:00",
+      "debit_total_cny": "0.14",
+      "debit_granted_cny": "0.00",
+      "debit_topped_up_cny": "0.14"
+    },
+    {
+      "observed_at": "2026-10-13T23:54:48.971986+00:00",
+      "debit_total_cny": "0.14",
+      "debit_granted_cny": "0.00",
+      "debit_topped_up_cny": "0.14"
+    }
+  ],
+  "complete_supplier_day": false
+}

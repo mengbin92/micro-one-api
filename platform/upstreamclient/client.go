@@ -8,6 +8,7 @@ import (
 	"google.golang.org/grpc/status"
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/domain/upstream/provider"
+	"micro-one-api/platform/contractdto"
 )
 
 func ReportObservation(ctx context.Context, client channelv1.ChannelServiceClient, o provider.Observation) error {
@@ -22,7 +23,7 @@ func ReportObservation(ctx context.Context, client channelv1.ChannelServiceClien
 
 func ClaimExecution(ctx context.Context, client channelv1.ChannelServiceClient, claim provider.ExecutionClaim) (provider.ExecutionLease, error) {
 	reply, err := client.ClaimUpstreamExecution(ctx, &channelv1.ClaimUpstreamExecutionRequest{
-		SourceKind: claim.SourceKind, SourceId: claim.SourceID, ConfigurationRevision: claim.ConfigurationRevision, UpstreamModelId: claim.UpstreamModelID, ProbeId: claim.ProbeID,
+		RuntimeBuild: claim.RuntimeBuild, AttemptId: claim.AttemptID, SourceKind: claim.SourceKind, SourceId: claim.SourceID, ConfigurationRevision: claim.ConfigurationRevision, UpstreamModelId: claim.UpstreamModelID, ProbeId: claim.ProbeID,
 	})
 	if err != nil {
 		if status.Code(err) == codes.ResourceExhausted {
@@ -30,5 +31,13 @@ func ClaimExecution(ctx context.Context, client channelv1.ChannelServiceClient, 
 		}
 		return provider.ExecutionLease{}, err
 	}
-	return provider.ExecutionLease{ConfigurationRevision: reply.GetConfigurationRevision(), ProbeID: reply.GetProbeId()}, nil
+	lease := provider.ExecutionLease{ConfigurationRevision: reply.GetConfigurationRevision(), ProbeID: reply.GetProbeId(), BlockedProtocols: reply.GetBlockedProtocols(), ExecutionRevision: reply.GetExecutionRevision()}
+	for _, p := range reply.GetContracts() {
+		s, err := contractdto.Snapshot(p)
+		if err != nil {
+			return provider.ExecutionLease{}, err
+		}
+		lease.Contracts = append(lease.Contracts, s)
+	}
+	return lease, nil
 }

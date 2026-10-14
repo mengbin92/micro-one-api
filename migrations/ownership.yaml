@@ -41,8 +41,10 @@ services:
     - 110_create_identity_iam
     - 111_add_iam_cardinality_limits
     - 123_add_iam_permission_metadata
+    - 134_p2_permission_catalog
 
   channel:
+    - 133_upstream_contracts
     - 130_exact_usage_semantic_model_keys
     - 127_upstream_inventory
     - 124_backfill_subscription_account_revision
@@ -85,6 +87,7 @@ services:
     - 109_add_credential_refresh_pending
 
   billing:
+    - 132_vendor_reconciliation
     - 131_match_execution_reservation_collation
     - 126_upstream_execution_evidence
     # billing_reservations / billing_ledgers / billing_redeem_* / payment_orders /

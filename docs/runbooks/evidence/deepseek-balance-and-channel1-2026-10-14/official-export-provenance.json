@@ -1,0 +1,34 @@
+{
+  "official_console": "https://platform.deepseek.com/usage",
+  "selected_api_key_name": "micro-one-api",
+  "ui_filter": "last_30_days_selected_api_key",
+  "official_archive_sha256": "4fc4523b1f1b667b162fa6bbcbce1653190487d110cbebeffb6ebafe688d9d15",
+  "raw_csv_sha256": {
+    "cost-2026-09-15_2026-10-14.csv": "393f9ec355caada5da8ed2c1ee202a7516e4dff59ff5259052338658b5e226da",
+    "amount-2026-09-15_2026-10-14.csv": "9850400592cc0a6c05e4789fa2a099106d3b2b68673591d1962289719454864b"
+  },
+  "raw_export_private_path": "/tmp/micro-one-api-deepseek-balance-window-20261014/usage_data_2026-09-15_2026-10-14.zip",
+  "public_csv_redactions": [
+    "user_id SHA256",
+    "api_key redacted"
+  ],
+  "supplier_row_scope": "model_currency_wallet_day; cost_csv_contains_no_key_or_request_id",
+  "supplier_bucket_start": "2026-10-14T00:00:00+08:00",
+  "supplier_bucket_end": "2026-10-15T00:00:00+08:00",
+  "supplier_day_closed": false,
+  "coverage": "six_manual_official_calls_observed_in_snapshot; not_a_closed_daily_invoice",
+  "official_console_delay_notice_minutes": 5,
+  "official_request_count": 6,
+  "official_cache_miss_tokens": 140151,
+  "official_cache_hit_tokens": 128,
+  "official_output_tokens": 54,
+  "official_total_tokens": 140333,
+  "official_cost_cny": "0.1403695600000000",
+  "six_call_tariff_estimate_cny": "0.14036956",
+  "decimal_cost_difference_cny": "0E-16",
+  "cost_matches_exactly_at_export_precision": true,
+  "request_level_cost_verified": false,
+  "daily_invoice_closed": false,
+  "p2_overall_acceptance": false,
+  "reviewed_at_utc": "2026-10-13T23:58:59.624718+00:00"
+}

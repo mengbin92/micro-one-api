@@ -1,0 +1,44 @@
+{
+  "source_sha256": {
+    "api/admin/v1/admin.proto": "3c294744dd60639590a0094cde424d678a4e346120f42c4f1ed02f4f0db87868",
+    "api/channel/v1/channel.proto": "64de664f9197f3d23d1d97f00dbf4e67905972a87e253af6bd8758fd38a04e67",
+    "app/admin/internal/service/admin.go": "1442ef65d948a538bd7c6197fe64ea5913cf8e55bbd49ff07289b89d28dc7131",
+    "app/admin/internal/server/direct_proto_message.go": "a834305704ef522e9a1477cdf10abbf26dd6d631d2187d9290c7e7321f8b23df",
+    "app/admin/internal/server/proto_wrapper_decode_test.go": "42afded708f89056bc3bca3e9a9683fc9a7c33b0364261b51ce3b218fe8572c3",
+    "app/channel/internal/biz/upstream_inventory.go": "c11a31a5de544521e12b2a60334194a617c5f156b882ea13c39233db604a783d",
+    "app/channel/internal/data/upstream_inventory.go": "6496adea786cc15d9a2d23065f2554c7916358998a3cd21ecab5c9e17009d00f",
+    "app/channel/internal/data/deepseek_catalog_repair_test.go": "0f6f62eb36b28f8f3d9ee5ad003ab26064f6542a16bd3017e1814b5a7968ac68",
+    "internal/data/upstream_probe.go": "7e24d451bbc0ac2dea68061f97c8b9f24ce0cc66fd251a89682600f4f9cb608c",
+    "internal/data/upstream_probe_test.go": "4e23938bc2fd44b1283e7139f70bc7308bdb355e7d57a3e1609f5fd45de5f91c",
+    "web/src/lib/channel-providers.ts": "e8c08eb24e9b5d260d69a7d0d63ebcdd5e9b1840f762e6118a18915c25663716",
+    "web/tests/channel-providers.test.ts": "4a865bc18e8f807eb9089678cfc6af54e6d76e66be3c1bb6f07b4b34a61ddce5",
+    "web/src/pages/admin/ChannelsPage.tsx": "aa0aa16e063304af04917371fbfdcaa5e39d79564524f544ff6a2170ed2622ca"
+  },
+  "artifact_sha256": {
+    "admin-decoder-tests.txt": "bc9d5e6bec486411703daa55acd7c1fa35c8e09e9645713cc7928b2dcde17d32",
+    "architecture.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "backend-tests.txt": "e00ab5921e21a6a6ddf653cb8c48e26dd91dea48478d0d11cafcc79ad32c686a",
+    "channel11-data-repair.json": "d9501adc5b47301ac2493899b07ed08bb7b2f27fd0a9d4fbf54367315d8fa2fd",
+    "deployment.json": "65759a898ff39e87fa9f17c8ef673344ff32b0c53eba7a7c87cf4e88ee6e78e7",
+    "final-regression.txt": "0878710f0569969170230ab4017acf02eb743b7a35ffeb2e90e3f7d97f0c6eef",
+    "frontend-tests.txt": "3e267f0a49c0b117212ddab9aebb9b65646ac18dba6b52d3bcb16c651fa03831",
+    "inventory-body-race.txt": "bcf4b0d424345bc93defd55f3f7d811a22d4f005234e6f4d1dbc83669546e35b",
+    "isolated-backend-tests.txt": "04950edb5cda0201589f2ef956261a8df0ff5ac1311f6b1ece0ff8481127fef0",
+    "live-inventory-and-catalog.txt": "df80d400ca63577c07638bab6b687b8fef4b1f62d6e00025dd1f0b1a8f8b101a",
+    "race.txt": "46978f3a316f2f585b002077752f7443b6434ccd13f5d66be3ae05d048e33048",
+    "web-build.txt": "352dbbf409bc04774a3b198a85b856dd1cca98dfc988065da1714525c8dedfb7"
+  },
+  "checks": {
+    "focused_backend": "passed",
+    "isolated_baseline_backend": "passed",
+    "frontend_related_tests": 33,
+    "typescript_build_budget": "passed",
+    "race": "passed",
+    "architecture": "passed",
+    "live_catalog_and_ui": "passed",
+    "final_regression": "passed",
+    "markdown_links": "passed",
+    "credential_scan": "passed"
+  },
+  "scope": "provider/catalog hotfix; no P2 charge promotion"
+}

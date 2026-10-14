@@ -71,7 +71,8 @@ func (s *HTTPServer) executionContext(ctx context.Context, requestID string) con
 	})
 }
 func (s *HTTPServer) observeNativeUsage(ctx context.Context, ch *relaybiz.Channel, requestID, model string) context.Context {
-	return withNativeUsageShadow(s.executionContext(ctx, requestID), ch, requestID, model)
+	ctx = withNativeUsageShadow(s.executionContext(ctx, requestID), ch, requestID, model)
+	return s.withContractResults(ctx, requestID)
 }
 func (s *HTTPServer) prepareDurableAttempt(ctx context.Context, resp *billingv1.ReserveQuotaResponse) error {
 	if resp.ExecutionDeliveryVersion == 0 {

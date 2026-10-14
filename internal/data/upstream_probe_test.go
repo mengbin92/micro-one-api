@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"github.com/stretchr/testify/require"
+	"io"
 	"micro-one-api/domain/execution"
 	"micro-one-api/domain/upstream/provider"
 	"micro-one-api/internal/adaptor"
@@ -18,6 +19,30 @@ import (
 type probeBillingFixture struct {
 	mu     sync.Mutex
 	events []execution.Event
+}
+
+func TestInventoryProbeUsesBodylessGET(t *testing.T) {
+	calls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		require.Equal(t, http.MethodGet, r.Method)
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.Empty(t, body, "metadata GET must not carry JSON null")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"deepseek-flash"}]}`))
+	}))
+	defer upstream.Close()
+	path := filepath.Join(t.TempDir(), "outbox.db")
+	d, cleanup, err := NewExecutionData(path, &probeBillingFixture{})
+	require.NoError(t, err)
+	defer cleanup()
+	repo := NewUpstreamProbeRepo(&probeChannelFixture{url: upstream.URL}, biz.NewExecutionDelivery(NewExecutionOutboxRepo(d, path)), provider.NewProviderFactory(0))
+	result, err := repo.Probe(context.Background(), execution.ProbeTarget{ID: "inventory", SourceKind: "channel", SourceID: 1, Inventory: true, Protocol: "openai_chat", MaxOutputTokens: 1}, "inventory-bodyless")
+	require.NoError(t, err)
+	require.Equal(t, "inventory_observed", result.Outcome)
+	require.Equal(t, []string{"deepseek-flash"}, result.Inventory)
+	require.Equal(t, 1, calls)
 }
 
 func (f *probeBillingFixture) Send(_ context.Context, e execution.Event) (execution.Receipt, error) {

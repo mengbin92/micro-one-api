@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"micro-one-api/domain/requesttrace"
+	"micro-one-api/domain/upstream/contract"
 	"micro-one-api/domain/upstream/evidence"
 	relaybiz "micro-one-api/internal/biz"
 	applogger "micro-one-api/platform/logging"
@@ -43,6 +44,9 @@ var nativeShadowBuildID = func() string {
 // P0 is opt-in observation: this context never changes the billing envelope,
 // routing, retry policy, or user/provider price snapshots.
 func withNativeUsageShadow(ctx context.Context, channel *relaybiz.Channel, requestID, model string) context.Context {
+	if channel != nil && os.Getenv("UPSTREAM_CONTRACTS_V1_ENABLED") == "true" {
+		ctx = contract.WithSelection(ctx, contract.Selection{Snapshots: channel.Contracts, Blocked: channel.ContractBlocked, Inbound: contract.Inbound(ctx)})
+	}
 	if os.Getenv("RELAY_USAGE_SHADOW") != "true" {
 		return ctx
 	}

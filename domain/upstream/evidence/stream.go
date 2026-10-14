@@ -12,6 +12,7 @@ const MaxEvents = 32
 // Tracker merges cumulative fields by presence. Explicit zero overwrites a
 // prior snapshot; message_start and message_delta can supply different fields.
 type Tracker struct {
+	candidateParser func([]byte) Observation
 	protocol        string
 	usage           map[string]any
 	pending         []byte
@@ -30,7 +31,7 @@ func NewTracker(protocol string) *Tracker {
 }
 
 func (t *Tracker) ObserveFrame(body []byte) {
-	o := Parse(body, t.protocol)
+	o := t.parse(body)
 	if o.Terminal == "completed" {
 		t.success = true
 	}
@@ -80,7 +81,7 @@ func (t *Tracker) ObserveFrame(body []byte) {
 	if o.ProviderRequestID != "" {
 		providerID = o.ProviderRequestID
 	}
-	t.latest = Parse(combined, t.protocol)
+	t.latest = t.parse(combined)
 	t.latest.ProviderRequestID = providerID
 }
 
@@ -156,7 +157,7 @@ func (t *Tracker) flushEvent() {
 
 func (t *Tracker) limitFault() {
 	if t.fault == nil {
-		o := Observation{Protocol: t.protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: "unobserved", Reason: "frame_limit"}
+		o := t.emptyObservation("unobserved", "frame_limit")
 		t.fault = &o
 	}
 }
@@ -170,7 +171,7 @@ func (t *Tracker) Finish() (Observation, bool) {
 		return *t.fault, false
 	}
 	if t.latest.Status == "" {
-		return Observation{Protocol: t.protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: "missing", Reason: "usage_absent"}, t.success && !t.failed
+		return t.emptyObservation("missing", "usage_absent"), t.success && !t.failed
 	}
 	return t.latest, t.success && !t.failed
 }
@@ -182,5 +183,21 @@ func (t *Tracker) Snapshot() Observation {
 	if t.latest.Status != "" {
 		return t.latest
 	}
-	return Observation{Protocol: t.protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: "missing", Reason: "usage_absent"}
+	return t.emptyObservation("missing", "usage_absent")
+}
+
+func (t *Tracker) emptyObservation(status, reason string) Observation {
+	o := Observation{Protocol: t.protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: status, Reason: reason}
+	if t.candidateParser != nil {
+		candidate := t.candidateParser([]byte("{}"))
+		o.ParserRevision, o.ContractRevision = candidate.ParserRevision, candidate.ContractRevision
+	}
+	return o
+}
+
+func (t *Tracker) parse(body []byte) Observation {
+	if t.candidateParser != nil {
+		return t.candidateParser(body)
+	}
+	return Parse(body, t.protocol)
 }

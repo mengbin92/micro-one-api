@@ -107,6 +107,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	uc.SetTxRunner(data.NewTxRunner(d))
 	uc.SetReceivableRepo(d.ReceivableRepo())
 	uc.SetPricingSnapshotRepo(d.PricingSnapshotRepo())
+	uc.SetVendorReconciliationRepo(data.NewVendorReconciliationRepo(d))
 	closeRouting := func() {}
 	if biz.RequestSnapshotsEnabled() {
 		reader, cleanup, err := routingclient.Dial(os.Getenv("CHANNEL_GRPC_ENDPOINT"))

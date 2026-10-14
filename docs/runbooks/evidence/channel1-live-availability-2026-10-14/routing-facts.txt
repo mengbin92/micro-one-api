@@ -1,0 +1,9 @@
+model	group	enabled
+qwen3.7-max	default	1
+MiniMax-M3	default	1
+Kimi-K3	default	1
+DeepSeek-V4-Flash-0731	default	1
+DeepSeek-V4-Pro-0813	default	1
+glm-5.3-flash	default	1
+qwen3.8-flash	default	1
+glm-5.3	default	1

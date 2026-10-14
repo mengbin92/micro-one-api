@@ -1,0 +1,197 @@
+{
+  "date": "2026-10-14",
+  "official_host": "api.deepseek.com",
+  "model": "deepseek-flash",
+  "supplier_model_present": true,
+  "models_http_status": 200,
+  "balance_http_status": 200,
+  "credential_fingerprint_sha256": "d2b1408a627928fb482ad7e603f01a2d1053c2e6fa0037246dc6b250295d4f4c",
+  "credential_included": false,
+  "real_paid_calls": 4,
+  "max_output_tokens_per_call": 64,
+  "thinking": "disabled",
+  "input_tokens": 580,
+  "output_tokens": 52,
+  "known_tariff_estimate_cny": "0.00066256",
+  "observed_balance": [
+    {
+      "currency": "CNY",
+      "finished_at": "2026-10-13T23:26:06.345398+00:00",
+      "observed_total_balance_change": "0.00",
+      "reported_decimal_places": 2
+    },
+    {
+      "currency": "CNY",
+      "finished_at": "2026-10-13T23:26:08.520826+00:00",
+      "observed_total_balance_change": "0.00",
+      "reported_decimal_places": 2
+    },
+    {
+      "currency": "CNY",
+      "finished_at": "2026-10-13T23:26:13.639799+00:00",
+      "observed_total_balance_change": "0.00",
+      "reported_decimal_places": 2
+    }
+  ],
+  "account_exclusivity_proven": false,
+  "complete_account_period": false,
+  "invoice_or_request_charge_report_available": false,
+  "external_cost_status": "unknown_below_balance_display_precision",
+  "cost_verification_scope": "none",
+  "production_p2_acceptance": false,
+  "cases": [
+    {
+      "case": "json_text",
+      "http_status": 200,
+      "started_at_utc": "2026-10-13T23:26:00.790617+00:00",
+      "finished_at_utc": "2026-10-13T23:26:01.390585+00:00",
+      "response_model": "deepseek-flash",
+      "provider_response_id_sha256": "2cae6cc46cbb1fee7e91ba965acd319a224f021e5249216d727a0be198139aff",
+      "raw_response_sha256": "dfb639fb0e0179797caf543d48c7b65f8bf620f02f2061976355f83941862d37",
+      "stream": false,
+      "done": false,
+      "terminal": true,
+      "capability_valid": true,
+      "native_usage": {
+        "prompt_tokens": 8,
+        "completion_tokens": 1,
+        "total_tokens": 9,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 8
+      },
+      "tariff_estimate_cny": "0.000012",
+      "cost_basis": "tariff_estimate",
+      "verification_scope": "none",
+      "within_existing_128_input_canary_bound": true,
+      "max_output_tokens": 16,
+      "finish_reasons": [
+        "stop"
+      ],
+      "within_existing_16_output_canary_bound": true
+    },
+    {
+      "case": "sse_text",
+      "http_status": 200,
+      "started_at_utc": "2026-10-13T23:26:02.700568+00:00",
+      "finished_at_utc": "2026-10-13T23:26:03.313545+00:00",
+      "response_model": "deepseek-flash",
+      "provider_response_id_sha256": "30aeda79419c9f2c1b6cfa667b152cc336cfe5a7a2557b791c6b8d29a721cd8a",
+      "raw_response_sha256": "eb8765fe16f02ca2927b6b428342d26b81e29cf5da146e8bdb8b4c89fc0243e7",
+      "stream": true,
+      "done": true,
+      "terminal": true,
+      "capability_valid": true,
+      "native_usage": {
+        "prompt_tokens": 8,
+        "completion_tokens": 1,
+        "total_tokens": 9,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 8
+      },
+      "tariff_estimate_cny": "0.000012",
+      "cost_basis": "tariff_estimate",
+      "verification_scope": "none",
+      "within_existing_128_input_canary_bound": true,
+      "max_output_tokens": 16,
+      "finish_reasons": [
+        "stop"
+      ],
+      "within_existing_16_output_canary_bound": true
+    },
+    {
+      "case": "json_tool",
+      "http_status": 200,
+      "started_at_utc": "2026-10-13T23:26:04.601521+00:00",
+      "finished_at_utc": "2026-10-13T23:26:05.077880+00:00",
+      "response_model": "deepseek-flash",
+      "provider_response_id_sha256": "1f46b93f8c43ba1f467f986416890c8c9052756f27e393acd6692dcad1012b52",
+      "raw_response_sha256": "1330494d72b1f7f1124040a4ef156f912b6d8781d22518b1e7d51818bbc9f8c3",
+      "stream": false,
+      "done": false,
+      "terminal": true,
+      "capability_valid": false,
+      "native_usage": {
+        "prompt_tokens": 282,
+        "completion_tokens": 16,
+        "total_tokens": 298,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 282
+      },
+      "tariff_estimate_cny": "0.000346",
+      "cost_basis": "tariff_estimate",
+      "verification_scope": "none",
+      "within_existing_128_input_canary_bound": false,
+      "max_output_tokens": 16,
+      "finish_reasons": [
+        "length"
+      ],
+      "within_existing_16_output_canary_bound": true,
+      "tool_name_observed": true,
+      "tool_arguments_valid": false,
+      "capability_result": "truncated_tool_arguments"
+    },
+    {
+      "case": "json_tool64",
+      "http_status": 200,
+      "started_at_utc": "2026-10-13T23:40:40.762702+00:00",
+      "finished_at_utc": "2026-10-13T23:40:41.676544+00:00",
+      "response_model": "deepseek-flash",
+      "provider_response_id_sha256": "5b567319d2d5a118487d6ab7db991a1527bee02b8c07856935e3490378e51f7b",
+      "raw_response_sha256": "51bc74d86748593cceb4208465d2fd1e7dfeaaf975d4d7b9560e1e55bbdfccf6",
+      "stream": false,
+      "done": false,
+      "terminal": true,
+      "capability_valid": true,
+      "finish_reasons": [
+        "tool_calls"
+      ],
+      "tool_name_observed": true,
+      "tool_arguments_valid": true,
+      "max_output_tokens": 64,
+      "native_usage": {
+        "prompt_tokens": 282,
+        "completion_tokens": 34,
+        "total_tokens": 316,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 154
+      },
+      "tariff_estimate_cny": "0.00029256",
+      "cost_basis": "tariff_estimate",
+      "verification_scope": "none",
+      "within_existing_128_input_canary_bound": false,
+      "within_existing_16_output_canary_bound": false
+    }
+  ],
+  "docs": {
+    "chat": "https://api-docs.deepseek.com/api/create-chat-completion/",
+    "models": "https://api-docs.deepseek.com/api/list-models/",
+    "balance": "https://api-docs.deepseek.com/api/get-user-balance/",
+    "pricing": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
+  },
+  "cache_hit_tokens": 128,
+  "cache_miss_tokens": 452,
+  "balance_observation_scope": "initial_three_calls_only_before_json_tool64",
+  "tariff_snapshot": {
+    "currency": "CNY",
+    "per_tokens": 1000000,
+    "off_peak_cache_hit": "0.02",
+    "off_peak_cache_miss": "1",
+    "off_peak_output": "4",
+    "official_document": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+    "checked_date": "2026-10-14",
+    "applicability": "observed_request_start_times_off_peak",
+    "basis": "published_price_not_actual_charge"
+  }
+}

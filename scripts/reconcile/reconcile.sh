@@ -37,6 +37,8 @@ err()  { echo -e "${RED}[reconcile][error]${NC} $*"; }
 SKIP_TRIGGER=false
 SKIP_DB=false
 VENDOR_BILL=""
+VENDOR_MANIFEST=""
+VENDOR_OUT=""
 SINCE="24h"
 
 while [[ $# -gt 0 ]]; do
@@ -44,6 +46,8 @@ while [[ $# -gt 0 ]]; do
     --skip-trigger) SKIP_TRIGGER=true; shift ;;
     --skip-db-checks) SKIP_DB=true; shift ;;
     --vendor-bill) VENDOR_BILL="${2:-}"; shift 2 ;;
+    --vendor-manifest) VENDOR_MANIFEST="${2:-}"; shift 2 ;;
+    --vendor-out) VENDOR_OUT="${2:-}"; shift 2 ;;
     --since) SINCE="${2:-}"; shift 2 ;;
     -h|--help)
       sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
@@ -156,13 +160,14 @@ run_db_checks() {
   log "running DB checks (window: $SINCE)"
   local args=(-dsn "$RECONCILE_DSN" -since "$SINCE")
   if [ -n "$VENDOR_BILL" ]; then
-    args+=(-vendor-bill "$VENDOR_BILL")
+    args+=(-vendor-bill "$VENDOR_BILL" -vendor-manifest "$VENDOR_MANIFEST" -vendor-out "$VENDOR_OUT")
   fi
   if ! go run ./scripts/reconcile/checks.go "${args[@]}"; then
     has_failures=true
   fi
 }
 
+cd "$PROJECT_ROOT"
 trigger_reconciliation
 run_db_checks
 

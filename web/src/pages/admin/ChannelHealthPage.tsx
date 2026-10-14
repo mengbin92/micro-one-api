@@ -1,3 +1,4 @@
+import { CHANNEL_PROVIDER_NAMES as PROVIDER_NAMES } from '@/lib/channel-providers';
 import { useAuthorizedQuery } from '@/lib/authorization';
 import {
   Activity,
@@ -58,15 +59,7 @@ interface ChannelHealth {
   balance?: number;
 }
 
-const PROVIDER_NAMES: Record<number, string> = {
-  1: 'OpenAI',
-  2: 'Anthropic',
-  3: 'Azure',
-  4: 'Gemini',
-  14: 'DeepSeek',
-  23: 'OpenRouter',
-  37: 'SiliconFlow',
-};
+
 
 function channelHealthError(channel: ChannelHealth) {
   return channel.healthLastError || channel.health_last_error || '';

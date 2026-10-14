@@ -9,6 +9,7 @@ import (
 
 // ProbeTarget is operator configuration, never a public request field.
 type ProbeTarget struct {
+	ContractRevision       string   `json:"contract_revision,omitempty"`
 	Capability             string   `json:"capability,omitempty"`
 	ManualModelIDs         []string `json:"manual_model_ids,omitempty"`
 	ID                     string   `json:"id"`
@@ -44,6 +45,9 @@ func DecodeProbeTargets(raw string) ([]ProbeTarget, error) {
 	seen := map[string]bool{}
 	budgets := map[string]ProbeTarget{}
 	for _, t := range targets {
+		if t.ContractRevision != "" && (len(t.ContractRevision) != 64 || t.Inventory) {
+			return nil, fmt.Errorf("contract canary requires exact candidate revision")
+		}
 		if t.ID == "" || len(t.ID) > 64 || strings.ContainsAny(t.ID, "/\r\n") || seen[t.ID] || t.SourceID <= 0 || (t.SourceKind != "channel" && t.SourceKind != "subscription") || t.Model == "" && !t.Inventory || len(t.Model) > 255 || t.CallsPerDay < 1 || t.CallsPerDay > 10000 || t.InputTokensPerDay < 128 || t.OutputTokensPerDay < t.MaxOutputTokens || t.MaxOutputTokens < 1 || t.MaxOutputTokens > 16 || t.CostPerDay < 0 || t.UnknownCostCallsPerDay < 0 {
 			return nil, fmt.Errorf("invalid probe target or budget")
 		}

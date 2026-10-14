@@ -19,7 +19,8 @@ func TestConcurrentPaymentNotifyAndRefund(t *testing.T) {
 	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
 			db := testutil.RoutingContextDB(t, dialect)
-			require.NoError(t, db.AutoMigrate(&PaymentOrder{}))
+			// RoutingContextDB has applied the real migrations; retain that schema
+			// instead of AutoMigrate renaming PostgreSQL unique constraints.
 			if dialect == "sqlite" {
 				sqlDB, err := db.DB()
 				require.NoError(t, err)

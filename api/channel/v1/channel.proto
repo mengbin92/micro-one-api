@@ -3,12 +3,18 @@ syntax = "proto3";
 package api.channel.v1;
 
 import "api/common/v1/common.proto";
+import "api/channel/v1/upstream_contract.proto";
 import "api/channel/v1/routing_group_management.proto";
 import "google/protobuf/empty.proto";
 
 option go_package = "micro-one-api/api/channel/v1;channelv1";
 
 service ChannelService {
+ rpc CreateUpstreamContract(CreateUpstreamContractRequest) returns (CreateUpstreamContractReply);
+ rpc ListUpstreamContracts(ListUpstreamContractsRequest) returns (ListUpstreamContractsReply);
+ rpc TransitionUpstreamContract(TransitionUpstreamContractRequest) returns (TransitionUpstreamContractReply);
+ rpc AcquireContractProbe(AcquireContractProbeRequest) returns (AcquireContractProbeReply);
+ rpc RecordContractResult(RecordContractResultRequest) returns (RecordContractResultReply);
  rpc GetUsageCapabilities(GetUsageCapabilitiesRequest) returns (GetUsageCapabilitiesResponse);
  rpc RecordUpstreamInventory(RecordUpstreamInventoryRequest) returns (RecordUpstreamInventoryResponse);
  rpc ArchiveRoutingGroup(ArchiveRoutingGroupRequest) returns (RoutingGroupMutationReply);
@@ -576,6 +582,7 @@ message UpdateChannelRequest {
   optional bool restrict_models = 18;                 // restrict to abilities list. Optional (proto3 presence): only applied when the caller sets it, so balance-refresh / health updates that omit the field never silently flip a restricted channel into a catch-all.
   int64 expected_revision = 19;
   string reason = 20;
+  optional int32 type = 21; // Omitted preserves the existing provider type.
 }
 
 message UpdateChannelResponse {
@@ -624,6 +631,7 @@ message RecordUpstreamObservationReply {
 }
 
 message ClaimUpstreamExecutionRequest {
+ string attempt_id=20; string runtime_build=21;
   string source_kind = 1;
   int64 source_id = 2;
   string configuration_revision = 3;
@@ -632,6 +640,9 @@ message ClaimUpstreamExecutionRequest {
 }
 
 message ClaimUpstreamExecutionReply {
+ repeated UpstreamContractSnapshot contracts=20;
+ repeated string blocked_protocols=21;
+ string execution_revision=22;
   string configuration_revision = 1;
   string probe_id = 2;
 }
@@ -777,6 +788,7 @@ message ModelChannelMapping {
   string config = 6;            // JSON
   int64 created_at = 7;
   int64 updated_at = 8;
+  map<string,string> contract_refs=10;
   string upstream_model_id = 9; // exact model identifier required by this channel
 }
 
@@ -789,6 +801,7 @@ message ModelSubscriptionMapping {
   int32 priority = 6;
   int64 created_at = 7;
   int64 updated_at = 8;
+  map<string,string> contract_refs=10;
   string upstream_model_id = 9; // exact model identifier required by this account
 }
 

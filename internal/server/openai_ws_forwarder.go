@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"micro-one-api/domain/routing"
+	"micro-one-api/domain/upstream/contract"
 	xhttp "micro-one-api/platform/http"
 	"micro-one-api/platform/routingdto"
 	"net/http"
@@ -807,6 +808,15 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		}
 		if v2Turns != nil {
 			relayOptions.beforeWriteUp = v2Turns.beforeWrite
+			relayOptions.contractSelection = func() contract.Selection {
+				v2Turns.mu.Lock()
+				defer v2Turns.mu.Unlock()
+				if v2Turns.execution == nil {
+					return contract.Selection{}
+				}
+				ch := v2Turns.execution
+				return contract.Selection{Snapshots: ch.Contracts, Blocked: ch.ContractBlocked, Inbound: "responses"}
+			}
 		}
 		relayOptions.durableRecord = func(record evidence.Record) error {
 			v2Turns.mu.Lock()
@@ -815,7 +825,11 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			if active == nil {
 				return nil
 			}
-			return evidence.RecordDurable(s.executionContext(ctx, active.RequestId), record)
+			if err := evidence.RecordDurable(s.executionContext(ctx, active.RequestId), record); err != nil {
+				return err
+			}
+			s.reportContractResult(ctx, active.RequestId, record)
+			return nil
 		}
 		relayOptions.durableBefore = func() error {
 			v2Turns.mu.Lock()

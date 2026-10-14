@@ -13,6 +13,7 @@ import (
 	"micro-one-api/domain/routing"
 
 	billingdomain "micro-one-api/domain/billing"
+	"micro-one-api/domain/upstream/contract"
 	relayprovider "micro-one-api/domain/upstream/provider"
 	apperrors "micro-one-api/pkg/errors"
 	"micro-one-api/platform/metrics"
@@ -127,6 +128,9 @@ type AuthSnapshot struct {
 }
 
 type Channel struct {
+	Contracts                     []contract.Snapshot
+	ContractBlocked               []string
+	ContractExecutionRevision     string
 	UpstreamConfigurationRevision string
 	HealthProbeID                 string
 	ID                            int64

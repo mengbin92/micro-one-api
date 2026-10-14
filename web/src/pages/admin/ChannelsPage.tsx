@@ -1,5 +1,7 @@
+import { CHANNEL_PROVIDER_NAMES as PROVIDER_NAMES, CHANNEL_CREATABLE_PROVIDERS } from '@/lib/channel-providers';
 import { useAuthorizedQuery } from '@/lib/authorization';
 import { useMutation,useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { AlertTriangle, Pencil, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -63,6 +65,9 @@ interface Channel {
 }
 
 interface ChannelEditDraft {
+  type: number;
+  initialType: number;
+  initialModels: string;
   id: string;
   expectedRevision?: string | number;
   name: string;
@@ -72,20 +77,7 @@ interface ChannelEditDraft {
   weight: string;
 }
 
-const PROVIDER_NAMES: Record<number, string> = {
-  1: 'OpenAI',
-  2: 'Anthropic',
-  3: 'Azure',
-  4: 'Gemini',
-  14: 'DeepSeek',
-  23: 'OpenRouter',
-  32: 'CodexOAuth',
-  33: 'ClaudeOAuth',
-  34: 'ZhipuPlan',
-  35: 'MinimaxPlan',
-  36: 'KimiOAuth',
-  37: 'SiliconFlow',
-};
+
 
 function channelHealthError(channel: Channel) {
   return channel.healthLastError || channel.health_last_error || '';
@@ -147,6 +139,11 @@ export function AdminChannelsPage() {
     queryClient.invalidateQueries({ queryKey: ['admin-channels-health'] });
     queryClient.invalidateQueries({ queryKey: ['admin-models'] });
     queryClient.invalidateQueries({ queryKey: ['admin-model-detail'] });
+  };
+  const refreshConflictingChannel = (error: unknown) => {
+    // Refresh the displayed CAS after rejection; never replay an action or
+    // replace the revision captured in an open edit draft.
+    if (isAxiosError(error) && error.response?.status === 409) invalidateChannelQueries();
   };
   const sort = { key: sortKey as keyof Channel | null, direction: sortDirection } satisfies SortState<Channel>;
   const statusFilter = filters.status ?? '';
@@ -232,6 +229,7 @@ export function AdminChannelsPage() {
         channel_id: Number(draft.id),
         expected_revision: draft.expectedRevision === undefined ? undefined : numericRevision(draft.expectedRevision),
         name: draft.name.trim(),
+        type: draft.type === draft.initialType ? undefined : draft.type,
         models: draft.models.trim(),
         group: draft.group.trim(),
         priority: parseInt(draft.priority || '0', 10),
@@ -251,6 +249,7 @@ export function AdminChannelsPage() {
       const res = await adminApiClient.get(`/channel/update_balance/${id}`);
       ensureApiSuccess(res.data, t('刷新渠道余额失败'));
     },
+    onError: refreshConflictingChannel,
     onSuccess: () => {
       invalidateChannelQueries();
       toast.success(t('渠道余额已刷新'));
@@ -262,6 +261,7 @@ export function AdminChannelsPage() {
       const res = await adminApiClient.get(`/channel/test/${id}`);
       ensureApiSuccess(res.data, t('渠道健康检测失败'));
     },
+    onError: refreshConflictingChannel,
     onSuccess: () => {
       invalidateChannelQueries();
       toast.success(t('渠道健康检测已完成'));
@@ -294,6 +294,9 @@ export function AdminChannelsPage() {
 
   const openEdit = (channel: Channel) => {
     setEditingChannel({
+      type: channel.type,
+      initialType: channel.type,
+      initialModels: channel.models ?? '',
       id: String(channel.id),
       expectedRevision: channel.authorizationRevision ?? channel.authorization_revision,
       name: channel.name ?? '',
@@ -306,7 +309,11 @@ export function AdminChannelsPage() {
 
   const handleUpdate = () => {
     if (!editingChannel) return;
-    if (!editingChannel.name.trim() || !editingChannel.models.trim() || !editingChannel.group.trim()) {
+    if (!editingChannel.name.trim() || !editingChannel.group.trim()) {
+      toast.error(t('名称和路由分组为必填项'));
+      return;
+    }
+    if (editingChannel.initialModels.trim() && !editingChannel.models.trim()) {
       toast.error(t('名称、模型和路由分组为必填项'));
       return;
     }
@@ -339,7 +346,7 @@ export function AdminChannelsPage() {
                   onChange={(event) => setNewChannelType(event.target.value)}
                   className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
                 >
-                  {Object.entries(PROVIDER_NAMES).map(([type, name]) => (
+                  {Object.entries(CHANNEL_CREATABLE_PROVIDERS).map(([type, name]) => (
                     <option key={type} value={type}>
                       {name}
                     </option>
@@ -402,6 +409,15 @@ export function AdminChannelsPage() {
                 />
               </div>
               <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="edit-channel-type">{t('供应商')}</Label>
+                <select id="edit-channel-type" value={editingChannel.type}
+                  onChange={(event) => setEditingChannel({ ...editingChannel, type: Number(event.target.value) })}
+                  className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm">
+                  {!CHANNEL_CREATABLE_PROVIDERS[editingChannel.type] && <option value={editingChannel.type}>{PROVIDER_NAMES[editingChannel.type] || `${t('类型')} ${editingChannel.type}`}</option>}
+                  {Object.entries(CHANNEL_CREATABLE_PROVIDERS).map(([type, name]) => <option key={type} value={type}>{name}</option>)}
+                </select>
+              </div>
+              <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="edit-channel-models">{t('模型')}</Label>
                 <ModelMultiSelect
                   value={editingChannel.models}
@@ -439,7 +455,7 @@ export function AdminChannelsPage() {
               </div>
               <Button permission="channel.channel.update"
                 onClick={handleUpdate}
-                disabled={updateMutation.isPending || !editingChannel.name.trim() || !editingChannel.models.trim() || !editingChannel.group.trim()}
+                disabled={updateMutation.isPending || !editingChannel.name.trim() || !editingChannel.group.trim() || (!!editingChannel.initialModels.trim() && !editingChannel.models.trim())}
                 className="sm:col-span-2"
               >
                 <Save className="size-4" />

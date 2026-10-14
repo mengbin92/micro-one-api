@@ -10,6 +10,8 @@ type ExecutionPoint struct {
 }
 
 var executionPoints = map[string]ExecutionPoint{
+	"billing.vendor_reports":  {"billing", []string{"billing.vendor_report.read", "billing.vendor_report.import", "billing.vendor_report.attribute"}},
+	"channel.contracts":       {"channel", []string{"channel.upstream_contract.read", "channel.upstream_contract.create", "channel.upstream_contract.publish", "channel.upstream_contract.quarantine"}},
 	"admin.subscription.self": {"admin", nil},
 	"admin.upstream_costs":    {"admin", []string{"billing.upstream_cost.read", "billing.upstream_cost.create", "billing.upstream_cost.update", "billing.upstream_cost.delete", "billing.upstream_cost.migrate"}},
 	"admin.system_options":    {"admin", []string{"system.option.read", "system.option.update", "system.option.security.update", "system.option.payment.update", "system.option.pricing.update"}},
@@ -143,7 +145,7 @@ type ResourceAuthorization struct {
 var completedResourceOperations = func() map[string]bool {
 	out := map[string]bool{}
 	for _, point := range []string{
-		"admin.console", "identity.routing_access", "identity.users.create", "identity.users.delete", "identity.users.list", "identity.users.read", "identity.users.update", "identity.users.export",
+		"billing.vendor_reports", "channel.contracts", "admin.console", "identity.routing_access", "identity.users.create", "identity.users.delete", "identity.users.list", "identity.users.read", "identity.users.update", "identity.users.export",
 		"channel.channels.list", "channel.channels.read", "channel.channels.create", "channel.channels.update", "channel.channels.delete", "channel.channels.export", "channel.channels.secret",
 		"channel.accounts.list", "channel.accounts.read", "channel.accounts.create", "channel.accounts.update", "channel.accounts.delete", "channel.accounts.quota", "channel.accounts.recovery", "channel.accounts.credential",
 		"channel.routing_groups.list", "channel.routing_groups.read", "channel.routing_groups.write",

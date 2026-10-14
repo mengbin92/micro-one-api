@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"micro-one-api/domain/execution"
+	"micro-one-api/domain/upstream/contract"
 	"micro-one-api/domain/upstream/evidence"
 	"micro-one-api/domain/upstream/provider"
 	"micro-one-api/internal/adaptor"
@@ -63,6 +64,24 @@ func (r *upstreamProbeRepo) Probe(ctx context.Context, t execution.ProbeTarget, 
 		}
 	} else {
 		return result, fmt.Errorf("probe source unavailable")
+	}
+	var contractLease contract.ProbeLease
+	var contractClient biz.ContractProbeClient
+	scope := contract.Scope{Kind: t.SourceKind, ID: t.SourceID, Model: t.Model, Protocol: t.Protocol}
+	if t.ContractRevision != "" {
+		var ok bool
+		contractClient, ok = r.channels.(biz.ContractProbeClient)
+		if !ok {
+			return result, fmt.Errorf("contract probe owner unavailable")
+		}
+		contractLease, err = contractClient.AcquireContractProbe(ctx, scope, t.ContractRevision, attemptID)
+		if err != nil {
+			return result, err
+		}
+		if source.Revision == "" || source.Revision != contractLease.SourceRevision {
+			return result, fmt.Errorf("probe source changed before send")
+		}
+		ctx = contract.WithSelection(ctx, contract.Selection{Snapshots: []contract.Snapshot{contractLease.Snapshot}, Inbound: t.Protocol})
 	}
 	now := time.Now()
 	purpose := "canary"
@@ -125,9 +144,12 @@ func (r *upstreamProbeRepo) Probe(ctx context.Context, t execution.ProbeTarget, 
 	if t.Capability == "tools" && !t.Inventory {
 		execution.AddProbeTool(body, t.Protocol)
 	}
-	raw, err := jsonx.Marshal(body)
-	if err != nil {
-		return result, err
+	var raw []byte
+	if body != nil {
+		raw, err = jsonx.Marshal(body)
+		if err != nil {
+			return result, err
+		}
 	}
 	req := &provider.RawRequest{Method: method, Path: path, Header: http.Header{"Content-Type": {"application/json"}}, Body: raw}
 
@@ -174,6 +196,9 @@ func (r *upstreamProbeRepo) Probe(ctx context.Context, t execution.ProbeTarget, 
 		if upstreamFormat == adaptor.FormatOpenAIChatCompletions {
 			protocol = "openai_chat"
 		}
+		if contractClient != nil && protocol != scope.Protocol {
+			return result, fmt.Errorf("candidate upstream protocol differs from the admitted probe scope")
+		}
 		response, callErr := evidence.Do(client, request, protocol)
 		err = callErr
 		if err == nil {
@@ -205,6 +230,14 @@ func (r *upstreamProbeRepo) Probe(ctx context.Context, t execution.ProbeTarget, 
 	}
 	if native != nil {
 		result.RecordJSON, _ = jsonx.Marshal(native)
+		if contractClient != nil {
+			detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			reportErr := contractClient.ReportContractProbe(detached, scope, contractLease, attemptID, result.RecordJSON, capabilityErr == nil && err == nil)
+			cancel()
+			if reportErr != nil {
+				return result, reportErr
+			}
+		}
 	}
 	if err != nil {
 		result.Outcome = "transport_failure"

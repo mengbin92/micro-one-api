@@ -1,0 +1,71 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "case": "tokens",
+      "exit_code": 0,
+      "status": "matched",
+      "verification_scope": "account_period",
+      "attempts": 2,
+      "user_reservations": 1,
+      "internal_attempts": 1,
+      "output_mode": "0600",
+      "overwrite_rejected": true
+    },
+    {
+      "case": "monthly",
+      "exit_code": 0,
+      "status": "not_applicable",
+      "verification_scope": "account_period",
+      "attempts": 2,
+      "user_reservations": 1,
+      "internal_attempts": 1,
+      "output_mode": "0600",
+      "overwrite_rejected": true
+    },
+    {
+      "case": "unknown",
+      "exit_code": 1,
+      "status": "attention",
+      "verification_scope": "none",
+      "attempts": 2,
+      "user_reservations": 1,
+      "internal_attempts": 1,
+      "output_mode": "0600",
+      "overwrite_rejected": true
+    },
+    {
+      "case": "balance_only",
+      "exit_code": 1,
+      "status": "attention",
+      "verification_scope": "none",
+      "attempts": 2,
+      "user_reservations": 1,
+      "internal_attempts": 1,
+      "output_mode": "0600",
+      "overwrite_rejected": true
+    },
+    {
+      "case": "zero-variance",
+      "exit_code": 1,
+      "status": "attention",
+      "verification_scope": "account_period",
+      "attempts": 2,
+      "user_reservations": 1,
+      "internal_attempts": 1,
+      "output_mode": "0600",
+      "overwrite_rejected": true
+    },
+    {
+      "case": "pending",
+      "exit_code": 1,
+      "status": "pending",
+      "verification_scope": "none",
+      "attempts": 2,
+      "user_reservations": 1,
+      "internal_attempts": 1,
+      "output_mode": "0600",
+      "overwrite_rejected": true
+    }
+  ]
+}

@@ -61,6 +61,7 @@ type modelAliasModel struct {
 func (modelAliasModel) TableName() string { return "model_aliases" }
 
 type modelChannelMappingModel struct {
+	ContractRefs    string `gorm:"column:contract_refs;type:text;default:'{}';->"`
 	ID              int64  `gorm:"column:id;primaryKey;autoIncrement"`
 	ChannelID       int64  `gorm:"column:channel_id"`
 	ModelPK         int64  `gorm:"column:model_id"`
@@ -75,6 +76,7 @@ type modelChannelMappingModel struct {
 func (modelChannelMappingModel) TableName() string { return "model_channel_mapping" }
 
 type modelSubscriptionMappingModel struct {
+	ContractRefs          string `gorm:"column:contract_refs;type:text;default:'{}';->"`
 	ID                    int64  `gorm:"column:id;primaryKey;autoIncrement"`
 	SubscriptionAccountID int64  `gorm:"column:subscription_account_id"`
 	ModelPK               int64  `gorm:"column:model_id"`
@@ -222,7 +224,10 @@ func newChannelMappingPO(do *biz.ModelChannelMapping) *modelChannelMappingModel 
 }
 
 func toChannelMappingDO(po *modelChannelMappingModel) *biz.ModelChannelMapping {
+	refs := map[string]string{}
+	_ = jsonx.Unmarshal([]byte(po.ContractRefs), &refs)
 	return &biz.ModelChannelMapping{
+		ContractRefs:    refs,
 		ID:              po.ID,
 		ChannelID:       po.ChannelID,
 		ModelPK:         po.ModelPK,
@@ -250,7 +255,10 @@ func newSubscriptionMappingPO(do *biz.ModelSubscriptionMapping) *modelSubscripti
 }
 
 func toSubscriptionMappingDO(po *modelSubscriptionMappingModel) *biz.ModelSubscriptionMapping {
+	refs := map[string]string{}
+	_ = jsonx.Unmarshal([]byte(po.ContractRefs), &refs)
 	return &biz.ModelSubscriptionMapping{
+		ContractRefs:          refs,
 		ID:                    po.ID,
 		SubscriptionAccountID: po.SubscriptionAccountID,
 		ModelPK:               po.ModelPK,

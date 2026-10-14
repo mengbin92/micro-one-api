@@ -4,13 +4,15 @@ import (
 	"context"
 	"fmt"
 	"micro-one-api/domain/execution"
+	"micro-one-api/domain/upstream/contract"
 	"micro-one-api/platform/security/serviceidentity"
 	"time"
 )
 
 type ProbeSource struct {
-	Channel *Channel
-	Account *SubscriptionAccount
+	Revision string
+	Channel  *Channel
+	Account  *SubscriptionAccount
 }
 type ProbeSourceClient interface {
 	GetProbeSource(context.Context, string, int64) (ProbeSource, error)
@@ -64,3 +66,8 @@ func (u *UpstreamProbeUsecase) Probe(ctx context.Context, targetID, attemptID st
 }
 
 func (u *UpstreamProbeUsecase) SetProbePermitClient(p ProbePermitClient) { u.permit = p }
+
+type ContractProbeClient interface {
+	AcquireContractProbe(context.Context, contract.Scope, string, string) (contract.ProbeLease, error)
+	ReportContractProbe(context.Context, contract.Scope, contract.ProbeLease, string, []byte, bool) error
+}
