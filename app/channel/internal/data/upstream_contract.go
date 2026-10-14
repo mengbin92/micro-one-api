@@ -295,6 +295,14 @@ func (r *Repository) TransitionContract(ctx context.Context, t biz.ContractTrans
 				if t.AutomaticUntil > review.ExpiresAt {
 					return biz.ErrContractGate
 				}
+				if t.AutomaticUntil == 0 {
+					// The signed review bounds gray authority even when a manual
+					// operator omits a stricter coordinator deadline.
+					t.AutomaticUntil = review.ExpiresAt
+				}
+				if t.AutomaticUntil <= now.Unix() {
+					return biz.ErrContractGate
+				}
 				if review.BaseRevision != b.Current || review.BindingRevision != b.Revision || review.IncidentRevision != b.IncidentRevision || review.SourceRevision != source {
 					return biz.ErrContractConflict
 				}
@@ -348,6 +356,14 @@ func (r *Repository) TransitionContract(ctx context.Context, t biz.ContractTrans
 				b.Status = "active"
 				if b.ApprovedPercent < 100 {
 					b.Status = "gray"
+					resetGrayObservation(&b, now)
+					b.AutoRevision, b.AutoUntil = b.Current, 0
+					if snapshot.Document.Repair != nil {
+						if snapshot.Document.Repair.ExpiresAt <= now.Unix() {
+							return biz.ErrContractGate
+						}
+						b.AutoUntil = snapshot.Document.Repair.ExpiresAt
+					}
 				}
 				b.GrayPercent = b.ApprovedPercent
 			case "recover":
@@ -356,7 +372,11 @@ func (r *Repository) TransitionContract(ctx context.Context, t biz.ContractTrans
 				}
 				b.Status = "active"
 				if b.ApprovedPercent < 100 {
+					if snapshot.Document.Repair != nil && (b.AutoRevision != b.Current || b.AutoUntil <= now.Unix() || snapshot.Document.Repair.ExpiresAt <= now.Unix()) {
+						return biz.ErrContractGate
+					}
 					b.Status = "gray"
+					resetGrayObservation(&b, now)
 				}
 				b.GrayPercent = b.ApprovedPercent
 			default:
@@ -392,7 +412,7 @@ func (r *Repository) ResolveContracts(ctx context.Context, kind string, id int64
 			b := rows[i]
 			// P3 gray authority is bounded in durable owner state. Coordinator
 			// loss cannot leave a reviewed candidate running past its deadline.
-			if b.Status == "gray" && b.AutoRevision == b.Current && b.AutoUntil > 0 && time.Now().Unix() >= b.AutoUntil {
+			if b.Status == "gray" && (b.AutoRevision != b.Current || time.Now().Unix() >= b.AutoUntil) {
 				// Re-read under the same owner lock used for publication before
 				// writing; a stale selector must not overwrite a concurrent CAS.
 				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", b.ID).First(&b).Error; err != nil {
@@ -402,7 +422,7 @@ func (r *Repository) ResolveContracts(ctx context.Context, kind string, id int64
 				if err != nil {
 					return err
 				}
-				if snap.Document.Repair != nil && b.Status == "gray" && b.AutoRevision == b.Current && b.AutoUntil > 0 && time.Now().Unix() >= b.AutoUntil {
+				if snap.Document.Repair != nil && b.Status == "gray" && (b.AutoRevision != b.Current || time.Now().Unix() >= b.AutoUntil) {
 					if err := expireRepairGray(ctx, tx, &b, time.Now()); err != nil {
 						return err
 					}
@@ -544,6 +564,7 @@ func (r *Repository) RecordContractResult(ctx context.Context, result biz.Contra
 					b.Status = "active"
 					if b.ApprovedPercent < 100 {
 						b.Status = "gray"
+						resetGrayObservation(&b, now)
 					}
 					b.GrayPercent = b.ApprovedPercent
 					b.Revision++
@@ -558,7 +579,7 @@ func (r *Repository) RecordContractResult(ctx context.Context, result biz.Contra
 					}
 				}
 			}
-			if !pass && (native.Complete || native.HTTPStatus == 400 || native.HTTPStatus == 415 || native.HTTPStatus == 422) {
+			if !pass && b.Current == result.Revision && (native.Complete || native.HTTPStatus == 400 || native.HTTPStatus == 415 || native.HTTPStatus == 422) {
 				before := b.Current
 				b.Status = "quarantined"
 				b.IncidentRevision++
@@ -612,6 +633,12 @@ func (r *Repository) RecordContractResult(ctx context.Context, result biz.Contra
 		return nil
 	})
 	return
+}
+
+func resetGrayObservation(b *contractBindingModel, now time.Time) {
+	b.StartedAt = now.Unix()
+	b.CompleteAttempts = 0
+	b.Failures = 0
 }
 
 func expireRepairGray(ctx context.Context, tx *gorm.DB, b *contractBindingModel, now time.Time) error {

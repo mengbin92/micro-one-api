@@ -92,6 +92,11 @@ func Parse(body []byte, protocol string) Observation {
 	if !exists {
 		return o
 	}
+	// Chat streaming content chunks carry usage:null; the final usage chunk
+	// supplies the object. A null usage in a non-stream response stays invalid.
+	if raw == nil && protocol == "openai_chat" && root["object"] == "chat.completion.chunk" {
+		return o
+	}
 	m, ok := raw.(map[string]any)
 	if !ok {
 		o.Status, o.Reason = "invalid", "usage_not_object"
@@ -183,7 +188,9 @@ func Parse(body []byte, protocol string) Observation {
 		}
 		b[1], _ = read(details + "/cached_tokens")
 		// Reasoning is an output subset in these installed contracts.
-		read(outDetails + "/reasoning_tokens")
+		if reasoning, present := read(outDetails + "/reasoning_tokens"); present && reasoning > b[4] {
+			invalid = "reasoning_exceeds_reported_output"
+		}
 		read(outDetails + "/accepted_prediction_tokens")
 		read(outDetails + "/rejected_prediction_tokens")
 		for _, p := range []string{details + "/audio_tokens", outDetails + "/audio_tokens"} {
@@ -225,6 +232,16 @@ func Parse(body []byte, protocol string) Observation {
 	} else {
 		o.Semantics = "openai_subset"
 		if b[1] > b[0] {
+			// Both conservative interpretations must fit in the wire contract.
+			// An ambiguous payload cannot bypass the canonical overflow guard.
+			var candidateTotal int64
+			for _, count := range b {
+				if count > math.MaxInt64-candidateTotal {
+					o.Status, o.Reason = "invalid", "overflow"
+					return o
+				}
+				candidateTotal += count
+			}
 			o.Status, o.Reason = "ambiguous", "cached_exceeds_reported_prompt"
 			return o
 		}

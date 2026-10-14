@@ -27,6 +27,7 @@ type durableAttempt struct {
 	intent     execution.Intent
 	last       *evidence.Record
 	sequence   int64
+	sent       bool
 	err        error
 	delivery   *relaybiz.ExecutionDelivery
 }
@@ -51,7 +52,18 @@ func (s *HTTPServer) executionContext(ctx context.Context, requestID string) con
 		copy := *a.last
 		return &copy
 	})
-	return evidence.WithDurableRecorder(ctx, func() error { a.mu.Lock(); defer a.mu.Unlock(); return a.err }, func(r evidence.Record) error {
+	return evidence.WithDurableRecorder(ctx, func() error {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if a.err != nil {
+			return a.err
+		}
+		if a.sent {
+			return relaybiz.MarkPostForwardError(fmt.Errorf("durable intent already used for an upstream send"))
+		}
+		a.sent = true
+		return nil
+	}, func(r evidence.Record) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		a.sequence++
@@ -64,8 +76,15 @@ func (s *HTTPServer) executionContext(ctx context.Context, requestID string) con
 		call, cancel := detachedBillingContext(ctx)
 		defer cancel()
 		if err := a.delivery.Put(call, e); err != nil {
-			a.err = err
-			return err
+			a.err = relaybiz.MarkPostForwardError(err)
+			return a.err
+		}
+		if e.Category == "terminal" {
+			// A checkpoint failure stops the response reader. Once the resulting
+			// incomplete terminal is durable, allow final release under the
+			// frozen policy instead of trapping the user's reservation on a
+			// stale local error. A failed terminal remains a hard failure.
+			a.err = nil
 		}
 		return nil
 	})

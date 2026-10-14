@@ -61,6 +61,13 @@ func (r *Repository) ReserveProbe(ctx context.Context, t execution.ProbeTarget, 
 		cost, unknown = *t.CostUpperBound, 0
 	}
 	err = authzquery.RunInTx(ctx, r.db, 3, func(ctx context.Context, tx *gorm.DB) error {
+		var paused int64
+		if err := tx.Model(&probeBudgetModel{}).Where("id LIKE ? AND paused = ?", fmt.Sprintf("%s:%d:%%", t.SourceKind, t.SourceID), true).Count(&paused).Error; err != nil {
+			return err
+		}
+		if paused > 0 {
+			return nil
+		}
 		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&probeBudgetModel{ID: day}).Error; err != nil {
 			return err
 		}
@@ -103,24 +110,40 @@ func (r *Repository) CompleteProbe(ctx context.Context, t execution.ProbeTarget,
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND target_id = ?", result.AttemptID, t.ID).First(&attempt).Error; err != nil {
 			return err
 		}
+		if attempt.TargetDigest != t.Digest() {
+			return fmt.Errorf("probe target changed after reservation")
+		}
 		if attempt.Result != "{}" {
 			if attempt.Result != string(raw) {
 				return fmt.Errorf("probe result conflict")
 			}
 			return nil
 		}
-		updates := map[string]any{"lease_until": int64(0)}
 		var record evidence.Record
 		if len(result.RecordJSON) > 0 && jsonx.Unmarshal(result.RecordJSON, &record) != nil {
 			return fmt.Errorf("invalid native probe result")
 		}
 		if record.Observation.Buckets != nil {
 			b := record.Observation.Buckets
-			if b[0]+b[1]+b[2]+b[3] > 128 || b[4] > t.MaxOutputTokens {
-				updates["paused"] = true
+			input, overrun := int64(0), b[4] < 0 || b[4] > t.MaxOutputTokens
+			for _, amount := range b[:4] {
+				// A corrupt or overflow-sized bucket cannot wrap the total
+				// back below the reserved input bound.
+				if amount < 0 || amount > 128-input {
+					overrun = true
+					break
+				}
+				input += amount
+			}
+			if overrun {
+				// Revocation applies to the source even when this result is
+				// late; releasing a lease is a separate owner-bound action.
+				if err := tx.Model(&probeBudgetModel{}).Where("id = ?", attempt.SourceDay).Update("paused", true).Error; err != nil {
+					return err
+				}
 			}
 		}
-		if err := tx.Model(&probeBudgetModel{}).Where("id = ? AND lease_owner = ?", attempt.SourceDay, result.AttemptID).Updates(updates).Error; err != nil {
+		if err := tx.Model(&probeBudgetModel{}).Where("id = ? AND lease_owner = ?", attempt.SourceDay, result.AttemptID).Update("lease_until", int64(0)).Error; err != nil {
 			return err
 		}
 		if err := tx.Model(&attempt).Update("result", string(raw)).Error; err != nil {

@@ -2,10 +2,12 @@ package data
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 	"micro-one-api/app/billing/internal/biz"
 	"micro-one-api/domain/authorization"
 	authzt "micro-one-api/domain/authorization/testutil"
@@ -14,6 +16,73 @@ import (
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/database/testutil"
 )
+
+func TestVendorLatestReplayFollowsIntakeOrderWithinOneSecond(t *testing.T) {
+	db := testutil.RoutingContextDB(t, "sqlite")
+	r := NewVendorReconciliationRepo(&Data{db: db})
+	ctx := context.Background()
+	// Pin only the persisted clock; the production import/query path is intact.
+	second := time.Now().Unix()
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register("pin_vendor_run_time", func(tx *gorm.DB) {
+		if run, ok := tx.Statement.Dest.(*vendorRunModel); ok {
+			run.CreatedAt = second
+		}
+	}))
+	m := vendorRepoManifest()
+	m.LocalWatermark = m.Scope.Start
+	zero := "0"
+	rows := []biz.VendorBillRow{{Amount: &zero}}
+	pending, err := biz.ReconcileVendor(m, rows, nil)
+	require.NoError(t, err)
+	require.Equal(t, "pending", pending.Status)
+	pendingRaw, err := jsonx.Marshal(pending)
+	require.NoError(t, err)
+	m.LocalWatermark = m.Scope.End
+	matched, err := biz.ReconcileVendor(m, rows, nil)
+	require.NoError(t, err)
+	// Ensure content-hash order opposes arrival order, deterministically.
+	for n := 0; ; n++ {
+		matched.Manifest.Reason = fmt.Sprintf("fresh independent evidence %d", n)
+		raw, err := jsonx.Marshal(matched)
+		require.NoError(t, err)
+		if vendorHash(raw) < vendorHash(pendingRaw) {
+			break
+		}
+		require.Less(t, n, 1000)
+	}
+	require.NoError(t, r.StoreVendorReconciliation(ctx, &pending))
+	require.NoError(t, r.StoreVendorReconciliation(ctx, &matched))
+	current, err := r.ListVendorReconciliations(ctx, time.Unix(second-1, 0), time.Unix(second+1, 0), 10)
+	require.NoError(t, err)
+	require.Len(t, current, 1)
+	require.Equal(t, "matched", current[0].Status, "new evidence must supersede the older pending replay")
+	// Retrying old content deduplicates it without rolling the current view back.
+	require.NoError(t, r.StoreVendorReconciliation(ctx, &pending))
+	current, err = r.ListVendorReconciliations(ctx, time.Unix(second-1, 0), time.Unix(second+1, 0), 10)
+	require.NoError(t, err)
+	require.Equal(t, "matched", current[0].Status)
+}
+
+func TestVendorCorrectionWithoutOriginalAmountStaysUnknown(t *testing.T) {
+	db := testutil.RoutingContextDB(t, "sqlite")
+	r := NewVendorReconciliationRepo(&Data{db: db})
+	m := vendorRepoManifest()
+	ctx := context.Background()
+	original, err := biz.ReconcileVendor(m, nil, nil)
+	require.NoError(t, err)
+	require.NoError(t, r.StoreVendorReconciliation(ctx, &original))
+	m.Version, m.Supersedes = "first-complete-amount", original.ID
+	amount := "10"
+	correction, err := biz.ReconcileVendor(m, []biz.VendorBillRow{{Amount: &amount}}, nil)
+	require.NoError(t, err)
+	require.NoError(t, r.StoreVendorReconciliation(ctx, &correction))
+	require.Nil(t, correction.CorrectionDelta, "an absent original amount cannot become a confirmed zero baseline")
+	m.Version, m.Supersedes = "amount-missing-again", correction.ID
+	missing, err := biz.ReconcileVendor(m, nil, nil)
+	require.NoError(t, err)
+	require.NoError(t, r.StoreVendorReconciliation(ctx, &missing))
+	require.Nil(t, missing.CorrectionDelta, "an absent corrected amount also remains unknown")
+}
 
 func vendorRepoManifest() biz.VendorManifest {
 	start := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)

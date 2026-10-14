@@ -1,0 +1,172 @@
+?   	micro-one-api/api/admin/v1	[no test files]
+?   	micro-one-api/api/billing/v1	[no test files]
+?   	micro-one-api/api/channel/v1	[no test files]
+ok  	micro-one-api/api/common/v1	0.375s
+?   	micro-one-api/api/config/v1	[no test files]
+?   	micro-one-api/api/identity/v1	[no test files]
+?   	micro-one-api/api/log/v1	[no test files]
+?   	micro-one-api/api/monitor/v1	[no test files]
+?   	micro-one-api/api/notify/v1	[no test files]
+?   	micro-one-api/api/relay/v1	[no test files]
+?   	micro-one-api/app/admin/cmd/admin	[no test files]
+ok  	micro-one-api/app/admin/internal/biz	0.388s
+ok  	micro-one-api/app/admin/internal/conf	0.530s
+ok  	micro-one-api/app/admin/internal/data	1.075s
+ok  	micro-one-api/app/admin/internal/data/channelclient	0.431s
+?   	micro-one-api/app/admin/internal/data/iam	[no test files]
+?   	micro-one-api/app/admin/internal/data/routingaccess	[no test files]
+?   	micro-one-api/app/admin/internal/data/routingrpc	[no test files]
+ok  	micro-one-api/app/admin/internal/server	3.654s
+ok  	micro-one-api/app/admin/internal/service	0.556s
+?   	micro-one-api/app/admin/testutil	[no test files]
+?   	micro-one-api/app/billing/cmd/billing	[no test files]
+ok  	micro-one-api/app/billing/cmd/evidence-worker	0.522s
+ok  	micro-one-api/app/billing/cmd/vendor-cost-fetch	0.478s
+?   	micro-one-api/app/billing/cmd/vendor-reconcile	[no test files]
+ok  	micro-one-api/app/billing/internal/biz	1.399s
+ok  	micro-one-api/app/billing/internal/conf	0.511s
+ok  	micro-one-api/app/billing/internal/data	9.609s
+ok  	micro-one-api/app/billing/internal/server	0.448s
+ok  	micro-one-api/app/billing/internal/service	0.556s
+?   	micro-one-api/app/billing/testutil	[no test files]
+ok  	micro-one-api/app/channel/cmd/channel	0.477s
+?   	micro-one-api/app/channel/cmd/channel-credentials	[no test files]
+ok  	micro-one-api/app/channel/cmd/group-audit	0.565s
+ok  	micro-one-api/app/channel/cmd/group-backfill	0.543s
+ok  	micro-one-api/app/channel/internal/biz	0.726s
+ok  	micro-one-api/app/channel/internal/biz/oauth	0.434s
+ok  	micro-one-api/app/channel/internal/conf	0.377s
+ok  	micro-one-api/app/channel/internal/data	6.919s
+ok  	micro-one-api/app/channel/internal/server	0.446s
+ok  	micro-one-api/app/channel/internal/service	0.529s
+?   	micro-one-api/app/channel/testutil	[no test files]
+?   	micro-one-api/app/config/cmd/config	[no test files]
+ok  	micro-one-api/app/config/internal/biz	0.389s
+ok  	micro-one-api/app/config/internal/conf	0.373s
+ok  	micro-one-api/app/config/internal/data	1.721s
+?   	micro-one-api/app/config/internal/server	[no test files]
+?   	micro-one-api/app/config/internal/service	[no test files]
+?   	micro-one-api/app/config/testutil	[no test files]
+ok  	micro-one-api/app/identity/cmd/iam-migrate	0.929s
+ok  	micro-one-api/app/identity/cmd/identity	0.601s
+?   	micro-one-api/app/identity/cmd/routing-backfill	[no test files]
+ok  	micro-one-api/app/identity/internal/biz	3.149s
+ok  	micro-one-api/app/identity/internal/conf	0.487s
+ok  	micro-one-api/app/identity/internal/data	10.947s
+ok  	micro-one-api/app/identity/internal/server	10.137s
+ok  	micro-one-api/app/identity/internal/service	1.563s
+?   	micro-one-api/app/identity/testutil	[no test files]
+?   	micro-one-api/app/log/cmd/log	[no test files]
+ok  	micro-one-api/app/log/internal/biz	0.422s
+ok  	micro-one-api/app/log/internal/conf	0.340s
+ok  	micro-one-api/app/log/internal/data	0.709s
+ok  	micro-one-api/app/log/internal/server	0.484s
+?   	micro-one-api/app/log/internal/service	[no test files]
+?   	micro-one-api/app/log/testutil	[no test files]
+?   	micro-one-api/app/monitor/cmd/monitor	[no test files]
+?   	micro-one-api/app/monitor/cmd/upstream-report	[no test files]
+ok  	micro-one-api/app/monitor/internal/biz	0.410s
+ok  	micro-one-api/app/monitor/internal/conf	0.363s
+ok  	micro-one-api/app/monitor/internal/data	0.888s
+?   	micro-one-api/app/monitor/internal/server	[no test files]
+ok  	micro-one-api/app/monitor/internal/service	0.420s
+?   	micro-one-api/app/monitor/testutil	[no test files]
+ok  	micro-one-api/app/notify/cmd/notify	0.483s
+ok  	micro-one-api/app/notify/internal/biz	0.446s
+ok  	micro-one-api/app/notify/internal/conf	0.373s
+ok  	micro-one-api/app/notify/internal/data	0.887s
+ok  	micro-one-api/app/notify/internal/server	0.494s
+?   	micro-one-api/app/notify/internal/service	[no test files]
+?   	micro-one-api/app/notify/testutil	[no test files]
+ok  	micro-one-api/cmd/admin-reset	0.599s
+?   	micro-one-api/cmd/migrate	[no test files]
+?   	micro-one-api/cmd/migrate-check	[no test files]
+ok  	micro-one-api/cmd/rbac-contract-check	0.747s
+ok  	micro-one-api/cmd/relay-gateway	0.558s
+ok  	micro-one-api/cmd/upstream-repair	0.243s
+ok  	micro-one-api/cmd/upstream-rollout	0.182s
+ok  	micro-one-api/domain/authorization	0.438s
+?   	micro-one-api/domain/authorization/management	[no test files]
+?   	micro-one-api/domain/authorization/testutil	[no test files]
+ok  	micro-one-api/domain/billing	0.399s
+ok  	micro-one-api/domain/execution	0.357s
+?   	micro-one-api/domain/operations/biz	[no test files]
+ok  	micro-one-api/domain/operations/data	0.364s
+?   	micro-one-api/domain/requesttrace	[no test files]
+ok  	micro-one-api/domain/routing	0.356s
+ok  	micro-one-api/domain/subscription/biz	0.380s
+ok  	micro-one-api/domain/subscription/data	0.993s
+ok  	micro-one-api/domain/upstream/contract	0.368s
+ok  	micro-one-api/domain/upstream/credential	2.088s
+ok  	micro-one-api/domain/upstream/evidence	0.389s
+ok  	micro-one-api/domain/upstream/provider	1.221s
+ok  	micro-one-api/domain/upstream/repair	0.355s
+ok  	micro-one-api/domain/upstream/repair/data	0.373s
+ok  	micro-one-api/internal/adaptor	0.391s
+ok  	micro-one-api/internal/apicompat	0.371s
+ok  	micro-one-api/internal/biz	0.585s
+ok  	micro-one-api/internal/conf	0.350s
+ok  	micro-one-api/internal/data	1.952s
+ok  	micro-one-api/internal/identity	0.352s
+ok  	micro-one-api/internal/passthrough	0.356s
+ok  	micro-one-api/internal/quota	0.402s
+ok  	micro-one-api/internal/server	5.461s
+ok  	micro-one-api/internal/server/forwarder	0.411s
+ok  	micro-one-api/internal/server/handler	0.446s
+ok  	micro-one-api/internal/server/usage	0.416s
+ok  	micro-one-api/internal/service	0.420s
+ok  	micro-one-api/internal/stresstest	0.338s
+ok  	micro-one-api/internal/validation	0.383s
+ok  	micro-one-api/pkg/errors	0.369s
+ok  	micro-one-api/pkg/filtering	0.331s
+ok  	micro-one-api/pkg/jsonx	0.356s
+ok  	micro-one-api/pkg/ordering	0.351s
+ok  	micro-one-api/pkg/pagination	0.352s
+ok  	micro-one-api/pkg/safecast	0.290s
+ok  	micro-one-api/pkg/safefile	0.339s
+ok  	micro-one-api/pkg/timeout	0.355s
+ok  	micro-one-api/pkg/usage	0.342s
+ok  	micro-one-api/pkg/wildcard	0.334s
+ok  	micro-one-api/platform/audit	0.415s
+ok  	micro-one-api/platform/authz	0.428s
+?   	micro-one-api/platform/billingdto	[no test files]
+ok  	micro-one-api/platform/cache	2.047s
+ok  	micro-one-api/platform/config	1.006s
+?   	micro-one-api/platform/contractdto	[no test files]
+ok  	micro-one-api/platform/database/authzquery	0.419s
+ok  	micro-one-api/platform/database/migrate	0.793s
+ok  	micro-one-api/platform/database/partition	0.366s
+?   	micro-one-api/platform/database/testutil	[no test files]
+ok  	micro-one-api/platform/database/xdb	0.449s
+ok  	micro-one-api/platform/events	2.803s
+ok  	micro-one-api/platform/grpc	0.584s
+ok  	micro-one-api/platform/grpc/xgrpc	0.414s
+ok  	micro-one-api/platform/http	0.370s
+ok  	micro-one-api/platform/iamdto	0.377s
+?   	micro-one-api/platform/logging	[no test files]
+ok  	micro-one-api/platform/metrics	0.421s
+ok  	micro-one-api/platform/middleware	0.485s
+ok  	micro-one-api/platform/registry	0.352s
+?   	micro-one-api/platform/routingclient	[no test files]
+?   	micro-one-api/platform/routingdto	[no test files]
+ok  	micro-one-api/platform/routingoutbox	0.974s
+ok  	micro-one-api/platform/security	0.402s
+ok  	micro-one-api/platform/security/auth	0.363s
+ok  	micro-one-api/platform/security/crypto	0.341s
+ok  	micro-one-api/platform/security/serviceidentity	0.415s
+?   	micro-one-api/platform/security/sessionguard	[no test files]
+ok  	micro-one-api/platform/subscriptiondto	0.406s
+ok  	micro-one-api/platform/tls	0.343s
+ok  	micro-one-api/platform/tracing	0.411s
+ok  	micro-one-api/platform/upstreamclient	0.438s
+ok  	micro-one-api/platform/websocket	0.960s
+?   	micro-one-api/scripts	[no test files]
+?   	micro-one-api/scripts/benchmark/mock-upstream	[no test files]
+?   	micro-one-api/scripts/reconcile	[no test files]
+ok  	micro-one-api/scripts/reconcile/history-audit	0.404s
+ok  	micro-one-api/scripts/routing-preflight	0.476s
+ok  	micro-one-api/scripts/verify	0.391s
+?   	micro-one-api/test/e2e	[no test files]
+ok  	micro-one-api/test/e2e/routing	2.469s
+?   	micro-one-api/test/e2e/routingmock	[no test files]
+?   	micro-one-api/test/mockupstream	[no test files]

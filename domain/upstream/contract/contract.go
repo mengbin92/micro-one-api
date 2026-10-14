@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/big"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 
 	"micro-one-api/pkg/jsonx"
@@ -151,6 +153,7 @@ func Compile(d Document) (Snapshot, error) {
 			return out, fmt.Errorf("invalid/duplicate rule precedence")
 		}
 		usedLevels[set.Level] = true
+		levelPaths := map[string]bool{}
 		for _, r := range set.Rules {
 			if len(ids) >= 64 || r.ID == "" || len(r.ID) > 128 || ids[r.ID] || r.Evidence == "" {
 				return out, fmt.Errorf("bounded, unique, evidenced rules required")
@@ -159,6 +162,10 @@ func Compile(d Document) (Snapshot, error) {
 			if _, err := pathParts(r.Path); err != nil {
 				return out, err
 			}
+			if levelPaths[r.Path] {
+				return out, fmt.Errorf("same precedence field conflict: %s", r.Path)
+			}
+			levelPaths[r.Path] = true
 			if r.Kind != "reject" && protected(r.Path) {
 				return out, fmt.Errorf("protected request semantics: %s", r.Path)
 			}
@@ -175,7 +182,7 @@ func Compile(d Document) (Snapshot, error) {
 					return out, fmt.Errorf("invalid rename")
 				}
 			case "default":
-				if len(r.Value) == 0 || len(r.Value) > 1024 || !jsonx.Valid(r.Value) || r.Target != "" || r.Min != nil || r.Max != nil || r.Type != "" {
+				if len(r.Value) == 0 || len(r.Value) > 1024 || jsonx.ValidateUnique(r.Value) != nil || r.Target != "" || r.Min != nil || r.Max != nil || r.Type != "" {
 					return out, fmt.Errorf("invalid default")
 				}
 			case "reject":
@@ -210,6 +217,11 @@ func Compile(d Document) (Snapshot, error) {
 		if r.Kind == "rename" {
 			if destinations[r.Target] {
 				return out, fmt.Errorf("multiple target writers")
+			}
+			for target := range destinations {
+				if strings.HasPrefix(target, r.Target+".") || strings.HasPrefix(r.Target, target+".") {
+					return out, fmt.Errorf("overlapping target writers")
+				}
 			}
 			destinations[r.Target] = true
 			if _, ok := byPath[r.Target]; ok {
@@ -277,10 +289,35 @@ func write(obj map[string]jsonx.RawMessage, parts []string, value jsonx.RawMessa
 	obj[parts[0]] = b
 	return err
 }
+
+func boundedNumber(n jsonx.Number) (*big.Rat, bool) {
+	text := n.String()
+	if len(text) > 1024 {
+		return nil, false
+	}
+	if index := strings.IndexAny(text, "eE"); index >= 0 {
+		exponent, err := strconv.ParseInt(text[index+1:], 10, 64)
+		// The installed contract has finite float64 range bounds. Bound
+		// exponent work before big.Rat constructs a power of ten, including
+		// underflow values that strconv.ParseFloat would silently round to 0.
+		if err != nil || exponent < -324 || exponent > 324 {
+			return nil, false
+		}
+	}
+	value, err := n.Float64()
+	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
+		return nil, false
+	}
+	return new(big.Rat).SetString(text)
+}
+
 func Apply(s Snapshot, body []byte) ([]byte, Trace, error) {
 	trace := Trace{Scope: s.Document.Scope, Revision: s.Revision, Build: s.Document.AdapterBuild, BindingRevision: s.BindingRevision, IncidentRevision: s.IncidentRevision}
 	if len(body) > 4<<20 {
 		return nil, trace, fmt.Errorf("contract request size exceeded")
+	}
+	if jsonx.ValidateUnique(body) != nil {
+		return nil, trace, fmt.Errorf("contract requires JSON with unique object keys")
 	}
 	var obj map[string]jsonx.RawMessage
 	if jsonx.Unmarshal(body, &obj) != nil || obj == nil {
@@ -350,8 +387,21 @@ func Apply(s Snapshot, body []byte) ([]byte, Trace, error) {
 			case "number":
 				n, ok := v.(jsonx.Number)
 				if ok {
-					f, err := n.Float64()
-					valid = err == nil && (r.Min == nil || f >= *r.Min) && (r.Max == nil || f <= *r.Max)
+					// Compare the original decimal value before float64 rounding;
+					// otherwise an integer immediately beyond a limit can pass.
+					value, parsed := boundedNumber(n)
+					valid = parsed
+					for _, bound := range []struct {
+						limit *float64
+						min   bool
+					}{{r.Min, true}, {r.Max, false}} {
+						if !valid || bound.limit == nil {
+							continue
+						}
+						limit, _ := new(big.Rat).SetString(strconv.FormatFloat(*bound.limit, 'g', -1, 64))
+						comparison := value.Cmp(limit)
+						valid = (bound.min && comparison >= 0) || (!bound.min && comparison <= 0)
+					}
 				}
 			case "string":
 				_, valid = v.(string)

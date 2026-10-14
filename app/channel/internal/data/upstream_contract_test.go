@@ -97,6 +97,16 @@ func TestContractCASGrayIncidentAndRollbackDialects(t *testing.T) {
 			require.True(t, ok)
 			_, b, err = r.ListContracts(ctx, d.Scope, 20)
 			require.NoError(t, err)
+			require.Equal(t, "active", b.Status, "a failed candidate probe is not evidence that the current contract failed")
+			_, err = r.TransitionContract(ctx, biz.ContractTransition{Scope: d.Scope, Revision: rev2, Expected: uint64(b.Revision), Action: "publish", Reason: "candidate has no valid proof", GrayPercent: 1}, later.Add(3*time.Minute))
+			require.ErrorIs(t, err, biz.ErrContractGate)
+			// Only a bounded failed probe of the actual current revision may
+			// quarantine its live traffic.
+			ok, err = probe(rev, later.Add(4*time.Minute), bad)
+			require.NoError(t, err)
+			require.True(t, ok)
+			_, b, err = r.ListContracts(ctx, d.Scope, 20)
+			require.NoError(t, err)
 			require.Equal(t, "quarantined", b.Status)
 			// Same DB and new repository cannot bypass persistent incident by waiting.
 			restarted := &Repository{db: db}
@@ -166,7 +176,9 @@ func TestRollbackRequiresFreshProofAndRemovedOldProtocolStaysQuarantined(t *test
 	require.NoError(t, db.Where("id = ?", old.Scope.Key()).First(&binding).Error)
 	binding.Current = current.Revision()
 	binding.Previous = old.Revision()
-	binding.Status = "active"
+	// A separately established current-revision incident is already isolated.
+	// Failure of a rollback-target probe cannot restore it or move the incident.
+	binding.Status = "quarantined"
 	binding.ApprovedPercent = 100
 	binding.PreviousPercent = 100
 	binding.Revision = 7
@@ -227,4 +239,49 @@ func TestAutomaticRecoveryNeverPromotesUnreleasedGray(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "gray", out.Status)
 	require.EqualValues(t, 5, out.GrayPercent)
+}
+
+func TestGrayRecoveryAndRollbackRequireNewObservationWindow(t *testing.T) {
+	for _, action := range []string{"recover", "automatic_recover", "rollback"} {
+		t.Run(action, func(t *testing.T) {
+			db := dbt.RoutingContextDB(t, "sqlite")
+			r := &Repository{db: db}
+			ctx := context.Background()
+			now := time.Now().UTC()
+			empty := ""
+			require.NoError(t, db.Create(&channelModel{ID: 1, Status: 1, Key: "fixture", ModelMapping: &empty, SystemPrompt: &empty, Config: "{}"}).Error)
+			d := contractDoc("channel", 1)
+			previous := d
+			previous.BasisRevision = "prior-schema"
+			for _, document := range []contract.Document{d, previous} {
+				require.NoError(t, r.CreateContract(ctx, biz.UpstreamContract{Document: document, Revision: document.Revision()}, now))
+			}
+			b := contractBindingModel{ID: d.Scope.Key(), SourceKind: d.Scope.Kind, SourceID: 1, Model: d.Scope.Model, Protocol: d.Scope.Protocol, Current: d.Revision(), Previous: previous.Revision(), Revision: 3, IncidentRevision: 1, Status: "quarantined", ApprovedPercent: 5, PreviousPercent: 5, GrayPercent: 5, StartedAt: now.Add(-time.Hour).Unix(), CompleteAttempts: 100}
+			if action == "automatic_recover" {
+				b.AutoRevision, b.AutoUntil = d.Revision(), now.Add(time.Hour).Unix()
+			}
+			require.NoError(t, db.Save(&b).Error)
+			target := d.Revision()
+			if action == "rollback" {
+				target = previous.Revision()
+			}
+			source, err := r.sourceContractRevision(db, d.Scope)
+			require.NoError(t, err)
+			lease, err := r.AcquireContractProbe(ctx, d.Scope, target, "new-proof", source, now)
+			require.NoError(t, err)
+			_, err = r.RecordContractResult(ctx, biz.ContractResult{Scope: d.Scope, Revision: target, BindingRevision: b.Revision, IncidentRevision: b.IncidentRevision, AttemptID: "new-proof", LeaseID: lease.ID, Record: verifiedContractRecord(), CapabilityValid: true}, now)
+			require.NoError(t, err)
+			if action != "automatic_recover" {
+				_, err = r.TransitionContract(ctx, biz.ContractTransition{Scope: d.Scope, Revision: target, Expected: uint64(b.Revision), Action: action, Reason: "fresh independent proof"}, now)
+				require.NoError(t, err)
+			}
+			_, restored, err := r.ListContracts(ctx, d.Scope, 20)
+			require.NoError(t, err)
+			require.Equal(t, "gray", restored.Status)
+			require.Equal(t, target, restored.Current)
+			require.Equal(t, now.Unix(), restored.StartedAt, "recovery and rollback cannot inherit a prior candidate's observation window")
+			require.Zero(t, restored.CompleteAttempts, "only post-recovery attempts may promote this revision")
+			require.Zero(t, restored.Failures)
+		})
+	}
 }

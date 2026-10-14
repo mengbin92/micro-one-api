@@ -105,6 +105,35 @@ func TestExecutionEvidenceDeadlineCannotBeExtendedByFinal(t *testing.T) {
 	require.Zero(t, count)
 }
 
+func TestExecutionCommittedFinalReceiptSurvivesEvidenceDeadline(t *testing.T) {
+	d, i := executionFixture(t)
+	i.LeaseUntil = time.Now().Add(-2 * time.Hour).Unix()
+	i.EvidenceDeadline = time.Now().Add(-time.Hour).Unix()
+	raw, err := jsonx.Marshal(i)
+	require.NoError(t, err)
+	require.NoError(t, d.db.Model(&executionIntentModel{}).Where("id = ?", i.Key()).Updates(map[string]any{"payload": string(raw), "lease_until": i.LeaseUntil, "evidence_deadline": i.EvidenceDeadline}).Error)
+	e := executionFinal(t, i)
+	var p billingdomain.SettlementPayload
+	require.NoError(t, jsonx.Unmarshal(e.Final, &p))
+	var usage biz.LedgerUsage
+	require.NoError(t, jsonx.Unmarshal(p.Usage, &usage))
+	fd, err := p.Digest()
+	require.NoError(t, err)
+	task := &biz.SettleTask{ReservationID: i.ReservationID, Success: true, Usage: usage, SettlementReceiptVersion: 1, SettlementEventID: i.ReservationID + "/final/0", SettlementPayloadDigest: fd}
+	_, err = (&settlementTaskRepo{data: d}).AcceptTask(context.Background(), task)
+	require.NoError(t, err)
+	require.NoError(t, d.db.Model(&reservationModel{}).Where("reservation_id = ?", i.ReservationID).Updates(map[string]any{"status": biz.ReservationStatusCommitted, "actual_cost": 7}).Error)
+	_, digest, err := e.Encode()
+	require.NoError(t, err)
+	r, err := (&reservationRepo{data: d}).AcceptExecution(context.Background(), e, digest)
+	require.NoError(t, err)
+	require.True(t, r.Received)
+	require.True(t, r.SettlementAccepted)
+	require.True(t, r.Settled)
+	require.Equal(t, "settled", r.Status)
+	require.EqualValues(t, 7, r.Amount)
+}
+
 func TestNativeV2ReservationFreezesMoneyAndExpiresAtomically(t *testing.T) {
 	for _, fixture := range []struct{ Dialect, Status string }{{"sqlite", "verified"}, {"sqlite", "missing"}, {"sqlite", "invalid"}, {"sqlite", "unsupported"}, {"mysql", "verified"}, {"mysql", "missing"}, {"mysql", "invalid"}, {"mysql", "unsupported"}, {"postgres", "verified"}, {"postgres", "missing"}, {"postgres", "invalid"}, {"postgres", "unsupported"}} {
 		status := fixture.Status

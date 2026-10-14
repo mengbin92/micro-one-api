@@ -37,17 +37,26 @@ func NativeUsageV2(r *evidence.Record) UsageEnvelope {
 			u.Reported.PromptTokens = number("prompt_tokens")
 			u.Reported.OutputTokens = number("completion_tokens")
 			u.Reported.TotalTokens = number("total_tokens")
+			u.Reported.CacheReadTokens = nativeNestedNumber(raw, "prompt_tokens_details", "cached_tokens")
 		case "responses":
 			u.Reported.PromptTokens = number("input_tokens")
 			u.Reported.OutputTokens = number("output_tokens")
 			u.Reported.TotalTokens = number("total_tokens")
+			u.Reported.CacheReadTokens = nativeNestedNumber(raw, "input_tokens_details", "cached_tokens")
 		case "anthropic_messages":
 			u.Reported.PromptTokens = number("input_tokens")
 			u.Reported.OutputTokens = number("output_tokens")
+			u.Reported.CacheReadTokens = number("cache_read_input_tokens")
+			u.Reported.CacheCreation5mTokens = number("cache_creation_input_tokens")
+			if _, ok := raw["cache_creation"].(map[string]any); ok {
+				u.Reported.CacheCreation5mTokens = nativeNestedNumber(raw, "cache_creation", "ephemeral_5m_input_tokens")
+				u.Reported.CacheCreation1hTokens = nativeNestedNumber(raw, "cache_creation", "ephemeral_1h_input_tokens")
+			}
 		case "gemini":
 			u.Reported.PromptTokens = number("promptTokenCount")
 			u.Reported.OutputTokens = number("candidatesTokenCount")
 			u.Reported.TotalTokens = number("totalTokenCount")
+			u.Reported.CacheReadTokens = number("cachedContentTokenCount")
 		}
 	}
 	if o.Buckets != nil {
@@ -56,20 +65,39 @@ func NativeUsageV2(r *evidence.Record) UsageEnvelope {
 		u.Reported.CacheCreation1hTokens = o.Buckets[3]
 	}
 	u.Reported.FieldShape = strings.Join(o.Present, ",")
-	if !r.Complete || r.HTTPStatus != 0 && (r.HTTPStatus < 200 || r.HTTPStatus >= 300) {
-		u.ParseStatus = "missing"
-		u.DecisionReason = "execution_incomplete"
-		return u
-	}
-	if o.Status == "verified" && o.Buckets != nil {
+	complete := r.Complete && (r.HTTPStatus == 0 || r.HTTPStatus >= 200 && r.HTTPStatus < 300)
+	if o.Status == "verified" && o.Buckets != nil && complete {
 		b := o.Buckets
 		u.Canonical = &CanonicalUsage{UncachedInputTokens: b[0], CacheReadTokens: b[1], CacheCreation5mTokens: b[2], CacheCreation1hTokens: b[3], OutputTokens: b[4]}
 		u.Semantics = UsageSemantics(o.Semantics)
+	} else if o.Status == "ambiguous" && o.Reason == UsageReasonCachedExceedsReportedPrompt {
+		// This is the installed parser's known subset/exclusive conflict, not
+		// an unknown dimension. Preserve both interpretations for audit; the
+		// frozen v2 policy still releases unproven user settlements.
+		r := u.Reported
+		u.SubsetCandidate = &CanonicalUsage{CacheReadTokens: r.CacheReadTokens, OutputTokens: r.OutputTokens}
+		u.ExclusiveCandidate = &CanonicalUsage{UncachedInputTokens: r.PromptTokens, CacheReadTokens: r.CacheReadTokens, OutputTokens: r.OutputTokens}
+	} else if o.Status == "verified" || o.Status == "missing" && !complete {
+		u.ParseStatus = "missing"
+		u.DecisionReason = "execution_incomplete"
 	} else if o.Status != "missing" && o.Status != "invalid" && o.Status != "unsupported" {
 		u.ParseStatus = "unsupported"
 		u.DecisionReason = "native_unobserved"
 	}
 	return u
+}
+
+func nativeNestedNumber(raw map[string]any, parent, key string) int64 {
+	m, _ := raw[parent].(map[string]any)
+	n, ok := m[key].(jsonx.Number)
+	if !ok {
+		return 0
+	}
+	v, err := n.Int64()
+	if err != nil || v < 0 {
+		return 0
+	}
+	return v
 }
 
 func NativeBillingUsage(usage billingdomain.LedgerUsage, record *evidence.Record) billingdomain.LedgerUsage {
@@ -90,6 +118,14 @@ func NativeBillingUsage(usage billingdomain.LedgerUsage, record *evidence.Record
 		usage.CacheCreation5mTokens = b.CacheCreation5mTokens
 		usage.CacheCreation1hTokens = b.CacheCreation1hTokens
 	}
+	toBuckets := func(b *CanonicalUsage) *billingdomain.CanonicalBuckets {
+		if b == nil {
+			return nil
+		}
+		return &billingdomain.CanonicalBuckets{UncachedInputTokens: b.UncachedInputTokens, CacheReadTokens: b.CacheReadTokens, CacheCreation5mTokens: b.CacheCreation5mTokens, CacheCreation1hTokens: b.CacheCreation1hTokens, OutputTokens: b.OutputTokens}
+	}
+	usage.Envelope.SubsetCandidate = toBuckets(u.SubsetCandidate)
+	usage.Envelope.ExclusiveCandidate = toBuckets(u.ExclusiveCandidate)
 	if record != nil {
 		usage.Envelope.FieldShape = strings.Join(record.Observation.Present, ",")
 		usage.Envelope.ParserRevision = record.Observation.ParserRevision

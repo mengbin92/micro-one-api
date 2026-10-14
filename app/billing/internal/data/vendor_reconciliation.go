@@ -37,6 +37,7 @@ type vendorRunModel struct {
 	ReportID  string `gorm:"size:64;index"`
 	Payload   string `gorm:"type:text"`
 	CreatedAt int64
+	Sequence  int64
 }
 
 func (vendorRunModel) TableName() string { return "billing_vendor_reconciliation_runs" }
@@ -235,13 +236,15 @@ func (r *vendorReconciliationRepo) StoreVendorReconciliation(ctx context.Context
 			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
 				return fmt.Errorf("report import conflict: %w", err)
 			}
-			var accepted vendorReportModel
-			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", report.ID).Limit(1).Find(&accepted).Error; err != nil {
-				return err
-			}
-			if accepted.ID == "" {
-				return fmt.Errorf("supplier version/root/correction conflict: later report versions must supersede the current leaf")
-			}
+		}
+		// Serialize replays on the immutable report row. Content hashes and
+		// second-resolution timestamps do not define evidence arrival order.
+		var accepted vendorReportModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", report.ID).Limit(1).Find(&accepted).Error; err != nil {
+			return err
+		}
+		if accepted.ID == "" {
+			return fmt.Errorf("supplier version/root/correction conflict: later report versions must supersede the current leaf")
 		}
 		// Replays with new local evidence append an immutable run, preserving
 		// original imports. Identical replays are deduplicated by content SHA.
@@ -249,8 +252,25 @@ func (r *vendorReconciliationRepo) StoreVendorReconciliation(ctx context.Context
 		if err := vendorReportAuth(ctx, "billing.vendor_report.import"); err != nil {
 			return err
 		}
-		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&run).Error; err != nil {
+		var existing vendorRunModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", run.ID).Limit(1).Find(&existing).Error; err != nil {
 			return err
+		}
+		if existing.ID == "" {
+			// A locking read is required on MySQL repeatable-read transactions:
+			// an earlier version lookup may have established an older snapshot
+			// while this transaction was waiting for the report-row lock.
+			var last vendorRunModel
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("report_id = ?", report.ID).Order("sequence DESC").Limit(1).Find(&last).Error; err != nil {
+				return err
+			}
+			run.Sequence = last.Sequence + 1
+			if run.Sequence <= 0 {
+				return fmt.Errorf("vendor replay sequence exhausted")
+			}
+			if err := tx.Create(&run).Error; err != nil {
+				return err
+			}
 		}
 		if err := authzquery.AppendWriteAudit(ctx, tx, "billing.vendor_report.import", 0); err != nil {
 			return err
@@ -266,6 +286,9 @@ func vendorHash(raw []byte) string { return fmt.Sprintf("%x", sha256.Sum256(raw)
 
 func vendorCorrection(before, after []biz.VendorBillRow) *string {
 	total := func(rows []biz.VendorBillRow) (*big.Rat, error) {
+		if len(rows) == 0 {
+			return nil, errors.New("unknown")
+		}
 		sum := new(big.Rat)
 		for _, r := range rows {
 			if r.Amount == nil {
@@ -309,7 +332,7 @@ func (r *vendorReconciliationRepo) listVendorReports(ctx context.Context, start,
 	// Latest immutable run for each import; corrected predecessors are excluded
 	// from current coverage, but remain in the historical import/run tables.
 	var rows []vendorRunModel
-	q := r.data.db.WithContext(ctx).Table("billing_vendor_reconciliation_runs AS r").Select("r.*").Joins("JOIN billing_vendor_reports AS p ON p.id = r.report_id").Where("NOT EXISTS (SELECT 1 FROM billing_vendor_reports newer WHERE newer.supersedes = p.id)").Where("NOT EXISTS (SELECT 1 FROM billing_vendor_reconciliation_runs x WHERE x.report_id = r.report_id AND (x.created_at > r.created_at OR (x.created_at = r.created_at AND x.id > r.id)))").Order("r.created_at DESC, r.id ASC").Limit(limit + 1)
+	q := r.data.db.WithContext(ctx).Table("billing_vendor_reconciliation_runs AS r").Select("r.*").Joins("JOIN billing_vendor_reports AS p ON p.id = r.report_id").Where("NOT EXISTS (SELECT 1 FROM billing_vendor_reports newer WHERE newer.supersedes = p.id)").Where("NOT EXISTS (SELECT 1 FROM billing_vendor_reconciliation_runs x WHERE x.report_id = r.report_id AND x.sequence > r.sequence)").Order("r.created_at DESC, r.id ASC").Limit(limit + 1)
 	if !all {
 		q = q.Where("r.created_at >= ? AND r.created_at < ?", start.Unix(), end.Unix())
 	}

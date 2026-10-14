@@ -14,11 +14,13 @@ const MaxEvents = 32
 type Tracker struct {
 	candidateParser func([]byte) Observation
 	protocol        string
+	sse             bool
 	usage           map[string]any
 	pending         []byte
 	discardLine     bool
 	data            []byte
 	latest          Observation
+	providerID      string
 	fault           *Observation
 	success, failed bool
 	Events          []Observation
@@ -32,7 +34,12 @@ func NewTracker(protocol string) *Tracker {
 
 func (t *Tracker) ObserveFrame(body []byte) {
 	o := t.parse(body)
-	if o.Terminal == "completed" {
+	if o.ProviderRequestID != "" {
+		t.providerID = o.ProviderRequestID
+	}
+	// Chat's finish_reason precedes the final usage chunk. Only [DONE]
+	// confirms that the SSE response reached its protocol terminator.
+	if o.Terminal == "completed" && (t.protocol != "openai_chat" || !t.sse) {
 		t.success = true
 	}
 	if o.Terminal == "failed" {
@@ -77,12 +84,8 @@ func (t *Tracker) ObserveFrame(body []byte) {
 		t.usage = nil
 		return
 	}
-	providerID := t.latest.ProviderRequestID
-	if o.ProviderRequestID != "" {
-		providerID = o.ProviderRequestID
-	}
 	t.latest = t.parse(combined)
-	t.latest.ProviderRequestID = providerID
+	t.latest.ProviderRequestID = t.providerID
 }
 
 func mergeSnapshot(dst, src map[string]any) {
@@ -100,6 +103,7 @@ func mergeSnapshot(dst, src map[string]any) {
 // Write observes complete SSE events and bounds both an unfinished line and
 // an unfinished event. It always consumes p; this observer never blocks data.
 func (t *Tracker) Write(p []byte) (int, error) {
+	t.sse = true
 	n := len(p)
 	for len(p) > 0 {
 		line, rest, found := bytes.Cut(p, []byte{'\n'})

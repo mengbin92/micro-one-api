@@ -94,6 +94,14 @@ func Do(client *http.Client, req *http.Request, protocol string) (*http.Response
 		if err := CheckDurable(req.Context()); err != nil {
 			return nil, err
 		}
+		if HasDurableRecorder(req.Context()) {
+			// http.Client redirects happen inside Do and would bypass the
+			// one-send admission and procurement identity. Preserve the redirect
+			// response as evidence without mutating the shared storage client.
+			copy := *client
+			copy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+			client = &copy
+		}
 	}
 	startedAt := int64(0)
 	if parameterTrace != nil || os.Getenv("RELAY_UPSTREAM_EXECUTION_TIME_V1") == "true" {
@@ -126,6 +134,12 @@ func Do(client *http.Client, req *http.Request, protocol string) (*http.Response
 		header := Record{ParameterContract: parameterTrace, StartedAtUnixNano: startedAt, Observation: Observation{Protocol: protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: "missing", Reason: "response_headers_only", ProviderRequestID: providerRequestID(resp.Header)}, Execution: "checkpoint", HTTPStatus: resp.StatusCode, Stream: stream, UpstreamEndpoint: req.URL.EscapedPath(), APIVersion: apiVersion(req)}
 		if err := durable.Record(header); err != nil {
 			_ = resp.Body.Close()
+			// The supplier has already been called. Even if a header checkpoint
+			// cannot be saved, use the protected terminal slot to retain its
+			// identity and incomplete result; never fabricate missing usage.
+			header.Execution, header.Complete = "incomplete", false
+			header.Observation.Reason = "header_checkpoint_failed"
+			_ = durable.Record(header)
 			return nil, err
 		}
 	}
@@ -246,6 +260,9 @@ func (b *observedBody) finish() {
 			r.Observation = Observation{Protocol: b.protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: "unobserved", Reason: "frame_limit"}
 		} else {
 			r.Observation = Parse(b.body, b.protocol)
+		}
+		if r.Observation.Terminal == "failed" {
+			r.Complete = false
 		}
 		if r.Observation.ProviderRequestID == "" {
 			r.Observation.ProviderRequestID = b.providerID

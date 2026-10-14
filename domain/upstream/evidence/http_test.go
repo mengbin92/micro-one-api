@@ -63,6 +63,74 @@ func TestHTTPObserverDisabledHasNoBodyWrapper(t *testing.T) {
 	}
 }
 
+func TestHTTPObservationIncompleteResponseIsNotCompletedAtEOF(t *testing.T) {
+	var record Record
+	ctx := WithRecorder(context.Background(), func(r Record) { record = r })
+	req, _ := http.NewRequestWithContext(ctx, "POST", "https://example.com/responses", nil)
+	client := &http.Client{Transport: testTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"status":"incomplete","usage":{"input_tokens":10,"output_tokens":2}}`))}, nil
+	})}
+	resp, err := Do(client, req, "responses")
+	require.NoError(t, err)
+	_, err = io.Copy(io.Discard, resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.False(t, record.Complete)
+	require.Equal(t, "incomplete", record.Execution)
+	// The partial valid metering remains procurement evidence.
+	require.Equal(t, "verified", record.Observation.Status)
+}
+
+func TestDurableHTTPIntentDoesNotFollowRedirects(t *testing.T) {
+	calls, admissions := 0, 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		calls++
+		if req.URL.Path == "/first" {
+			w.Header().Set("Location", "/second")
+			w.WriteHeader(http.StatusTemporaryRedirect)
+			return
+		}
+		_, _ = io.WriteString(w, `{"usage":{"prompt_tokens":1,"completion_tokens":2}}`)
+	}))
+	defer server.Close()
+	ctx := WithDurableRecorder(context.Background(), func() error { admissions++; return nil }, func(Record) error { return nil })
+	req, _ := http.NewRequestWithContext(ctx, "POST", server.URL+"/first", strings.NewReader(`{}`))
+	client := &http.Client{}
+	response, err := Do(client, req, "openai_chat")
+	require.NoError(t, err)
+	_, err = io.Copy(io.Discard, response.Body)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
+	require.Equal(t, 1, admissions)
+	require.Equal(t, 1, calls)
+	require.Equal(t, http.StatusTemporaryRedirect, response.StatusCode)
+	require.Nil(t, client.CheckRedirect, "request policy must not mutate the shared client")
+}
+
+func TestDurableHTTPHeaderFailureRetainsIncompleteTerminal(t *testing.T) {
+	failure := fmt.Errorf("header write failed")
+	var stored []Record
+	ctx := WithDurableRecorder(context.Background(), nil, func(r Record) error {
+		if r.Execution == "checkpoint" {
+			return failure
+		}
+		stored = append(stored, r)
+		return nil
+	})
+	req, _ := http.NewRequestWithContext(ctx, "POST", "https://fixture.invalid/chat/completions", nil)
+	client := &http.Client{Transport: testTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{"X-Request-Id": {"supplier-send"}}, Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+	})}
+	response, err := Do(client, req, "openai_chat")
+	require.ErrorIs(t, err, failure)
+	require.Nil(t, response)
+	require.Len(t, stored, 1)
+	require.Equal(t, "incomplete", stored[0].Execution)
+	require.False(t, stored[0].Complete)
+	require.Equal(t, "header_checkpoint_failed", stored[0].Observation.Reason)
+	require.Equal(t, "supplier-send", stored[0].Observation.ProviderRequestID)
+}
+
 func TestHTTPExecutionTimingGateAndSSECheckpoints(t *testing.T) {
 	for _, enabled := range []string{"false", "true"} {
 		t.Run(enabled, func(t *testing.T) {

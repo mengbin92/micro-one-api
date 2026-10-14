@@ -76,6 +76,32 @@ func TestSettlementIntakeDuplicateKeepsProcessingAndOriginalClock(t *testing.T) 
 	require.True(t, retained.Timestamp.Equal(original.Timestamp), "first received clock must remain immutable")
 }
 
+func TestSettlementRecoveryRechecksRetryDeadlineAfterCandidateSelection(t *testing.T) {
+	d := settlementIntakeDB(t)
+	intakeReservation(t, d, biz.ReservationStatusReserved)
+	store := NewSettlementTaskRepo(d)
+	require.NoError(t, store.SaveTask(context.Background(), intakeTask()))
+	retryAt := time.Now().Add(time.Hour).Unix()
+	rescheduled := false
+	// Reproduce a competing worker that fails and schedules backoff after the
+	// candidate SELECT but before this recovery worker's claim UPDATE.
+	require.NoError(t, d.db.Callback().Update().Before("gorm:update").Register("reschedule_selected_settlement", func(tx *gorm.DB) {
+		if tx.Statement.Table != "billing_settlement_tasks" || rescheduled {
+			return
+		}
+		rescheduled = true
+		require.NoError(t, tx.Exec("UPDATE billing_settlement_tasks SET status = 'failed', next_retry_at = ? WHERE reservation_id = ?", retryAt, "res-intake").Error)
+	}))
+	claimed, err := store.ListPending(context.Background(), 1)
+	require.NoError(t, err)
+	require.True(t, rescheduled)
+	require.Empty(t, claimed, "a stale candidate must not erase a newer worker's retry backoff")
+	var row settlementTaskModel
+	require.NoError(t, d.db.First(&row).Error)
+	require.Equal(t, "failed", row.Status)
+	require.Equal(t, retryAt, row.NextRetryAt)
+}
+
 func TestSettlementIntakeRejectsTerminalReservation(t *testing.T) {
 	for _, status := range []string{biz.ReservationStatusReleased, biz.ReservationStatusExpired, biz.ReservationStatusCommitted} {
 		t.Run(status, func(t *testing.T) {

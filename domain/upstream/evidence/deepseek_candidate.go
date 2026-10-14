@@ -35,6 +35,8 @@ func ParseDeepSeekCandidate(body []byte) Observation {
 	if raw == nil {
 		if m["object"] == "chat.completion.chunk" && original.Terminal == "" {
 			original.Status, original.Reason = "missing", "usage_absent"
+		} else {
+			original.Status, original.Reason = "invalid", "usage_not_object"
 		}
 		return original
 	}

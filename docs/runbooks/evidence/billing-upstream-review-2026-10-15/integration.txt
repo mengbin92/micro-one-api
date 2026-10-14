@@ -1,0 +1,5 @@
+ok  	micro-one-api/app/config/internal/integration	0.455s
+ok  	micro-one-api/app/log/internal/integration	0.456s
+ok  	micro-one-api/app/monitor/internal/integration	0.473s
+ok  	micro-one-api/app/notify/internal/integration	0.448s
+ok  	micro-one-api/internal/integration	13.791s

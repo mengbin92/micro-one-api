@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/require"
 	"micro-one-api/domain/upstream/evidence"
+	"strings"
 	"testing"
 	"time"
 )
@@ -45,4 +46,28 @@ func TestProbeOutputDoesNotTrustTextToolMarkers(t *testing.T) {
 	require.Equal(t, []string{"/new"}, diff.Added)
 	require.Equal(t, []string{"/old"}, diff.Missing)
 	require.Equal(t, []string{"/input:number->string"}, diff.TypeChanged)
+}
+
+func TestProbeOutputRequiresActualContentAndValidToolInput(t *testing.T) {
+	for _, tc := range []struct {
+		protocol, body string
+		tools          bool
+	}{
+		{"openai_chat", `{"choices":[{"message":{}}]}`, false},
+		{"responses", `{"output":[{}]}`, false},
+		{"anthropic_messages", `{"delta":{}}`, false},
+		{"gemini", `{"candidates":[{"content":{"parts":[{}]}}]}`, false},
+		{"openai_chat", `{"choices":[{"message":{"tool_calls":[{"function":{"name":"p1_probe","arguments":"broken"}}]}}]}`, true},
+		{"responses", `{"output":[{"type":"function_call","name":"p1_probe","arguments":"{\"unexpected\":1}"}]}`, true},
+		{"anthropic_messages", `{"content":[{"type":"tool_use","name":"p1_probe","input":null}]}`, true},
+		{"gemini", `{"candidates":[{"content":{"parts":[{"functionCall":{"name":"p1_probe","args":[]}}]}}]}`, true},
+	} {
+		t.Run(tc.protocol+tc.body, func(t *testing.T) {
+			require.Error(t, ValidateProbeOutput([]byte(tc.body), tc.protocol, false, tc.tools))
+		})
+	}
+	stream := "data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"p1_probe\",\"arguments\":\"{\"}}]}}]}\n\n" +
+		"data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"}\"}}]}}]}\n\n"
+	require.NoError(t, ValidateProbeOutput([]byte(stream), "openai_chat", true, true))
+	require.Error(t, ValidateProbeOutput([]byte(strings.Replace(stream, `"arguments":"}"`, `"arguments":"bad}"`, 1)), "openai_chat", true, true))
 }

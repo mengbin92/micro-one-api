@@ -155,3 +155,42 @@ func TestNativeStreamFaultsStayVisibleAndBounded(t *testing.T) {
 		t.Fatal("unknown dimension became verified")
 	}
 }
+
+func TestNativeChatStreamNullUsageAndTermination(t *testing.T) {
+	tracker := NewTracker("openai_chat")
+	for _, frame := range []string{
+		`{"id":"chat-r1","object":"chat.completion.chunk","choices":[{"delta":{"content":"OK"},"finish_reason":null}],"usage":null}`,
+		`{"object":"chat.completion.chunk","choices":[{"delta":{},"finish_reason":"stop"}],"usage":null}`,
+		`{"object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":2}}`,
+	} {
+		_, _ = tracker.Write([]byte("data: " + frame + "\n\n"))
+	}
+	got, complete := tracker.Finish()
+	if complete {
+		t.Fatal("finish_reason accepted without the SSE terminal marker")
+	}
+	_, _ = tracker.Write([]byte("data: [DONE]\n\n"))
+	got, complete = tracker.Finish()
+	if !complete || got.Status != "verified" || got.Buckets == nil || *got.Buckets != [5]int64{10, 0, 0, 0, 2} || got.ProviderRequestID != "chat-r1" {
+		t.Fatalf("standard stream lost usage or identity: %+v complete=%v", got, complete)
+	}
+	if got := Parse([]byte(`{"usage":null}`), "openai_chat"); got.Status != "invalid" {
+		t.Fatal("non-stream null usage accepted")
+	}
+}
+
+func TestNativeTokenDetailsAndAmbiguousCandidatesCannotOverflow(t *testing.T) {
+	for _, body := range []string{
+		`{"usage":{"prompt_tokens":1,"completion_tokens":2,"completion_tokens_details":{"reasoning_tokens":3}}}`,
+		`{"usage":{"prompt_tokens":1,"completion_tokens":9223372036854775807,"prompt_tokens_details":{"cached_tokens":5}}}`,
+	} {
+		got := Parse([]byte(body), "openai_chat")
+		if got.Status != "invalid" || got.Buckets != nil {
+			t.Fatalf("contradictory or overflowing evidence accepted: %+v", got)
+		}
+	}
+	got := Parse([]byte(`{"usage":{"input_tokens":1,"output_tokens":2,"output_tokens_details":{"reasoning_tokens":3}}}`), "responses")
+	if got.Status != "invalid" || got.Buckets != nil {
+		t.Fatalf("responses reasoning subset exceeds output: %+v", got)
+	}
+}

@@ -24,47 +24,77 @@ type UpstreamProbeScheduler struct {
 	client   UpstreamProbeClient
 	targets  []execution.ProbeTarget
 	interval time.Duration
+	now      func() time.Time
+	wait     func(context.Context, time.Duration) bool
 }
 
 func NewUpstreamProbeScheduler(r ProbeBudgetRepo, c UpstreamProbeClient, targets []execution.ProbeTarget, interval time.Duration) (*UpstreamProbeScheduler, error) {
 	if interval < time.Minute || interval > 24*time.Hour {
 		return nil, fmt.Errorf("probe interval outside bounds")
 	}
-	return &UpstreamProbeScheduler{r, c, targets, interval}, nil
+	if r == nil || c == nil || len(targets) == 0 || len(targets) > 64 {
+		return nil, fmt.Errorf("persistent repo, relay client and bounded targets required")
+	}
+	seen := map[string]bool{}
+	for _, target := range targets {
+		if target.ID == "" || seen[target.ID] {
+			return nil, fmt.Errorf("probe target identities must be unique")
+		}
+		seen[target.ID] = true
+	}
+	return &UpstreamProbeScheduler{repo: r, client: c, targets: targets, interval: interval, now: time.Now, wait: waitForProbe}, nil
+}
+func waitForProbe(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 func (s *UpstreamProbeScheduler) Run(ctx context.Context, onError func(error)) {
 	failures := map[string]int{}
 	due := map[string]time.Time{}
-	for {
+	nextInterval := func() time.Duration {
 		// #nosec G404 -- Scheduling jitter does not generate credentials, permits or security decisions.
-		wait := s.interval - time.Duration(rand.Int64N(int64(s.interval/10)))
-		timer := time.NewTimer(wait)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
+		return s.interval - time.Duration(rand.Int64N(int64(s.interval/10)))
+	}
+	for _, target := range s.targets {
+		due[target.ID] = s.now().Add(nextInterval())
+	}
+	for {
+		// Sleep until the earliest target due time. A separate ticker that
+		// fires just before next_due skips a healthy target for a whole extra
+		// period, violating the configured detection coverage.
+		next := due[s.targets[0].ID]
+		for _, target := range s.targets[1:] {
+			if due[target.ID].Before(next) {
+				next = due[target.ID]
+			}
+		}
+		if !s.wait(ctx, max(time.Duration(0), next.Sub(s.now()))) {
 			return
-		case <-timer.C:
 		}
 		for _, t := range s.targets {
 			if ctx.Err() != nil {
 				return
 			}
-			if next := due[t.ID]; time.Now().Before(next) {
-				metrics.UpstreamProbeCoverage.WithLabelValues("backoff").Inc()
-				if err := s.repo.RecordProbeCoverage(ctx, t.ID, "backoff", time.Now().Unix(), next.Unix()); err != nil {
-					onError(err)
-				}
+			if next := due[t.ID]; s.now().Before(next) {
 				continue
 			}
 			id := "canary_" + uuid.NewString()
-			ok, err := s.repo.ReserveProbe(ctx, t, id, time.Now())
+			ok, err := s.repo.ReserveProbe(ctx, t, id, s.now())
 			if err != nil {
 				onError(err)
+				due[t.ID] = s.now().Add(s.interval)
 				continue
 			}
 			if !ok {
+				due[t.ID] = s.now().Add(s.interval)
 				metrics.UpstreamProbeCoverage.WithLabelValues("budget_or_lease").Inc()
-				if err := s.repo.RecordProbeCoverage(ctx, t.ID, "budget_or_lease", time.Now().Unix(), time.Now().Add(s.interval).Unix()); err != nil {
+				if err := s.repo.RecordProbeCoverage(ctx, t.ID, "budget_or_lease", s.now().Unix(), due[t.ID].Unix()); err != nil {
 					onError(err)
 				}
 				continue
@@ -74,21 +104,22 @@ func (s *UpstreamProbeScheduler) Run(ctx context.Context, onError func(error)) {
 			cancel()
 			if err != nil {
 				onError(err)
-				r = execution.ProbeResult{AttemptID: id, TargetID: t.ID, Outcome: "probe_unavailable", ObservedAt: time.Now().Unix()}
+				r = execution.ProbeResult{AttemptID: id, TargetID: t.ID, Outcome: "probe_unavailable", ObservedAt: s.now().Unix()}
 			}
 			if r.Outcome == "transport_failure" || r.Outcome == "probe_unavailable" || r.Outcome == "upstream_rejected" {
 				failures[t.ID]++
 				if failures[t.ID] > 4 {
 					failures[t.ID] = 4
 				}
-				due[t.ID] = time.Now().Add(s.interval * time.Duration(1<<failures[t.ID]))
+				due[t.ID] = s.now().Add(s.interval * time.Duration(1<<failures[t.ID]))
+				metrics.UpstreamProbeCoverage.WithLabelValues("backoff").Inc()
 			} else {
 				failures[t.ID] = 0
-				due[t.ID] = time.Now().Add(s.interval)
+				due[t.ID] = s.now().Add(nextInterval())
 			}
 			metrics.UpstreamProbeRuns.WithLabelValues(t.Protocol, r.Outcome).Inc()
 			metrics.UpstreamProbeCoverage.WithLabelValues("executed").Inc()
-			if err := s.repo.RecordProbeCoverage(ctx, t.ID, r.Outcome, time.Now().Unix(), due[t.ID].Unix()); err != nil {
+			if err := s.repo.RecordProbeCoverage(ctx, t.ID, r.Outcome, s.now().Unix(), due[t.ID].Unix()); err != nil {
 				onError(err)
 			}
 			if err = s.repo.CompleteProbe(ctx, t, r); err != nil {

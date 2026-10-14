@@ -62,6 +62,44 @@ func TestLateProbeCompletionDoesNotClearNewLease(t *testing.T) {
 	require.NoError(t, r.db.First(&b).Error)
 	require.Equal(t, now.Add(3*time.Minute).Unix(), b.LeaseUntil)
 }
+
+func TestLateProbeOverrunPausesSourceWithoutClearingNewLease(t *testing.T) {
+	r, target := probeFixture(t)
+	now := time.Now()
+	ctx := context.Background()
+	ok, err := r.ReserveProbe(ctx, target, "old", now)
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = r.ReserveProbe(ctx, target, "new", now.Add(2*time.Minute))
+	require.NoError(t, err)
+	require.True(t, ok)
+	record, err := jsonx.Marshal(evidence.Record{Observation: evidence.Observation{Buckets: &[5]int64{129, 0, 0, 0, 1}}})
+	require.NoError(t, err)
+	require.NoError(t, r.CompleteProbe(ctx, target, execution.ProbeResult{AttemptID: "old", TargetID: target.ID, ObservedAt: now.Unix(), Outcome: "success", RecordJSON: record}))
+	var budget probeBudgetModel
+	require.NoError(t, r.db.First(&budget).Error)
+	require.True(t, budget.Paused, "late evidence of a breached bound revokes future source probes")
+	require.Equal(t, "new", budget.LeaseOwner)
+	require.Equal(t, now.Add(3*time.Minute).Unix(), budget.LeaseUntil)
+	ok, err = r.ReserveProbe(ctx, target, "next-day", now.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.False(t, ok, "a new daily bucket must not silently restore a source whose bound was breached")
+}
+
+func TestProbeCompletionRemainsBoundToFrozenTarget(t *testing.T) {
+	r, target := probeFixture(t)
+	ctx := context.Background()
+	ok, err := r.ReserveProbe(ctx, target, "attempt", time.Now())
+	require.NoError(t, err)
+	require.True(t, ok)
+	altered := target
+	altered.Model = "different"
+	err = r.CompleteProbe(ctx, altered, execution.ProbeResult{AttemptID: "attempt", TargetID: target.ID, Outcome: "success"})
+	require.Error(t, err, "a frozen attempt cannot be finalized against reconfigured scope/budgets")
+	var attempt probeAttemptModel
+	require.NoError(t, r.db.First(&attempt).Error)
+	require.Equal(t, "{}", attempt.Result)
+}
 func TestProbeDriftReportsRejectUnvalidatedClientErrors(t *testing.T) {
 	r, target := probeFixture(t)
 	ctx := context.Background()

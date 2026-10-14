@@ -198,6 +198,12 @@ func (f relayAdaptorForwarder) sendAdaptorRequest(ctx context.Context, rc *relay
 		if ad.Name() != "openai_compatible" || format != relayadaptor.FormatOpenAIResponses || !shouldFallbackResponsesToChat("/responses", body, &relayprovider.UpstreamHTTPError{StatusCode: resp.StatusCode}) {
 			return format, resp, nil
 		}
+		// A persisted execution intent represents one supplier send. Returning
+		// the rejection preserves its procurement evidence; protocol conversion
+		// must be selected before sending or admitted as a separate attempt.
+		if evidence.HasDurableRecorder(ctx) {
+			return format, resp, nil
+		}
 		if err := relayadaptor.ValidateResponsesConversion(body); err != nil {
 			_ = resp.Body.Close()
 			return format, nil, err

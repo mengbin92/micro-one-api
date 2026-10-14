@@ -60,6 +60,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [ "$SKIP_TRIGGER" = true ] && [ "$SKIP_DB" = true ]; then
+  err "at least one reconciliation check is required; an unobserved period cannot be declared clean"
+  exit 2
+fi
+
 load_env_var() {
   local key="$1"
   local value
@@ -104,11 +109,28 @@ trigger_reconciliation() {
   local rc=0
   set +e
   python3 - "$tmp" <<'PY'
-import json, sys
+import datetime, json, sys
 
 path = sys.argv[1]
 with open(path, encoding="utf-8") as f:
     data = json.load(f)
+
+def incomplete(reason):
+    print(f"  RESULT: FAIL ({reason}; reconciliation coverage is unconfirmed)")
+    sys.exit(1)
+
+if not isinstance(data, dict) or data.get("status") != "completed" or data.get("error_message"):
+    incomplete("owner checks did not complete")
+# An IAM projection can intentionally omit all discrepancy arrays. Missing or
+# hidden issues are not evidence that the actual discrepancy count is zero.
+if data.get("issues_visible", data.get("IssuesVisible")) is not True:
+    incomplete("issue-read permission or visibility is missing")
+try:
+    run_at = datetime.datetime.fromisoformat(data["run_at"].replace("Z", "+00:00"))
+    if run_at.tzinfo is None or run_at.timestamp() <= 0:
+        raise ValueError("invalid run timestamp")
+except (KeyError, TypeError, AttributeError, ValueError):
+    incomplete("fixed owner run timestamp is missing")
 
 keys = [
     "account_inconsistencies",
@@ -127,11 +149,16 @@ print(f"  accounts:       {data.get('total_accounts', 0)}")
 print(f"  channels:       {data.get('total_channels', 0)}")
 print(f"  subscriptions:  {data.get('total_subscriptions', 0)}")
 for k in keys:
-    n = len(data.get(k) or [])
+    items = data.get(k)
+    if items is None:
+        items = []
+    if not isinstance(items, list):
+        incomplete("invalid discrepancy projection")
+    n = len(items)
     total += n
     if n:
         print(f"  {k}: {n}  <-- discrepancy")
-        for item in (data.get(k) or [])[:5]:
+        for item in items[:5]:
             print(f"      {json.dumps(item, ensure_ascii=False)[:200]}")
 if total:
     print(f"  RESULT: FAIL ({total} discrepancies)")

@@ -1,6 +1,7 @@
 package repair
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -15,7 +16,7 @@ func proposalFixture() (Proposal, FixtureSet) {
 	fixtures := FixtureSet{Authority: "independent-regression", BasisDigest: p.BasisDigest, Scope: d.Scope, Fixtures: []Fixture{
 		{ID: "zero-preserved", Request: jsonx.RawMessage(`{"old_option":0,"unknown":true}`), ExpectedRequest: jsonx.RawMessage(`{"new_option":0,"unknown":true}`), Response: jsonx.RawMessage(`{"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`), Status: "verified", Buckets: &[5]int64{}},
 		{ID: "conflict-rejected", Request: jsonx.RawMessage(`{"old_option":1,"new_option":2}`), Reject: true},
-		{ID: "stream-duplicate-terminal", Request: jsonx.RawMessage(`{"old_option":null}`), ExpectedRequest: jsonx.RawMessage(`{"new_option":null}`), Frames: []jsonx.RawMessage{jsonx.RawMessage(`{"choices":[{"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`), jsonx.RawMessage(`{"choices":[{"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)}, Status: "verified", Complete: true, Buckets: &[5]int64{1, 0, 0, 0, 1}},
+		{ID: "stream-duplicate-terminal", Request: jsonx.RawMessage(`{"old_option":null}`), ExpectedRequest: jsonx.RawMessage(`{"new_option":null}`), Frames: []jsonx.RawMessage{jsonx.RawMessage(`{"choices":[{"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`), jsonx.RawMessage(`{"choices":[{"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`), jsonx.RawMessage(`"[DONE]"`)}, Status: "verified", Complete: true, Buckets: &[5]int64{1, 0, 0, 0, 1}},
 		{ID: "unsupported-dimension", Request: jsonx.RawMessage(`{}`), ExpectedRequest: jsonx.RawMessage(`{}`), Response: jsonx.RawMessage(`{"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2,"extra_billable_tokens":10}}`), Status: "unsupported"},
 	}}
 	return p, fixtures
@@ -25,7 +26,7 @@ func TestCandidateIndependentReplayAndNoRuntimeEffect(t *testing.T) {
 	p, f := proposalFixture()
 	b, err := Prepare(p, f)
 	require.NoError(t, err)
-	require.Zero(t, b.Failures)
+	require.Zero(t, b.Failures, "independent replay results: %+v", b.Results)
 	require.Equal(t, "review_required", b.Status)
 	require.Len(t, b.ReplayID, 64)
 	require.Nil(t, b.Proposal.Candidate.Repair, "offline tests never mint a publication signature")
@@ -66,4 +67,36 @@ func TestNovelPatchRemainsUnexecutedReviewArtifact(t *testing.T) {
 	p.Patch.Diff = strings.ReplaceAll(p.Patch.Diff, "internal/adaptor/example.go", "app/billing/internal/biz/billing.go")
 	_, err = Prepare(p, f)
 	require.Error(t, err)
+}
+
+func TestCandidateReplayRequiresActualChatStreamTerminator(t *testing.T) {
+	p, f := proposalFixture()
+	// finish_reason and usage do not prove that the SSE stream reached
+	// [DONE]. The independent fixture must detect this truncated response.
+	truncated := f.Fixtures[2]
+	truncated.ID = "truncated-stream"
+	truncated.Frames = truncated.Frames[:len(truncated.Frames)-1]
+	truncated.Complete = false
+	f.Fixtures = append(f.Fixtures, truncated)
+	b, err := Prepare(p, f)
+	require.NoError(t, err)
+	require.Zero(t, b.Failures, "offline fixtures must use the same termination rules as live native capture")
+	f.Fixtures[len(f.Fixtures)-1].Complete = true
+	b, err = Prepare(p, f)
+	require.NoError(t, err)
+	require.Equal(t, "replay_failed", b.Status, "candidate assertions cannot turn a truncated stream into a passing complete response")
+}
+
+func TestBundledIndependentFixturesReplay(t *testing.T) {
+	proposal, err := os.ReadFile("testdata/finite-proposal.json")
+	require.NoError(t, err)
+	fixture, err := os.ReadFile("testdata/independent-fixtures.json")
+	require.NoError(t, err)
+	var p Proposal
+	var f FixtureSet
+	require.NoError(t, jsonx.Unmarshal(proposal, &p))
+	require.NoError(t, jsonx.Unmarshal(fixture, &f))
+	b, err := Prepare(p, f)
+	require.NoError(t, err)
+	require.Zero(t, b.Failures, "bundled multiline native samples must replay with exact live framing")
 }

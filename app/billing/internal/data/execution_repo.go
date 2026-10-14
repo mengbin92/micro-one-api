@@ -150,7 +150,7 @@ func (r *reservationRepo) AcceptExecution(ctx context.Context, e execution.Event
 		if reservation.Status == biz.ReservationStatusReleased || reservation.Status == biz.ReservationStatusExpired {
 			return nil
 		}
-		if time.Now().Unix() >= e.Intent.EvidenceDeadline {
+		if reservation.Status != biz.ReservationStatusCommitted && time.Now().Unix() >= e.Intent.EvidenceDeadline {
 			receipt.Status = "evidence_deadline_elapsed"
 			return nil
 		}

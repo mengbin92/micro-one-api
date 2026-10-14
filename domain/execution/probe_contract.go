@@ -37,6 +37,9 @@ func ValidateProbeOutput(raw []byte, protocol string, stream, tools bool) error 
 			var data []byte
 			for _, line := range bytes.Split(event, []byte("\n")) {
 				if p, ok := bytes.CutPrefix(bytes.TrimSuffix(line, []byte("\r")), []byte("data:")); ok {
+					if len(data) > 0 {
+						data = append(data, '\n')
+					}
 					data = append(data, bytes.TrimSpace(p)...)
 				}
 			}
@@ -46,9 +49,29 @@ func ValidateProbeOutput(raw []byte, protocol string, stream, tools bool) error 
 		}
 	}
 	sawOutput, sawTool := false, false
+	type toolCall struct {
+		name, arguments string
+		delta           bool
+	}
+	chatCalls := map[string]toolCall{}
+	anthropicCalls := map[string]toolCall{}
+	checkTool := func(name string, input any) {
+		if name == ProbeTool && probeEmptyInput(input) {
+			sawOutput, sawTool = true, true
+		}
+	}
+	checkResponseItem := func(o map[string]any) {
+		if o["type"] == "function_call" {
+			name, _ := o["name"].(string)
+			checkTool(name, o["arguments"])
+		}
+		if o["type"] == "message" {
+			sawOutput = sawOutput || probeText(o["content"])
+		}
+	}
 	for _, frame := range frames {
 		var root map[string]any
-		if jsonx.Unmarshal(frame, &root) != nil {
+		if jsonx.ValidateUnique(frame) != nil || jsonx.Unmarshal(frame, &root) != nil {
 			return fmt.Errorf("probe output is not JSON")
 		}
 		if nested, ok := root["response"].(map[string]any); ok {
@@ -64,12 +87,28 @@ func ValidateProbeOutput(raw []byte, protocol string, stream, tools bool) error 
 						m, _ = c["delta"].(map[string]any)
 					}
 					if m != nil {
-						sawOutput = true
+						sawOutput = sawOutput || probeText(m["content"])
 						if calls, ok := m["tool_calls"].([]any); ok {
-							for _, call := range calls {
+							for idx, call := range calls {
 								o, _ := call.(map[string]any)
 								f, _ := o["function"].(map[string]any)
-								sawTool = sawTool || f["name"] == ProbeTool
+								name, _ := f["name"].(string)
+								if !stream {
+									checkTool(name, f["arguments"])
+									continue
+								}
+								index := o["index"]
+								if index == nil {
+									index = idx
+								}
+								key := fmt.Sprintf("%v/%v", c["index"], index)
+								merged := chatCalls[key]
+								if name != "" {
+									merged.name += name
+								}
+								args, _ := f["arguments"].(string)
+								merged.arguments += args
+								chatCalls[key] = merged
 							}
 						}
 					}
@@ -79,31 +118,53 @@ func ValidateProbeOutput(raw []byte, protocol string, stream, tools bool) error 
 			if output, ok := root["output"].([]any); ok {
 				for _, v := range output {
 					o, _ := v.(map[string]any)
-					sawOutput = true
-					sawTool = sawTool || o["type"] == "function_call" && o["name"] == ProbeTool
+					checkResponseItem(o)
 				}
 			}
 			if item, ok := root["item"].(map[string]any); ok {
-				sawOutput = true
-				sawTool = sawTool || item["type"] == "function_call" && item["name"] == ProbeTool
+				checkResponseItem(item)
 			}
-			if typ, _ := root["type"].(string); strings.HasPrefix(typ, "response.output_text.") {
-				sawOutput = true
+			if root["type"] == "response.output_text.delta" {
+				sawOutput = sawOutput || probeText(root["delta"])
+			} else if root["type"] == "response.output_text.done" {
+				sawOutput = sawOutput || probeText(root["text"])
 			}
 		case "anthropic_messages":
 			if content, ok := root["content"].([]any); ok {
 				for _, v := range content {
 					o, _ := v.(map[string]any)
-					sawOutput = true
-					sawTool = sawTool || o["type"] == "tool_use" && o["name"] == ProbeTool
+					if o["type"] == "text" {
+						sawOutput = sawOutput || probeText(o["text"])
+					} else if o["type"] == "tool_use" {
+						name, _ := o["name"].(string)
+						checkTool(name, o["input"])
+					}
 				}
 			}
 			if block, ok := root["content_block"].(map[string]any); ok {
-				sawOutput = true
-				sawTool = sawTool || block["type"] == "tool_use" && block["name"] == ProbeTool
+				if block["type"] == "text" {
+					sawOutput = sawOutput || probeText(block["text"])
+				} else if block["type"] == "tool_use" {
+					name, _ := block["name"].(string)
+					args, _ := jsonx.Marshal(block["input"])
+					anthropicCalls[fmt.Sprint(root["index"])] = toolCall{name: name, arguments: string(args)}
+				}
 			}
-			if root["delta"] != nil {
-				sawOutput = true
+			if delta, ok := root["delta"].(map[string]any); ok {
+				if delta["type"] == "text_delta" {
+					sawOutput = sawOutput || probeText(delta["text"])
+				} else if delta["type"] == "input_json_delta" {
+					key := fmt.Sprint(root["index"])
+					merged := anthropicCalls[key]
+					// input:{} on content_block_start is a placeholder.
+					if !merged.delta {
+						merged.arguments = ""
+						merged.delta = true
+					}
+					part, _ := delta["partial_json"].(string)
+					merged.arguments += part
+					anthropicCalls[key] = merged
+				}
 			}
 		case "gemini":
 			if candidates, ok := root["candidates"].([]any); ok {
@@ -113,17 +174,50 @@ func ValidateProbeOutput(raw []byte, protocol string, stream, tools bool) error 
 					parts, _ := content["parts"].([]any)
 					for _, v := range parts {
 						p, _ := v.(map[string]any)
-						sawOutput = true
+						sawOutput = sawOutput || probeText(p["text"])
 						if f, ok := p["functionCall"].(map[string]any); ok {
-							sawTool = sawTool || f["name"] == ProbeTool
+							name, _ := f["name"].(string)
+							checkTool(name, f["args"])
 						}
 					}
 				}
 			}
 		}
 	}
+	for _, calls := range []map[string]toolCall{chatCalls, anthropicCalls} {
+		for _, call := range calls {
+			checkTool(call.name, call.arguments)
+		}
+	}
 	if !sawOutput || tools && !sawTool {
 		return fmt.Errorf("probe output capability missing")
 	}
 	return nil
+}
+
+// The local fake tool has an empty object schema with additionalProperties=false.
+func probeEmptyInput(input any) bool {
+	if text, ok := input.(string); ok {
+		if jsonx.ValidateUnique([]byte(text)) != nil || jsonx.Unmarshal([]byte(text), &input) != nil {
+			return false
+		}
+	}
+	obj, ok := input.(map[string]any)
+	return ok && obj != nil && len(obj) == 0
+}
+
+func probeText(content any) bool {
+	if text, ok := content.(string); ok {
+		return strings.TrimSpace(text) != ""
+	}
+	if parts, ok := content.([]any); ok {
+		for _, part := range parts {
+			if p, ok := part.(map[string]any); ok && (p["type"] == "text" || p["type"] == "output_text") {
+				if text, ok := p["text"].(string); ok && strings.TrimSpace(text) != "" {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

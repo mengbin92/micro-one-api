@@ -77,7 +77,8 @@
             "completion_tokens": 1,
             "total_tokens": 2
           }
-        }
+        },
+        "[DONE]"
       ],
       "status": "verified",
       "complete": true,

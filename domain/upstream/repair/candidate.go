@@ -80,16 +80,18 @@ func validatePatch(p PatchArtifact) error {
 }
 
 type Fixture struct {
-	ID              string             `json:"id"`
-	Request         jsonx.RawMessage   `json:"request"`
-	ExpectedRequest jsonx.RawMessage   `json:"expected_request,omitempty"`
-	Reject          bool               `json:"reject"`
-	Response        jsonx.RawMessage   `json:"response,omitempty"`
-	Frames          []jsonx.RawMessage `json:"frames,omitempty"`
-	Status          string             `json:"status"`
-	Terminal        string             `json:"terminal,omitempty"`
-	Complete        bool               `json:"complete"`
-	Buckets         *[5]int64          `json:"buckets,omitempty"`
+	ID              string           `json:"id"`
+	Request         jsonx.RawMessage `json:"request"`
+	ExpectedRequest jsonx.RawMessage `json:"expected_request,omitempty"`
+	Reject          bool             `json:"reject"`
+	Response        jsonx.RawMessage `json:"response,omitempty"`
+	// Frames are the actual SSE data payloads. A JSON string "[DONE]"
+	// records Chat's non-JSON protocol terminator in the fixture document.
+	Frames   []jsonx.RawMessage `json:"frames,omitempty"`
+	Status   string             `json:"status"`
+	Terminal string             `json:"terminal,omitempty"`
+	Complete bool               `json:"complete"`
+	Buckets  *[5]int64          `json:"buckets,omitempty"`
 }
 
 type FixtureSet struct {
@@ -176,15 +178,30 @@ func Prepare(p Proposal, fixtures FixtureSet) (Bundle, error) {
 			var observation evidence.Observation
 			complete := false
 			if len(f.Frames) > 0 {
-				streaming = true
 				tracker := evidence.NewTracker(p.Candidate.Scope.Protocol)
 				for _, frame := range f.Frames {
 					if len(frame) > evidence.MaxFrameBytes {
 						return out, fmt.Errorf("fixture frame budget exceeded")
 					}
-					tracker.ObserveFrame(frame)
+					payload := frame
+					var sentinel string
+					if p.Candidate.Scope.Protocol == "openai_chat" && jsonx.Unmarshal(frame, &sentinel) == nil && sentinel == "[DONE]" {
+						payload = []byte(sentinel)
+					}
+					// Replay through the live SSE framing seam. ObserveFrame
+					// alone cannot distinguish a truncated Chat stream from
+					// a response that actually received [DONE].
+					var event bytes.Buffer
+					for _, line := range bytes.Split(payload, []byte{'\n'}) {
+						event.WriteString("data: ")
+						event.Write(line)
+						event.WriteByte('\n')
+					}
+					event.WriteByte('\n')
+					_, _ = tracker.Write(event.Bytes())
 				}
 				observation, complete = tracker.Finish()
+				streaming = streaming || complete && observation.Status == "verified"
 			} else {
 				observation = evidence.Parse(f.Response, p.Candidate.Scope.Protocol)
 				complete = observation.Terminal == "completed"

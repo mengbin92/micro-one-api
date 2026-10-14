@@ -144,7 +144,7 @@ func (r *settlementTaskRepo) ListPending(ctx context.Context, limit int) ([]*biz
 			return err
 		}
 		for i := range rows {
-			result := tx.Model(&settlementTaskModel{}).Where("id = ? AND (status IN ? OR (status = ? AND updated_at < ?))", rows[i].ID, []string{"pending", "failed"}, "processing", now-300).Updates(map[string]any{"status": "processing", "updated_at": now})
+			result := tx.Model(&settlementTaskModel{}).Where("id = ? AND ((status IN ? AND next_retry_at <= ?) OR (status = ? AND updated_at < ?))", rows[i].ID, []string{"pending", "failed"}, now, "processing", now-300).Updates(map[string]any{"status": "processing", "updated_at": now})
 			if result.Error != nil {
 				return result.Error
 			}

@@ -63,6 +63,9 @@ func TestRepairPublishRequiresIndependentSignatureAndCurrentIncident(t *testing.
 	require.EqualValues(t, 5, b.GrayPercent)
 	// A failed/stale repair did not modify the binding, usage gate or mappings.
 	require.EqualValues(t, 1, b.Revision)
+	var durable contractBindingModel
+	require.NoError(t, db.Where("id = ?", d.Scope.Key()).First(&durable).Error)
+	require.Equal(t, d.Repair.ExpiresAt, durable.AutoUntil, "omitted operator deadline must still enforce the signed review expiry")
 	// Durable deadline is enforced during selection even if the coordinator
 	// crashed. It revokes recovery and leaves old in-flight snapshots intact.
 	require.NoError(t, db.Model(&contractBindingModel{}).Where("id = ?", d.Scope.Key()).Updates(map[string]any{"auto_revision": d.Revision(), "auto_until": time.Now().Add(-time.Second).Unix()}).Error)
@@ -87,6 +90,40 @@ func TestRepairPublishRequiresIndependentSignatureAndCurrentIncident(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, blocked, blocked2)
 	require.Equal(t, revision, revision2, "selection fingerprint uses the stopped durable revision")
+	// A fresh valid probe does not renew a revoked candidate's gray approval.
+	at := now.Add(2 * time.Minute)
+	lease, err = r.AcquireContractProbe(ctx, d.Scope, d.Revision(), "revoked-gray-proof", freshSource, at)
+	require.NoError(t, err)
+	_, err = r.RecordContractResult(ctx, biz.ContractResult{Scope: d.Scope, Revision: d.Revision(), BindingRevision: lease.Snapshot.BindingRevision, IncidentRevision: lease.Snapshot.IncidentRevision, AttemptID: "revoked-gray-proof", LeaseID: lease.ID, Record: verifiedContractRecord(), CapabilityValid: true}, at)
+	require.NoError(t, err)
+	_, err = r.TransitionContract(ctx, biz.ContractTransition{Scope: d.Scope, Revision: d.Revision(), Expected: uint64(stopped.Revision), Action: "recover", Reason: "fresh proof with revoked approval"}, at)
+	require.ErrorIs(t, err, biz.ErrContractGate)
+}
+
+func TestRepairPublicationRejectsExpiredAutomaticDeadline(t *testing.T) {
+	db := dbt.RoutingContextDB(t, "sqlite")
+	r := &Repository{db: db}
+	ctx := context.Background()
+	now := time.Now().UTC()
+	empty := ""
+	require.NoError(t, db.Create(&channelModel{ModelMapping: &empty, SystemPrompt: &empty, Config: "{}", ID: 1, Status: 1, Key: "fixture-only"}).Error)
+	d := contractDoc("channel", 1)
+	source, err := r.sourceContractRevision(db, d.Scope)
+	require.NoError(t, err)
+	d.Repair = &contract.RepairReview{ProposalID: strings.Repeat("a", 64), SourceRevision: source, ReplayID: strings.Repeat("b", 64), CIEvidenceID: "independent-ci", Reviewer: "human", KeyID: "reviewer", ExpiresAt: now.Add(time.Hour).Unix()}
+	pub, private, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	keyJSON, _ := jsonx.Marshal(map[string]string{"reviewer": base64.StdEncoding.EncodeToString(pub)})
+	t.Setenv("UPSTREAM_REPAIR_REVIEW_KEYS", string(keyJSON))
+	d, err = contract.SignRepairReview(d, private)
+	require.NoError(t, err)
+	require.NoError(t, r.CreateContract(ctx, biz.UpstreamContract{Document: d, Revision: d.Revision()}, now))
+	lease, err := r.AcquireContractProbe(ctx, d.Scope, d.Revision(), "reviewed-probe", source, now)
+	require.NoError(t, err)
+	_, err = r.RecordContractResult(ctx, biz.ContractResult{Scope: d.Scope, Revision: d.Revision(), AttemptID: "reviewed-probe", LeaseID: lease.ID, Record: verifiedContractRecord(), CapabilityValid: true}, now)
+	require.NoError(t, err)
+	_, err = r.TransitionContract(ctx, biz.ContractTransition{Scope: d.Scope, Revision: d.Revision(), Action: "publish", Reason: "reviewed", GrayPercent: 1, AutomaticUntil: now.Add(-time.Second).Unix()}, now)
+	require.ErrorIs(t, err, biz.ErrContractGate, "a deadline already passed must not enter gray")
 }
 
 func TestFailedRepairGrayRevokesRecoveryAndDoesNotDoubleCountIncident(t *testing.T) {

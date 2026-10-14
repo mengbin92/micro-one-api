@@ -852,6 +852,11 @@ func (uc *BillingUsecase) CommitQuotaWithUsage(ctx context.Context, reservationI
 		if r.Status == ReservationStatusReleased || r.Status == ReservationStatusExpired {
 			return 0, 0, ErrSettlementReservationClosed
 		}
+		if r.Status == ReservationStatusCommitted {
+			// The evidence deadline limits new financial settlement. Recovery
+			// may still replay a committed task to finish idempotent side effects.
+			return committedAmountFromReservation(r), 0, nil
+		}
 		if uc.Now().Unix() >= r.RequestSnapshot.Execution.EvidenceDeadline || usage.Envelope.ParseStatus != "verified" {
 			return 0, 0, uc.ReleaseQuota(ctx, reservationID, "frozen native v2 policy: unproven usage")
 		}
