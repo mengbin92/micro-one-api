@@ -1,0 +1,27 @@
+{
+  "backup": "/opt/micro-one-api/docker-compose/backups/p3-ops-20261014-134315",
+  "frontend_index_sha256": "9913089fbef04471fc3dde72df68bbdee24dc4b3a25b0a566fa87370b4db40f6",
+  "frontend_route_served": true,
+  "frontend_initial_assets": 7,
+  "supplier_page_chunks": [
+    "VendorReportsPage-BB_qEuou.js"
+  ],
+  "dashboard": {
+    "uid": "supplier-evidence",
+    "title": "Supplier Evidence and Weekly Review",
+    "storage": "unified resource",
+    "panels": 8,
+    "provisioned": true,
+    "sha256": "04a33534999e6795178573998e47470775b2207f82b0a1726227cae45829dd7f",
+    "default_datasource": "Prometheus"
+  },
+  "tool_image": {
+    "id": "sha256:f8614e61deda3e88bf617f4a3588d0dfebdbdf1e89ecc6bcc1ee937cb1bd019a",
+    "platform": "linux/amd64"
+  },
+  "operator_workers_running": 0,
+  "supplier_monitor_query": {
+    "status": "success",
+    "series_count": 0
+  }
+}

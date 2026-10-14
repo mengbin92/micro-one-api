@@ -2,6 +2,8 @@
 
 后续部署：按用户指令已完成 [P3 生产更新](billing-upstream-p3-deploy-2026-10-14.md)，四个服务、工具镜像和告警已更新；以下保留部署前的工程验收边界。
 
+运营遗留工程随后补齐，已完成[运营生产更新](billing-upstream-p3-operations-deploy-2026-10-14.md)：发布 identity/billing/admin、前端、Grafana 和工具镜像，生产 profiles 与真实调用门禁继续关闭。
+
 2026-10-14。以 P0/P1/P2 已完成为接续基线，在 `90a818ce` 上继续两份方案的 P3。本文记录本地工程与可审查制品；真实供应商权限、同窗 API/CSV 和生产灰度使用新的证据窗口验证。工程实现不会替代来源收费、模型公开或发票确认门禁。
 
 关联：[计费方案](../design/billing-accuracy-and-upstream-evidence-plan-2026-10-13.md)、[契约方案](../design/upstream-contract-evolution-plan-2026-10-13.md)、[P2 工程](billing-upstream-p2-completion-2026-10-14.md)。

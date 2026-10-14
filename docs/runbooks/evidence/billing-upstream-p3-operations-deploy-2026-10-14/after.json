@@ -1,0 +1,135 @@
+{
+  "images": [
+    {
+      "service": "identity-service",
+      "image": "docker-compose-identity-service:deploy-20261014-213705-e15d2464",
+      "image_id": "sha256:ac8423f52aaf5fd56252737fba7a2e12436b225d6fcd598df53d6bdc28fb4bd9",
+      "platform": "amd64",
+      "state": "running",
+      "restarts": 0,
+      "source_digest": "1d28d8b51c51762491daa0df562cb037f762c0419443a11a3ceac302213e2fc1",
+      "gates": {
+        "BILLING_VENDOR_REPORT_MONITOR_V1": "unset",
+        "UPSTREAM_CONTRACTS_V1_ENABLED": "unset",
+        "BILLING_EXECUTION_DELIVERY_V1": "unset",
+        "BILLING_SETTLEMENT_RECEIPTS_V1": "unset",
+        "BILLING_REQUEST_SNAPSHOT_V2": "unset",
+        "UPSTREAM_PROBES_ENABLED": "unset",
+        "RELAY_NATIVE_USAGE_V2_ALLOWLIST": "unset"
+      },
+      "reviewer_keys_present": false,
+      "health_ok": true,
+      "health": "{\"status\":\"ok\"}"
+    },
+    {
+      "service": "billing-service",
+      "image": "docker-compose-billing-service:deploy-20261014-213705-e15d2464",
+      "image_id": "sha256:d512dc61fc5747bd4f71a72523db93b95e6c099e8f221826ea19e9c310a0277f",
+      "platform": "amd64",
+      "state": "running",
+      "restarts": 0,
+      "source_digest": "1d28d8b51c51762491daa0df562cb037f762c0419443a11a3ceac302213e2fc1",
+      "gates": {
+        "BILLING_VENDOR_REPORT_MONITOR_V1": "false",
+        "UPSTREAM_CONTRACTS_V1_ENABLED": "unset",
+        "BILLING_EXECUTION_DELIVERY_V1": "true",
+        "BILLING_SETTLEMENT_RECEIPTS_V1": "true",
+        "BILLING_REQUEST_SNAPSHOT_V2": "true",
+        "UPSTREAM_PROBES_ENABLED": "unset",
+        "RELAY_NATIVE_USAGE_V2_ALLOWLIST": "unset"
+      },
+      "reviewer_keys_present": false,
+      "health_ok": true,
+      "health": "{\"status\":\"ok\"}"
+    },
+    {
+      "service": "channel-service",
+      "image": "docker-compose-channel-service:deploy-20261014-184908-070c6a45",
+      "image_id": "sha256:342b1b2b4268dd4e921813c4938b8afe1f0473e1e3e2a3cc7d2f5732e5a91891",
+      "platform": "amd64",
+      "state": "running",
+      "restarts": 0,
+      "source_digest": "5de45e642410229703b2d5b19b2c83636bc3c06959512f46af01eb0d7916a171",
+      "gates": {
+        "BILLING_VENDOR_REPORT_MONITOR_V1": "unset",
+        "UPSTREAM_CONTRACTS_V1_ENABLED": "false",
+        "BILLING_EXECUTION_DELIVERY_V1": "unset",
+        "BILLING_SETTLEMENT_RECEIPTS_V1": "unset",
+        "BILLING_REQUEST_SNAPSHOT_V2": "unset",
+        "UPSTREAM_PROBES_ENABLED": "true",
+        "RELAY_NATIVE_USAGE_V2_ALLOWLIST": "unset"
+      },
+      "reviewer_keys_present": false,
+      "health_ok": true,
+      "health": "{\"status\":\"ok\"}"
+    },
+    {
+      "service": "admin-api",
+      "image": "docker-compose-admin-api:deploy-20261014-213705-e15d2464",
+      "image_id": "sha256:d97ec20e1597f1b7a355c275a98985703f155b8fd57676c4a8b8fbf6c2e788cb",
+      "platform": "amd64",
+      "state": "running",
+      "restarts": 0,
+      "source_digest": "1d28d8b51c51762491daa0df562cb037f762c0419443a11a3ceac302213e2fc1",
+      "gates": {
+        "BILLING_VENDOR_REPORT_MONITOR_V1": "unset",
+        "UPSTREAM_CONTRACTS_V1_ENABLED": "unset",
+        "BILLING_EXECUTION_DELIVERY_V1": "unset",
+        "BILLING_SETTLEMENT_RECEIPTS_V1": "unset",
+        "BILLING_REQUEST_SNAPSHOT_V2": "unset",
+        "UPSTREAM_PROBES_ENABLED": "unset",
+        "RELAY_NATIVE_USAGE_V2_ALLOWLIST": "unset"
+      },
+      "reviewer_keys_present": false,
+      "health_ok": true,
+      "health": "{\"status\":\"ok\"}",
+      "unauthenticated_vendor_report_status": 401
+    },
+    {
+      "service": "relay-gateway",
+      "image": "docker-compose-relay-gateway:deploy-20261014-184908-070c6a45",
+      "image_id": "sha256:da87ce42e580400488363037c03ee153c12a8aec4b96d53654ff3ec6ec139d6e",
+      "platform": "amd64",
+      "state": "running",
+      "restarts": 0,
+      "source_digest": "5de45e642410229703b2d5b19b2c83636bc3c06959512f46af01eb0d7916a171",
+      "gates": {
+        "BILLING_VENDOR_REPORT_MONITOR_V1": "unset",
+        "UPSTREAM_CONTRACTS_V1_ENABLED": "false",
+        "BILLING_EXECUTION_DELIVERY_V1": "unset",
+        "BILLING_SETTLEMENT_RECEIPTS_V1": "unset",
+        "BILLING_REQUEST_SNAPSHOT_V2": "unset",
+        "UPSTREAM_PROBES_ENABLED": "true",
+        "RELAY_NATIVE_USAGE_V2_ALLOWLIST": ""
+      },
+      "reviewer_keys_present": false,
+      "health_ok": true,
+      "health": "{\"status\":\"ok\"}",
+      "outbox_counts": {
+        "acknowledged": 241
+      }
+    },
+    {
+      "service": "monitor-worker",
+      "image": "docker-compose-monitor-worker:deploy-20261014-131552-5bd32751",
+      "image_id": "sha256:9a4a5bec2938e28b9192348ff1b7a853047a97a1b2a291c1e440114c956040c4",
+      "platform": "amd64",
+      "state": "running",
+      "restarts": 0,
+      "source_digest": "87e372faca54b2891c5c39fe93a9363a07d5042cedf860c693bf16ed47e8b20d",
+      "gates": {
+        "BILLING_VENDOR_REPORT_MONITOR_V1": "unset",
+        "UPSTREAM_CONTRACTS_V1_ENABLED": "false",
+        "BILLING_EXECUTION_DELIVERY_V1": "unset",
+        "BILLING_SETTLEMENT_RECEIPTS_V1": "unset",
+        "BILLING_REQUEST_SNAPSHOT_V2": "unset",
+        "UPSTREAM_PROBES_ENABLED": "true",
+        "RELAY_NATIVE_USAGE_V2_ALLOWLIST": "unset"
+      },
+      "reviewer_keys_present": false,
+      "probe_interval": "5m",
+      "probe_target_count": 4,
+      "probe_targets_sha256": "c0b6247ebc97c128c87812d9daf51e5d612c896ee68be794d167a86b232f79b2"
+    }
+  ]
+}

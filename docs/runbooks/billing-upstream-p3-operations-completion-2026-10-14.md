@@ -67,4 +67,4 @@ docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
 
 [验收索引](evidence/billing-upstream-p3-operations-2026-10-14/index.json)：完整 Go 单元、竞态、服务内集成、863 行 IAM 入口矩阵、架构、格式、全量 gosec 均通过；前端 80 文件/456 测试、TypeScript/Vite/资产预算通过。桌面与手机浏览器以合成 owner 数据验证原币精度、unknown 显示、查询和导出入口。linux/amd64 工具镜像在 network=none/read-only/cap_drop 环境运行默认关闭的 weekly/repair plans，通过持久 task DB 初始化与单次调度。
 
-当前代码位于 `codex/p3-operations-completion`，按本轮用户选择不部署、不启用生产 profiles，不发起真实供应商或生成调用。原 P3 已部署控制链和历史现场证据保持原样。
+工程验收时代码位于 `codex/p3-operations-completion`，按当时用户选择尚不部署、不启用生产 profiles，不发起真实供应商或生成调用。用户随后要求更新生产并合并 develop，已按[后续生产更新记录](billing-upstream-p3-operations-deploy-2026-10-14.md)发布工程能力；profiles 和现场门禁继续关闭。工程验收索引保留验收时的历史状态。

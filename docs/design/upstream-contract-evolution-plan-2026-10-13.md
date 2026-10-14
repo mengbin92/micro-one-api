@@ -23,6 +23,8 @@ P3 生产更新（2026-10-14）：billing/channel/admin/relay、operator 工具�
 
 P3 运营工程补齐（2026-10-14）：费用抓取、独立 agent 生成及周复盘增加持久调用前预算/租约/uncertain 状态；修复进程无 shell/tools、无生产或 reviewer 凭据，生成结果进入独立回放与人工/CI 门禁。供应商核验页面和 Grafana 已接通；真实调用与生产门禁按用户选择保持关闭。见 [运营补齐记录](../runbooks/billing-upstream-p3-operations-completion-2026-10-14.md)。
 
+后续生产更新（2026-10-14）：identity/billing/admin、宿主机前端、Grafana 看板与 operator 工具镜像已发布验证；可选 profiles 与真实调用门禁保留关闭。见[运营生产更新与证据](../runbooks/billing-upstream-p3-operations-deploy-2026-10-14.md)。
+
 ## 1. 结论与适应边界
 
 采用“原生协议保真透传 + 版本化上游契约 + 持续发现与契约测试”。复用当前 Adaptor、模型注册表、UsageEnvelope 和来源隔离能力，不新增微服务。
