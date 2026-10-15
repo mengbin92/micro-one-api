@@ -8,6 +8,7 @@ import (
 
 // Frozen D0 release manifest. New catalog operations do not enter historical
 // roles automatically; changes to this list require an explicit release review.
+// Migration 136 adds only the reviewed supplier-evidence read operations to root.
 var iamMigrationRootCodes = []string{
 	"admin.console.enter",
 	"admin.overview.read",
@@ -44,6 +45,7 @@ var iamMigrationRootCodes = []string{
 	"billing.upstream_cost.migrate",
 	"billing.upstream_cost.read",
 	"billing.upstream_cost.update",
+	"billing.vendor_report.read",
 	"channel.account.create",
 	"channel.account.credential.update",
 	"channel.account.delete",
@@ -104,6 +106,7 @@ var iamMigrationRootCodes = []string{
 	"channel.routing_group.update",
 	"channel.usage_semantic_block.list",
 	"channel.usage_semantic_block.resolve",
+	"channel.upstream_contract.read",
 	"iam.audit.export",
 	"iam.audit.read",
 	"iam.authorization.explain",

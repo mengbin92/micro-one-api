@@ -114,6 +114,37 @@ describe('AppNavigation', () => {
     expect(screen.queryByRole('link', { name: '用户管理' })).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['/admin/vendor-reports', 'billing.vendor_report.read', '供应商费用核验'],
+    ['/admin/upstream-contracts', 'channel.upstream_contract.read', '上游契约与修复'],
+  ])('shows the %s entry and title when its read permission is active', async (path, permission, title) => {
+    server.use(http.get('/api/user/authorization', () => HttpResponse.json({
+      authorization_mode: 'iam', session: { activation_state: 'active' },
+      permitted_operations: ['admin.console.enter', permission],
+    })));
+    mockSelfAndDashboardEmpty();
+    renderNavigation(path);
+
+    expect(await screen.findByRole('link', { name: title })).toHaveAttribute('href', path);
+    expect(screen.getByRole('heading', { name: title })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['/admin/vendor-reports', '供应商费用核验'],
+    ['/admin/upstream-contracts', '上游契约与修复'],
+  ])('hides the %s entry without its read permission even for an administrator', async (path, title) => {
+    localStorage.setItem('userRole', '100');
+    server.use(http.get('/api/user/authorization', () => HttpResponse.json({
+      authorization_mode: 'iam', session: { activation_state: 'active' },
+      permitted_operations: ['admin.console.enter', 'billing.pricing.read', 'channel.channel.list'],
+    })));
+    mockSelfAndDashboardEmpty();
+    renderNavigation(path);
+
+    await screen.findByRole('button', { name: '计费与财务' });
+    expect(screen.queryByRole('link', { name: title })).not.toBeInTheDocument();
+  });
+
   it('only highlights admin overview on the exact admin route', async () => {
     window.localStorage.setItem('userRole', '10');
     mockSelf(10);

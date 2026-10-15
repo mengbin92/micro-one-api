@@ -108,6 +108,7 @@ const adminNavGroups: AdminNavGroup[] = [
     label: '资源与路由',
     items: [
       { to: '/admin/channels', label: '渠道管理', icon: Database },
+      { to: '/admin/upstream-contracts', label: '上游契约与修复', icon: BookOpen },
       { to: '/admin/models', label: '模型目录', icon: Boxes },
       { to: '/admin/subscription-accounts', label: '订阅账号', icon: IdCard },
       { to: '/admin/routing-groups', label: '分组', icon: Layers },
@@ -169,6 +170,7 @@ const routeTitles: Record<string, string> = {
   '/admin': '运营总览',
   '/admin/users': '用户管理',
   '/admin/channels': '渠道管理',
+  '/admin/upstream-contracts': '上游契约与修复',
   '/admin/models': '模型目录',
   '/admin/subscription-accounts': '订阅账号管理',
   '/admin/routing-groups': '分组',

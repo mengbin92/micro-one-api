@@ -42,6 +42,7 @@ services:
     - 111_add_iam_cardinality_limits
     - 123_add_iam_permission_metadata
     - 134_p2_permission_catalog
+    - 136_publish_read_only_evidence_pages
 
   channel:
     - 133_upstream_contracts

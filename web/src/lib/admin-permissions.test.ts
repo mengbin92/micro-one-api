@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { configuredMenuItems } from './admin-permissions';
+import { adminPages, configuredMenuItems, firstAdminPage, menuRoutes } from './admin-permissions';
 import type { IAMMenu } from './iam-types';
 
 describe('configured menu hierarchy', () => {
@@ -19,5 +19,17 @@ describe('configured menu hierarchy', () => {
   it('hides disabled subtrees and rejects unregistered route keys', () => {
     expect(configuredMenuItems([{ ...menus[0], enabled: false }, menus[1]], () => true)).toEqual([]);
     expect(configuredMenuItems([{ ...menus[0], route_key: 'https://unregistered.example' }], () => true)).toEqual([]);
+  });
+
+  it.each([
+    ['vendor-reports', '/admin/vendor-reports', 'billing.vendor_report.read'],
+    ['upstream-contracts', '/admin/upstream-contracts', 'channel.upstream_contract.read'],
+  ])('admits %s only with its page permission', (routeKey, route, operation) => {
+    expect(menuRoutes[routeKey]).toBe(route);
+    expect(adminPages[route]).toBe(operation);
+    const menu: IAMMenu = { id: '10', parent_id: '0', name: routeKey, route_key: routeKey, enabled: true };
+    expect(configuredMenuItems([menu], op => op === operation)[0]?.to).toBe(route);
+    expect(configuredMenuItems([menu], op => op === 'admin.console.enter')).toEqual([]);
+    expect(firstAdminPage(op => op === operation)).toBe(route);
   });
 });
