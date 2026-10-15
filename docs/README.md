@@ -32,6 +32,7 @@ docs/
 | 排查订阅系统生产故障 | [runbooks/subscription-production-runbook.md](./runbooks/subscription-production-runbook.md) |
 | charge 后监控告警与 SQL 口径 | [runbooks/cache-creation-charge-monitoring.md](./runbooks/cache-creation-charge-monitoring.md) |
 | 发布后强制失败验证（§9.2） | [runbooks/post-release-forced-failure-verification.md](./runbooks/post-release-forced-failure-verification.md) |
+| 确认关键测试能发现故意制造的回归 | [runbooks/test-health-self-check.md](./runbooks/test-health-self-check.md) |
 | 理解整体架构 | [design/ARCHITECTURE_REFACTOR.md](./design/ARCHITECTURE_REFACTOR.md) |
 | 了解大模型如何计费 | [design/llm-billing-explained.md](./design/llm-billing-explained.md) |
 | 理解路由分组、价格倍率与订阅额度策略 | [design/group-concepts-and-implementation.md](./design/group-concepts-and-implementation.md) |

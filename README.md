@@ -659,6 +659,9 @@ Prometheus 指标通过各服务 `/metrics` 暴露。订阅系统新增 `micro_o
 # 单元测试和不依赖外部服务的集成测试
 make test
 
+# 测试自检：确认关键规则故意改坏后，指定测试确实失败
+make test-health
+
 # 指定模块测试
 make dev-test-identity
 make dev-test-channel
@@ -667,6 +670,8 @@ make dev-test-provider
 # Docker Compose 端到端测试
 make test-e2e
 ```
+
+`make test-health` 在临时副本逐项变异生产逻辑，保留基线/变异日志与 JSON 报告；每周 CI 运行一次。首次检出需先 `make init proto` 生成构建输入，详见[测试自检手册](./docs/runbooks/test-health-self-check.md)。
 
 ## 安全提醒
 

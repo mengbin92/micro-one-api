@@ -1,0 +1,47 @@
+name: Test health
+
+on:
+  schedule:
+    - cron: '0 3 * * 1' # Monday 11:00 Asia/Shanghai; scheduled runs use the default branch.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-health-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  assertions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache: true
+
+      - name: Install protobuf generators
+        run: |
+          make init
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Generate build inputs
+        run: make proto
+
+      - name: Verify selected tests catch deliberate regressions
+        run: make test-health TEST_HEALTH_ARGS="--output-dir $RUNNER_TEMP/test-health"
+
+      - name: Preserve baseline and mutation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-health
+          path: ${{ runner.temp }}/test-health/
+          if-no-files-found: error
+          retention-days: 30
