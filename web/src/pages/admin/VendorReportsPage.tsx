@@ -11,7 +11,7 @@ interface Comparison { key: string; status: string; vendor_amount: string | null
 interface Report { id: string; manifest: { scope: Scope; version: string; evidence_id: string; supersedes?: string }; status: string; cost_basis: string; verification_scope: string; correction_delta?: string; comparisons: Comparison[] }
 interface ReviewItem { report_id: string; status: string; age_seconds: number; unknown_amounts: number; next_action: string }
 interface Payload { reports?: Report[]; daily_coverage?: unknown[]; weekly_review?: { pending: number; attention: number; unknown_amounts: number; items: ReviewItem[] } }
-export function vendorMoney(value: string | null | undefined, scope: Scope) { return value == null ? t('未知') : `${value} ${scope.currency}${scope.unit === 'currency' ? '' : ` (${scope.unit})`}`; }
+function vendorMoney(value: string | null | undefined, scope: Scope) { return value == null ? t('未知') : `${value} ${scope.currency}${scope.unit === 'currency' ? '' : ` (${scope.unit})`}`; }
 const statusLabel = (value: string) => ({ pending: t('待补证'), attention: t('需复核'), matched: t('已核对'), variance: t('有差异'), unknown: t('未知'), not_applicable: t('不适用') })[value] ?? value;
 const scopeLabel = (value: string) => ({ none: t('尚未核验'), request: t('按请求核验'), account_period: t('按账号账期核验') })[value] ?? value;
 const basisLabel = (value: string) => ({ provider_reported: t('供应商费用报告'), invoice: t('账单凭据'), tariff_estimate: t('费率估价'), monthly_allocation: t('月费分摊'), unknown: t('未知') })[value] ?? value;
@@ -19,8 +19,8 @@ const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const actionLabel = (value: string) => ({ retain_evidence: t('保留证据'), complete_watermarks_or_late_evidence: t('补齐水位或迟到证据'), review_unexplained_difference: t('复核未解释差额'), resolve_attempt_scope: t('核对执行范围') })[value] ?? value;
 
 export function VendorReportsPage() {
-  const [start, setStart] = useState(day(Date.now() - 7 * 86400000));
-  const [end, setEnd] = useState(day(Date.now() + 86400000));
+  const [start, setStart] = useState(() => day(Date.now() - 7 * 86400000));
+  const [end, setEnd] = useState(() => day(Date.now() + 86400000));
   const [selected, setSelected] = useState<string | null>(null);
   const auth = useAuthorization();
   const from = Date.parse(`${start}T00:00:00Z`) / 1000, to = Date.parse(`${end}T00:00:00Z`) / 1000;
