@@ -20,6 +20,8 @@ class PrePushTest(unittest.TestCase):
         self.tools = self.root / "go tools"
         self.bin.mkdir()
         self.tools.mkdir()
+        for command in ["dirname", "grep", "mktemp", "cat", "mkdir", "mv", "rm"]:
+            (self.bin / command).symlink_to(shutil.which(command))
         self.calls = self.root / "calls"
         self.env = {
             **os.environ,
@@ -32,14 +34,26 @@ class PrePushTest(unittest.TestCase):
             "HOOK_TEST_SCAN_EXIT": "0",
             "HOOK_TEST_INSTALL_EXIT": "0",
         }
+        versions = dict(line.split("=", 1) for line in
+                        (ROOT / "scripts/tool-versions.env").read_text().splitlines()
+                        if line and not line.startswith("#"))
+        self.env["HOOK_TEST_GOSEC_VERSION"] = versions["GOSEC_VERSION"]
+        self.env["HOOK_TEST_TOOLS_VERSION"] = versions["GOSEC_X_TOOLS_VERSION"]
         self.stub(self.bin / "git", 'printf "%s\\n" "$HOOK_TEST_ROOT"\n')
         self.stub(self.bin / "go", '''case "$*" in
   "env GOBIN") printf '%s\\n' "$HOOK_TEST_GOBIN" ;;
   "env GOPATH") printf '%s\\n' "$HOOK_TEST_GOPATH" ;;
-  install\ *)
+  version\ -m\ *)
+    [ -x "$3" ] || exit 1
+    printf '\\tdep\\tgithub.com/securego/gosec/v2\\t%s\\thash\\n' "$HOOK_TEST_GOSEC_VERSION"
+    printf '\\tdep\\tgolang.org/x/tools\\t%s\\thash\\n' "$HOOK_TEST_TOOLS_VERSION"
+    ;;
+  build\ *)
     printf '%s\\n' "$*" >> "$HOOK_TEST_CALLS"
+    /bin/cat go.mod >> "$HOOK_TEST_CALLS"
     [ "$HOOK_TEST_INSTALL_EXIT" -eq 0 ] || exit "$HOOK_TEST_INSTALL_EXIT"
-    /bin/cp "$HOOK_TEST_TOOLS/gosec.fixture" "$HOOK_TEST_TOOLS/gosec"
+    while [ "$1" != "-o" ]; do shift; done
+    /bin/cp "$HOOK_TEST_TOOLS/gosec.fixture" "$2"
     ;;
   *) exit 2 ;;
 esac
@@ -88,8 +102,16 @@ exit "$HOOK_TEST_SCAN_EXIT"
         version = next(line.split("=", 1)[1] for line in
                        (ROOT / "scripts/tool-versions.env").read_text().splitlines()
                        if line.startswith("GOSEC_VERSION="))
-        self.assertIn(f"install github.com/securego/gosec/v2/cmd/gosec@{version}",
+        self.assertIn(f"github.com/securego/gosec/v2 {version}", self.calls.read_text())
+        self.assertIn("golang.org/x/tools " + self.env["HOOK_TEST_TOOLS_VERSION"],
                       self.calls.read_text())
+
+    def test_rebuilds_incompatible_installed_reader(self):
+        self.installed()
+        self.env["HOOK_TEST_TOOLS_VERSION"] = "v0.48.0"
+        result = self.run_hook()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("build -mod=mod", self.calls.read_text())
 
     def test_install_failure_blocks_push(self):
         self.env["HOOK_TEST_INSTALL_EXIT"] = "1"

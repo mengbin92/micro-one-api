@@ -70,6 +70,21 @@ func (r *reservationRepo) CreateReservationInTx(ctx context.Context, tx subscrip
 	}
 
 	if reservation.RequestSnapshot != nil {
+		if i := reservation.RequestSnapshot.Execution; i != nil {
+			full := *i
+			if original := biz.ExecutionIntent(ctx); original != nil {
+				full = *original
+			}
+			full.ReservationID = reservation.ReservationID
+			if full.CostBasis == "tariff_estimate" {
+				full.TariffSnapshotID = full.ReservationID + "/supplier-tariff"
+			}
+			if err := saveExecutionIntent(db, full); err != nil {
+				return err
+			}
+			*i = full
+			i.Tariff = nil
+		}
 		if err := reservation.RequestSnapshot.Validate(); err != nil {
 			return err
 		}
@@ -166,6 +181,46 @@ func (r *reservationRepo) CASReservationStatus(ctx context.Context, tx subscript
 		return false, res.Error
 	}
 	return res.RowsAffected > 0, nil
+}
+
+func (r *reservationRepo) CASExpiredReservationStatus(ctx context.Context, tx subscriptionbiz.Tx, id string, now time.Time) (bool, error) {
+	reservation, err := r.GetReservationInTx(ctx, tx, id)
+	if err != nil {
+		return false, err
+	}
+	if !reservation.IsReserved() || reservation.ExpiredAt.IsZero() || !reservation.ExpiredAt.Before(now) {
+		return false, nil
+	}
+	db := txDB(tx).WithContext(ctx)
+	if i := reservation.RequestSnapshot; i != nil && i.Execution != nil {
+		if now.Unix() < i.Execution.EvidenceDeadline {
+			if err := db.Model(&executionIntentModel{}).Where("id = ? AND lease_until < ?", id, now.Unix()).Update("status", "evidence_pending").Error; err != nil {
+				return false, err
+			}
+			return false, nil
+		}
+		if err := db.Model(&settlementTaskModel{}).Where("reservation_id = ? AND status IN ?", id, []string{"pending", "failed", "processing"}).Updates(map[string]any{"status": "expired", "last_error": "evidence deadline elapsed"}).Error; err != nil {
+			return false, err
+		}
+		return r.CASReservationStatus(ctx, tx, id, biz.ReservationStatusReserved, biz.ReservationStatusReleasing)
+	}
+	var pending int64
+	err = db.Model(&settlementTaskModel{}).Where("reservation_id = ? AND status IN ?", id, []string{"pending", "failed", "processing"}).Count(&pending).Error
+	if err != nil && !missingSettlementTaskTable(err) {
+		return false, err
+	}
+	if pending > 0 {
+		return false, nil
+	}
+	return r.CASReservationStatus(ctx, tx, id, biz.ReservationStatusReserved, biz.ReservationStatusReleasing)
+}
+
+func missingSettlementTaskTable(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "billing_settlement_tasks") && (strings.Contains(message, "no such table") || strings.Contains(message, "doesn't exist") || strings.Contains(message, "undefined table") || strings.Contains(message, "does not exist"))
 }
 
 // SetActualCostInTx persists the real settlement cost on a reservation inside
@@ -269,8 +324,7 @@ func (r *reservationRepo) GetExpiredReservations(ctx context.Context) ([]*biz.Re
 		// Keep cleanup readable during the migration window; once the task
 		// table exists, pending settlement rows protect reservations from
 		// expiry. Older databases use the original query until migration runs.
-		errorText := strings.ToLower(err.Error())
-		if strings.Contains(errorText, "billing_settlement_tasks") && (strings.Contains(errorText, "no such table") || strings.Contains(errorText, "doesn't exist") || strings.Contains(errorText, "undefined table")) {
+		if missingSettlementTaskTable(err) {
 			models = nil
 			fallback := r.data.db.WithContext(ctx).Where("status = ?", biz.ReservationStatusReserved)
 			if isSQLite(dialectorName(r.data.db)) {
@@ -286,6 +340,21 @@ func (r *reservationRepo) GetExpiredReservations(ctx context.Context) ([]*biz.Re
 		}
 	}
 
+	if r.data.db.Migrator().HasTable(&executionIntentModel{}) {
+		var deadlineRows []reservationModel
+		if err := r.data.db.WithContext(ctx).Where("status = ? AND reservation_id IN (SELECT reservation_id FROM billing_execution_intents WHERE evidence_deadline <= ?)", biz.ReservationStatusReserved, now.Unix()).Find(&deadlineRows).Error; err != nil {
+			return nil, err
+		}
+		seen := map[string]bool{}
+		for _, m := range models {
+			seen[m.ReservationID] = true
+		}
+		for _, m := range deadlineRows {
+			if !seen[m.ReservationID] {
+				models = append(models, m)
+			}
+		}
+	}
 	reservations := make([]*biz.Reservation, len(models))
 	for i := range models {
 		var err error

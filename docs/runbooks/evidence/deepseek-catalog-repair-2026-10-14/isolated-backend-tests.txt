@@ -1,0 +1,5 @@
+ok  	micro-one-api/app/channel/internal/biz	0.743s
+ok  	micro-one-api/app/channel/internal/data	3.010s
+ok  	micro-one-api/app/channel/internal/service	0.672s
+ok  	micro-one-api/app/admin/internal/service	0.648s
+ok  	micro-one-api/app/admin/internal/server	3.410s

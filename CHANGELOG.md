@@ -7,6 +7,28 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-10-15
+
+v0.35.0 是 v0.34.18 之后的 **MINOR 功能版本**：交付原生用量证据、持久结算送达、供应商原币对账、有限上游契约与隔离修复运营链，并纳入完整复审与 CI 修复。公开接口兼容，新增内部 RPC、管理页面与 9 组迁移；Billing 135 必须先于新版服务应用，前端单独发布。既有生产部署不包含 10 月 15 日复审修复；收费名单、用户价格与历史账本不自动改变。详见 [release-v0.35.0.md](docs/releases/release-v0.35.0.md)。
+
+### Added
+
+- 转换前原生 JSON/SSE/WS 用量证据、execution intent、SQLite/WAL outbox、不可变结算输入及显式 receipt，按精确 source/model 白名单受控启用。
+- 持久库存与 canary 预算、供应商 CSV/API 原币精确对账、只追加报告与更正、周复盘和 `/admin/vendor-reports` 权限入口。
+- 有限上游契约、独立回放、reviewer 签名与 canary/gray/promote/rollback；隔离 cost/repair/weekly workers、持久任务预算与供应商证据看板，profiles 默认关闭。
+
+### Fixed
+
+- 保留零值、未知与歧义，验证真实输出和流终结，限制 durable intent 一次 HTTP 发送，拒绝同 intent 的协议 fallback/redirect。
+- outbox 为 header/terminal/final 预留容量并保留迟到 ACK，修复恢复背压、结算重放截止时间、任务 claim 退避与对账 run 排序；未知原值不制造更正差额。
+- 灰度恢复与回滚重启观察窗，修复签名期限、候选隔离、有限规则冲突和探测周期／冻结预算；运营脚本拒绝不完整对账 PASS。
+- 修复 MySQL 预留引用排序规则、DeepSeek 库存／模型目录、过时渠道动作、供应商报告页 lint 及 Go 1.27 扫描器兼容性；精确豁免四处历史 SHA256 扫描误报。
+
+### Changed
+
+- 新增 Billing 126/131/132/135、Channel 127/130/133、Monitor 128、Identity 134 迁移及三方言镜像；CI 三库迁移验证通过，135 的 MySQL/Postgres 历史数据 backfill 专项仍待独立完成。
+- 归档 P0–P3 部署与复审证据，区分工程交付、制品发布及真实费用／生产灰度验收；保留现有收费与授权边界。
+
 ## [0.34.18] - 2026-10-13
 
 v0.34.18 是 v0.34.17 的 **PATCH 可靠性修复版本**：将可用性故障与容量、配置、模型及本地失败分开，增加共享重试预算、具名探针与渐进恢复，避免限流误开熔断和迟到成功错误恢复。无公开 API 破坏性变更、迁移或前端更新；新增内部 RPC，依次更新 Channel、Relay、monitor，Channel 保持单实例。生产已部署等价业务提交并通过普通渠道非流式/SSE 真实推理与账务验收。详见 [release-v0.34.18.md](docs/releases/release-v0.34.18.md)。

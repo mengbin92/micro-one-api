@@ -1,0 +1,16 @@
+buf generate --template buf.gen.yaml
+buf generate --template buf.gen.config.yaml \
+		--path internal/conf \
+		--path app/admin/internal/conf \
+		--path app/billing/internal/conf \
+		--path app/channel/internal/conf \
+		--path app/config/internal/conf \
+		--path app/identity/internal/conf \
+		--path app/log/internal/conf \
+		--path app/monitor/internal/conf \
+		--path app/notify/internal/conf
+ok  	micro-one-api/app/config/internal/integration	(cached)
+ok  	micro-one-api/app/log/internal/integration	(cached)
+ok  	micro-one-api/app/monitor/internal/integration	(cached)
+ok  	micro-one-api/app/notify/internal/integration	(cached)
+ok  	micro-one-api/internal/integration	13.777s

@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "date": "2026-10-13",
+  "stage": "P0",
+  "status": "production_observation_in_progress",
+  "implementation_commit": "0fe3436f",
+  "image_reference": "docker-compose-relay-gateway:deploy-20261013-113200-0fe3436f",
+  "image_id": "sha256:f6b00e33edbacde555326fe5b77e1fe21fa586852760db5e0f044c6d6d67067a",
+  "image_architecture": "amd64",
+  "source_digest": "4a9174c9a17c59411802df719acbaf483fc21e1b453aa401c1a6754ade8efdb5",
+  "started_at_utc": "2026-10-13T03:36:02.497034067Z",
+  "started_at_asia_shanghai": "2026-10-13T11:36:02.497034+08:00",
+  "shadow_enabled": true,
+  "health_http_status": 200,
+  "metrics_http_status": 200,
+  "billing_container_unchanged": true,
+  "billing_flags_unchanged": true,
+  "existing_billing_flags": {
+    "BILLING_CANONICAL_USAGE_MODE": "charge",
+    "BILLING_CACHE_CREATION_MODE": "charge",
+    "BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST": "5:k3",
+    "BILLING_REQUEST_SNAPSHOT_V2": "true",
+    "BILLING_ASYNC_ENABLED": "true"
+  },
+  "log_rotation": {
+    "Type": "json-file",
+    "Config": {
+      "max-file": "5",
+      "max-size": "20m"
+    }
+  },
+  "log_retention_limit": "20m × 5; rolling byte budget, not a guarantee of full 48-hour raw coverage",
+  "rollback_image_tag": "docker-compose-relay-gateway:rollback-20261013-113200",
+  "predeploy_compose_backup": "docker-compose.yml.rollback-20261013-113200",
+  "pre_shadow_configuration_backup": "p0-shadow-config-20261013T033600Z",
+  "initial_observation_window": {
+    "start_utc": "2026-10-13T03:36:02.497034067Z",
+    "end_utc": "2026-10-15T03:36:02.497034+00:00",
+    "timezone": "Asia/Shanghai",
+    "purpose": "fixed initial P0 summary; requires coverage and independent acceptance, no automatic P1 promotion"
+  },
+  "real_traffic_check": {
+    "checked_at_utc": "2026-10-13T03:47:23.067808+00:00",
+    "complete_success_records_in_snapshot": 3,
+    "settlement_comparison_records_in_snapshot": 3,
+    "native_status": "unsupported",
+    "native_reason": "unknown_usage_field",
+    "observed_shape": "Chat usage contains both Chat and Responses input/output/details aliases",
+    "alias_equalities_observed": true,
+    "settlement_parser_status": "verified",
+    "existing_endpoint_fallback": "Responses HTTP 405 followed by Chat HTTP 200 with a complete stream",
+    "financial_conclusion": "schema/transport observation only; does not confirm provider cost or financial exactly-once",
+    "raw_evidence_location": "private local evidence directory; real request/provider identifiers excluded from Git",
+    "raw_evidence_sha256": "d368862ed722bbcca1efb6c942a5183cf405e09df14be52fb7bf85717d34eb14"
+  },
+  "amd64_tests": {
+    "status": "passed",
+    "execution": "local Docker Desktop linux/amd64 via QEMU; network disabled",
+    "runtime": "go version go1.27.2 linux/amd64",
+    "command": "go test -p 1 ./domain/upstream/evidence ./pkg/jsonx ./app/billing/internal/biz -run Test(Native|Marshal|Unmarshal|RequestSnapshotFreezesFiveBucketsAndChargeModes|CalculateCanonicalCost|FloatRounding) -count=1",
+    "evidence": "native-usage-p0-amd64-2026-10-13.txt"
+  },
+  "acceptance": "pending: full observation window, sample/source coverage, same-view funds baseline and independent provider evidence",
+  "p1_enabled": false
+}

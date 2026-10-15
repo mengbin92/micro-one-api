@@ -1,0 +1,7 @@
+ok  	micro-one-api/app/channel/internal/biz	(cached)
+ok  	micro-one-api/app/channel/internal/data	5.718s
+ok  	micro-one-api/app/billing/internal/biz	(cached)
+ok  	micro-one-api/app/billing/internal/data	7.034s
+ok  	micro-one-api/domain/upstream/contract	(cached)
+ok  	micro-one-api/domain/upstream/evidence	(cached)
+ok  	micro-one-api/internal/server	(cached)

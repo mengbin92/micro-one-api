@@ -106,9 +106,10 @@ type ModelAlias struct {
 
 // ModelChannelMapping links a channel to a model with per-combo config.
 type ModelChannelMapping struct {
-	ID        int64
-	ChannelID int64
-	ModelPK   int64
+	ContractRefs map[string]string
+	ID           int64
+	ChannelID    int64
+	ModelPK      int64
 	// EnabledHasValue distinguishes "caller left enabled unchanged on update"
 	// (false) from "caller explicitly set enabled=false" (true). When false,
 	// UpsertChannelMapping keeps the existing row's enabled value on update
@@ -126,6 +127,7 @@ type ModelChannelMapping struct {
 
 // ModelSubscriptionMapping links a subscription account to a model.
 type ModelSubscriptionMapping struct {
+	ContractRefs          map[string]string
 	ID                    int64
 	SubscriptionAccountID int64
 	ModelPK               int64

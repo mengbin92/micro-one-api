@@ -42,6 +42,19 @@ jobs:
       - name: Run race detector on concurrency-sensitive packages
         run: make test-race
 
+      - name: Replay bounded upstream repair with independent fixtures
+        run: |
+          go run ./cmd/upstream-repair \
+            -proposal domain/upstream/repair/testdata/finite-proposal.json \
+            -fixtures domain/upstream/repair/testdata/independent-fixtures.json \
+            -out "$RUNNER_TEMP/upstream-repair-review.json"
+
+      - name: Preserve offline candidate review evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-repair-review
+          path: ${{ runner.temp }}/upstream-repair-review.json
+
       - name: Check architecture boundaries
         run: ./scripts/check-architecture.sh
 
@@ -310,5 +323,6 @@ jobs:
           build-args: |
             SERVICE_NAME=${{ matrix.service }}
             SERVICE_PATH=${{ matrix.path }}
+            BUILD_REVISION=git:${{ github.sha }}
           push: false
           tags: micro-one-api/${{ matrix.service }}:ci

@@ -1,0 +1,142 @@
+{
+  "date": "2026-10-14",
+  "code_commit": "5bd327517870cb48633b44a9f7bf4b38d5b45c75",
+  "source_digest": "87e372faca54b2891c5c39fe93a9363a07d5042cedf860c693bf16ed47e8b20d",
+  "platform": "linux/amd64",
+  "images": [
+    {
+      "service": "identity-service",
+      "image": "docker-compose-identity-service:deploy-20261014-131552-5bd32751",
+      "image_id": "sha256:92288bdc86de900708dbe8d71241d57b0df950a10a492f368b819d555e74c8c2",
+      "running": true,
+      "restart_count": 0,
+      "source_digest": "87e372faca54b2891c5c39fe93a9363a07d5042cedf860c693bf16ed47e8b20d",
+      "container_source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "health_exit": 0,
+      "health": "{\"status\":\"ok\"}",
+      "flags": {}
+    },
+    {
+      "service": "billing-service",
+      "image": "docker-compose-billing-service:deploy-20261014-131552-5bd32751",
+      "image_id": "sha256:c1c003f770907652bb71d289c5a75d17137cf24759afc323cc47ee45acdb8fcb",
+      "running": true,
+      "restart_count": 0,
+      "source_digest": "87e372faca54b2891c5c39fe93a9363a07d5042cedf860c693bf16ed47e8b20d",
+      "container_source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "health_exit": 0,
+      "health": "{\"status\":\"ok\"}",
+      "flags": {
+        "BILLING_EXECUTION_DELIVERY_V1": "true",
+        "BILLING_SETTLEMENT_RECEIPTS_V1": "true"
+      }
+    },
+    {
+      "service": "channel-service",
+      "image": "docker-compose-channel-service:deploy-20261014-131552-5bd32751",
+      "image_id": "sha256:2a50e49a9732d5dba5df58f2e463c6905363c1bf1de1139b2c2f4541c023a868",
+      "running": true,
+      "restart_count": 0,
+      "source_digest": "87e372faca54b2891c5c39fe93a9363a07d5042cedf860c693bf16ed47e8b20d",
+      "container_source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "health_exit": 0,
+      "health": "{\"status\":\"ok\"}",
+      "flags": {
+        "UPSTREAM_CONTRACTS_V1_ENABLED": "false",
+        "UPSTREAM_PROBES_ENABLED": "true"
+      }
+    },
+    {
+      "service": "admin-api",
+      "image": "docker-compose-admin-api:deploy-20261014-131552-5bd32751",
+      "image_id": "sha256:5cc303c9a2ff7f82505cb0410b83517b92cba290ef24da3026e6718968eea5b6",
+      "running": true,
+      "restart_count": 0,
+      "source_digest": "87e372faca54b2891c5c39fe93a9363a07d5042cedf860c693bf16ed47e8b20d",
+      "container_source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "health_exit": 0,
+      "health": "{\"status\":\"ok\"}",
+      "flags": {}
+    },
+    {
+      "service": "relay-gateway",
+      "image": "docker-compose-relay-gateway:deploy-20261014-131552-5bd32751",
+      "image_id": "sha256:3016e8c38fab3d99473dfba8fddb5bbdb00a0459d957b42c90633954c0092c8e",
+      "running": true,
+      "restart_count": 0,
+      "source_digest": "87e372faca54b2891c5c39fe93a9363a07d5042cedf860c693bf16ed47e8b20d",
+      "container_source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "health_exit": 0,
+      "health": "{\"status\":\"ok\"}",
+      "flags": {
+        "UPSTREAM_CONTRACTS_V1_ENABLED": "false",
+        "RELAY_NATIVE_USAGE_V2_ALLOWLIST": "",
+        "RELAY_EXECUTION_DELIVERY_V1": "true",
+        "UPSTREAM_PROBES_ENABLED": "true",
+        "probe_target_ids": [
+          "ch1-inventory",
+          "ch1-qwen-json",
+          "ch1-qwen-sse",
+          "ch11-inventory-bodyless"
+        ]
+      }
+    },
+    {
+      "service": "monitor-worker",
+      "image": "docker-compose-monitor-worker:deploy-20261014-131552-5bd32751",
+      "image_id": "sha256:9a4a5bec2938e28b9192348ff1b7a853047a97a1b2a291c1e440114c956040c4",
+      "running": true,
+      "restart_count": 0,
+      "source_digest": "87e372faca54b2891c5c39fe93a9363a07d5042cedf860c693bf16ed47e8b20d",
+      "container_source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "health_exit": 0,
+      "health": "{\"status\":\"ok\"}",
+      "flags": {
+        "UPSTREAM_CONTRACTS_V1_ENABLED": "false",
+        "UPSTREAM_PROBE_INTERVAL": "5m",
+        "UPSTREAM_PROBES_ENABLED": "true",
+        "probe_target_ids": [
+          "ch1-inventory",
+          "ch1-qwen-json",
+          "ch1-qwen-sse",
+          "ch11-inventory-bodyless"
+        ]
+      }
+    }
+  ],
+  "configuration_and_database_backup": "/opt/micro-one-api/docker-compose/backups/p2-20261014-051310",
+  "rollback_tag": "rollback-20261014-131552",
+  "web_backup": "/opt/web/dist.bak.p2-20261014-051624",
+  "web_index_sha256": "e28b15663a13da96140640def799b50d578ba77f163577acfb08409d68e2b0dc",
+  "migrations": [
+    "132_vendor_reconciliation",
+    "133_upstream_contracts",
+    "134_p2_permission_catalog"
+  ],
+  "new_permissions_state": "draft/unbound",
+  "channel1_health": "healthy",
+  "channel11_provider_type": 6,
+  "catalog_model_id": 519,
+  "catalog_model_public": false,
+  "catalog_status_after_administrator_update": 0,
+  "source11_mappings_enabled": false,
+  "contract_gate_enabled": false,
+  "production_contract_bindings": 0,
+  "native_usage_v2_allowlist": [],
+  "artifact_sha256": {
+    "deployment-docs.txt": "fc71dfe51223bf9ccd69942e727ddeba5d3103c651a294eb02ab68fada27d5ef",
+    "integration.txt": "0cbf7773bb2d0177ca72afe4d00ff6e3ea40e579fe9405591a6dd8db629410cf",
+    "live-state.txt": "08ee34fe5ffaaed62012550180bb5b6d00502a08a02ec37af303c5155a799d40",
+    "migrations.txt": "6898baaee4bd4fbbb4940129ace1dad3cfa49f1c0b2d03219a9f00c07df93f2b",
+    "probe-outbox.txt": "20b3b3014d52eaa5bc8117ddd819db2bd83f4a6f74bda7c1456a76111e9a7754",
+    "security-scan.json": "d28cf737550a492f8cd4c710aa516becc619bef5c2c1b38b141de516105151a3",
+    "three-dialect.txt": "114abebb8028142ece46548d7ef5a8bddf14f302d75345a93a02895a16efd558"
+  },
+  "outbox_acknowledged": 85,
+  "outbox_pending": 0,
+  "admin_ui_verified": true,
+  "post_deploy_inventory_http_status": 200,
+  "post_deploy_inventory_at": "2026-10-14T05:25:51Z",
+  "security_scan_findings": 0,
+  "security_scanner_type_errors": 0
+}

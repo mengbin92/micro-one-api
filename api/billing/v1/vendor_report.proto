@@ -1,0 +1,7 @@
+syntax = "proto3";
+package api.billing.v1;
+option go_package="micro-one-api/api/billing/v1;billingv1";
+message ImportVendorReportRequest { bytes manifest_json=1; bytes csv=2; string expected_report_id=3; string reason=4; bytes attributions_json=5; bytes cost_evidence_json=6; }
+message ImportVendorReportReply { string report_id=1; bytes report_json=2; }
+message ListVendorReportsRequest { int64 start=1; int64 end=2; int32 limit=3; }
+message ListVendorReportsReply { repeated bytes reports_json=1; bytes daily_summary_json=2; bytes weekly_review_json=3; }

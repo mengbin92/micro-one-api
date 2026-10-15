@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.34.18 发布公告](./docs/releases/release-v0.34.18.md)（上游健康归因与熔断恢复加固、Compose 发布门禁修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.34.18)
+> 📣 **最新发布**：[v0.35.0 发布公告](./docs/releases/release-v0.35.0.md)（持久化计费证据、供应商对账与受控上游修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.35.0)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.35.0
+
+v0.35.0 新增原生用量证据、持久结算送达、供应商原币对账、有限上游契约与隔离修复运营链，并纳入计费／灰度边界复审修复。公开接口兼容，新增内部 RPC、管理页面与 9 组迁移；先按归属迁移（Billing 135 必须先于新版服务），再更新 Identity、Billing、Channel、Admin、Relay、Monitor 和独立前端。收费名单及可选 profiles 不自动启用，10 月 15 日复审修复尚需部署。详见 [release-v0.35.0.md](./docs/releases/release-v0.35.0.md)。
 
 ### 升级到 v0.34.18
 

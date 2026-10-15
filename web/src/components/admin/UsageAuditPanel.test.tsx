@@ -193,3 +193,9 @@ it('shows recorded routing evidence and keeps historical groups unknown', () => 
   rerender(<UsageAuditPanel log={{ promptTokens: 100 }} />);
   expect(screen.getByText('未记录（历史账单）')).toBeInTheDocument();
 });
+
+it.each(['missing', 'invalid', 'unsupported'])('shows native v2 %s without relabeling it estimated', (status) => {
+  render(<UsageAuditPanel log={{ usageContractVersion: 2, usageParseStatus: status, billableTotalTokens: 0, reportedTotalTokens: 42 }} />);
+  expect(screen.getByText(status)).toBeInTheDocument();
+  expect(screen.queryByText('estimated')).not.toBeInTheDocument();
+});

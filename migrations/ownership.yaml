@@ -41,8 +41,12 @@ services:
     - 110_create_identity_iam
     - 111_add_iam_cardinality_limits
     - 123_add_iam_permission_metadata
+    - 134_p2_permission_catalog
 
   channel:
+    - 133_upstream_contracts
+    - 130_exact_usage_semantic_model_keys
+    - 127_upstream_inventory
     - 124_backfill_subscription_account_revision
     - 121_usage_semantic_block_revision
     - 120_model_routing_revision
@@ -83,6 +87,10 @@ services:
     - 109_add_credential_refresh_pending
 
   billing:
+    - 135_vendor_reconciliation_run_sequence
+    - 132_vendor_reconciliation
+    - 131_match_execution_reservation_collation
+    - 126_upstream_execution_evidence
     # billing_reservations / billing_ledgers / billing_redeem_* / payment_orders /
     # reconciliation_runs / account_receivables / user_subscriptions / subscription_groups /
     # subscription_plans / account_quota_snapshots
@@ -172,6 +180,7 @@ services:
     - 104_add_notification_processing_lease
 
   monitor:
+    - 128_upstream_probe_budgets
     - 114_alert_rule_revision
     # health_checks + alert_rules (subset of 000_create_core_tables).
     - 000_create_core_tables

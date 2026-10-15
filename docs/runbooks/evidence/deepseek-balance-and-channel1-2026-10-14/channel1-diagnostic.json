@@ -1,0 +1,41 @@
+{
+  "source_id": 1,
+  "source_host": "gpunexus.chengfangtech.com",
+  "source_type": "OpenAI compatible",
+  "observed_authorization_revision": 7,
+  "stored_health_status": "unavailable",
+  "stored_consecutive_failures": 3,
+  "stored_last_failure_http_status": 503,
+  "stored_last_failure_message": "no algo service available now, please wait a moment",
+  "manual_test_updates_health": false,
+  "direct_models": {
+    "http_status": 200,
+    "started_at_utc": "2026-10-13T23:53:50.920085+00:00",
+    "finished_at_utc": "2026-10-13T23:53:51.504195+00:00",
+    "response_sha256": "14ef1b7a81b1a83a06580124c5bf917eaf8223d388ab749e3e75917d4be1fe80",
+    "inventory_schema_verified": false
+  },
+  "direct_inference": {
+    "model": "qwen3.7-max",
+    "http_status": 200,
+    "requested_max_tokens": 16,
+    "reported_prompt_tokens": 13,
+    "reported_completion_tokens": 113,
+    "reported_reasoning_tokens": 108,
+    "reported_total_tokens": 126,
+    "finish_reason": "stop",
+    "requested_bound_vs_reported_completion_match": false,
+    "started_at_utc": "2026-10-13T23:53:51.504294+00:00",
+    "finished_at_utc": "2026-10-13T23:53:53.365253+00:00",
+    "response_sha256": "cd0d4362436bfbf7e5ece91ab813a10e969df65f2a8e03f135b5c97a9d5ae32f"
+  },
+  "direct_inference_attempts": 1,
+  "direct_diagnostic_mutated_source_health": false,
+  "automatic_recovery_or_charge_profile_enabled": false,
+  "production_hotfix_deployed": false,
+  "ui_attempt": "stale cached action attempted; fresh UI retest not completed while authorization actions disabled",
+  "fixes": [
+    "refresh list on rejected action 409; no automatic retry",
+    "reject stale IAM revision before provider IO; commit recheck retained"
+  ]
+}

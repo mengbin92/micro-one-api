@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-14",
+  "paid_calls": 4,
+  "real_official_api": true,
+  "model": "deepseek-flash",
+  "live_cases_passed": [
+    "json_text",
+    "sse_text",
+    "json_tool64"
+  ],
+  "diagnosis": "official cache aliases missing from installed profile; nonterminal usage:null unsupported by the existing tracker",
+  "candidate_only": true,
+  "candidate_registered_for_charging": false,
+  "production_deployed": false,
+  "balance_display_precision_cny": "0.01",
+  "observed_balance_change_cny": "0.00",
+  "tariff_estimate_cny": "0.00066256",
+  "actual_expense_confirmed": false,
+  "verification_scope": "none",
+  "p2_overall_acceptance": false,
+  "source_sha256": {
+    "domain/upstream/evidence/deepseek_candidate.go": "dd006f3c185c5da1567072ea303f35b5a49ddefe2cc5b4d45b87aba9088c4290",
+    "domain/upstream/evidence/deepseek_candidate_test.go": "0b793feddcb8471cb669694f879dda721b084f396e993eda6a9a1c6687271a28",
+    "domain/upstream/evidence/stream.go": "9aea30305c002c74fd4ab59e1d3e3d5569d761e091dfb6761e4ca20ba0c35686",
+    "domain/upstream/evidence/testdata/deepseek-official-pilot.json": "d74fc566f772749c9308c78637aba9703731b9cadd63ff89dfcb65b273d5280f"
+  },
+  "checks": {
+    "candidate_original_live_fixture_replay": "passed",
+    "negative_alias_presence_partition_overflow_unknown_dimension_and_terminal_cases": "passed",
+    "evidence_execution_billing_server_regression": "passed",
+    "race": "passed",
+    "vet": "passed",
+    "credential_scan": "passed",
+    "size_limits_and_candidate_revision_retention": "passed"
+  },
+  "evidence": [
+    "live-evidence.json",
+    "redacted-native-fixtures.json",
+    "candidate-replay.txt",
+    "regression.txt",
+    "race.txt"
+  ],
+  "live_cases_truncated": [
+    "json_tool"
+  ],
+  "nonzero_cache_hit_tokens": 128,
+  "balance_observation_scope": "initial_three_calls_only_before_json_tool64",
+  "artifact_sha256": {
+    "live-evidence.json": "172bc5c7d0b1d2ca4de2e8d91caba3d1755c5ba4affdf11e1a97d7b613b8fbcb",
+    "redacted-native-fixtures.json": "d74fc566f772749c9308c78637aba9703731b9cadd63ff89dfcb65b273d5280f",
+    "candidate-replay.txt": "d7de8a65036dcc0ec0f0edc9df0a68ef417c74af712361d050069526f662eed5",
+    "regression.txt": "c50453aa70868e71aa2eb2bddfe4cc067d2c228ffdf38b78fde07ba25f380dbc",
+    "race.txt": "19973eabdab46ba8e1246eda6f2bdb1d626cf3b42dd20b59f161d28921dc5b40"
+  },
+  "followup_evidence": "../deepseek-balance-and-channel1-2026-10-14/official-export-provenance.json"
+}

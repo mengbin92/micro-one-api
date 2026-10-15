@@ -1,0 +1,40 @@
+=== RUN   TestContractCASGrayIncidentAndRollbackDialects
+=== RUN   TestContractCASGrayIncidentAndRollbackDialects/sqlite
+=== RUN   TestContractCASGrayIncidentAndRollbackDialects/mysql
+=== RUN   TestContractCASGrayIncidentAndRollbackDialects/postgres
+--- PASS: TestContractCASGrayIncidentAndRollbackDialects (4.93s)
+    --- PASS: TestContractCASGrayIncidentAndRollbackDialects/sqlite (0.11s)
+    --- PASS: TestContractCASGrayIncidentAndRollbackDialects/mysql (3.96s)
+    --- PASS: TestContractCASGrayIncidentAndRollbackDialects/postgres (0.86s)
+=== RUN   TestContractPermissionsAndPreciseSubscriptionNamespace
+--- PASS: TestContractPermissionsAndPreciseSubscriptionNamespace (0.07s)
+=== RUN   TestProtocolIncidentTTLAndMappingReferenceArePersistent
+--- PASS: TestProtocolIncidentTTLAndMappingReferenceArePersistent (0.07s)
+=== RUN   TestRollbackRequiresFreshProofAndRemovedOldProtocolStaysQuarantined
+--- PASS: TestRollbackRequiresFreshProofAndRemovedOldProtocolStaysQuarantined (0.07s)
+=== RUN   TestAutomaticRecoveryNeverPromotesUnreleasedGray
+--- PASS: TestAutomaticRecoveryNeverPromotesUnreleasedGray (0.07s)
+PASS
+ok  	micro-one-api/app/channel/internal/data	5.757s
+=== RUN   TestContractPaymentAndRefund
+=== RUN   TestContractPaymentAndRefund/sqlite
+=== RUN   TestContractPaymentAndRefund/mysql
+=== RUN   TestContractPaymentAndRefund/postgres
+--- PASS: TestContractPaymentAndRefund (4.35s)
+    --- PASS: TestContractPaymentAndRefund/sqlite (0.08s)
+    --- PASS: TestContractPaymentAndRefund/mysql (3.57s)
+    --- PASS: TestContractPaymentAndRefund/postgres (0.70s)
+=== RUN   TestVendorImmutableReportsAndCorrectionsAcrossDialects
+=== RUN   TestVendorImmutableReportsAndCorrectionsAcrossDialects/sqlite
+=== RUN   TestVendorImmutableReportsAndCorrectionsAcrossDialects/mysql
+=== RUN   TestVendorImmutableReportsAndCorrectionsAcrossDialects/postgres
+--- PASS: TestVendorImmutableReportsAndCorrectionsAcrossDialects (3.23s)
+    --- PASS: TestVendorImmutableReportsAndCorrectionsAcrossDialects/sqlite (0.07s)
+    --- PASS: TestVendorImmutableReportsAndCorrectionsAcrossDialects/mysql (2.55s)
+    --- PASS: TestVendorImmutableReportsAndCorrectionsAcrossDialects/postgres (0.61s)
+=== RUN   TestVendorAttemptEvidenceUsesSendTimeAndDedupesTerminalFinal
+--- PASS: TestVendorAttemptEvidenceUsesSendTimeAndDedupesTerminalFinal (0.07s)
+=== RUN   TestVendorReportIAMReadImportAreIndependentAndDailyKeepsCurrentLeaf
+--- PASS: TestVendorReportIAMReadImportAreIndependentAndDailyKeepsCurrentLeaf (0.06s)
+PASS
+ok  	micro-one-api/app/billing/internal/data	8.171s

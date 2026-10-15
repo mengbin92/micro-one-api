@@ -31,6 +31,8 @@ import (
 
 // RelayGrpcService implements the gRPC RelayServiceServer interface.
 type RelayGrpcService struct {
+	executionDelivery *relaybiz.ExecutionDelivery
+	upstreamProbe     *relaybiz.UpstreamProbeUsecase
 	relayv1.UnimplementedRelayServiceServer
 	identityClient  identityv1.IdentityServiceClient
 	channelClient   channelv1.ChannelServiceClient
@@ -118,7 +120,7 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 			}
 		}
 
-		reservation, reserveErr := s.billingClient.ReserveQuota(ctx, &billingv1.ReserveQuotaRequest{
+		reserveRequest := &billingv1.ReserveQuotaRequest{
 			RoutingContext:  routingdto.ContextToProto(plan.Auth.RoutingContext),
 			UserId:          fmt.Sprintf("%d", plan.Auth.UserID),
 			RequestId:       requestID,
@@ -129,7 +131,14 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 			EstimatedTokens: estimatedTokens,
 			Model:           resolvedModel,
 			ChannelId:       fmt.Sprintf("%d", ch.ID),
-		})
+		}
+		pilot := relaybiz.NativeUsageV2Enabled(trace.SourceKind, ch.ID, resolvedModel)
+		if pilot {
+			if err := s.negotiateNativeExecution(ctx, reserveRequest); err != nil {
+				return relayprovider.BeforeForward(err)
+			}
+		}
+		reservation, reserveErr := s.billingClient.ReserveQuota(ctx, reserveRequest)
 		if reserveErr != nil {
 			return relayprovider.BeforeForward(reserveErr)
 		}
@@ -141,6 +150,14 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 			return fmt.Errorf("billing routing snapshot mismatch")
 		}
 
+		var durable *grpcDurableAttempt
+		if pilot {
+			var err error
+			ctx, durable, err = s.admitNativeExecution(ctx, reservation)
+			if err != nil {
+				return relayprovider.BeforeForward(err)
+			}
+		}
 		provider, provErr := s.providerFactory.CreateProviderWithConfig(ch.Type, ch.BaseURL, ch.Key, relayprovider.ProviderConfig{
 			APIVersion: ch.Config.APIVersion,
 		})
@@ -168,7 +185,7 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 		}
 
 		actualTokens := int64(resp.Usage.TotalTokens)
-		commitResp, commitErr := s.billingClient.CommitQuota(ctx, &billingv1.CommitQuotaRequest{
+		commitRequest := &billingv1.CommitQuotaRequest{
 			ReservationId:    reservation.ReservationId,
 			ActualTokens:     actualTokens,
 			Success:          true,
@@ -176,7 +193,14 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 			UpstreamModelId:  resolvedModel,
 			PromptTokens:     int64(resp.Usage.PromptTokens),
 			CompletionTokens: int64(resp.Usage.CompletionTokens),
-		})
+		}
+		var commitResp *billingv1.CommitQuotaResponse
+		var commitErr error
+		if durable != nil {
+			commitResp, actualTokens, commitErr = s.commitNativeExecution(ctx, durable, commitRequest)
+		} else {
+			commitResp, commitErr = s.billingClient.CommitQuota(ctx, commitRequest)
+		}
 		if commitErr != nil {
 			// The upstream response has already completed. Do not let the
 			// retry executor replay the provider request and charge twice.

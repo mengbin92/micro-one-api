@@ -1,0 +1,39 @@
+go test -race ./domain/operations/... ./domain/subscription/... ./domain/upstream/evidence/... ./domain/upstream/contract/... ./domain/upstream/repair/... ./app/channel/internal/data/... ./internal/biz/... ./internal/server/... ./app/billing/... ./app/admin/... ./platform/security/auth/... ./platform/routingoutbox/... ./platform/grpc/xgrpc/...
+?   	micro-one-api/domain/operations/biz	[no test files]
+ok  	micro-one-api/domain/operations/data	(cached)
+ok  	micro-one-api/domain/subscription/biz	(cached)
+ok  	micro-one-api/domain/subscription/data	4.897s
+ok  	micro-one-api/domain/upstream/evidence	(cached)
+ok  	micro-one-api/domain/upstream/contract	(cached)
+ok  	micro-one-api/domain/upstream/repair	(cached)
+ok  	micro-one-api/domain/upstream/repair/data	(cached)
+ok  	micro-one-api/app/channel/internal/data	8.358s
+ok  	micro-one-api/internal/biz	1.877s
+ok  	micro-one-api/internal/server	8.611s
+ok  	micro-one-api/internal/server/forwarder	1.581s
+ok  	micro-one-api/internal/server/handler	1.955s
+ok  	micro-one-api/internal/server/usage	1.869s
+?   	micro-one-api/app/billing/cmd/billing	[no test files]
+ok  	micro-one-api/app/billing/cmd/evidence-worker	1.914s
+ok  	micro-one-api/app/billing/cmd/vendor-cost-fetch	1.886s
+?   	micro-one-api/app/billing/cmd/vendor-reconcile	[no test files]
+ok  	micro-one-api/app/billing/internal/biz	2.793s
+ok  	micro-one-api/app/billing/internal/conf	2.605s
+ok  	micro-one-api/app/billing/internal/data	9.338s
+ok  	micro-one-api/app/billing/internal/server	1.541s
+ok  	micro-one-api/app/billing/internal/service	1.604s
+?   	micro-one-api/app/billing/testutil	[no test files]
+?   	micro-one-api/app/admin/cmd/admin	[no test files]
+ok  	micro-one-api/app/admin/internal/biz	(cached)
+ok  	micro-one-api/app/admin/internal/conf	(cached)
+ok  	micro-one-api/app/admin/internal/data	(cached)
+ok  	micro-one-api/app/admin/internal/data/channelclient	(cached)
+?   	micro-one-api/app/admin/internal/data/iam	[no test files]
+?   	micro-one-api/app/admin/internal/data/routingaccess	[no test files]
+?   	micro-one-api/app/admin/internal/data/routingrpc	[no test files]
+ok  	micro-one-api/app/admin/internal/server	(cached)
+ok  	micro-one-api/app/admin/internal/service	1.669s
+?   	micro-one-api/app/admin/testutil	[no test files]
+ok  	micro-one-api/platform/security/auth	(cached)
+ok  	micro-one-api/platform/routingoutbox	2.395s
+ok  	micro-one-api/platform/grpc/xgrpc	2.057s

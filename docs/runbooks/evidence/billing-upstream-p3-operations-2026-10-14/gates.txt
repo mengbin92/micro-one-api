@@ -1,0 +1,12 @@
+go run ./cmd/migrate-check -dir ./migrations
+WARN : mysql: duplicate numeric prefix 057_ (057_add_plan_snapshot_to_payment_orders, 057_create_subscription_account_quota_reset_runs) — historical, allowlisted
+WARN : sqlite: duplicate numeric prefix 009_ (009_add_per_bucket_cost, 009_clean_orphan_model_mappings) — historical, allowlisted
+migration-check OK
+go run ./cmd/rbac-contract-check
+RBAC P0 contract: 863 source/HTTP/RPC/registration rows reviewed
+python3 scripts/test-iam-browser-result.py
+.............
+----------------------------------------------------------------------
+Ran 13 tests in 5.682s
+
+OK

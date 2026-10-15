@@ -97,7 +97,7 @@ func toChannelMappingProto(m *biz.ModelChannelMapping) *channelv1.ModelChannelMa
 	if m == nil {
 		return nil
 	}
-	return &channelv1.ModelChannelMapping{
+	return &channelv1.ModelChannelMapping{ContractRefs: m.ContractRefs,
 		Id:              m.ID,
 		ChannelId:       m.ChannelID,
 		ModelPk:         m.ModelPK,
@@ -114,7 +114,7 @@ func toSubscriptionMappingProto(m *biz.ModelSubscriptionMapping) *channelv1.Mode
 	if m == nil {
 		return nil
 	}
-	return &channelv1.ModelSubscriptionMapping{
+	return &channelv1.ModelSubscriptionMapping{ContractRefs: m.ContractRefs,
 		Id:                    m.ID,
 		SubscriptionAccountId: m.SubscriptionAccountID,
 		ModelPk:               m.ModelPK,

@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"net/http"
 	"os"
 
 	"micro-one-api/app/billing/internal/biz"
@@ -12,8 +13,9 @@ import (
 )
 
 type Data struct {
-	db    *gorm.DB
-	redis *redis.Client
+	vendorCostClient *http.Client
+	db               *gorm.DB
+	redis            *redis.Client
 
 	accountRepo         biz.AccountRepo
 	reservationRepo     biz.ReservationRepo
@@ -72,8 +74,9 @@ func NewData(driver string, dsn ...string) (*Data, error) {
 	}
 
 	d := &Data{
-		db:    db,
-		redis: rdb,
+		vendorCostClient: &http.Client{},
+		db:               db,
+		redis:            rdb,
 	}
 
 	d.accountRepo = NewAccountRepo(d)

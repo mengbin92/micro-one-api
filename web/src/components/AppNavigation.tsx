@@ -137,6 +137,7 @@ const adminNavGroups: AdminNavGroup[] = [
     label: '计费与财务',
     items: [
       { to: '/admin/pricing', label: '销售定价', icon: ReceiptText },
+      { to: '/admin/vendor-reports', label: '供应商费用核验', icon: Scale },
       { to: '/admin/upstream-costs', label: '上游成本', icon: WalletCards },
       { to: '/admin/payment-orders', label: '支付订单', icon: CreditCard },
       { to: '/admin/reconciliation', label: '账务对账', icon: Scale },
@@ -179,6 +180,7 @@ const routeTitles: Record<string, string> = {
   '/admin/cost-analysis': '经营分析',
   '/admin/routing-ops': '路由策略',
   '/admin/pricing': '销售定价',
+  '/admin/vendor-reports': '供应商费用核验',
   '/admin/upstream-costs': '上游成本',
   '/admin/logs': '调用日志',
   '/admin/payment-orders': '支付订单',

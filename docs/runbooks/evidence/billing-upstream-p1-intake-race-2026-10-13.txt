@@ -1,0 +1,4 @@
+ok  	micro-one-api/domain/billing	(cached)
+ok  	micro-one-api/app/billing/internal/biz	(cached)
+ok  	micro-one-api/app/billing/internal/data	(cached)
+ok  	micro-one-api/app/billing/internal/service	(cached)

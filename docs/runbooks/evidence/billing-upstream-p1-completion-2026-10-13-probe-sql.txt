@@ -1,0 +1,96 @@
+=== RUN   TestProbeBudgetAndAtomicPermitAcrossDialects
+=== RUN   TestProbeBudgetAndAtomicPermitAcrossDialects/sqlite
+=== RUN   TestProbeBudgetAndAtomicPermitAcrossDialects/mysql
+=== RUN   TestProbeBudgetAndAtomicPermitAcrossDialects/postgres
+--- PASS: TestProbeBudgetAndAtomicPermitAcrossDialects (3.74s)
+    --- PASS: TestProbeBudgetAndAtomicPermitAcrossDialects/sqlite (0.10s)
+    --- PASS: TestProbeBudgetAndAtomicPermitAcrossDialects/mysql (3.01s)
+    --- PASS: TestProbeBudgetAndAtomicPermitAcrossDialects/postgres (0.63s)
+PASS
+ok  	micro-one-api/app/monitor/internal/data	4.336s
+=== RUN   TestAccountOpsAcrossDialects
+=== RUN   TestAccountOpsAcrossDialects/sqlite
+=== RUN   TestAccountOpsAcrossDialects/sqlite/concurrent_recovery
+=== RUN   TestAccountOpsAcrossDialects/sqlite/authorization_and_administrative_disable
+=== RUN   TestAccountOpsAcrossDialects/sqlite/full_update_fences_new_incident
+=== RUN   TestAccountOpsAcrossDialects/sqlite/stale_reset_configuration
+=== RUN   TestAccountOpsAcrossDialects/sqlite/new_local_exhaustion
+=== RUN   TestAccountOpsAcrossDialects/sqlite/new_snapshot_exhaustion
+=== RUN   TestAccountOpsAcrossDialects/sqlite/auto_waits_for_upstream_quota
+=== RUN   TestAccountOpsAcrossDialects/sqlite/concurrent_alert_and_new_incident
+=== RUN   TestAccountOpsAcrossDialects/sqlite/legacy_markers_and_unrelated_metadata
+=== RUN   TestAccountOpsAcrossDialects/sqlite/shard_pagination
+=== RUN   TestAccountOpsAcrossDialects/mysql
+=== RUN   TestAccountOpsAcrossDialects/mysql/concurrent_recovery
+=== RUN   TestAccountOpsAcrossDialects/mysql/authorization_and_administrative_disable
+=== RUN   TestAccountOpsAcrossDialects/mysql/full_update_fences_new_incident
+=== RUN   TestAccountOpsAcrossDialects/mysql/stale_reset_configuration
+=== RUN   TestAccountOpsAcrossDialects/mysql/new_local_exhaustion
+=== RUN   TestAccountOpsAcrossDialects/mysql/new_snapshot_exhaustion
+=== RUN   TestAccountOpsAcrossDialects/mysql/auto_waits_for_upstream_quota
+=== RUN   TestAccountOpsAcrossDialects/mysql/concurrent_alert_and_new_incident
+=== RUN   TestAccountOpsAcrossDialects/mysql/legacy_markers_and_unrelated_metadata
+=== RUN   TestAccountOpsAcrossDialects/mysql/shard_pagination
+=== RUN   TestAccountOpsAcrossDialects/postgres
+=== RUN   TestAccountOpsAcrossDialects/postgres/concurrent_recovery
+=== RUN   TestAccountOpsAcrossDialects/postgres/authorization_and_administrative_disable
+=== RUN   TestAccountOpsAcrossDialects/postgres/full_update_fences_new_incident
+=== RUN   TestAccountOpsAcrossDialects/postgres/stale_reset_configuration
+=== RUN   TestAccountOpsAcrossDialects/postgres/new_local_exhaustion
+=== RUN   TestAccountOpsAcrossDialects/postgres/new_snapshot_exhaustion
+=== RUN   TestAccountOpsAcrossDialects/postgres/auto_waits_for_upstream_quota
+=== RUN   TestAccountOpsAcrossDialects/postgres/concurrent_alert_and_new_incident
+=== RUN   TestAccountOpsAcrossDialects/postgres/legacy_markers_and_unrelated_metadata
+=== RUN   TestAccountOpsAcrossDialects/postgres/shard_pagination
+--- PASS: TestAccountOpsAcrossDialects (3.73s)
+    --- PASS: TestAccountOpsAcrossDialects/sqlite (0.14s)
+        --- PASS: TestAccountOpsAcrossDialects/sqlite/concurrent_recovery (0.01s)
+        --- PASS: TestAccountOpsAcrossDialects/sqlite/authorization_and_administrative_disable (0.00s)
+        --- PASS: TestAccountOpsAcrossDialects/sqlite/full_update_fences_new_incident (0.00s)
+        --- PASS: TestAccountOpsAcrossDialects/sqlite/stale_reset_configuration (0.00s)
+        --- PASS: TestAccountOpsAcrossDialects/sqlite/new_local_exhaustion (0.00s)
+        --- PASS: TestAccountOpsAcrossDialects/sqlite/new_snapshot_exhaustion (0.00s)
+        --- PASS: TestAccountOpsAcrossDialects/sqlite/auto_waits_for_upstream_quota (0.00s)
+        --- PASS: TestAccountOpsAcrossDialects/sqlite/concurrent_alert_and_new_incident (0.00s)
+        --- PASS: TestAccountOpsAcrossDialects/sqlite/legacy_markers_and_unrelated_metadata (0.00s)
+        --- PASS: TestAccountOpsAcrossDialects/sqlite/shard_pagination (0.01s)
+    --- PASS: TestAccountOpsAcrossDialects/mysql (2.92s)
+        --- PASS: TestAccountOpsAcrossDialects/mysql/concurrent_recovery (0.01s)
+        --- PASS: TestAccountOpsAcrossDialects/mysql/authorization_and_administrative_disable (0.02s)
+        --- PASS: TestAccountOpsAcrossDialects/mysql/full_update_fences_new_incident (0.01s)
+        --- PASS: TestAccountOpsAcrossDialects/mysql/stale_reset_configuration (0.01s)
+        --- PASS: TestAccountOpsAcrossDialects/mysql/new_local_exhaustion (0.01s)
+        --- PASS: TestAccountOpsAcrossDialects/mysql/new_snapshot_exhaustion (0.01s)
+        --- PASS: TestAccountOpsAcrossDialects/mysql/auto_waits_for_upstream_quota (0.01s)
+        --- PASS: TestAccountOpsAcrossDialects/mysql/concurrent_alert_and_new_incident (0.01s)
+        --- PASS: TestAccountOpsAcrossDialects/mysql/legacy_markers_and_unrelated_metadata (0.01s)
+        --- PASS: TestAccountOpsAcrossDialects/mysql/shard_pagination (0.05s)
+    --- PASS: TestAccountOpsAcrossDialects/postgres (0.67s)
+        --- PASS: TestAccountOpsAcrossDialects/postgres/concurrent_recovery (0.01s)
+        --- PASS: TestAccountOpsAcrossDialects/postgres/authorization_and_administrative_disable (0.01s)
+        --- PASS: TestAccountOpsAcrossDialects/postgres/full_update_fences_new_incident (0.01s)
+        --- PASS: TestAccountOpsAcrossDialects/postgres/stale_reset_configuration (0.01s)
+        --- PASS: TestAccountOpsAcrossDialects/postgres/new_local_exhaustion (0.00s)
+        --- PASS: TestAccountOpsAcrossDialects/postgres/new_snapshot_exhaustion (0.01s)
+        --- PASS: TestAccountOpsAcrossDialects/postgres/auto_waits_for_upstream_quota (0.00s)
+        --- PASS: TestAccountOpsAcrossDialects/postgres/concurrent_alert_and_new_incident (0.00s)
+        --- PASS: TestAccountOpsAcrossDialects/postgres/legacy_markers_and_unrelated_metadata (0.00s)
+        --- PASS: TestAccountOpsAcrossDialects/postgres/shard_pagination (0.03s)
+=== RUN   TestQuotaResetConcurrentAcrossDialects
+=== RUN   TestQuotaResetConcurrentAcrossDialects/sqlite
+=== RUN   TestQuotaResetConcurrentAcrossDialects/mysql
+=== RUN   TestQuotaResetConcurrentAcrossDialects/postgres
+--- PASS: TestQuotaResetConcurrentAcrossDialects (2.74s)
+    --- PASS: TestQuotaResetConcurrentAcrossDialects/sqlite (0.07s)
+    --- PASS: TestQuotaResetConcurrentAcrossDialects/mysql (2.12s)
+    --- PASS: TestQuotaResetConcurrentAcrossDialects/postgres (0.54s)
+=== RUN   TestExactInventoryAndQuarantineModelKeysAcrossDialects
+=== RUN   TestExactInventoryAndQuarantineModelKeysAcrossDialects/sqlite
+=== RUN   TestExactInventoryAndQuarantineModelKeysAcrossDialects/mysql
+=== RUN   TestExactInventoryAndQuarantineModelKeysAcrossDialects/postgres
+--- PASS: TestExactInventoryAndQuarantineModelKeysAcrossDialects (2.76s)
+    --- PASS: TestExactInventoryAndQuarantineModelKeysAcrossDialects/sqlite (0.08s)
+    --- PASS: TestExactInventoryAndQuarantineModelKeysAcrossDialects/mysql (2.11s)
+    --- PASS: TestExactInventoryAndQuarantineModelKeysAcrossDialects/postgres (0.56s)
+PASS
+ok  	micro-one-api/app/channel/internal/data	9.713s

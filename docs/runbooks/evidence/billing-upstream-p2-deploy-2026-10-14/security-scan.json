@@ -1,0 +1,14 @@
+{
+  "scanner": "gosec v2.28.0",
+  "export_data_reader": "golang.org/x/tools v0.52.0",
+  "compiler": "Go 1.27.2",
+  "stats": {
+    "files": 699,
+    "lines": 159328,
+    "nosec": 61,
+    "found": 0
+  },
+  "go_errors": {},
+  "issues": [],
+  "hook_regression_tests": 6
+}

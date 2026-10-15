@@ -1,0 +1,67 @@
+package biz
+
+import (
+	"context"
+	"fmt"
+	"micro-one-api/platform/security/serviceidentity"
+	"sort"
+	"strings"
+	"time"
+)
+
+type UpstreamInventory struct {
+	// DiscoveredModels is populated by the usecase, never by transport input.
+	// New models remain testing/private; new source mappings stay disabled.
+	DiscoveredModels []*Model
+	SourceKind       string
+	SourceID         int64
+	ExactModelIDs    []string
+	AttemptID        string
+	ObservedAt       int64
+	Manual           bool
+}
+type InventoryDiff struct{ Added, Missing []string }
+type UpstreamInventoryRepo interface {
+	SaveUpstreamInventory(context.Context, UpstreamInventory) (InventoryDiff, error)
+}
+
+func (uc *ChannelUsecase) RecordUpstreamInventory(ctx context.Context, i UpstreamInventory) (InventoryDiff, error) {
+	const method = "/api.channel.v1.ChannelService/RecordUpstreamInventory"
+	if !serviceidentity.HasSystemCapability(ctx, method) {
+		return InventoryDiff{}, fmt.Errorf("inventory system capability required")
+	}
+	if i.SourceID <= 0 || (i.SourceKind != "channel" && i.SourceKind != "subscription") || len(i.ExactModelIDs) > 10000 || i.AttemptID == "" || len(i.AttemptID) > 128 || i.ObservedAt <= 0 || i.ObservedAt > time.Now().Add(time.Minute).Unix() {
+		return InventoryDiff{}, fmt.Errorf("invalid inventory")
+	}
+	seen := map[string]bool{}
+	for _, id := range i.ExactModelIDs {
+		if strings.TrimSpace(id) == "" || len(id) > 255 || strings.ContainsAny(id, "\r\n\x00") || seen[id] {
+			return InventoryDiff{}, fmt.Errorf("invalid or duplicate exact model ID")
+		}
+		seen[id] = true
+	}
+	sort.Strings(i.ExactModelIDs)
+	i.DiscoveredModels = nil
+	// An inventory observation is evidence, not permission to publish a
+	// model or enable a new supplier route. Do not merge case-colliding
+	// upstream IDs into a single canonical route.
+	counts := map[string]int{}
+	for _, id := range i.ExactModelIDs {
+		counts[NormalizeModelID(id)]++
+	}
+	for _, id := range i.ExactModelIDs {
+		if counts[NormalizeModelID(id)] != 1 {
+			continue
+		}
+		provider := ""
+		if strings.HasPrefix(NormalizeModelID(id), "deepseek-") {
+			provider = "deepseek"
+		}
+		i.DiscoveredModels = append(i.DiscoveredModels, &Model{ModelID: id, DisplayName: id, Provider: provider, ModelType: "chat", Status: ModelStatusTesting, IsPublic: false, Metadata: `{"discovered":true,"discovery":"controlled_inventory"}`, CreatedAt: time.Now().Unix(), UpdatedAt: time.Now().Unix()})
+	}
+	r, ok := uc.repo.(UpstreamInventoryRepo)
+	if !ok {
+		return InventoryDiff{}, fmt.Errorf("inventory persistence unavailable")
+	}
+	return r.SaveUpstreamInventory(ctx, i)
+}

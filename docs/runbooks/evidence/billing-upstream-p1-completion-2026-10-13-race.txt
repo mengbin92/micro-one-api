@@ -1,0 +1,14 @@
+ok  	micro-one-api/domain/execution	1.487s
+ok  	micro-one-api/domain/upstream/evidence	(cached)
+ok  	micro-one-api/domain/billing	(cached)
+ok  	micro-one-api/internal/biz	1.707s
+ok  	micro-one-api/internal/data	2.938s
+ok  	micro-one-api/internal/server	7.025s
+ok  	micro-one-api/internal/service	1.887s
+ok  	micro-one-api/app/billing/internal/biz	1.744s
+ok  	micro-one-api/app/billing/internal/data	7.761s
+ok  	micro-one-api/app/billing/internal/service	1.492s
+ok  	micro-one-api/app/channel/internal/biz	(cached)
+ok  	micro-one-api/app/channel/internal/data	(cached)
+ok  	micro-one-api/app/monitor/internal/biz	(cached)
+ok  	micro-one-api/app/monitor/internal/data	1.769s

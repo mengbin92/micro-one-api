@@ -1,0 +1,22 @@
+=== RUN   TestDeepSeekCandidateObservedOfficialJSON
+--- PASS: TestDeepSeekCandidateObservedOfficialJSON (0.00s)
+=== RUN   TestDeepSeekCandidateObservedNullUsageSSE
+--- PASS: TestDeepSeekCandidateObservedNullUsageSSE (0.00s)
+=== RUN   TestDeepSeekCandidateCachePartitionAndUnknownDimensions
+--- PASS: TestDeepSeekCandidateCachePartitionAndUnknownDimensions (0.00s)
+=== RUN   TestDeepSeekCandidatePreservesLimitsAndRevisions
+--- PASS: TestDeepSeekCandidatePreservesLimitsAndRevisions (0.00s)
+=== RUN   TestDeepSeekCandidateStreamReplayNeverAddsCumulativeUsageTwice
+--- PASS: TestDeepSeekCandidateStreamReplayNeverAddsCumulativeUsageTwice (0.00s)
+=== RUN   TestDeepSeekCandidateOfficialPilotReplay
+=== RUN   TestDeepSeekCandidateOfficialPilotReplay/json_text
+=== RUN   TestDeepSeekCandidateOfficialPilotReplay/sse_text
+=== RUN   TestDeepSeekCandidateOfficialPilotReplay/json_tool
+=== RUN   TestDeepSeekCandidateOfficialPilotReplay/json_tool64
+--- PASS: TestDeepSeekCandidateOfficialPilotReplay (0.00s)
+    --- PASS: TestDeepSeekCandidateOfficialPilotReplay/json_text (0.00s)
+    --- PASS: TestDeepSeekCandidateOfficialPilotReplay/sse_text (0.00s)
+    --- PASS: TestDeepSeekCandidateOfficialPilotReplay/json_tool (0.00s)
+    --- PASS: TestDeepSeekCandidateOfficialPilotReplay/json_tool64 (0.00s)
+PASS
+ok  	micro-one-api/domain/upstream/evidence	0.394s

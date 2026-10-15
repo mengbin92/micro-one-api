@@ -1,0 +1,4 @@
+offline cost disabled plan: passed; no task claimed; network none
+offline repair disabled plan: passed; no task claimed; network none
+offline weekly disabled plan: passed; no task claimed; network none
+production operator profiles remain stopped

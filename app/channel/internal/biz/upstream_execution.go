@@ -2,6 +2,8 @@ package biz
 
 import (
 	"context"
+	"micro-one-api/domain/upstream/contract"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,6 +13,35 @@ import (
 // ClaimUpstreamExecution applies owner controls even when a route was cached or pinned.
 // CanRoute remains a read-only authorization check for catalogues and audits.
 func (uc *ChannelUsecase) ClaimUpstreamExecution(ctx context.Context, claim provider.ExecutionClaim) (provider.ExecutionLease, error) {
+	var contracts provider.ExecutionLease
+	if r, ok := uc.repo.(interface {
+		RequiresContractRuntime(context.Context, string, int64, string) (bool, error)
+	}); ok {
+		required, err := r.RequiresContractRuntime(ctx, claim.SourceKind, claim.SourceID, claim.UpstreamModelID)
+		if err != nil {
+			return contracts, err
+		}
+		if required && (os.Getenv("UPSTREAM_CONTRACTS_V1_ENABLED") != "true" || claim.RuntimeBuild != contract.BuildID) {
+			return contracts, ErrContractUnavailable
+		}
+	}
+
+	if os.Getenv("UPSTREAM_CONTRACTS_V1_ENABLED") == "true" {
+		r, err := uc.contracts()
+		if err != nil {
+			return contracts, err
+		}
+		contracts.Contracts, contracts.BlockedProtocols, contracts.ExecutionRevision, err = r.ResolveContracts(ctx, claim.SourceKind, claim.SourceID, claim.UpstreamModelID, claim.AttemptID)
+		if err != nil {
+			return contracts, err
+		}
+	}
+	wrap := func(lease provider.ExecutionLease, err error) (provider.ExecutionLease, error) {
+		lease.Contracts = contracts.Contracts
+		lease.BlockedProtocols = contracts.BlockedProtocols
+		lease.ExecutionRevision = provider.ConfigurationRevision(lease.ConfigurationRevision, contracts.ExecutionRevision, claim.RuntimeBuild)
+		return lease, err
+	}
 	uc.runtimeControlMu.Lock()
 	defer uc.runtimeControlMu.Unlock()
 	switch claim.SourceKind {
@@ -27,7 +58,7 @@ func (uc *ChannelUsecase) ClaimUpstreamExecution(ctx context.Context, claim prov
 		}
 		s.updateChannelLocked(channel)
 		state := s.channels[channel.ID]
-		return claimUpstreamExecution(&state.control, claim, state.breakerState(time.Now().UnixNano()), &state.circuitOpenUntil, &state.circuitProbeUntil, ErrChannelNotFound)
+		return wrap(claimUpstreamExecution(&state.control, claim, state.breakerState(time.Now().UnixNano()), &state.circuitOpenUntil, &state.circuitProbeUntil, ErrChannelNotFound))
 	case "subscription":
 		s := uc.accountSelector
 		s.mu.Lock()
@@ -40,7 +71,7 @@ func (uc *ChannelUsecase) ClaimUpstreamExecution(ctx context.Context, claim prov
 			return provider.ExecutionLease{}, ErrSubscriptionAccountNotFound
 		}
 		state := s.updateAccountLocked(account)
-		return claimUpstreamExecution(&state.control, claim, state.breakerState(time.Now().UnixNano()), &state.circuitOpenUntil, &state.circuitProbeUntil, ErrSubscriptionAccountNotFound)
+		return wrap(claimUpstreamExecution(&state.control, claim, state.breakerState(time.Now().UnixNano()), &state.circuitOpenUntil, &state.circuitProbeUntil, ErrSubscriptionAccountNotFound))
 	default:
 		return provider.ExecutionLease{}, ErrChannelNotFound
 	}

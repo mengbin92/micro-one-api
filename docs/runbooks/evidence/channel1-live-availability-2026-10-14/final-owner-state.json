@@ -1,0 +1,19 @@
+{
+  "circuit_opened_until": 0,
+  "finished_at_utc": "2026-10-14T00:09:17.187775003Z",
+  "inference_performed": false,
+  "owner_read_code": "OK",
+  "persistent_health_mutated": false,
+  "selections": [
+    {
+      "code": "OK",
+      "half_open_probe_lease": false,
+      "model": "DeepSeek-V4-Flash-0731",
+      "selected_channel_id": 1
+    }
+  ],
+  "source_id": 1,
+  "started_at_utc": "2026-10-14T00:09:17.179190993Z",
+  "stored_health_status": "healthy",
+  "stored_status": 1
+}

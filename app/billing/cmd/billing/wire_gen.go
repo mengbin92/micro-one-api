@@ -118,6 +118,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	uc.SetTxRunner(data.NewTxRunner(d))
 	uc.SetReceivableRepo(d.ReceivableRepo())
 	uc.SetPricingSnapshotRepo(d.PricingSnapshotRepo())
+	uc.SetVendorReconciliationRepo(data.NewVendorReconciliationRepo(d))
 	closeRouting := func() {}
 	if biz.RequestSnapshotsEnabled() {
 		reader, cleanup, err := routingclient.Dial(os.Getenv("CHANNEL_GRPC_ENDPOINT"))
@@ -262,6 +263,9 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	ctx, cancel := context.WithCancel(context.Background())
 	cleanupJob := biz.NewCleanupJob(uc, 1*time.Minute)
 	reconJobOpts := []biz.JobOption{biz.WithRecipients(recipients)}
+	if os.Getenv("BILLING_VENDOR_REPORT_MONITOR_V1") == "true" {
+		reconJobOpts = append(reconJobOpts, biz.WithVendorReportMonitoring(data.NewVendorReconciliationRepo(d)))
+	}
 	if notifier != nil {
 		reconJobOpts = append(reconJobOpts, biz.WithNotifier(notifier))
 	}

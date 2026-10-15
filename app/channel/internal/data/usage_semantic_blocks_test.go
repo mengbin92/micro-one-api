@@ -125,3 +125,31 @@ func TestUsageSemanticSourceBlocks_VerifiedDoesNotCreateHealthyRow(t *testing.T)
 	require.NoError(t, db.Model(&usageSemanticSourceBlockModel{}).Count(&count).Error)
 	assert.Zero(t, count)
 }
+
+func TestUnsupportedUsageRemainsIsolatedUntilExplicitResolve(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&usageSemanticSourceBlockModel{}))
+	r := &Repository{db: db}
+	now := time.Now()
+	ctx := context.Background()
+	v := biz.UsageSemanticVerdict{SourceKind: "channel", SourceID: 1, UpstreamModelID: "Exact", AdapterProtocol: "responses", ParseStatus: "unsupported", Reason: "unknown_usage_field"}
+	row, err := r.UpsertUsageSemanticVerdict(ctx, v, time.Minute, time.Minute, 3, now)
+	require.NoError(t, err)
+	require.Equal(t, biz.UsageSemanticBlockStatusUnsupported, row.Status)
+	blocks, err := r.ListBlockedUsageSemanticBlocks(ctx, now.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, blocks, 1)
+	v.ParseStatus = "verified"
+	_, err = r.UpsertUsageSemanticVerdict(ctx, v, time.Minute, time.Minute, 3, now.Add(24*time.Hour))
+	require.NoError(t, err)
+	blocks, err = r.ListBlockedUsageSemanticBlocks(ctx, now.Add(48*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, blocks, 1, "a later response cannot approve an unsupported contract")
+	ok, err := r.ResolveUsageSemanticBlock(ctx, "channel", 1, "Exact", "responses", now)
+	require.NoError(t, err)
+	require.True(t, ok)
+	blocks, err = r.ListBlockedUsageSemanticBlocks(ctx, now)
+	require.NoError(t, err)
+	require.Empty(t, blocks)
+}

@@ -1,0 +1,26 @@
+id	type	status	health_status	circuit_opened_until	authorization_revision
+1	1	1	healthy	0	8
+11	6	1	healthy	0	3
+id	model_id	status	is_public
+519	deepseek-flash	0	0
+channel_id	model_id	upstream_model_id	enabled
+1	1	qwen3.7-max	1
+1	2	MiniMax-M3	1
+1	143	Kimi-K3	1
+1	339	DeepSeek-V4-Flash-0731	1
+1	427	glm-5.3	1
+1	428	DeepSeek-V4-Pro-0813	1
+1	497	glm-5.3-flash	1
+1	517	qwen3.8-flash	1
+11	5	deepseek-v4-pro	0
+11	519	deepseek-flash	0
+id	models	attempt_id	observed_at
+channel:11	["deepseek-flash","deepseek-v4-pro"]	canary_4132aca6-9ab0-4d9f-9132-258170e1c259	1791955551
+target_id	outcome	http_status	created_at
+ch11-inventory-bodyless	inventory_observed	200	1791955551
+ch11-inventory-bodyless	inventory_observed	200	1791955114
+ch11-inventory-bodyless	inventory_observed	200	1791954536
+published_contract_bindings
+0
+vendor_reports
+0

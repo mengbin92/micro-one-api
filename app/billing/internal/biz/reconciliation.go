@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"micro-one-api/domain/authorization"
@@ -406,6 +407,9 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 			// subscription (BalanceAmount == 0) refunds zero to the
 			// wallet instead of minting the full Amount.
 			if err := uc.releaser.ReleaseReservation(ctx, res.ReservationID, "reconciliation: reservation expired", ReservationStatusExpired); err != nil {
+				if errors.Is(err, ErrReservationExpiryDeferred) {
+					continue
+				}
 				apploggerError(err, "release expired reservation during reconciliation")
 				continue
 			}

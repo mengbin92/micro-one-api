@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-13",
+  "baseline": "6071a995",
+  "stage": "P2.1 external reconciliation engineering",
+  "engineering_status": "verified",
+  "p2_overall_complete": false,
+  "deployed": false,
+  "charging_changed": false,
+  "real_vendor_report_imported": false,
+  "source_sha256": {
+    "app/billing/cmd/vendor-reconcile/main.go": "74862a473bc4a9706c90aac294ef7bab9836500d105467a364a4e49c3a77f5e9",
+    "app/billing/internal/biz/vendor_csv.go": "4ba62a79e04093a20062c2a70c624bc7b6a4c7a1d81a13ab58ad76158dab55de",
+    "app/billing/internal/biz/vendor_reconciliation.go": "a0afce4f961418b7251b66b0300415e1b3b6e9d2814f80f078fa014ec5b7d876",
+    "app/billing/internal/biz/vendor_reconciliation_test.go": "cebed1d522a7e98f46a5545f899c70c91d871809de2191d0b8dd58ba6da18b05",
+    "app/billing/internal/data/vendor_reconciliation.go": "0bf55af3491d8acfb420fd302be2b7dca5e277a5739df5c114bcbc1806517bbb",
+    "app/billing/internal/data/vendor_reconciliation_test.go": "56ff4a8dbada1914ae429d791f292a9de0bf5eb2d269218b54be52b6f0088122",
+    "deployments/docker-compose/docker-compose.lite.yml": "75948dcb054cfd30231c5b71c9dc9366645edca6b1c169f2fb3ad976980edb0f",
+    "deployments/docker-compose/docker-compose.postgres.yml": "0680ab3172e74cb15dd767b790dcbd97d0e3e23c8b961cfe25a883bcbb636932",
+    "deployments/docker-compose/docker-compose.yml": "31ba1d9b87d33c186f755ffe71713b9a7279d0755691f2a715483439f4992e2d",
+    "domain/upstream/evidence/http.go": "faa5dea4205df5a42d628d3e2f29d55af817faf9aea474221804f37024a6b0e7",
+    "domain/upstream/evidence/http_test.go": "b5ea11bc2942cc8df739110300cfc397f4b2fceb65e9cfdc39fc778da6dbf65d",
+    "internal/server/openai_ws_relay.go": "d9b1b188d7a314303c7dbe6167882f47ac9874078557b416fa4a5ce38cac1e44",
+    "internal/server/upstream_execution_time.go": "5b31af713448fcc3dfb7fa71acafbe6803faefcbb1670269f4b0d1e4c26ec758",
+    "internal/server/upstream_execution_time_test.go": "7722c4e05d22eeb27631c569c04296b0ba01ea29f9e8b133fb12ce335e298b9e",
+    "migrations/132_vendor_reconciliation.sql": "6b92e64fa80578d4979e7a5d7653b2c4424908af63dc992fb7da8c6836d39351",
+    "migrations/ownership.yaml": "71792d04cb280d23015780cf77afa3b055b2acac86a60ab8a6e019a2a4843687",
+    "migrations/postgres/132_vendor_reconciliation.sql": "b59b78304b8823bc48a8cb7cccaffaa744ab3c172e7e17f15a34b412248bb35f",
+    "migrations/sqlite/132_vendor_reconciliation.sql": "b59b78304b8823bc48a8cb7cccaffaa744ab3c172e7e17f15a34b412248bb35f",
+    "scripts/reconcile/checks.go": "5beb969a94da64da9ec7a79c94a462466fcb3994ab803d71ce82c87e709106d8",
+    "scripts/reconcile/testdata/p2/balance_only.csv": "34b17cae04ace04324ba71984d9144ccb8b67d9a52da182970e86bf55b8859ee",
+    "scripts/reconcile/testdata/p2/monthly.csv": "ced5c41d79c3e6f3d772d981daa0179f27844d90a9851fc899d26fe9bdfb850b",
+    "scripts/reconcile/testdata/p2/pending.csv": "ee7a16f15d6c69899a3b6c6570168ec67bd82f62167c6975f0af4d154da30732",
+    "scripts/reconcile/testdata/p2/tokens.csv": "ee7a16f15d6c69899a3b6c6570168ec67bd82f62167c6975f0af4d154da30732",
+    "scripts/reconcile/testdata/p2/unknown.csv": "34b17cae04ace04324ba71984d9144ccb8b67d9a52da182970e86bf55b8859ee",
+    "scripts/reconcile/testdata/p2/zero-variance.csv": "ec7b62d0c29620e340333ed26a2623d31c08e2681c0a67b9e83e80b6dd020c9f",
+    "scripts/reconcile/vendor_bill.example.csv": "ee7a16f15d6c69899a3b6c6570168ec67bd82f62167c6975f0af4d154da30732"
+  },
+  "checks": [
+    {
+      "check": "unit",
+      "passed": true,
+      "evidence": "billing-upstream-p2-external-2026-10-13-unit.txt"
+    },
+    {
+      "check": "race",
+      "passed": true,
+      "evidence": "billing-upstream-p2-external-2026-10-13-race.txt"
+    },
+    {
+      "check": "sqlite_mysql_postgres_import_and_correction",
+      "passed": true,
+      "evidence": "billing-upstream-p2-external-2026-10-13-sql.txt"
+    },
+    {
+      "check": "six_offline_cli_scenarios",
+      "passed": true,
+      "synthetic": true,
+      "evidence": "billing-upstream-p2-external-2026-10-13-cli.json"
+    },
+    {
+      "check": "vet_and_architecture",
+      "passed": true,
+      "evidence": "billing-upstream-p2-external-2026-10-13-architecture.txt"
+    },
+    {
+      "check": "make_all_native_cli_build_diff_check_shell_syntax",
+      "passed": true
+    },
+    {
+      "check": "optional_cgo_disabled_linux_amd64_cli_build",
+      "passed": false,
+      "reason": "Existing platform/database/xdb needs CGO sqlite3.Error/ErrBusy; no amd64 artifact delivered."
+    }
+  ],
+  "remaining": [
+    "P2 typed contracts/CAS/runtime rules and persistent incident recovery",
+    "Independent representative real vendor periods and evidence authentication",
+    "IAM/API/day-report integration",
+    "Production artifact and deployment using existing CGO/buildx flow"
+  ]
+}

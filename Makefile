@@ -8,7 +8,7 @@ VERSION := $(shell git describe --tags --always 2>/dev/null || git rev-parse --s
 include scripts/tool-versions.env
 # Export the pinned versions into recipe environments so shell-level indirect
 # expansion (e.g. ${!var} in tools-upgrade-check) sees them.
-export BUF_VERSION WIRE_VERSION GOSEC_VERSION GOVULNCHECK_VERSION GITLEAKS_VERSION SYFT_VERSION GO_LICENSES_VERSION
+export BUF_VERSION WIRE_VERSION GOSEC_VERSION GOSEC_X_TOOLS_VERSION GOVULNCHECK_VERSION GITLEAKS_VERSION SYFT_VERSION GO_LICENSES_VERSION
 
 .PHONY: init
 # init env: buf + protobuf generators (versions pinned to match go.mod) + wire
@@ -29,6 +29,7 @@ tools-upgrade-check:
 	  "BUF_VERSION=github.com/bufbuild/buf" \
 	  "WIRE_VERSION=github.com/google/wire" \
 	  "GOSEC_VERSION=github.com/securego/gosec/v2" \
+	  "GOSEC_X_TOOLS_VERSION=golang.org/x/tools" \
 	  "GOVULNCHECK_VERSION=golang.org/x/vuln" \
 	  "GITLEAKS_VERSION=github.com/zricethezav/gitleaks/v8" \
 	  "SYFT_VERSION=github.com/anchore/syft" \
@@ -187,7 +188,7 @@ test-integration: proto
 # platform/security/auth carries the in-process JWT revocation blocklist
 # (global map + RWMutex) so its concurrent-access test runs under race too.
 test-race:
-	go test -race ./domain/subscription/... ./internal/biz/... ./internal/server/... ./app/billing/... ./app/admin/... ./platform/security/auth/... ./platform/routingoutbox/... ./platform/grpc/xgrpc/...
+	go test -race ./domain/operations/... ./domain/subscription/... ./domain/upstream/evidence/... ./domain/upstream/contract/... ./domain/upstream/repair/... ./app/channel/internal/data/... ./internal/biz/... ./internal/server/... ./app/billing/... ./app/admin/... ./platform/security/auth/... ./platform/routingoutbox/... ./platform/grpc/xgrpc/...
 
 .PHONY: run-identity
 # run identity-service
@@ -432,9 +433,7 @@ migrate-status: migrate-prereq
 security-scan:
 	@echo "Running security scans..."
 	@echo "1. Running gosec (SAST)..."
-	@if ! command -v gosec &> /dev/null; then \
-		go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION); \
-	fi
+	@./scripts/install-gosec.sh
 	@gosec -exclude-generated -exclude=G104 -exclude-dir=web/node_modules ./... || echo "gosec found issues"
 	@echo "2. Running govulncheck (SCA)..."
 	@if ! command -v govulncheck &> /dev/null; then \
@@ -451,9 +450,7 @@ security-scan:
 .PHONY: security-sast
 # run static application security testing
 security-sast:
-	@if ! command -v gosec &> /dev/null; then \
-		go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION); \
-	fi
+	@./scripts/install-gosec.sh
 	@gosec -fmt json -out gosec-report.json -exclude-generated -exclude=G104 -exclude-dir=web/node_modules ./...
 
 .PHONY: security-sca

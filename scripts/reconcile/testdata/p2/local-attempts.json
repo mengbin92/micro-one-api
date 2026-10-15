@@ -1,0 +1,49 @@
+[
+  {
+    "attempt_id": "user-attempt",
+    "reservation_id": "user-reservation",
+    "source_kind": "channel",
+    "source_id": 1,
+    "upstream_model_id": "vendor/Exact",
+    "provider_request_id": "user-supplier-id",
+    "purpose": "user",
+    "executed_at": "2026-10-01T12:00:00Z",
+    "complete": true,
+    "buckets": [
+      400,
+      600,
+      0,
+      0,
+      100
+    ],
+    "estimated_amount": "0.1",
+    "currency": "USD",
+    "unit": "currency",
+    "evidence_ids": [
+      "synthetic-user-terminal"
+    ]
+  },
+  {
+    "attempt_id": "canary-attempt",
+    "source_kind": "channel",
+    "source_id": 1,
+    "upstream_model_id": "vendor/Exact",
+    "provider_request_id": "canary-supplier-id",
+    "purpose": "canary",
+    "executed_at": "2026-10-01T12:00:01Z",
+    "complete": true,
+    "buckets": [
+      10,
+      0,
+      0,
+      0,
+      2
+    ],
+    "estimated_amount": "0.02",
+    "currency": "USD",
+    "unit": "currency",
+    "evidence_ids": [
+      "synthetic-canary-terminal"
+    ]
+  }
+]

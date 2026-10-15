@@ -1,0 +1,11 @@
+{
+  "outbox_status_counts": [
+    [
+      "acknowledged",
+      85
+    ]
+  ]
+}
+/relay-gateway started 2026-10-14T05:20:50.540701097Z
+/monitor-worker started 2026-10-14T05:20:57.558609446Z
+DeepSeek inventory observed_at=1791955551 (2026-10-14T05:25:51Z), outcome=inventory_observed, HTTP=200

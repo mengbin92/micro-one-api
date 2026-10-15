@@ -17,6 +17,7 @@ import (
 
 	billingv1 "micro-one-api/api/billing/v1"
 	relaycredential "micro-one-api/domain/upstream/credential"
+	"micro-one-api/domain/upstream/evidence"
 	relayprovider "micro-one-api/domain/upstream/provider"
 	relayadaptor "micro-one-api/internal/adaptor"
 	relaybiz "micro-one-api/internal/biz"
@@ -649,7 +650,13 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	}
 	result.upstreamAttempted = true
 	result.streaming = isStream
-	resp, err := client.Do(upstreamReq) // #nosec G704 -- the adaptor URL is validated immediately above.
+	ctx = s.observeNativeUsage(ctx, plan.Channel, requestID, plan.ResolvedModel)
+	upstreamReq = upstreamReq.WithContext(ctx)
+	protocol := string(upstreamFmt)
+	if upstreamFmt == relayadaptor.FormatOpenAIChatCompletions {
+		protocol = "openai_chat"
+	}
+	resp, err := evidence.Do(client, upstreamReq, protocol)
 	if err != nil {
 		if accountUsage {
 			_ = s.releaseQuota(ctx, reservation.GetReservationId(), "upstream call failed")
@@ -788,6 +795,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 				logInput.applyPlanInputs(plan)
 				logInput.applyReservation(reservation)
 				logInput.applyEnvelope(envelopeFromRawUsage(actualUsage))
+				compareNativeUsageShadow(ctx, logInput.Usage)
 				if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 					s.logPostResponseCommitError(err)
 				} else {
@@ -866,6 +874,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 			logInput.applyPlanInputs(plan)
 			logInput.applyReservation(reservation)
 			logInput.applyEnvelope(envelopeFromRawUsage(usage))
+			compareNativeUsageShadow(ctx, logInput.Usage)
 			if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				s.logPostResponseCommitError(err)
 			} else {

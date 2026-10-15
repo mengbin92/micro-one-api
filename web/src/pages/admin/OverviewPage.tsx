@@ -1,3 +1,4 @@
+import { CHANNEL_PROVIDER_NAMES as PROVIDER_NAMES } from '@/lib/channel-providers';
 import { useAuthorizedQuery } from '@/lib/authorization';
 import { useMemo } from 'react';
 import { Tabs } from '@base-ui/react/tabs';
@@ -144,20 +145,7 @@ interface AdminSummary {
   } | null;
 }
 
-const PROVIDER_NAMES: Record<number, string> = {
-  1: 'OpenAI',
-  2: 'Anthropic',
-  3: 'Azure',
-  4: 'Gemini',
-  14: 'DeepSeek',
-  23: 'OpenRouter',
-  32: 'CodexOAuth',
-  33: 'ClaudeOAuth',
-  34: 'ZhipuPlan',
-  35: 'MinimaxPlan',
-  36: 'KimiOAuth',
-  37: 'SiliconFlow',
-};
+
 
 const LOG_TYPE_NAMES: Record<string, string> = {
   consume: '调用',

@@ -52,7 +52,8 @@ type Planner interface {
 // QuotaReservation is the transport-neutral handle passed between reserve,
 // commit, and release.
 type QuotaReservation struct {
-	ID string
+	Context context.Context
+	ID      string
 }
 
 // QuotaPort owns the quota lifecycle for one execution attempt.

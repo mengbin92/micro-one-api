@@ -26,12 +26,10 @@ case ":$PATH:" in
 esac
 
 . "$REPO_ROOT/scripts/tool-versions.env"
-if ! command -v gosec >/dev/null 2>&1; then
-	echo "pre-push: gosec not found; installing ${GOSEC_VERSION}..." >&2
-	if ! go install "github.com/securego/gosec/v2/cmd/gosec@${GOSEC_VERSION}"; then
-		echo "pre-push: failed to install gosec ${GOSEC_VERSION}." >&2
-		exit 1
-	fi
+GOSEC_BIN=$(command -v gosec 2>/dev/null || printf '%s/gosec' "$GOBIN")
+if ! "$REPO_ROOT/scripts/install-gosec.sh" "$GOSEC_BIN"; then
+	echo "pre-push: failed to install compatible pinned gosec ${GOSEC_VERSION}." >&2
+	exit 1
 fi
 
 echo "pre-push: running gosec..."

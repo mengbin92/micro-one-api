@@ -13,6 +13,7 @@ import (
 
 // ReconciliationJob runs periodic billing reconciliation tasks.
 type ReconciliationJob struct {
+	vendorReports VendorReconciliationRepo
 	uc            *ReconciliationUsecase
 	notifier      Notifier
 	recipients    []string
@@ -95,6 +96,7 @@ func (j *ReconciliationJob) Stop() {
 }
 
 func (j *ReconciliationJob) runReconciliation(ctx context.Context) {
+	j.monitorVendorReports(ctx, time.Now().UTC())
 	result, err := j.uc.RunReconciliation(ctx)
 	if err != nil {
 		applogger.Log.Error("reconciliation failed", zap.Error(err))

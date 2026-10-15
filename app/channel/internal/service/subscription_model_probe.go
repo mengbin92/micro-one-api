@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -219,6 +220,9 @@ func (s *CodexModelProbeService) syncModelsForAccount(ctx context.Context, accou
 	// replaying the platform-wide discovery candidates.
 	if len(account.Models) > 0 {
 		return s.syncRegistryModelsForAccount(ctx, account, account.Models)
+	}
+	if os.Getenv("UPSTREAM_PROBES_ENABLED") == "true" {
+		return nil
 	}
 	models, err := s.ProbeAccountModels(ctx, account)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/domain/authorization"
+	"micro-one-api/domain/upstream/contract"
 	"micro-one-api/platform/database/authzquery"
 )
 
@@ -21,7 +22,7 @@ type usageSemanticSourceBlockModel struct {
 	ID                   int64      `gorm:"column:id;primaryKey;autoIncrement"`
 	SourceKind           string     `gorm:"column:source_kind;uniqueIndex:uk_usage_semantic_block_key,priority:1"`
 	SourceID             int64      `gorm:"column:source_id;uniqueIndex:uk_usage_semantic_block_key,priority:2"`
-	UpstreamModelID      string     `gorm:"column:upstream_model_id;uniqueIndex:uk_usage_semantic_block_key,priority:3"`
+	UpstreamModelID      string     `gorm:"column:upstream_model_id;size:255;uniqueIndex:uk_usage_semantic_block_key,priority:3"`
 	AdapterProtocol      string     `gorm:"column:adapter_protocol;uniqueIndex:uk_usage_semantic_block_key,priority:4"`
 	Status               string     `gorm:"column:status"`
 	Reason               string     `gorm:"column:reason"`
@@ -89,7 +90,7 @@ func (r *Repository) UpsertUsageSemanticVerdict(ctx context.Context, verdict biz
 		UpstreamModelID: verdict.UpstreamModelID,
 		AdapterProtocol: verdict.AdapterProtocol,
 	}
-	if verdict.ParseStatus != "verified" && verdict.ParseStatus != "ambiguous" {
+	if verdict.ParseStatus != "verified" && verdict.ParseStatus != "ambiguous" && verdict.ParseStatus != "unsupported" && verdict.ParseStatus != "invalid" && verdict.ParseStatus != "missing" {
 		return nil, nil
 	}
 
@@ -97,7 +98,7 @@ func (r *Repository) UpsertUsageSemanticVerdict(ctx context.Context, verdict biz
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// A verified request without prior ambiguous state has nothing to
 		// reset. Avoid creating a quarantine row for every healthy request.
-		if verdict.ParseStatus == "ambiguous" {
+		if verdict.ParseStatus != "verified" {
 			seed := key
 			seed.Status = biz.UsageSemanticBlockStatusActive
 			seed.CreatedAt = now
@@ -124,12 +125,12 @@ func (r *Repository) UpsertUsageSemanticVerdict(ctx context.Context, verdict biz
 			updates["last_verified_at"] = now
 			if row.Status == "" {
 				updates["status"] = biz.UsageSemanticBlockStatusActive
-			} else if row.Status == biz.UsageSemanticBlockStatusBlocked && row.BlockedUntil != nil && !row.BlockedUntil.After(now) {
+			} else if row.Status == biz.UsageSemanticBlockStatusBlocked && row.BlockedUntil != nil && !row.BlockedUntil.After(now) && contractSemanticResolveAllowed(r, tx, contract.Scope{Kind: row.SourceKind, ID: row.SourceID, Model: row.UpstreamModelID, Protocol: row.AdapterProtocol}, now) {
 				// Quarantine expired and a verified verdict arrived: auto-reactivate.
 				updates["status"] = biz.UsageSemanticBlockStatusActive
 				updates["blocked_until"] = nil
 			}
-		case "ambiguous":
+		case "ambiguous", "unsupported", "invalid", "missing":
 			windowStart := now
 			consecutive := int32(1)
 			if row.WindowStartedAt != nil && now.Sub(*row.WindowStartedAt) <= window {
@@ -145,6 +146,10 @@ func (r *Repository) UpsertUsageSemanticVerdict(ctx context.Context, verdict biz
 				updates["status"] = biz.UsageSemanticBlockStatusBlocked
 				updates["blocked_until"] = blockedUntil
 			}
+		}
+		if verdict.ParseStatus == "unsupported" || row.Status == biz.UsageSemanticBlockStatusUnsupported {
+			updates["status"] = biz.UsageSemanticBlockStatusUnsupported
+			updates["blocked_until"] = nil
 		}
 		if err := tx.Model(&row).Updates(updates).Error; err != nil {
 			return err
@@ -166,8 +171,32 @@ func (r *Repository) ListBlockedUsageSemanticBlocks(ctx context.Context, now tim
 		return nil, nil
 	}
 	var rows []usageSemanticSourceBlockModel
+	db := r.db.WithContext(ctx)
+	if db.Migrator().HasTable(&contractBindingModel{}) {
+		var bindings []contractBindingModel
+		if err := db.Where("current_revision <> ?", "").Find(&bindings).Error; err != nil {
+			return nil, err
+		}
+		if err := db.Where("status IN ?", []string{biz.UsageSemanticBlockStatusBlocked, biz.UsageSemanticBlockStatusUnsupported}).Find(&rows).Error; err != nil {
+			return nil, err
+		}
+		var out []biz.UsageSemanticBlock
+		for _, row := range rows {
+			keep := row.Status == biz.UsageSemanticBlockStatusUnsupported || row.BlockedUntil != nil && row.BlockedUntil.After(now)
+			for _, b := range bindings {
+				if b.Current != "" && b.SourceKind == row.SourceKind && b.SourceID == row.SourceID && b.Model == row.UpstreamModelID && b.Protocol == row.AdapterProtocol {
+					keep = true
+				}
+			}
+			if keep {
+				out = append(out, usageSemanticBlockToBiz(&row))
+			}
+		}
+		return out, nil
+	}
+
 	err := r.db.WithContext(ctx).
-		Where("status = ? AND blocked_until > ?", biz.UsageSemanticBlockStatusBlocked, now).
+		Where("(status = ? AND blocked_until > ?) OR status = ?", biz.UsageSemanticBlockStatusBlocked, now, biz.UsageSemanticBlockStatusUnsupported).
 		Find(&rows).Error
 	if err != nil {
 		return nil, err
@@ -206,7 +235,10 @@ func (r *Repository) ResolveUsageSemanticBlock(ctx context.Context, sourceKind s
 			if expected == 0 || expected > math.MaxInt64 || int64(expected) != row.Revision {
 				return authorization.ErrWriteConflict
 			}
-			if row.Status != biz.UsageSemanticBlockStatusBlocked {
+			if !contractSemanticResolveAllowed(r, tx, contract.Scope{Kind: sourceKind, ID: sourceID, Model: upstreamModelID, Protocol: adapterProtocol}, now) {
+				return biz.ErrContractGate
+			}
+			if row.Status != biz.UsageSemanticBlockStatusBlocked && row.Status != biz.UsageSemanticBlockStatusUnsupported {
 				return nil
 			}
 			if err := tx.Model(&row).Updates(map[string]any{"status": biz.UsageSemanticBlockStatusResolved, "consecutive_ambiguous": 0, "window_started_at": nil, "blocked_until": nil, "updated_at": now, "revision": row.Revision + 1}).Error; err != nil {
@@ -220,9 +252,12 @@ func (r *Repository) ResolveUsageSemanticBlock(ctx context.Context, sourceKind s
 	if r.db == nil {
 		return false, nil
 	}
+	if !contractSemanticResolveAllowed(r, r.db.WithContext(ctx), contract.Scope{Kind: sourceKind, ID: sourceID, Model: upstreamModelID, Protocol: adapterProtocol}, now) {
+		return false, biz.ErrContractGate
+	}
 	res := r.db.WithContext(ctx).Model(&usageSemanticSourceBlockModel{}).
-		Where("source_kind = ? AND source_id = ? AND upstream_model_id = ? AND adapter_protocol = ? AND status = ?",
-			sourceKind, sourceID, upstreamModelID, adapterProtocol, biz.UsageSemanticBlockStatusBlocked).
+		Where("source_kind = ? AND source_id = ? AND upstream_model_id = ? AND adapter_protocol = ? AND status IN ?",
+			sourceKind, sourceID, upstreamModelID, adapterProtocol, []string{biz.UsageSemanticBlockStatusBlocked, biz.UsageSemanticBlockStatusUnsupported}).
 		Updates(map[string]any{
 			"status":                biz.UsageSemanticBlockStatusResolved,
 			"consecutive_ambiguous": 0,
@@ -248,7 +283,7 @@ func (r *Repository) ListUsageSemanticBlocks(ctx context.Context, onlyBlocked bo
 		return nil, 0, scopeErr
 	}
 	if onlyBlocked {
-		query = query.Where("status = ?", biz.UsageSemanticBlockStatusBlocked)
+		query = query.Where("status IN ?", []string{biz.UsageSemanticBlockStatusBlocked, biz.UsageSemanticBlockStatusUnsupported})
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -272,4 +307,21 @@ func (r *Repository) ListUsageSemanticBlocks(ctx context.Context, onlyBlocked bo
 		out[i] = usageSemanticBlockToBiz(&rows[i])
 	}
 	return out, total, nil
+}
+
+func (r *Repository) UsageV2Available(ctx context.Context) bool {
+	if r.db == nil || !r.db.WithContext(ctx).Migrator().HasTable(&usageSemanticSourceBlockModel{}) {
+		return false
+	}
+	columns, err := r.db.Migrator().ColumnTypes(&usageSemanticSourceBlockModel{})
+	if err != nil {
+		return false
+	}
+	for _, column := range columns {
+		if column.Name() == "upstream_model_id" {
+			length, known := column.Length()
+			return !known || length >= 255
+		}
+	}
+	return false
 }

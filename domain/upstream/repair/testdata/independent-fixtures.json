@@ -1,0 +1,117 @@
+{
+  "authority": "maintainer-independent-matrix",
+  "basis_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "scope": {
+    "source_kind": "channel",
+    "source_id": 1,
+    "upstream_model_id": "vendor/Exact",
+    "protocol": "openai_chat"
+  },
+  "fixtures": [
+    {
+      "id": "null-and-unknown",
+      "request": {
+        "old_option": null,
+        "unknown": true
+      },
+      "expected_request": {
+        "new_option": null,
+        "unknown": true
+      },
+      "response": {
+        "usage": {
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "total_tokens": 0
+        }
+      },
+      "status": "verified",
+      "complete": false,
+      "buckets": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "conflict-rejection",
+      "request": {
+        "old_option": 1,
+        "new_option": 2
+      },
+      "reject": true,
+      "status": "",
+      "complete": false
+    },
+    {
+      "id": "duplicate-stream-terminal",
+      "request": {
+        "old_option": 0
+      },
+      "expected_request": {
+        "new_option": 0
+      },
+      "frames": [
+        {
+          "choices": [
+            {
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 1,
+            "completion_tokens": 1,
+            "total_tokens": 2
+          }
+        },
+        {
+          "choices": [
+            {
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 1,
+            "completion_tokens": 1,
+            "total_tokens": 2
+          }
+        },
+        "[DONE]"
+      ],
+      "status": "verified",
+      "complete": true,
+      "buckets": [
+        1,
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "unknown-meter",
+      "request": {},
+      "expected_request": {},
+      "response": {
+        "usage": {
+          "prompt_tokens": 1,
+          "completion_tokens": 1,
+          "total_tokens": 2,
+          "extra_billable_tokens": 10
+        }
+      },
+      "status": "unsupported",
+      "complete": false
+    },
+    {
+      "id": "missing-usage",
+      "request": {},
+      "expected_request": {},
+      "response": {},
+      "status": "missing",
+      "complete": false
+    }
+  ]
+}

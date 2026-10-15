@@ -8,8 +8,7 @@
 //	go run ./scripts/reconcile/checks.go \
 //	    -dsn "$DATABASE_DSN" \
 //	    [-since 24h] \
-//	    [-vendor-bill vendor_bill.csv] \
-//	    [-vendor-tolerance 0.05] \
+//	    [-vendor-bill vendor_bill.csv -vendor-manifest manifest.json -vendor-out /absolute/report.json] \
 //	    [-unpriced-max 0] \
 //	    [-cache-hit-min 0.5]
 //
@@ -19,13 +18,14 @@
 package main
 
 import (
+	"context"
 	"database/sql"
-	"encoding/csv"
 	"flag"
 	"fmt"
-	"io"
 	"os"
+	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,6 +54,8 @@ type options struct {
 	dsn             string
 	since           time.Duration
 	vendorBill      string
+	vendorManifest  string
+	vendorOutput    string
 	vendorTolerance float64
 	unpricedMax     int
 	cacheHitMin     float64
@@ -68,7 +70,9 @@ func main() {
 	flag.StringVar(&dsnFlag, "dsn", "", "MySQL DSN (default: $RECONCILE_DSN, then $DATABASE_DSN)")
 	flag.StringVar(&sinceFlag, "since", "24h", "reporting window, e.g. 24h / 7d")
 	flag.StringVar(&opts.vendorBill, "vendor-bill", "", "optional vendor invoice CSV path")
-	flag.Float64Var(&opts.vendorTolerance, "vendor-tolerance", 0.05, "relative tolerance for vendor bill comparison (0.05 = 5%)")
+	flag.Float64Var(&opts.vendorTolerance, "vendor-tolerance", 0, "deprecated; external tolerances must be fixed in the evidenced report manifest")
+	flag.StringVar(&opts.vendorManifest, "vendor-manifest", "", "fixed supplier scope/watermark/account mapping manifest JSON")
+	flag.StringVar(&opts.vendorOutput, "vendor-out", "", "absolute new external reconciliation JSON report")
 	flag.IntVar(&opts.unpricedMax, "unpriced-max", 0, "max tolerated counted-but-unbilled cache-creation ledger rows in window")
 	flag.Float64Var(&opts.cacheHitMin, "cache-hit-min", 0, "warn when cache hit rate (口径 §2.5) is below this fraction; 0 disables")
 	flag.Parse()
@@ -151,7 +155,7 @@ func runChecks(db *sql.DB, opts options, rep *report) {
 	rep.add("== cache hit rate (口径: cache_read / (cache_read + cache_creation)) ==")
 	checkCacheHitRate(db, cutoff, opts.cacheHitMin, rep)
 
-	rep.add("== gross margin (since %s) ==", opts.since.String())
+	rep.add("== configured ledger margin estimate, not supplier-confirmed (since %s) ==", opts.since.String())
 	checkGrossMargin(db, cutoff, rep)
 
 	rep.add("== token buckets by provider family (since %s) ==", opts.since.String())
@@ -291,12 +295,15 @@ func checkCacheHitRate(db *sql.DB, cutoff time.Time, min float64, rep *report) {
 	rep.ok("cache hit rate: %.2f%% (read=%d, cacheable=%d)", rate*100, read, cacheable)
 }
 
+const ledgerReferenceGroup = "CASE WHEN reference_id <> '' THEN CONCAT('reservation:', reference_id) ELSE CONCAT('ledger:', id) END"
+
 func checkGrossMargin(db *sql.DB, cutoff time.Time, rep *report) {
 	var gross int64
 	var rows int64
 	err := db.QueryRow(
-		"SELECT COALESCE(SUM(ABS(amount) - upstream_cost), 0), COUNT(*) "+
-			"FROM billing_ledgers WHERE type = 'consume' AND created_at >= ?",
+		"SELECT COALESCE(SUM(customer_quota - estimated_quota), 0), COUNT(*) FROM ("+
+			"SELECT SUM(ABS(amount)) AS customer_quota, MAX(upstream_cost) AS estimated_quota "+
+			"FROM billing_ledgers WHERE type = 'consume' AND created_at >= ? GROUP BY "+ledgerReferenceGroup+", model_name) AS reservations",
 		cutoff,
 	).Scan(&gross, &rows)
 	if err != nil {
@@ -304,10 +311,10 @@ func checkGrossMargin(db *sql.DB, cutoff time.Time, rep *report) {
 		return
 	}
 	if gross < 0 {
-		rep.discrepancy("gross margin negative: %d quota over %d ledger rows (售价低于上游成本)", gross, rows)
+		rep.discrepancy("configured ledger margin estimate negative: %d quota over %d ledger rows (售价低于上游成本)", gross, rows)
 		return
 	}
-	rep.ok("gross margin: %d quota over %d ledger rows", gross, rows)
+	rep.ok("configured ledger margin estimate: %d quota over %d ledger rows", gross, rows)
 }
 
 type familyTotals struct {
@@ -333,17 +340,13 @@ func printBucketTotals(db *sql.DB, cutoff time.Time, rep *report) {
 	}
 }
 
-// aggregateFamilies groups consume-ledger token buckets by provider family
+// aggregateFamilies groups each reservation once by display-only provider family
 // (the same low-cardinality heuristic billing uses for metrics).
 func aggregateFamilies(db *sql.DB, cutoff time.Time) map[string]*familyTotals {
 	rows, err := db.Query(
-		"SELECT model_name, "+
-			"COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0), "+
-			"COALESCE(SUM(cache_read_tokens), 0), "+
-			"COALESCE(SUM(cache_creation_5m_tokens), 0), COALESCE(SUM(cache_creation_1h_tokens), 0), "+
-			"COALESCE(SUM(upstream_cost), 0), COUNT(*) "+
-			"FROM billing_ledgers WHERE type = 'consume' AND created_at >= ? "+
-			"GROUP BY model_name",
+		"SELECT model_name, MAX(prompt_tokens), MAX(completion_tokens), MAX(cache_read_tokens), "+
+			"MAX(cache_creation_5m_tokens), MAX(cache_creation_1h_tokens), MAX(upstream_cost), COUNT(*) "+
+			"FROM billing_ledgers WHERE type = 'consume' AND created_at >= ? GROUP BY "+ledgerReferenceGroup+", model_name",
 		cutoff,
 	)
 	if err != nil {
@@ -369,157 +372,33 @@ func aggregateFamilies(db *sql.DB, cutoff time.Time) map[string]*familyTotals {
 		t.creation5m += c5
 		t.creation1h += c1
 		t.upstreamQuota += up
-		t.rows += n
+		t.rows++
 	}
 	return out
 }
 
-type vendorRow struct {
-	family string
-	date   string
-	fields [6]int64 // creation5m, creation1h, cacheRead, prompt, completion, upstreamQuota
-}
-
-func checkVendorBill(db *sql.DB, cutoff time.Time, opts options, rep *report) {
-	file, err := os.Open(opts.vendorBill)
+// checkVendorBill delegates to the billing-owned P2 evidence command. The old
+// model-family/DATE(created_at)/consume SUM comparison cannot establish supplier
+// scope and is deliberately rejected rather than emitting a false PASS.
+func checkVendorBill(_ *sql.DB, _ time.Time, opts options, rep *report) {
+	if opts.vendorManifest == "" || opts.vendorOutput == "" || opts.vendorTolerance != 0 {
+		rep.discrepancy("vendor comparison requires -vendor-manifest and -vendor-out; set evidenced unit/rounding tolerances in the manifest; legacy family CSV is unsupported")
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	// #nosec G204 -- The executable/package and flags are fixed; operator file paths are separate argv values, never shell input.
+	cmd := exec.CommandContext(ctx, "go", "run", "./app/billing/cmd/vendor-reconcile", "-manifest", opts.vendorManifest, "-vendor-bill", opts.vendorBill, "-out", opts.vendorOutput)
+	cmd.Env = append(os.Environ(), "VENDOR_RECONCILE_DSN="+opts.dsn)
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		rep.discrepancy("open vendor bill %s: %v", opts.vendorBill, err)
+		rep.discrepancy("external reconciliation did not pass: %s", strings.TrimSpace(string(output)))
 		return
 	}
-	defer file.Close()
-	r := csv.NewReader(file)
-	r.FieldsPerRecord = -1
-	header, err := r.Read()
-	if err != nil {
-		rep.discrepancy("read vendor bill header: %v", err)
-		return
-	}
-	col := headerIndex(header, "provider_family", "date", "cache_creation_5m_tokens", "cache_creation_1h_tokens", "cache_read_tokens", "prompt_tokens", "completion_tokens", "upstream_quota")
-	if len(col) != 8 {
-		rep.discrepancy("vendor bill header must contain provider_family,date,cache_creation_5m_tokens,cache_creation_1h_tokens,cache_read_tokens,prompt_tokens,completion_tokens,upstream_quota — got %v", header)
-		return
-	}
-
-	vendor := make(map[string]*vendorRow)
-	for {
-		rec, err := r.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			rep.discrepancy("read vendor bill row: %v", err)
-			return
-		}
-		row := &vendorRow{family: strings.ToLower(strings.TrimSpace(rec[col[0]])), date: rec[col[1]]}
-		for i := range 6 {
-			n, perr := parseInt64(rec[col[i+2]])
-			if perr != nil {
-				rep.discrepancy("vendor bill row %s/%s field %q: %v", row.family, row.date, header[col[i+2]], perr)
-				return
-			}
-			row.fields[i] = n
-		}
-		key := row.family + "|" + row.date
-		if _, dup := vendor[key]; dup {
-			rep.discrepancy("duplicate vendor bill row %s/%s", row.family, row.date)
-		}
-		vendor[key] = row
-	}
-	if len(vendor) == 0 {
-		rep.discrepancy("vendor bill %s contains no data rows", opts.vendorBill)
-		return
-	}
-
-	// DB side: per model+day totals, then aggregate by family+day in Go.
-	rows, err := db.Query(
-		"SELECT model_name, DATE(created_at), "+
-			"COALESCE(SUM(cache_creation_5m_tokens), 0), COALESCE(SUM(cache_creation_1h_tokens), 0), "+
-			"COALESCE(SUM(cache_read_tokens), 0), COALESCE(SUM(prompt_tokens), 0), "+
-			"COALESCE(SUM(completion_tokens), 0), COALESCE(SUM(upstream_cost), 0) "+
-			"FROM billing_ledgers WHERE type = 'consume' AND created_at >= ? GROUP BY model_name, DATE(created_at)",
-		cutoff,
-	)
-	if err != nil {
-		rep.discrepancy("query ledger buckets for vendor comparison: %v", err)
-		return
-	}
-	defer rows.Close()
-	actual := make(map[string]*vendorRow)
-	for rows.Next() {
-		var model, date string
-		row := &vendorRow{}
-		if err := rows.Scan(&model, &date, &row.fields[0], &row.fields[1], &row.fields[2], &row.fields[3], &row.fields[4], &row.fields[5]); err != nil {
-			rep.discrepancy("scan ledger buckets: %v", err)
-			return
-		}
-		key := providerFamilyForModel(model) + "|" + date
-		t := actual[key]
-		if t == nil {
-			t = &vendorRow{family: providerFamilyForModel(model), date: date}
-			actual[key] = t
-		}
-		for i := range 6 {
-			t.fields[i] += row.fields[i]
-		}
-	}
-
-	keys := make([]string, 0, len(vendor))
-	for k := range vendor {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	names := []string{"creation_5m", "creation_1h", "cache_read", "prompt", "completion", "upstream_quota"}
-	for _, k := range keys {
-		v := vendor[k]
-		a := actual[k]
-		if a == nil {
-			rep.discrepancy("vendor row %s/%s has no matching ledger traffic in window", v.family, v.date)
-			continue
-		}
-		for i := range 6 {
-			diff := float64(a.fields[i] - v.fields[i])
-			rel := 0.0
-			if v.fields[i] != 0 {
-				rel = diff / float64(v.fields[i])
-				if rel < 0 {
-					rel = -rel
-				}
-			}
-			if v.fields[i] == 0 && a.fields[i] == 0 {
-				continue
-			}
-			if rel > opts.vendorTolerance {
-				rep.discrepancy("%s/%s %s: ledger=%d vendor=%d (|diff| %.2f%% > tolerance %.0f%%)",
-					v.family, v.date, names[i], a.fields[i], v.fields[i], rel*100, opts.vendorTolerance*100)
-			}
-		}
-		rep.ok("%s/%s buckets within tolerance", v.family, v.date)
-	}
+	rep.ok("%s", strings.TrimSpace(string(output)))
 }
 
-func headerIndex(header []string, names ...string) []int {
-	idx := make(map[string]int, len(header))
-	for i, h := range header {
-		idx[strings.ToLower(strings.TrimSpace(h))] = i
-	}
-	out := make([]int, len(names))
-	for i, n := range names {
-		v, ok := idx[strings.ToLower(n)]
-		if !ok {
-			return nil
-		}
-		out[i] = v
-	}
-	return out
-}
-
-func parseInt64(s string) (int64, error) {
-	var n int64
-	if _, err := fmt.Sscanf(strings.TrimSpace(s), "%d", &n); err != nil {
-		return 0, fmt.Errorf("expected integer, got %q", s)
-	}
-	return n, nil
-}
+func parseInt64(s string) (int64, error) { return strconv.ParseInt(strings.TrimSpace(s), 10, 64) }
 
 // providerFamilyForModel mirrors the low-cardinality family heuristic used by
 // billing metrics (app/billing/internal/biz/billing.go) so the reconcile

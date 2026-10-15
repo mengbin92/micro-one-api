@@ -1,0 +1,15 @@
+==> docker compose config: -f docker-compose.yml
+==> docker compose config: -f docker-compose.lite.yml
+==> docker compose config: -f docker-compose.postgres.yml
+==> docker compose config: -f docker-compose.yml -f docker-compose.test.yml -f docker-compose.e2e-ports.yml
+==> kustomize build
+==> kubeconform
+Summary: 41 resources found in 1 file - Valid: 41, Invalid: 0, Errors: 0, Skipped: 0
+==> Routing gate defaults and overrides
+routing config: mysql defaults and explicit gates PASS
+routing config: lite defaults and explicit gates PASS
+routing config: postgres defaults and explicit gates PASS
+==> Kubernetes Secret/ConfigMap references
+Kubernetes references: OK (83 references, 1 in-manifest resources, 7 documented external Secrets)
+==> Markdown local links
+Markdown local links: OK (283 files checked)

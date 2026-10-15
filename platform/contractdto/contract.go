@@ -1,0 +1,57 @@
+package contractdto
+
+import (
+	"fmt"
+	v "micro-one-api/api/channel/v1"
+	"micro-one-api/domain/upstream/contract"
+)
+
+func Scope(p *v.ContractScope) contract.Scope {
+	return contract.Scope{Kind: p.GetSourceKind(), ID: p.GetSourceId(), Model: p.GetUpstreamModelId(), Protocol: p.GetProtocol()}
+}
+func ScopeProto(s contract.Scope) *v.ContractScope {
+	return &v.ContractScope{SourceKind: s.Kind, SourceId: s.ID, UpstreamModelId: s.Model, Protocol: s.Protocol}
+}
+func Document(p *v.UpstreamContractDocument) contract.Document {
+	d := contract.Document{Scope: Scope(p.GetScope()), Provider: p.GetProvider(), AdapterBuild: p.GetAdapterBuild(), ParserRevision: p.GetParserRevision(), UsageRevision: p.GetUsageRevision(), APIVersion: p.GetApiVersion(), Endpoint: p.GetEndpoint(), Inbound: append([]string(nil), p.GetInboundProtocols()...), FixtureEvidence: p.GetFixtureEvidenceId(), BasisRevision: p.GetBasisRevision()}
+	if r := p.GetRepairReview(); r != nil {
+		d.Repair = &contract.RepairReview{ProposalID: r.GetProposalId(), BaseRevision: r.GetBaseRevision(), BindingRevision: r.GetBindingRevision(), IncidentRevision: r.GetIncidentRevision(), SourceRevision: r.GetSourceRevision(), ReplayID: r.GetReplayId(), CIEvidenceID: r.GetCiEvidenceId(), Reviewer: r.GetReviewer(), KeyID: r.GetKeyId(), ExpiresAt: r.GetExpiresAt(), Signature: r.GetSignature()}
+	}
+	for _, set := range p.GetRuleSets() {
+		s := contract.RuleSet{Level: set.GetLevel()}
+		for _, r := range set.GetRules() {
+			s.Rules = append(s.Rules, contract.Rule{ID: r.GetId(), Kind: r.GetKind(), Path: r.GetPath(), Target: r.GetTarget(), Value: append([]byte(nil), r.GetValueJson()...), Type: r.GetType(), Min: r.Min, Max: r.Max, Replaces: r.GetReplaces(), Evidence: r.GetEvidenceId()})
+		}
+		d.Sets = append(d.Sets, s)
+	}
+	return d
+}
+func DocumentProto(d contract.Document) *v.UpstreamContractDocument {
+	p := &v.UpstreamContractDocument{Scope: ScopeProto(d.Scope), Provider: d.Provider, AdapterBuild: d.AdapterBuild, ParserRevision: d.ParserRevision, UsageRevision: d.UsageRevision, ApiVersion: d.APIVersion, Endpoint: d.Endpoint, InboundProtocols: d.Inbound, FixtureEvidenceId: d.FixtureEvidence, BasisRevision: d.BasisRevision}
+	if r := d.Repair; r != nil {
+		p.RepairReview = &v.UpstreamRepairReview{ProposalId: r.ProposalID, BaseRevision: r.BaseRevision, BindingRevision: r.BindingRevision, IncidentRevision: r.IncidentRevision, SourceRevision: r.SourceRevision, ReplayId: r.ReplayID, CiEvidenceId: r.CIEvidenceID, Reviewer: r.Reviewer, KeyId: r.KeyID, ExpiresAt: r.ExpiresAt, Signature: r.Signature}
+	}
+	for _, set := range d.Sets {
+		s := &v.ContractRuleSet{Level: set.Level}
+		for _, r := range set.Rules {
+			s.Rules = append(s.Rules, &v.ContractRule{Id: r.ID, Kind: r.Kind, Path: r.Path, Target: r.Target, ValueJson: r.Value, Type: r.Type, Min: r.Min, Max: r.Max, Replaces: r.Replaces, EvidenceId: r.Evidence})
+		}
+		p.RuleSets = append(p.RuleSets, s)
+	}
+	return p
+}
+func Snapshot(p *v.UpstreamContractSnapshot) (contract.Snapshot, error) {
+	s, err := contract.Compile(Document(p.GetDocument()))
+	if err != nil {
+		return s, err
+	}
+	s.BindingRevision = p.GetBindingRevision()
+	s.IncidentRevision = p.GetIncidentRevision()
+	if s.Revision != p.GetRevision() {
+		return s, fmt.Errorf("contract snapshot digest mismatch")
+	}
+	return s, nil
+}
+func SnapshotProto(s contract.Snapshot) *v.UpstreamContractSnapshot {
+	return &v.UpstreamContractSnapshot{Document: DocumentProto(s.Document), Revision: s.Revision, BindingRevision: s.BindingRevision, IncidentRevision: s.IncidentRevision}
+}

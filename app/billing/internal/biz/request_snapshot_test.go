@@ -3,9 +3,27 @@ package biz
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	"micro-one-api/domain/execution"
 )
+
+func TestNativeCommittedReplaySurvivesEvidenceDeadline(t *testing.T) {
+	now := time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)
+	r := &Reservation{ReservationID: "committed-native", UserID: "42", Status: ReservationStatusCommitted, Amount: 100, ActualCost: 7, RequestSnapshot: &RequestSnapshot{Execution: &execution.Intent{Policy: execution.Policy, EvidenceDeadline: now.Add(-time.Hour).Unix()}}}
+	account := &Account{UserID: "42", Balance: 993, UsedAmount: 7}
+	ledger := &mockLedgerRepo{}
+	uc := NewBillingUsecaseWithOptions(BillingOptions{AccountRepo: &mockAccountRepo{account: account}, ReservationRepo: &mockReservationRepo{reservations: map[string]*Reservation{r.ReservationID: r}}, LedgerRepo: ledger, Now: func() time.Time { return now }})
+	usage := LedgerUsage{UsageContractVersion: 2, Envelope: &UsageEnvelopeData{ParseStatus: "verified", Canonical: &CanonicalBuckets{UncachedInputTokens: 4, OutputTokens: 1}}}
+	cost, refund, err := uc.CommitQuotaWithUsage(context.Background(), r.ReservationID, 5, true, usage)
+	require.NoError(t, err, "a completed financial result must remain replayable when downstream side effects retry after the deadline")
+	require.EqualValues(t, 7, cost)
+	require.Zero(t, refund)
+	require.Equal(t, ReservationStatusCommitted, r.Status)
+	require.EqualValues(t, 993, account.Balance)
+	require.Empty(t, ledger.ledgers)
+}
 
 func TestRequestSnapshotFreezesFiveBucketsAndChargeModes(t *testing.T) {
 	for _, contract := range []int32{UsageContractVersionLegacy, UsageContractVersionV1} {

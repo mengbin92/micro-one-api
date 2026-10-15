@@ -1,0 +1,62 @@
+{
+  "scope": "All remaining P1 engineering functions; deployed linux/amd64 with delivery and controlled probes enabled. Fee rollout remains exact source/model gated.",
+  "date": "2026-10-13",
+  "baseline": "9f096fcf",
+  "branch": "codex/billing-upstream-p1-intake-20261013",
+  "results": {
+    "full_unit": {
+      "passed_packages": 111,
+      "exclusions": [
+        "internal/integration (requires running stack)",
+        "test/e2e/suite (requires running stack)",
+        "web/node_modules"
+      ]
+    },
+    "race": {
+      "passed_packages": 14,
+      "additional_packages_after_dialect_tests": 2
+    },
+    "sql": {
+      "dialects": [
+        "SQLite",
+        "MySQL 8.0 local disposable container",
+        "Postgres 16 local disposable container"
+      ],
+      "billing_reported_pass_records": 62,
+      "additional": [
+        "probe budgets, single-use permits and lease window",
+        "inventory exact casing and persistent unsupported isolation",
+        "migration mirrors and frozen financial policy"
+      ]
+    },
+    "frontend": {
+      "test_files": 2,
+      "passed_tests": 17,
+      "typescript": "passed"
+    },
+    "architecture": "passed",
+    "api": "make api passed",
+    "wire": "make wire passed",
+    "rbac": "843 reviewed rows; exact system capabilities only",
+    "migration": "passed (historical allowlisted duplicate prefix warnings only)",
+    "diff_check": "passed"
+  },
+  "independent_acceptance_pending": [
+    "P0 full production observation window",
+    "supplier-reported/invoice verification",
+    "actual production fee gray rollout comparison"
+  ],
+  "evidence_files": [
+    "billing-upstream-p1-completion-2026-10-13-unit.txt",
+    "billing-upstream-p1-completion-2026-10-13-race.txt",
+    "billing-upstream-p1-completion-2026-10-13-sql.txt",
+    "billing-upstream-p1-completion-2026-10-13-probe-sql.txt",
+    "billing-upstream-p1-completion-2026-10-13-web.txt",
+    "billing-upstream-p1-completion-2026-10-13-rbac.txt",
+    "billing-upstream-p1-completion-2026-10-13-migration.txt",
+    "billing-upstream-p1-completion-2026-10-13-architecture.txt",
+    "billing-upstream-p1-completion-2026-10-13-race-additions.txt"
+  ],
+  "source_digest": "f64ca45ebde6aac796639bed0d757f60086c493ed52c1fee596118e315605450",
+  "production_deployment": "billing-upstream-p1-deploy-2026-10-13.json"
+}

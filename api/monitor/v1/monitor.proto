@@ -7,6 +7,7 @@ import "google/api/annotations.proto";
 option go_package = "micro-one-api/api/monitor/v1;monitorv1";
 
 service MonitorService {
+ rpc ClaimProbePermit(ClaimProbePermitRequest) returns (ClaimProbePermitResponse);
   rpc SaveHealthCheck(SaveHealthCheckRequest) returns (SaveHealthCheckResponse) {
     option (google.api.http) = {
       post: "/v1/health-checks"
@@ -162,3 +163,6 @@ message DeleteAlertRuleRequest {
 message DeleteAlertRuleResponse {
   bool success = 1;
 }
+
+message ClaimProbePermitRequest { string target_id = 1; string attempt_id = 2; string target_sha256 = 3; }
+message ClaimProbePermitResponse { bool allowed = 1; }

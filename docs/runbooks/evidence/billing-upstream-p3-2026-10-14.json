@@ -1,0 +1,119 @@
+{
+  "date": "2026-10-14",
+  "timezone": "Asia/Shanghai",
+  "baseline": "90a818ce",
+  "status": "local_engineering_verified",
+  "production_deployed": false,
+  "charging_expanded": false,
+  "paid_inference_called": false,
+  "capabilities": [
+    "bounded_supplier_cost_api",
+    "byte_exact_page_replay",
+    "owner_csv_reference_validation",
+    "append_only_corrections",
+    "weekly_review_and_monitoring",
+    "offline_agent_candidate_and_independent_replay",
+    "ed25519_reviewer_gate",
+    "bounded_owner_rollout",
+    "durable_gray_deadline_and_stop"
+  ],
+  "image": {
+    "tag": "micro-one-api/upstream-evidence-tools:p3-20261014",
+    "platform": "linux/amd64",
+    "id": "sha256:ce73ede1b0cf02aeb0a5f6882074f9b66d32d1180b615ca477ead050fe05fb21",
+    "tools": [
+      "vendor-reconcile",
+      "vendor-cost-fetch",
+      "upstream-repair",
+      "upstream-rollout"
+    ],
+    "smoke": "synthetic fixtures only; no supplier or production network"
+  },
+  "checks": {
+    "unit_packages": 116,
+    "race_packages": 26,
+    "generation": "passed",
+    "architecture": "passed",
+    "rbac_rows": 862,
+    "migration_governance": "passed",
+    "three_compose_defaults": "closed and validated",
+    "gosec_modified_owner_and_tools": "passed; no findings",
+    "prometheus_rules": "passed",
+    "markdown_links": "284 files passed",
+    "format": "passed",
+    "diff_check": "passed"
+  },
+  "logs": [
+    {
+      "check": "unit",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-2026-10-14-unit.txt",
+      "sha256": "68a59711f990865231a7a610559fae4cf3dffc67eac4d680d1eb82800692f507"
+    },
+    {
+      "check": "integration",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-2026-10-14-integration.txt",
+      "sha256": "0b0903a64cc6933f07700c02b65b9151e37a81a721ae18eaac0de829f6904e04"
+    },
+    {
+      "check": "race",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-2026-10-14-race.txt",
+      "sha256": "25edce7ddcda011a8464809bd4eb3f90cb6a9f49276b5cd5a50d261f0cc41608"
+    },
+    {
+      "check": "repair-final-race",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-2026-10-14-repair-final-race.txt",
+      "sha256": "d96b1ab43ed6cdc87ba1fd194eee0e8afc4787782b16357d3d64a47461d003ce"
+    },
+    {
+      "check": "cost-final-race",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-2026-10-14-cost-final-race.txt",
+      "sha256": "88e96e7702a29a56ed2ea2bce1f87e381ad4a83e9f338bed7a853911c913d0b5"
+    },
+    {
+      "check": "generation",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-2026-10-14-generation.txt",
+      "sha256": "db2576469652931886ca5e15066a9d3324cb1c9e5d0a623cef61620df483e410"
+    },
+    {
+      "check": "gates",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-2026-10-14-gates.txt",
+      "sha256": "bcfea3cfd62093b968bb62e6fe4af3d2ad279227fab87c6d85af4cdec3965c9e"
+    },
+    {
+      "check": "prometheus",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-2026-10-14-prometheus.txt",
+      "sha256": "851bd34a3f7f576376cbd8cd6455aef963e5f4aa06b1ce6ed1ee170e0a5b42c2"
+    },
+    {
+      "check": "image-smoke",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-2026-10-14-image-smoke.txt",
+      "sha256": "afc17081951faf93e6ca2cab076f48dc8fc4670b28c856268b34a41b8b363567"
+    },
+    {
+      "check": "image-final-smoke",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-2026-10-14-image-final-smoke.txt",
+      "sha256": "2d13af53d5ce981b1c01ba5044468053a14118e6bf8506112c07f021422987fe"
+    },
+    {
+      "check": "build-amd64",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-2026-10-14-build-amd64.txt",
+      "sha256": "ff4b69b74b5713c5f62a1d7478fc674de2111fa921f2145714c1cbb91023b03c"
+    },
+    {
+      "check": "format",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-2026-10-14-format.txt",
+      "sha256": "e68281e0a45db3d391966b90b024aec2e718fd8c8f26f3d36cd3fe8ef97de508"
+    },
+    {
+      "check": "links",
+      "path": "docs/runbooks/evidence/billing-upstream-p3-2026-10-14-links.txt",
+      "sha256": "84a47d0ba8e288911c71f09c81ca661bd0578bdeb3ec4ba51546a3ac653e59d3"
+    }
+  ],
+  "limits": {
+    "external_e2e": "No running 9001/3000 service stack; default make test and internal integration gates passed. Initial go test ./... external suite was unavailable.",
+    "full_deployment_document_check": "Host lacks kustomize; changed three Compose variants and Markdown links checked independently. No Kubernetes files changed.",
+    "live_supplier_evidence": "Requires real admin credential/account binding and same-scope closed CSV/API period; synthetic fixtures are not provider financial proof.",
+    "production_rollout": "Not applied; requires reviewer/CI artifact, configured exact candidate/previous canary targets and budgets, and new production sample/window/proof gates."
+  }
+}

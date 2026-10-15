@@ -1,0 +1,129 @@
+{
+  "date": "2026-10-15",
+  "baseline": "05d6870c8e8be64496a31006e0ec8ef1616c322a",
+  "status": "local_engineering_checks_passed",
+  "checks": {
+    "unit": {
+      "command": "go test -count=1 $(go list ./... | rg -v '/test/e2e/suite$|/web/node_modules/|/internal/integration$')",
+      "exit_code": 0,
+      "output": "unit.txt",
+      "sha256": "5cb098c225df99ed1a07a074f0476c31987f8719c666c5eb444eeba18196647f",
+      "passed_packages": 119
+    },
+    "race": {
+      "command": "go test -race ./domain/execution/... ./domain/upstream/evidence/... ./domain/upstream/contract/... ./domain/upstream/repair/... ./internal/data/... ./internal/biz/... ./internal/server/... ./app/billing/... ./app/channel/internal/data/... ./app/monitor/... ./app/admin/internal/server/...",
+      "exit_code": 0,
+      "output": "race.txt",
+      "sha256": "b33939d9914dcc511ce8ce8874f78beacdce12ce0a1855ecfb8ca909335bdd88",
+      "passed_packages": 25
+    },
+    "integration": {
+      "command": "go test -count=1 $(go list ./... | rg '/internal/integration$' | rg -v '/web/node_modules/')",
+      "exit_code": 0,
+      "output": "integration.txt",
+      "sha256": "a1ce379190fb372c191e3cc4dac0d035779ae80f7d7ef03afd0f21ab43832dc7",
+      "passed_packages": 5
+    },
+    "architecture": {
+      "command": "./scripts/check-architecture.sh",
+      "exit_code": 0,
+      "output": "architecture.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "rbac": {
+      "command": "go run ./cmd/rbac-contract-check",
+      "exit_code": 0,
+      "output": "rbac.txt",
+      "sha256": "3e1641c12b9cb716e239c80ce6ab98f2f39e8964d780bf6dc4b885db6761d63d"
+    },
+    "migrations": {
+      "command": "go run ./cmd/migrate-check -dir ./migrations",
+      "exit_code": 0,
+      "output": "migrations.txt",
+      "sha256": "5cf62fa8990d80bb2386e5372aed2b6431807b0ca13693be084aac6cd6baa3e7"
+    },
+    "format": {
+      "command": "make format-check",
+      "exit_code": 0,
+      "output": "format.txt",
+      "sha256": "e68281e0a45db3d391966b90b024aec2e718fd8c8f26f3d36cd3fe8ef97de508"
+    },
+    "links": {
+      "command": "python3 scripts/check-markdown-links.py",
+      "exit_code": 0,
+      "output": "links.txt",
+      "sha256": "6736cebc98e0de8f2a3b3c896bf177ff3eabdf632fa41449beffcc76c9842ef2"
+    },
+    "reconcile": {
+      "command": "python3 scripts/test-reconcile.py",
+      "exit_code": 0,
+      "output": "reconcile.txt",
+      "sha256": "2d16bcad202ff6157ebf11138973474e3540dd1f161f71f841c2b52d3b62d850"
+    }
+  },
+  "other_checks": {
+    "shell_syntax": "bash -n scripts/reconcile/reconcile.sh: passed",
+    "diff_whitespace": "git diff --check: passed"
+  },
+  "sql_dialects": {
+    "sqlite": "fresh install, upgrade, backfill, duplicate apply tested",
+    "mysql": "real database tests skipped: no scratch DSN",
+    "postgres": "real database tests skipped: no scratch DSN"
+  },
+  "source_sha256": {
+    "app/billing/internal/biz/billing.go": "29b1185f82ef8feb25f6e96586a47f775010534d0785f2406eea3976a592d657",
+    "app/billing/internal/biz/request_snapshot_test.go": "924916347bb84e98323e1a01867658e05f05306c3b9e50833bd93a57363784b6",
+    "app/billing/internal/data/execution_repo.go": "389e1ce2263769a2acb14b17523a7991fa9b56908ee005c458a0f1a68c0b60a2",
+    "app/billing/internal/data/execution_repo_test.go": "ff657f5f416517224221393f4156783104539171d89b96c4e6f12a7b51cdca72",
+    "app/billing/internal/data/settlement_task_repo.go": "f0a5154a7f3f94d55d28778137df80f2d6b25c4c6a9f9e14f7ab1ddd4bc010af",
+    "app/billing/internal/data/settlement_task_repo_test.go": "0bd04ef6512f97a7ae160cd1754fd72180c3f19752e4d1eaabef43d8a0a6d2f2",
+    "app/billing/internal/data/vendor_reconciliation.go": "ad9b71d6407e0d1571953241004ff94a7fd670eeffd90cfeb15e91859890bc3b",
+    "app/billing/internal/data/vendor_reconciliation_test.go": "e503984f317d1ed99697177538df9c98e69d915cc62656a43fec32e005289bc2",
+    "app/channel/internal/data/upstream_contract.go": "e4a0b4b071939d3940219cb06910e82aed2440e866a3147958d6388b69c16688",
+    "app/channel/internal/data/upstream_contract_test.go": "e8e974003ced907788fa50ab2afc9203f5922cd8207c3120cff7a18ec17b2910",
+    "app/channel/internal/data/upstream_repair_test.go": "0f6b42c22b2e7128182c82cb3f6b9824536764c560862ee437a74c37384c4a48",
+    "app/monitor/internal/biz/upstream_probes.go": "f8b10f564c235e0a4bffb7aa992eb50144ed611747b67661fcf0a60bddfa5055",
+    "app/monitor/internal/biz/upstream_probes_test.go": "4b7eb49270513c1c96e2d276054160673e4616568a32cdc922e44393c2a0821a",
+    "app/monitor/internal/data/upstream_probes.go": "af8604708030507bd98e3a7167a4487ba6fea1c78a74c2b290fecb693c6e15cb",
+    "app/monitor/internal/data/upstream_probes_test.go": "c1600a71e464ff169a3f6b4e718324b895271f85ebe83c1d190a592d6d67d495",
+    "docs/design/rbac/entry-matrix.csv": "619710043ccecf6840d369c5084f141cb171146b9ddf8bbf7731a070b985d8a5",
+    "domain/execution/event_test.go": "f470bf617d1fd80b7f039a1be2a4ebf2fb990b1834adc680a8f9bfb9dd4fad92",
+    "domain/execution/probe_contract.go": "66e44f8ccbb7d841528fd1636bfa70a86f449ba96b697200b07acb84de8ae47d",
+    "domain/upstream/contract/contract.go": "78a964ee387ea417a34611733dbb531cb96965b6b3c5abb8a8199905d0829c2d",
+    "domain/upstream/contract/contract_test.go": "57a3f30c190b424ce48a7e7ec6f31cbe33cb2027525b8cf529be6a465a1adf01",
+    "domain/upstream/evidence/deepseek_candidate.go": "77cc26bc60fd91e43fce60154844c53d0aca8d48eeaef29f60e15a8e1826bd74",
+    "domain/upstream/evidence/http.go": "321ce2ef1d606310a400ce5212b5d5baa6042a6fbfe35e9f1d48287dc60de89b",
+    "domain/upstream/evidence/http_test.go": "7ec08a6fe039f28dce815dffd8359cfd10f9978b827cdd265ef32ef4cee6b015",
+    "domain/upstream/evidence/native.go": "516d4150193489d4fbb01f348c9d9b1a7f3f37f0eeede2e4077e124e753acbeb",
+    "domain/upstream/evidence/native_test.go": "9743af46c1520f594c1ab007222caa565141b49cc4948cc0c7bd88a11511f575",
+    "domain/upstream/evidence/stream.go": "9b92e3a2272c884f3d64a05a9f67e22a48ce87ba03dbb5100dfefa371f134e08",
+    "domain/upstream/repair/candidate.go": "825911c0abbec6424cc80c0af2e9131fc2d758700e4c1a5dd7bd6f11bf91ef7e",
+    "domain/upstream/repair/candidate_test.go": "0af9e9faba7d2b7aed1a12512d24f5790cc83c418de500794f7bbe6b7c9d829e",
+    "domain/upstream/repair/testdata/independent-fixtures.json": "647645c013b9c9daf272016aa8877e309e2edd457565bb2774dfe2a2a9d33f4e",
+    "internal/biz/native_usage_v2.go": "0b3850d3a02db8887f06113d81ec4946f6e2b88debb0bbdd2e5b3a080ab2f429",
+    "internal/biz/native_usage_v2_test.go": "bab12bf4188192ab0b876f16d41acc16e103fed5a7b646a2e454f06b4e32c2cc",
+    "internal/data/execution_outbox.go": "5d9a29b5a8a60fd2a4f1fc172e91199b2bb3541f62c55a1827396c851eae748b",
+    "internal/data/execution_outbox_test.go": "6df5d58a6e667bd0ecb948bc9e296461a5441754228717ed5b10ce798fa5054b",
+    "internal/server/adaptor_forwarder.go": "2df6b3df649b59f7b05ee3c3be9653f871c4bb18fdeb42f4fb386c26a8b1cf51",
+    "internal/server/execution_delivery.go": "bc795f793dff6ed1ada7721a44b22078d62914d34de730e061ebd078101c1742",
+    "internal/server/execution_delivery_test.go": "21279c77c6f71b8593c2a4a514320444524057ed7b3931ad335ae61bdb430dfb",
+    "migrations/135_vendor_reconciliation_run_sequence.sql": "d3cdced0bef03d41e5dcea91614e095adb745c5dc98d1c7c029e4723c1c10992",
+    "migrations/ownership.yaml": "b7234943dad8ecd59ec71a0f5c1d65378e266aa4973f82b180ea4926c79a465d",
+    "migrations/postgres/135_vendor_reconciliation_run_sequence.sql": "30102d9fb2f73c4f00c5d3a171d9b409a115e874d1db813f19e51354adb0b081",
+    "migrations/sqlite/135_vendor_reconciliation_run_sequence.sql": "70e3eb1a8086c61378d8868e1b885c8b9353d2d2c24a2f170d4de9af5b2773a8",
+    "platform/database/migrate/sqlite_lifecycle_test.go": "50d5fe49a1e506f97f31ae1f8624f39c367e86382c03ace8f05068977f931ab7",
+    "platform/database/migrate/vendor_run_sequence_test.go": "7a230c10bc4ebbc5413fc89b34e835917dc9a606b5c7b9749e6dcf6b3448960f",
+    "scripts/reconcile/reconcile.sh": "a8d6a2a1f6115ffb8e53e498c3299512f29c8ae48d23a2fd08012b5b30a890ac",
+    "scripts/test-reconcile.py": "d3a0d689dab876651fd4a0d2bce2d1c7cebdb2f6b9a8c5bfa5480e525a81a091"
+  },
+  "production_deployed": false,
+  "paid_upstream_calls": false,
+  "charge_scope_expanded": false,
+  "remaining_acceptance": [
+    "real complete account/period CSV and Costs API evidence",
+    "production observation baseline and fixed charging window",
+    "reviewer production keys and IAM configuration",
+    "fresh canary/gray 30 minute and 100 complete samples",
+    "5 minute instance revision convergence and real notification proof"
+  ]
+}

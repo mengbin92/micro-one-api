@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -36,6 +37,9 @@ type tokenQuotaBlocker interface {
 // HTTPServer handles HTTP requests for relay-gateway.
 
 type HTTPServer struct {
+	executionActive    atomic.Int64
+	executionDelivery  *relaybiz.ExecutionDelivery
+	executionAttempts  sync.Map
 	identityClient     identityv1.IdentityServiceClient
 	channelClient      channelv1.ChannelServiceClient
 	billingClient      billingv1.BillingServiceClient

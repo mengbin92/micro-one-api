@@ -162,6 +162,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 			return slotErr
 		}
 		defer releaseChannel()
+		ctx = s.observeNativeUsage(ctx, ch, requestID, currentResolvedModel)
 
 		if req.Stream {
 			streamLogInput := usageLogInput{
@@ -216,6 +217,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		// §4.3: the envelope comes from the provider-proven canonical buckets
 		// (Anthropic) or the OpenAI field shape — never the channel type.
 		logInput.applyEnvelope(envelopeFromProviderUsage(resp.Usage, resp.Canonical))
+		compareNativeUsageShadow(ctx, logInput.Usage)
 		if err := s.commitQuota(ctx, reservation.ReservationId, actualTokens, true, logInput); err != nil {
 			return relaybiz.MarkPostForwardError(err)
 		}
@@ -351,6 +353,7 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 		if totalTokens > 0 {
 			logInput.applyEnvelope(envelopeFromProviderUsage(lastUsage, streamCanonical))
 		}
+		compareNativeUsageShadow(r.Context(), logInput.Usage)
 		if err := s.commitQuotaAfterResponseObserved(r.Context(), reservation.ReservationId, totalTokens, true, logInput); err != nil {
 			s.logPostResponseCommitError(err)
 		} else {

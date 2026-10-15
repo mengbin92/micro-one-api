@@ -1,0 +1,57 @@
+# Optional isolated operator workers. Profiles remain disabled by default.
+# Provision read-only reviewed input directories and 10001-owned state volumes.
+services:
+  p3-cost-worker:
+    image: micro-one-api/upstream-evidence-tools:p3-ops-20261014
+    profiles: [p3-cost]
+    entrypoint: [evidence-worker]
+    command: ["-kind", "cost", "-daily-calls", "24", "-metrics-addr", "0.0.0.0:9465"]
+    env_file:
+      - path: ./p3/cost/credentials.env
+        required: false
+    volumes:
+      - ./p3/cost/inputs:/inputs:ro
+      - ./p3/cost/state:/state:rw
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 0.5
+    restart: "no"
+  p3-repair-agent:
+    image: micro-one-api/upstream-evidence-tools:p3-ops-20261014
+    profiles: [p3-repair]
+    entrypoint: [evidence-worker]
+    command: ["-kind", "repair", "-daily-calls", "2", "-metrics-addr", "0.0.0.0:9465"]
+    env_file:
+      - path: ./p3/repair/credentials.env
+        required: false
+    volumes:
+      - ./p3/repair/inputs:/inputs:ro
+      - ./p3/repair/state:/state:rw
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 0.5
+    restart: "no"
+  p3-weekly-review:
+    image: micro-one-api/upstream-evidence-tools:p3-ops-20261014
+    profiles: [p3-weekly]
+    entrypoint: [evidence-worker]
+    command: ["-kind", "weekly", "-daily-calls", "1", "-metrics-addr", "0.0.0.0:9465"]
+    env_file:
+      - path: ./p3/weekly/credentials.env
+        required: false
+    volumes:
+      - ./p3/weekly/inputs:/inputs:ro
+      - ./p3/weekly/state:/state:rw
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 0.5
+    restart: "no"

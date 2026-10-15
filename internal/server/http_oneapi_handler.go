@@ -133,7 +133,8 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer releaseChannel()
-	resp, err := provider.Forward(r.Context(), &relayprovider.RawRequest{
+	shadowCtx := s.observeNativeUsage(r.Context(), ch, requestID, ch.UpstreamModelID)
+	resp, err := provider.Forward(shadowCtx, &relayprovider.RawRequest{
 		Method: r.Method,
 		Path:   "/" + targetPart,
 		Query:  r.URL.RawQuery,
@@ -176,6 +177,7 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		PromptExclusive: isPromptExclusiveChannelType(channelReply.Channel.Type),
 	}
 	logInput.applyEnvelope(envelopeFromRawUsage(usage))
+	compareNativeUsageShadow(shadowCtx, logInput.Usage)
 	if err := s.commitQuota(r.Context(), reservation.ReservationId, totalTokens, true, logInput); err != nil {
 		s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
 		return

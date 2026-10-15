@@ -26,6 +26,14 @@ var api = sonic.ConfigStd
 // so type switches on interface values decoded with UseNumber keep working.
 type Number = stdjson.Number
 
+// Delim and NewTokenDecoder expose the stdlib token API for validators that
+// must detect duplicate object keys before a map projection loses them.
+type Delim = stdjson.Delim
+
+func NewTokenDecoder(r io.Reader) *stdjson.Decoder {
+	return stdjson.NewDecoder(r)
+}
+
 // RawMessage is a raw encoded JSON value, identical to encoding/json.RawMessage.
 type RawMessage = stdjson.RawMessage
 

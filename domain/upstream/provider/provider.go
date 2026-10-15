@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"micro-one-api/domain/upstream/evidence"
 	"micro-one-api/pkg/jsonx"
 	applogger "micro-one-api/platform/logging"
 )
@@ -416,7 +417,7 @@ func (p *OpenAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawResp
 	CopyForwardHeaders(httpReq.Header, req.Header)
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := evidence.Do(p.httpClient, httpReq, evidence.ProtocolForPath(httpReq.URL.Path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send raw request: %w", err)
 	}
@@ -493,7 +494,7 @@ func (p *OpenAIProvider) ForwardStream(ctx context.Context, req *RawRequest) (*R
 	CopyForwardHeaders(httpReq.Header, req.Header)
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 
-	resp, err := p.streamClient.Do(httpReq)
+	resp, err := evidence.Do(p.streamClient, httpReq, evidence.ProtocolForPath(httpReq.URL.Path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send raw request: %w", err)
 	}
@@ -541,7 +542,7 @@ func (p *OpenAIProvider) ChatCompletions(ctx context.Context, req *ChatCompletio
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := evidence.Do(p.httpClient, httpReq, evidence.ProtocolForPath(httpReq.URL.Path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -582,7 +583,7 @@ func (p *OpenAIProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 
-	resp, err := p.streamClient.Do(httpReq)
+	resp, err := evidence.Do(p.streamClient, httpReq, evidence.ProtocolForPath(httpReq.URL.Path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}

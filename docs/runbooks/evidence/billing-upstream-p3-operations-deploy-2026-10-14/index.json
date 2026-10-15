@@ -1,0 +1,58 @@
+{
+  "date": "2026-10-14",
+  "verified_at_utc": "2026-10-14T13:50:07.429449+00:00",
+  "status": "production_deployed_gates_preserved",
+  "source_commit": "e15d2464d74ca291b5b5925d404ad70d66f49096",
+  "source_digest": "1d28d8b51c51762491daa0df562cb037f762c0419443a11a3ceac302213e2fc1",
+  "deployment_tag": "deploy-20261014-213705-e15d2464",
+  "rollback_tag": "rollback-20261014-213705",
+  "updated_services": [
+    "identity-service",
+    "billing-service",
+    "admin-api"
+  ],
+  "operator_profiles_started": false,
+  "supplier_api_called": false,
+  "paid_generation_called": false,
+  "production_gates_changed": false,
+  "probe_scope_or_budget_changed": false,
+  "new_business_migrations": false,
+  "backup": "/opt/micro-one-api/docker-compose/backups/p3-ops-20261014-134315",
+  "checks": {
+    "updated_services_health": "passed; restart=0; amd64 and source digest match",
+    "frontend": "served index and vendor page chunk hash match; seven initial assets reachable",
+    "grafana": "eight panels and targets match; classic-file-provisioning in unified storage",
+    "unauthenticated_vendor_report_status": 401,
+    "outbox": {
+      "acknowledged": 241
+    },
+    "offline_workers": "cost/repair/weekly disabled plans, network none, readonly root, no capabilities, no task claimed",
+    "deployment_manifests_and_docs": "passed; four compose configurations, 41 Kubernetes resources, 83 references, local links"
+  },
+  "evidence": [
+    {
+      "path": "docs/runbooks/evidence/billing-upstream-p3-operations-deploy-2026-10-14/after.json",
+      "sha256": "597f147581a7fe94636c4b129a04aa7e8417685d12f651cd0eaf7870034e2402"
+    },
+    {
+      "path": "docs/runbooks/evidence/billing-upstream-p3-operations-deploy-2026-10-14/artifacts.json",
+      "sha256": "0977be83d5a86205268cc581fc898ead080149b03104efb8b4793dd90e6d92c1"
+    },
+    {
+      "path": "docs/runbooks/evidence/billing-upstream-p3-operations-deploy-2026-10-14/before.json",
+      "sha256": "640be7fa90c696b6cf2615005c5558621b8bb58e2554f3db36fca3be857d0674"
+    },
+    {
+      "path": "docs/runbooks/evidence/billing-upstream-p3-operations-deploy-2026-10-14/deployment-docs-check.txt",
+      "sha256": "b6140c9b936e021e6e95cc9389038e540b517764043f4974e217695a62c9725d"
+    },
+    {
+      "path": "docs/runbooks/evidence/billing-upstream-p3-operations-deploy-2026-10-14/offline-smoke.txt",
+      "sha256": "f23b376f27d4a68cdce8b13cbf02dbf31810a342a49a36075145359390f458fd"
+    },
+    {
+      "path": "docs/runbooks/evidence/billing-upstream-p3-operations-deploy-2026-10-14/source.json",
+      "sha256": "0994e48816294a5771d9f1986f715cdc5f6b5fde95f4180dd3e5ab133932efd3"
+    }
+  ]
+}

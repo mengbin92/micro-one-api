@@ -1,0 +1,1 @@
+{"p3_alert_rules_loaded": true, "rule_count": 49, "alerts_sha256": "2f4555801b2f65eac1cc41f709b3a16ef32cd3d73ce4ef6ad3599ceece30554d", "backup": "/opt/micro-one-api/docker-compose/backups/p3-20261014-104640/prometheus-alerts.yml"}

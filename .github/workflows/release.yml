@@ -66,6 +66,10 @@ jobs:
         with:
           ref: ${{ needs.release-context.outputs.tag }}
 
+      - name: Record checked-out build revision
+        id: build-revision
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
 
@@ -102,6 +106,7 @@ jobs:
           build-args: |
             SERVICE_NAME=${{ matrix.service }}
             SERVICE_PATH=${{ matrix.path }}
+            BUILD_REVISION=git:${{ steps.build-revision.outputs.sha }}
           # Reuse the GitHub Actions cache so repeated releases / minor
           # revisions don't rebuild layers from scratch (code-review L5).
           # Per-service scope: 9 parallel matrix jobs sharing the default

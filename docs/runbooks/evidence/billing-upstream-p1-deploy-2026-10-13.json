@@ -1,0 +1,311 @@
+{
+  "date": "2026-10-13",
+  "checked_at": "2026-10-13T12:50:32.784033+00:00",
+  "code_commit": "ea8078d4",
+  "build_source_digest": "f64ca45ebde6aac796639bed0d757f60086c493ed52c1fee596118e315605450",
+  "platform": "linux/amd64",
+  "services": {
+    "billing-service": {
+      "image": "docker-compose-billing-service:p1-20261013-ea8078d4",
+      "image_id": "sha256:4ed4a0a55ba03c809430e3107787f4d1e1f8338040746b92a00641b71d400cfa",
+      "state": "running",
+      "restart_count": 0,
+      "switches": {
+        "BILLING_SETTLEMENT_RECEIPTS_V1": "true",
+        "BILLING_EXECUTION_DELIVERY_V1": "true"
+      }
+    },
+    "channel-service": {
+      "image": "docker-compose-channel-service:p1-20261013-ea8078d4",
+      "image_id": "sha256:d5e97be38e0278ad369ee76ebb1bd44ae06541e814bfe624a3a11e8de744fed5",
+      "state": "running",
+      "restart_count": 0,
+      "switches": {
+        "UPSTREAM_PROBES_ENABLED": "true"
+      }
+    },
+    "relay-gateway": {
+      "image": "docker-compose-relay-gateway:p1-20261013-ea8078d4",
+      "image_id": "sha256:063047a7b660d094baafe86c48f64e6b121d2957f1b06dac67f910773a66f970",
+      "state": "running",
+      "restart_count": 0,
+      "switches": {
+        "RELAY_USAGE_SHADOW": "true",
+        "RELAY_NATIVE_USAGE_V2_ALLOWLIST": "",
+        "UPSTREAM_PROBES_ENABLED": "true",
+        "RELAY_EXECUTION_DELIVERY_V1": "true"
+      }
+    },
+    "monitor-worker": {
+      "image": "docker-compose-monitor-worker:p1-20261013-ea8078d4",
+      "image_id": "sha256:8d62423317c2a17f36465c640112d016c1a679992cd85ef669c1b7bcbccc3a8c",
+      "state": "running",
+      "restart_count": 0,
+      "switches": {
+        "UPSTREAM_PROBES_ENABLED": "true",
+        "UPSTREAM_PROBE_INTERVAL": "5m"
+      }
+    }
+  },
+  "probe_targets": [
+    {
+      "source_kind": "channel",
+      "source_id": 1,
+      "calls_per_day": 6,
+      "input_tokens_per_day": 768,
+      "output_tokens_per_day": 96,
+      "max_output_tokens": 16,
+      "cost_per_day": 0,
+      "unknown_cost_calls_per_day": 6,
+      "protocol": "openai_chat",
+      "id": "ch1-inventory",
+      "inventory": true,
+      "model": ""
+    },
+    {
+      "source_kind": "channel",
+      "source_id": 1,
+      "calls_per_day": 6,
+      "input_tokens_per_day": 768,
+      "output_tokens_per_day": 96,
+      "max_output_tokens": 16,
+      "cost_per_day": 0,
+      "unknown_cost_calls_per_day": 6,
+      "protocol": "openai_chat",
+      "id": "ch1-qwen-json",
+      "model": "qwen3.8-flash",
+      "capability": "text",
+      "stream": false
+    },
+    {
+      "source_kind": "channel",
+      "source_id": 1,
+      "calls_per_day": 6,
+      "input_tokens_per_day": 768,
+      "output_tokens_per_day": 96,
+      "max_output_tokens": 16,
+      "cost_per_day": 0,
+      "unknown_cost_calls_per_day": 6,
+      "protocol": "openai_chat",
+      "id": "ch1-qwen-sse",
+      "model": "qwen3.8-flash",
+      "capability": "text",
+      "stream": true
+    },
+    {
+      "id": "ch10-inventory",
+      "source_kind": "channel",
+      "source_id": 10,
+      "model": "",
+      "inventory": true,
+      "protocol": "openai_chat",
+      "calls_per_day": 3,
+      "input_tokens_per_day": 384,
+      "output_tokens_per_day": 48,
+      "max_output_tokens": 16,
+      "cost_per_day": 0,
+      "unknown_cost_calls_per_day": 3
+    }
+  ],
+  "outbox": {
+    "journal": "wal",
+    "counts": {
+      "acknowledged": 27
+    },
+    "mode": "0o600",
+    "uid": 65534,
+    "directory_mode": "0o700"
+  },
+  "probe_outcomes": [
+    [
+      "ch1-qwen-json",
+      "0",
+      "probe_unavailable",
+      "",
+      "",
+      "2"
+    ],
+    [
+      "ch1-qwen-sse",
+      "0",
+      "probe_unavailable",
+      "",
+      "",
+      "2"
+    ],
+    [
+      "ch1-qwen-sse",
+      "1",
+      "contract_drift",
+      "unsupported",
+      "200",
+      "2"
+    ],
+    [
+      "ch1-qwen-json",
+      "1",
+      "contract_drift",
+      "unsupported",
+      "200",
+      "2"
+    ],
+    [
+      "ch10-inventory",
+      "1",
+      "upstream_rejected",
+      "invalid",
+      "403",
+      "2"
+    ],
+    [
+      "ch1-inventory",
+      "1",
+      "transport_failure",
+      "invalid",
+      "200",
+      "2"
+    ],
+    [
+      "ch1-inventory",
+      "0",
+      "probe_unavailable",
+      "",
+      "",
+      "2"
+    ]
+  ],
+  "reserved_budgets": [
+    [
+      "channel:10:2026-10-13",
+      "2",
+      "256",
+      "32",
+      "0",
+      "2",
+      "0"
+    ],
+    [
+      "channel:1:2026-10-13",
+      "6",
+      "768",
+      "96",
+      "0",
+      "6",
+      "0"
+    ]
+  ],
+  "internal_evidence_counts": [
+    [
+      "canary",
+      "checkpoint",
+      "7"
+    ],
+    [
+      "canary",
+      "intent",
+      "4"
+    ],
+    [
+      "canary",
+      "terminal",
+      "4"
+    ],
+    [
+      "health_probe",
+      "checkpoint",
+      "4"
+    ],
+    [
+      "health_probe",
+      "intent",
+      "4"
+    ],
+    [
+      "health_probe",
+      "terminal",
+      "4"
+    ]
+  ],
+  "drift_incidents": [
+    [
+      "1",
+      "4"
+    ]
+  ],
+  "reservation_collations": [
+    [
+      "billing_execution_intents",
+      "utf8mb4_0900_ai_ci"
+    ],
+    [
+      "billing_reservations",
+      "utf8mb4_0900_ai_ci"
+    ]
+  ],
+  "applied_migrations": {
+    "oneapi_billing": [
+      [
+        "126_upstream_execution_evidence"
+      ],
+      [
+        "131_match_execution_reservation_collation"
+      ]
+    ],
+    "oneapi_channel": [
+      [
+        "127_upstream_inventory"
+      ],
+      [
+        "130_exact_usage_semantic_model_keys"
+      ]
+    ],
+    "oneapi_monitor": [
+      [
+        "128_upstream_probe_budgets"
+      ]
+    ]
+  },
+  "fee_scope": "empty allowlist: no verified supplier model available; channel 1 native usage unsupported; channel 10 inventory HTTP403 and no authorized models",
+  "supplier_verification_scope": "none",
+  "pending_acceptance": [
+    "P0 complete observation window",
+    "independent supplier bill",
+    "native v2 user fee rollout comparison"
+  ],
+  "verification": {
+    "service_health": {
+      "relay-gateway": 200,
+      "billing-service": 200,
+      "channel-service": 200,
+      "monitor-worker": 200,
+      "admin-api": 200
+    },
+    "consumer_capabilities": {
+      "request_snapshot_version": 2,
+      "settlement_receipt_version": 1,
+      "execution_delivery_version": 1,
+      "usage_contract_version": 2,
+      "settlement_policy_version": "native-v2-release-unproven-2026-10-13"
+    },
+    "unbudgeted_probe": "rejected: probe budget permit denied",
+    "linux_amd64_focused": [
+      "domain/execution",
+      "domain/upstream/evidence",
+      "internal/data"
+    ],
+    "mysql_compatibility": "MySQL 8.4 scratch fresh/repeat/status/negative/metadata and two red/green reservation collation cases passed",
+    "sqlite_lifecycle": "passed",
+    "ownership": "passed",
+    "frontend_build": "TypeScript and Vite passed",
+    "startup_unsent_budget_compensation": {
+      "attempts_retained": 6,
+      "permit_claimed": false,
+      "supplier_calls": 0,
+      "refunded_calls": 6
+    },
+    "frontend_host_index_sha256": "f03808768a53a8734c0042ba368d1e2c47b6f72bf936adcde21542e1a76eaf1c",
+    "temporary_credentials_removed": true,
+    "final_expiry_query": "passed; 0 eligible reservations"
+  },
+  "runtime_binary_unchanged_by_131": true
+}
