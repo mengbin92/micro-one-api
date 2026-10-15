@@ -1,0 +1,340 @@
+{
+  "backend": {
+    "checked_at": "2026-10-15T19:52:04.935473+00:00",
+    "services": [
+      {
+        "service": "identity-service",
+        "image": "docker-compose-identity-service:deploy-20261015-225036-63082986",
+        "image_id": "sha256:ac7f6914fec8fccda83b3a8847c8600e4564829f7c2b4895c7fd342b97df87eb",
+        "source_digest": "10eb1614f240b0b12055e5709a5443f865ffaceab5490e954c9356e77de0211b",
+        "architecture": "amd64",
+        "health_http": 200,
+        "restart_count": 0,
+        "environment_preserved": true,
+        "guard_configuration_preserved": true,
+        "compose_image_matches": true
+      },
+      {
+        "service": "billing-service",
+        "image": "docker-compose-billing-service:deploy-20261015-225036-63082986",
+        "image_id": "sha256:6883ff9f04572c7c8853f1f524a956ada06065bc070001083f9785b94adfcd42",
+        "source_digest": "10eb1614f240b0b12055e5709a5443f865ffaceab5490e954c9356e77de0211b",
+        "architecture": "amd64",
+        "health_http": 200,
+        "restart_count": 0,
+        "environment_preserved": true,
+        "guard_configuration_preserved": true,
+        "compose_image_matches": true
+      },
+      {
+        "service": "channel-service",
+        "image": "docker-compose-channel-service:deploy-20261015-225036-63082986",
+        "image_id": "sha256:8a02209ff7b325bfb3c3f80ece9ba83a1183ac7560266a8b57cb40fee477600d",
+        "source_digest": "10eb1614f240b0b12055e5709a5443f865ffaceab5490e954c9356e77de0211b",
+        "architecture": "amd64",
+        "health_http": 200,
+        "restart_count": 0,
+        "environment_preserved": true,
+        "guard_configuration_preserved": true,
+        "compose_image_matches": true
+      },
+      {
+        "service": "admin-api",
+        "image": "docker-compose-admin-api:deploy-20261015-225036-63082986",
+        "image_id": "sha256:57c65b46c86bdef800158c857a8b19025e39fc09031e456782e53adcd8ec49cd",
+        "source_digest": "10eb1614f240b0b12055e5709a5443f865ffaceab5490e954c9356e77de0211b",
+        "architecture": "amd64",
+        "health_http": 200,
+        "restart_count": 0,
+        "environment_preserved": true,
+        "guard_configuration_preserved": true,
+        "compose_image_matches": true
+      },
+      {
+        "service": "relay-gateway",
+        "image": "docker-compose-relay-gateway:deploy-20261015-225036-63082986",
+        "image_id": "sha256:3fc259b34aa33981c18ea8fbd3ae7b82dc4d0ebaecaf10ed7dbdc0087cb57455",
+        "source_digest": "10eb1614f240b0b12055e5709a5443f865ffaceab5490e954c9356e77de0211b",
+        "architecture": "amd64",
+        "health_http": 200,
+        "restart_count": 0,
+        "environment_preserved": true,
+        "guard_configuration_preserved": true,
+        "compose_image_matches": true
+      },
+      {
+        "service": "monitor-worker",
+        "image": "docker-compose-monitor-worker:deploy-20261015-225036-63082986",
+        "image_id": "sha256:f15886f5a34057f437024d76f57c558998230df9ef16f28400b93aee4ce369a1",
+        "source_digest": "10eb1614f240b0b12055e5709a5443f865ffaceab5490e954c9356e77de0211b",
+        "architecture": "amd64",
+        "health_http": 200,
+        "restart_count": 0,
+        "environment_preserved": true,
+        "guard_configuration_preserved": true,
+        "compose_image_matches": true
+      },
+      {
+        "service": "channel-account-ops-worker",
+        "image": "docker-compose-channel-service:deploy-20261015-225036-63082986",
+        "image_id": "sha256:8a02209ff7b325bfb3c3f80ece9ba83a1183ac7560266a8b57cb40fee477600d",
+        "source_digest": "10eb1614f240b0b12055e5709a5443f865ffaceab5490e954c9356e77de0211b",
+        "architecture": "amd64",
+        "health_http": 200,
+        "restart_count": 0,
+        "environment_preserved": true,
+        "guard_configuration_preserved": true,
+        "compose_image_matches": true
+      }
+    ],
+    "migrations": {
+      "billing_135": true,
+      "identity_136": true
+    },
+    "iam": {
+      "enabled_read_operations": 2,
+      "root_read_grants": 2,
+      "other_role_read_grants": 0,
+      "draft_write_operations": 5,
+      "migration_audit_receipts": 1
+    },
+    "relay_outbox": {
+      "states": {
+        "acknowledged": 923
+      },
+      "review_schema_columns_present": true
+    },
+    "result": "PASS"
+  },
+  "frontend": {
+    "checked_at": "2026-10-15T19:46:11.089735+00:00",
+    "pages": [
+      {
+        "path": "/admin/vendor-reports",
+        "http": 200,
+        "index_sha256": "1e66598e9a7c9d1ab202b15b3a2a960c50db6f56273c502b5574ea67afae0993",
+        "cache_control": "no-cache, no-store, must-revalidate"
+      },
+      {
+        "path": "/admin/upstream-contracts",
+        "http": 200,
+        "index_sha256": "1e66598e9a7c9d1ab202b15b3a2a960c50db6f56273c502b5574ea67afae0993",
+        "cache_control": "no-cache, no-store, must-revalidate"
+      }
+    ],
+    "initial_and_page_assets": [
+      {
+        "path": "/assets/UpstreamContractsPage-Cox_OOmn.js",
+        "http": 200,
+        "sha256": "34cd130a7ba524e1a9dfc28ef34b2e649ad8f985e80d9b999ed6a28932c18313",
+        "bytes": 18309
+      },
+      {
+        "path": "/assets/VendorReportsPage-C8URk5JO.js",
+        "http": 200,
+        "sha256": "1c80ae85ba3c704e94970403ad6228199e4c4b084debd08a380ac9ab4395ca10",
+        "bytes": 5698
+      },
+      {
+        "path": "/assets/index-B8ri2JF9.js",
+        "http": 200,
+        "sha256": "2d24efdc679502c954d55fc573f590a943a07227d304865908ca62834963af76",
+        "bytes": 223361
+      },
+      {
+        "path": "/assets/index-xxehLrAW.css",
+        "http": 200,
+        "sha256": "72cae24213ea20a8059621946ab49bfb432f660e7c3eff320f061304854ab2ee",
+        "bytes": 107928
+      },
+      {
+        "path": "/assets/query-ClK3eAX2.js",
+        "http": 200,
+        "sha256": "8903b66548357399bdf6ae3280e24feea101d9e5fdbaadb899e7fc8cc4e51c3f",
+        "bytes": 85743
+      },
+      {
+        "path": "/assets/react-BSyi7Fjn.js",
+        "http": 200,
+        "sha256": "3aecea022a0fc91bff035fd6cadc33a99feb1fcaac59c7f26caf88d0e75a5c37",
+        "bytes": 284591
+      },
+      {
+        "path": "/assets/rolldown-runtime-QTnfLwEv.js",
+        "http": 200,
+        "sha256": "5db5ba82eef00d1dee7e86e663098c9427d01183a88d357437daff295aec3e75",
+        "bytes": 694
+      },
+      {
+        "path": "/assets/ui-hqoWdRkJ.js",
+        "http": 200,
+        "sha256": "0dd1bba7a7e75245d6c881d60f476992c994cbea44f601b20ec942aa15095664",
+        "bytes": 168351
+      },
+      {
+        "path": "/assets/utils-OvxFelr6.js",
+        "http": 200,
+        "sha256": "ead9348f05e8e224ce08cd60af4675bdcbbf131ac7d24b78358fea4e1c12c3c4",
+        "bytes": 1796
+      }
+    ],
+    "unauthenticated_api": [
+      {
+        "path": "/api/admin/vendor-reports",
+        "http": 401
+      },
+      {
+        "path": "/api/admin/upstream-contracts",
+        "http": 401
+      }
+    ],
+    "result": "PASS"
+  },
+  "authenticated_read": {
+    "checked_at": "2026-10-15T19:55:36.087418+00:00",
+    "authorization_http": 200,
+    "activation_state": "active",
+    "read_operations": {
+      "billing.vendor_report.read": true,
+      "channel.upstream_contract.read": true
+    },
+    "write_operations": {
+      "billing.vendor_report.import": false,
+      "billing.vendor_report.attribute": false,
+      "channel.upstream_contract.create": false,
+      "channel.upstream_contract.publish": false,
+      "channel.upstream_contract.quarantine": false
+    },
+    "vendor_reports": {
+      "http": 200,
+      "keys": [
+        "daily_coverage",
+        "reports",
+        "weekly_review"
+      ],
+      "count": 0
+    },
+    "upstream_contracts": {
+      "http": 200,
+      "keys": [
+        "contracts",
+        "binding"
+      ],
+      "count": 0
+    },
+    "result": "PASS",
+    "origin": "https://console.mengbin.top"
+  },
+  "publication": {
+    "completed_at": "2026-10-15T19:44:59.594914+00:00",
+    "frontend_index_sha256": "1e66598e9a7c9d1ab202b15b3a2a960c50db6f56273c502b5574ea67afae0993",
+    "resources_verified": 79
+  },
+  "deployment_backup": "/opt/micro-one-api/docker-compose/backups/evidence-management-20261015-221603",
+  "source_commit": "6308298665995caf8abbf8d38e915666e2ba525d",
+  "feature_commit": "4df5b623",
+  "initial_frontend_index_sha256": "9aef82b71bdba50726ec7c636cf08cfd6683ce8939c6e3c9b26e17115b7043df",
+  "pre_deploy_services": [
+    {
+      "service": "identity-service",
+      "image": "docker-compose-identity-service:deploy-20261014-213705-e15d2464",
+      "image_id": "sha256:ac8423f52aaf5fd56252737fba7a2e12436b225d6fcd598df53d6bdc28fb4bd9",
+      "started": "2026-10-14T13:39:14.144917259Z",
+      "env_digest": "e1c048ab018fa3faca661619118f278fe5d3e4cbbe855d0785e0ca9125c77743",
+      "guard_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "restart": 0
+    },
+    {
+      "service": "billing-service",
+      "image": "docker-compose-billing-service:deploy-20261014-213705-e15d2464",
+      "image_id": "sha256:d512dc61fc5747bd4f71a72523db93b95e6c099e8f221826ea19e9c310a0277f",
+      "started": "2026-10-14T13:40:50.462679254Z",
+      "env_digest": "f563b112a380eb5e048a4e92e5f07d66c21c03f4997fd2e4f3b3ccf7fb6a28ef",
+      "guard_digest": "a4ae06d664af7deb7a774960a1be28575a29f8a2394a8ac68ffa38de640fb7de",
+      "restart": 0
+    },
+    {
+      "service": "channel-service",
+      "image": "docker-compose-channel-service:deploy-20261014-184908-070c6a45",
+      "image_id": "sha256:342b1b2b4268dd4e921813c4938b8afe1f0473e1e3e2a3cc7d2f5732e5a91891",
+      "started": "2026-10-14T10:52:23.100454661Z",
+      "env_digest": "3561c02508bae145e600ca975fc2c5b1a359a5702c26aceb30dc90796ce3f33f",
+      "guard_digest": "37df567710c002c033400ac683c46d2a2deee906bfe552cd3100ee2beff04ee1",
+      "restart": 0
+    },
+    {
+      "service": "admin-api",
+      "image": "docker-compose-admin-api:deploy-20261014-213705-e15d2464",
+      "image_id": "sha256:d97ec20e1597f1b7a355c275a98985703f155b8fd57676c4a8b8fbf6c2e788cb",
+      "started": "2026-10-14T13:42:31.522035213Z",
+      "env_digest": "3b4846f00c40c3bd9d52b91260f491b331199b88d852c984c979cbe803c5aa18",
+      "guard_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "restart": 0
+    },
+    {
+      "service": "relay-gateway",
+      "image": "docker-compose-relay-gateway:deploy-20261014-184908-070c6a45",
+      "image_id": "sha256:da87ce42e580400488363037c03ee153c12a8aec4b96d53654ff3ec6ec139d6e",
+      "started": "2026-10-14T10:55:25.13434245Z",
+      "env_digest": "16209e9d876221aa8b3e9467518480ebe95b2f9f1b4db5a6c5be4bc80ce7e8a5",
+      "guard_digest": "343ebf43b4c655711bf38fb950a9e99fba091e3a78db2d6544bb0a5c6e808696",
+      "restart": 0
+    },
+    {
+      "service": "monitor-worker",
+      "image": "docker-compose-monitor-worker:deploy-20261014-131552-5bd32751",
+      "image_id": "sha256:9a4a5bec2938e28b9192348ff1b7a853047a97a1b2a291c1e440114c956040c4",
+      "started": "2026-10-14T05:20:57.558609446Z",
+      "env_digest": "ee94a24119df82576f17653756d294d21c16524bd6a75a753b4126a687b35475",
+      "guard_digest": "138951ca61fb90eac1d2d2020abf0ff2e5c9a7a0b4d656a5d917737c5786784b",
+      "restart": 0
+    },
+    {
+      "service": "channel-account-ops-worker",
+      "image": "docker-compose-channel-service:deploy-20261010-213239-7560b413",
+      "image_id": "sha256:806846552ce5c3bce365352d73315dc2f4f3cfe3c297931121ca0899e07523fe",
+      "started": "2026-10-10T13:37:56.06956202Z",
+      "env_digest": "95ce5636cc9c440455651375e948891a063c335ca5bcbb64eed7d4e6e9479071",
+      "guard_digest": "5608a3a5f3ffd82b51c93723d5813a6f7cca340b530bd91bd461aff86a5253b2",
+      "restart": 0
+    }
+  ],
+  "validation": {
+    "unit_gate": {
+      "packages": 172,
+      "packages_with_tests": 119,
+      "result": "PASS"
+    },
+    "internal_integration": {
+      "packages": 5,
+      "result": "PASS"
+    },
+    "frontend": {
+      "files": 85,
+      "tests": 532,
+      "lint": "PASS",
+      "typescript_and_build": "PASS",
+      "size_budget_checks": 6
+    },
+    "owner_coverage_regression": {
+      "packages": 4,
+      "result": "PASS"
+    },
+    "rbac_contract": {
+      "reviewed_rows": 863,
+      "result": "PASS"
+    },
+    "architecture": "PASS",
+    "migration_governance": "PASS",
+    "mysql80_135_backfill": "PASS",
+    "iam136_dialects": [
+      "SQLite",
+      "MySQL 8.0.46",
+      "MySQL 8.4",
+      "PostgreSQL 16.15"
+    ],
+    "iam136_deny_rollback_replay": "PASS",
+    "browser_visual_acceptance": "not performed: Mac locked",
+    "external_full_stack_suite": "requires separately started environment; excluded by repository unit gate"
+  }
+}
