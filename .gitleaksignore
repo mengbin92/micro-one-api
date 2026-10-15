@@ -24,3 +24,9 @@ a133642efe4e238250f4c5d82865b823de984587:internal/integration/iam_resource_test.
 5f8b852837bf7a9774b9b49ddb9aaee02746f029:docs/runbooks/evidence/console-management-controls-deploy-2026-10-08.json:generic-api-key:73
 5f8b852837bf7a9774b9b49ddb9aaee02746f029:docs/runbooks/evidence/console-management-controls-deploy-2026-10-08.json:generic-api-key:80
 5f8b852837bf7a9774b9b49ddb9aaee02746f029:docs/runbooks/evidence/console-management-controls-deploy-2026-10-08.json:generic-api-key:81
+# Historical P2 evidence: one SHA256 credential fingerprint and three file
+# checksums, not credentials. Exact fingerprints keep future changes scanned.
+14cfe9fca2780429f97309cb7304ce1e40935280:docs/runbooks/evidence/deepseek-official-pilot-2026-10-14/live-evidence.json:generic-api-key:8
+14cfe9fca2780429f97309cb7304ce1e40935280:docs/runbooks/evidence/billing-upstream-p2-external-2026-10-13.json:generic-api-key:33
+14cfe9fca2780429f97309cb7304ce1e40935280:docs/runbooks/evidence/billing-upstream-p2-completion-2026-10-14.json:generic-api-key:40
+14cfe9fca2780429f97309cb7304ce1e40935280:docs/runbooks/evidence/billing-upstream-p2-completion-2026-10-14.json:generic-api-key:95
