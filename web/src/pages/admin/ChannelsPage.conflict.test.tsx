@@ -12,7 +12,7 @@ it.each([
   ['test', 'channel.channel.test', /^测试$/],
   ['update_balance', 'channel.channel.balance.refresh', /^刷新$/],
 ] as const)('refreshes a channel revision after a %s conflict without retrying the action', async (action, operation, buttonName) => {
-  vi.spyOn(window, 'prompt').mockReturnValue('test channel 1');
+  vi.spyOn(window, 'prompt').mockReturnValue('复核渠道可用性');
   let revision = '6';
   const attempted: string[] = [];
   const reads = vi.fn();
@@ -21,6 +21,8 @@ it.each([
     http.get('/api/user/authorization', () => HttpResponse.json({ authorization_mode: 'iam', session: { activation_state: 'active', revision: '1' }, versions: { policy_revision: '1' }, valid_until: new Date(Date.now() + 600_000).toISOString(), permitted_operations: ['admin.console.enter', 'channel.channel.list', operation] })),
     http.get('/api/channel', () => { reads(); return HttpResponse.json({ success: true, data: [{ ...channel, authorization_revision: revision }] }); }),
     http.get(`/api/channel/${action}/1`, ({ request }) => {
+      expect(request.headers.has('x-authorization-reason')).toBe(false);
+      expect(new URL(request.url).searchParams.get('reason')).toBe('复核渠道可用性');
       attempted.push(new URL(request.url).searchParams.get('expected_revision') ?? '');
       if (attempted.length === 1) {
         revision = '7';

@@ -1,12 +1,59 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AdminPricingPage } from './PricingPage';
 import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
+import { useAuthorizationLifecycle } from '@/lib/authorization';
+import { PricingPage } from '../PricingPage';
 
 describe('AdminPricingPage', () => {
+  it.each(['new model listing', '新模型上架测试', '', null])('handles save reason %j once and only publishes confirmed prices', async (reason) => {
+    const user = userEvent.setup();
+    const saved = new Map<string, string>();
+    const prompt = vi.spyOn(window, 'prompt').mockReturnValue(reason);
+    const options = ['ModelPrice', 'ModelRatio', 'CompletionRatio'].map(key => ({ key, value: '{}', revision: '1' }));
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({
+        authorization_mode: 'iam', session: { activation_state: 'active' },
+        permitted_operations: ['system.option.read', 'system.option.update', 'system.option.pricing.update', 'billing.pricing.update', 'channel.model.list'],
+      })),
+      http.get('/api/option/', () => HttpResponse.json({ success: true, data: options.map(o => ({ ...o, value: saved.get(o.key) ?? o.value })) })),
+      http.get('/api/admin/models', () => HttpResponse.json({ models: [{ id: 519, model_id: 'deepseek-flash', status: 1, is_public: true, pricing_input: 0.3, pricing_output: 1.2, pricing_cache_read: 0.06 }], total: 1 })),
+      http.get('/api/pricing', () => HttpResponse.json({ success: true, data: { prices: saved.has('ModelPrice') ? [{ model: 'deepseek-flash', input_price: 0.3, output_price: 1.2, cache_read_price: 0.06 }] : [] } })),
+      http.put('/api/option/', async ({ request }) => {
+        const body = await request.json() as { key: string; value: string; expected_revision: unknown; expected_revisions: Record<string, unknown>; reason: string };
+        // Match the real Go JSON adapter: both revision fields require strings.
+        if (typeof body.expected_revision !== 'string' || Object.values(body.expected_revisions).some(v => typeof v !== 'string')) {
+          return HttpResponse.json({ error: 'invalid request body' }, { status: 400 });
+        }
+        expect(body.expected_revision).toBe('1');
+        expect(body.reason).toBe(reason);
+        saved.set(body.key, body.value);
+        return HttpResponse.json({ success: true });
+      }),
+    );
+    function Shell() { useAuthorizationLifecycle(); return <><AdminPricingPage /><PricingPage /></>; }
+    renderWithQuery(<Shell />);
+    await screen.findByDisplayValue('deepseek-flash');
+    await screen.findByText('暂无模型价格');
+    await user.click(screen.getByRole('button', { name: '保存价格' }));
+    expect(prompt).toHaveBeenCalledTimes(1);
+    if (!reason) {
+      await waitFor(() => expect(screen.getByRole('button', { name: '保存价格' })).toBeEnabled());
+      expect(saved.size).toBe(0);
+      return;
+    }
+    await waitFor(() => expect(JSON.parse(saved.get('ModelPrice') ?? '{}')).toEqual({
+      'deepseek-flash': { input_price: 3e-7, output_price: 1.2e-6, cache_read_price: 6e-8 },
+    }));
+    const row = (await screen.findByText('deepseek-flash')).closest('tr')!;
+    expect(within(row).getByText('$0.30 / 1M tokens')).toBeInTheDocument();
+    expect(within(row).getByText('$1.20 / 1M tokens')).toBeInTheDocument();
+    expect(within(row).getByText('$0.06 / 1M tokens')).toBeInTheDocument();
+  });
+
   it('lists canonical public model IDs once without creating prices', async () => {
     server.use(
       http.get('/api/option/', () => HttpResponse.json({ success: true, data: [] })),

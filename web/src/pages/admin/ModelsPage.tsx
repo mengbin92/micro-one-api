@@ -491,7 +491,7 @@ export function AdminModelsPage() {
                     </TableCell>
                     <TableCell>
                       <span className={'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ' + statusBadgeClass(m.status)}>
-                        {t(MODEL_STATUS_LABELS[m.status] ?? String(m.status))}
+                        {t(m.configured_status === 1 && m.status === 0 ? '已启用，暂无可用来源' : MODEL_STATUS_LABELS[m.status] ?? String(m.status))}
                       </span>
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">{m.channel_count}</TableCell>

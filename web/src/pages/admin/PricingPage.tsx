@@ -1,4 +1,4 @@
-import { useAuthorizedQuery } from '@/lib/authorization';
+import { useAuthorization, useAuthorizedQuery } from '@/lib/authorization';
 import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { Plus, Save, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -247,6 +247,7 @@ function newRow(): PricingRow {
 }
 
 export function AdminPricingPage() {
+  const auth = useAuthorization();
   const queryClient = useQueryClient();
   const [draftRows, setDraftRows] = useState<PricingRow[] | null>(null);
 
@@ -308,6 +309,9 @@ export function AdminPricingPage() {
           }
         }
       }
+      const needsReason = auth.snapshot?.authorization_mode === 'iam';
+      const reason = needsReason ? window.prompt(t('请输入此次变更的原因'))?.trim() : undefined;
+      if (needsReason && !reason) throw new Error(t('变更原因不能为空'));
       const amountPerUnit = amountPerUnitFromOptions(options);
       const legacyRatios = legacyRatioMapsFromRows(normalizedRows, amountPerUnit);
       const payloads: OptionItem[] = [
@@ -317,7 +321,7 @@ export function AdminPricingPage() {
       ];
       await Promise.all(
         payloads.map(async (payload) => {
-          const res = await adminApiClient.put('/option/', payload);
+          const res = await adminApiClient.put('/option/', { ...payload, reason });
           ensureApiSuccess(res.data, `${payload.key} ${t('保存失败')}`);
         }),
       );
@@ -326,6 +330,7 @@ export function AdminPricingPage() {
       setDraftRows(null);
       queryClient.invalidateQueries({ queryKey: ['admin-options'] });
       queryClient.invalidateQueries({ queryKey: ['admin-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['readonly-pricing'] });
       toast.success(t('价格已保存'));
     },
     onError: (error) => {

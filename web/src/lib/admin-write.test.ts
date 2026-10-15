@@ -33,14 +33,21 @@ describe('owner write preconditions', () => {
   expect(() => prepareManagedWrite(config('/channel', 'put'), undefined, client())).toThrow();
   expect(() => prepareManagedWrite(config('/channel', 'put', { id: 7 }), snapshot, client(), () => null)).toThrow();
  });
+ it('sends Chinese reasons through UTF-8 body and query instead of browser-limited headers', () => {
+  const out = prepareManagedWrite(config('/option/', 'put', { key: 'ModelPrice', value: '{}', reason: '新模型上架测试' }), snapshot, client());
+  expect(() => new Headers(out.headers.toJSON() as Record<string, string>)).not.toThrow();
+  expect(out.headers.has('x-authorization-reason')).toBe(false);
+  expect(out.data.reason).toBe('新模型上架测试');
+  expect(out.params.reason).toBe('新模型上架测试');
+ });
  it('forwards displayed versions and preserves an explicit stale revision for owner CAS', () => {
   const c = client(); const current = prepareManagedWrite(config('/channel', 'put', { id: 7 }), snapshot, c, () => 'reviewed reason');
   expect(current.data).toMatchObject({ expected_revision: 3, reason: 'reviewed reason' }); expect(current.params.expected_revision).toBe(3);
   expect(prepareManagedWrite(config('/channel', 'put', { id: 7, expected_revision: 2 }), snapshot, c, () => 'reason').data.expected_revision).toBe(2);
  });
- it('keeps DELETE and action aliases CAS in query and headers, never re-fetches versions', () => {
+ it('keeps DELETE and action aliases CAS and reason in query, never re-fetches versions', () => {
   const out = prepareManagedWrite(config('/channel/test/7', 'get'), snapshot, client(), () => 'probe');
-  expect(out.params).toMatchObject({ expected_revision: 3, reason: 'probe' }); expect(out.headers.get('x-authorization-reason')).toBe('probe');
+  expect(out.params).toMatchObject({ expected_revision: 3, reason: 'probe' }); expect(out.headers.has('x-authorization-reason')).toBe(false);
  });
  it('sends the parent model revision when deleting an alias', () => {
   const c = new QueryClient(); c.setQueryDefaults(['admin-model-detail'], { meta: { protected: true } });
@@ -101,7 +108,7 @@ describe('owner write preconditions', () => {
  ] as const)('uses only the displayed owner revision for %s', (url, owner, version) => {
   const c = new QueryClient(); c.setQueryDefaults([owner], { meta: { protected: true } }); c.setQueryData([owner], { rows: [{ id: 7, ...version }] });
   const result = prepareManagedWrite(config(url, 'put', { reason: '  reviewed  ' }), snapshot, c);
-  expect(result.data.expected_revision).toBe(4); expect(result.headers.get('x-authorization-reason')).toBe('reviewed');
+  expect(result.data.expected_revision).toBe(4); expect(result.params.reason).toBe('reviewed');
   if (url.startsWith('/user')) expect(result.data.expected_policy_revision).toBe(12);
   if (url.includes('/aliases')) expect(result.data.expected_model_revision).toBe(4);
  });
@@ -114,10 +121,16 @@ describe('owner write preconditions', () => {
  it('uses displayed config and financial versions without overwriting explicit CAS', () => {
   const c = client(); c.setQueryData(['admin-options'], [{ key: 'Price', revision: '5' }]);
   const option = prepareManagedWrite(config('/option', 'put', { key: 'Price', reason: 'price' }), snapshot, c);
-  expect(option.data.expected_revisions).toEqual({ Price: 5 });
+  expect(option.data.expected_revisions).toEqual({ Price: '5' });
   const billing = prepareManagedWrite(config('/billing/config', 'put', { version: '6', reason: 'billing' }), snapshot, c);
   expect(billing.data.expected_revision).toBe(6);
   expect(prepareManagedWrite(config('/billing/config', 'put', { version: '6', expected_revision: 2, reason: 'billing' }), snapshot, c).data.expected_revision).toBe(2);
+ });
+ it.each(['/option', '/option/'])('sends string revisions required by the system-options JSON contract for %s', (url) => {
+  const c = client(); c.setQueryData(['admin-options'], [{ key: 'ModelPrice', revision: '7' }]);
+  const out = prepareManagedWrite(config(url, 'put', { key: 'ModelPrice', value: '{}', reason: 'publish model pricing' }), snapshot, c);
+  expect(out.data).toMatchObject({ expected_revision: '7', expected_revisions: { ModelPrice: '7' }, reason: 'publish model pricing' });
+  expect(prepareManagedWrite(config(url, 'put', { key: 'ModelPrice', value: '{}', expected_revision: 6, reason: 'stale write' }), snapshot, c).data.expected_revision).toBe('6');
  });
  it('preserves string migration versions and redemption DELETE preconditions', () => {
   const c = new QueryClient();

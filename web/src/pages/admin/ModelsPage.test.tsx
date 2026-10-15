@@ -142,7 +142,7 @@ describe('AdminModelsPage', () => {
     renderWithQuery(<MemoryRouter><AdminModelsPage /></MemoryRouter>);
 
     const row = (await screen.findByText('gpt-4o')).closest('tr')!;
-    expect(within(row).getByText('禁用', { selector: 'span' })).toBeInTheDocument();
+    expect(within(row).getByText('已启用，暂无可用来源', { selector: 'span' })).toBeInTheDocument();
     expect(within(row).getAllByRole('cell', { name: '0' })).toHaveLength(2);
     await user.click(within(row).getByRole('button', { name: '禁用' }));
     await waitFor(() => expect(body?.status).toBe(0));

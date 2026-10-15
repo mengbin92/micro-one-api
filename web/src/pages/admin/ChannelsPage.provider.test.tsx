@@ -9,7 +9,7 @@ import { server } from '@/test/msw/server';
 import { AdminChannelsPage } from './ChannelsPage';
 
 function setup() {
-  vi.spyOn(window, 'prompt').mockReturnValue('correct provider type');
+  vi.spyOn(window, 'prompt').mockReturnValue('纠正上游供应商类型');
   server.use(
     http.get('/api/user/authorization', () => HttpResponse.json({ authorization_mode: 'iam', session: { activation_state: 'active', revision: '1' }, versions: { policy_revision: '1' }, valid_until: new Date(Date.now() + 600_000).toISOString(), permitted_operations: ['admin.console.enter', 'channel.channel.list', 'channel.channel.create', 'channel.channel.update'] })),
     http.get('/api/channel', () => HttpResponse.json({ success: true, data: [{ id: '11', name: 'ds', type: 14, status: 1, group: 'default', models: '', authorization_revision: '2', permitted_actions: ['channel.channel.update'] }] })),
@@ -36,6 +36,7 @@ it('sends backend DeepSeek type 6 when creating a channel', async () => {
     fireEvent.click(dialog.getByRole('button', { name: /^创建$/ }));
     await waitFor(() => expect(captured).toBeDefined());
     expect(captured!.type).toBe(6);
+    expect(captured!.reason).toBe('纠正上游供应商类型');
   } finally { cleanup(); }
 });
 
@@ -51,6 +52,7 @@ it('corrects an existing provider with empty models while preserving its display
     await waitFor(() => expect(captured).toBeDefined());
     expect(captured!.type).toBe(6);
     expect(captured!.expected_revision).toBe(2);
+    expect(captured!.reason).toBe('纠正上游供应商类型');
     expect(captured!.models).toBe('');
     expect(captured).not.toHaveProperty('key');
   } finally { cleanup(); }

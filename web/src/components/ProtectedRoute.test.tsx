@@ -43,7 +43,7 @@ describe('session role initialization route', () => {
       }),
       http.put('/api/user/session/roles', async ({ request }) => {
         activationCalls++;
-        expect(await request.json()).toMatchObject({ role_ids: ['1', '2'], expected_revision: '1', reason: 'review conflict' });
+        expect(await request.json()).toMatchObject({ role_ids: ['1', '2'], expected_revision: '1', reason: '复核角色职责冲突' });
         return HttpResponse.json({ message: 'constraint conflict' }, { status: 400 });
       }),
     );
@@ -51,14 +51,14 @@ describe('session role initialization route', () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole('checkbox', { name: 'finance_reader' }));
     await user.click(screen.getByRole('checkbox', { name: 'auditor' }));
-    await user.type(screen.getByRole('textbox', { name: '变更原因' }), 'review conflict');
+    await user.type(screen.getByRole('textbox', { name: '变更原因' }), '复核角色职责冲突');
     await user.click(screen.getByRole('button', { name: '激活所选角色' }));
     await waitFor(() => expect(authCalls).toBe(2));
     release?.();
     expect(await screen.findByRole('alert')).toHaveTextContent('constraint conflict');
     expect(screen.getByRole('checkbox', { name: 'finance_reader' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'auditor' })).toBeChecked();
-    expect(screen.getByRole('textbox', { name: '变更原因' })).toHaveValue('review conflict');
+    expect(screen.getByRole('textbox', { name: '变更原因' })).toHaveValue('复核角色职责冲突');
     expect(activationCalls).toBe(1);
   });
 });
