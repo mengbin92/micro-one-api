@@ -916,7 +916,7 @@ func iamPermissionReferences(v iamManagementView, code string) []m.Reference {
 	return out
 }
 func iamValidateMenu(menu m.Menu, menus []m.Menu) error {
-	if !slices.Contains([]string{"overview", "users", "channels", "models", "routing-groups", "pricing", "payments", "subscriptions", "logs", "settings", "iam", "vendor-reports"}, menu.RouteKey) || !slices.Contains([]string{"home", "users", "server", "box", "route", "coins", "credit-card", "calendar", "file-text", "settings", "shield"}, menu.IconKey) || strings.TrimSpace(menu.Name) == "" {
+	if !slices.Contains([]string{"overview", "users", "channels", "models", "routing-groups", "pricing", "payments", "subscriptions", "logs", "settings", "iam", "vendor-reports", "upstream-contracts"}, menu.RouteKey) || !slices.Contains([]string{"home", "users", "server", "box", "route", "coins", "credit-card", "calendar", "file-text", "settings", "shield"}, menu.IconKey) || strings.TrimSpace(menu.Name) == "" {
 		return ErrIAMInvalidRelation
 	}
 	for _, code := range append(slices.Clone(menu.RequiredAll), menu.RequiredAny...) {

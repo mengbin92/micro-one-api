@@ -4,6 +4,7 @@ export const adminPages: Record<string, string> = {
   '/admin': 'admin.overview.read',
   '/admin/users': 'identity.user.list',
   '/admin/channels': 'channel.channel.list',
+  '/admin/upstream-contracts': 'channel.upstream_contract.read',
   '/admin/models': 'channel.model.list',
   '/admin/subscription-accounts': 'channel.account.list',
   '/admin/routing-groups': 'channel.routing_group.list',
@@ -31,7 +32,7 @@ export const adminPages: Record<string, string> = {
   '/admin/iam/explain': 'iam.authorization.explain',
   '/admin/iam/audits': 'iam.audit.read',
 };
-export const menuRoutes: Record<string, string> = { 'vendor-reports': '/admin/vendor-reports', overview: '/admin', users: '/admin/users', channels: '/admin/channels', models: '/admin/models', 'routing-groups': '/admin/routing-groups', pricing: '/admin/pricing', payments: '/admin/payment-orders', subscriptions: '/admin/subscriptions', logs: '/admin/logs', settings: '/admin/options', iam: '/admin/iam/roles' };
+export const menuRoutes: Record<string, string> = { 'vendor-reports': '/admin/vendor-reports', 'upstream-contracts': '/admin/upstream-contracts', overview: '/admin', users: '/admin/users', channels: '/admin/channels', models: '/admin/models', 'routing-groups': '/admin/routing-groups', pricing: '/admin/pricing', payments: '/admin/payment-orders', subscriptions: '/admin/subscriptions', logs: '/admin/logs', settings: '/admin/options', iam: '/admin/iam/roles' };
 export const menuIcons = ['home', 'users', 'server', 'box', 'route', 'coins', 'credit-card', 'calendar', 'file-text', 'settings', 'shield'];
 export function firstAdminPage(can: (op: string) => boolean) { return Object.entries(adminPages).find(([, op]) => can(op))?.[0] ?? '/session-roles'; }
 

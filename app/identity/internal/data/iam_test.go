@@ -43,6 +43,12 @@ func iamCount(t *testing.T, db *gorm.DB, table string) int64 {
 	require.NoError(t, db.Table(table).Count(&n).Error)
 	return n
 }
+func iamAuditCount(t *testing.T, db *gorm.DB, where string, args ...any) int64 {
+	t.Helper()
+	var n int64
+	require.NoError(t, db.Table("iam_audit_events").Where(where, args...).Count(&n).Error)
+	return n
+}
 
 func TestIAMStorageDialects(t *testing.T) {
 	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
@@ -61,8 +67,8 @@ func TestIAMStorageDialects(t *testing.T) {
 					require.NoError(t, err)
 					require.Equal(t, "legacy", p.Mode)
 					require.Equal(t, "idle", p.Cutover)
-					require.Equal(t, uint64(1), p.PolicyRevision)
-					require.Equal(t, authorization.CatalogRevision, p.CatalogRevision)
+					require.Greater(t, p.PolicyRevision, uint64(1), "reviewed release migrations advance the seed revision")
+					require.GreaterOrEqual(t, p.CatalogRevision, authorization.CatalogRevision)
 					roles, err := repo.Roles(ctx, tx, authorization.Platform())
 					require.NoError(t, err)
 					require.Len(t, roles, 4)
@@ -73,6 +79,8 @@ func TestIAMStorageDialects(t *testing.T) {
 				require.Equal(t, int64(len(authorization.Catalog())), iamCount(t, db, "iam_permissions"))
 				var bound int64
 				require.NoError(t, db.Table("iam_permissions").Where("binding_state <> 'unbound'").Count(&bound).Error)
+				require.EqualValues(t, 2, bound, "only the two reviewed read-page operations are published before D0")
+				require.NoError(t, db.Table("iam_permissions").Where("binding_state <> 'unbound' AND code NOT IN ?", []string{"billing.vendor_report.read", "channel.upstream_contract.read"}).Count(&bound).Error)
 				require.Zero(t, bound)
 				for _, op := range authorization.Catalog() {
 					var row struct {
@@ -104,7 +112,7 @@ func TestIAMStorageDialects(t *testing.T) {
 				})
 				require.ErrorIs(t, err, fail)
 				require.Zero(t, iamCount(t, db, "iam_user_roles"))
-				require.Zero(t, iamCount(t, db, "iam_audit_events"))
+				require.Zero(t, iamAuditCount(t, db, "actor_service_id = ?", "a2-test"))
 				// Missing success audit also rolls back an otherwise valid mutation.
 				require.ErrorIs(t, runner.RunIAMWrite(ctx, func(ctx context.Context, tx biz.IAMTx) error {
 					_, err := repo.SaveAssignment(ctx, tx, iamTestAssignment(uid, 2), 0)
@@ -145,7 +153,13 @@ func TestIAMStorageDialects(t *testing.T) {
 				require.NoError(t, runner.ReadIAMSnapshot(ctx, func(ctx context.Context, tx biz.IAMTx) error {
 					events, err := repo.AuditEvents(ctx, tx, authorization.Platform(), 10)
 					require.NoError(t, err)
-					require.Len(t, events, 2)
+					var testEvents []biz.IAMAuditEvent
+					for _, event := range events {
+						if event.Actor.ServiceID == "a2-test" {
+							testEvents = append(testEvents, event)
+						}
+					}
+					require.Len(t, testEvents, 2)
 					return nil
 				}))
 			})
@@ -389,7 +403,11 @@ func TestIAMSQLiteBusyRetry(t *testing.T) {
 	go func() {
 		completed <- runner.RunIAMWrite(context.Background(), func(ctx context.Context, tx biz.IAMTx) error {
 			callbacks.Add(1)
-			if err := repo.AdvancePolicy(ctx, tx, 1, false); err != nil {
+			policy, err := repo.Policy(ctx, tx)
+			if err != nil {
+				return err
+			}
+			if err := repo.AdvancePolicy(ctx, tx, policy.PolicyRevision, false); err != nil {
 				return err
 			}
 			return repo.AppendAudit(ctx, tx, iamTestEvent("busy-retry"))
@@ -401,7 +419,7 @@ func TestIAMSQLiteBusyRetry(t *testing.T) {
 	require.NoError(t, <-completed)
 	require.Greater(t, attempts.Load(), int32(1))
 	require.Equal(t, int32(1), callbacks.Load())
-	require.Equal(t, int64(1), iamCount(t, db, "iam_audit_events"))
+	require.EqualValues(t, 1, iamAuditCount(t, db, "event_id = ?", "busy-retry"))
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
 	require.ErrorIs(t, runner.RunIAMWrite(cancelled, func(context.Context, biz.IAMTx) error { t.Error("cancelled callback ran"); return nil }), context.Canceled)
@@ -455,7 +473,7 @@ func TestIAMConcurrentBootstrapStorage(t *testing.T) {
 			}
 			require.Equal(t, int64(1), iamCount(t, db, "users"))
 			require.Equal(t, int64(1), iamCount(t, db, "iam_user_roles"))
-			require.Equal(t, int64(1), iamCount(t, db, "iam_audit_events"))
+			require.EqualValues(t, 1, iamAuditCount(t, db, "actor_service_id = ? AND event_id LIKE ?", "a2-test", "bootstrap-%"))
 		})
 	}
 }

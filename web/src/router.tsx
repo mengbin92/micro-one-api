@@ -32,6 +32,9 @@ const AdminUsersPage = lazy(() =>
 const AdminChannelsPage = lazy(() =>
   routeLoaders['/admin/channels']().then((m) => ({ default: m.AdminChannelsPage }))
 );
+const UpstreamContractsPage = lazy(() =>
+  routeLoaders['/admin/upstream-contracts']().then((m) => ({ default: m.UpstreamContractsPage }))
+);
 const AdminModelsPage = lazy(() =>
   routeLoaders['/admin/models']().then((m) => ({ default: m.AdminModelsPage }))
 );
@@ -189,6 +192,10 @@ export const router = createBrowserRouter([
           {
             path: 'channels',
             element: withSuspense(<AdminChannelsPage />),
+          },
+          {
+            path: 'upstream-contracts',
+            element: withSuspense(<UpstreamContractsPage />),
           },
           {
             path: 'models',

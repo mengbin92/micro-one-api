@@ -5,8 +5,42 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 import { router } from './router';
+import { routeLoaders } from './route-loaders';
 
 vi.mock('@/components/AppNavigation', () => ({ AppNavigation: () => null }));
+vi.mock('@/pages/admin/UpstreamContractsPage', () => ({
+  UpstreamContractsPage: () => <h2>Upstream contract route content</h2>,
+}));
+
+describe('upstream contract entry route', () => {
+  beforeEach(() => localStorage.setItem('token', 'upstream-contract-route-fixture'));
+
+  it('registers the page route and its preload handler', () => {
+    const matches = matchRoutes(router.routes, '/admin/upstream-contracts');
+    expect(matches?.at(-1)?.route.path).toBe('upstream-contracts');
+    expect(routeLoaders).toHaveProperty('/admin/upstream-contracts');
+  });
+
+  it.each([
+    { operations: ['admin.console.enter', 'channel.upstream_contract.read'], allowed: true },
+    { operations: ['admin.console.enter', 'admin.overview.read'], allowed: false },
+    { operations: ['channel.upstream_contract.read'], allowed: false },
+  ])('gates the page on console admission and contract read permission: $operations', async ({ operations, allowed }) => {
+    server.use(http.get('/api/user/authorization', () => HttpResponse.json({
+      authorization_mode: 'iam', session: { activation_state: 'active' }, permitted_operations: operations,
+    })));
+    const entryRouter = createMemoryRouter(router.routes, { initialEntries: ['/admin/upstream-contracts'] });
+    const view = renderWithQuery(<RouterProvider router={entryRouter} />);
+    try {
+      if (allowed) {
+        expect(await screen.findByRole('heading', { name: 'Upstream contract route content' })).toBeVisible();
+      } else {
+        expect(await screen.findByText('需要管理员权限')).toBeVisible();
+        expect(screen.queryByRole('heading', { name: 'Upstream contract route content' })).not.toBeInTheDocument();
+      }
+    } finally { view.unmount(); entryRouter.dispose(); }
+  });
+});
 
 describe('IAM entry route', () => {
   beforeEach(() => localStorage.setItem('token', 'iam-route-fixture'));
