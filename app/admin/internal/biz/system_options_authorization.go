@@ -240,17 +240,7 @@ func (uc *SystemOptionsUsecase) SetMany(ctx context.Context, values map[string]s
 	if repo, ok := uc.repo.(SystemOptionsBatchRepo); ok {
 		return repo.SetMany(ctx, values, revisions)
 	}
-	for _, key := range keys {
-		if _, iam := authorization.QueryScopeFromContext(ctx, SystemOptionWriteOperation(key)); iam {
-			return authorization.ErrWriteStorageUnavailable
-		}
-	}
-	for _, key := range keys {
-		if err = uc.repo.Set(ctx, key, values[key]); err != nil {
-			return err
-		}
-	}
-	return nil
+	return authorization.ErrWriteStorageUnavailable
 }
 
 type UpstreamCostResourceReader interface {

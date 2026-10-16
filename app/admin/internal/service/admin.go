@@ -2152,7 +2152,7 @@ func (s *AdminService) ListOneAPIOptions(ctx context.Context) ([]OneAPIOption, e
 			return nil, err
 		}
 		option := OneAPIOption{Key: key, Value: value}
-		if authorization.External(ctx) && s.systemOptsUc != nil {
+		if s.systemOptsUc != nil && (authorization.External(ctx) || key == "ModelPrice" || key == "ModelRatio" || key == "CompletionRatio") {
 			rev, err := s.systemOptsUc.GetRevision(ctx, key)
 			if err != nil {
 				return nil, err
@@ -2973,4 +2973,11 @@ func (s *AdminService) UpdateOptionsWithRevisions(ctx context.Context, values ma
 		parsed[key] = rev
 	}
 	return s.systemOptsUc.SetMany(ctx, values, parsed)
+}
+
+func (s *AdminService) UpdatePricingOptions(ctx context.Context, values map[string]string, revisions map[string]string) error {
+	if err := adminbiz.ValidatePricingOptions(values); err != nil {
+		return err
+	}
+	return s.UpdateOptionsWithRevisions(ctx, values, revisions)
 }

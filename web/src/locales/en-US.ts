@@ -5,6 +5,7 @@ import { EN_US_LEGAL_MESSAGES } from '@/locales/en-US.legal';
 // Product terminology overrides. Keep these concise and consistent across
 // user and admin surfaces; the generated catalog provides the long-tail copy.
 export const EN_US_MESSAGES: Record<string, string> = {
+  '请刷新价格配置后再继续编辑。': 'Refresh the pricing configuration before editing again.',
   ...GENERATED_MESSAGES,
   ...EN_US_LEGAL_MESSAGES,
   ...EN_US_RBAC_MESSAGES,

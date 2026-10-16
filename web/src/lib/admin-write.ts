@@ -60,8 +60,12 @@ export function prepareManagedWrite(config: InternalAxiosRequestConfig, snapshot
     const options = client.getQueryCache().findAll({ queryKey: ['admin-options'] }).flatMap(q => records(q.state.data));
     const row = options.find(option => option.key === key);
     // The system-options JSON adapter declares revisions as strings.
-    data.expected_revision = String(data.expected_revision ?? numericRevision(row?.revision ?? '0'));
-    data.expected_revisions ??= { [key]: data.expected_revision };
+    if (data.values && typeof data.values === 'object' && !Array.isArray(data.values)) {
+      data.expected_revisions ??= Object.fromEntries(Object.keys(data.values).map(key => [key, String(numericRevision(options.find(option => option.key === key)?.revision ?? '0'))]));
+    } else {
+      data.expected_revision = String(data.expected_revision ?? numericRevision(row?.revision ?? '0'));
+      data.expected_revisions ??= { [key]: data.expected_revision };
+    }
   }
   if (url.includes('/billing') && data.version !== undefined) data.expected_revision ??= numericRevision(data.version);
   if (url.startsWith('/user')) data.expected_policy_revision ??= numericRevision(snapshot.versions?.policy_revision ?? 0);
