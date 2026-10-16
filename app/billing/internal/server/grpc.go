@@ -44,9 +44,11 @@ func serviceTokenStreamInterceptor(serviceToken string) grpc.StreamServerInterce
 	return xgrpc.ServiceTokenStreamInterceptor(serviceToken)
 }
 
+// Readiness permits dispatch to the completed owner handler; its operation
+// permission and authoritative scope are still required by the usecase.
 var billingReadyMethods = func() []string {
 	out := []string{}
-	for _, method := range []string{"GetAccountSnapshot", "BatchGetAccountSnapshots", "TopUpQuota", "ListLedger", "GetLedgerEntry", "AggregateLedgerByDate", "AggregateUsage", "CreatePaymentOrder", "ListPaymentOrders", "GetPaymentOrderByTradeNo", "RefundPaymentOrder", "CreateRedeemCode", "CreateRedeemCodesBatch", "GetRedeemCode", "ListRedeemCodes", "SearchRedeemCodes", "UpdateRedeemCode", "DeleteRedeemCode", "ListRequestAttempts", "GetRoutingCapabilities", "GetRoutingBillingPolicy", "PublishRoutingBillingPolicy", "GetRoutingGroupPrice", "SetUserRoutingPrice", "ClearUserRoutingPrice", "ListReconciliationRuns", "GetReconciliationRun", "SubscriptionOperationReport", "ExportLedgerEntries", "ExportCostReport", "ExportRedeemCodes", "RunReconciliation", "GetSubscriptionUsage", "ExecuteSubscriptionCommerce", "PurchaseSubscription", "ResetAccountBalance"} {
+	for _, method := range []string{"ListVendorReports", "ImportVendorReport", "GetAccountSnapshot", "BatchGetAccountSnapshots", "TopUpQuota", "ListLedger", "GetLedgerEntry", "AggregateLedgerByDate", "AggregateUsage", "CreatePaymentOrder", "ListPaymentOrders", "GetPaymentOrderByTradeNo", "RefundPaymentOrder", "CreateRedeemCode", "CreateRedeemCodesBatch", "GetRedeemCode", "ListRedeemCodes", "SearchRedeemCodes", "UpdateRedeemCode", "DeleteRedeemCode", "ListRequestAttempts", "GetRoutingCapabilities", "GetRoutingBillingPolicy", "PublishRoutingBillingPolicy", "GetRoutingGroupPrice", "SetUserRoutingPrice", "ClearUserRoutingPrice", "ListReconciliationRuns", "GetReconciliationRun", "SubscriptionOperationReport", "ExportLedgerEntries", "ExportCostReport", "ExportRedeemCodes", "RunReconciliation", "GetSubscriptionUsage", "ExecuteSubscriptionCommerce", "PurchaseSubscription", "ResetAccountBalance"} {
 		out = append(out, "/api.billing.v1.BillingService/"+method)
 	}
 	return out

@@ -3,6 +3,7 @@ import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { isAxiosError } from 'axios';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Input } from '@/components/ui/input';
@@ -11,6 +12,8 @@ import {
   getModel,
   createModelAlias,
   deleteModelAlias,
+  setChannelMappingEnabled,
+  setSubscriptionMappingEnabled,
   listModelUsageStats,
   MODEL_STATUS_LABELS,
   MODEL_TYPE_LABELS,
@@ -20,6 +23,8 @@ import {
   formatContextWindow,
   type ModelAlias,
   type ModelUsageStat,
+  type ModelChannelMapping,
+  type ModelSubscriptionMapping,
 } from '@/lib/model-management';
 import {
   Dialog,
@@ -94,6 +99,25 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
   });
 
   const model = data?.model;
+  const toggleMappingMutation = useMutation({
+    mutationFn: (target: { kind: 'channel'; mapping: ModelChannelMapping } | { kind: 'subscription'; mapping: ModelSubscriptionMapping }) =>
+      target.kind === 'channel'
+        ? setChannelMappingEnabled(target.mapping, !target.mapping.enabled, model?.authorization_revision ?? model?.revision)
+        : setSubscriptionMappingEnabled(target.mapping, !target.mapping.enabled, model?.authorization_revision ?? model?.revision),
+    onSuccess: (resp) => {
+      if (!resp.success) { toast.error(resp.message || t('映射更新失败')); return; }
+      toast.success(t('映射已更新'));
+      invalidateDetail();
+      queryClient.invalidateQueries({ queryKey: ['admin-models'] });
+    },
+    onError: (err: unknown) => {
+      toast.error((err as Error).message || t('映射更新失败'));
+      if (isAxiosError(err) && err.response?.status === 409) {
+        invalidateDetail();
+        queryClient.invalidateQueries({ queryKey: ['admin-models'] });
+      }
+    },
+  });
   const aliases = data?.aliases ?? [];
   const channelMappings = data?.channel_mappings ?? [];
   const subscriptionMappings = data?.subscription_mappings ?? [];
@@ -152,8 +176,11 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
               <div>
                 <p className="text-xs text-muted-foreground">{t("状态")}</p>
                 <span className={'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ' + statusBadgeClass(model.status)}>
-                  {t(MODEL_STATUS_LABELS[model.status] ?? String(model.status))}
+                  {t(model.configured_status === 1 && model.status === 0 ? '已启用，暂无可用来源' : MODEL_STATUS_LABELS[model.status] ?? String(model.status))}
                 </span>
+                {model.configured_status === 1 && model.status === 0 && (
+                  <p className="mt-1 text-xs text-muted-foreground">{t('请启用所需来源映射，并确认对应渠道或订阅账户已启用。')}</p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("等级")}</p>
@@ -326,6 +353,7 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                         <TableHead>{t("上游模型 ID")}</TableHead>
                         <TableHead>{t("启用")}</TableHead>
                         <TableHead>{t("优先级")}</TableHead>
+                        <TableHead>{t("操作")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -335,6 +363,12 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                           <TableCell className="font-mono text-sm">{c.upstream_model_id || model.model_id}</TableCell>
                           <TableCell>{c.enabled ? t("是") : t("否")}</TableCell>
                           <TableCell>{c.priority}</TableCell>
+                          <TableCell>
+                            <Button permission="channel.model_mapping.update" variant="outline" size="sm"
+                              disabled={toggleMappingMutation.isPending}
+                              onClick={() => toggleMappingMutation.mutate({ kind: 'channel', mapping: c })}
+                            >{c.enabled ? t('禁用映射') : t('启用映射')}</Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -356,6 +390,7 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                         <TableHead>{t("上游模型 ID")}</TableHead>
                         <TableHead>{t("启用")}</TableHead>
                         <TableHead>{t("优先级")}</TableHead>
+                        <TableHead>{t("操作")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -366,6 +401,12 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                           <TableCell className="font-mono text-sm">{s.upstream_model_id || model.model_id}</TableCell>
                           <TableCell>{s.enabled ? t("是") : t("否")}</TableCell>
                           <TableCell>{s.priority}</TableCell>
+                          <TableCell>
+                            <Button permission="channel.model_mapping.update" variant="outline" size="sm"
+                              disabled={toggleMappingMutation.isPending}
+                              onClick={() => toggleMappingMutation.mutate({ kind: 'subscription', mapping: s })}
+                            >{s.enabled ? t('禁用映射') : t('启用映射')}</Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

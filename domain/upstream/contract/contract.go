@@ -466,6 +466,17 @@ func Prepare(ctx context.Context, protocol string, body []byte) ([]byte, *Trace,
 	}
 	return body, nil, nil
 }
+
+// GeminiAPIVersion reads the native API version after any reverse-proxy base path.
+func GeminiAPIVersion(path string) string {
+	index := strings.LastIndex(path, "/models/")
+	if index < 0 {
+		return ""
+	}
+	prefix := path[:index]
+	return prefix[strings.LastIndex(prefix, "/")+1:]
+}
+
 func PrepareHTTP(req *http.Request, protocol string) (*http.Request, *Trace, error) {
 	s, ok := req.Context().Value(contextKey{}).(Selection)
 	if !ok {
@@ -501,6 +512,9 @@ func PrepareHTTP(req *http.Request, protocol string) (*http.Request, *Trace, err
 			actual := req.Header.Get("Anthropic-Version")
 			if actual == "" {
 				actual = req.URL.Query().Get("api-version")
+			}
+			if actual == "" && protocol == "gemini" {
+				actual = GeminiAPIVersion(req.URL.Path)
 			}
 			if actual != v.Document.APIVersion {
 				return nil, nil, fmt.Errorf("API version does not match frozen contract")

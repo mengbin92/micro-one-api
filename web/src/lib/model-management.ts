@@ -3,11 +3,13 @@
 // so these helpers differ from the `unwrapApiData` pattern used elsewhere.
 
 import { adminApiClient } from '@/lib/api';
+import { numericRevision } from '@/lib/admin-write';
 
 // ── Response types ────────────────────────────────────────────────────────
 
 export interface ModelSummary {
   revision?: string;
+  authorization_revision?: string;
   price_fields_visible?: boolean;
   id: number;
   model_id: string;
@@ -31,6 +33,7 @@ export interface ModelSummary {
 
 export interface ModelInfo {
   revision?: string;
+  authorization_revision?: string;
   price_fields_visible?: boolean;
   id: number;
   model_id: string;
@@ -335,6 +338,22 @@ export async function createModelAlias(modelPk: number, payload: CreateModelAlia
 
 export async function deleteModelAlias(modelPk: number, aliasId: number): Promise<UpdateModelResponse> {
   const { data } = await adminApiClient.delete<UpdateModelResponse>(`/admin/models/${modelPk}/aliases/${aliasId}`);
+  return data;
+}
+
+export async function setChannelMappingEnabled(mapping: ModelChannelMapping, enabled: boolean, modelRevision?: string): Promise<UpdateModelResponse> {
+  const { data } = await adminApiClient.post<UpdateModelResponse>(`/admin/channels/${mapping.channel_id}/models`, {
+    model_pk: mapping.model_pk, enabled, priority: mapping.priority, config: mapping.config,
+    upstream_model_id: mapping.upstream_model_id, expected_model_revision: numericRevision(modelRevision ?? '0'),
+  });
+  return data;
+}
+
+export async function setSubscriptionMappingEnabled(mapping: ModelSubscriptionMapping, enabled: boolean, modelRevision?: string): Promise<UpdateModelResponse> {
+  const { data } = await adminApiClient.post<UpdateModelResponse>(`/admin/subscription-accounts/${mapping.subscription_account_id}/models`, {
+    model_pk: mapping.model_pk, enabled, priority: mapping.priority, group_name: mapping.group_name,
+    upstream_model_id: mapping.upstream_model_id, expected_model_revision: numericRevision(modelRevision ?? '0'),
+  });
   return data;
 }
 

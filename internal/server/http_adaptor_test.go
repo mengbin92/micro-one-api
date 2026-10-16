@@ -604,6 +604,20 @@ func TestHandleChatCompletionsViaAdaptor_RecordsCodexQuotaSnapshot(t *testing.T)
 	}
 }
 
+func TestRecordCodexQuotaSnapshotDoesNotPausePartialSecondaryBelowThreshold(t *testing.T) {
+	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
+	recorder := &testQuotaRecorder{}
+	httpServer.SetSubscriptionAccountQuotaRecorder(recorder)
+	plan := &relaybiz.RelayPlan{Account: &relaybiz.SubscriptionAccount{ID: 12, Platform: "codex"}}
+	httpServer.recordCodexQuotaSnapshot(context.Background(), plan, []byte(`{"quota":{"secondary":{"used_percent":96,"window_minutes":10080}}}`))
+	if recorder.snapshot == nil || recorder.snapshot.PrimaryUsedPercent != nil || recorder.snapshot.SecondaryUsedPercent == nil || *recorder.snapshot.SecondaryUsedPercent != 96 {
+		t.Fatalf("unexpected partial snapshot: %+v", recorder.snapshot)
+	}
+	if recorder.pausedAccountID != 0 {
+		t.Fatalf("weekly quota below 100%% paused account %d", recorder.pausedAccountID)
+	}
+}
+
 // TestHandleChatCompletionsViaAdaptor_FailoverOn529 verifies that a 529
 // (upstream Overloaded) fails over to a sibling account, cools the first account
 // down with the dedicated "529" reason, and the client sees a 200.

@@ -1,6 +1,6 @@
 # 下一阶段计划：发布与生产收口、当前代码长流复验及 N5 准入
 
-> **当前执行入口**。制定：2026-10-12（Asia/Shanghai）。初始基线 `develop@02078e9b`、工作区干净，正式发布 v0.34.16；维护者已确认按顺序执行。接替 [10 月 8 日计划](next-stage-plan-2026-10-08.md)，不重复实施 N1–N4。实际结果见 [本轮记录](../runbooks/next-stage-acceptance-2026-10-12.md)，executor 生产运行事实仍只维护在 [观察手册](v0.23-executor-observation.md)。
+> **已归档**，当前执行入口为 [10 月 16 日计划](next-stage-plan-2026-10-16.md)。制定：2026-10-12（Asia/Shanghai）。初始基线 `develop@02078e9b`、工作区干净，正式发布 v0.34.16；维护者已确认按顺序执行。接替 [10 月 8 日计划](next-stage-plan-2026-10-08.md)，不重复实施 N1–N4。实际结果见 [本轮记录](../runbooks/next-stage-acceptance-2026-10-12.md)，executor 生产运行事实仍只维护在 [观察手册](v0.23-executor-observation.md)。
 
 ## 顺序与退出条件
 

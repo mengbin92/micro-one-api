@@ -44,17 +44,19 @@ func ParseCodexSnapshot(body []byte, now time.Time) (*CodexSnapshot, bool) {
 			continue
 		}
 	}
-	if snapshot.PrimaryUsedPercent == nil && len(candidates) > 0 {
-		c := candidates[0]
-		snapshot.PrimaryUsedPercent = &c.usedPercent
-		snapshot.PrimaryResetAfterSeconds = c.resetAfterSeconds
-		snapshot.PrimaryWindowMinutes = c.windowMinutes
-	}
-	if snapshot.SecondaryUsedPercent == nil && len(candidates) > 1 {
-		c := candidates[1]
-		snapshot.SecondaryUsedPercent = &c.usedPercent
-		snapshot.SecondaryResetAfterSeconds = c.resetAfterSeconds
-		snapshot.SecondaryWindowMinutes = c.windowMinutes
+	for _, candidate := range candidates {
+		if candidate.isPrimary() || candidate.isSecondary() {
+			continue
+		}
+		if snapshot.PrimaryUsedPercent == nil {
+			snapshot.PrimaryUsedPercent = &candidate.usedPercent
+			snapshot.PrimaryResetAfterSeconds = candidate.resetAfterSeconds
+			snapshot.PrimaryWindowMinutes = candidate.windowMinutes
+		} else if snapshot.SecondaryUsedPercent == nil {
+			snapshot.SecondaryUsedPercent = &candidate.usedPercent
+			snapshot.SecondaryResetAfterSeconds = candidate.resetAfterSeconds
+			snapshot.SecondaryWindowMinutes = candidate.windowMinutes
+		}
 	}
 	return snapshot, true
 }

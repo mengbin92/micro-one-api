@@ -1,6 +1,7 @@
 package biz
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -178,6 +179,23 @@ func TestVendorGranularityRequestCollisionsExactModelAndDecimalTolerance(t *test
 	r, err = ReconcileVendor(m, rows, a)
 	require.NoError(t, err)
 	require.Equal(t, "matched", r.Status)
+}
+
+func TestVendorDailyRetainsNewestEvidenceID(t *testing.T) {
+	m, rows, attempts := vendorFixture()
+	m.EvidenceID = "newest-evidence"
+	newest, err := ReconcileVendor(m, rows, attempts)
+	require.NoError(t, err)
+	m.Scope.Model = attempts[0].Model
+	m.EvidenceID = "oldest-evidence"
+	oldest, err := ReconcileVendor(m, rows, attempts)
+	require.NoError(t, err)
+	// ListVendorReconciliations returns newest imports first.
+	uc := &BillingUsecase{vendorReports: &vendorMonitorRepo{rows: []VendorReconciliation{newest, oldest}}}
+	_, summary, err := uc.ListVendorReports(context.Background(), m.Scope.Start, m.Scope.End, 10)
+	require.NoError(t, err)
+	require.Len(t, summary, 1)
+	require.Equal(t, "newest-evidence", summary[0].LatestEvidenceID)
 }
 
 func TestVendorAttributionReconstructsDeltaWithoutHypothesesOrDoubleEvidence(t *testing.T) {

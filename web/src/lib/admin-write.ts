@@ -31,8 +31,10 @@ export function prepareManagedWrite(config: InternalAxiosRequestConfig, snapshot
   const params = { ...config.params };
   const reason = data.reason ?? params.reason ?? config.headers.get('x-authorization-reason') ?? askReason(t('请输入此次变更的原因'));
   if (typeof reason !== 'string' || !reason.trim()) throw new Error(t('变更原因不能为空'));
-  config.headers.set('x-authorization-reason', reason.trim());
+  // Browser headers cannot carry Unicode; the admin guard reads body/query.
+  config.headers.delete('x-authorization-reason');
   data.reason = reason.trim();
+  params.reason = reason.trim();
   const ownerKey = /\/channel(?:\/|$)/.test(url) ? 'admin-channels' : /\/admin\/models/.test(url) ? 'admin-model' : /\/user(?:\/|$)/.test(url) ? 'admin-users' : /subscription-accounts/.test(url) ? 'admin-subscription-accounts' : /subscription-plans/.test(url) ? 'subscription-plans' : /subscription-groups/.test(url) ? 'admin-subscription-groups' : /subscriptions/.test(url) ? 'admin-subscriptions' : /routing-groups/.test(url) ? 'admin-routing-group' : /\/redemption/.test(url) ? 'admin-redemptions' : /upstream-costs/.test(url) ? 'admin-upstream-costs' : '';
   const modelRelation = /\/admin\/models\/\d+\/(aliases|channel-mappings|subscription-mappings)/.test(url);
   // A prior filter cache may still contain this row; relation edits display
@@ -57,7 +59,8 @@ export function prepareManagedWrite(config: InternalAxiosRequestConfig, snapshot
     const key = String(data.key ?? '');
     const options = client.getQueryCache().findAll({ queryKey: ['admin-options'] }).flatMap(q => records(q.state.data));
     const row = options.find(option => option.key === key);
-    data.expected_revision ??= numericRevision(row?.revision ?? '0');
+    // The system-options JSON adapter declares revisions as strings.
+    data.expected_revision = String(data.expected_revision ?? numericRevision(row?.revision ?? '0'));
     data.expected_revisions ??= { [key]: data.expected_revision };
   }
   if (url.includes('/billing') && data.version !== undefined) data.expected_revision ??= numericRevision(data.version);

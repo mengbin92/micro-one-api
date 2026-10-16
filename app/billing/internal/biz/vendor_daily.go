@@ -36,7 +36,10 @@ func SummarizeVendorDaily(rows []VendorReconciliation) []VendorDailySummary {
 				g.UnknownAmounts++
 			}
 		}
-		g.LatestEvidenceID = m.EvidenceID
+		// Repository results arrive newest first.
+		if g.LatestEvidenceID == "" {
+			g.LatestEvidenceID = m.EvidenceID
+		}
 		grouped[key] = g
 	}
 	keys := make([]string, 0, len(grouped))

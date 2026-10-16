@@ -14,11 +14,11 @@ describe('same-version preview commit', () => {
   const user = userEvent.setup(); const closed = vi.fn();
   renderWithQuery(<IAMChangeDialog change={{ title: '角色变更', path: '/roles/51', method: 'patch', rpc: 'UpdateRole', permission: 'iam.role.update', request: { id: '51', expected_revision: '3', role: { name: 'new name' }, update_mask: 'name' } }} onClose={closed} />);
   expect(screen.getByRole('button', { name: '确认提交' })).toBeDisabled();
-  await user.type(screen.getByLabelText('变更原因'), 'reviewed change');
+  await user.type(screen.getByLabelText('变更原因'), '复核角色名称调整');
   await waitFor(() => expect(screen.getByRole('button', { name: '预检变更' })).toBeEnabled());
   await user.click(screen.getByRole('button', { name: '预检变更' })); await waitFor(() => expect(screen.getByRole('button', { name: '确认提交' })).toBeEnabled());
   await user.click(screen.getByRole('button', { name: '确认提交' })); await screen.findByText('版本冲突，请刷新数据并重新预检。');
-  expect(committed[0]).toMatchObject({ ...previewed[0], expected_revision: '3', base_policy_revision: '9', content_digest: 'reviewed-digest' });
+  expect(committed[0]).toMatchObject({ ...previewed[0], reason: '复核角色名称调整', expected_revision: '3', base_policy_revision: '9', content_digest: 'reviewed-digest' });
   expect(screen.getByRole('button', { name: '确认提交' })).toBeDisabled(); expect(screen.getByRole('button', { name: '预检变更' })).toBeDisabled();
   await user.click(screen.getByRole('button', { name: '关闭并重新加载后预检' })); expect(closed).toHaveBeenCalledTimes(1); expect(committed).toHaveLength(1);
  });

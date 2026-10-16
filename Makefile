@@ -154,6 +154,13 @@ tidy:
 # run tests that do not require externally started services
 test: test-unit
 
+.PHONY: test-health
+# Sample critical assertions against deliberate regressions in a temporary checkout.
+# Generated stubs must exist, as for direct go test (fresh checkout: make init proto).
+test-health:
+	python3 scripts/test-test-health.py
+	python3 scripts/test-health.py $(TEST_HEALTH_ARGS)
+
 .PHONY: test-unit
 # run unit tests only. Integration tests (any package under
 # */internal/integration) bind real TCP listeners and require network

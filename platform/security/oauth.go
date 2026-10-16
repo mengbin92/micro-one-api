@@ -140,6 +140,9 @@ func (p *githubProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		return nil, fmt.Errorf("github token exchange: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("github token exchange: unexpected status %d", resp.StatusCode)
+	}
 
 	var tokenResp struct {
 		AccessToken string `json:"access_token"`
@@ -152,6 +155,10 @@ func (p *githubProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		return nil, fmt.Errorf("github oauth error: %s", tokenResp.Error)
 	}
 
+	if strings.TrimSpace(tokenResp.AccessToken) == "" {
+		return nil, fmt.Errorf("github token response missing credentials")
+	}
+
 	// Fetch user profile
 	userReq, _ := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/user", nil)
 	userReq.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
@@ -162,6 +169,9 @@ func (p *githubProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		return nil, fmt.Errorf("github user fetch: %w", err)
 	}
 	defer userResp.Body.Close()
+	if userResp.StatusCode < http.StatusOK || userResp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("github user fetch: unexpected status %d", userResp.StatusCode)
+	}
 
 	var ghUser struct {
 		ID        int64  `json:"id"`
@@ -172,6 +182,10 @@ func (p *githubProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 	}
 	if err := jsonx.NewDecoder(io.LimitReader(userResp.Body, xhttp.MaxExternalResponseBody)).Decode(&ghUser); err != nil {
 		return nil, fmt.Errorf("github user decode: %w", err)
+	}
+
+	if ghUser.ID <= 0 {
+		return nil, fmt.Errorf("github user response missing identity")
 	}
 
 	// The public profile email does not prove ownership; use a verified primary email.
@@ -203,6 +217,9 @@ func (p *githubProvider) fetchGitHubEmail(ctx context.Context, token string) str
 		return ""
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return ""
+	}
 
 	body, _ := xhttp.ReadBody(resp.Body, xhttp.MaxExternalResponseBody)
 	var emails []struct {
@@ -280,6 +297,9 @@ func (p *googleProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		return nil, fmt.Errorf("google token exchange: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("google token exchange: unexpected status %d", resp.StatusCode)
+	}
 
 	var tokenResp struct {
 		AccessToken string `json:"access_token"`
@@ -292,6 +312,10 @@ func (p *googleProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		return nil, fmt.Errorf("google oauth error: %s", tokenResp.Error)
 	}
 
+	if strings.TrimSpace(tokenResp.AccessToken) == "" {
+		return nil, fmt.Errorf("google token response missing credentials")
+	}
+
 	// Fetch user profile
 	userReq, _ := http.NewRequestWithContext(ctx, "GET", "https://www.googleapis.com/oauth2/v2/userinfo", nil)
 	userReq.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
@@ -301,6 +325,9 @@ func (p *googleProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		return nil, fmt.Errorf("google user fetch: %w", err)
 	}
 	defer userResp.Body.Close()
+	if userResp.StatusCode < http.StatusOK || userResp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("google user fetch: unexpected status %d", userResp.StatusCode)
+	}
 
 	var gUser struct {
 		ID            string `json:"id"`
@@ -311,6 +338,10 @@ func (p *googleProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 	}
 	if err := jsonx.NewDecoder(io.LimitReader(userResp.Body, xhttp.MaxExternalResponseBody)).Decode(&gUser); err != nil {
 		return nil, fmt.Errorf("google user decode: %w", err)
+	}
+
+	if strings.TrimSpace(gUser.ID) == "" {
+		return nil, fmt.Errorf("google user response missing identity")
 	}
 
 	username := gUser.Email
@@ -396,6 +427,9 @@ func (p *larkProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 		return nil, fmt.Errorf("lark token exchange: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("lark token exchange: unexpected status %d", resp.StatusCode)
+	}
 	var tokenResp struct {
 		AccessToken      string `json:"access_token"`
 		Error            string `json:"error"`
@@ -407,6 +441,10 @@ func (p *larkProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 	if tokenResp.Error != "" {
 		return nil, fmt.Errorf("lark oauth error: %s", tokenResp.ErrorDescription)
 	}
+	if strings.TrimSpace(tokenResp.AccessToken) == "" {
+		return nil, fmt.Errorf("lark token response missing credentials")
+	}
+
 	userReq, err := http.NewRequestWithContext(ctx, http.MethodGet, p.cfg.UserInfoURL, nil)
 	if err != nil {
 		return nil, err
@@ -417,6 +455,9 @@ func (p *larkProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 		return nil, fmt.Errorf("lark user fetch: %w", err)
 	}
 	defer userResp.Body.Close()
+	if userResp.StatusCode < http.StatusOK || userResp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("lark user fetch: unexpected status %d", userResp.StatusCode)
+	}
 	var user struct {
 		UnionID string `json:"union_id"`
 		OpenID  string `json:"open_id"`
@@ -435,6 +476,10 @@ func (p *larkProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 	if providerID == "" {
 		providerID = user.OpenID
 	}
+	if strings.TrimSpace(providerID) == "" {
+		return nil, fmt.Errorf("lark user response missing identity")
+	}
+
 	username := usernameFromEmail(user.Email, "lark-"+providerID)
 	displayName := user.Name
 	if displayName == "" {
@@ -494,6 +539,9 @@ func (p *wechatProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		return nil, fmt.Errorf("wechat token exchange: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("wechat token exchange: unexpected status %d", resp.StatusCode)
+	}
 	var tokenResp struct {
 		AccessToken string `json:"access_token"`
 		OpenID      string `json:"openid"`
@@ -507,6 +555,10 @@ func (p *wechatProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 	if tokenResp.ErrorCode != 0 {
 		return nil, fmt.Errorf("wechat oauth error: %s", tokenResp.ErrorMsg)
 	}
+	if strings.TrimSpace(tokenResp.AccessToken) == "" || strings.TrimSpace(tokenResp.OpenID) == "" {
+		return nil, fmt.Errorf("wechat token response missing credentials")
+	}
+
 	userURL, err := url.Parse(p.cfg.UserInfoURL)
 	if err != nil {
 		return nil, err
@@ -524,6 +576,9 @@ func (p *wechatProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		return nil, fmt.Errorf("wechat user fetch: %w", err)
 	}
 	defer userResp.Body.Close()
+	if userResp.StatusCode < http.StatusOK || userResp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("wechat user fetch: unexpected status %d", userResp.StatusCode)
+	}
 	var user struct {
 		OpenID     string `json:"openid"`
 		UnionID    string `json:"unionid"`
@@ -598,6 +653,9 @@ func (p *oidcProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 		return nil, fmt.Errorf("oidc token exchange: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("oidc token exchange: unexpected status %d", resp.StatusCode)
+	}
 	var tokenResp struct {
 		AccessToken string `json:"access_token"`
 		IDToken     string `json:"id_token"`
@@ -609,6 +667,10 @@ func (p *oidcProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 	if tokenResp.Error != "" {
 		return nil, fmt.Errorf("oidc oauth error: %s", tokenResp.Error)
 	}
+	if strings.TrimSpace(tokenResp.AccessToken) == "" {
+		return nil, fmt.Errorf("oidc token response missing credentials")
+	}
+
 	userReq, err := http.NewRequestWithContext(ctx, http.MethodGet, p.cfg.UserInfoURL, nil)
 	if err != nil {
 		return nil, err
@@ -619,6 +681,9 @@ func (p *oidcProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 		return nil, fmt.Errorf("oidc user fetch: %w", err)
 	}
 	defer userResp.Body.Close()
+	if userResp.StatusCode < http.StatusOK || userResp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("oidc user fetch: unexpected status %d", userResp.StatusCode)
+	}
 	var user struct {
 		Sub           string `json:"sub"`
 		Email         string `json:"email"`
@@ -629,6 +694,10 @@ func (p *oidcProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 	if err := jsonx.NewDecoder(io.LimitReader(userResp.Body, xhttp.MaxExternalResponseBody)).Decode(&user); err != nil {
 		return nil, fmt.Errorf("oidc user decode: %w", err)
 	}
+	if strings.TrimSpace(user.Sub) == "" {
+		return nil, fmt.Errorf("oidc user response missing identity")
+	}
+
 	username := user.Email
 	if idx := strings.Index(username, "@"); idx > 0 {
 		username = username[:idx]

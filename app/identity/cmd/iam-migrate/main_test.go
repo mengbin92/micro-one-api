@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -75,12 +76,14 @@ func TestIAMMigrationManifestDigestOffline(t *testing.T) {
 
 func TestIAMMigrationCLIJSONStdout(t *testing.T) {
 	if os.Getenv("IAM_MIGRATION_JSON_HELPER") == "1" {
-		if err := run([]string{"apply", "-batch", "stdout-test", "-request-id", "stdout-apply", "-reason", "stdout regression", "-expected-policy-revision", "1"}, os.Stdout); err != nil {
+		if err := run([]string{"apply", "-batch", "stdout-test", "-request-id", "stdout-apply", "-reason", "stdout regression", "-expected-policy-revision", os.Getenv("IAM_MIGRATION_JSON_POLICY_REVISION")}, os.Stdout); err != nil {
 			os.Exit(1)
 		}
 		os.Exit(0)
 	}
 	db := dbtest.RoutingContextDB(t, "sqlite")
+	var policyRevision uint64
+	require.NoError(t, db.Table("iam_policy_state").Select("policy_revision").Where("id = 1").Scan(&policyRevision).Error)
 	require.NoError(t, db.Table("users").Create(map[string]any{"id": 71, "username": "stdout-root", "aff_code": "stdout-root", "password_hash": "unused", "role": 100, "status": 1}).Error)
 	var files []struct{ Name, File string }
 	require.NoError(t, db.Raw("PRAGMA database_list").Scan(&files).Error)
@@ -94,7 +97,7 @@ func TestIAMMigrationCLIJSONStdout(t *testing.T) {
 	binary, err := os.Executable()
 	require.NoError(t, err)
 	command := exec.Command(binary, "-test.run=^TestIAMMigrationCLIJSONStdout$")
-	command.Env = append(os.Environ(), "IAM_MIGRATION_JSON_HELPER=1", "IAM_MIGRATION_DSN="+path, "IAM_MIGRATION_DRIVER=sqlite3", "IAM_MIGRATION_SCHEMA=")
+	command.Env = append(os.Environ(), "IAM_MIGRATION_JSON_HELPER=1", "IAM_MIGRATION_JSON_POLICY_REVISION="+strconv.FormatUint(policyRevision, 10), "IAM_MIGRATION_DSN="+path, "IAM_MIGRATION_DRIVER=sqlite3", "IAM_MIGRATION_SCHEMA=")
 	raw, err := command.Output()
 	require.NoError(t, err)
 	var report biz.IAMMigrationReport

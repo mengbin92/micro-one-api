@@ -40,6 +40,7 @@ afterEach(() => {
   server.resetHandlers();
   window.localStorage.clear();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 afterAll(() => server.close());

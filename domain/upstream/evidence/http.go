@@ -154,6 +154,9 @@ func apiVersion(req *http.Request) string {
 	if version := req.URL.Query().Get("api-version"); version != "" && len(version) <= 128 {
 		return version
 	}
+	if version := contract.GeminiAPIVersion(req.URL.Path); ProtocolForPath(req.URL.Path) == "gemini" && version != "" && len(version) <= 128 {
+		return version
+	}
 	if strings.HasPrefix(req.URL.Path, "/v1beta/") {
 		return "v1beta"
 	}

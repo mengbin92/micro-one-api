@@ -203,7 +203,7 @@ func TestIAMA4AccountRuntimeDialects(t *testing.T) {
 				require.Equal(t, 1, created)
 				require.EqualValues(t, 1, iamCount(t, f.db, "users"))
 				require.EqualValues(t, 1, iamCount(t, f.db, "iam_user_roles"))
-				require.EqualValues(t, 1, iamCount(t, f.db, "iam_audit_events"), "only the successful bootstrap emits an event")
+				require.EqualValues(t, 1, iamAuditCount(t, f.db, "action = ?", "account.bootstrap"), "only the successful bootstrap emits an event")
 				var a iamAssignmentModel
 				require.NoError(t, f.db.First(&a).Error)
 				require.Equal(t, "bootstrap", a.Origin)
