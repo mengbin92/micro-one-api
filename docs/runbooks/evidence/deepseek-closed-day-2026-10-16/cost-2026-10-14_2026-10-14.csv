@@ -1,0 +1,2 @@
+user_id,start_time_iso,end_time_iso,model,name,wallet_type,cost,currency
+sha256:d6cea0bf519c646c07a5d5199a0420c3cb4d0edadc572a1c676f7f2345a7bbc6,2026-10-14T07:00:00+08:00,2026-10-14T08:00:00+08:00,deepseek-flash,deepseek-flash,Paid,0.1403695600000000,CNY

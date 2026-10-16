@@ -378,9 +378,13 @@
     ]
   },
   "supplier_acceptance": {
-    "status": "INCOMPLETE",
-    "reason": "Browser tool denied access to the DeepSeek URL; provider-site work stopped. No closed official CSV was parsed or imported, and no real costs were confirmed.",
-    "previous_export_day_closed": false
+    "status": "PARTIAL",
+    "reason": "Browser access restored in the user-authenticated in-app browser. Official completed-day report matches six captured manual calls exactly; production source binding, final watermark, per-request actual cost and API/CSV equivalence remain unverified.",
+    "previous_export_day_closed": false,
+    "prior_browser_block": "Previous execution stopped when the browser denied the URL.",
+    "completed_day_evidence": "../deepseek-closed-day-2026-10-16/index.json",
+    "manual_trial_day_matched": true,
+    "production_report_imported": false
   },
   "executor": {
     "checked_at": "2026-10-16T14:42:05.288102+08:00",
