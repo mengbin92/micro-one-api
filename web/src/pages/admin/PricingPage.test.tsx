@@ -10,6 +10,29 @@ import { useAuthorizationLifecycle } from '@/lib/authorization';
 import { PricingPage } from '../PricingPage';
 
 describe('AdminPricingPage', () => {
+  it('clears a protected pricing draft when read permission is revoked', async () => {
+    const user = userEvent.setup();
+    let allowed = true;
+    let client!: QueryClient;
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({ authorization_mode: 'iam', session: { activation_state: 'active' }, permitted_operations: ['system.option.update', 'system.option.pricing.update', 'billing.pricing.update', 'channel.model.list', ...(allowed ? ['system.option.read'] : [])] })),
+      http.get('/api/option/', () => HttpResponse.json({ success: true, data: [{ key: 'ModelPrice', value: '{"private-model":{"input_price":0.000001}}', revision: '1' }] })),
+      http.get('/api/admin/models', () => HttpResponse.json({ models: [], total: 0 })),
+    );
+    function Shell() { client = useQueryClient(); useAuthorizationLifecycle(); return <AdminPricingPage />; }
+    renderWithQuery(<Shell />);
+    await screen.findByDisplayValue('private-model');
+    await user.clear(screen.getAllByRole('spinbutton')[0]);
+    await user.type(screen.getAllByRole('spinbutton')[0], '3');
+    expect(screen.getAllByRole('spinbutton')[0]).toHaveValue(3);
+    allowed = false;
+    await act(async () => { await client.invalidateQueries({ queryKey: ['authorization'] }); });
+    await screen.findByRole('alert');
+    await waitFor(() => expect(document.querySelector('[data-slot="skeleton"]')).toBeNull());
+    expect(screen.queryByDisplayValue('private-model')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '保存价格' })).toBeDisabled();
+  });
+
   it('keeps the draft versions when a background read sees another writer', async () => {
     const user = userEvent.setup();
     let revision = '1';

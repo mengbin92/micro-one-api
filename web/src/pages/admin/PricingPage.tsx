@@ -250,7 +250,7 @@ function newRow(): PricingRow {
 export function AdminPricingPage() {
   const auth = useAuthorization();
   const queryClient = useQueryClient();
-  const [draft, setDraft] = useState<{ rows: PricingRow[]; revisions: Record<string, string> } | null>(null);
+  const [draft, setDraft] = useState<{ rows: PricingRow[]; revisions: Record<string, string>; generation: string } | null>(null);
   const [needsReadback, setNeedsReadback] = useState(false);
 
   const optionsQuery = useAuthorizedQuery({
@@ -283,7 +283,8 @@ export function AdminPricingPage() {
     );
   }, [options, publicModels]);
 
-  const rows = draft?.rows ?? savedRows;
+  const activeDraft = optionsQuery.isSuccess && !optionsQuery.isRestricted && draft?.generation === auth.generation ? draft : null;
+  const rows = optionsQuery.isRestricted ? [] : activeDraft?.rows ?? savedRows;
   const displayedRevisions = Object.fromEntries([MODEL_PRICE_KEY, MODEL_RATIO_KEY, COMPLETION_RATIO_KEY].map(key => [key, options?.find(option => option.key === key)?.revision ?? '0']));
 
   const saveMutation = useMutation({
@@ -327,7 +328,7 @@ export function AdminPricingPage() {
         { key: COMPLETION_RATIO_KEY, value: formatJSON(legacyRatios.completionRatio) },
       ];
       const values = Object.fromEntries(payloads.map(({ key, value }) => [key, value]));
-      const expected_revisions = draft?.revisions ?? displayedRevisions;
+      const expected_revisions = activeDraft?.revisions ?? displayedRevisions;
       setNeedsReadback(true);
       const res = await adminApiClient.put('/option/', { values, expected_revisions, reason });
       ensureApiSuccess(res.data, t('保存价格失败'));
@@ -350,20 +351,16 @@ export function AdminPricingPage() {
     },
   });
 
-  const updateRow = (id: string, patch: Partial<PricingRow>) => {
+  const editRows = (change: (rows: PricingRow[]) => PricingRow[]) => {
     if (!optionsReady) return;
-    setDraft((current) => ({ rows: (current?.rows ?? savedRows).map((row) => (row.id === id ? { ...row, ...patch } : row)), revisions: current?.revisions ?? displayedRevisions }));
+    setDraft((current) => {
+      const previous = current?.generation === auth.generation ? current : null;
+      return { rows: change(previous?.rows ?? savedRows), revisions: previous?.revisions ?? displayedRevisions, generation: auth.generation };
+    });
   };
-
-  const addRow = () => {
-    if (!optionsReady) return;
-    setDraft((current) => ({ rows: [...(current?.rows ?? savedRows), newRow()], revisions: current?.revisions ?? displayedRevisions }));
-  };
-
-  const removeRow = (id: string) => {
-    if (!optionsReady) return;
-    setDraft((current) => ({ rows: (current?.rows ?? savedRows).filter((row) => row.id !== id), revisions: current?.revisions ?? displayedRevisions }));
-  };
+  const updateRow = (id: string, patch: Partial<PricingRow>) => editRows(rows => rows.map(row => row.id === id ? { ...row, ...patch } : row));
+  const addRow = () => editRows(rows => [...rows, newRow()]);
+  const removeRow = (id: string) => editRows(rows => rows.filter(row => row.id !== id));
 
   return (
     <div className="space-y-6">
