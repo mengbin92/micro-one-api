@@ -14,6 +14,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- 拒绝 OAuth 上游错误 HTTP 响应、缺失凭据或身份，避免 GitHub 空 ID 等无效身份进入登录链路；邮箱接口失败不再产生已验证邮箱。
+- 模型定价配置成功读取前禁止编辑和保存，防止读取失败、缺读权限或提前建立空草稿覆盖已有价格。
+- Codex partial quota 保留 primary/secondary 窗口归属，避免周额度 96% 被当成短周期额度触发账号误暂停。
+- Gemini 冻结契约识别模型路径中的实际 API 版本并兼容代理前缀，供应商日报保留最新导入的证据 ID。
 - 补齐 Billing/Channel 已实现供应商报告与上游契约 RPC 的 IAM 执行覆盖登记，修复会话已具备读取权限但调用仍被 403 拒绝；内部探测与结果回传继续保持系统专用。
 
 ## [0.35.0] - 2026-10-15

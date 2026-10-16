@@ -83,6 +83,31 @@ func TestContractHTTPHasNoNetworkCallForInvalidParameters(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestContractHTTPGeminiVersionMatchesURLPath(t *testing.T) {
+	d := doc()
+	d.Scope.Protocol = "gemini"
+	d.Inbound = []string{"gemini"}
+	d.APIVersion = "v1beta"
+	snapshot, err := Compile(d)
+	require.NoError(t, err)
+	ctx := WithSelection(context.Background(), Selection{Snapshots: []Snapshot{snapshot}, Inbound: "gemini"})
+	for _, prefix := range []string{"", "/google", "/proxy/models/google"} {
+		for _, version := range []string{"v1beta", "v1"} {
+			t.Run(prefix+"/"+version, func(t *testing.T) {
+				req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://fixture.invalid"+prefix+"/"+version+"/models/vendor-exact:generateContent", strings.NewReader(`{"contents":[]}`))
+				require.NoError(t, err)
+				_, trace, err := PrepareHTTP(req, "gemini")
+				if version == d.APIVersion {
+					require.NoError(t, err, "the Gemini provider puts the API version after any configured base path")
+					require.Equal(t, snapshot.Revision, trace.Revision)
+				} else {
+					require.ErrorContains(t, err, "API version does not match")
+				}
+			})
+		}
+	}
+}
+
 func TestContractRejectsOverlappingRenameDestinationsAndSameLevelOverrides(t *testing.T) {
 	for _, rules := range [][]Rule{
 		{{ID: "a", Kind: "rename", Path: "a", Target: "options", Evidence: "x"}, {ID: "b", Kind: "rename", Path: "b", Target: "options.value", Evidence: "x"}},

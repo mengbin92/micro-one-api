@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 import { AdminPricingPage } from './PricingPage';
 import { renderWithQuery } from '@/test/render';
@@ -9,6 +9,51 @@ import { useAuthorizationLifecycle } from '@/lib/authorization';
 import { PricingPage } from '../PricingPage';
 
 describe('AdminPricingPage', () => {
+  it.each(['pending', 'failed', 'restricted'])('cannot replace pricing maps when option reads are %s', async (state) => {
+    const user = userEvent.setup();
+    let writes = 0;
+    let reads = 0;
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({
+        authorization_mode: 'iam', session: { activation_state: 'active' },
+        permitted_operations: ['system.option.update', 'system.option.pricing.update', 'billing.pricing.update', 'channel.model.list', ...(state === 'restricted' ? [] : ['system.option.read'])],
+      })),
+      http.get('/api/option/', async () => {
+        reads++;
+        if (state === 'pending') await delay('infinite');
+        return HttpResponse.json({ message: 'options unavailable' }, { status: 500 });
+      }),
+      http.get('/api/admin/models', () => HttpResponse.json({ models: [], total: 0 })),
+      http.put('/api/option/', () => { writes++; return HttpResponse.json({ success: true }); }),
+    );
+    vi.spyOn(window, 'prompt').mockReturnValue('调整价格');
+    function Shell() { useAuthorizationLifecycle(); return <AdminPricingPage />; }
+    renderWithQuery(<Shell />);
+    const save = await screen.findByRole('button', { name: '保存价格' });
+    if (state === 'failed') await screen.findByText('暂无模型价格');
+    if (state === 'pending') await waitFor(() => expect(reads).toBe(1));
+    await user.click(save);
+    expect(writes).toBe(0);
+    expect(save).toBeDisabled();
+  });
+
+  it('cannot start an empty draft before existing prices arrive', async () => {
+    const user = userEvent.setup();
+    let resolveOptions!: (response: Response) => void;
+    const options = new Promise<Response>(resolve => { resolveOptions = resolve; });
+    let reads = 0;
+    server.use(
+      http.get('/api/option/', () => { reads++; return options; }),
+      http.get('/api/admin/models', () => HttpResponse.json({ models: [], total: 0 })),
+    );
+    renderWithQuery(<AdminPricingPage />);
+    await waitFor(() => expect(reads).toBe(1));
+    const add = screen.getByRole('button', { name: '添加模型' });
+    await user.click(add);
+    resolveOptions(HttpResponse.json({ success: true, data: [{ key: 'ModelPrice', value: JSON.stringify({ 'existing-model': { input_price: 0.000001 } }) }] }));
+    expect(await screen.findByDisplayValue('existing-model')).toBeInTheDocument();
+  });
+
   it.each(['new model listing', '新模型上架测试', '', null])('handles save reason %j once and only publishes confirmed prices', async (reason) => {
     const user = userEvent.setup();
     const saved = new Map<string, string>();

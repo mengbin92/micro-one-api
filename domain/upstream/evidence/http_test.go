@@ -63,6 +63,24 @@ func TestHTTPObserverDisabledHasNoBodyWrapper(t *testing.T) {
 	}
 }
 
+func TestAPIVersionWithGeminiProxyPaths(t *testing.T) {
+	for _, tc := range []struct{ path, header, want string }{
+		{"/v1beta/models/exact:generateContent", "", "v1beta"},
+		{"/google/v1beta/models/exact:generateContent", "", "v1beta"},
+		{"/proxy/models/google/v1beta/models/exact:streamGenerateContent?alt=sse", "", "v1beta"},
+		{"/google/v1/models/exact:generateContent", "", "v1"},
+		{"/google/v1beta/models/exact:generateContent?api-version=query-version", "", "query-version"},
+		{"/google/v1beta/models/exact:generateContent?api-version=query-version", "header-version", "header-version"},
+	} {
+		t.Run(tc.path+tc.header, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodPost, "https://fixture.invalid"+tc.path, nil)
+			require.NoError(t, err)
+			req.Header.Set("Anthropic-Version", tc.header)
+			require.Equal(t, tc.want, apiVersion(req))
+		})
+	}
+}
+
 func TestHTTPObservationIncompleteResponseIsNotCompletedAtEOF(t *testing.T) {
 	var record Record
 	ctx := WithRecorder(context.Background(), func(r Record) { record = r })

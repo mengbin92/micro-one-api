@@ -251,13 +251,15 @@ export function AdminPricingPage() {
   const queryClient = useQueryClient();
   const [draftRows, setDraftRows] = useState<PricingRow[] | null>(null);
 
-  const { data: options, isLoading } = useAuthorizedQuery({
+  const optionsQuery = useAuthorizedQuery({
     permission: 'system.option.read', queryKey: ['admin-options'],
     queryFn: async () => {
       const res = await adminApiClient.get('/option/');
       return unwrapApiData<OptionItem[]>(res.data);
     },
   });
+  const { data: options, isLoading } = optionsQuery;
+  const optionsReady = optionsQuery.isSuccess && !optionsQuery.isRestricted && Array.isArray(options);
   const { data: publicModels, isLoading: areModelsLoading } = useAuthorizedQuery({
     permission: 'channel.model.list', queryKey: ['admin-models', 'pricing'],
     queryFn: async () => {
@@ -283,6 +285,7 @@ export function AdminPricingPage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!optionsReady) throw new Error(t('部分数据加载失败，请重试。'));
       const normalizedRows = rows.map((row) => ({
         ...row,
         model: row.model.trim().toLowerCase(),
@@ -339,14 +342,17 @@ export function AdminPricingPage() {
   });
 
   const updateRow = (id: string, patch: Partial<PricingRow>) => {
+    if (!optionsReady) return;
     setDraftRows((current) => (current ?? savedRows).map((row) => (row.id === id ? { ...row, ...patch } : row)));
   };
 
   const addRow = () => {
+    if (!optionsReady) return;
     setDraftRows((current) => [...(current ?? savedRows), newRow()]);
   };
 
   const removeRow = (id: string) => {
+    if (!optionsReady) return;
     setDraftRows((current) => (current ?? savedRows).filter((row) => row.id !== id));
   };
 
@@ -358,14 +364,16 @@ export function AdminPricingPage() {
           <p className="mt-1 text-sm text-muted-foreground">{t("按用户请求的公开模型 ID 配置每 1M tokens 价格；同一模型的渠道、订阅账号和上游模型 ID 共用一份售价。")}</p>
         </div>
         <div className="flex gap-2">
-          <Button permission="billing.pricing.update" variant="outline" onClick={addRow}>
+          <Button permission="billing.pricing.update" variant="outline" onClick={addRow} disabled={!optionsReady}>
             <Plus className="size-4" />{t("添加模型")}</Button>
-          <Button permission={['system.option.update', 'system.option.pricing.update', 'billing.pricing.update']} onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+          <Button permission={['system.option.update', 'system.option.pricing.update', 'billing.pricing.update']} onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !optionsReady}>
             <Save className="size-4" />
             {saveMutation.isPending ? t("保存中...") : t("保存价格")}
           </Button>
         </div>
       </div>
+
+      {!optionsReady && !isLoading && <p role="alert">{t('部分数据加载失败，请重试。')}</p>}
 
       <Card>
         <CardHeader>
@@ -378,7 +386,7 @@ export function AdminPricingPage() {
           ) : rows.length === 0 ? (
             <div className="space-y-4">
               <EmptyState title={t("暂无模型价格")} description={t("添加模型后会保存输入、输出和缓存读取价格。")} />
-              <Button permission="billing.pricing.update" variant="outline" onClick={addRow}>
+              <Button permission="billing.pricing.update" variant="outline" onClick={addRow} disabled={!optionsReady}>
                 <Plus className="size-4" />{t("添加模型")}</Button>
             </div>
           ) : (
@@ -400,6 +408,7 @@ export function AdminPricingPage() {
                     <TableRow key={row.id}>
                       <TableCell>
                         <Input
+                          disabled={!optionsReady}
                           value={row.model}
                           onChange={(event) => updateRow(row.id, { model: event.target.value })}
                           placeholder="gpt-5.5"
@@ -414,6 +423,7 @@ export function AdminPricingPage() {
                       </TableCell>
                       <TableCell>
                         <Input
+                          disabled={!optionsReady}
                           type="number"
                           min="0"
                           step="0.000001"
@@ -425,6 +435,7 @@ export function AdminPricingPage() {
                       </TableCell>
                       <TableCell>
                         <Input
+                          disabled={!optionsReady}
                           type="number"
                           min="0"
                           step="0.000001"
@@ -436,6 +447,7 @@ export function AdminPricingPage() {
                       </TableCell>
                       <TableCell>
                         <Input
+                          disabled={!optionsReady}
                           type="number"
                           min="0"
                           step="0.000001"
@@ -447,6 +459,7 @@ export function AdminPricingPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <Button permission="billing.pricing.update"
+                          disabled={!optionsReady}
                           type="button"
                           variant="ghost"
                           size="icon-sm"
