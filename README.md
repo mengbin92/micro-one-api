@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.35.0 发布公告](./docs/releases/release-v0.35.0.md)（持久化计费证据、供应商对账与受控上游修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.35.0)
+> 📣 **最新发布**：[v0.35.1 发布公告](./docs/releases/release-v0.35.1.md)（鉴权与定价保护、额度窗口及证据管理修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.35.1)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.35.1
+
+v0.35.1 修复 OAuth 无效身份、未读配置覆盖价格、Codex 额度误暂停、Gemini 路径版本及日报旧证据，收口模型启用与证据管理入口。公开接口兼容，相对 v0.35.0 新增 Identity 136；已完成 10 月 16 日管理页面更新的环境仅更新 Identity、Billing、Relay 和宿主机前端。保留现有权限、收费与灰度边界，历史暂停账号不自动恢复。详见 [release-v0.35.1.md](./docs/releases/release-v0.35.1.md)。
 
 ### 升级到 v0.35.0
 
