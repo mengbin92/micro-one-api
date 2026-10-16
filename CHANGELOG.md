@@ -7,11 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.35.2] - 2026-10-16
+
+v0.35.2 是 v0.35.1 之后的 **PATCH 修复版本**：三项模型价格采用 owner 原子事务与逐项 CAS，冻结草稿版本，阻止失败后继续写入并清理撤权草稿。补齐传输矩阵、三库并发回归和 DeepSeek 手工试点已结束日窗证据；无新增迁移、proto 或依赖，运行时更新 Admin 与独立前端。详见 [release-v0.35.2.md](docs/releases/release-v0.35.2.md)。
+
 ### Fixed
 
 - 三项模型价格改为单次 owner 事务保存，校验完整价格 map、授权和各自 CAS；拒绝旧版本、首次创建竞争及部分写入，legacy 批量也不再逐项降级。
 - 价格草稿冻结读取时的版本号；写入或回读失败后禁写，显式刷新后才能继续，409 不自动重试。
 - 价格草稿绑定授权版本，撤销读取权限后清除旧草稿显示；新增 HTTP/SSE/WebSocket 十二项冻结契约和终态证据回归。
+
+### Added
+
+- HTTP/SSE/WebSocket 十二项冻结契约与终态证据回归，SQLite/MySQL/Postgres 定价并发、首次创建及事务回滚验证。
+- 计划执行与部署记录、DeepSeek 官方导出脱敏证据及离线校验：六次手工调用与已结束日窗合计 0.14036956 CNY，差额为零；生产来源绑定、最终水位/API 双轨和正式七天灰度仍待验收。
 
 ## [0.35.1] - 2026-10-16
 
