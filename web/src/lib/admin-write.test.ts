@@ -8,6 +8,14 @@ const snapshot: IAMReply = { authorization_mode: 'iam', session: { activation_st
 function config(url: string, method = 'put', data?: unknown): InternalAxiosRequestConfig { return { url, method, data, headers: new AxiosHeaders() }; }
 function client() { const c = new QueryClient(); c.setQueryDefaults(['admin-channels'], { meta: { protected: true } }); c.setQueryData(['admin-channels', 'authorization', 'platform', '12'], [{ id: 7, revision: '3' }]); return c; }
 describe('owner write preconditions', () => {
+ it('keeps all displayed pricing versions together and preserves stale batch preconditions', () => {
+  const c = client();
+  c.setQueryData(['admin-options'], [{ key: 'ModelPrice', revision: '7' }, { key: 'ModelRatio', revision: '8' }, { key: 'CompletionRatio', revision: '9' }]);
+  const values = { ModelPrice: '{}', ModelRatio: '{}', CompletionRatio: '{}' };
+  expect(prepareManagedWrite(config('/option/', 'put', { values, reason: 'batch pricing' }), snapshot, c).data.expected_revisions).toEqual({ ModelPrice: '7', ModelRatio: '8', CompletionRatio: '9' });
+  const stale = { ModelPrice: '6', ModelRatio: '8', CompletionRatio: '9' };
+  expect(prepareManagedWrite(config('/option/', 'put', { values, expected_revisions: stale, reason: 'batch pricing' }), snapshot, c).data.expected_revisions).toEqual(stale);
+ });
  it('uses the channel list instead of an active older health cache', () => {
   const c = new QueryClient();
   c.setQueryDefaults(['admin-channels-health'], { meta: { protected: true } });

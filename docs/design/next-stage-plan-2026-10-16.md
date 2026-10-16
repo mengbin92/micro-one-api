@@ -1,6 +1,6 @@
 # 下一阶段计划：审查修复交付、定价原子保存与真实证据验收
 
-> **当前执行入口**。制定：2026-10-16（Asia/Shanghai）。审查基线 `develop@a1913290`，起始工作区干净；本轮修复与计划随本次提交交付，尚未发布或部署。接替 [10 月 12 日计划](next-stage-plan-2026-10-12.md)，保留已完成验收与条件项，不重复实施已交付工程。
+> **当前执行入口**。制定：2026-10-16（Asia/Shanghai）。审查基线 `develop@a1913290`，起始工作区干净；审查修复已随 v0.35.1 正式发布，随后定价原子保存与撤权草稿修复已合入 develop 并上线。执行证据及未满足条件见 [本轮记录](../runbooks/plan-execution-2026-10-16.md)。接替 [10 月 12 日计划](next-stage-plan-2026-10-12.md)，保留已完成验收与条件项，不重复实施已交付工程。
 
 ## 本轮审查与修复
 
@@ -26,7 +26,7 @@
 | `go test ./domain/upstream/contract ./domain/upstream/evidence -run 'TestContractHTTPGeminiVersionMatchesURLPath\|TestAPIVersionWithGeminiProxyPaths' -count=1` | 合法路径返回 `API version does not match frozen contract`；代理前缀证据版本为 `unknown` |
 | `go test ./app/billing/internal/biz -run TestVendorDailyRetainsNewestEvidenceID -count=1` | 预期 `newest-evidence`，实际 `oldest-evidence` |
 
-## 验证与边界
+## 审查时验证与边界（执行前）
 
 - `make api` 刷新本地陈旧、被 Git 忽略的 protobuf 生成物，未手改生成代码。
 - 标准单元范围 `go test $(go list ./... | rg -v '/test/e2e/suite$|/web/node_modules/|/internal/integration$')`，172 个包通过；另外 5 个 `internal/integration` 包通过。
@@ -34,16 +34,25 @@
 - 分层检查 `./scripts/check-architecture.sh`、RBAC 863 项入口契约检查、变更格式检查通过；quota/contract/evidence 的 race 测试通过。
 - 未构建应用或镜像，未访问生产或发起真实供应商/OAuth 调用，未执行独立 MySQL/Postgres 实库矩阵或外部 E2E suite；依赖专用 DSN 的测试不能记作实库验收。
 
-最近的生产记录是 [管理页面更新记录](../runbooks/evidence-management-pages-deploy-2026-10-16.md)：它证明前一轮部署与只读 API 验证，不证明本轮工作区修复已上线。executor 的实时状态仍只由 [观察手册](v0.23-executor-observation.md)及其原始证据管理，本轮没有重验或推断新的七天起点。
+计划制定时最近的生产记录是 [管理页面更新记录](../runbooks/evidence-management-pages-deploy-2026-10-16.md)。上述未构建、未上线表述属于审查当轮；本轮实际部署见 [执行记录](../runbooks/plan-execution-2026-10-16.md)。executor 运行事实仍由 [观察手册](v0.23-executor-observation.md)及原始证据管理，不推断新的七天起点。
 
 ## 下一步顺序与退出条件
 
 | 顺序 | 工作与责任范围 | 退出条件 |
 | --- | --- | --- |
 | 1：交付本轮修复 | 维护者/发布：先审查当前 diff，按仓库完整流程准备补丁发布；涉及 Identity、Relay、Billing 和独立前端 | 回归门禁与发布制品对应同一提交；本地跨构建 linux/amd64；前端独立发布；上线后分别验证 OAuth 失败拒绝、定价读取失败禁写、partial quota 不误暂停、Gemini 契约及最新日报证据。保留回滚制品，不改历史账本 |
-| 2：定价原子保存 | Config owner + Admin + Web：三个价格配置目前仍是并行独立 PUT，存在部分成功；设计一个授权、版本检查和事务完整的批量保存接缝 | 任意一项校验/授权/CAS/存储失败时三项均不更新；两个管理员并发修改时只允许完整版本成功；返回值可读回确认，前端撤权/回读失败禁写。沿用现有分层，不用前端补偿覆盖历史值 |
+| 2：定价原子保存 | Admin owner + Web：复用既有 `SystemOptionsBatchRepo.SetMany` 事务接缝，替换三个并行独立 PUT；无需新增 Config RPC | 任意一项校验/授权/CAS/存储失败时三项均不更新；两个管理员并发修改时只允许完整版本成功；返回值可读回确认，前端撤权/回读失败禁写。沿用现有分层，不用前端补偿覆盖历史值 |
 | 3：历史误暂停核对及协议矩阵 | Channel/Relay：只读筛出 partial quota 触发的可能误暂停，结合当时窗口与真实额度人工确认；补 HTTP/SSE/WS 契约版本一致性 | 不自动解封真实耗尽/封禁账号；确认样本有原始 payload、窗口和原因；各协议包含带前缀 URL、错误版本、缺 usage、断流和旧 revision 拒绝回归 |
 | 4：实库与独立供应商证据 | Billing/运营：在临时 MySQL/Postgres 环境执行关键并发/重放；选一个已有授权来源做完整账期 CSV/API 对照 | 并发重复结算一次生效，同 ID 不同内容拒绝，释放后迟到证据不追扣；账期、账户、币种、分页水位一致，差异有依据并可重放；没有外部金额的部分保持 unknown |
 | 5：有限灰度准入 | 沿用现有 executor 观察流程，先核实当前实例、抓取连续性与同 endpoint/stream 的可比样本 | 满足现有起点条件才计连续七天；部署、重启或采集缺口按原规则重新确认，结论保持 PASS/FAIL/INSUFFICIENT；准入证据成立后再讨论扩面 |
 
-上述为规划，尚未执行发布、历史账号恢复、供应商导入、定价事务改造或灰度扩面。收费名单、用户售价、权限发布和上游契约晋级仍按各自既有验收条件办理。
+## 本轮执行进展（2026-10-16）
+
+- 第一项完成：`v0.35.1` 已按 develop → main → tag 推送，正式 Release 的 17 项任务及九服务双架构 manifest 独立核对通过。Identity、Billing、Relay 和独立前端已更新；七个相关进程环境摘要保留，健康正常、restart=0，outbox pending=0。
+- 第二项完成并上线：使用 `PUT /api/option/` 的 `values` 三项完整价格 map 和 `expected_revisions` 字符串映射，沿用 owner 授权、事务和审计；草稿冻结版本并绑定授权版本，回读失败禁写、撤权不显示旧草稿。完整 `make verify`、三库 race 并发/回滚、最终 541 前端测试与 190 critical 通过；真实过期/不完整/未认证 API 返回 409/400/401，三个价格值与版本保持一致。后续工程提交未打新 tag，详见执行记录。
+- 历史暂停只读核对：现存订阅账号为 kimi/minimax/zhipu 各一，Codex 为零；三条最新快照均没有暂停标记。本轮未恢复账号；快照覆盖写且没有原始历史 payload，不能据此证明已删除账号或历史时点均无误暂停。
+- 实库：临时 MySQL 8.4/Postgres 16 的全量迁移、repeat/负例以及关键计费/证据回归通过。用户随后完成内置浏览器登录，已补取 DeepSeek 10 月 14 日完整已结束日窗：官方六次请求、140,333 token、0.14036956 CNY 与已记录的六次手工调用精确相符，见 [日窗核验](../runbooks/deepseek-closed-day-2026-10-16.md)。生产来源绑定、显式最终水位、逐请求实扣和 API/CSV 等价性仍未证明，不升级 P2 全量批准。
+- 第三项协议工程完成：HTTP/SSE/WebSocket 共 12 项冻结版本、缺 usage、断流、隔离前拒绝回归通过；Gemini 路径前缀/版本不匹配及 owner 三库旧证明/回滚测试通过。
+- 第五项条件复核为 INSUFFICIENT：14:42:05 CST 取证确认 Relay 自 10:48:16.088515 CST 启动，当前仅 legacy Responses SSE，缺可比 orchestrator cohort；不拼接旧窗口、不宣布正式七天起算。
+
+当前保留供应商生产来源/报告范围绑定及其他独立证据门禁，以及条件具备后的七天准入；DeepSeek 手工试点的完整已结束日窗合计核验已补齐。收费名单、用户售价、权限发布和上游契约晋级仍按各自既有验收条件办理，本轮未自动恢复账号、导入供应商账单或扩大灰度范围。

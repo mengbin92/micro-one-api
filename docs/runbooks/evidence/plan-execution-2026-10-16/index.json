@@ -1,0 +1,540 @@
+{
+  "release": {
+    "tag": "v0.35.1",
+    "commit": "49dfe7ce7fa0f5017d678fd52073f1e1fa5057d0",
+    "run_url": "https://github.com/mengbin92/micro-one-api/actions/runs/38841890516",
+    "conclusion": "success",
+    "jobs": 17,
+    "manifests": [
+      {
+        "service": "relay-gateway",
+        "image": "docker.io/mengbin92/micro-one-api-relay-gateway:v0.35.1",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "unknown/unknown"
+        ]
+      },
+      {
+        "service": "admin-api",
+        "image": "docker.io/mengbin92/micro-one-api-admin-api:v0.35.1",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "unknown/unknown"
+        ]
+      },
+      {
+        "service": "identity-service",
+        "image": "docker.io/mengbin92/micro-one-api-identity-service:v0.35.1",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "unknown/unknown"
+        ]
+      },
+      {
+        "service": "channel-service",
+        "image": "docker.io/mengbin92/micro-one-api-channel-service:v0.35.1",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "unknown/unknown"
+        ]
+      },
+      {
+        "service": "billing-service",
+        "image": "docker.io/mengbin92/micro-one-api-billing-service:v0.35.1",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "unknown/unknown"
+        ]
+      },
+      {
+        "service": "config-service",
+        "image": "docker.io/mengbin92/micro-one-api-config-service:v0.35.1",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "unknown/unknown"
+        ]
+      },
+      {
+        "service": "log-service",
+        "image": "docker.io/mengbin92/micro-one-api-log-service:v0.35.1",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "unknown/unknown"
+        ]
+      },
+      {
+        "service": "monitor-worker",
+        "image": "docker.io/mengbin92/micro-one-api-monitor-worker:v0.35.1",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "unknown/unknown"
+        ]
+      },
+      {
+        "service": "notify-worker",
+        "image": "docker.io/mengbin92/micro-one-api-notify-worker:v0.35.1",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "unknown/unknown"
+        ]
+      }
+    ]
+  },
+  "release_deployment": {
+    "backup": "/opt/micro-one-api/docker-compose/backups/review-plan-20261016-104249",
+    "source_digest": "45e0632245eabd36d06cad7d6afe20fbe52b2f64dcae947421a8114e42b033d1",
+    "runtime": [
+      {
+        "service": "identity-service",
+        "image": "sha256:066216c26f37b5eb904a0f66795913e9422f8e0fd32993cd6d7254a96fe9ec81",
+        "image_ref": "docker-compose-identity-service:deploy-20261016-104335-49dfe7ce",
+        "source_digest": "45e0632245eabd36d06cad7d6afe20fbe52b2f64dcae947421a8114e42b033d1",
+        "architecture": "amd64",
+        "environment_unchanged": true,
+        "restarts": 0,
+        "running": true,
+        "health_http_ok": true
+      },
+      {
+        "service": "billing-service",
+        "image": "sha256:f86bd66c2409736debfc95243ae56a6955405f3d465488b282ea63122c6c93f4",
+        "image_ref": "docker-compose-billing-service:deploy-20261016-104335-49dfe7ce",
+        "source_digest": "45e0632245eabd36d06cad7d6afe20fbe52b2f64dcae947421a8114e42b033d1",
+        "architecture": "amd64",
+        "environment_unchanged": true,
+        "restarts": 0,
+        "running": true,
+        "health_http_ok": true
+      },
+      {
+        "service": "relay-gateway",
+        "image": "sha256:c5e43b9a1e9c8e0617a016c0ac4f14162e70b20f35b3346a64334a4db7f27165",
+        "image_ref": "docker-compose-relay-gateway:deploy-20261016-104335-49dfe7ce",
+        "source_digest": "45e0632245eabd36d06cad7d6afe20fbe52b2f64dcae947421a8114e42b033d1",
+        "architecture": "amd64",
+        "environment_unchanged": true,
+        "restarts": 0,
+        "running": true,
+        "health_http_ok": true,
+        "outbox_tables": [
+          "execution_outbox"
+        ],
+        "outbox_states": {
+          "acknowledged": 1206
+        }
+      },
+      {
+        "service": "channel-service",
+        "image": "sha256:8a02209ff7b325bfb3c3f80ece9ba83a1183ac7560266a8b57cb40fee477600d",
+        "image_ref": "docker-compose-channel-service:deploy-20261015-225036-63082986",
+        "source_digest": "10eb1614f240b0b12055e5709a5443f865ffaceab5490e954c9356e77de0211b",
+        "architecture": "amd64",
+        "environment_unchanged": true,
+        "restarts": 0,
+        "running": true,
+        "health_http_ok": true
+      },
+      {
+        "service": "admin-api",
+        "image": "sha256:57c65b46c86bdef800158c857a8b19025e39fc09031e456782e53adcd8ec49cd",
+        "image_ref": "docker-compose-admin-api:deploy-20261015-225036-63082986",
+        "source_digest": "10eb1614f240b0b12055e5709a5443f865ffaceab5490e954c9356e77de0211b",
+        "architecture": "amd64",
+        "environment_unchanged": true,
+        "restarts": 0,
+        "running": true,
+        "health_http_ok": true
+      },
+      {
+        "service": "monitor-worker",
+        "image": "sha256:f15886f5a34057f437024d76f57c558998230df9ef16f28400b93aee4ce369a1",
+        "image_ref": "docker-compose-monitor-worker:deploy-20261015-225036-63082986",
+        "source_digest": "10eb1614f240b0b12055e5709a5443f865ffaceab5490e954c9356e77de0211b",
+        "architecture": "amd64",
+        "environment_unchanged": true,
+        "restarts": 0,
+        "running": true,
+        "health_http_ok": true
+      },
+      {
+        "service": "channel-account-ops-worker",
+        "image": "sha256:8a02209ff7b325bfb3c3f80ece9ba83a1183ac7560266a8b57cb40fee477600d",
+        "image_ref": "docker-compose-channel-service:deploy-20261015-225036-63082986",
+        "source_digest": "10eb1614f240b0b12055e5709a5443f865ffaceab5490e954c9356e77de0211b",
+        "architecture": "amd64",
+        "environment_unchanged": true,
+        "restarts": 0,
+        "running": true,
+        "health_http_ok": true
+      }
+    ],
+    "frontend": {
+      "files": 80,
+      "index_sha256": "5c06f042891e6701e0952bd462c8ef4e0c9c3eea37ca9cbf86dcc200687aebc8",
+      "all_files_verified": true,
+      "old_hashed_assets_preserved": true
+    },
+    "read_apis": {
+      "login_http": 200,
+      "authenticated": true,
+      "authorization": {
+        "http": 200,
+        "mode": "iam"
+      },
+      "pricing_read": {
+        "http": 200,
+        "price_option_hashes": {
+          "CompletionRatio": "a7ac547a92b07a45aff313333ac7e416ddd16cf1868244023a45a57c4351c79f",
+          "ModelPrice": "b58946383cc6baa53d8618237bc7991208637ffc53195704d1c7d8a550acc59a",
+          "ModelRatio": "6a76bc0a09eadf15b2db83974d768143dd08f5365f9416d26e1f917d1f7a6ff1"
+        }
+      },
+      "vendor_reports": {
+        "http": 200
+      },
+      "upstream_contracts": {
+        "http": 200
+      }
+    }
+  },
+  "atomic_pricing": {
+    "commits": [
+      "87aa3657",
+      "e63582fa",
+      "945bb824"
+    ],
+    "develop_merge": "9390ef4a1dbdea282c232d440d1768bab146e8eb",
+    "backup": "/opt/micro-one-api/docker-compose/backups/review-plan-20261016-112020",
+    "source_digest": "71a500c31f5003cfe36d64a40c879d960f1a7d0d601a392726d8a26f1b9cb6d5",
+    "runtime": [
+      {
+        "service": "identity-service",
+        "image": "sha256:066216c26f37b5eb904a0f66795913e9422f8e0fd32993cd6d7254a96fe9ec81",
+        "image_ref": "docker-compose-identity-service:deploy-20261016-104335-49dfe7ce",
+        "source_digest": "45e0632245eabd36d06cad7d6afe20fbe52b2f64dcae947421a8114e42b033d1",
+        "architecture": "amd64",
+        "environment_unchanged": true,
+        "restarts": 0,
+        "running": true,
+        "health_http_ok": true
+      },
+      {
+        "service": "billing-service",
+        "image": "sha256:f86bd66c2409736debfc95243ae56a6955405f3d465488b282ea63122c6c93f4",
+        "image_ref": "docker-compose-billing-service:deploy-20261016-104335-49dfe7ce",
+        "source_digest": "45e0632245eabd36d06cad7d6afe20fbe52b2f64dcae947421a8114e42b033d1",
+        "architecture": "amd64",
+        "environment_unchanged": true,
+        "restarts": 0,
+        "running": true,
+        "health_http_ok": true
+      },
+      {
+        "service": "relay-gateway",
+        "image": "sha256:c5e43b9a1e9c8e0617a016c0ac4f14162e70b20f35b3346a64334a4db7f27165",
+        "image_ref": "docker-compose-relay-gateway:deploy-20261016-104335-49dfe7ce",
+        "source_digest": "45e0632245eabd36d06cad7d6afe20fbe52b2f64dcae947421a8114e42b033d1",
+        "architecture": "amd64",
+        "environment_unchanged": true,
+        "restarts": 0,
+        "running": true,
+        "health_http_ok": true,
+        "outbox_tables": [
+          "execution_outbox"
+        ],
+        "outbox_states": {
+          "acknowledged": 1353
+        }
+      },
+      {
+        "service": "channel-service",
+        "image": "sha256:8a02209ff7b325bfb3c3f80ece9ba83a1183ac7560266a8b57cb40fee477600d",
+        "image_ref": "docker-compose-channel-service:deploy-20261015-225036-63082986",
+        "source_digest": "10eb1614f240b0b12055e5709a5443f865ffaceab5490e954c9356e77de0211b",
+        "architecture": "amd64",
+        "environment_unchanged": true,
+        "restarts": 0,
+        "running": true,
+        "health_http_ok": true
+      },
+      {
+        "service": "admin-api",
+        "image": "sha256:3f6f6af68ee11db6dd15ef079b2ad41805504a5c539952e59a9d666f968bb71b",
+        "image_ref": "docker-compose-admin-api:deploy-20261016-144012-9390ef4a",
+        "source_digest": "71a500c31f5003cfe36d64a40c879d960f1a7d0d601a392726d8a26f1b9cb6d5",
+        "architecture": "amd64",
+        "environment_unchanged": true,
+        "restarts": 0,
+        "running": true,
+        "health_http_ok": true
+      },
+      {
+        "service": "monitor-worker",
+        "image": "sha256:f15886f5a34057f437024d76f57c558998230df9ef16f28400b93aee4ce369a1",
+        "image_ref": "docker-compose-monitor-worker:deploy-20261015-225036-63082986",
+        "source_digest": "10eb1614f240b0b12055e5709a5443f865ffaceab5490e954c9356e77de0211b",
+        "architecture": "amd64",
+        "environment_unchanged": true,
+        "restarts": 0,
+        "running": true,
+        "health_http_ok": true
+      },
+      {
+        "service": "channel-account-ops-worker",
+        "image": "sha256:8a02209ff7b325bfb3c3f80ece9ba83a1183ac7560266a8b57cb40fee477600d",
+        "image_ref": "docker-compose-channel-service:deploy-20261015-225036-63082986",
+        "source_digest": "10eb1614f240b0b12055e5709a5443f865ffaceab5490e954c9356e77de0211b",
+        "architecture": "amd64",
+        "environment_unchanged": true,
+        "restarts": 0,
+        "running": true,
+        "health_http_ok": true
+      }
+    ],
+    "frontend": {
+      "files": 80,
+      "index_sha256": "92b3ab23e7fda7e9e22d65b750ebd26693086f0e9afa509c05a68046cb89981f",
+      "all_files_verified": true,
+      "old_hashed_assets_preserved": true
+    },
+    "negative_api_acceptance": {
+      "authenticated": true,
+      "stale_batch_http": 409,
+      "invalid_batch_http": 400,
+      "unauthenticated_http": 401,
+      "all_values_and_revisions_unchanged": true,
+      "price_hashes": {
+        "CompletionRatio": "a7ac547a92b07a45aff313333ac7e416ddd16cf1868244023a45a57c4351c79f",
+        "ModelPrice": "b58946383cc6baa53d8618237bc7991208637ffc53195704d1c7d8a550acc59a",
+        "ModelRatio": "6a76bc0a09eadf15b2db83974d768143dd08f5365f9416d26e1f917d1f7a6ff1"
+      }
+    },
+    "local_make_verify": "PASS",
+    "frontend_tests": 540,
+    "critical_tests": 190,
+    "real_iam_browser_passes": 10,
+    "database_race": [
+      "sqlite",
+      "mysql 8.4 with clientFoundRows",
+      "postgres 16"
+    ],
+    "ci_run_url": "https://github.com/mengbin92/micro-one-api/actions/runs/38862520540",
+    "final_frontend": {
+      "files": 80,
+      "index_sha256": "482a472f1fae273f4283c757c53d0482e0e58dcad0efe9880a200ac941cefd71",
+      "all_files_verified": true,
+      "all_http_resources_verified": true,
+      "pricing_page_index_verified": true,
+      "old_hashed_assets_preserved": true
+    },
+    "final_frontend_tests": 541,
+    "final_frontend_gate": "lint/unit/critical/typescript/build/budgets PASS",
+    "ci_backend": "success at 9390ef4a",
+    "ci_frontend": "success at 9390ef4a",
+    "ci_security": "success at 9390ef4a",
+    "ci_docker_matrix": "arm64 jobs still running at last check"
+  },
+  "quota_audit": {
+    "account_total": 3,
+    "platforms": {
+      "kimi": 1,
+      "minimax": 1,
+      "zhipu": 1
+    },
+    "codex_accounts": 0,
+    "quota_snapshots": 3,
+    "snapshot_paused": 0,
+    "accounts_restored": 0,
+    "limitation": "Only latest snapshots persist; this does not clear deleted accounts or unknown historical incidents."
+  },
+  "protocol_matrix": {
+    "transports": [
+      "http",
+      "sse",
+      "websocket"
+    ],
+    "scenarios": [
+      "verified",
+      "missing_usage",
+      "truncated",
+      "quarantined"
+    ],
+    "cases": 12,
+    "race": "PASS",
+    "gemini_proxy_version": "Existing root/prefix/version-mismatch regressions passed",
+    "stale_proof_owner_dialects": [
+      "sqlite",
+      "mysql",
+      "postgres"
+    ]
+  },
+  "supplier_acceptance": {
+    "status": "PARTIAL",
+    "reason": "Browser access restored in the user-authenticated in-app browser. Official completed-day report matches six captured manual calls exactly; production source binding, final watermark, per-request actual cost and API/CSV equivalence remain unverified.",
+    "previous_export_day_closed": false,
+    "prior_browser_block": "Previous execution stopped when the browser denied the URL.",
+    "completed_day_evidence": "../deepseek-closed-day-2026-10-16/index.json",
+    "manual_trial_day_matched": true,
+    "production_report_imported": false
+  },
+  "executor": {
+    "checked_at": "2026-10-16T14:42:05.288102+08:00",
+    "relay": {
+      "flag": "true",
+      "allowlist_count": 2,
+      "health": 200,
+      "target_health": "up",
+      "target_last_error": "",
+      "scrape_interval_seconds": 15.0,
+      "current_process_age_hours": 3.863308745821317
+    },
+    "current_process": {
+      "start": "2026-10-16T10:48:16.088515+08:00",
+      "end": "2026-10-16T14:40:04+08:00",
+      "samples": 927,
+      "first": "2026-10-16T10:48:26.508000+08:00",
+      "last": "2026-10-16T14:39:56.508000+08:00",
+      "failed_samples": 0,
+      "failed_sample_times": [],
+      "maximum_gap_seconds": 15.0,
+      "gaps_over_interval_plus_one_second": [],
+      "boundary_covered": true,
+      "expected_samples_approx": 927
+    },
+    "current_process_requests": [
+      {
+        "metric": {
+          "endpoint": "/v1/responses",
+          "execution_path": "legacy",
+          "result": "stream_error",
+          "status": "200",
+          "stream": "true"
+        },
+        "value": [
+          1792132804,
+          "1.0012929711082363"
+        ]
+      },
+      {
+        "metric": {
+          "endpoint": "/v1/responses",
+          "execution_path": "legacy",
+          "result": "success",
+          "status": "200",
+          "stream": "true"
+        },
+        "value": [
+          1792132804,
+          "331.42196870748296"
+        ]
+      }
+    ],
+    "raw_request_counters": [
+      {
+        "metric": {
+          "__name__": "micro_one_api_relay_executor_requests_total",
+          "endpoint": "/v1/responses",
+          "execution_path": "legacy",
+          "instance": "relay-gateway:8080",
+          "job": "micro-one-api",
+          "result": "stream_error",
+          "stack": "micro-one-api",
+          "status": "200",
+          "stream": "true"
+        },
+        "value": [
+          1792132804,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "micro_one_api_relay_executor_requests_total",
+          "endpoint": "/v1/responses",
+          "execution_path": "legacy",
+          "instance": "relay-gateway:8080",
+          "job": "micro-one-api",
+          "result": "success",
+          "stack": "micro-one-api",
+          "status": "200",
+          "stream": "true"
+        },
+        "value": [
+          1792132804,
+          "332"
+        ]
+      }
+    ],
+    "accounting": {
+      "transaction": "read-only consistent snapshot; UTC",
+      "start": "2026-10-15T14:40:04+08:00",
+      "end": "2026-10-16T14:40:04+08:00",
+      "aggregate_rows": [
+        "consume_summary\t596\t596\t0\t0\t0",
+        "consume_group\t/v1/chat/completions\t1\tchannel\t46\t1\t1",
+        "consume_group\t/v1/responses\t1\tchannel\t550\t2\t2",
+        "ledger_links\t596\t0\t0\t0\t0\t0",
+        "reservations\tcommitted\t596",
+        "reservations\treleased\t10",
+        "expired_reserved\t0",
+        "released_with_consume\t0",
+        "reconciliation\t592\t1792118805\tcompleted\t0",
+        "reconciliation\t593\t1792122405\tcompleted\t0",
+        "reconciliation\t594\t1792126005\tcompleted\t0",
+        "reconciliation\t595\t1792129605\tcompleted\t0"
+      ],
+      "columns": {
+        "consume_summary": [
+          "count",
+          "distinct_dedupe",
+          "empty_dedupe",
+          "unverified_canonical",
+          "missing_source_or_upstream_model"
+        ],
+        "consume_group": [
+          "endpoint",
+          "stream",
+          "source_kind",
+          "count",
+          "distinct_models",
+          "distinct_sources"
+        ],
+        "ledger_links": [
+          "joined_rows",
+          "missing_reservation",
+          "non_committed_reservation",
+          "missing_consume_log",
+          "log_attribution_mismatch",
+          "actual_cost_mismatch"
+        ],
+        "reservations": [
+          "status",
+          "count"
+        ],
+        "expired_reserved": [
+          "count"
+        ],
+        "released_with_consume": [
+          "count"
+        ],
+        "reconciliation": [
+          "id",
+          "run_at_unix",
+          "status",
+          "discrepancy_count"
+        ]
+      }
+    },
+    "admission": "INSUFFICIENT",
+    "reason": "Relay restarted at the deployment boundary; current process has legacy Responses SSE only, without a comparable orchestrator cohort. Historical segments cannot be joined into seven days."
+  }
+}

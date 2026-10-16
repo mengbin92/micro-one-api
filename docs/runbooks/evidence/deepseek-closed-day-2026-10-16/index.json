@@ -1,0 +1,97 @@
+{
+  "period_start": "2026-10-14T00:00:00+08:00",
+  "period_end_exclusive": "2026-10-15T00:00:00+08:00",
+  "timezone": "Asia/Shanghai",
+  "provider": "deepseek",
+  "model": "deepseek-flash",
+  "api_key_name": "micro-one-api",
+  "account_matches_historical_export": true,
+  "exact_credential_match": "unavailable: official CSV masks the API key",
+  "scope": "official_key_calendar_day_vs_six_recorded_manual_calls",
+  "native": {
+    "request_count": 6,
+    "input_cache_miss_tokens": 140151,
+    "input_cache_hit_tokens": 128,
+    "output_tokens": 54
+  },
+  "official": {
+    "input_cache_miss_tokens": 140151,
+    "input_cache_hit_tokens": 128,
+    "request_count": 6,
+    "output_tokens": 54
+  },
+  "total_tokens": 140333,
+  "currency": "CNY",
+  "cost_basis": "provider_reported",
+  "official_cost": "0.1403695600000000",
+  "recorded_native_tariff_estimate": "0.14036956",
+  "csv_price_extension": "0.14036956",
+  "difference": "0",
+  "amount_rows": 4,
+  "cost_rows": 1,
+  "all_csv_rows_inside_fixed_window": true,
+  "supplier_calendar_window_elapsed": true,
+  "explicit_supplier_finalization_marker": false,
+  "result": "MATCHED_CAPTURED_MANUAL_TRIAL_DAY",
+  "production_ledger_reconciled": false,
+  "request_level_actual_cost_verified": false,
+  "api_vs_csv_verified": false,
+  "charging_profile_or_rollout_approved": false,
+  "new_paid_calls": 0,
+  "captured_at": "2026-10-16",
+  "raw_archive_sha256": {
+    "2026-10-14": "3f4db4a5f5d7e10cfcfa67b39c6762a2e2ce404ad1db4e113a21733bd3dc83c7",
+    "2026-10-15": "88a2db57c76cb32c278e0c3004cd3f9a28fb50e517e50089dbe8199ac67163c3"
+  },
+  "files": {
+    "cost-2026-10-14_2026-10-14.csv": {
+      "raw_sha256": "c1e5df801a93bd8cc3cdc40a968f08a9ca080710f9b869f666dadb602383f6e5",
+      "redacted_sha256": "bebbe980b213dbd8717b707573831aca9222dbcf75ac06e5e66993f75eccd234",
+      "rows": 1
+    },
+    "amount-2026-10-14_2026-10-14.csv": {
+      "raw_sha256": "8828cf1a71c70e63675c565326e9da58ab6a76dce7a012064fd1ce567a0e1909",
+      "redacted_sha256": "726dfab7968f271cfefa9e89973d8bdf8cef67f3b9f41640799f7adfc1b7325c",
+      "rows": 4
+    },
+    "cost-2026-10-15_2026-10-15.csv": {
+      "raw_sha256": "cfafbfafa6e075457b13cf7d70a9dd4746ed85970c1215b5c5b2eeef2c19308c",
+      "redacted_sha256": "c39c8a0429f77ad15512f254b2275d33e273c87fbaea174d8b6890f100291748",
+      "rows": 0
+    },
+    "amount-2026-10-15_2026-10-15.csv": {
+      "raw_sha256": "162b12477c5b18fa47d85ce7466abac19b2b9454dca221148d3315ad77aaffcd",
+      "redacted_sha256": "8cf1c4bd398026fb06b3feee1fb7d863be532a330b2ad1df8c0fdcbe0c87a0fd",
+      "rows": 0
+    }
+  },
+  "zero_activity_day": {
+    "date": "2026-10-15",
+    "api_key_name": "micro-one-api",
+    "ui_requests": 0,
+    "ui_tokens": 0,
+    "cost_csv_rows": 0,
+    "amount_csv_rows": 0,
+    "exact_csv_amount": null,
+    "result": "NO_ACTIVITY_IN_SELECTED_OFFICIAL_VIEW",
+    "limitation": "Header-only CSVs are retained without inventing an explicit zero amount row."
+  },
+  "browser_access": "resolved: user logged in to the in-app browser; official exports downloaded with browser UI",
+  "screenshots_private": {
+    "2026-10-14": {
+      "path": "/tmp/micro-one-plan-20261016/deepseek-20261014-scope.jpg",
+      "sha256": "59243f7fc302b7d57fff1a49d302a6d51d82caf51286da0aac84531a641cbb63"
+    },
+    "2026-10-15": {
+      "path": "/tmp/micro-one-plan-20261016/deepseek-20261015-scope.jpg",
+      "sha256": "30f686e26060c2d3bffc3df1bd905972bdb1fb213e4c6890975e0bbc36458a7a"
+    }
+  },
+  "local_evidence_sha256": {
+    "docs/runbooks/evidence/deepseek-official-pilot-2026-10-14/live-evidence.json": "172bc5c7d0b1d2ca4de2e8d91caba3d1755c5ba4affdf11e1a97d7b613b8fbcb",
+    "docs/runbooks/evidence/deepseek-balance-and-channel1-2026-10-14/balance-window.json": "10d75b0b99e0e41a11bd7d0bb4a87bdad89ec7ec6e09a75e43817820a3426fd8"
+  },
+  "production_source_mapping_verified": false,
+  "p2_overall_acceptance": false,
+  "redacted_csv_line_endings": "LF; original raw file and archive digests are unchanged"
+}

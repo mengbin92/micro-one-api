@@ -1,4 +1,5 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
@@ -9,6 +10,111 @@ import { useAuthorizationLifecycle } from '@/lib/authorization';
 import { PricingPage } from '../PricingPage';
 
 describe('AdminPricingPage', () => {
+  it('clears a protected pricing draft when read permission is revoked', async () => {
+    const user = userEvent.setup();
+    let allowed = true;
+    let client!: QueryClient;
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({ authorization_mode: 'iam', session: { activation_state: 'active' }, permitted_operations: ['system.option.update', 'system.option.pricing.update', 'billing.pricing.update', 'channel.model.list', ...(allowed ? ['system.option.read'] : [])] })),
+      http.get('/api/option/', () => HttpResponse.json({ success: true, data: [{ key: 'ModelPrice', value: '{"private-model":{"input_price":0.000001}}', revision: '1' }] })),
+      http.get('/api/admin/models', () => HttpResponse.json({ models: [], total: 0 })),
+    );
+    function Shell() { client = useQueryClient(); useAuthorizationLifecycle(); return <AdminPricingPage />; }
+    renderWithQuery(<Shell />);
+    await screen.findByDisplayValue('private-model');
+    await user.clear(screen.getAllByRole('spinbutton')[0]);
+    await user.type(screen.getAllByRole('spinbutton')[0], '3');
+    expect(screen.getAllByRole('spinbutton')[0]).toHaveValue(3);
+    allowed = false;
+    await act(async () => { await client.invalidateQueries({ queryKey: ['authorization'] }); });
+    await screen.findByRole('alert');
+    await waitFor(() => expect(document.querySelector('[data-slot="skeleton"]')).toBeNull());
+    expect(screen.queryByDisplayValue('private-model')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '保存价格' })).toBeDisabled();
+  });
+
+  it('keeps the draft versions when a background read sees another writer', async () => {
+    const user = userEvent.setup();
+    let revision = '1';
+    let client!: QueryClient;
+    let sent: Record<string, string> | undefined;
+    let calls = 0;
+    server.use(
+      http.get('/api/option/', () => HttpResponse.json({ success: true, data: [
+        { key: 'ModelPrice', value: '{"a":{"input_price":0.000001}}', revision },
+        { key: 'ModelRatio', value: '{}', revision }, { key: 'CompletionRatio', value: '{}', revision },
+      ] })),
+      http.get('/api/admin/models', () => HttpResponse.json({ models: [], total: 0 })),
+      http.put('/api/option/', async ({ request }) => {
+        calls++; sent = (await request.json() as { expected_revisions: Record<string, string> }).expected_revisions;
+        return HttpResponse.json({ error: 'revision conflict' }, { status: 409 });
+      }),
+    );
+    function Shell() { client = useQueryClient(); return <AdminPricingPage />; }
+    renderWithQuery(<Shell />);
+    await screen.findByDisplayValue('a');
+    const input = screen.getAllByRole('spinbutton')[0];
+    await user.clear(input); await user.type(input, '3');
+    revision = '2';
+    await act(async () => { await client.invalidateQueries({ queryKey: ['admin-options'] }); });
+    expect(input).toHaveValue(3);
+    await user.click(screen.getByRole('button', { name: '保存价格' }));
+    await waitFor(() => expect(sent).toEqual({ ModelPrice: '1', ModelRatio: '1', CompletionRatio: '1' }));
+    expect(calls).toBe(1);
+    expect(screen.getByRole('button', { name: '保存价格' })).toBeDisabled();
+  });
+
+  it('blocks more writes after a committed save until its readback succeeds', async () => {
+    const user = userEvent.setup();
+    const values: Record<string, string> = { ModelPrice: '{"a":{"input_price":0.000001}}', ModelRatio: '{}', CompletionRatio: '{}' };
+    let writes = 0;
+    let allowReadback = false;
+    server.use(
+      http.get('/api/option/', () => writes && !allowReadback ? HttpResponse.json({ error: 'read unavailable' }, { status: 503 }) : HttpResponse.json({ success: true, data: Object.entries(values).map(([key, value]) => ({ key, value, revision: writes ? '2' : '1' })) })),
+      http.get('/api/admin/models', () => HttpResponse.json({ models: [], total: 0 })),
+      http.put('/api/option/', async ({ request }) => { writes++; Object.assign(values, (await request.json() as { values: Record<string, string> }).values); return HttpResponse.json({ success: true }); }),
+    );
+    renderWithQuery(<AdminPricingPage />);
+    await screen.findByDisplayValue('a');
+    const save = screen.getByRole('button', { name: '保存价格' });
+    await user.click(save);
+    const refresh = await screen.findByRole('button', { name: '刷新' });
+    await waitFor(() => expect(refresh).toBeEnabled());
+    expect(save).toBeDisabled();
+    await user.click(save);
+    expect(writes).toBe(1);
+    allowReadback = true;
+    await user.click(refresh);
+    await waitFor(() => expect(save).toBeEnabled());
+    expect(writes).toBe(1);
+  });
+
+  it('does not leave partial prices when one configuration write fails', async () => {
+    const user = userEvent.setup();
+    const saved = new Map<string, string>();
+    let calls = 0;
+    server.use(
+      http.get('/api/option/', () => HttpResponse.json({ success: true, data: ['ModelPrice', 'ModelRatio', 'CompletionRatio'].map(key => ({ key, value: '{}', revision: '1' })) })),
+      http.get('/api/admin/models', () => HttpResponse.json({ models: [{ id: 1, model_id: 'a', status: 1, is_public: true, pricing_input: 1, pricing_output: 2 }], total: 1 })),
+      http.put('/api/option/', async ({ request }) => {
+        calls++;
+        const body = await request.json() as { key?: string; value: string; values?: Record<string, string> };
+        if (body.values || body.key === 'ModelRatio') return HttpResponse.json({ error: 'storage unavailable' }, { status: 500 });
+        saved.set(body.key!, body.value);
+        return HttpResponse.json({ success: true });
+      }),
+    );
+    renderWithQuery(<AdminPricingPage />);
+    await screen.findByDisplayValue('a');
+    const save = screen.getByRole('button', { name: '保存价格' });
+    await user.click(save);
+    await waitFor(() => expect(calls).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByRole('button', { name: '刷新' })).toBeEnabled());
+    expect(save).toBeDisabled();
+    expect(saved.size).toBe(0);
+    expect(calls).toBe(1);
+  });
+
   it.each(['pending', 'failed', 'restricted'])('cannot replace pricing maps when option reads are %s', async (state) => {
     const user = userEvent.setup();
     let writes = 0;
@@ -68,14 +174,13 @@ describe('AdminPricingPage', () => {
       http.get('/api/admin/models', () => HttpResponse.json({ models: [{ id: 519, model_id: 'deepseek-flash', status: 1, is_public: true, pricing_input: 0.3, pricing_output: 1.2, pricing_cache_read: 0.06 }], total: 1 })),
       http.get('/api/pricing', () => HttpResponse.json({ success: true, data: { prices: saved.has('ModelPrice') ? [{ model: 'deepseek-flash', input_price: 0.3, output_price: 1.2, cache_read_price: 0.06 }] : [] } })),
       http.put('/api/option/', async ({ request }) => {
-        const body = await request.json() as { key: string; value: string; expected_revision: unknown; expected_revisions: Record<string, unknown>; reason: string };
-        // Match the real Go JSON adapter: both revision fields require strings.
-        if (typeof body.expected_revision !== 'string' || Object.values(body.expected_revisions).some(v => typeof v !== 'string')) {
+        const body = await request.json() as { values: Record<string, string>; expected_revisions: Record<string, unknown>; reason: string };
+        if (Object.values(body.expected_revisions).some(v => typeof v !== 'string')) {
           return HttpResponse.json({ error: 'invalid request body' }, { status: 400 });
         }
-        expect(body.expected_revision).toBe('1');
+        expect(body.expected_revisions).toEqual({ ModelPrice: '1', ModelRatio: '1', CompletionRatio: '1' });
         expect(body.reason).toBe(reason);
-        saved.set(body.key, body.value);
+        Object.entries(body.values).forEach(([key, value]) => saved.set(key, value));
         return HttpResponse.json({ success: true });
       }),
     );
@@ -133,8 +238,10 @@ describe('AdminPricingPage', () => {
           data: [
             {
               key: 'ModelPrice',
-              value: JSON.stringify({ 'GLM-5.2': { input_price: 0.000001, output_price: 0.000002 } }),
+              value: saved.get('ModelPrice') ?? JSON.stringify({ 'GLM-5.2': { input_price: 0.000001, output_price: 0.000002 } }),
             },
+            { key: 'ModelRatio', value: saved.get('ModelRatio') ?? '{}' },
+            { key: 'CompletionRatio', value: saved.get('CompletionRatio') ?? '{}' },
           ],
         }),
       ),
@@ -148,8 +255,8 @@ describe('AdminPricingPage', () => {
         }),
       ),
       http.put('/api/option/', async ({ request }) => {
-        const body = (await request.json()) as { key: string; value: string };
-        saved.set(body.key, body.value);
+        const body = (await request.json()) as { values: Record<string, string> };
+        Object.entries(body.values).forEach(([key, value]) => saved.set(key, value));
         return HttpResponse.json({ success: true });
       }),
     );
