@@ -11,6 +11,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 - 三项模型价格改为单次 owner 事务保存，校验完整价格 map、授权和各自 CAS；拒绝旧版本、首次创建竞争及部分写入，legacy 批量也不再逐项降级。
 - 价格草稿冻结读取时的版本号；写入或回读失败后禁写，显式刷新后才能继续，409 不自动重试。
+- 价格草稿绑定授权版本，撤销读取权限后清除旧草稿显示；新增 HTTP/SSE/WebSocket 十二项冻结契约和终态证据回归。
 
 ## [0.35.1] - 2026-10-16
 

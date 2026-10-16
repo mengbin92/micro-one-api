@@ -23,6 +23,7 @@ docs/
 | 个人单机，创建首个渠道和 Token | [quickstart-lite.md](./quickstart-lite.md) |
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
 | 查看下一阶段执行路线与条件保留项 | [design/next-stage-plan-2026-10-16.md](./design/next-stage-plan-2026-10-16.md) |
+| 查看 10 月 16 日发布、定价原子保存和条件验收结果 | [runbooks/plan-execution-2026-10-16.md](./runbooks/plan-execution-2026-10-16.md) |
 | 复核 executor 有限灰度与第二批条件结论 | [观察手册](./design/v0.23-executor-observation.md) · [第二批记录](./runbooks/executor-second-batch-acceptance-2026-10-07.md) |
 | 查看当前待办和历史完成记录 | [TODO.md](./TODO.md) |
 | 查看 Playground 安全 Markdown、字体与关键分支验收 | [D7 本地验收记录](./runbooks/d7-experience-acceptance-2026-10-07.md) |
@@ -43,9 +44,9 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——本表明确指向且头部标注「当前执行入口」的计划。未定发布版本时使用 `design/next-stage-plan-YYYY-MM-DD.md`，已定版本时使用 `design/vX.Y-roadmap.md`。新阶段立项时：新建计划 → 旧路线图标为「已归档」并指回新入口 → 同步本表、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-最新发布登记：[v0.35.0](./releases/release-v0.35.0.md)（2026-10-15），持久化计费证据、供应商对账与受控上游修复。后续管理页面生产更新见 [10 月 16 日记录](./runbooks/evidence-management-pages-deploy-2026-10-16.md)；本轮审查修复尚未发布。
+最新发布登记：[v0.35.1](./releases/release-v0.35.1.md)（2026-10-16），鉴权与定价保护、额度窗口及证据管理修复。正式 Release 17 项任务通过，九服务双架构清单独立核对完成；后续定价原子保存工程不属于该 tag，见 [本轮执行记录](./runbooks/plan-execution-2026-10-16.md)。
 
-**当前实施（2026-10-16）**：基于 `develop@a1913290` 审查并修复 OAuth、定价空覆盖、Codex 误暂停、Gemini 契约和日报旧证据五类问题；回归与下一步验收顺序见 [当前计划](./design/next-stage-plan-2026-10-16.md)。本轮修复与计划随本次提交交付，尚未上线；下一步优先发布修复及完成定价原子保存。
+**当前实施（2026-10-16）**：审查修复正式发布，后续定价原子保存及撤权草稿保护也已提交、合入 develop 并上线；协议矩阵、现存误暂停核对及实库验收完成。剩余供应商完整账期与可比流量下的七天准入，保持 INCOMPLETE/INSUFFICIENT；见 [当前计划](./design/next-stage-plan-2026-10-16.md)和 [本轮记录](./runbooks/plan-execution-2026-10-16.md)。
 
 **上一阶段实施（2026-10-12）**：生产退款对账 partial 已修复并部署 Billing，三库及前端门禁通过，600 对长流/24 项故障复验 PASS；N5 缺同时段可比对照和确认起点。历史结果见 [实施记录](./runbooks/next-stage-acceptance-2026-10-12.md)，生产事实仍以 [观察手册](./design/v0.23-executor-observation.md)为准，本轮没有重新核验其运行状态。
 
@@ -93,7 +94,7 @@ docs/
 - [v0.30.0](./releases/release-v0.30.0.md) · [v0.30.1](./releases/release-v0.30.1.md) · [v0.31.0](./releases/release-v0.31.0.md) · [v0.31.1](./releases/release-v0.31.1.md)
 - [v0.32.0](./releases/release-v0.32.0.md) · [v0.32.1](./releases/release-v0.32.1.md) · [v0.32.2](./releases/release-v0.32.2.md)
 - [v0.33.0](./releases/release-v0.33.0.md) · [v0.33.1](./releases/release-v0.33.1.md) · [v0.33.2](./releases/release-v0.33.2.md) · [v0.33.3](./releases/release-v0.33.3.md) · [v0.33.4](./releases/release-v0.33.4.md) · [v0.33.5](./releases/release-v0.33.5.md) · [v0.33.6](./releases/release-v0.33.6.md)
-- [v0.34.0](./releases/release-v0.34.0.md) · [v0.34.1](./releases/release-v0.34.1.md) · [v0.34.2](./releases/release-v0.34.2.md) · [v0.34.3](./releases/release-v0.34.3.md) · [v0.34.4](./releases/release-v0.34.4.md) · [v0.34.5 中止候选](./releases/release-v0.34.5.md) · [v0.34.6](./releases/release-v0.34.6.md) · [v0.34.7](./releases/release-v0.34.7.md) · [v0.34.8 中止候选](./releases/release-v0.34.8.md) · [v0.34.9](./releases/release-v0.34.9.md) · [v0.34.10](./releases/release-v0.34.10.md) · [v0.34.11](./releases/release-v0.34.11.md) · [v0.34.12 中止候选](./releases/release-v0.34.12.md) · [v0.34.13 中止候选](./releases/release-v0.34.13.md) · [v0.34.14 中止候选](./releases/release-v0.34.14.md) · [v0.34.15](./releases/release-v0.34.15.md) · [v0.34.16](./releases/release-v0.34.16.md) · [v0.34.17](./releases/release-v0.34.17.md) · [v0.34.18](./releases/release-v0.34.18.md) · [v0.35.0](./releases/release-v0.35.0.md)（最新）
+- [v0.34.0](./releases/release-v0.34.0.md) · [v0.34.1](./releases/release-v0.34.1.md) · [v0.34.2](./releases/release-v0.34.2.md) · [v0.34.3](./releases/release-v0.34.3.md) · [v0.34.4](./releases/release-v0.34.4.md) · [v0.34.5 中止候选](./releases/release-v0.34.5.md) · [v0.34.6](./releases/release-v0.34.6.md) · [v0.34.7](./releases/release-v0.34.7.md) · [v0.34.8 中止候选](./releases/release-v0.34.8.md) · [v0.34.9](./releases/release-v0.34.9.md) · [v0.34.10](./releases/release-v0.34.10.md) · [v0.34.11](./releases/release-v0.34.11.md) · [v0.34.12 中止候选](./releases/release-v0.34.12.md) · [v0.34.13 中止候选](./releases/release-v0.34.13.md) · [v0.34.14 中止候选](./releases/release-v0.34.14.md) · [v0.34.15](./releases/release-v0.34.15.md) · [v0.34.16](./releases/release-v0.34.16.md) · [v0.34.17](./releases/release-v0.34.17.md) · [v0.34.18](./releases/release-v0.34.18.md) · [v0.35.0](./releases/release-v0.35.0.md) · [v0.35.1](./releases/release-v0.35.1.md)（最新）
 
 ### runbooks/ — 运维操作手册
 
@@ -102,6 +103,7 @@ docs/
 | 文档 | 用途 |
 |------|------|
 | [subscription-production-runbook.md](./runbooks/subscription-production-runbook.md) | 订阅系统生产发布、回滚与排障总入口 |
+| [plan-execution-2026-10-16.md](./runbooks/plan-execution-2026-10-16.md) | v0.35.1 交付、定价原子保存上线、三库与协议验收及条件保留 |
 | [d7-experience-acceptance-2026-10-07.md](./runbooks/d7-experience-acceptance-2026-10-07.md) | 安全 Markdown、字体、资金/权限/取消分支及交互时序的本地验收 |
 | [routing-groups-runbook.md](./runbooks/routing-groups-runbook.md) | 路由分组 / 订阅合约 / 结算模式的迁移核对、开关启用、验证与回退 |
 | [subscription-account-setup-guide.md](./runbooks/subscription-account-setup-guide.md) | 上游订阅号配置与导入实操 |
