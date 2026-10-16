@@ -3621,6 +3621,7 @@ func handleOneAPIOptions(w http.ResponseWriter, r *http.Request, svc *service.Ad
 		writeJSON(w, http.StatusOK, resp)
 	case http.MethodPut:
 		var raw struct {
+			Values              jsonx.RawMessage  `json:"values"`
 			ExpectedRevision    string            `json:"expected_revision"`
 			ExpectedRevisions   map[string]string `json:"expected_revisions"`
 			Reason              string            `json:"reason"`
@@ -3635,6 +3636,16 @@ func handleOneAPIOptions(w http.ResponseWriter, r *http.Request, svc *service.Ad
 		}
 		if err := jsonx.NewDecoder(r.Body).Decode(&raw); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		if raw.Values != nil {
+			var values map[string]string
+			if jsonx.Unmarshal(raw.Values, &values) != nil || raw.Key != "" || raw.Value != "" || raw.SiteTitle != "" || raw.RegistrationEnabled != nil || raw.Options != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid pricing batch"})
+				return
+			}
+			err := svc.UpdatePricingOptions(authorization.WithWriteReason(r.Context(), raw.Reason), values, raw.ExpectedRevisions)
+			writeServiceResponse(w, map[string]any{"success": err == nil}, err)
 			return
 		}
 		if raw.Key != "" {

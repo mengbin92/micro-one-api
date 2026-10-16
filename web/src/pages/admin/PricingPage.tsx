@@ -19,6 +19,7 @@ import { t } from '@/lib/i18n';
 interface OptionItem {
   key: string;
   value: string;
+  revision?: string;
 }
 
 interface PricingRow {
@@ -249,7 +250,8 @@ function newRow(): PricingRow {
 export function AdminPricingPage() {
   const auth = useAuthorization();
   const queryClient = useQueryClient();
-  const [draftRows, setDraftRows] = useState<PricingRow[] | null>(null);
+  const [draft, setDraft] = useState<{ rows: PricingRow[]; revisions: Record<string, string> } | null>(null);
+  const [needsReadback, setNeedsReadback] = useState(false);
 
   const optionsQuery = useAuthorizedQuery({
     permission: 'system.option.read', queryKey: ['admin-options'],
@@ -259,7 +261,7 @@ export function AdminPricingPage() {
     },
   });
   const { data: options, isLoading } = optionsQuery;
-  const optionsReady = optionsQuery.isSuccess && !optionsQuery.isRestricted && Array.isArray(options);
+  const optionsReady = optionsQuery.isSuccess && !optionsQuery.isRestricted && Array.isArray(options) && !needsReadback;
   const { data: publicModels, isLoading: areModelsLoading } = useAuthorizedQuery({
     permission: 'channel.model.list', queryKey: ['admin-models', 'pricing'],
     queryFn: async () => {
@@ -281,9 +283,11 @@ export function AdminPricingPage() {
     );
   }, [options, publicModels]);
 
-  const rows = draftRows ?? savedRows;
+  const rows = draft?.rows ?? savedRows;
+  const displayedRevisions = Object.fromEntries([MODEL_PRICE_KEY, MODEL_RATIO_KEY, COMPLETION_RATIO_KEY].map(key => [key, options?.find(option => option.key === key)?.revision ?? '0']));
 
   const saveMutation = useMutation({
+    retry: false,
     mutationFn: async () => {
       if (!optionsReady) throw new Error(t('部分数据加载失败，请重试。'));
       const normalizedRows = rows.map((row) => ({
@@ -322,18 +326,23 @@ export function AdminPricingPage() {
         { key: MODEL_RATIO_KEY, value: formatJSON(legacyRatios.modelRatio) },
         { key: COMPLETION_RATIO_KEY, value: formatJSON(legacyRatios.completionRatio) },
       ];
-      await Promise.all(
-        payloads.map(async (payload) => {
-          const res = await adminApiClient.put('/option/', { ...payload, reason });
-          ensureApiSuccess(res.data, `${payload.key} ${t('保存失败')}`);
-        }),
-      );
+      const values = Object.fromEntries(payloads.map(({ key, value }) => [key, value]));
+      const expected_revisions = draft?.revisions ?? displayedRevisions;
+      setNeedsReadback(true);
+      const res = await adminApiClient.put('/option/', { values, expected_revisions, reason });
+      ensureApiSuccess(res.data, t('保存价格失败'));
+      return values;
     },
-    onSuccess: () => {
-      setDraftRows(null);
-      queryClient.invalidateQueries({ queryKey: ['admin-options'] });
+    onSuccess: async (values) => {
       queryClient.invalidateQueries({ queryKey: ['admin-summary'] });
       queryClient.invalidateQueries({ queryKey: ['readonly-pricing'] });
+      const result = await optionsQuery.refetch();
+      if (!result.isSuccess || !Array.isArray(result.data) || !Object.entries(values).every(([key, value]) => result.data.find(option => option.key === key)?.value === value)) {
+        toast.error(t('请刷新价格配置后再继续编辑。'));
+        return;
+      }
+      setDraft(null);
+      setNeedsReadback(false);
       toast.success(t('价格已保存'));
     },
     onError: (error) => {
@@ -343,17 +352,17 @@ export function AdminPricingPage() {
 
   const updateRow = (id: string, patch: Partial<PricingRow>) => {
     if (!optionsReady) return;
-    setDraftRows((current) => (current ?? savedRows).map((row) => (row.id === id ? { ...row, ...patch } : row)));
+    setDraft((current) => ({ rows: (current?.rows ?? savedRows).map((row) => (row.id === id ? { ...row, ...patch } : row)), revisions: current?.revisions ?? displayedRevisions }));
   };
 
   const addRow = () => {
     if (!optionsReady) return;
-    setDraftRows((current) => [...(current ?? savedRows), newRow()]);
+    setDraft((current) => ({ rows: [...(current?.rows ?? savedRows), newRow()], revisions: current?.revisions ?? displayedRevisions }));
   };
 
   const removeRow = (id: string) => {
     if (!optionsReady) return;
-    setDraftRows((current) => (current ?? savedRows).filter((row) => row.id !== id));
+    setDraft((current) => ({ rows: (current?.rows ?? savedRows).filter((row) => row.id !== id), revisions: current?.revisions ?? displayedRevisions }));
   };
 
   return (
@@ -364,6 +373,10 @@ export function AdminPricingPage() {
           <p className="mt-1 text-sm text-muted-foreground">{t("按用户请求的公开模型 ID 配置每 1M tokens 价格；同一模型的渠道、订阅账号和上游模型 ID 共用一份售价。")}</p>
         </div>
         <div className="flex gap-2">
+          {needsReadback && <Button variant="outline" disabled={saveMutation.isPending || optionsQuery.isFetching} onClick={async () => {
+            const result = await optionsQuery.refetch();
+            if (result.isSuccess && Array.isArray(result.data)) { setDraft(null); setNeedsReadback(false); }
+          }}>{t('刷新')}</Button>}
           <Button permission="billing.pricing.update" variant="outline" onClick={addRow} disabled={!optionsReady}>
             <Plus className="size-4" />{t("添加模型")}</Button>
           <Button permission={['system.option.update', 'system.option.pricing.update', 'billing.pricing.update']} onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !optionsReady}>
@@ -373,7 +386,7 @@ export function AdminPricingPage() {
         </div>
       </div>
 
-      {!optionsReady && !isLoading && <p role="alert">{t('部分数据加载失败，请重试。')}</p>}
+      {!optionsReady && !isLoading && <p role="alert">{t(needsReadback ? '请刷新价格配置后再继续编辑。' : '部分数据加载失败，请重试。')}</p>}
 
       <Card>
         <CardHeader>

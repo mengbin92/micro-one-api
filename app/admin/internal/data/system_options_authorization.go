@@ -3,6 +3,8 @@ package data
 import (
 	"context"
 	"errors"
+	mysqldriver "github.com/go-sql-driver/mysql"
+	"github.com/mattn/go-sqlite3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"micro-one-api/app/admin/internal/biz"
@@ -37,8 +39,8 @@ func (r *SystemOptionsRepo) mutateOptionInTx(ctx context.Context, tx *gorm.DB, k
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
-	if _, iam := authorization.QueryScopeFromContext(ctx, biz.SystemOptionWriteOperation(key)); iam {
-		expected, supplied := biz.ExpectedOptionRevision(ctx)
+	expected, supplied := biz.ExpectedOptionRevision(ctx)
+	if _, iam := authorization.QueryScopeFromContext(ctx, biz.SystemOptionWriteOperation(key)); iam || supplied {
 		if !supplied || expected != old.Revision {
 			return biz.ErrSystemOptionConflict
 		}
@@ -51,7 +53,16 @@ func (r *SystemOptionsRepo) mutateOptionInTx(ctx context.Context, tx *gorm.DB, k
 		return err
 	}
 	next := map[string]any{"option_key": key, "option_value": value, "updated_at": r.optionUpdatedAt(), "revision": old.Revision + 1}
-	if err = tx.Table("system_options").Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "option_key"}}, DoUpdates: clause.AssignmentColumns([]string{"option_value", "updated_at", "revision"})}).Create(&next).Error; err != nil {
+	if old.ID == 0 {
+		err = tx.Table("system_options").Create(&next).Error
+	} else {
+		result := tx.Table("system_options").Where("id = ? AND revision = ?", old.ID, old.Revision).Updates(next)
+		err = result.Error
+		if err == nil && result.RowsAffected != 1 {
+			return biz.ErrSystemOptionConflict
+		}
+	}
+	if err != nil {
 		return err
 	}
 	if old.ID == 0 {
@@ -372,6 +383,15 @@ func optionWriteOperations(key string) []string {
 func recordOptionWriteFailure(ctx context.Context, db *gorm.DB, keys []string, writeErr error) error {
 	if writeErr == nil {
 		return nil
+	}
+	var mysqlErr *mysqldriver.MySQLError
+	var sqliteErr sqlite3.Error
+	var state interface{ SQLState() string }
+	if errors.Is(writeErr, gorm.ErrDuplicatedKey) ||
+		(errors.As(writeErr, &mysqlErr) && (mysqlErr.Number == 1062 || mysqlErr.Number == 1213)) ||
+		(errors.As(writeErr, &sqliteErr) && (sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique || sqliteErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey)) ||
+		(errors.As(writeErr, &state) && (state.SQLState() == "23505" || state.SQLState() == "40001" || state.SQLState() == "40P01")) {
+		writeErr = biz.ErrSystemOptionConflict
 	}
 	seen := map[string]bool{}
 	for _, key := range keys {
