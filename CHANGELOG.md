@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.35.1] - 2026-10-16
+
+v0.35.1 是 v0.35.0 之后的 **PATCH 修复版本**：修复 OAuth 响应验证、未读配置覆盖价格、Codex 额度误暂停、Gemini 契约和日报旧证据，收口模型启用、价格保存及证据管理读取。公开接口兼容，相对上一版新增 Identity 136，只发布既有 root 的两项读取权限；前端独立发布，收费与历史账本保持既有边界。详见 [release-v0.35.1.md](docs/releases/release-v0.35.1.md)。
+
 ### Added
 
 - 新增 `/admin/upstream-contracts` 管理页，查看不可变契约、灰度绑定与候选修复证据，按独立权限提供候选创建和 CAS 状态变更；兼容精确整数版本、权限撤销及读取失败后的禁写。
@@ -19,6 +23,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Codex partial quota 保留 primary/secondary 窗口归属，避免周额度 96% 被当成短周期额度触发账号误暂停。
 - Gemini 冻结契约识别模型路径中的实际 API 版本并兼容代理前缀，供应商日报保留最新导入的证据 ID。
 - 补齐 Billing/Channel 已实现供应商报告与上游契约 RPC 的 IAM 执行覆盖登记，修复会话已具备读取权限但调用仍被 403 拒绝；内部探测与结果回传继续保持系统专用。
+- 恢复具备权限的模型启用与价格保存，保留精确版本前置条件和中文操作原因；增加周度关键断言健康检查。
 
 ## [0.35.0] - 2026-10-15
 
