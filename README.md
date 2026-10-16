@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.35.1 发布公告](./docs/releases/release-v0.35.1.md)（鉴权与定价保护、额度窗口及证据管理修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.35.1)
+> 📣 **最新发布**：[v0.35.2 发布公告](./docs/releases/release-v0.35.2.md)（定价原子保存、版本冲突与撤权草稿保护） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.35.2)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.35.2
+
+v0.35.2 将三项模型价格改为单次 owner 事务保存，冻结草稿版本并拒绝并发覆盖；写入或回读失败后禁写，撤权后清除旧草稿。新增协议矩阵与三库并发回归，归档 DeepSeek 已结束日窗手工试点核验。无新增迁移、proto 或依赖；从 v0.35.1 升级只需 Admin 和独立前端，已部署等价修复的环境核对来源与资源摘要后可保留。供应商生产验收与七天灰度门禁继续独立执行。详见 [release-v0.35.2.md](./docs/releases/release-v0.35.2.md)。
 
 ### 升级到 v0.35.1
 
