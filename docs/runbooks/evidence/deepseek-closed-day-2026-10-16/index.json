@@ -46,22 +46,22 @@
   "files": {
     "cost-2026-10-14_2026-10-14.csv": {
       "raw_sha256": "c1e5df801a93bd8cc3cdc40a968f08a9ca080710f9b869f666dadb602383f6e5",
-      "redacted_sha256": "4f24ab2a502a1365dd74dfdca69318b11d4e3d86fd6f15e4b4d6070276a5e8fd",
+      "redacted_sha256": "bebbe980b213dbd8717b707573831aca9222dbcf75ac06e5e66993f75eccd234",
       "rows": 1
     },
     "amount-2026-10-14_2026-10-14.csv": {
       "raw_sha256": "8828cf1a71c70e63675c565326e9da58ab6a76dce7a012064fd1ce567a0e1909",
-      "redacted_sha256": "1b9840c9a23851d1397c9933697c73cf7befe9d2727bccd0525f5e3d707cc8dc",
+      "redacted_sha256": "726dfab7968f271cfefa9e89973d8bdf8cef67f3b9f41640799f7adfc1b7325c",
       "rows": 4
     },
     "cost-2026-10-15_2026-10-15.csv": {
       "raw_sha256": "cfafbfafa6e075457b13cf7d70a9dd4746ed85970c1215b5c5b2eeef2c19308c",
-      "redacted_sha256": "ddf98c95d9c6dff55884bdf51439c8a05bfc39ffdea9c5e1fd088438f00102bd",
+      "redacted_sha256": "c39c8a0429f77ad15512f254b2275d33e273c87fbaea174d8b6890f100291748",
       "rows": 0
     },
     "amount-2026-10-15_2026-10-15.csv": {
       "raw_sha256": "162b12477c5b18fa47d85ce7466abac19b2b9454dca221148d3315ad77aaffcd",
-      "redacted_sha256": "cf5cfbfd3348007ee1f71a1bce7b8eebee7d48e9501c925e241d51db53ca9d26",
+      "redacted_sha256": "8cf1c4bd398026fb06b3feee1fb7d863be532a330b2ad1df8c0fdcbe0c87a0fd",
       "rows": 0
     }
   },
@@ -92,5 +92,6 @@
     "docs/runbooks/evidence/deepseek-balance-and-channel1-2026-10-14/balance-window.json": "10d75b0b99e0e41a11bd7d0bb4a87bdad89ec7ec6e09a75e43817820a3426fd8"
   },
   "production_source_mapping_verified": false,
-  "p2_overall_acceptance": false
+  "p2_overall_acceptance": false,
+  "redacted_csv_line_endings": "LF; original raw file and archive digests are unchanged"
 }
