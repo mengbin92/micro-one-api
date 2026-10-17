@@ -102,7 +102,7 @@ func (r *Repository) ReadRequestTrace(ctx context.Context, summary *requesttrace
 	if len(spans) == 0 {
 		if truncated {
 			detail.DetailState = "partial"
-			detail.MissingReasons = []string{"response_limit"}
+			detail.MissingReasons = budget.limitReasons()
 			return detail, nil
 		}
 		return missingTrace(detail, now), nil
@@ -130,9 +130,15 @@ func (r *Repository) ReadRequestTrace(ctx context.Context, summary *requesttrace
 		}
 	}
 	if rootStart == 0 {
+		if detail.Truncated {
+			detail.DetailState = "partial"
+			detail.MissingReasons = append(budget.limitReasons(), "missing_observation_root")
+			return detail, nil
+		}
 		return missingTrace(detail, now), nil
 	}
 	phaseCount := map[string]int{}
+	attemptsSeen := map[int32]bool{}
 	serverParents := map[string]bool{}
 	for _, located := range spans {
 		kind := string(located.span.Kind)
@@ -154,7 +160,10 @@ func (r *Repository) ReadRequestTrace(ctx context.Context, summary *requesttrace
 		}
 		item := requesttrace.TraceSpan{ID: id, ParentID: traceIDHex(span.ParentID, 8), Service: safeTraceService(located.service), Phase: safeTracePhase(span.Name),
 			StartOffsetMS: float64(start-rootStart) / 1e6, DurationMS: float64(end-start) / 1e6, Outcome: "unknown", SafeAttributes: map[string]string{}}
-		if item.StartOffsetMS < 0 {
+		// The first WebSocket turn deliberately includes retrospective handshake
+		// and first-frame waiting spans from before the turn's request frame.
+		connectionPrelude := summary.ObservationKind == "ws_turn" && (item.Phase == "ws.accept" || item.Phase == "ws.first_frame")
+		if item.StartOffsetMS < 0 && !connectionPrelude {
 			detail.MissingReasons = appendReason(detail.MissingReasons, "clock_skew")
 		}
 		for _, a := range span.Attributes {
@@ -176,7 +185,7 @@ func (r *Repository) ReadRequestTrace(ctx context.Context, summary *requesttrace
 			case "relay.attempt.number":
 				n, _ := strconv.ParseInt(value, 10, 32)
 				item.AttemptNumber = int32(n)
-			case "rpc.system", "rpc.method", "rpc.status", "network.connection.reused", "network.connection.idle", "http.response.status_code", "cache.hit", "db.operation.name", "upstream.protocol", "queue.wait_ms", "batch.shared", "telemetry.carrier.valid":
+			case "rpc.system", "rpc.method", "rpc.status", "network.connection.reused", "network.connection.idle", "http.response.status_code", "cache.hit", "cache.name", "ws.pool.reused", "routing.reused", "db.operation.name", "upstream.protocol", "queue.wait_ms", "batch.shared", "telemetry.carrier.valid":
 				if safe, ok := safeTraceAttribute(a.Key, value); ok {
 					item.SafeAttributes[a.Key] = safe
 				}
@@ -196,6 +205,9 @@ func (r *Repository) ReadRequestTrace(ctx context.Context, summary *requesttrace
 			detail.MissingReasons = appendReason(detail.MissingReasons, "unclassified_phase")
 		}
 		phaseCount[span.Name]++
+		if item.Phase == "relay.attempt" && item.AttemptNumber > 0 {
+			attemptsSeen[item.AttemptNumber] = true
+		}
 		detail.Spans = append(detail.Spans, item)
 		for _, event := range span.Events {
 			switch event.Name {
@@ -204,6 +216,10 @@ func (r *Repository) ReadRequestTrace(ctx context.Context, summary *requesttrace
 				continue
 			}
 			timestamp, _ := strconv.ParseInt(event.Time, 10, 64)
+			if timestamp <= 0 {
+				detail.MissingReasons = appendReason(detail.MissingReasons, "invalid_milestone_clock")
+				continue
+			}
 			kind := ""
 			for _, a := range event.Attributes {
 				if a.Key == "output.kind" {
@@ -279,8 +295,38 @@ func (r *Repository) ReadRequestTrace(ctx context.Context, summary *requesttrace
 	if len(detail.Spans) <= 1 {
 		detail.MissingReasons = appendReason(detail.MissingReasons, "missing_child_spans")
 	}
-	if phaseCount["relay.attempt"] < len(summary.Attempts) {
-		detail.MissingReasons = appendReason(detail.MissingReasons, "missing_attempt_spans")
+	for _, attempt := range summary.Attempts {
+		if !attemptsSeen[attempt.Number] {
+			detail.MissingReasons = appendReason(detail.MissingReasons, "missing_attempt_spans")
+			break
+		}
+	}
+	// Stage counts alone do not prove a complete recording. The summary is
+	// independent of OTel export and proves which terminal/content events must
+	// be present even when an otherwise populated trace lost those events.
+	for _, expected := range []struct {
+		kind string
+		seen bool
+	}{
+		{"output.finished", summary.OutputFinishedAtMS != nil},
+		{"handler.finished", summary.HandlerFinishedAtMS != nil},
+		{"turn.finished", summary.TurnFinishedAtMS != nil},
+		{"rpc.finished", summary.RPCFinishedAtMS != nil},
+		{"output.first_content", summary.FirstContentMS != nil},
+	} {
+		if !expected.seen {
+			continue
+		}
+		found := false
+		for _, milestone := range detail.Milestones {
+			if milestone.Kind == expected.kind {
+				found = true
+				break
+			}
+		}
+		if !found {
+			detail.MissingReasons = appendReason(detail.MissingReasons, "missing_"+strings.ReplaceAll(expected.kind, ".", "_"))
+		}
 	}
 	if snapshot := summary.SettlementSnapshot; snapshot != nil && snapshot.Status == "enqueued" && phaseCount["settlement.worker"] == 0 {
 		detail.MissingReasons = appendReason(detail.MissingReasons, "settlement_worker_pending")
@@ -289,11 +335,13 @@ func (r *Repository) ReadRequestTrace(ctx context.Context, summary *requesttrace
 		detail.MissingReasons = appendReason(detail.MissingReasons, "collection_partial")
 	}
 	if detail.Truncated {
-		detail.MissingReasons = appendReason(detail.MissingReasons, "span_limit")
+		for _, reason := range budget.limitReasons() {
+			detail.MissingReasons = appendReason(detail.MissingReasons, reason)
+		}
 	}
 	if len(detail.MissingReasons) > 0 {
 		detail.DetailState = "partial"
-		if now.Sub(time.UnixMilli(summary.StartedAtMS)) < 30*time.Second && !detail.Truncated && summary.CollectionState != "partial" {
+		if traceCompletionAge(summary, now) < 30*time.Second && !detail.Truncated && summary.CollectionState != "partial" {
 			for _, reason := range detail.MissingReasons {
 				if strings.HasPrefix(reason, "missing_") || strings.HasSuffix(reason, "_pending") {
 					detail.DetailState = "pending"
@@ -305,7 +353,7 @@ func (r *Repository) ReadRequestTrace(ctx context.Context, summary *requesttrace
 }
 
 func missingTrace(detail *requesttrace.TraceDetail, now time.Time) *requesttrace.TraceDetail {
-	age := now.Sub(time.UnixMilli(detail.Summary.StartedAtMS))
+	age := traceCompletionAge(detail.Summary, now)
 	switch {
 	case age < 30*time.Second:
 		detail.DetailState = "pending"
@@ -316,6 +364,18 @@ func missingTrace(detail *requesttrace.TraceDetail, now time.Time) *requesttrace
 	}
 	detail.MissingReasons = []string{"trace_not_found"}
 	return detail
+}
+
+func traceCompletionAge(summary *requesttrace.TimingSummary, now time.Time) time.Duration {
+	// Streaming and RPC root spans are exported when they finish. Their start
+	// can be hours earlier, so it cannot identify recent export lag or expiry.
+	finished := summary.StartedAtMS
+	for _, endpoint := range []*int64{summary.OutputFinishedAtMS, summary.HandlerFinishedAtMS, summary.TurnFinishedAtMS, summary.RPCFinishedAtMS} {
+		if endpoint != nil && *endpoint > finished {
+			finished = *endpoint
+		}
+	}
+	return now.Sub(time.UnixMilli(finished))
 }
 func traceIDHex(value string, bytes int) string {
 	if decoded, err := hex.DecodeString(value); err == nil && len(decoded) == bytes {
@@ -339,12 +399,31 @@ type locatedSpan struct {
 	service string
 	span    otlpSpan
 }
-type traceBudget struct{ bytes, spans int }
+type traceBudget struct {
+	bytes, spans                  int
+	responseLimited, spansLimited bool
+}
+
+func (b *traceBudget) limitReasons() []string {
+	var reasons []string
+	if b.responseLimited {
+		reasons = append(reasons, "response_limit")
+	}
+	if b.spansLimited {
+		reasons = append(reasons, "span_limit")
+	}
+	return reasons
+}
 
 var errQuery = errors.New("trace query failed")
 var errTraceMissing = errors.New("trace missing")
 
 func (r *Repository) fetchTrace(ctx context.Context, id string, budget *traceBudget) ([]locatedSpan, bool, error) {
+	if budget.bytes <= 0 || budget.spans <= 0 {
+		budget.responseLimited = budget.responseLimited || budget.bytes <= 0
+		budget.spansLimited = budget.spansLimited || budget.spans <= 0
+		return nil, true, nil
+	}
 	u := r.data.traceEndpoint + "/api/v3/traces/" + id + "?raw_traces=true"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -366,6 +445,8 @@ func (r *Repository) fetchTrace(ctx context.Context, id string, budget *traceBud
 		return nil, false, errQuery
 	}
 	if len(encoded) > budget.bytes {
+		budget.bytes = 0
+		budget.responseLimited = true
 		return nil, true, nil
 	}
 	budget.bytes -= len(encoded)
@@ -392,6 +473,7 @@ func (r *Repository) fetchTrace(ctx context.Context, id string, budget *traceBud
 				for _, span := range scope.Spans {
 					if budget.spans == 0 {
 						truncated = true
+						budget.spansLimited = true
 						continue
 					}
 					spans = append(spans, locatedSpan{service, span})

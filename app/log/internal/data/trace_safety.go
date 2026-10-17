@@ -44,8 +44,10 @@ func safeTraceAttribute(key, value string) (string, bool) {
 		case "OK", "Canceled", "Unknown", "InvalidArgument", "DeadlineExceeded", "NotFound", "AlreadyExists", "PermissionDenied", "ResourceExhausted", "FailedPrecondition", "Aborted", "OutOfRange", "Unimplemented", "Internal", "Unavailable", "DataLoss", "Unauthenticated":
 			return value, true
 		}
-	case "network.connection.reused", "network.connection.idle", "cache.hit", "batch.shared", "telemetry.carrier.valid":
+	case "network.connection.reused", "network.connection.idle", "cache.hit", "ws.pool.reused", "routing.reused", "batch.shared", "telemetry.carrier.valid":
 		return value, value == "true" || value == "false"
+	case "cache.name":
+		return value, value == "auth" || value == "channel"
 	case "http.response.status_code":
 		n, err := strconv.Atoi(value)
 		return value, err == nil && n >= 100 && n <= 599
