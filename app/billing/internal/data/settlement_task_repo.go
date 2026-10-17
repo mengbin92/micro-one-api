@@ -2,9 +2,11 @@ package data
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"micro-one-api/app/billing/internal/biz"
+	"micro-one-api/domain/requesttrace"
 	"micro-one-api/pkg/jsonx"
 
 	"gorm.io/gorm"
@@ -12,6 +14,12 @@ import (
 )
 
 type settlementTaskModel struct {
+	ObservationID string `gorm:"column:observation_id"`
+	TraceParent   string `gorm:"column:trace_parent"`
+	TraceState    string `gorm:"column:trace_state"`
+	AcceptedAtMS  int64  `gorm:"column:telemetry_accepted_at_ms"`
+	QueuedAtMS    int64  `gorm:"column:telemetry_queued_at_ms"`
+
 	ID            int64  `gorm:"column:id;primaryKey;autoIncrement"`
 	ReservationID string `gorm:"column:reservation_id;uniqueIndex"`
 	Payload       string `gorm:"column:payload;type:text"`
@@ -120,8 +128,12 @@ func (r *settlementTaskRepo) AcceptTask(ctx context.Context, task *biz.SettleTas
 			}
 			return nil // A replay never rewrites inputs, the first clock, or a worker claim.
 		}
+		telemetry := task.Telemetry
+		if telemetry.AcceptedAtMS == 0 {
+			telemetry = requesttrace.Capture(ctx)
+		}
 		now := time.Now().Unix()
-		if err := tx.WithContext(ctx).Create(&settlementTaskModel{ReservationID: task.ReservationID, Payload: string(payload), Status: "pending", NextRetryAt: now, CreatedAt: now, UpdatedAt: now}).Error; err != nil {
+		if err := tx.WithContext(ctx).Create(&settlementTaskModel{ObservationID: telemetry.ObservationID, TraceParent: telemetry.TraceParent, TraceState: telemetry.TraceState, AcceptedAtMS: telemetry.AcceptedAtMS, QueuedAtMS: telemetry.QueuedAtMS, ReservationID: task.ReservationID, Payload: string(payload), Status: "pending", NextRetryAt: now, CreatedAt: now, UpdatedAt: now}).Error; err != nil {
 			return err
 		}
 		receipt.Received = true
@@ -169,9 +181,28 @@ func (r *settlementTaskRepo) ListPending(ctx context.Context, limit int) ([]*biz
 			}
 			continue
 		}
+		task.Telemetry = requesttrace.Carrier{ObservationID: row.ObservationID, TraceParent: row.TraceParent, TraceState: row.TraceState, AcceptedAtMS: row.AcceptedAtMS, QueuedAtMS: row.QueuedAtMS}
 		result = append(result, &task)
 	}
 	return result, nil
+}
+
+// TaskStatusByReservation returns the current status of the settlement task
+// for a reservation ("" when no task exists). Status text never leaks error
+// payloads; it is one of pending/processing/failed/completed/invalid.
+func (r *settlementTaskRepo) TaskStatusByReservation(ctx context.Context, reservationID string) (string, error) {
+	if reservationID == "" {
+		return "", nil
+	}
+	var row settlementTaskModel
+	err := r.data.db.WithContext(ctx).Select("status").Where("reservation_id = ?", reservationID).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return row.Status, nil
 }
 
 func (r *settlementTaskRepo) MarkCompleted(ctx context.Context, reservationID string) error {
@@ -179,5 +210,5 @@ func (r *settlementTaskRepo) MarkCompleted(ctx context.Context, reservationID st
 }
 
 func (r *settlementTaskRepo) MarkFailed(ctx context.Context, reservationID, message string, nextRetry time.Time) error {
-	return r.data.db.WithContext(ctx).Model(&settlementTaskModel{}).Where("reservation_id = ? AND status = ?", reservationID, "processing").Updates(map[string]any{"status": "failed", "last_error": message, "next_retry_at": nextRetry.Unix(), "attempts": gorm.Expr("attempts + 1"), "updated_at": time.Now().Unix()}).Error
+	return r.data.db.WithContext(ctx).Model(&settlementTaskModel{}).Where("reservation_id = ? AND status = ?", reservationID, "processing").Updates(map[string]any{"status": "failed", "last_error": message, "next_retry_at": nextRetry.Unix(), "attempts": gorm.Expr("attempts + 1"), "telemetry_queued_at_ms": time.Now().UnixMilli(), "updated_at": time.Now().Unix()}).Error
 }

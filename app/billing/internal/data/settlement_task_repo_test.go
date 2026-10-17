@@ -34,6 +34,30 @@ func intakeTask() *biz.SettleTask {
 	return &biz.SettleTask{ReservationID: "res-intake", RequestID: "res-intake", ActualTokens: 10, Success: true, Usage: biz.LedgerUsage{PromptTokens: 10}, Timestamp: time.Now()}
 }
 
+func TestTaskStatusByReservation(t *testing.T) {
+	d := settlementIntakeDB(t)
+	intakeReservation(t, d, biz.ReservationStatusReserved)
+	store := NewSettlementTaskRepo(d)
+
+	// No task yet: empty status, no error.
+	status, err := store.(biz.SettlementTaskStatusReader).TaskStatusByReservation(context.Background(), "res-intake")
+	require.NoError(t, err)
+	require.Empty(t, status)
+
+	require.NoError(t, store.SaveTask(context.Background(), intakeTask()))
+	status, err = store.(biz.SettlementTaskStatusReader).TaskStatusByReservation(context.Background(), "res-intake")
+	require.NoError(t, err)
+	require.Equal(t, "pending", status)
+
+	// Unknown reservation and empty id never error.
+	status, err = store.(biz.SettlementTaskStatusReader).TaskStatusByReservation(context.Background(), "missing")
+	require.NoError(t, err)
+	require.Empty(t, status)
+	status, err = store.(biz.SettlementTaskStatusReader).TaskStatusByReservation(context.Background(), "")
+	require.NoError(t, err)
+	require.Empty(t, status)
+}
+
 func TestSettlementIntakeRejectsChangedPayload(t *testing.T) {
 	for _, state := range []string{"pending", "processing", "failed", "completed"} {
 		t.Run(state, func(t *testing.T) {

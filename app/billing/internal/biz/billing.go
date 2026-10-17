@@ -140,6 +140,10 @@ type BillingUsecase struct {
 	// registry-local instance via SetGrossProfitMetric so assertions never
 	// read the shared DefaultGatherer (which other tests could pollute).
 	grossProfitMetric *prometheus.HistogramVec
+	// settlementTasks is the optional durable settlement task store used by
+	// GetSettlementStatus to refine live reservation states. Shared by pointer
+	// because the usecase is occasionally copied by value for pricing capture.
+	settlementTasks *settlementTaskStoreHolder
 }
 
 func NewBillingUsecase(

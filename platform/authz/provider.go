@@ -2,6 +2,7 @@ package authz
 
 import (
 	"fmt"
+	"micro-one-api/platform/grpc/xgrpc"
 	"os"
 	"strings"
 
@@ -24,7 +25,7 @@ func FromEnvironment(owner string) (*Client, error) {
 	if endpoint == "" {
 		endpoint = "127.0.0.1:9001"
 	}
-	conn, err := grpc.NewClient(endpoint,
+	conn, err := grpc.NewClient(endpoint, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())),
 	)

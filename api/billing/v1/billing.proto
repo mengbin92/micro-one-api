@@ -9,6 +9,12 @@ import "api/billing/v1/vendor_report.proto";
 option go_package = "micro-one-api/api/billing/v1;billingv1";
 
 service BillingService {
+ rpc ResolveLedgerRequest(ResolveLedgerRequestRequest) returns (ResolveLedgerRequestResponse);
+ // GetSettlementStatus reads the authoritative current settlement state of a
+ // reservation (plus its async settlement task, when one exists). It backs the
+ // optional settlement_current field of the request-trace detail; the
+ // request-end snapshot stays the summary's settlement_snapshot.
+ rpc GetSettlementStatus(GetSettlementStatusRequest) returns (GetSettlementStatusResponse);
  rpc ImportVendorReport(ImportVendorReportRequest) returns (ImportVendorReportReply);
  rpc ListVendorReports(ListVendorReportsRequest) returns (ListVendorReportsReply);
  rpc ResetAccountBalance(ResetAccountBalanceRequest) returns (TopUpQuotaResponse);
@@ -541,6 +547,22 @@ message GetLedgerEntryRequest {
 
 message GetLedgerEntryResponse {
   common.v1.LedgerEntry entry = 1;
+}
+message ResolveLedgerRequestRequest { int64 ledger_id = 1; }
+message ResolveLedgerRequestResponse {
+  bool applicable = 1;
+  int64 user_id = 2;
+  string reservation_id = 3;
+  string root_request_id = 4;
+}
+message GetSettlementStatusRequest { string reservation_id = 1; }
+message GetSettlementStatusResponse {
+  // Same vocabulary as the trace summary settlement snapshot:
+  // committed | released | enqueued | failed | reserved | unknown.
+  string status = 1;
+  int64 observed_at_ms = 2;
+  // Where the answer came from: reservation | reservation+settlement_task.
+  string source = 3;
 }
 
 // ========== 支付订单 ==========

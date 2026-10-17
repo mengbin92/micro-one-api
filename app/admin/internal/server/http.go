@@ -3801,6 +3801,10 @@ func handleOneAPILogs(w http.ResponseWriter, r *http.Request, svc *service.Admin
 
 func handleOneAPILogByID(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	trimmed := strings.Trim(r.URL.Path, "/")
+	if trimmed == "api/log/request-traces" || strings.HasPrefix(trimmed, "api/log/request-traces/") || strings.HasPrefix(trimmed, "api/log/") && strings.HasSuffix(trimmed, "/trace") {
+		handleRequestTrace(w, r, svc)
+		return
+	}
 	if trimmed == "api/log" || trimmed == "api/log/search" {
 		handleOneAPILogs(w, r, svc)
 		return

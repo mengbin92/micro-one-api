@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	logv1 "micro-one-api/api/log/v1"
 	"micro-one-api/platform/security/serviceidentity"
 	"os"
 	"os/signal"
@@ -35,6 +36,8 @@ import (
 
 // clientsResult bundles all downstream gRPC clients and their connections.
 type clientsResult struct {
+	logClient      logv1.LogServiceClient
+	logConn        *grpc.ClientConn
 	identityClient identityv1.IdentityServiceClient
 	channelClient  channelv1.ChannelServiceClient
 	billingClient  billingv1.BillingServiceClient
@@ -77,7 +80,7 @@ func newClients(cfg *Config) (*clientsResult, error) {
 	billingEndpoint, _ := resolver.ResolveGRPC(context.Background(), "billing-service")
 
 	serviceToken := serviceidentity.ClientToken()
-	identityConn, err := grpc.NewClient(identityEndpoint,
+	identityConn, err := grpc.NewClient(identityEndpoint, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceToken)),
 		grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("identity-service")))
@@ -85,7 +88,7 @@ func newClients(cfg *Config) (*clientsResult, error) {
 		return nil, fmt.Errorf("failed to connect to identity service: %w", err)
 	}
 
-	channelConn, err := grpc.NewClient(channelEndpoint,
+	channelConn, err := grpc.NewClient(channelEndpoint, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceToken)),
 		grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("channel-service")))
@@ -94,7 +97,7 @@ func newClients(cfg *Config) (*clientsResult, error) {
 		return nil, fmt.Errorf("failed to connect to channel service: %w", err)
 	}
 
-	billingConn, err := grpc.NewClient(billingEndpoint,
+	billingConn, err := grpc.NewClient(billingEndpoint, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceToken)),
 		grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("billing-service")))
@@ -104,7 +107,18 @@ func newClients(cfg *Config) (*clientsResult, error) {
 		return nil, fmt.Errorf("failed to connect to billing service: %w", err)
 	}
 
-	return &clientsResult{
+	logEndpoint := os.Getenv("LOG_GRPC_ENDPOINT")
+	if logEndpoint == "" {
+		logEndpoint = "127.0.0.1:9006"
+	}
+	logConn, err := grpc.NewClient(logEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceToken)), grpc.WithStatsHandler(xgrpc.ClientStatsHandler()))
+	if err != nil {
+		_ = identityConn.Close()
+		_ = channelConn.Close()
+		_ = billingConn.Close()
+		return nil, err
+	}
+	return &clientsResult{logClient: logv1.NewLogServiceClient(logConn), logConn: logConn,
 		identityClient: identityv1.NewIdentityServiceClient(identityConn),
 		channelClient:  channelv1.NewChannelServiceClient(channelConn),
 		billingClient:  billingv1.NewBillingServiceClient(billingConn),

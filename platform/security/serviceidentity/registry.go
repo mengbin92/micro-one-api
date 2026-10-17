@@ -10,6 +10,10 @@ type RPCPolicy struct {
 // Identity forwards verified sessions for ListLedger and AggregateLedgerByDate.
 // Their user caller policy preserves billing self scope; it grants no system bypass.
 var rpcPolicies = map[string]RPCPolicy{
+	"/api.billing.v1.BillingService/ResolveLedgerRequest":       {Owner: "billing", UserCallers: []string{"admin"}},
+	"/api.billing.v1.BillingService/GetSettlementStatus":        {Owner: "billing", UserCallers: []string{"admin"}},
+	"/api.log.v1.LogService/ListRequestTraces":                  {Owner: "log", UserCallers: []string{"admin"}},
+	"/api.log.v1.LogService/GetRequestTrace":                    {Owner: "log", UserCallers: []string{"admin"}},
 	"/api.channel.v1.ChannelService/ListPublicModels":           {Owner: "channel", SystemCallers: []string{"admin"}},
 	"/api.channel.v1.ChannelService/BatchDeleteChannels":        {Owner: "channel", UserCallers: []string{"admin"}},
 	"/api.channel.v1.ChannelService/ExportChannels":             {Owner: "channel", UserCallers: []string{"admin"}},

@@ -5,6 +5,7 @@ import (
 	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
+	logv1 "micro-one-api/api/log/v1"
 	"micro-one-api/app/admin/internal/biz"
 	"micro-one-api/app/admin/internal/data/channelclient"
 	"micro-one-api/app/admin/internal/data/iam"
@@ -15,8 +16,11 @@ import (
 
 // NewManagedResourcesHTTP shares the real admin startup adapters for browser
 // acceptance. Connections belong to the isolated caller-owned test stack.
-func NewManagedResourcesHTTP(identity identityv1.IdentityServiceClient, iamClient identityv1.IAMServiceClient, channel channelv1.ChannelServiceClient, billing billingv1.BillingServiceClient) *khttp.Server {
+func NewManagedResourcesHTTP(identity identityv1.IdentityServiceClient, iamClient identityv1.IAMServiceClient, channel channelv1.ChannelServiceClient, billing billingv1.BillingServiceClient, logs ...logv1.LogServiceClient) *khttp.Server {
 	svc := service.NewAdminService(billing, identity, channel, nil)
+	if len(logs) > 0 {
+		svc.SetLogClient(logs[0])
+	}
 	svc.SetIAMService(service.NewIAMAdminService(biz.NewIAMUsecase(iam.NewRepo(iamClient))))
 	reader := channelclient.NewRoutingGroupReader(channel)
 	svc.SetRoutingGroupUsecase(biz.NewRoutingGroupUsecase(reader))

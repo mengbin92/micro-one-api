@@ -108,6 +108,10 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	uc.SetReceivableRepo(d.ReceivableRepo())
 	uc.SetPricingSnapshotRepo(d.PricingSnapshotRepo())
 	uc.SetVendorReconciliationRepo(data.NewVendorReconciliationRepo(d))
+	// The settlement status query refines live reservation states with the
+	// async task position; it degrades to the reservation row alone when
+	// the store is unavailable.
+	uc.SetSettlementTaskStore(d.SettlementTaskStore())
 	closeRouting := func() {}
 	if biz.RequestSnapshotsEnabled() {
 		reader, cleanup, err := routingclient.Dial(os.Getenv("CHANNEL_GRPC_ENDPOINT"))
@@ -196,7 +200,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	var channelConn *grpc.ClientConn
 	if cfg.Bootstrap.Clients != nil && cfg.Bootstrap.Clients.Channel != nil && cfg.Bootstrap.Clients.Channel.Endpoint != "" {
 		var err error
-		channelConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Channel.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())))
+		channelConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Channel.Endpoint, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())))
 		if err != nil {
 			applogger.Log.Error("dial channel endpoint", zap.Error(err))
 		} else {
@@ -222,7 +226,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		}
 		if cfg.Bootstrap.Clients != nil && cfg.Bootstrap.Clients.Notify != nil && cfg.Bootstrap.Clients.Notify.Endpoint != "" {
 			var err error
-			notifyConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Notify.Endpoint,
+			notifyConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Notify.Endpoint, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()),
 				grpc.WithTransportCredentials(insecure.NewCredentials()),
 				grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())),
 				grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))

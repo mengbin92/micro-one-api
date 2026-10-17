@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"micro-one-api/domain/requesttrace"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -70,6 +71,7 @@ type UserQuota struct {
 // wallet settlement, ledger, subscription usage) instead of writing raw
 // ledger entries that would bypass the reservation state machine.
 type SettleTask struct {
+	Telemetry requesttrace.Carrier `json:"-"`
 	RequestID string
 	// ReservationID is the authoritative key for the commit pipeline.
 	ReservationID         string
@@ -96,6 +98,13 @@ type SettlementTaskStore interface {
 	ListPending(context.Context, int) ([]*SettleTask, error)
 	MarkCompleted(context.Context, string) error
 	MarkFailed(context.Context, string, string, time.Time) error
+}
+
+// SettlementTaskStatusReader exposes the current task state for the
+// settlement_current trace query. It is a separate interface so the recovery
+// pipeline contract stays unchanged.
+type SettlementTaskStatusReader interface {
+	TaskStatusByReservation(context.Context, string) (string, error)
 }
 
 type SettlementSideEffectReporter interface {
@@ -368,6 +377,9 @@ func (uc *AsyncBillingUsecase) getCheckAndDeductScript() *string {
 func (uc *AsyncBillingUsecase) Settle(ctx context.Context, task *SettleTask) error {
 	if task == nil {
 		return fmt.Errorf("settlement task is nil")
+	}
+	if task.Telemetry.AcceptedAtMS == 0 {
+		task.Telemetry = requesttrace.Capture(ctx)
 	}
 	if err := task.ValidateReceipt(); err != nil {
 		return err
@@ -654,7 +666,11 @@ func (uc *AsyncBillingUsecase) processSettlement(task *SettleTask) {
 	// still has to commit. A bounded detached context also covers the drain.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(uc.workerCtx), 30*time.Second)
 	defer cancel()
+	ctx, endTask := requesttrace.StartTask(ctx, task.Telemetry, "settlement.worker")
+	var taskErr error
+	defer func() { endTask(taskErr) }()
 	if err := uc.runCommitPipeline(ctx, task); err != nil {
+		taskErr = err
 		if store := uc.getTaskStore(); store != nil {
 			_ = store.MarkFailed(ctx, task.ReservationID, err.Error(), time.Now().Add(time.Minute))
 		}
