@@ -652,8 +652,13 @@ func (uc *AsyncBillingUsecase) processSettlement(task *SettleTask) {
 	// Recover, log, and continue processing the next task; the reservation
 	// remains in the "committed/committing" state and is reconciled by the
 	// periodic reconciliation job.
+	var taskErr error
+	var endTask func(error)
+	// Recover before ending telemetry so a panicked commit is never exported
+	// as a successful settlement. Keep panic details in the existing logs.
 	defer func() {
 		if r := recover(); r != nil {
+			taskErr = errors.New("async settlement panic")
 			metrics.AsyncBillingDroppedFlushes.Inc()
 			applogger.Log.Error("async settlement panic recovered",
 				zap.String("reservation_id", task.ReservationID),
@@ -661,14 +666,15 @@ func (uc *AsyncBillingUsecase) processSettlement(task *SettleTask) {
 				zap.Stack("stack"),
 			)
 		}
+		if endTask != nil {
+			endTask(taskErr)
+		}
 	}()
 	// Close cancels workerCtx to stop accepting queue work, but queued billing
 	// still has to commit. A bounded detached context also covers the drain.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(uc.workerCtx), 30*time.Second)
 	defer cancel()
-	ctx, endTask := requesttrace.StartTask(ctx, task.Telemetry, "settlement.worker")
-	var taskErr error
-	defer func() { endTask(taskErr) }()
+	ctx, endTask = requesttrace.StartTask(ctx, task.Telemetry, "settlement.worker")
 	if err := uc.runCommitPipeline(ctx, task); err != nil {
 		taskErr = err
 		if store := uc.getTaskStore(); store != nil {

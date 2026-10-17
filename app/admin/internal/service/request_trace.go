@@ -95,7 +95,7 @@ func (s *AdminService) attachSettlementCurrent(ctx context.Context, view *reques
 	}
 	view.SettlementCurrent = &requesttrace.SettlementCurrent{Status: reply.Status, ObservedAtMS: reply.ObservedAtMs, Source: reply.Source}
 }
-func (s *AdminService) LedgerRequestTraces(ctx context.Context, ledgerID int64) (*RequestTraceList, error) {
+func (s *AdminService) LedgerRequestTraces(ctx context.Context, ledgerID int64, pageToken string) (*RequestTraceList, error) {
 	ctx, cancel := context.WithTimeout(operatorRPCContext(ctx), 5*time.Second)
 	defer cancel()
 	ref, err := s.billingClient.ResolveLedgerRequest(ctx, &billingv1.ResolveLedgerRequestRequest{LedgerId: ledgerID})
@@ -108,8 +108,9 @@ func (s *AdminService) LedgerRequestTraces(ctx context.Context, ledgerID int64) 
 	}
 	// Owner association is authoritative. No frontend or ledger-reference guess.
 	// The owner uses the exact user/reservation association index across retention.
-	end := time.Now().UnixMilli()
-	view, err := s.ListRequestTraces(ctx, &logv1.ListRequestTracesRequest{UserId: &ref.UserId, ReservationId: ref.ReservationId, EndTimeMs: end, PageSize: 200})
+	// The owner chooses the first page's upper bound and restores it from its
+	// cursor on later pages, preserving one consistent reservation snapshot.
+	view, err := s.ListRequestTraces(ctx, &logv1.ListRequestTracesRequest{UserId: &ref.UserId, ReservationId: ref.ReservationId, PageSize: 200, PageToken: pageToken})
 	if err != nil {
 		return nil, err
 	}

@@ -80,12 +80,8 @@ func (uc *BillingUsecase) GetSettlementStatus(ctx context.Context, reservationID
 				if status.Status == "reserved" || status.Status == "unknown" {
 					status.Status = "enqueued"
 				}
-			case "failed":
+			case "failed", "invalid":
 				if status.Status != "committed" && status.Status != "released" {
-					status.Status = "failed"
-				}
-			case "invalid":
-				if status.Status == "unknown" {
 					status.Status = "failed"
 				}
 			case "completed":

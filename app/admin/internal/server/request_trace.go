@@ -65,6 +65,6 @@ func handleRequestTrace(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		writeJSON(w, 400, apiResponse(false, "invalid ledger id", nil))
 		return
 	}
-	view, err := svc.LedgerRequestTraces(r.Context(), ledgerID)
+	view, err := svc.LedgerRequestTraces(r.Context(), ledgerID, r.URL.Query().Get("page_token"))
 	writeServiceResponse(w, view, err)
 }

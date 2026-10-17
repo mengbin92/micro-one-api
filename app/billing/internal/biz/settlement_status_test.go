@@ -79,6 +79,14 @@ func TestGetSettlementStatusMapsReservationAndTaskStates(t *testing.T) {
 		require.Equal(t, "failed", status.Status)
 	})
 
+	t.Run("invalid task on a live reservation reports failed", func(t *testing.T) {
+		uc := settlementStatusUsecase(ReservationStatusReserved, &stubSettlementTaskStore{status: "invalid"})
+		status, err := uc.GetSettlementStatus(authztest.Context(), "res-live")
+		require.NoError(t, err)
+		require.Equal(t, "failed", status.Status)
+		require.Equal(t, "reservation+settlement_task", status.Source)
+	})
+
 	t.Run("committed reservation wins over a stale failed task", func(t *testing.T) {
 		uc := settlementStatusUsecase(ReservationStatusCommitted, &stubSettlementTaskStore{status: "failed"})
 		status, err := uc.GetSettlementStatus(authztest.Context(), "res-live")
