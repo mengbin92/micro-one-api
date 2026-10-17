@@ -3,6 +3,7 @@ package credential
 import (
 	"context"
 	"fmt"
+	"micro-one-api/domain/requesttrace"
 )
 
 // StaticTokenProvider implements TokenProvider for subscription accounts that
@@ -42,7 +43,9 @@ func NewStaticTokenProvider(lookup AccountLookup) *StaticTokenProvider {
 // is treated as non-expiring; if the account has no access token the provider
 // surfaces ErrNoRefreshToken (the account cannot serve requests until it is
 // re-provisioned, mirroring the OAuth provider's "no refresh token" branch).
-func (p *StaticTokenProvider) GetAccessToken(ctx context.Context, accountID int64) (string, error) {
+func (p *StaticTokenProvider) GetAccessToken(ctx context.Context, accountID int64) (tokenResult string, tokenErr error) {
+	ctx, endTiming := requesttrace.Phase(ctx, "credential.resolve")
+	defer func() { endTiming(tokenErr) }()
 	if p == nil || p.lookup == nil {
 		return "", ErrNotConfigured
 	}

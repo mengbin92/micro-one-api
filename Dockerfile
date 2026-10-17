@@ -81,7 +81,11 @@ RUN make proto
 # platform-native gcc is used — no manual CC/CXX selection is needed.
 ARG SERVICE_PATH
 ARG BUILD_REVISION=unknown
-RUN CGO_ENABLED=1 go build \
+ARG TARGETOS
+ARG TARGETARCH
+# Share compiled packages across local cross-builds without changing binaries.
+RUN --mount=type=cache,id=micro-one-api-gobuild-${TARGETOS}-${TARGETARCH},target=/root/.cache/go-build \
+    CGO_ENABLED=1 go build \
       -ldflags="-s -w -extldflags '-static' -X micro-one-api/domain/upstream/evidence.BuildRevision=${BUILD_REVISION}" \
       -o /app/bin/service ${SERVICE_PATH}
 

@@ -42,7 +42,7 @@ func NewRedisClientWithPool(addr, password string, pool *RedisPoolConfig) *redis
 	if pool == nil {
 		pool = DefaultRedisPoolConfig()
 	}
-	return redis.NewClient(&redis.Options{
+	client := redis.NewClient(&redis.Options{
 		Addr:            addr,
 		Password:        password,
 		DialTimeout:     pool.DialTimeout,
@@ -52,6 +52,8 @@ func NewRedisClientWithPool(addr, password string, pool *RedisPoolConfig) *redis
 		MinIdleConns:    pool.MinIdleConns,
 		ConnMaxIdleTime: pool.ConnMaxIdleTime,
 	})
+	client.AddHook(redisTraceHook{})
+	return client
 }
 
 // PingRedis checks if Redis is reachable. Returns error if not.

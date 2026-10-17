@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"go.uber.org/zap"
+	"micro-one-api/domain/requesttrace"
 	applogger "micro-one-api/platform/logging"
 	"net/http"
 	"strings"
@@ -36,7 +37,9 @@ type baseTokenProvider struct {
 
 // GetAccessToken returns a valid access token, refreshing transparently when
 // the cached token is within RefreshSkew of expiry.
-func (b *baseTokenProvider) GetAccessToken(ctx context.Context, accountID int64) (string, error) {
+func (b *baseTokenProvider) GetAccessToken(ctx context.Context, accountID int64) (tokenResult string, tokenErr error) {
+	ctx, endTiming := requesttrace.Phase(ctx, "credential.resolve")
+	defer func() { endTiming(tokenErr) }()
 	if b.lookup == nil {
 		return "", ErrNotConfigured
 	}

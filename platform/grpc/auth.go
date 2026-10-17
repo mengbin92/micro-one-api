@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"fmt"
+	"micro-one-api/platform/grpc/xgrpc"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -267,7 +268,7 @@ func CreateAuthenticatedClient(
 	}
 
 	// Connect to server
-	conn, err := grpc.NewClient(target, opts...)
+	conn, err := grpc.NewClient(target, append(opts, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()))...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}

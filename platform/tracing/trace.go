@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -76,10 +77,15 @@ func InitTracer(cfg Config) (func(), error) {
 		return nil, err
 	}
 
+	if os.Getenv("OTEL_GO_X_OBSERVABILITY") == "" {
+		_ = os.Setenv("OTEL_GO_X_OBSERVABILITY", "true")
+	}
+	otel.SetMeterProvider(newSDKMetricsProvider())
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter),
+		sdktrace.WithSpanProcessor(phaseMetricProcessor{}),
+		sdktrace.WithBatcher(measuredExporter{exporter}),
 		sdktrace.WithResource(res),
-		sdktrace.WithSampler(sdktrace.TraceIDRatioBased(cfg.SampleRate)),
+		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(cfg.SampleRate))),
 	)
 
 	otel.SetTracerProvider(tp)

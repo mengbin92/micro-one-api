@@ -7,6 +7,7 @@ import (
 	xhttp "micro-one-api/platform/http"
 	"net/http"
 	"slices"
+	"time"
 
 	"micro-one-api/platform/metrics"
 	appmiddleware "micro-one-api/platform/middleware"
@@ -136,6 +137,14 @@ func (s *HTTPServer) handleFunc(srv *khttp.Server, pattern string, declaration r
 
 func (s *HTTPServer) wrapRoute(pattern string, declaration routeDeclaration, handler http.Handler) http.Handler {
 	declaration.validate(pattern)
+	if declaration.category == routeCategoryExecution {
+		original := handler
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			started := time.Now()
+			defer timingHandlerFinished(r.Context(), started)
+			original.ServeHTTP(w, r)
+		})
+	}
 	var h http.Handler = s.withRequestBudget(handler)
 	h = appmiddleware.RequestBodyLimitByPath(h)
 	if declaration.category == routeCategoryExecution {
@@ -150,7 +159,11 @@ func (s *HTTPServer) wrapRoute(pattern string, declaration routeDeclaration, han
 	if declaration.category == routeCategoryExecution {
 		h = observeRelayExecution(h, declaration.endpoint, declaration.executionPath, declaration.stream)
 	}
-	h = xtrace.Middleware(h)
+	if declaration.category == routeCategoryExecution {
+		h = s.observeRequestTiming(h, declaration.endpoint, declaration.executionPath)
+	} else {
+		h = xtrace.Middleware(h)
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(contract.WithInbound(xhttp.WithClientIP(r.Context(), relayClientIP(r)), evidence.ProtocolForPath(r.URL.Path)))
 		r = r.WithContext(s.withContractResults(r.Context(), ""))

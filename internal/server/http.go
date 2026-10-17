@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"micro-one-api/domain/requesttrace"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -37,6 +38,7 @@ type tokenQuotaBlocker interface {
 // HTTPServer handles HTTP requests for relay-gateway.
 
 type HTTPServer struct {
+	timingExporter     *requesttrace.Exporter
 	executionActive    atomic.Int64
 	executionDelivery  *relaybiz.ExecutionDelivery
 	executionAttempts  sync.Map

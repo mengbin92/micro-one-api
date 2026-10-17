@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"micro-one-api/domain/requesttrace"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -18,6 +19,7 @@ import (
 
 // openAIWSRelayOptions configures the bidirectional Responses WebSocket relay.
 type openAIWSRelayOptions struct {
+	timings           *wsTimingSession
 	contractSelection func() contract.Selection
 	durableRecord     func(evidence.Record) error
 	durableBefore     func() error
@@ -50,6 +52,7 @@ type openAIWSRelayUsage struct {
 // errorMessage carry the payload's own outcome when the dialect provides it,
 // so callers can classify the turn without trusting the event name alone.
 type openAIWSTurnResult struct {
+	ctx               context.Context
 	requestID         string
 	terminalEventType string
 	responseStatus    string
@@ -281,6 +284,7 @@ func (st *openAIWSRelayState) finishTurn(opts *openAIWSRelayOptions, eventType, 
 		return
 	}
 	opts.onTurnComplete(openAIWSTurnResult{
+		ctx:               opts.timings.Context(responseID, nil),
 		requestID:         responseID,
 		terminalEventType: eventType,
 		responseStatus:    outcome.status,
@@ -420,9 +424,13 @@ func relayOpenAIWSFrames(
 	var traceMu sync.Mutex
 	var turnTrace *contract.Trace
 	writeUpstream := func(msgType coderws.MessageType, payload []byte) error {
+		turnCtx := relayCtx
+		if opts.timings != nil {
+			turnCtx = opts.timings.Send(relayCtx, payload)
+		}
 		if opts.beforeWriteUp != nil {
 			var err error
-			payload, err = opts.beforeWriteUp(relayCtx, msgType, payload)
+			payload, err = opts.beforeWriteUp(turnCtx, msgType, payload)
 			if err != nil {
 				return err
 			}
@@ -451,7 +459,7 @@ func relayOpenAIWSFrames(
 				traceMu.Unlock()
 			}
 		}
-		writeCtx, cancel := context.WithTimeout(relayCtx, writeTimeout)
+		writeCtx, cancel := context.WithTimeout(turnCtx, writeTimeout)
 		defer cancel()
 		// Durable WS turns are serialized by beforeWriteUp. Capture the actual
 		// response.create send boundary, rather than reservation/inbox time.
@@ -463,7 +471,9 @@ func relayOpenAIWSFrames(
 				turnStartedAt.Store(nowFn().UnixNano())
 			}
 		}
-		return upstreamConn.WriteFrame(writeCtx, msgType, payload)
+		err := upstreamConn.WriteFrame(writeCtx, msgType, payload)
+		opts.timings.Sent(turnCtx, err)
+		return err
 	}
 	writeClient := func(msgType coderws.MessageType, payload []byte) error {
 		writeCtx, cancel := context.WithTimeout(relayCtx, writeTimeout)
@@ -594,14 +604,30 @@ func relayOpenAIWSFrames(
 				}
 			}
 
+			var eventType, responseID string
+			var terminal bool
 			if msgType == coderws.MessageText {
-				eventType, responseID, terminal := state.observeUpstreamFrame(payload, msgType, nowFn())
+				eventType, responseID, terminal = state.observeUpstreamFrame(payload, msgType, nowFn())
+				if opts.timings != nil {
+					_ = opts.timings.Context(responseID, relayCtx)
+					if terminal {
+						state.mu.Lock()
+						observedOutcome := state.pendingTerminal
+						state.mu.Unlock()
+						failed := openAIWSTerminalHealthError(openAIWSTurnResult{terminalEventType: eventType, responseStatus: observedOutcome.status, errorCode: observedOutcome.errorCode, errorMessage: observedOutcome.errorMessage}) != nil
+						if observedOutcome.status == "incomplete" || eventType == "response.incomplete" {
+							requesttrace.Observation(opts.timings.Context(responseID, relayCtx)).Update(func(s *requesttrace.TimingSummary) { s.Outcome = "incomplete" })
+						}
+						opts.timings.Terminal(responseID, failed)
+					}
+				}
 				if terminal {
 					state.finishTurn(&opts, eventType, responseID, nowFn())
 				}
 			}
 
 			if err := writeClient(msgType, payload); err != nil {
+				opts.timings.Written(responseID, payload, terminal, err)
 				exitCh <- openAIWSRelayExit{
 					stage:           "write_client",
 					err:             err,
@@ -609,6 +635,7 @@ func relayOpenAIWSFrames(
 				}
 				return
 			}
+			opts.timings.Written(responseID, payload, terminal, nil)
 			wroteDownstream = true
 			upstreamToClient.Add(1)
 			markActivity()
@@ -634,6 +661,7 @@ func relayOpenAIWSFrames(
 	}()
 
 	exit := <-exitCh
+	opts.timings.Interrupted(exit.err)
 	relayCancel()
 
 	// Best-effort close both sides; the pump that errored already noticed.

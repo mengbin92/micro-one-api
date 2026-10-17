@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"micro-one-api/domain/requesttrace"
 	"micro-one-api/platform/metrics"
 )
 
@@ -131,6 +132,12 @@ func (w *relayObservationWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 }
 
 func serveObservedRelay(w http.ResponseWriter, r *http.Request, endpoint, path, stream string, handler http.HandlerFunc) {
+	requesttrace.Observation(r.Context()).Update(func(s *requesttrace.TimingSummary) {
+		s.ExecutionPath = path
+		if stream == "true" {
+			s.Protocol = "sse"
+		}
+	})
 	if observation, ok := r.Context().Value(relayExecutionObservationKey{}).(*relayExecutionObservation); ok {
 		observation.setPath(path)
 		if stream != relayStreamUnknown {
@@ -200,12 +207,16 @@ func setRelayObservationStream(ctx context.Context, stream bool) {
 }
 
 func setRelayObservationPath(ctx context.Context, path string) {
+	requesttrace.Observation(ctx).Update(func(s *requesttrace.TimingSummary) { s.ExecutionPath = path })
 	if observation, ok := ctx.Value(relayExecutionObservationKey{}).(*relayExecutionObservation); ok {
 		observation.setPath(path)
 	}
 }
 
 func setRelayObservationResult(ctx context.Context, result string) {
+	if result == "stream_error" {
+		requesttrace.Observation(ctx).Update(func(s *requesttrace.TimingSummary) { s.Outcome = "incomplete" })
+	}
 	if observation, ok := ctx.Value(relayExecutionObservationKey{}).(*relayExecutionObservation); ok {
 		observation.setResult(result)
 	}

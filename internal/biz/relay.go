@@ -600,7 +600,9 @@ func (uc *RelayUsecase) SetRuntimeBlocker(blocker RuntimeBlocker) {
 
 // Plan resolves the model name, authenticates the user, validates permissions,
 // and selects the best channel. Returns a RelayPlan with all resolved values.
-func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan, error) {
+func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (result *RelayPlan, resultErr error) {
+	ctx, endTiming := requesttrace.Phase(ctx, "relay.plan")
+	defer func() { endTiming(resultErr) }()
 	// Measure the selection (Plan) latency so routing_selection_duration is
 	// observed at the plan boundary (code review MEDIUM-4). The histogram
 	// records selection time, NOT execution time.
@@ -615,6 +617,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			req.RequestID = generateSelectionRequestID()
 		}
 	}
+	requesttrace.BindRoot(ctx, req.RequestID)
 	// A terminal [1M] is a client-side extended-context hint, not part of the
 	// model identifier understood by the registry or upstream provider.
 	req.Model = RelayModelName(req.Model)
@@ -630,6 +633,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	if err != nil {
 		return nil, err
 	}
+	requesttrace.BindUser(ctx, authSnapshot.UserID)
 	if err := uc.ResolveRoutingContext(ctx, authSnapshot, RoutingResolveOptions{SessionHash: req.SessionHash, Model: req.Model}); err != nil {
 		return nil, err
 	}

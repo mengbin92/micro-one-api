@@ -175,7 +175,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				s.logPostResponseCommitError(err)
 			} else {
 				logUpstreamUsage(logInput)
-				s.ingestUsageLogAfterResponse(logInput)
+				s.ingestUsageLogAfterResponse(logInput, r.Context())
 			}
 			upstreamResp = &relayprovider.RawResponse{StatusCode: streamResp.StatusCode}
 			responseChannel = ch
@@ -423,7 +423,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		if err := s.commitQuotaAfterResponseObserved(r.Context(), reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 			s.logPostResponseCommitError(err)
 		} else {
-			s.ingestUsageLogAfterResponse(logInput)
+			s.ingestUsageLogAfterResponse(logInput, r.Context())
 		}
 		if responseID := usage.ResponseID(); responseID != "" {
 			route.UserID = authSnapshot.UserId

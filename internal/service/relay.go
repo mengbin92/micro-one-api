@@ -7,6 +7,7 @@ import (
 	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
+	"micro-one-api/platform/grpc/xgrpc"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
 	"net"
@@ -31,6 +32,7 @@ import (
 
 // RelayGrpcService implements the gRPC RelayServiceServer interface.
 type RelayGrpcService struct {
+	timingExporter    *requesttrace.Exporter
 	executionDelivery *relaybiz.ExecutionDelivery
 	upstreamProbe     *relaybiz.UpstreamProbeUsecase
 	relayv1.UnimplementedRelayServiceServer
@@ -63,6 +65,7 @@ func NewRelayGrpcService(
 
 // ChatCompletion handles synchronous chat completion via gRPC.
 func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.ChatCompletionRequest) (*relayv1.ChatCompletionResponse, error) {
+	defer xgrpc.HandlerTiming(ctx)()
 	startedAt := time.Now()
 	token, err := extractTokenFromMetadata(ctx)
 	if err != nil {
@@ -107,6 +110,7 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 
 	result := retryExecutor.ExecuteWithCandidates(ctx, plan, 0, func(ctx context.Context, ch *relaybiz.Channel) error {
 		trace := requesttrace.FromContext(ctx)
+		ctx = requesttrace.EnsureAttempt(ctx, trace.Number)
 		requestID := fmt.Sprintf("grpc_%d", time.Now().UnixNano())
 		estimatedTokens := estimateTokensForGRPC(providerReq)
 		resolvedModel := relaybiz.ResolveChannelModel(ch, plan.BaseModel())
@@ -409,4 +413,14 @@ func convertToGRPCResponse(resp *relayprovider.ChatCompletionsResponse) (*relayv
 
 func estimateTokensForGRPC(req *relayprovider.ChatCompletionsRequest) int64 {
 	return relayprovider.EstimateChatTokens(req)
+}
+
+func (s *RelayGrpcService) SetTimingExporter(exporter *requesttrace.Exporter) {
+	s.timingExporter = exporter
+}
+func (s *RelayGrpcService) TimingSubmit() func(context.Context, *requesttrace.TimingSummary) bool {
+	if s.timingExporter == nil {
+		return nil
+	}
+	return s.timingExporter.Submit
 }

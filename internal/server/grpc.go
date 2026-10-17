@@ -16,6 +16,7 @@ import (
 func NewGRPCServer(addr string, svc *service.RelayGrpcService, opts ...grpc.ServerOption) *kgrpc.Server {
 	serverOpts := []kgrpc.ServerOption{
 		kgrpc.Address(addr),
+		kgrpc.Options(grpc.StatsHandler(xgrpc.ServerStatsHandler(svc.TimingSubmit()))),
 		kgrpc.Timeout(apptimeout.GetGRPCTimeout()),
 		kgrpc.UnaryInterceptor(xgrpc.ServiceTokenUnaryInterceptor(os.Getenv("SERVICE_TOKEN"))),
 		kgrpc.StreamInterceptor(xgrpc.ServiceTokenStreamInterceptor(os.Getenv("SERVICE_TOKEN"))),

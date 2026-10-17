@@ -14,11 +14,18 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"micro-one-api/domain/execution"
+	"micro-one-api/domain/requesttrace"
 	"micro-one-api/internal/biz"
 	"micro-one-api/pkg/jsonx"
 )
 
 type executionOutboxModel struct {
+	ObservationID string `gorm:"column:observation_id"`
+	TraceParent   string `gorm:"column:trace_parent"`
+	TraceState    string `gorm:"column:trace_state"`
+	AcceptedAtMS  int64  `gorm:"column:telemetry_accepted_at_ms"`
+	QueuedAtMS    int64  `gorm:"column:telemetry_queued_at_ms"`
+
 	ID               string `gorm:"primaryKey"`
 	Digest           string
 	Payload          string
@@ -179,7 +186,8 @@ func (r *executionOutboxRepo) put(ctx context.Context, e execution.Event, admit 
 				return err
 			}
 		}
-		row := executionOutboxModel{ID: e.ID, Digest: d, Payload: string(b), Status: "pending", CreatedAt: now}
+		telemetry := requesttrace.Capture(ctx)
+		row := executionOutboxModel{ObservationID: telemetry.ObservationID, TraceParent: telemetry.TraceParent, TraceState: telemetry.TraceState, AcceptedAtMS: telemetry.AcceptedAtMS, QueuedAtMS: telemetry.QueuedAtMS, ID: e.ID, Digest: d, Payload: string(b), Status: "pending", CreatedAt: now}
 		addedSlots := int64(1)
 		writeSlots := int64(1)
 		var origin executionOutboxModel
@@ -339,7 +347,7 @@ func (r *executionOutboxRepo) Pending(ctx context.Context, limit int) ([]biz.Pen
 		if err != nil || d != row.Digest {
 			return nil, biz.ErrExecutionReceipt
 		}
-		out = append(out, biz.PendingExecution{Event: e, Digest: d})
+		out = append(out, biz.PendingExecution{Event: e, Digest: d, Telemetry: requesttrace.Carrier{ObservationID: row.ObservationID, TraceParent: row.TraceParent, TraceState: row.TraceState, AcceptedAtMS: row.AcceptedAtMS, QueuedAtMS: row.QueuedAtMS}})
 	}
 	return out, nil
 }
@@ -354,7 +362,7 @@ func (r *executionOutboxRepo) Acknowledge(ctx context.Context, id, d string) err
 	return nil
 }
 func (r *executionOutboxRepo) Defer(ctx context.Context, id string, t time.Time) error {
-	return r.d.ExecutionDB.WithContext(ctx).Model(&executionOutboxModel{}).Where("id = ? AND status = ?", id, "pending").Update("next_retry", t.Unix()).Error
+	return r.d.ExecutionDB.WithContext(ctx).Model(&executionOutboxModel{}).Where("id = ? AND status = ?", id, "pending").Updates(map[string]any{"next_retry": t.Unix(), "telemetry_queued_at_ms": time.Now().UnixMilli()}).Error
 }
 func (r *executionOutboxRepo) Send(ctx context.Context, e execution.Event) (execution.Receipt, error) {
 	if r.d.ExecutionSender == nil {

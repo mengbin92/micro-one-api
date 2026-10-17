@@ -158,7 +158,9 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 				firstFailErr = result.err
 			}
 			lastErr = result.err
-			next, err := s.selectSubscriptionFailoverPlan(r.Context(), plan, current, clientModel, failedAccounts)
+			selectCtx, endSelect := requesttrace.Phase(r.Context(), "route.reselect")
+			next, err := s.selectSubscriptionFailoverPlan(selectCtx, plan, current, clientModel, failedAccounts)
+			endSelect(err)
 			if err == nil && next != nil && next.Channel != nil && subscriptionAccountIDFromPlan(next) != accountID {
 				switched = true
 				metrics.RelaySubscriptionFailoverTotal.WithLabelValues(subscriptionRetryReason(result), "switched").Inc()
@@ -251,7 +253,14 @@ func (s *HTTPServer) runSubscriptionAttempt(r *http.Request, current *relaybiz.R
 
 // executeAndMeter runs a single subscription-account request and records the
 // adaptor request metric for that attempt.
-func (s *HTTPServer) executeAndMeter(ctx context.Context, current *relaybiz.RelayPlan, clientModel string, header http.Header, rawBody []byte, inbound relayadaptor.Format, sessionHash string) subscriptionAdaptorResult {
+func (s *HTTPServer) executeAndMeter(ctx context.Context, current *relaybiz.RelayPlan, clientModel string, header http.Header, rawBody []byte, inbound relayadaptor.Format, sessionHash string) (timingResult subscriptionAdaptorResult) {
+	defer func() {
+		if timingResult.err != nil {
+			number := requesttrace.FromContext(ctx).Number
+			requesttrace.RecordAttempt(ctx, requesttrace.TimingAttempt{Number: number, Outcome: requesttrace.Outcome(timingResult.err)})
+			requesttrace.FinishAttempt(ctx, number, requesttrace.Outcome(timingResult.err))
+		}
+	}()
 	attemptStartedAt := time.Now()
 	result := s.executeSubscriptionAccountViaAdaptor(ctx, current, clientModel, header, rawBody, inbound, sessionHash)
 	if result.upstreamAttempted && requesttrace.FromContext(ctx).Number <= 1 {
@@ -338,7 +347,15 @@ func isSubscriptionRateLimitStatus(statusCode int) bool {
 
 // sleepCtx waits for d or until ctx is cancelled. It returns true if the full
 // delay elapsed, false if the context was cancelled first.
-func sleepCtx(ctx context.Context, d time.Duration) bool {
+func sleepCtx(ctx context.Context, d time.Duration) (waited bool) {
+	_, end := requesttrace.Phase(ctx, "retry.backoff")
+	defer func() {
+		if waited {
+			end(nil)
+		} else {
+			end(ctx.Err())
+		}
+	}()
 	if d <= 0 {
 		return true
 	}
@@ -570,7 +587,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		}
 		return result
 	}
-	upstreamFmt, upstreamBody, err := ad.ConvertRequest(rc, inbound, ensureRawModel(rawBody, plan.ResolvedModel))
+	upstreamFmt, upstreamBody, err := convertRequestObserved(ctx, ad, rc, inbound, ensureRawModel(rawBody, plan.ResolvedModel))
 	if err != nil {
 		result.statusCode = mapUpstreamError(relaybiz.UpstreamStatus(err))
 		result.err = fmt.Errorf("adaptor convert request: %w", err)
@@ -716,7 +733,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	}
 
 	if isStream {
-		_, reader, err := ad.ConvertStreamResponse(rc, upstreamFmt, resp)
+		_, reader, err := convertStreamObserved(ctx, ad, rc, upstreamFmt, resp)
 		if err != nil {
 			_ = resp.Body.Close()
 			if accountUsage {
@@ -799,7 +816,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 				if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 					s.logPostResponseCommitError(err)
 				} else {
-					s.ingestUsageLogAfterResponse(logInput)
+					s.ingestUsageLogAfterResponse(logInput, ctx)
 				}
 			}
 		}
@@ -825,7 +842,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		return result
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(rawUpstream))
-	_, outBody, err := ad.ConvertResponse(rc, upstreamFmt, resp)
+	_, outBody, err := convertResponseObserved(ctx, ad, rc, upstreamFmt, resp)
 	if err != nil {
 		if accountUsage {
 			_ = s.releaseQuota(ctx, reservation.ReservationId, "adaptor convert response error")
@@ -878,7 +895,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 			if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				s.logPostResponseCommitError(err)
 			} else {
-				s.ingestUsageLogAfterResponse(logInput)
+				s.ingestUsageLogAfterResponse(logInput, ctx)
 			}
 		}
 	}

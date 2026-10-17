@@ -9,11 +9,16 @@ import (
 
 func channelAttemptContext(ctx context.Context, root string, number int32, channel *relaybiz.Channel, model string) context.Context {
 	source := relaybiz.UpstreamSourceChannel
+	var sourceID int64
+	if channel != nil {
+		sourceID = channel.ID
+	}
 	if channel != nil && channel.SubscriptionAccountID > 0 {
 		source = relaybiz.UpstreamSourceSubscription
+		sourceID = channel.SubscriptionAccountID
 	}
 	return requesttrace.WithAttempt(ctx, requesttrace.Attempt{
-		RootRequestID: root, Number: number, SourceKind: source, UpstreamModelID: model,
+		RootRequestID: root, Number: number, SourceKind: source, SourceID: sourceID, UpstreamModelID: model,
 		HealthProbeID: channelHealthProbeID(channel),
 	})
 }

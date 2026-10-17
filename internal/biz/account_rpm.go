@@ -2,6 +2,8 @@ package biz
 
 import (
 	"context"
+	"errors"
+	"micro-one-api/domain/requesttrace"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -31,7 +33,15 @@ func NewAccountRPMLimiter() *MemoryAccountRPMLimiter {
 	}
 }
 
-func (l *MemoryAccountRPMLimiter) TryAcquire(_ context.Context, accountID int64, limit int32) bool {
+func (l *MemoryAccountRPMLimiter) TryAcquire(ctx context.Context, accountID int64, limit int32) (admitted bool) {
+	ctx, endTiming := requesttrace.Phase(ctx, "admission.check")
+	defer func() {
+		if admitted {
+			endTiming(nil)
+		} else {
+			endTiming(errors.New("rejected"))
+		}
+	}()
 	if l == nil || limit <= 0 || accountID <= 0 {
 		return true
 	}
@@ -142,7 +152,15 @@ func newRedisRPMLimiter(rdb accountRPMRedis, keyPrefix, instance string) *RedisA
 	}
 }
 
-func (l *RedisAccountRPMLimiter) TryAcquire(ctx context.Context, accountID int64, limit int32) bool {
+func (l *RedisAccountRPMLimiter) TryAcquire(ctx context.Context, accountID int64, limit int32) (admitted bool) {
+	ctx, endTiming := requesttrace.Phase(ctx, "admission.check")
+	defer func() {
+		if admitted {
+			endTiming(nil)
+		} else {
+			endTiming(errors.New("rejected"))
+		}
+	}()
 	if l == nil || l.rdb == nil {
 		return true
 	}
