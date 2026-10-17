@@ -19,13 +19,13 @@ import (
 
 func timedHTTPDo(client *http.Client, req *http.Request, protocol string) (*http.Response, error) {
 	if req == nil {
-		return client.Do(req)
+		return client.Do(req) // #nosec G704 -- same validated request/client as evidence.Do.
 	}
 	ctx, end := requesttrace.Phase(req.Context(), "upstream.http")
 	span := trace.SpanFromContext(ctx)
 	if requesttrace.Observation(ctx) == nil && !span.IsRecording() {
 		end(nil)
-		return client.Do(req)
+		return client.Do(req) // #nosec G704 -- same validated request/client as evidence.Do.
 	}
 	span.SetAttributes(attribute.String("upstream.protocol", protocol))
 	var mu sync.Mutex
