@@ -186,4 +186,25 @@ describe('OrdersPage', () => {
     else await user.click(within(dialog).getByRole('button', { name: '继续支付' }));
     expect(open).not.toHaveBeenCalled();
   });
+
+  it('keeps payment rows when the ledger payload is malformed, and vice versa', async () => {
+    const order = { id: 1, trade_no: 'PAY-RESILIENT', channel: 'alipay', status: 'paid', money_cents: 100, asset_amount: 500000, currency: 'CNY' };
+    server.use(
+      http.get('/api/user/payment/orders', () => HttpResponse.json({ success: true, data: { orders: [order] } })),
+      // A proxy 502/error page returns HTML, not an envelope; one broken
+      // section must not take the other down (allSettled only isolates
+      // transport failures, not parse failures).
+      http.get('/api/user/logs', () => new HttpResponse('<!doctype html><title>502</title>', { headers: { 'Content-Type': 'text/html' } })),
+    );
+    renderWithQuery(<OrdersPage />);
+    expect(await screen.findByText('PAY-RESILIENT')).toBeVisible();
+
+    server.use(
+      http.get('/api/user/payment/orders', () => new HttpResponse('<!doctype html><title>502</title>', { headers: { 'Content-Type': 'text/html' } })),
+      http.get('/api/user/logs', () =>
+        HttpResponse.json({ success: true, data: { logs: [{ id: 9, type: 'redeem', remark: '兑换额度 500000', amount: 500000, balance_after: 500000, created_at: 1779200000 }] } })),
+    );
+    renderWithQuery(<OrdersPage />);
+    expect(await screen.findByText('兑换额度 500000')).toBeVisible();
+  });
 });

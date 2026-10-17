@@ -242,18 +242,31 @@ export function OrdersPage() {
           : Promise.resolve(null),
       ]);
 
-      const paymentRows =
-        paymentResult.status === 'fulfilled' && paymentResult.value
-          ? (unwrapApiData<PaymentOrdersPayload>(paymentResult.value.data).orders ?? []).map(paymentOrderToRow)
-          : [];
+      // allSettled isolates transport failures per section; unwrapApiData now
+      // throws on malformed payloads, so parsing must be isolated too —
+      // otherwise a broken ledger response would also hide the payment rows.
+      const paymentRows = (() => {
+        try {
+          return paymentResult.status === 'fulfilled' && paymentResult.value
+            ? (unwrapApiData<PaymentOrdersPayload>(paymentResult.value.data).orders ?? []).map(paymentOrderToRow)
+            : [];
+        } catch {
+          return [];
+        }
+      })();
 
-      const ledgerRows =
-        ledgerResult.status === 'fulfilled' && ledgerResult.value
-          ? normalizeLogs(unwrapApiData<LedgerLog[] | LedgerLogData>(ledgerResult.value.data))
-              .filter((log) => ORDER_TYPES.has(log.type))
-              .filter((log) => !type || log.type === type)
-              .map(ledgerToRow)
-          : [];
+      const ledgerRows = (() => {
+        try {
+          return ledgerResult.status === 'fulfilled' && ledgerResult.value
+            ? normalizeLogs(unwrapApiData<LedgerLog[] | LedgerLogData>(ledgerResult.value.data))
+                .filter((log) => ORDER_TYPES.has(log.type))
+                .filter((log) => !type || log.type === type)
+                .map(ledgerToRow)
+            : [];
+        } catch {
+          return [];
+        }
+      })();
 
       return [...paymentRows, ...ledgerRows].sort((a, b) => b.createdAt - a.createdAt);
     },
