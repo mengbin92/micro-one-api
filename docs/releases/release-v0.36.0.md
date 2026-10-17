@@ -58,6 +58,14 @@ v0.36.0 是 v0.35.2 之后的 **MINOR 功能版本**：按 [llm-request-timing-o
 
 **影响服务**：`relay-gateway`、`log-service`、`billing-service`、`admin-api` 与前端；每项修复均带回归测试。
 
+### 7. 发布门禁拦截的最后一处回归
+
+**根因**：Release E2E 门禁（Playwright admin smoke）在发布流程中拦截到一处 4941ba7a 信封加固引入的回归：订单页用 `Promise.allSettled` 合并支付订单与账本两个请求，但 `allSettled` 只隔离传输失败——`unwrapApiData` 硬化后对畸形载荷（如代理 502 HTML 页）抛错，账本区段的解析异常在 queryFn 同一作用域内扩散，把支付订单行也清空。
+
+**修复**：两个区段各自隔离解析，畸形载荷只降级对应区段，信封契约在单调用点仍然抛错。
+
+**影响服务**：宿主机独立前端；新增 vitest 双向回归（支付行在账本损坏时存活、反之亦然），Release smoke 红转绿。
+
 ## 兼容性说明
 
 - 新增迁移 `137_add_request_timing_summaries`（log 库：`logs` 观测列与 `request_trace_attempt_refs` 表）与 `138_add_settlement_telemetry`（billing 库：结算任务遥测信封列），均为新增表/列，不修改历史数据；按 `migrations/ownership.yaml` 执行。列缺失期间摘要写入仅记录错误，不回溯补写，建议先迁移再部署或部署后立即迁移。
@@ -92,6 +100,7 @@ v0.36.0 是 v0.35.2 之后的 **MINOR 功能版本**：按 [llm-request-timing-o
 
 ## 完整变更日志
 
+- `377ccd26` fix(web): isolate order section parsing so one bad payload cannot blank the page
 - `a629ed9f` fix(rbac): refresh entry-matrix digests for the timing fix commits
 - `493fd7c2` chore(relay): annotate validated upstream client.Do for gosec G704
 - `15a6b275` fix(web): keep the trace waterfall honest at display boundaries
