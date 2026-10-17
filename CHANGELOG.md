@@ -7,6 +7,22 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-10-17
+
+v0.36.0 是 v0.35.2 之后的 **MINOR 功能版本**：按 llm-request-timing-observability-plan 上线端到端请求计时观测——Relay 跨 HTTP/SSE/WebSocket/gRPC 记录阶段耗时与业务终态，Log 存储摘要并从 Jaeger 投影瀑布，账单关联模型调用观测并展示实时结算状态，管理端提供瀑布与失败检索；含评审修复一轮。新增迁移 137/138，proto 仅新增，运行时更新 Relay、Log、Billing、Admin 与独立前端。详见 [release-v0.36.0.md](docs/releases/release-v0.36.0.md)。
+
+### Added
+
+- Relay 请求计时生产端：HTTP/SSE/WS/gRPC 统一观测，记录解析、路由、上游、首内容、输出终态与处理结束阶段，区分 success/rejected/failed/cancelled/incomplete；WS 连接阶段（握手、首帧、连接池、拨号）与 L1 缓存命中入链；`RELAY_REQUEST_TIMING_ENABLED` 开关默认关闭。
+- Log 计时摘要存储（`logs` 观测列与 `request_trace_attempt_refs` 表，迁移 137）与 owner 查询 RPC（`ListRequestTraces`/`GetRequestTrace`），Jaeger v3 瀑布投影带里程碑交叉完整性校验、预算截断原因与 WS prelude 豁免。
+- Billing `ResolveLedgerRequest`/`GetSettlementStatus` RPC 与结算任务遥测信封列（迁移 138）；Admin `GET /api/log/{ledger}/trace`、`GET /api/log/request-traces/{observation}` 聚合账单关联观测，四个 RPC 登记 serviceidentity 仅 admin 用户调用方。
+- 管理端日志页请求追踪瀑布、失败请求检索、关联观测分页选择；Grafana 四组计时面板与 Prometheus request-timing 告警组。
+
+### Fixed
+
+- 评审修复：stream 请求被 JSON 拒绝时协议误标 sse（按实际响应判定）；终态 outcome 塌缩（保留 failed/incomplete/cancelled）；WS 重试重复观测与沿用首轮业务根；L1 缓存属性挂错父跨度；Jaeger 缺里程碑误判完整；trace 分页游标未透传且上界重算；`invalid` outbox 误报 `reserved`；结算 worker panic 跨度误标成功；前端取消/未完整展示、返回观测列表与分页边界。
+- 工程：gosec G704 误报按既有惯例加 `#nosec`；RBAC entry-matrix 源摘要随修复刷新。
+
 ## [0.35.2] - 2026-10-16
 
 v0.35.2 是 v0.35.1 之后的 **PATCH 修复版本**：三项模型价格采用 owner 原子事务与逐项 CAS，冻结草稿版本，阻止失败后继续写入并清理撤权草稿。补齐传输矩阵、三库并发回归和 DeepSeek 手工试点已结束日窗证据；无新增迁移、proto 或依赖，运行时更新 Admin 与独立前端。详见 [release-v0.35.2.md](docs/releases/release-v0.35.2.md)。

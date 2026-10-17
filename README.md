@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.35.2 发布公告](./docs/releases/release-v0.35.2.md)（定价原子保存、版本冲突与撤权草稿保护） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.35.2)
+> 📣 **最新发布**：[v0.36.0 发布公告](./docs/releases/release-v0.36.0.md)（LLM 请求计时观测：瀑布追踪、账务关联与完整性判定） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.36.0)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.36.0
+
+v0.36.0 上线请求计时观测：Relay 跨 HTTP/SSE/WebSocket/gRPC 记录阶段耗时与业务终态，Log 存储摘要并从 Jaeger 投影瀑布，账单可关联模型调用观测并展示实时结算状态，管理端日志页提供瀑布与失败检索。新增迁移 137（log）/138（billing），proto 仅新增；从 v0.35.2 升级需先按 ownership 应用迁移，再部署 Relay、Log、Billing、Admin 与独立前端，并开启 `RELAY_REQUEST_TIMING_ENABLED` 与 OTLP/Jaeger 端点。详见 [release-v0.36.0.md](./docs/releases/release-v0.36.0.md)。
 
 ### 升级到 v0.35.2
 
