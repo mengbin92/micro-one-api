@@ -118,8 +118,8 @@ func (c *MultiLevelCache[T]) get(ctx context.Context, key string, loader CacheLo
 	// L1 check. The probe is a request-visible cache phase: on a hit the request
 	// would otherwise lose its auth/routing stage entirely (no RPC, no Redis
 	// span). Phase is nil-safe for background callers without an observation.
-	_, endL1 := requesttrace.Phase(ctx, "cache.l1")
-	l1Span := trace.SpanFromContext(ctx)
+	l1Ctx, endL1 := requesttrace.Phase(ctx, "cache.l1")
+	l1Span := trace.SpanFromContext(l1Ctx)
 	l1Observed := requesttrace.Observation(ctx) != nil
 	if val, ok := c.l1.Get(cacheKey); ok {
 		entry, ok := val.(*entry[T])

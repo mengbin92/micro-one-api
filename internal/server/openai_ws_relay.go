@@ -423,10 +423,24 @@ func relayOpenAIWSFrames(
 
 	var traceMu sync.Mutex
 	var turnTrace *contract.Trace
-	writeUpstream := func(msgType coderws.MessageType, payload []byte) error {
+	writeUpstream := func(msgType coderws.MessageType, payload []byte, first bool) error {
 		turnCtx := relayCtx
 		if opts.timings != nil {
-			turnCtx = opts.timings.Send(relayCtx, payload)
+			if first {
+				turnCtx = opts.timings.SendFirst(relayCtx, payload)
+			} else {
+				turnCtx = opts.timings.Send(relayCtx, payload)
+			}
+			// The recorder lives across failover attempts; I/O and admission
+			// still obey the current relay attempt's cancellation.
+			var cancelTurn context.CancelFunc
+			turnCtx, cancelTurn = context.WithCancel(turnCtx)
+			stopCancel := context.AfterFunc(relayCtx, cancelTurn)
+			defer stopCancel()
+			defer cancelTurn()
+			if relayCtx.Err() != nil {
+				cancelTurn()
+			}
 		}
 		if opts.beforeWriteUp != nil {
 			var err error
@@ -486,7 +500,7 @@ func relayOpenAIWSFrames(
 
 	// Write the first response.create frame to the upstream before starting the
 	// pumps (Codex Responses WS protocol expects the create event first).
-	if err := writeUpstream(coderws.MessageText, firstClientMessage); err != nil {
+	if err := writeUpstream(coderws.MessageText, firstClientMessage, true); err != nil {
 		return result, &openAIWSRelayExit{stage: "write_first_upstream", err: err, wroteDownstream: false}
 	}
 	clientToUpstream.Add(1)
@@ -510,7 +524,7 @@ func relayOpenAIWSFrames(
 				return
 			}
 			markActivity()
-			if err := writeUpstream(msgType, payload); err != nil {
+			if err := writeUpstream(msgType, payload, false); err != nil {
 				exitCh <- openAIWSRelayExit{stage: "write_upstream", err: err}
 				return
 			}

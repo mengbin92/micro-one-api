@@ -125,7 +125,7 @@ func (w *timingResponseWriter) FlushError() error {
 			w.recorder.Content(w.probe.Kind)
 		}
 		if w.probe.Terminal {
-			w.recorder.Terminal(!w.probe.Failed)
+			w.recorder.TerminalOutcome(w.probe.TerminalOutcome())
 		}
 	}
 	return err

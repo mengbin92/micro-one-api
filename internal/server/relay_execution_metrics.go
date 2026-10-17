@@ -134,9 +134,6 @@ func (w *relayObservationWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 func serveObservedRelay(w http.ResponseWriter, r *http.Request, endpoint, path, stream string, handler http.HandlerFunc) {
 	requesttrace.Observation(r.Context()).Update(func(s *requesttrace.TimingSummary) {
 		s.ExecutionPath = path
-		if stream == "true" {
-			s.Protocol = "sse"
-		}
 	})
 	if observation, ok := r.Context().Value(relayExecutionObservationKey{}).(*relayExecutionObservation); ok {
 		observation.setPath(path)

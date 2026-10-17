@@ -213,3 +213,16 @@ func TestFailedBusinessTerminalCanStillBeCompletelyWritten(t *testing.T) {
 	require.True(t, summary.OutputComplete)
 	require.Equal(t, "complete", summary.OutputOutcome)
 }
+
+func TestContentProbeRecognizesCompletionTextAndCancellation(t *testing.T) {
+	p := ContentProbe{}
+	p.Feed([]byte("data: {\"choices\":[{\"text\":\"hello\"}]}\n\ndata: [DONE]\n\n"))
+	require.Equal(t, "text", p.Kind)
+	require.True(t, p.Terminal)
+	for _, eventType := range []string{"response.cancelled", "response.canceled"} {
+		p = ContentProbe{}
+		p.Frame([]byte(`{"type":"` + eventType + `","response":{"status":"cancelled"}}`))
+		require.True(t, p.Terminal, eventType)
+		require.True(t, p.Failed, eventType)
+	}
+}

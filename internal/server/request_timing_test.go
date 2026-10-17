@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	coderws "github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -132,13 +133,14 @@ func TestWSTimingFinishesEachTurnBeforeConnectionCloses(t *testing.T) {
 	require.Equal(t, "ws_turn", first.ObservationKind)
 	require.Nil(t, first.HandlerDurationMS)
 	next := session.Send(ctx, []byte(`{"type":"response.create","model":"test"}`))
+	requesttrace.BindRoot(next, "second-business-root")
 	session.Sent(next, nil)
 	session.Written("response-2", []byte(`{"type":"response.output_text.delta","response_id":"response-2","delta":"hello"}`), false, nil)
 	session.Terminal("response-2", false)
 	session.Written("response-2", []byte(`{"type":"response.completed","response":{"id":"response-2"}}`), true, errors.New("client write failed"))
 	second := awaitTiming(t, summaries)
 	require.NotEqual(t, first.ObservationID, second.ObservationID)
-	require.Equal(t, first.RootRequestID, second.RootRequestID)
+	require.Equal(t, "second-business-root", second.RootRequestID)
 	require.EqualValues(t, 7, second.UserID)
 	require.False(t, second.OutputComplete)
 	require.Equal(t, "incomplete", second.Outcome)
@@ -216,4 +218,104 @@ func TestWSTimingUpstreamTerminalAloneDoesNotCompleteClientOutput(t *testing.T) 
 	summary := awaitTiming(t, summaries)
 	require.False(t, summary.OutputComplete)
 	require.Equal(t, "incomplete", summary.OutputOutcome)
+}
+
+func TestWSTimingFailoverReplaysFirstFrameInSameObservation(t *testing.T) {
+	exporter, summaries := timingSink(t)
+	server := &HTTPServer{timingExporter: exporter}
+	firstFrame := []byte(`{"type":"response.create","model":"test"}`)
+	ctx, session := server.startWSTimings(context.Background(), firstFrame)
+	session.Identity(7, "first-root")
+	ctx = requesttrace.WithAttempt(ctx, requesttrace.Attempt{RootRequestID: "first-root", Number: 1, SourceKind: "channel", SourceID: 1})
+	client := newFakeFrameConn(8)
+	first := newFakeFrameConn(8)
+	first.in <- fakeFrame{err: errors.New("upstream reset")}
+	_, exit := relayOpenAIWSFrames(ctx, client, first, firstFrame, openAIWSRelayOptions{timings: session})
+	require.False(t, exit.wroteDownstream)
+	ctx = requesttrace.WithAttempt(ctx, requesttrace.Attempt{RootRequestID: "first-root", Number: 2, SourceKind: "channel", SourceID: 2})
+	second := newFakeFrameConn(8)
+	second.in <- fakeFrame{msgType: coderws.MessageText, payload: []byte(`{"type":"response.completed","response":{"id":"response-1","status":"completed"}}`)}
+	second.in <- fakeFrame{err: errors.New("upstream closed")}
+	_, _ = relayOpenAIWSFrames(ctx, client, second, firstFrame, openAIWSRelayOptions{timings: session})
+	session.Close()
+	require.NoError(t, exporter.Close(context.Background()))
+	require.EqualValues(t, 1, exporter.Stats().Accepted, "failover is another attempt of one inbound turn")
+	summary := awaitTiming(t, summaries)
+	require.Equal(t, "success", summary.Outcome)
+	require.NotContains(t, summary.MissingReasons, "concurrent_ws_turns")
+	require.Len(t, summary.Attempts, 2)
+}
+
+func TestWSTimingLaterTurnUsesItsOwnBusinessRoot(t *testing.T) {
+	exporter, summaries := timingSink(t)
+	server := &HTTPServer{timingExporter: exporter}
+	frame := []byte(`{"type":"response.create","model":"test"}`)
+	ctx, session := server.startWSTimings(context.Background(), frame)
+	defer session.Close()
+	session.Identity(7, "first-root")
+	ctx = session.Send(ctx, frame)
+	session.Sent(ctx, nil)
+	session.Written("first", []byte(`{"type":"response.completed"}`), true, nil)
+	_ = awaitTiming(t, summaries)
+	next := session.Send(ctx, frame)
+	// routingWSTurns.admit creates a new billing root for later requests.
+	next = channelAttemptContext(next, "second-root", 1, nil, "test")
+	session.Sent(next, nil)
+	session.Written("second", []byte(`{"type":"response.completed"}`), true, nil)
+	require.Equal(t, "second-root", awaitTiming(t, summaries).RootRequestID)
+}
+
+func TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome(t *testing.T) {
+	for _, outcome := range []string{"cancelled", "incomplete"} {
+		t.Run(outcome, func(t *testing.T) {
+			exporter, summaries := timingSink(t)
+			server := &HTTPServer{timingExporter: exporter}
+			handler := server.observeRequestTiming(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = io.WriteString(w, `data: {"type":"response.`+outcome+`","response":{"status":"`+outcome+`"}}`+"\n\n")
+				w.(http.Flusher).Flush()
+			}), "/v1/responses", "legacy")
+			handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+			summary := awaitTiming(t, summaries)
+			require.True(t, summary.OutputComplete, "an unsuccessful terminal frame may still be fully written")
+			require.Equal(t, outcome, summary.Outcome)
+		})
+	}
+}
+
+func TestWSTimingPreservesCurrentRelayCancellationForAdmission(t *testing.T) {
+	exporter, _ := timingSink(t)
+	server := &HTTPServer{timingExporter: exporter}
+	frame := []byte(`{"type":"response.create","model":"test"}`)
+	ctx, session := server.startWSTimings(context.Background(), frame)
+	defer session.Close()
+	ctx, cancel := context.WithCancel(ctx)
+	cancel()
+	var admissionErr error
+	_, exit := relayOpenAIWSFrames(ctx, newFakeFrameConn(8), newFakeFrameConn(8), frame, openAIWSRelayOptions{
+		timings: session,
+		beforeWriteUp: func(ctx context.Context, _ coderws.MessageType, payload []byte) ([]byte, error) {
+			admissionErr = ctx.Err()
+			return nil, context.Canceled
+		},
+	})
+	require.ErrorIs(t, exit.err, context.Canceled)
+	require.ErrorIs(t, admissionErr, context.Canceled, "timing context must retain current relay cancellation")
+}
+
+func TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput(t *testing.T) {
+	exporter, summaries := timingSink(t)
+	server := &HTTPServer{timingExporter: exporter}
+	handler := server.observeRequestTiming(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		serveObservedRelay(w, r, "/v1/responses", "legacy", "true", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w, `{"error":"forbidden"}`)
+		})
+	}), "/v1/responses", "legacy")
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+	summary := awaitTiming(t, summaries)
+	require.Equal(t, "http", summary.Protocol)
+	require.True(t, summary.OutputComplete)
+	require.Equal(t, "rejected", summary.Outcome)
 }

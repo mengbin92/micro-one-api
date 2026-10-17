@@ -15,6 +15,14 @@ type ContentProbe struct {
 	Terminal  bool
 	Failed    bool
 	Truncated bool
+	outcome   string
+}
+
+func (p *ContentProbe) TerminalOutcome() string {
+	if p.outcome != "" {
+		return p.outcome
+	}
+	return "success"
 }
 
 func (p *ContentProbe) Feed(data []byte) {
@@ -89,6 +97,7 @@ func (p *ContentProbe) Frame(data []byte) {
 			Error  jsonx.RawMessage `json:"error"`
 		} `json:"response"`
 		Choices []struct {
+			Text  string `json:"text"`
 			Delta struct {
 				Content      string `json:"content"`
 				Reasoning    string `json:"reasoning_content"`
@@ -106,17 +115,27 @@ func (p *ContentProbe) Frame(data []byte) {
 	switch event.Type {
 	case "response.completed", "response.done", "message_stop":
 		p.Terminal = true
-	case "response.failed", "response.incomplete", "error":
+	case "response.failed", "error":
 		p.Terminal = true
 		p.Failed = true
+		p.outcome = "failed"
+	case "response.incomplete":
+		p.Terminal, p.Failed, p.outcome = true, true, "incomplete"
+	case "response.cancelled", "response.canceled":
+		p.Terminal, p.Failed, p.outcome = true, true, "cancelled"
 	}
-	if event.Response.Status == "failed" || event.Response.Status == "incomplete" || (len(event.Response.Error) > 0 && string(event.Response.Error) != "null") {
-		p.Terminal = true
-		p.Failed = true
+	switch event.Response.Status {
+	case "failed", "incomplete":
+		p.Terminal, p.Failed, p.outcome = true, true, event.Response.Status
+	case "cancelled", "canceled":
+		p.Terminal, p.Failed, p.outcome = true, true, "cancelled"
 	}
-	if len(event.Error) > 0 && string(event.Error) != "null" {
+	if (len(event.Error) > 0 && string(event.Error) != "null") || (len(event.Response.Error) > 0 && string(event.Response.Error) != "null") {
 		p.Terminal = true
 		p.Failed = true
+		if p.outcome == "" {
+			p.outcome = "failed"
+		}
 	}
 	if p.Kind != "" {
 		return
@@ -124,7 +143,7 @@ func (p *ContentProbe) Frame(data []byte) {
 	for _, choice := range event.Choices {
 		d := choice.Delta
 		switch {
-		case d.Content != "":
+		case d.Content != "" || choice.Text != "":
 			p.Kind = "text"
 		case d.Reasoning != "" || d.ReasoningAlt != "":
 			p.Kind = "reasoning"

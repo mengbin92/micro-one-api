@@ -276,6 +276,14 @@ func (r *Recorder) Content(kind string) {
 }
 
 func (r *Recorder) Terminal(success bool) {
+	outcome := "success"
+	if !success {
+		outcome = "failed"
+	}
+	r.TerminalOutcome(outcome)
+}
+
+func (r *Recorder) TerminalOutcome(outcome string) {
 	if r == nil {
 		return
 	}
@@ -285,8 +293,8 @@ func (r *Recorder) Terminal(success bool) {
 		return
 	}
 	r.terminal = true
-	if !success && r.summary.Outcome != "incomplete" {
-		r.summary.Outcome = "failed"
+	if outcome != "success" && ValidTimingOutcome(outcome) {
+		r.summary.Outcome = outcome
 	}
 	r.span.AddEvent("output.terminal")
 }

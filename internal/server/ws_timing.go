@@ -64,11 +64,14 @@ func (s *wsTimingSession) begin() *wsTimedTurn {
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("connection.id", s.connectionID))
 	recorder.Update(func(summary *requesttrace.TimingSummary) { summary.Outcome = "rejected" })
 	requesttrace.BindUser(ctx, s.userID)
-	requesttrace.BindRoot(ctx, s.root)
+	if s.firstSend {
+		requesttrace.BindRoot(ctx, s.root)
+	}
 	turn := &wsTimedTurn{ctx: ctx, recorder: recorder}
 	s.turns = append(s.turns, turn)
 	return turn
 }
+
 // ConnectionMilestones records the handshake and first-frame wait measured by
 // the forwarder before the session existed. They are attached as backdated
 // stages to the first turn's observation, per the design rule that the
@@ -110,6 +113,16 @@ func (s *wsTimingSession) Identity(userID int64, root string) {
 	}
 }
 func (s *wsTimingSession) Send(ctx context.Context, payload []byte) context.Context {
+	return s.send(ctx, payload, false)
+}
+
+// SendFirst is the first inbound frame replayed by the connection failover
+// loop. Replaying it starts another attempt, never another client turn.
+func (s *wsTimingSession) SendFirst(ctx context.Context, payload []byte) context.Context {
+	return s.send(ctx, payload, true)
+}
+
+func (s *wsTimingSession) send(ctx context.Context, payload []byte, first bool) context.Context {
 	if s == nil {
 		return ctx
 	}
@@ -130,9 +143,13 @@ func (s *wsTimingSession) Send(ctx context.Context, payload []byte) context.Cont
 		return s.base
 	}
 	var turn *wsTimedTurn
-	if s.firstSend && len(s.turns) > 0 {
+	if (s.firstSend || first) && len(s.turns) > 0 {
 		turn = s.turns[0]
 		s.firstSend = false
+		if first && turn.endUpstream != nil {
+			turn.endUpstream(errors.New("upstream_retry"))
+			turn.endUpstream = nil
+		}
 	} else {
 		if len(s.turns) > 0 {
 			for _, pending := range s.turns {
@@ -147,7 +164,11 @@ func (s *wsTimingSession) Send(ctx context.Context, payload []byte) context.Cont
 		trace.SpanFromContext(turn.ctx).SetAttributes(attribute.Bool("routing.reused", true))
 		end(nil)
 	}
-	turn.ctx = requesttrace.EnsureAttempt(turn.ctx, 1)
+	if first && requesttrace.FromContext(ctx).Number > 0 {
+		turn.ctx = requesttrace.WithAttempt(turn.ctx, requesttrace.FromContext(ctx))
+	} else {
+		turn.ctx = requesttrace.EnsureAttempt(turn.ctx, 1)
+	}
 	if turn.endUpstream == nil {
 		var upstreamCtx context.Context
 		upstreamCtx, turn.endUpstream = requesttrace.Phase(turn.ctx, "response.stream")
@@ -230,7 +251,7 @@ func (s *wsTimingSession) Written(id string, payload []byte, terminal bool, err 
 			turn.recorder.Content(probe.Kind)
 		}
 		if terminal {
-			turn.recorder.Terminal(!probe.Failed)
+			turn.recorder.TerminalOutcome(probe.TerminalOutcome())
 		}
 	} else {
 		turn.recorder.Write(0, err)
