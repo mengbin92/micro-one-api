@@ -21,6 +21,7 @@ v0.36.0 是 v0.35.2 之后的 **MINOR 功能版本**：按 llm-request-timing-ob
 ### Fixed
 
 - 评审修复：stream 请求被 JSON 拒绝时协议误标 sse（按实际响应判定）；终态 outcome 塌缩（保留 failed/incomplete/cancelled）；WS 重试重复观测与沿用首轮业务根；L1 缓存属性挂错父跨度；Jaeger 缺里程碑误判完整；trace 分页游标未透传且上界重算；`invalid` outbox 误报 `reserved`；结算 worker panic 跨度误标成功；前端取消/未完整展示、返回观测列表与分页边界。
+- 发布门禁修复：订单页两区段合并请求只隔离传输失败，畸形载荷的解析异常会清空全部订单行；现按区段隔离解析（Release E2E 门禁拦截，红转绿）。
 - 工程：gosec G704 误报按既有惯例加 `#nosec`；RBAC entry-matrix 源摘要随修复刷新。
 
 ## [0.35.2] - 2026-10-16
