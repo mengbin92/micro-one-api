@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"micro-one-api/domain/authorization"
+	"micro-one-api/domain/requesttrace"
 	"strings"
 	"time"
 )
@@ -14,6 +15,7 @@ var (
 
 // LogEntry represents a centralized log record.
 type LogEntry struct {
+	Telemetry       requesttrace.Carrier
 	ID              int64
 	Level           string // info, warn, error, debug
 	Message         string
@@ -27,6 +29,7 @@ type LogEntry struct {
 	DedupeKey       string
 	UserID          int64
 	CreatedAt       time.Time
+	RequestTiming   *requesttrace.TimingSummary
 
 	Username              string
 	TokenName             string
@@ -144,6 +147,11 @@ func (uc *LogUsecase) GetLog(ctx context.Context, id int64) (*LogEntry, error) {
 	if err := authorization.Require(ctx, "log.request.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: entry.ID, OwnerUserID: entry.UserID}); err != nil {
 		return nil, err
 	}
+	if entry.RequestTiming != nil && entry.UserID == 0 {
+		if q, iam := authorization.QueryScopeFromContext(ctx, "log.request.read"); iam && !q.Global() {
+			return nil, authorization.ErrDenied
+		}
+	}
 	return redactLog(ctx, entry), nil
 }
 
@@ -219,6 +227,9 @@ func (uc *LogUsecase) UserUsageStats(ctx context.Context, userID int64, startTim
 
 func (uc *LogUsecase) IngestLog(ctx context.Context, entry *LogEntry) error {
 	if err := uc.authorizeSystem(ctx, "/api.log.v1.LogService/IngestLog", "log.requests.read", "log.request.read"); err != nil {
+		return err
+	}
+	if err := prepareRequestTiming(entry); err != nil {
 		return err
 	}
 	if entry.CreatedAt.IsZero() {

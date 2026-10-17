@@ -2,6 +2,7 @@
 package testutil
 
 import (
+	kgrpc "github.com/go-kratos/kratos/v3/transport/grpc"
 	"gorm.io/gorm"
 	"micro-one-api/app/log/internal/biz"
 	"micro-one-api/app/log/internal/data"
@@ -16,4 +17,11 @@ func NewIAMHTTP(db *gorm.DB, resolver authorization.Resolver) http.Handler {
 	s := service.NewLogService(biz.NewLogUsecase(r))
 	s.SetAuthorization(resolver)
 	return server.NewHTTPServer(":0", s)
+}
+
+func NewIAMGRPC(db *gorm.DB, resolver authorization.Resolver) *kgrpc.Server {
+	r := data.NewRepositoryWithDB(db)
+	s := service.NewLogService(biz.NewLogUsecase(r))
+	s.SetAuthorization(resolver)
+	return server.NewGRPCServer(":0", s)
 }

@@ -7,6 +7,8 @@ import "google/api/annotations.proto";
 option go_package = "micro-one-api/api/log/v1;logv1";
 
 service LogService {
+  rpc ListRequestTraces(ListRequestTracesRequest) returns (ListRequestTracesResponse);
+  rpc GetRequestTrace(GetRequestTraceRequest) returns (RequestTrace);
   rpc ExportLogs(ExportLogsRequest) returns (ListLogsResponse) {
     option (google.api.http) = { get: "/v1/logs/export" };
   }
@@ -29,6 +31,59 @@ service LogService {
       body: "*"
     };
   }
+}
+
+message ListRequestTracesRequest {
+  int64 start_time_ms = 1;
+  int64 end_time_ms = 2;
+  string outcome = 3;
+  optional int64 user_id = 4;
+  string root_request_id = 5;
+  int32 page_size = 6;
+  string page_token = 7;
+  // Only used with an explicitly authorized user, never an arbitrary trace ID.
+  string reservation_id = 8;
+}
+message ListRequestTracesResponse {
+  repeated RequestTimingSummary items = 1;
+  string next_page_token = 2;
+}
+message GetRequestTraceRequest { string observation_id = 1; }
+message RequestTrace {
+  RequestTimingSummary summary = 1;
+  string detail_state = 2;
+  repeated string missing_reasons = 3;
+  repeated RequestTraceSpan spans = 4;
+  repeated RequestTraceMilestone milestones = 5;
+  int64 observed_at_ms = 6;
+  int32 detail_retention_hours = 7;
+  bool truncated = 8;
+  repeated RequestTraceRelatedOperation related_operations = 9;
+}
+message RequestTraceRelatedOperation {
+ string trace_id = 1;
+ string span_id = 2;
+ string phase = 3;
+ double start_offset_ms = 4;
+ double duration_ms = 5;
+ string outcome = 6;
+ bool shared = 7;
+}
+message RequestTraceSpan {
+  string id = 1;
+  string parent_id = 2;
+  string service = 3;
+  string phase = 4;
+  int32 attempt_number = 5;
+  double start_offset_ms = 6;
+  double duration_ms = 7;
+  string outcome = 8;
+  map<string,string> safe_attributes = 9;
+}
+message RequestTraceMilestone {
+  string kind = 1;
+  double offset_ms = 2;
+  string output_kind = 3;
 }
 
 message GetLogRequest {
@@ -76,6 +131,7 @@ message GetLogResponse {
   string reservation_id = 32;
   string source_kind = 33;
   string upstream_model_id = 34;
+  RequestTimingSummary request_timing = 35;
 }
 
 message ListLogsRequest {
@@ -132,6 +188,66 @@ message IngestLogRequest {
   string reservation_id = 33;
   string source_kind = 34;
   string upstream_model_id = 35;
+  // Independent observation snapshot. Consumers must support this field and
+  // its attempt references before producers are enabled.
+  RequestTimingSummary request_timing = 36;
+}
+
+// All durations are milliseconds. Optional fields preserve unknown versus zero.
+// This is a summary, never a duplicate store of spans or request content.
+message RequestTimingSummary {
+  int32 version = 1;
+  string observation_id = 2;
+  string observation_kind = 3; // http | ws_turn | grpc
+  string otel_trace_id = 4;
+  string span_id = 5;
+  string compatibility_trace_id = 6;
+  string root_request_id = 7;
+  int64 user_id = 8; // 0 = not yet authenticated
+  string endpoint = 9; // server route template, never a raw URL
+  string protocol = 10; // http | sse | websocket | grpc
+  string execution_path = 11;
+  string outcome = 12; // success | rejected | failed | cancelled | incomplete | unknown
+  int64 started_at_ms = 13;
+  optional int64 output_finished_at_ms = 14;
+  optional int64 handler_finished_at_ms = 15;
+  optional int64 turn_finished_at_ms = 16;
+  optional int64 rpc_finished_at_ms = 17;
+  optional double output_duration_ms = 18;
+  optional double handler_duration_ms = 19;
+  optional double turn_duration_ms = 20;
+  optional double rpc_duration_ms = 21;
+  optional double first_content_ms = 22;
+  bool output_complete = 23;
+  string collection_state = 24; // recorded | partial | not_recorded
+  repeated string missing_reasons = 25;
+  repeated RequestTimingAttempt attempts = 26;
+  repeated RequestTimingStage stages = 27;
+  RequestTimingSettlement settlement_snapshot = 28;
+  string connection_id = 29;
+  string output_outcome = 30;
+}
+
+message RequestTimingAttempt {
+  int32 number = 1;
+  string request_id = 2;
+  optional string reservation_id = 3;
+  string source_kind = 4;
+  int64 source_id = 5;
+  string upstream_model_id = 6;
+  string outcome = 7;
+}
+
+message RequestTimingStage {
+  string phase = 1;
+  double duration_ms = 2;
+  int32 count = 3;
+}
+
+message RequestTimingSettlement {
+  // enqueued is not a successful financial commit.
+  string status = 1;
+  int64 observed_at_ms = 2;
 }
 
 message IngestLogResponse {

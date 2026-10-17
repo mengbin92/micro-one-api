@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"micro-one-api/app/log/internal/biz"
 	logconf "micro-one-api/app/log/internal/conf"
 	appdb "micro-one-api/platform/database/partition"
 	applogger "micro-one-api/platform/logging"
@@ -17,7 +18,7 @@ import (
 // (default off) and is a no-op when the repository is backed by the
 // in-memory store (no *gorm.DB). This is the cron integration listed in
 // REVIEW_v4 §六 as a remaining optional optimization item.
-func startPartitionMaintenance(ctx context.Context, db *gorm.DB, cfg *logconf.Partition, retentionDays int) func() {
+func startPartitionMaintenance(ctx context.Context, db *gorm.DB, cfg *logconf.Partition, retentionDays int, uc *biz.LogUsecase) func() {
 	if cfg == nil || !cfg.Enabled || db == nil {
 		return func() {}
 	}
@@ -29,6 +30,12 @@ func startPartitionMaintenance(ctx context.Context, db *gorm.DB, cfg *logconf.Pa
 		retention = 30 * 24 * time.Hour
 	}
 	runMaintenance := func() {
+		// DROP PARTITION bypasses owner transactions. Remove expired rows and
+		// their timing references/claims first; if that fails, retain partitions.
+		if _, err := uc.CleanupExpiredLogs(maintenanceCtx, int(retention/(24*time.Hour)), time.Now()); err != nil {
+			applogger.Log.Warn("partition retention cleanup failed", zap.Error(err))
+			return
+		}
 		if err := pm.PartitionMaintenanceForTableWithRetention(maintenanceCtx, appdb.LogTable, retention); err != nil {
 			applogger.Log.Warn("partition maintenance failed", zap.String("table", appdb.LogTable), zap.Error(err))
 		}

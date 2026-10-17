@@ -67,6 +67,13 @@ WHERE bl.ledger_dedupe_key <> ''
 
 ### 3. 保留策略
 
+耗时观测迁移 `137_add_request_timing_summaries` 新增 observation 唯一索引和尝试关联表。
+应用正常迁移后再运行最新的手动分区脚本；脚本将该索引改为普通索引，跨分区唯一性由
+`log_ingest_dedupe_claims` 的 `relay-request-timing:<observation_id>` 主键保障。
+log-service 自动维护在 DROP PARTITION 前先通过 owner 清理事务删除过期摘要、尝试引用和
+摘要去重记录；清理失败则跳过分区删除。手动删除分区也必须先执行相同的 owner 保留清理，
+不能直接 DROP 后遗留引用。既有消费/选路审计去重记录的保留语义不变。
+
 - `logs`：由 log-service 既有保留策略决定；分区维护可自动删除过期日志分区。
 - `billing_ledgers`：默认只创建未来分区，**不会自动 DROP 历史分区**。财务账本归档、
   保留期与删除必须通过独立 ADR/审批后另行实施。

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"google.golang.org/grpc"
 	"micro-one-api/platform/authz"
 	"os"
 
@@ -16,6 +17,7 @@ import (
 func NewGRPCServer(addr string, svc *service.LogService) *kgrpc.Server {
 	serviceToken := os.Getenv("SERVICE_TOKEN")
 	srv := kgrpc.NewServer(
+		kgrpc.Options(grpc.StatsHandler(xgrpc.ServerStatsHandler(nil))),
 		kgrpc.Address(addr),
 		kgrpc.Timeout(apptimeout.GetGRPCTimeout()),
 		kgrpc.UnaryInterceptor(xgrpc.ServiceTokenUnaryInterceptor(serviceToken), authz.OperatorUnaryInterceptor(), authz.CoverageUnaryInterceptor(svc.OwnerAuthorizationClient(), "log.requests.list", logReadyMethods)),
@@ -26,6 +28,8 @@ func NewGRPCServer(addr string, svc *service.LogService) *kgrpc.Server {
 }
 
 var logReadyMethods = []string{
+	"/api.log.v1.LogService/ListRequestTraces",
+	"/api.log.v1.LogService/GetRequestTrace",
 	"/api.log.v1.LogService/ExportLogs",
 	"/api.log.v1.LogService/PurgeLogs",
 	"/api.log.v1.LogService/GetLog",

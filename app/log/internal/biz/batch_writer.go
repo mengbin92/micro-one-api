@@ -3,6 +3,10 @@ package biz
 import (
 	"context"
 	"fmt"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"micro-one-api/domain/requesttrace"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -107,6 +111,7 @@ func (w *BatchLogWriter) Stop() {
 // IngestLog queues a log entry for batch writing.
 // Returns immediately if queue has capacity, drops entry if queue is full.
 func (w *BatchLogWriter) IngestLog(ctx context.Context, entry *LogEntry) error {
+	entry.Telemetry = requesttrace.Capture(ctx)
 	if entry.CreatedAt.IsZero() {
 		entry.CreatedAt = time.Now()
 	}
@@ -213,7 +218,30 @@ func (w *BatchLogWriter) flush() {
 
 	// Write batch to database
 	start := time.Now()
-	err := w.createBatch(context.Background(), batch)
+	links := make([]trace.Link, 0, len(batch))
+	for _, entry := range batch {
+		ctx, _ := requesttrace.Restore(context.Background(), entry.Telemetry)
+		if sc := trace.SpanContextFromContext(ctx); sc.IsValid() && len(links) < 128 {
+			links = append(links, trace.Link{SpanContext: sc})
+		}
+	}
+	batchCtx, batchSpan := otel.Tracer("micro-one-api/log").Start(context.Background(), "log.flush", trace.WithNewRoot(), trace.WithLinks(links...))
+	batchSpan.SetAttributes(attribute.Bool("batch.shared", true), attribute.Int("batch.size", len(batch)))
+	ends := make([]func(error), 0, len(batch))
+	for _, entry := range batch {
+		itemCtx, endItem := requesttrace.StartTask(context.Background(), entry.Telemetry, "log.batch_item")
+		sc := batchSpan.SpanContext()
+		if sc.IsValid() {
+			trace.SpanFromContext(itemCtx).SetAttributes(attribute.String("batch.trace_id", sc.TraceID().String()), attribute.String("batch.span_id", sc.SpanID().String()), attribute.Bool("batch.shared", true))
+		}
+		ends = append(ends, endItem)
+	}
+	err := w.createBatch(batchCtx, batch)
+	batchSpan.SetAttributes(attribute.String("outcome", requesttrace.Outcome(err)))
+	batchSpan.End()
+	for _, endItem := range ends {
+		endItem(err)
+	}
 	duration := time.Since(start)
 
 	if err != nil {

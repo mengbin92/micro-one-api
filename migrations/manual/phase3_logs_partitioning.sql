@@ -36,6 +36,12 @@ ALTER TABLE logs MODIFY COLUMN created_at bigint NOT NULL DEFAULT 0;
 ALTER TABLE logs DROP PRIMARY KEY,
     ADD PRIMARY KEY (id, created_at);
 
+-- Migration 137 adds a global observation index. After switching to partitions,
+-- the unpartitioned log_ingest_dedupe_claims PK remains the global gate for
+-- relay-request-timing:<observation_id>, in the summary/ref INSERT transaction.
+ALTER TABLE logs DROP INDEX idx_log_observation,
+    ADD INDEX idx_log_observation (observation_id);
+
 ALTER TABLE logs
 PARTITION BY RANGE (created_at) (
     PARTITION p202601 VALUES LESS THAN (UNIX_TIMESTAMP('2026-02-01 00:00:00')),

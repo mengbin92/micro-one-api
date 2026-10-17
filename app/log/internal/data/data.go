@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"micro-one-api/domain/authorization"
+	"micro-one-api/domain/requesttrace"
 	"micro-one-api/platform/database/authzquery"
 	"os"
 	"sort"
@@ -20,14 +21,21 @@ import (
 )
 
 type Repository struct {
-	db     *gorm.DB
-	mu     sync.RWMutex
-	mem    map[int64]*biz.LogEntry
-	dedupe map[string]int64
-	seq    int64
+	data       *Data
+	db         *gorm.DB
+	mu         sync.RWMutex
+	mem        map[int64]*biz.LogEntry
+	dedupe     map[string]int64
+	seq        int64
+	timingRefs map[string][]requestTraceAttemptRefModel
 }
 
 type logModel struct {
+	RequestTimingJSON     *string  `gorm:"column:request_timing_json"`
+	ObservationID         *string  `gorm:"column:observation_id;uniqueIndex:idx_log_observation"`
+	OTelTraceID           *string  `gorm:"column:otel_trace_id"`
+	RequestStartedAtMS    *int64   `gorm:"column:request_started_at_ms"`
+	RequestOutcome        *string  `gorm:"column:request_outcome"`
 	ID                    int64    `gorm:"column:id;primaryKey;autoIncrement"`
 	Level                 string   `gorm:"column:level;index"`
 	Message               string   `gorm:"column:message"`
@@ -102,7 +110,7 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Repository{db: db}, nil
+	return &Repository{db: db, data: newTraceData()}, nil
 }
 
 func allowMemoryRepository() bool {
@@ -178,7 +186,11 @@ func (r *Repository) ListSelectionAudit(ctx context.Context, userID int64, rootR
 		}
 		entries := make([]*biz.LogEntry, len(models))
 		for i := range models {
-			entries[i] = logModelToEntry(models[i])
+			var decodeErr error
+			entries[i], decodeErr = logModelToEntry(models[i])
+			if decodeErr != nil {
+				return nil, decodeErr
+			}
 		}
 		return entries, nil
 	}
@@ -188,6 +200,7 @@ func (r *Repository) ListSelectionAudit(ctx context.Context, userID int64, rootR
 	for _, entry := range r.mem {
 		if authorization.Require(ctx, "log.selection_event.list", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: entry.ID, OwnerUserID: entry.UserID}) == nil && entry.UserID == userID && entry.RootRequestID == rootRequestID && entry.Source == "routing-selection" {
 			cloned := *entry
+			cloned.RequestTiming = entry.RequestTiming.Clone()
 			entries = append(entries, &cloned)
 		}
 	}
@@ -201,6 +214,9 @@ func (r *Repository) ListSelectionAudit(ctx context.Context, userID int64, rootR
 }
 
 func (r *Repository) Create(ctx context.Context, entry *biz.LogEntry) error {
+	if err := validateRequestTimingEntry(entry); err != nil {
+		return err
+	}
 	if r.db != nil {
 		return r.createDB(ctx, entry)
 	}
@@ -240,8 +256,17 @@ func (r *Repository) DeleteBefore(ctx context.Context, before time.Time) (int64,
 		return 0, nil
 	}
 	if r.db != nil {
-		result := r.db.WithContext(ctx).Where("created_at < ?", before.Unix()).Delete(&logModel{})
-		return result.RowsAffected, result.Error
+		var deleted int64
+		err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			query := tx.Where("created_at < ?", before.Unix())
+			if err := deleteRequestTimingRelations(tx, query); err != nil {
+				return err
+			}
+			result := query.Delete(&logModel{})
+			deleted = result.RowsAffected
+			return result.Error
+		})
+		return deleted, err
 	}
 	return r.deleteBeforeMemory(before), nil
 }
@@ -263,44 +288,7 @@ func (r *Repository) getDB(ctx context.Context, id int64) (*biz.LogEntry, error)
 		}
 		return nil, err
 	}
-	return &biz.LogEntry{
-		ID:                    m.ID,
-		Level:                 m.Level,
-		Message:               m.Message,
-		Source:                m.Source,
-		RequestID:             m.RequestID,
-		RootRequestID:         m.RootRequestID,
-		AttemptNumber:         m.AttemptNumber,
-		ReservationID:         m.ReservationID,
-		SourceKind:            m.SourceKind,
-		UpstreamModelID:       m.UpstreamModelID,
-		UserID:                m.UserID,
-		CreatedAt:             time.Unix(m.CreatedAt, 0),
-		Username:              m.Username,
-		TokenName:             m.TokenName,
-		ModelName:             m.ModelName,
-		Quota:                 m.Quota,
-		PromptTokens:          m.PromptTokens,
-		CompletionTokens:      m.CompletionTokens,
-		CacheReadTokens:       m.CacheReadTokens,
-		CacheCreation5mTokens: m.CacheCreation5mTokens,
-		CacheCreation1hTokens: m.CacheCreation1hTokens,
-		ChannelID:             m.ChannelID,
-		SubscriptionAccountID: m.SubscriptionAccountID,
-		ElapsedTime:           m.ElapsedTime,
-		IsStream:              m.IsStream != 0,
-		UncachedInputTokens:   m.UncachedInputTokens,
-		ReportedPromptTokens:  m.ReportedPromptTokens,
-		ReportedTotalTokens:   m.ReportedTotalTokens,
-		BillableTotalTokens:   m.BillableTotalTokens,
-		UsageSemantics:        m.UsageSemantics,
-		UsageProtocol:         m.UsageProtocol,
-		UsageFieldShape:       m.UsageFieldShape,
-		UsageParseStatus:      m.UsageParseStatus,
-		UsageContractVersion:  m.UsageContractVersion,
-		CanonicalPresent:      m.CanonicalPresent,
-		UsageDecisionReason:   m.UsageDecisionReason,
-	}, nil
+	return logModelToEntry(m)
 }
 
 func (r *Repository) listDB(ctx context.Context, page, pageSize int32, level, source, keyword string) ([]*biz.LogEntry, int64, error) {
@@ -310,6 +298,7 @@ func (r *Repository) listDB(ctx context.Context, page, pageSize int32, level, so
 	if scopeErr != nil {
 		return nil, 0, scopeErr
 	}
+	query = applyTimingVisibility(ctx, query)
 	if level != "" {
 		query = query.Where("level = ?", level)
 	}
@@ -334,18 +323,23 @@ func (r *Repository) listDB(ctx context.Context, page, pageSize int32, level, so
 	}
 	entries := make([]*biz.LogEntry, len(models))
 	for i, m := range models {
-		entries[i] = logModelToEntry(m)
+		var decodeErr error
+		entries[i], decodeErr = logModelToEntry(m)
+		if decodeErr != nil {
+			return nil, 0, decodeErr
+		}
 	}
 	return entries, total, nil
 }
 
 func (r *Repository) listByUserDB(ctx context.Context, userID int64, page, pageSize int32, level, keyword string) ([]*biz.LogEntry, int64, error) {
-	query := r.db.WithContext(ctx).Model(&logModel{}).Where("user_id = ? AND COALESCE(source, '') <> ?", userID, "routing-selection")
+	query := r.db.WithContext(ctx).Model(&logModel{}).Where("user_id = ? AND COALESCE(source, '') NOT IN ?", userID, []string{"routing-selection", requesttrace.TimingSource})
 	var scopeErr error
 	query, scopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "id", User: "user_id"}, "log.request.list")
 	if scopeErr != nil {
 		return nil, 0, scopeErr
 	}
+	query = applyTimingVisibility(ctx, query)
 	if level != "" {
 		query = query.Where("level = ?", level)
 	}
@@ -367,13 +361,17 @@ func (r *Repository) listByUserDB(ctx context.Context, userID int64, page, pageS
 	}
 	entries := make([]*biz.LogEntry, len(models))
 	for i, m := range models {
-		entries[i] = logModelToEntry(m)
+		var decodeErr error
+		entries[i], decodeErr = logModelToEntry(m)
+		if decodeErr != nil {
+			return nil, 0, decodeErr
+		}
 	}
 	return entries, total, nil
 }
 
-func (r *Repository) createDB(ctx context.Context, entry *biz.LogEntry) error {
-	m := logModel{
+func newLog(entry *biz.LogEntry) (*logModel, error) {
+	m := &logModel{
 		Level:                 entry.Level,
 		Message:               entry.Message,
 		Source:                entry.Source,
@@ -410,29 +408,59 @@ func (r *Repository) createDB(ctx context.Context, entry *biz.LogEntry) error {
 		CanonicalPresent:      entry.CanonicalPresent,
 		UsageDecisionReason:   entry.UsageDecisionReason,
 	}
+	if entry.RequestTiming != nil {
+		s := entry.RequestTiming
+		encoded, err := encodeRequestTiming(entry)
+		if err != nil {
+			return nil, err
+		}
+		m.RequestTimingJSON = &encoded
+		m.ObservationID = &s.ObservationID
+		if s.OTelTraceID != "" {
+			m.OTelTraceID = &s.OTelTraceID
+		}
+		m.RequestStartedAtMS = &s.StartedAtMS
+		m.RequestOutcome = &s.Outcome
+	}
+	return m, nil
+}
+
+func (r *Repository) createDB(ctx context.Context, entry *biz.LogEntry) error {
+	m, err := newLog(entry)
+	if err != nil {
+		return err
+	}
 	if entry.DedupeKey == "" {
-		if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
+		if err := r.db.WithContext(ctx).Create(m).Error; err != nil {
 			return err
 		}
 		entry.ID = m.ID
 		return nil
 	}
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		claim := &logIngestDedupeClaimModel{DedupeKey: entry.DedupeKey, CreatedAt: time.Now().Unix()}
 		if err := tx.Create(claim).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&m).Error; err != nil {
+		if err := tx.Create(m).Error; err != nil {
 			return err
 		}
-		entry.ID = m.ID
+		if refs := newRequestTraceAttemptRefs(entry); len(refs) > 0 {
+			if err := tx.Create(&refs).Error; err != nil {
+				return err
+			}
+		}
 		return tx.Model(claim).Update("log_id", m.ID).Error
 	})
+	if err == nil {
+		entry.ID = m.ID
+		return nil
+	}
 	if !isLogDuplicateKeyErr(err) {
 		return err
 	}
 	claim := &logIngestDedupeClaimModel{}
-	if err := r.db.WithContext(ctx).Where("dedupe_key = ?", entry.DedupeKey).Take(claim).Error; err != nil {
+	if lookupErr := r.db.WithContext(ctx).Where("dedupe_key = ?", entry.DedupeKey).Take(claim).Error; lookupErr != nil {
 		return err
 	}
 	entry.ID = claim.LogID
@@ -460,6 +488,16 @@ func (r *Repository) CreateBatch(ctx context.Context, entries []*biz.LogEntry) e
 	if len(entries) == 0 {
 		return nil
 	}
+	for _, entry := range entries {
+		if entry != nil && (entry.RequestTiming != nil || entry.Source == requesttrace.TimingSource) {
+			for _, item := range entries {
+				if err := r.Create(ctx, item); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
 	if r.db != nil {
 		for _, entry := range entries {
 			if entry.DedupeKey != "" {
@@ -478,43 +516,11 @@ func (r *Repository) CreateBatch(ctx context.Context, entries []*biz.LogEntry) e
 			if e.CreatedAt.IsZero() {
 				e.CreatedAt = time.Now()
 			}
-			models = append(models, logModel{
-				Level:                 e.Level,
-				Message:               e.Message,
-				Source:                e.Source,
-				RequestID:             e.RequestID,
-				RootRequestID:         e.RootRequestID,
-				AttemptNumber:         e.AttemptNumber,
-				ReservationID:         e.ReservationID,
-				SourceKind:            e.SourceKind,
-				UpstreamModelID:       e.UpstreamModelID,
-				UserID:                e.UserID,
-				CreatedAt:             e.CreatedAt.Unix(),
-				Username:              e.Username,
-				TokenName:             e.TokenName,
-				ModelName:             e.ModelName,
-				Quota:                 e.Quota,
-				PromptTokens:          e.PromptTokens,
-				CompletionTokens:      e.CompletionTokens,
-				CacheReadTokens:       e.CacheReadTokens,
-				CacheCreation5mTokens: e.CacheCreation5mTokens,
-				CacheCreation1hTokens: e.CacheCreation1hTokens,
-				ChannelID:             e.ChannelID,
-				SubscriptionAccountID: e.SubscriptionAccountID,
-				ElapsedTime:           e.ElapsedTime,
-				IsStream:              xdb.BoolInt(e.IsStream),
-				UncachedInputTokens:   e.UncachedInputTokens,
-				ReportedPromptTokens:  e.ReportedPromptTokens,
-				ReportedTotalTokens:   e.ReportedTotalTokens,
-				BillableTotalTokens:   e.BillableTotalTokens,
-				UsageSemantics:        e.UsageSemantics,
-				UsageProtocol:         e.UsageProtocol,
-				UsageFieldShape:       e.UsageFieldShape,
-				UsageParseStatus:      e.UsageParseStatus,
-				UsageContractVersion:  e.UsageContractVersion,
-				CanonicalPresent:      e.CanonicalPresent,
-				UsageDecisionReason:   e.UsageDecisionReason,
-			})
+			m, err := newLog(e)
+			if err != nil {
+				return err
+			}
+			models = append(models, *m)
 		}
 		if err := r.db.WithContext(ctx).CreateInBatches(&models, len(models)).Error; err != nil {
 			return err
@@ -571,6 +577,9 @@ func (r *Repository) deleteDB(ctx context.Context, filter biz.DeleteLogsFilter) 
 		if filter.UserID != 0 {
 			query = query.Where("user_id = ?", filter.UserID)
 		}
+		if err := deleteRequestTimingRelations(tx, query); err != nil {
+			return err
+		}
 		result := query.Delete(&logModel{})
 		deleted = result.RowsAffected
 		if result.Error != nil {
@@ -596,7 +605,7 @@ func (r *Repository) usageByUserDB(ctx context.Context, userID int64, startTime,
 	}
 	query := r.db.WithContext(ctx).Table("logs").
 		Select(dayExpr+" AS day, model_name, COUNT(1) AS request_count, COALESCE(SUM(quota), 0) AS quota, COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens, COALESCE(SUM(completion_tokens), 0) AS completion_tokens, COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens, COALESCE(SUM(cache_creation_5m_tokens), 0) AS cache_creation_5m_tokens, COALESCE(SUM(cache_creation_1h_tokens), 0) AS cache_creation_1h_tokens").
-		Where("user_id = ? AND COALESCE(source, '') <> ? AND model_name <> ''", userID, "routing-selection")
+		Where("user_id = ? AND COALESCE(source, '') NOT IN ? AND model_name <> ''", userID, []string{"routing-selection", requesttrace.TimingSource})
 	var scopeErr error
 	query, scopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "id", User: "user_id"}, "log.request.stats.read")
 	if scopeErr != nil {
@@ -615,8 +624,8 @@ func (r *Repository) usageByUserDB(ctx context.Context, userID int64, startTime,
 	return stats, nil
 }
 
-func logModelToEntry(m logModel) *biz.LogEntry {
-	return &biz.LogEntry{
+func logModelToEntry(m logModel) (*biz.LogEntry, error) {
+	entry := &biz.LogEntry{
 		ID:                    m.ID,
 		Level:                 m.Level,
 		Message:               m.Message,
@@ -654,6 +663,14 @@ func logModelToEntry(m logModel) *biz.LogEntry {
 		CanonicalPresent:      m.CanonicalPresent,
 		UsageDecisionReason:   m.UsageDecisionReason,
 	}
+	if m.RequestTimingJSON != nil {
+		var err error
+		entry.RequestTiming, err = decodeRequestTiming(*m.RequestTimingJSON)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return entry, nil
 }
 
 // Memory implementations
@@ -666,6 +683,7 @@ func (r *Repository) getMemory(id int64) (*biz.LogEntry, error) {
 		return nil, biz.ErrLogNotFound
 	}
 	cloned := *entry
+	cloned.RequestTiming = entry.RequestTiming.Clone()
 	return &cloned, nil
 }
 
@@ -675,6 +693,9 @@ func (r *Repository) listMemory(ctx context.Context, page, pageSize int32, level
 	var all []*biz.LogEntry
 	for _, entry := range r.mem {
 		if authorization.Require(ctx, "log.request.list", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: entry.ID, OwnerUserID: entry.UserID}) != nil {
+			continue
+		}
+		if !timingVisible(ctx, entry) {
 			continue
 		}
 		if level != "" && entry.Level != level {
@@ -687,6 +708,7 @@ func (r *Repository) listMemory(ctx context.Context, page, pageSize int32, level
 			continue
 		}
 		cloned := *entry
+		cloned.RequestTiming = entry.RequestTiming.Clone()
 		all = append(all, &cloned)
 	}
 	total := int64(len(all))
@@ -706,7 +728,10 @@ func (r *Repository) listByUserMemory(ctx context.Context, userID int64, page, p
 		if authorization.Require(ctx, "log.request.list", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: entry.ID, OwnerUserID: entry.UserID}) != nil {
 			continue
 		}
-		if entry.UserID != userID || entry.Source == "routing-selection" {
+		if entry.UserID != userID || (entry.Source == "routing-selection" || entry.Source == requesttrace.TimingSource) {
+			continue
+		}
+		if !timingVisible(ctx, entry) {
 			continue
 		}
 		if level != "" && entry.Level != level {
@@ -716,6 +741,7 @@ func (r *Repository) listByUserMemory(ctx context.Context, userID int64, page, p
 			continue
 		}
 		cloned := *entry
+		cloned.RequestTiming = entry.RequestTiming.Clone()
 		all = append(all, &cloned)
 	}
 	total := int64(len(all))
@@ -741,7 +767,15 @@ func (r *Repository) createMemory(entry *biz.LogEntry) error {
 	}
 	r.seq++
 	entry.ID = r.seq
-	r.mem[entry.ID] = entry
+	cloned := *entry
+	cloned.RequestTiming = entry.RequestTiming.Clone()
+	r.mem[entry.ID] = &cloned
+	if entry.RequestTiming != nil {
+		if r.timingRefs == nil {
+			r.timingRefs = make(map[string][]requestTraceAttemptRefModel)
+		}
+		r.timingRefs[entry.RequestTiming.ObservationID] = newRequestTraceAttemptRefs(&cloned)
+	}
 	if entry.DedupeKey != "" {
 		r.dedupe[entry.DedupeKey] = entry.ID
 	}
@@ -775,6 +809,7 @@ func (r *Repository) deleteMemory(ctx context.Context, filter biz.DeleteLogsFilt
 		if entry.CreatedAt.After(filter.EndTime) {
 			continue
 		}
+		r.deleteTimingMemory(entry)
 		delete(r.mem, id)
 		deleted++
 	}
@@ -787,6 +822,7 @@ func (r *Repository) deleteBeforeMemory(before time.Time) int64 {
 	var deleted int64
 	for id, entry := range r.mem {
 		if entry.CreatedAt.Before(before) {
+			r.deleteTimingMemory(entry)
 			delete(r.mem, id)
 			deleted++
 		}
@@ -802,7 +838,7 @@ func (r *Repository) usageByUserMemory(ctx context.Context, userID int64, startT
 		if authorization.Require(ctx, "log.request.stats.read", authorization.ObjectFacts{Context: authorization.Platform(), ResourceID: entry.ID, OwnerUserID: entry.UserID}) != nil {
 			continue
 		}
-		if entry.UserID != userID || entry.Source == "routing-selection" || entry.ModelName == "" {
+		if entry.UserID != userID || (entry.Source == "routing-selection" || entry.Source == requesttrace.TimingSource) || entry.ModelName == "" {
 			continue
 		}
 		if !startTime.IsZero() && entry.CreatedAt.Before(startTime) {

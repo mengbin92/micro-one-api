@@ -46,6 +46,7 @@ func (s *LogService) GetLog(ctx context.Context, req *logv1.GetLogRequest) (*log
 		return nil, err
 	}
 	return &logv1.GetLogResponse{
+		RequestTiming:          requestTimingToProto(entry.RequestTiming),
 		Id:                     entry.ID,
 		Level:                  entry.Level,
 		Message:                entry.Message,
@@ -96,7 +97,15 @@ func (s *LogService) ListLogs(ctx context.Context, req *logv1.ListLogsRequest) (
 }
 
 func (s *LogService) IngestLog(ctx context.Context, req *logv1.IngestLogRequest) (*logv1.IngestLogResponse, error) {
+	if req == nil {
+		return nil, biz.ErrInvalidRequestTiming
+	}
+	timing, err := convertRequestTiming(req.RequestTiming)
+	if err != nil {
+		return nil, err
+	}
 	entry := &biz.LogEntry{
+		RequestTiming:         timing,
 		Level:                 req.Level,
 		Message:               applogger.Sanitize(req.Message),
 		Source:                req.Source,
@@ -144,6 +153,7 @@ func (s *LogService) IngestLog(ctx context.Context, req *logv1.IngestLogRequest)
 
 func logEntryToProto(e *biz.LogEntry) *logv1.GetLogResponse {
 	return &logv1.GetLogResponse{
+		RequestTiming:          requestTimingToProto(e.RequestTiming),
 		Id:                     e.ID,
 		Level:                  e.Level,
 		Message:                e.Message,
@@ -446,7 +456,7 @@ func (s *LogService) HandleOneAPIUserLogStats(w http.ResponseWriter, r *http.Req
 }
 
 func logEntryToMap(e *biz.LogEntry) map[string]any {
-	return map[string]any{
+	result := map[string]any{
 		"id":                       e.ID,
 		"level":                    e.Level,
 		"type":                     e.Level,
@@ -482,6 +492,10 @@ func logEntryToMap(e *biz.LogEntry) map[string]any {
 		"usage_contract_version":   e.UsageContractVersion,
 		"usage_decision_reason":    e.UsageDecisionReason,
 	}
+	if e.RequestTiming != nil {
+		result["request_timing"] = e.RequestTiming.Clone()
+	}
+	return result
 }
 
 func logEntriesToMaps(entries []*biz.LogEntry) []map[string]any {

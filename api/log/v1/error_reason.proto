@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package api.log.v1;
+option go_package = "micro-one-api/api/log/v1;logv1";
+
+enum RequestTimingErrorReason {
+  REQUEST_TIMING_ERROR_UNSPECIFIED = 0;
+  INVALID_REQUEST_TIMING = 1;
+  REQUEST_TRACE_NOT_FOUND = 2;
+  TRACE_UNAVAILABLE = 3;
+}
