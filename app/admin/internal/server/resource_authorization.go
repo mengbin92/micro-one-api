@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"micro-one-api/domain/authorization"
@@ -127,7 +128,7 @@ func iamOwnerRouteReady(path, method string) bool {
 		return method == http.MethodGet
 	case "/v1/redeem-codes/batch", "/v1/topup", "/api/topup":
 		return method == http.MethodPost
-	case "/api/user/export", "/api/log/export", "/api/log/attempts", "/api/log/routing-audit":
+	case "/api/user/export", "/api/log/export", "/api/log/attempts", "/api/log/routing-audit", "/api/log/request-traces":
 		return method == http.MethodGet
 	case "/api/reconciliation":
 		return oneOfMethod(method, http.MethodGet, http.MethodPost)
@@ -316,6 +317,15 @@ func iamOwnerRouteReady(path, method string) bool {
 	}
 	if strings.HasPrefix(path, "/api/payment/orders/") {
 		return len(strings.Split(strings.TrimPrefix(path, "/api/payment/orders/"), "/")) == 1 && method == http.MethodGet
+	}
+	if strings.HasPrefix(path, "/api/log/request-traces/") {
+		id := strings.TrimPrefix(path, "/api/log/request-traces/")
+		_, err := uuid.Parse(id)
+		return err == nil && !strings.Contains(id, "/") && method == http.MethodGet
+	}
+	if strings.HasPrefix(path, "/api/log/") && strings.HasSuffix(path, "/trace") {
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "/api/log/"), "/trace")
+		return positivePathID(id) && method == http.MethodGet
 	}
 	if strings.HasPrefix(path, "/api/log/") {
 		return positivePathID(strings.TrimPrefix(path, "/api/log/")) && method == http.MethodGet

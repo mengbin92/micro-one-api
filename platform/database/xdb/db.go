@@ -222,7 +222,7 @@ func InferDriver(dsn string) string {
 // Silent; slow queries and every other error still surface at their
 // original level.
 func gormConfig() *gorm.Config {
-	return &gorm.Config{Logger: benignGormLogger{
+	return &gorm.Config{Plugins: map[string]gorm.Plugin{"safe-operation-tracing": tracingPlugin{}}, Logger: benignGormLogger{
 		gormlogger.Default.LogMode(gormlogger.Warn),
 	}}
 }

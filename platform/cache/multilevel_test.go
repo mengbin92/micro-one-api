@@ -7,7 +7,13 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	identityv1 "micro-one-api/api/identity/v1"
+	"micro-one-api/domain/requesttrace"
 )
 
 // stringLoader is a simple CacheLoader used to exercise MultiLevelCache logic
@@ -69,6 +75,30 @@ func TestMultiLevelCache_L1HitAvoidsLoader(t *testing.T) {
 	if ld.calls != 1 {
 		t.Fatalf("loader called %d after L1 hit, want 1", ld.calls)
 	}
+}
+
+func TestMultiLevelCacheL1AttributesBelongToCacheSpan(t *testing.T) {
+	spans := tracetest.NewSpanRecorder()
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans)))
+	defer otel.SetTracerProvider(previous)
+	c := newTestMultiLevel(t, (&stringLoader{value: "value"}).asLoader())
+	ctx, observation := requesttrace.StartObservation(context.Background(), "http", "/v1/responses", "http", "legacy", true)
+	_, err := c.Get(ctx, "key")
+	require.NoError(t, err)
+	_, err = c.Get(ctx, "key")
+	require.NoError(t, err)
+	observation.Finish("success")
+	var hits []bool
+	for _, span := range spans.Ended() {
+		for _, attr := range span.Attributes() {
+			if attr.Key == attribute.Key("cache.hit") {
+				require.Equal(t, "cache.l1", span.Name(), "cache metadata must not overwrite its caller")
+				hits = append(hits, attr.Value.AsBool())
+			}
+		}
+	}
+	require.Equal(t, []bool{false, true}, hits)
 }
 
 func TestMultiLevelCache_LoaderErrorPropagates(t *testing.T) {

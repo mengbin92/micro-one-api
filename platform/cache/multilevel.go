@@ -8,8 +8,11 @@ import (
 
 	"github.com/dgraph-io/ristretto"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/singleflight"
 
+	"micro-one-api/domain/requesttrace"
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/pkg/safecast"
 	"micro-one-api/platform/events"
@@ -112,10 +115,19 @@ func (c *MultiLevelCache[T]) get(ctx context.Context, key string, loader CacheLo
 	start := time.Now()
 	cacheKey := c.prefix + key
 
-	// L1 check
+	// L1 check. The probe is a request-visible cache phase: on a hit the request
+	// would otherwise lose its auth/routing stage entirely (no RPC, no Redis
+	// span). Phase is nil-safe for background callers without an observation.
+	l1Ctx, endL1 := requesttrace.Phase(ctx, "cache.l1")
+	l1Span := trace.SpanFromContext(l1Ctx)
+	l1Observed := requesttrace.Observation(ctx) != nil
 	if val, ok := c.l1.Get(cacheKey); ok {
 		entry, ok := val.(*entry[T])
 		if ok && !entry.expired() {
+			if l1Observed {
+				l1Span.SetAttributes(attribute.Bool("cache.hit", true), attribute.String("cache.name", c.metrics.cacheName))
+			}
+			endL1(nil)
 			c.metrics.recordL1Hit()
 			metrics.CacheHits.WithLabelValues(c.metrics.cacheName, "l1").Inc()
 			metrics.CacheLatency.WithLabelValues(c.metrics.cacheName, "get", "l1").Observe(time.Since(start).Seconds())
@@ -124,6 +136,10 @@ func (c *MultiLevelCache[T]) get(ctx context.Context, key string, loader CacheLo
 		// Entry expired or invalid type, remove it
 		c.l1.Del(cacheKey)
 	}
+	if l1Observed {
+		l1Span.SetAttributes(attribute.Bool("cache.hit", false), attribute.String("cache.name", c.metrics.cacheName))
+	}
+	endL1(nil)
 
 	// L2 check
 	if c.l2 != nil {

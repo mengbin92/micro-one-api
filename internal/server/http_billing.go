@@ -102,8 +102,12 @@ func (s *HTTPServer) commitQuotaAfterResponseObserved(parent context.Context, re
 	return s.commitQuota(ctx, reservationID, actualTokens, success, details...)
 }
 
-func (s *HTTPServer) ingestUsageLogAfterResponse(in usageLogInput) {
-	ctx, cancel := postResponseContext()
+func (s *HTTPServer) ingestUsageLogAfterResponse(in usageLogInput, parents ...context.Context) {
+	var parent context.Context = context.Background()
+	if len(parents) > 0 && parents[0] != nil {
+		parent = parents[0]
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), postResponseWriteTimeout)
 	defer cancel()
 	s.ingestUsageLog(ctx, in)
 }
@@ -122,6 +126,7 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 	if trace.Number == 0 {
 		trace.Number = 1
 	}
+	ctx = requesttrace.EnsureAttempt(ctx, trace.Number)
 	var routingContext *routing.ResolvedRoutingContext
 	if len(contexts) > 0 {
 		routingContext = contexts[0]

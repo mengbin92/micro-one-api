@@ -15,7 +15,7 @@ const jsonRequestBodyLimit = appmiddleware.JSONRequestBodyLimit
 // readRequestBody keeps direct handler tests safe even when the route
 // middleware is not installed. The extra byte distinguishes an oversized
 // body from a valid body that exactly fills the cap.
-func readRequestBody(r *http.Request, maxSize int64) ([]byte, error) {
+func readRequestBody(r *http.Request, maxSize int64) (bodyResult []byte, bodyErr error) {
 	if r.Body == nil {
 		return nil, nil
 	}

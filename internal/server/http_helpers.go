@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"micro-one-api/domain/requesttrace"
 	xhttp "micro-one-api/platform/http"
 	"net/http"
 	"strings"
@@ -90,6 +91,9 @@ func (s *HTTPServer) getRawAuthSnapshot(ctx context.Context, token string) (*ide
 		Token:    token,
 	}
 	reply, err := s.identityClient.GetAuthSnapshot(ctx, req)
+	if err == nil && reply != nil && reply.UserEnabled && reply.TokenEnabled {
+		requesttrace.BindUser(ctx, reply.UserId)
+	}
 	if err != nil {
 		return nil, err
 	}

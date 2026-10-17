@@ -68,7 +68,7 @@ func TestDBRepository_CreateIsIdempotentByDedupeKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&logModel{}, &logIngestDedupeClaimModel{}); err != nil {
+	if err := db.AutoMigrate(&logModel{}, &logIngestDedupeClaimModel{}, &requestTraceAttemptRefModel{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	repo := &Repository{db: db}

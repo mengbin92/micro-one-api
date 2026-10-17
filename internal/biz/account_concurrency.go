@@ -2,6 +2,8 @@ package biz
 
 import (
 	"context"
+	"errors"
+	"micro-one-api/domain/requesttrace"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -43,7 +45,15 @@ func NewAccountConcurrencyLimiter() *MemoryAccountConcurrencyLimiter {
 // A non-positive limit (or a nil limiter / non-positive accountID) means
 // "unlimited": TryAcquire always succeeds and returns a no-op release so callers
 // need not special-case the unlimited path.
-func (l *MemoryAccountConcurrencyLimiter) TryAcquire(_ context.Context, accountID int64, limit int32) (func(), bool) {
+func (l *MemoryAccountConcurrencyLimiter) TryAcquire(ctx context.Context, accountID int64, limit int32) (releaseFn func(), admitted bool) {
+	ctx, endTiming := requesttrace.Phase(ctx, "admission.check")
+	defer func() {
+		if admitted {
+			endTiming(nil)
+		} else {
+			endTiming(errors.New("rejected"))
+		}
+	}()
 	if l == nil || limit <= 0 || accountID <= 0 {
 		return func() {}, true
 	}
@@ -159,7 +169,15 @@ func newRedisAccountConcurrencyLimiter(rdb accountConcurrencyRedis, instance str
 	}
 }
 
-func (l *RedisAccountConcurrencyLimiter) TryAcquire(ctx context.Context, accountID int64, limit int32) (func(), bool) {
+func (l *RedisAccountConcurrencyLimiter) TryAcquire(ctx context.Context, accountID int64, limit int32) (releaseFn func(), admitted bool) {
+	ctx, endTiming := requesttrace.Phase(ctx, "admission.check")
+	defer func() {
+		if admitted {
+			endTiming(nil)
+		} else {
+			endTiming(errors.New("rejected"))
+		}
+	}()
 	if l == nil || l.rdb == nil {
 		return func() {}, true
 	}

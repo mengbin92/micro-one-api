@@ -2,6 +2,8 @@ package authzquery
 
 import (
 	"context"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 	"time"
 
 	"gorm.io/gorm"
@@ -29,7 +31,12 @@ func RunInTx(ctx context.Context, db *gorm.DB, attempts int, write func(context.
 		if refreshErr != nil {
 			return refreshErr
 		}
+		current, span := otel.Tracer("micro-one-api/storage").Start(current, "db.transaction")
 		err = db.WithContext(current).Transaction(func(tx *gorm.DB) error { return write(current, tx) })
+		if err != nil {
+			span.SetStatus(codes.Error, "transaction_error")
+		}
+		span.End()
 		if err == nil || !xdb.IsSQLiteBusy(err) {
 			return err
 		}

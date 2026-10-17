@@ -37,14 +37,14 @@ type Data struct {
 const dataClientTimeout = 30 * time.Second
 
 func NewData(identityEndpoint, channelEndpoint string) (*Data, error) {
-	identityConn, err := grpc.NewClient(identityEndpoint,
+	identityConn, err := grpc.NewClient(identityEndpoint, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())),
 		grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("identity-service")))
 	if err != nil {
 		return nil, err
 	}
-	channelConn, err := grpc.NewClient(channelEndpoint,
+	channelConn, err := grpc.NewClient(channelEndpoint, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())),
 		grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("channel-service")))

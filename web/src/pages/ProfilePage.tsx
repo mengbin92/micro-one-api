@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
-import { unwrapApiData } from '@/lib/api-response';
+import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { bindableOAuthProviders, redirectToURL } from '@/lib/oauth';
 import { formatUSD } from '@/lib/amount';
 import { Button } from '@/components/ui/button';
@@ -56,7 +56,7 @@ export function ProfilePage() {
         throw new Error(t("没有需要更新的内容"));
       }
       const res = await apiClient.put('/user/self', payload);
-      return unwrapApiData(res.data);
+      ensureApiSuccess(res.data);
     },
     onSuccess: () => {
       toast.success(t("个人资料已更新"));

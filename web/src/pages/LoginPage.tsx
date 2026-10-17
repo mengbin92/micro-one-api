@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { apiClient, clearUserSession } from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
-import { unwrapApiData } from '@/lib/api-response';
+import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { oauthProviders, redirectToApiPath } from '@/lib/oauth';
 import { t } from '@/lib/i18n';
 import { useI18n } from '@/hooks/useI18n';
@@ -84,7 +84,7 @@ export function LoginPage() {
           username: nextUsername,
           password,
         });
-        unwrapApiData(response.data, t("注册失败"));
+        ensureApiSuccess(response.data, t("注册失败"));
         await signIn(nextUsername);
         toast.success(t("账号创建成功"));
       } else {

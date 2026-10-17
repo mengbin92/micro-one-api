@@ -53,7 +53,7 @@ func (s *HTTPServer) executeAnthropicChannelAttempt(
 		return &provider.CapabilityError{Feature: fmt.Sprintf("channel type %d", channel.Type)}
 	}
 	channelAdaptor.Init(relayContext)
-	upstreamFormat, upstreamBody, err := channelAdaptor.ConvertRequest(relayContext, adaptor.FormatAnthropicMessages, originalBody)
+	upstreamFormat, upstreamBody, err := convertRequestObserved(ctx, channelAdaptor, relayContext, adaptor.FormatAnthropicMessages, originalBody)
 	if err != nil {
 		return fmt.Errorf("adaptor convert request: %w", err)
 	}
@@ -156,7 +156,7 @@ func (s *HTTPServer) writeAnthropicAdaptorResponse(
 		return fmt.Errorf("read upstream response: %w", err)
 	}
 	response.Body = io.NopCloser(bytes.NewReader(rawUpstream))
-	_, outputBody, err := channelAdaptor.ConvertResponse(relayContext, upstreamFormat, response)
+	_, outputBody, err := convertResponseObserved(ctx, channelAdaptor, relayContext, upstreamFormat, response)
 	if err != nil {
 		_ = s.releaseQuota(ctx, reservationID, "adaptor convert response error")
 		return err
@@ -197,7 +197,7 @@ func (s *HTTPServer) writeAnthropicAdaptorStream(
 		Closer: originalBody,
 	}
 
-	_, reader, err := channelAdaptor.ConvertStreamResponse(relayContext, upstreamFormat, response)
+	_, reader, err := convertStreamObserved(ctx, channelAdaptor, relayContext, upstreamFormat, response)
 	if err != nil {
 		_ = response.Body.Close()
 		_ = s.releaseQuota(ctx, reservationID, "adaptor convert stream error")
@@ -239,7 +239,7 @@ func (s *HTTPServer) writeAnthropicAdaptorStream(
 		s.logPostResponseCommitError(err)
 	} else {
 		logUpstreamUsage(logInput)
-		s.ingestUsageLogAfterResponse(logInput)
+		s.ingestUsageLogAfterResponse(logInput, ctx)
 	}
 	return nil
 }

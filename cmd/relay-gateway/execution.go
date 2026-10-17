@@ -13,6 +13,7 @@ import (
 	relaydata "micro-one-api/internal/data"
 	relayservice "micro-one-api/internal/service"
 	grpcauth "micro-one-api/platform/grpc"
+	"micro-one-api/platform/grpc/xgrpc"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/security/serviceidentity"
 	"os"
@@ -59,7 +60,7 @@ func newProbePermitClient() (relaybiz.ProbePermitClient, func(), error) {
 	if endpoint == "" {
 		return nil, nil, fmt.Errorf("monitor budget permit endpoint required")
 	}
-	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())))
+	conn, err := grpc.NewClient(endpoint, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())))
 	if err != nil {
 		return nil, nil, err
 	}

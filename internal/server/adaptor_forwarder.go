@@ -71,7 +71,7 @@ func (f relayAdaptorForwarder) Forward(ctx context.Context, plan *relaybiz.Relay
 		return nil, relayprovider.BeforeForward(err)
 	}
 	ad.Init(rc)
-	upstreamFormat, upstreamBody, err := ad.ConvertRequest(rc, rc.InboundFormat, req.Body)
+	upstreamFormat, upstreamBody, err := convertRequestObserved(ctx, ad, rc, rc.InboundFormat, req.Body)
 	if err != nil {
 		return nil, relayprovider.BeforeForward(fmt.Errorf("adaptor convert request: %w", err))
 	}
@@ -92,7 +92,7 @@ func (f relayAdaptorForwarder) Forward(ctx context.Context, plan *relaybiz.Relay
 		return nil, classifyExecutorCapabilityError(req.Endpoint, &relayprovider.UpstreamHTTPError{StatusCode: resp.StatusCode, Body: body, RetryAfter: relayprovider.ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())})
 	}
 
-	_, body, err := ad.ConvertResponse(rc, upstreamFormat, resp)
+	_, body, err := convertResponseObserved(ctx, ad, rc, upstreamFormat, resp)
 	if err != nil {
 		return nil, relaybiz.MarkUnverifiedResponseError(fmt.Errorf("adaptor convert response: %w", err))
 	}
@@ -130,7 +130,7 @@ func (f relayAdaptorForwarder) ForwardStream(ctx context.Context, plan *relaybiz
 		return nil, relayprovider.BeforeForward(err)
 	}
 	ad.Init(rc)
-	upstreamFormat, upstreamBody, err := ad.ConvertRequest(rc, rc.InboundFormat, req.Body)
+	upstreamFormat, upstreamBody, err := convertRequestObserved(ctx, ad, rc, rc.InboundFormat, req.Body)
 	if err != nil {
 		return nil, relayprovider.BeforeForward(fmt.Errorf("adaptor convert stream request: %w", err))
 	}
@@ -150,7 +150,7 @@ func (f relayAdaptorForwarder) ForwardStream(ctx context.Context, plan *relaybiz
 		}
 		return nil, classifyExecutorCapabilityError(req.Endpoint, &relayprovider.UpstreamHTTPError{StatusCode: resp.StatusCode, Body: body, RetryAfter: relayprovider.ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())})
 	}
-	_, reader, err := ad.ConvertStreamResponse(rc, upstreamFormat, resp)
+	_, reader, err := convertStreamObserved(ctx, ad, rc, upstreamFormat, resp)
 	if err != nil {
 		_ = resp.Body.Close()
 		return nil, relaybiz.MarkUnverifiedResponseError(fmt.Errorf("adaptor convert stream response: %w", err))

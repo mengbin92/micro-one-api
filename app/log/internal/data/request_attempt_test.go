@@ -14,7 +14,7 @@ import (
 func TestExecutionIdentityRoundTripSingleAndBatch(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&logModel{}, &logIngestDedupeClaimModel{}))
+	require.NoError(t, db.AutoMigrate(&logModel{}, &logIngestDedupeClaimModel{}, &requestTraceAttemptRefModel{}))
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqlDB.Close() })

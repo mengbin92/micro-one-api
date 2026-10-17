@@ -617,18 +617,23 @@ func (e *RetryExecutor) execute(
 				return &ExecuteResult{Channel: lastChannel, Err: lastErr, Attempt: attempt - 1, Fallback: switched, FirstErr: firstErr, FallbackReason: ClassifyRetryFallbackReason(firstErr)}
 			}
 			wait := JitteredRetryDelay(e.policy.BackoffDuration(attempt - 1))
+			_, endBackoff := requesttrace.Phase(ctx, "retry.backoff")
 			select {
 			case <-ctx.Done():
+				endBackoff(ctx.Err())
 				flushHealth()
 				return &ExecuteResult{Channel: lastChannel, Err: ctx.Err(), Attempt: attempt, Fallback: switched, FirstErr: firstErr, FallbackReason: ClassifyRetryFallbackReason(firstErr)}
 			case <-time.After(wait):
 			}
+			endBackoff(nil)
 
 			if lastChannel != nil {
 				excluded[RoutingSourceIdentityForChannel(lastChannel)] = true
 			}
 			previous := lastChannel
-			ch := e.selectNextForRetry(ctx, group, clientModel, model, candidates, excluded, initialChannel)
+			selectCtx, endSelect := requesttrace.Phase(ctx, "route.reselect")
+			ch := e.selectNextForRetry(selectCtx, group, clientModel, model, candidates, excluded, initialChannel)
+			endSelect(nil)
 			if ch != nil {
 				if !SameRoutingSource(ch, lastChannel) {
 					flushHealth()
@@ -670,20 +675,32 @@ func (e *RetryExecutor) execute(
 			trace.SourceKind = UpstreamSourceSubscription
 		}
 		trace.UpstreamModelID = ResolveChannelModel(lastChannel, model)
+		attemptCtx := requesttrace.EnsureAttempt(requesttrace.WithAttempt(ctx, trace), trace.Number)
+		sourceID := lastChannel.ID
+		if lastChannel.SubscriptionAccountID > 0 {
+			sourceID = lastChannel.SubscriptionAccountID
+		}
+		requesttrace.RecordAttempt(attemptCtx, requesttrace.TimingAttempt{Number: trace.Number, SourceKind: trace.SourceKind, SourceID: sourceID, UpstreamModelID: trace.UpstreamModelID})
 		var err error
 		if e.executionAdmission != nil {
 			candidate := *lastChannel
 			candidate.UpstreamModelID = trace.UpstreamModelID
 			var admitted *Channel
-			admitted, err = e.executionAdmission(ctx, &candidate)
+			admissionCtx, endAdmission := requesttrace.Phase(attemptCtx, "admission.check")
+			admitted, err = e.executionAdmission(admissionCtx, &candidate)
+			endAdmission(err)
 			if err == nil {
 				lastChannel = admitted
 			}
 		}
 		if err == nil {
 			trace.HealthProbeID = lastChannel.HealthProbeID
-			err = fn(requesttrace.WithAttempt(ctx, trace), lastChannel)
+			err = fn(requesttrace.WithAttempt(attemptCtx, trace), lastChannel)
 		}
+		if err != nil {
+			requesttrace.FinishAttempt(attemptCtx, trace.Number, requesttrace.Outcome(err))
+		}
+		requesttrace.RecordAttempt(attemptCtx, requesttrace.TimingAttempt{Number: trace.Number, Outcome: requesttrace.Outcome(err)})
 		responseTime := time.Since(startedAt).Milliseconds()
 		if !primaryRecorded && e.budget != nil && lastChannel.UpstreamConfigurationRevision != "" && !IsLocalAdmissionError(err) && !relayprovider.IsPreForwardError(err) && (!e.externalSubscriptionHealth || lastChannel.SubscriptionAccountID <= 0) {
 			e.budget.primary()

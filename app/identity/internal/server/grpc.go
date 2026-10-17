@@ -25,6 +25,7 @@ import (
 func NewGRPCServer(addr string, svc *service.IdentityService, iam ...*service.IAMService) *kgrpc.Server {
 	serviceToken := os.Getenv("SERVICE_TOKEN")
 	srv := kgrpc.NewServer(
+		kgrpc.Options(grpc.StatsHandler(xgrpc.ServerStatsHandler(nil))),
 		kgrpc.Address(addr),
 		kgrpc.Timeout(apptimeout.GetGRPCTimeout()),
 		// Metrics outermost: server-side handling latency (incl. auth) is the

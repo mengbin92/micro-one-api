@@ -1,5 +1,6 @@
 import { EN_US_MESSAGES as GENERATED_MESSAGES } from '@/locales/en-US.generated';
 import { EN_US_RBAC_MESSAGES } from '@/locales/en-US.rbac';
+import { EN_US_REQUEST_TIMING_MESSAGES } from '@/locales/en-US.request-timing';
 import { EN_US_LEGAL_MESSAGES } from '@/locales/en-US.legal';
 
 // Product terminology overrides. Keep these concise and consistent across
@@ -9,6 +10,7 @@ export const EN_US_MESSAGES: Record<string, string> = {
   ...GENERATED_MESSAGES,
   ...EN_US_LEGAL_MESSAGES,
   ...EN_US_RBAC_MESSAGES,
+  ...EN_US_REQUEST_TIMING_MESSAGES,
   '上游契约与修复': 'Upstream contracts and repairs',
   '已启用，暂无可用来源': 'Enabled, no available source',
   '请启用所需来源映射，并确认对应渠道或订阅账户已启用。': 'Enable the required source mapping and ensure its channel or subscription account is enabled.',

@@ -358,7 +358,7 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 			s.logPostResponseCommitError(err)
 		} else {
 			logUpstreamUsage(logInput)
-			s.ingestUsageLogAfterResponse(logInput)
+			s.ingestUsageLogAfterResponse(logInput, r.Context())
 		}
 	} else {
 		cancelStream()

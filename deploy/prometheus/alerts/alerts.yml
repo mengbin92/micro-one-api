@@ -563,3 +563,40 @@ groups:
         annotations:
           summary: Notification delivery is failing
           description: 'Inspect notify-worker failed records and receiver configuration. Queued alerts are not delivered; use the dashboard while the notification path is unavailable.'
+
+  # === Request Timing Observability Alerts ===
+  - name: request-timing
+    interval: 30s
+    rules:
+      - alert: RequestTimingExportDropped
+        expr: sum by (instance) (increase(relay_request_timing_export_total{result=~"dropped|error"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Request timing summaries are being dropped or failing export
+          description: 'The bounded summary exporter is saturated or the log-service ingest path is failing. Forwarding and billing are unaffected, but recent requests have no timing summary. Check relay_request_timing_export_total and log-service health.'
+      - alert: OtelTraceQueueDropping
+        expr: sum by (instance) (increase(otel_trace_queue_dropped_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: OTel SDK trace queue is dropping spans
+          description: 'The non-blocking batch exporter queue is full; detailed Jaeger waterfalls will be partial. Check OTLP exporter latency and Jaeger ingest health.'
+      - alert: OtelTraceExportFailing
+        expr: |
+          sum by (instance) (rate(otel_trace_export_spans_total{result!="success"}[5m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: OTLP span exports are failing
+          description: 'Spans are not reaching Jaeger; request summaries in log-service remain intact. Check Jaeger availability from the relay-gateway.'
+      - alert: AsyncTraceCarrierInvalid
+        expr: sum by (instance) (increase(relay_async_trace_carrier_invalid_total[30m])) > 0
+        labels:
+          severity: info
+        annotations:
+          summary: Async settlement/log carriers arrived with invalid trace context
+          description: 'Tracing linkage for background tasks is lost for those items; settlement and billing semantics are unaffected. Investigate producer/consumer version skew.'

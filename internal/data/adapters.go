@@ -301,7 +301,7 @@ func (a *ChannelAdapter) RecordChannelHealth(ctx context.Context, channelID int6
 // fire-and-forget anyway (best-effort telemetry), and queue-full drops are
 // counted rather than surfaced as relay-path errors. Use FlushModelHealth /
 // Close when deterministic submission is required.
-func (a *ChannelAdapter) RecordModelHealth(_ context.Context, sourceKind string, sourceID int64, modelID, upstreamModelID string, success bool, message string, responseTime int64) error {
+func (a *ChannelAdapter) RecordModelHealth(ctx context.Context, sourceKind string, sourceID int64, modelID, upstreamModelID string, success bool, message string, responseTime int64) error {
 	if a == nil || a.client == nil {
 		return nil
 	}
@@ -312,7 +312,7 @@ func (a *ChannelAdapter) RecordModelHealth(_ context.Context, sourceKind string,
 		SourceKind: sourceKind, SourceId: sourceID, ModelId: modelID,
 		UpstreamModelId: upstreamModelID, Success: success, Error: message,
 		ResponseTime: responseTime,
-	})
+	}, ctx)
 	return nil
 }
 

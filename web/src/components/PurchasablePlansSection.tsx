@@ -126,10 +126,7 @@ export function PurchasablePlansSection() {
         },
         { headers: { 'Idempotency-Key': purchaseKeyRef.current } }
       );
-      if (res.data?.success === false) {
-        throw new Error(res.data?.message || t("购买失败"));
-      }
-      return (res.data?.data ?? {}) as PurchaseResponse;
+      return unwrapApiData<PurchaseResponse>(res.data, t("购买失败"));
     },
     onSuccess: (data, variables) => {
       // The intent is definitively done (order created or subscription

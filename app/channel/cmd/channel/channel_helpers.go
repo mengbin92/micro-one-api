@@ -36,7 +36,7 @@ func configureHealthAlert(uc *biz.ChannelUsecase) (*grpc.ClientConn, error) {
 		applogger.Log.Warn("channel health alert enabled but NOTIFY_GRPC_ENDPOINT is empty")
 		return nil, nil
 	}
-	conn, err := grpc.NewClient(endpoint,
+	conn, err := grpc.NewClient(endpoint, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())),
 		grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))
@@ -197,7 +197,7 @@ func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, exi
 		var notifier biz.QuotaAlertNotifier
 		if endpoint != "" {
 			if conn == nil {
-				c, err := grpc.NewClient(endpoint,
+				c, err := grpc.NewClient(endpoint, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()),
 					grpc.WithTransportCredentials(insecure.NewCredentials()),
 					grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())),
 					grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))

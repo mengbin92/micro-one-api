@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"micro-one-api/domain/requesttrace"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,8 +38,9 @@ type modelHealthQueue struct {
 // modelHealthOp is one queued recording. A nil request marks a flush point:
 // the worker signals done once every earlier sample has been submitted.
 type modelHealthOp struct {
-	request *channelv1.RecordModelHealthRequest
-	done    chan struct{}
+	telemetry requesttrace.Carrier
+	request   *channelv1.RecordModelHealthRequest
+	done      chan struct{}
 }
 
 // modelHealthQueueDepth bounds queued samples. Beyond this the caller drops:
@@ -69,11 +71,11 @@ func (q *modelHealthQueue) run() {
 			close(op.done)
 			continue
 		}
-		q.submit(op.request)
+		q.submit(op.request, op.telemetry)
 	}
 }
 
-func (q *modelHealthQueue) submit(req *channelv1.RecordModelHealthRequest) {
+func (q *modelHealthQueue) submit(req *channelv1.RecordModelHealthRequest, carriers ...requesttrace.Carrier) {
 	defer func() {
 		// Some lightweight callers embed ChannelServiceClient only to fake the
 		// older required methods; the model-health method then panics through
@@ -93,10 +95,19 @@ func (q *modelHealthQueue) submit(req *channelv1.RecordModelHealthRequest) {
 	q.callCount.Add(1)
 	ctx, cancel := context.WithTimeout(context.Background(), modelHealthCallTimeout)
 	defer cancel()
-	// The request context is intentionally not propagated: by the time the
+	var carrier requesttrace.Carrier
+	if len(carriers) > 0 {
+		carrier = carriers[0]
+	}
+	ctx, endTask := requesttrace.StartTask(ctx, carrier, "health.worker")
+	var taskErr error
+	defer func() { endTask(taskErr) }()
+	// Cancellation is detached, while the original trace remains associated:
+	// by the time the
 	// worker picks the sample up the originating request has usually finished,
 	// and its cancellation must not abort the recording.
 	reply, err := q.client.RecordModelHealth(ctx, req)
+	taskErr = err
 	if err != nil {
 		// Warn, not Debug: passive recording is fire-and-forget, so a
 		// systematically failing path (nil client, missing RPC, rejected
@@ -119,13 +130,17 @@ func (q *modelHealthQueue) submit(req *channelv1.RecordModelHealthRequest) {
 
 // record enqueues one sample without blocking. It returns false when the queue
 // is full or closed and the sample was dropped.
-func (q *modelHealthQueue) record(req *channelv1.RecordModelHealthRequest) bool {
+func (q *modelHealthQueue) record(req *channelv1.RecordModelHealthRequest, parents ...context.Context) bool {
+	parent := context.Background()
+	if len(parents) > 0 && parents[0] != nil {
+		parent = parents[0]
+	}
 	if q.closed.Load() {
 		return false
 	}
 	q.start()
 	select {
-	case q.enqueue <- modelHealthOp{request: req}:
+	case q.enqueue <- modelHealthOp{request: req, telemetry: requesttrace.Capture(parent)}:
 		return true
 	default:
 		dropped := q.dropped.Add(1)

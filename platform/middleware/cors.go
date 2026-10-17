@@ -70,6 +70,7 @@ func RelayCORSConfig() *CORSConfig {
 	config.ExposedHeaders = []string{
 		"X-Trace-ID",
 		"X-OTel-Trace-ID",
+		"X-Observation-ID",
 		"Content-Length",
 		"Content-Type",
 		"X-Request-ID",

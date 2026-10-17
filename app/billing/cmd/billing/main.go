@@ -1,6 +1,7 @@
 package main
 
 import (
+	xtrace "micro-one-api/platform/tracing"
 	"os"
 
 	"go.uber.org/zap"
@@ -17,6 +18,12 @@ func main() {
 	applogger.InitializeStartupLogger()
 	defer applogger.Sync()
 
+	stopTracing, err := xtrace.InitTracer(xtrace.Config{Enabled: os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "", Endpoint: os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), Service: "billing-service", SampleRate: 1})
+	if err != nil {
+		applogger.Log.Error("failed to initialize tracing", zap.Error(err))
+		os.Exit(1)
+	}
+	defer stopTracing()
 	app, cleanup, err := InitApp(confPath)
 	if err != nil {
 		applogger.Log.Error("failed to create app", zap.Error(err))

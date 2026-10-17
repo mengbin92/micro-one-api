@@ -119,6 +119,8 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	uc.SetReceivableRepo(d.ReceivableRepo())
 	uc.SetPricingSnapshotRepo(d.PricingSnapshotRepo())
 	uc.SetVendorReconciliationRepo(data.NewVendorReconciliationRepo(d))
+
+	uc.SetSettlementTaskStore(d.SettlementTaskStore())
 	closeRouting := func() {}
 	if biz.RequestSnapshotsEnabled() {
 		reader, cleanup, err := routingclient.Dial(os.Getenv("CHANNEL_GRPC_ENDPOINT"))
@@ -191,7 +193,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	var channelConn *grpc.ClientConn
 	if cfg.Bootstrap.Clients != nil && cfg.Bootstrap.Clients.Channel != nil && cfg.Bootstrap.Clients.Channel.Endpoint != "" {
 		var err error
-		channelConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Channel.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpc2.NewInsecureTokenAuth(serviceidentity.ClientToken())))
+		channelConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Channel.Endpoint, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpc2.NewInsecureTokenAuth(serviceidentity.ClientToken())))
 		if err != nil {
 			logger.Log.
 				Error("dial channel endpoint", zap.Error(err))
@@ -218,7 +220,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		}
 		if cfg.Bootstrap.Clients != nil && cfg.Bootstrap.Clients.Notify != nil && cfg.Bootstrap.Clients.Notify.Endpoint != "" {
 			var err error
-			notifyConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Notify.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpc2.NewInsecureTokenAuth(serviceidentity.ClientToken())), grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))
+			notifyConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Notify.Endpoint, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpc2.NewInsecureTokenAuth(serviceidentity.ClientToken())), grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))
 			if err != nil {
 				logger.Log.
 					Error("dial notify endpoint", zap.Error(err))

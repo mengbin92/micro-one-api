@@ -161,6 +161,58 @@
             "legendFormat": "trips/s"
           }
         ]
+      },
+      {
+        "id": 20,
+        "title": "Timing Summary Export",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 40},
+        "targets": [
+          {
+            "expr": "sum by (result) (rate(relay_request_timing_export_total[5m]))",
+            "legendFormat": "{{result}}"
+          }
+        ]
+      },
+      {
+        "id": 21,
+        "title": "Timing Stage Duration (P95)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 48},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum by (le, phase) (rate(relay_request_stage_duration_seconds_bucket[5m])))",
+            "legendFormat": "{{phase}}"
+          }
+        ]
+      },
+      {
+        "id": 22,
+        "title": "OTel Trace Export / Queue Drops",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 48},
+        "targets": [
+          {
+            "expr": "sum by (result) (rate(otel_trace_export_spans_total[5m]))",
+            "legendFormat": "spans - {{result}}"
+          },
+          {
+            "expr": "sum(rate(otel_trace_queue_dropped_total[5m]))",
+            "legendFormat": "queue dropped"
+          }
+        ]
+      },
+      {
+        "id": 23,
+        "title": "Async Trace Carrier Invalid",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 56},
+        "targets": [
+          {
+            "expr": "sum(rate(relay_async_trace_carrier_invalid_total[5m]))",
+            "legendFormat": "invalid carriers/s"
+          }
+        ]
       }
     ]
 }

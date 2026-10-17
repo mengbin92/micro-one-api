@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"micro-one-api/domain/execution"
+	"micro-one-api/domain/requesttrace"
 	"micro-one-api/platform/metrics"
 	"os"
 	"strings"
@@ -19,8 +20,9 @@ type ExecutionSender interface {
 }
 
 type PendingExecution struct {
-	Event  execution.Event
-	Digest string
+	Telemetry requesttrace.Carrier
+	Event     execution.Event
+	Digest    string
 }
 type ExecutionOutboxRepo interface {
 	Stats(context.Context) (int64, int64, error)
@@ -82,7 +84,9 @@ func (u *ExecutionDelivery) Run(ctx context.Context, onError func(error)) {
 			}
 			for _, row := range rows {
 				call, cancel := context.WithTimeout(ctx, 15*time.Second)
+				call, endTask := requesttrace.StartTask(call, row.Telemetry, "execution.outbox.worker")
 				_, err := u.Deliver(call, row.Event)
+				endTask(err)
 				cancel()
 				if err != nil {
 					onError(err)

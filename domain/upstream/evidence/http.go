@@ -3,6 +3,7 @@ package evidence
 import (
 	"context"
 	"io"
+	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/upstream/contract"
 	"net/http"
 	"os"
@@ -85,7 +86,9 @@ func Do(client *http.Client, req *http.Request, protocol string) (*http.Response
 	var parameterTrace *contract.Trace
 	if req != nil {
 		var err error
+		_, endTransform := requesttrace.Phase(req.Context(), "request.transform")
 		req, parameterTrace, err = contract.PrepareHTTP(req, protocol)
+		endTransform(err)
 		if err != nil {
 			return nil, &contract.Rejection{Err: err}
 		}
@@ -107,7 +110,7 @@ func Do(client *http.Client, req *http.Request, protocol string) (*http.Response
 	if parameterTrace != nil || os.Getenv("RELAY_UPSTREAM_EXECUTION_TIME_V1") == "true" {
 		startedAt = time.Now().UnixNano()
 	}
-	resp, err := client.Do(req) // #nosec G704 -- caller owns the existing URL/SSRF validation.
+	resp, err := timedHTTPDo(client, req, protocol) // #nosec G704 -- caller owns the existing URL/SSRF validation.
 	if req == nil {
 		return resp, err
 	}

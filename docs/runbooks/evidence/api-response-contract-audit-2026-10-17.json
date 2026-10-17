@@ -1,0 +1,50 @@
+{
+  "frontend_only": true,
+  "frontend_sha256": "ec77f80ee0478d8433d9a57ab2a39b5ddbe2adc5dd144fe3a21834f0e088ddb2",
+  "backup": "/opt/web/dist.bak.api-response-20261017-091657",
+  "asset_requests": "passed",
+  "containers_restarted": false,
+  "stamp": "20261017-091657",
+  "source_digest": "b48ad93dc5779714d8a95143bc8e8bcbf68dd351952a2dc2db6acc18466da6e7",
+  "scope": {
+    "explicit_api_client_callsites": 131,
+    "additional_review": [
+      "IAM dynamic requests",
+      "orders dynamic client/path selection",
+      "profile OAuth paths",
+      "status fetch",
+      "CSV/blob",
+      "Relay models/SSE fetch"
+    ]
+  },
+  "findings": {
+    "additional_raw_vs_envelope_mismatches": 0,
+    "malformed_payload_reads": "previously returned undefined; now reject",
+    "subscription_purchase_missing_data": "local regression reproduced a false order-created success; now reject",
+    "acknowledgement_callers": [
+      "register",
+      "profile update",
+      "routing billing publish"
+    ]
+  },
+  "regression_before_fix": {
+    "failed": 7,
+    "passed": 29
+  },
+  "verification": {
+    "frontend_test_files": 86,
+    "frontend_tests": 560,
+    "lint": "passed",
+    "typescript_build": "passed",
+    "asset_budget": "passed",
+    "production_served_html_and_assets": "passed",
+    "authenticated_ui_reads": [
+      "user dashboard loaded",
+      "raw model list populated",
+      "wrapped routing-group list populated",
+      "wrapped group detail populated",
+      "wrapped billing policy populated"
+    ],
+    "production_purchase_executed": false
+  }
+}

@@ -1,7 +1,7 @@
 import { useAuthorizedQuery } from '@/lib/authorization';
 import { useState } from 'react';
 import { adminApiClient } from '@/lib/api';
-import { unwrapApiData } from '@/lib/api-response';
+import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { t } from '@/lib/i18n';
 import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Input } from '@/components/ui/input';
@@ -17,7 +17,7 @@ export function RoutingBillingEditor({ id }: { id: number }) {
   return <form className="space-y-3 rounded-md border p-3" onSubmit={async (e) => {
     e.preventDefault(); setSaving(true);
     try {
-      unwrapApiData((await adminApiClient.patch(`/v1/admin/routing-groups/${id}/billing`, value)).data);
+      ensureApiSuccess((await adminApiClient.patch(`/v1/admin/routing-groups/${id}/billing`, value)).data);
       await policy.refetch(); setDraft(null); toast.success(t('结算策略已发布'));
     } catch (err) { toast.error(err instanceof Error ? err.message : t('发布失败，请刷新后重试')); }
     finally { setSaving(false); }

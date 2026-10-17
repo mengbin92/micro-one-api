@@ -1,0 +1,131 @@
+web/src/pages/DashboardPage.tsx:171:      const res = await apiClient.get('/token', { signal });
+web/src/pages/PricingPage.tsx:58:      const res = await apiClient.get('/pricing');
+web/src/pages/RedeemPage.tsx:27:      const res = await apiClient.post('/user/topup', { key: code.trim() });
+web/src/pages/TokensPage.tsx:125:      const res = await apiClient.get('/token');
+web/src/pages/TokensPage.tsx:133:      const res = await apiClient.get('/pricing');
+web/src/pages/TokensPage.tsx:147:      const res = await apiClient.delete(`/token/${id}`);
+web/src/pages/TokensPage.tsx:170:        ? await apiClient.post('/v1/routing-tokens', { name, ...routingPayload })
+web/src/pages/TokensPage.tsx:171:        : await apiClient.post('/token', { name });
+web/src/pages/TokensPage.tsx:209:      const res = await apiClient.patch(`/v1/routing-tokens/${editingToken.id}`, { ...routingModePayload(), expected_revision: editingToken.routing_revision });
+web/src/pages/TokensPage.tsx:349:              try { const res = await apiClient.patch('/v1/routing-access', { operation: 'default', routing_group_id: g.id, expected_revision: available.data.facts.revision }); ensureApiSuccess(res.data, '设置失败'); await available.refetch(); toast.success('默认分组已更新'); }
+web/src/pages/LegalPage.tsx:35:    apiClient.get('/status').then((response) => {
+web/src/pages/UsagePage.tsx:310:      const res = await apiClient.get(`/user/logs?${params}`);
+web/src/pages/OrdersPage.tsx:241:          ? apiClient.get(`/user/logs?${params}${type ? `&type=${encodeURIComponent(type)}` : ''}`)
+web/src/pages/RechargePage.tsx:67:      const res = await apiClient.post('/user/pay', {
+web/src/pages/LoginPage.tsx:45:    const response = await apiClient.post('/user/login', {
+web/src/pages/LoginPage.tsx:83:        const response = await apiClient.post('/user/register', {
+web/src/components/NotificationPanel.tsx:151:      const response = await adminApiClient.get(`/admin/notifications?${params}`);
+web/src/components/NotificationPanel.tsx:163:      const response = await adminApiClient.get(`/admin/notifications?${params}`);
+web/src/pages/SubscriptionsPage.tsx:29:      const res = await apiClient.get('/user/limits', { signal });
+web/src/pages/ProfilePage.tsx:58:      const res = await apiClient.put('/user/self', payload);
+web/src/pages/ProfilePage.tsx:98:      const res = await apiClient.get(path);
+web/src/components/PurchasablePlansSection.tsx:89:      const res = await apiClient.get('/v1/subscriptions/groups');
+web/src/components/PurchasablePlansSection.tsx:100:      const res = await apiClient.get('/v1/subscriptions/plans');
+web/src/components/PurchasablePlansSection.tsx:120:      const res = await apiClient.post(
+web/src/pages/admin/ChannelHealthPage.tsx:149:      const res = await adminApiClient.get(`/channel?${params}`);
+web/src/pages/admin/ChannelHealthPage.tsx:562:      const res = await adminApiClient.get(`/subscription-accounts?${params}`);
+web/src/pages/admin/RedemptionsPage.tsx:99:      const res = await adminApiClient.get(`/redemption?${params}`);
+web/src/pages/admin/RedemptionsPage.tsx:108:      const res = await adminApiClient.post('/redemption', {
+web/src/pages/admin/RedemptionsPage.tsx:130:      const res = await adminApiClient.delete(`/redemption/${code}`);
+web/src/lib/model-exchange.ts:122:  const { data } = await adminApiClient.get<ModelExportDocument>(
+web/src/lib/model-exchange.ts:135:  const { data } = await adminApiClient.post<ImportModelsDryRunResponse>(
+web/src/lib/model-exchange.ts:149:  const { data } = await adminApiClient.post<ImportModelsResponse>(
+web/src/components/SubscriptionContract.tsx:26:      const res = await adminApiClient.get('/v1/admin/routing-groups', { params: { page_size: 200, page_token: token, filter: 'status = "enabled"' } });
+web/src/pages/admin/PricingPage.tsx:259:      const res = await adminApiClient.get('/option/');
+web/src/pages/admin/PricingPage.tsx:333:      const res = await adminApiClient.put('/option/', { values, expected_revisions, reason });
+web/src/components/admin/UserRoutingAccess.tsx:40:  const facts = useAuthorizedQuery({ permission: 'identity.routing_access.read', queryKey: ['user-routing-access', userId], enabled: open, retry: false, queryFn: async () => unwrapApiData<RoutingFacts>((await adminApiClient.get(`/v1/admin/routing-access/${userId}`)).data) });
+web/src/components/admin/UserRoutingAccess.tsx:44:    do { const page = unwrapApiData<{ groups: typeof all; next_page_token: string }>((await adminApiClient.get('/v1/admin/routing-groups', { params: { page_size: 200, page_token: token } })).data); all.push(...page.groups); token = page.next_page_token; } while (token);
+web/src/components/admin/UserRoutingAccess.tsx:51:      const page = unwrapApiData<AvailableGroups>((await adminApiClient.get(`/v1/admin/routing-access/${userId}/available`, { params: { page_size: 200, page_token: token } })).data);
+web/src/components/admin/UserRoutingAccess.tsx:60:      const res = await adminApiClient.patch(`/v1/admin/routing-access/${userId}`, { ...body, expected_revision: facts.data.revision });
+web/src/components/admin/UserRoutingAccess.tsx:78:      const res = await adminApiClient.put(`/v1/admin/routing-groups/${priceGroupId}/user-price/${userId}`, { price_ratio: ratio, expected_version: String(available.data?.find(group => String(group.id) === priceGroupId)?.user_price_version ?? 0) });
+web/src/components/admin/UserRoutingAccess.tsx:90:      const res = await adminApiClient.delete(`/v1/admin/routing-groups/${priceGroupId}/user-price/${userId}`, { params: { expected_version: String(available.data?.find(group => String(group.id) === priceGroupId)?.user_price_version ?? 0) } });
+web/src/components/admin/RequestTracePanel.tsx:105:    queryFn: async () => (await adminApiClient.get<TraceList>(`/log/${ledgerID}/trace`)).data, retry: false });
+web/src/components/admin/RequestTracePanel.tsx:108:    queryFn: async () => (await adminApiClient.get<TraceDetail>(`/log/request-traces/${effectiveID}`)).data, retry: false,
+web/src/components/admin/RequestTraceSearchDialog.tsx:22:    queryFn: async () => (await adminApiClient.get<TraceList>('/log/request-traces', { params: { ...filters, page_token: token, page_size: 50 } })).data, retry: false });
+web/src/pages/admin/OverviewPage.tsx:512:      const res = await adminApiClient.get('/admin/summary', { signal, timeout: 10_000 });
+web/src/components/admin/ExportButton.tsx:18:      const blob = href ? new Blob([(await adminApiClient.get(href, { responseType: 'blob' })).data], { type: 'text/csv;charset=utf-8' }) : new Blob([toCsv(rows ?? [], columns ?? [])], { type: 'text/csv;charset=utf-8' });
+web/src/lib/routing-groups.ts:12:    const res = await apiClient.get('/v1/routing-groups/available', { params: { page_size: 200, page_token: token } });
+web/src/pages/admin/ReconciliationPage.tsx:168:      const res = await adminApiClient.get(`/reconciliation?page=${page}&page_size=${pageSize}`);
+web/src/pages/admin/ReconciliationPage.tsx:179:      const res = await adminApiClient.get(`/reconciliation/${selectedRunId}`);
+web/src/pages/admin/UsersPage.tsx:117:      const res = await adminApiClient.get(`/user?${params}`);
+web/src/pages/admin/UsersPage.tsx:126:        res = await adminApiClient.post(`/user/disable/${id}`);
+web/src/pages/admin/UsersPage.tsx:128:        res = await adminApiClient.post(`/user/enable/${id}`);
+web/src/pages/admin/SubscriptionPlansPage.tsx:96:      const res = await adminApiClient.get('/v1/admin/subscription-plans', { params });
+web/src/pages/admin/SubscriptionPlansPage.tsx:115:      const res = await adminApiClient.post(
+web/src/pages/admin/SubscriptionPlansPage.tsx:131:        const res = await adminApiClient.put(
+web/src/pages/admin/SubscriptionPlansPage.tsx:137:        const res = await adminApiClient.post('/v1/admin/subscription-plans', payload);
+web/src/components/admin/RoutingBillingEditor.tsx:13:  const policy = useAuthorizedQuery({ permission: 'billing.routing_policy.read', queryKey: ['routing-billing', id], queryFn: async () => unwrapApiData<Policy>((await adminApiClient.get(`/v1/admin/routing-groups/${id}/billing`)).data), retry: false });
+web/src/components/admin/RoutingBillingEditor.tsx:20:      unwrapApiData((await adminApiClient.patch(`/v1/admin/routing-groups/${id}/billing`, value)).data);
+web/src/lib/iam-api.ts:5:  return (await adminApiClient.get<IAMReply>(iamBase + path, { params: { 'context.context_type': 'platform', 'context.context_key': 'platform', ...params }, signal })).data;
+web/src/lib/iam-api.ts:13:  return (await apiClient.put<IAMReply>('/user/session/roles', { context: platformContext, role_ids: roleIds, expected_revision: expectedRevision, reason, request_id: crypto.randomUUID() })).data;
+web/src/pages/admin/UpstreamContractsPage.tsx:40:      const result = (await adminApiClient.get<ContractList>('/admin/upstream-contracts', { params: { ...scope, page_size: activeLimit }, signal })).data;
+web/src/pages/admin/UpstreamContractsPage.tsx:105:      const result = await adminApiClient.post<{ revision: string }>('/admin/upstream-contracts', body);
+web/src/pages/admin/UpstreamContractsPage.tsx:118:      setBusy(true); await adminApiClient.post('/admin/upstream-contracts/transition', body);
+web/src/components/admin/RoutingAuditDialog.tsx:67:    queryFn: async () => unwrapApiData<RoutingAudit>((await adminApiClient.get('/log/routing-audit', {
+web/src/lib/authorization.ts:61:        const response = await apiClient.get<IAMReply>('/user/authorization', { params: { 'context.context_type': platformContext.context_type, 'context.context_key': platformContext.context_key }, signal });
+web/src/pages/admin/SubscriptionsAdminPage.tsx:109:      const res = await adminApiClient.get(`/v1/admin/subscriptions${query}`);
+web/src/pages/admin/SubscriptionsAdminPage.tsx:118:      const res = await adminApiClient.get(`/v1/admin/subscriptions/progress?user_id=${filterUserId}`, { signal });
+web/src/pages/admin/SubscriptionsAdminPage.tsx:129:      const res = await adminApiClient.get('/v1/admin/subscription-groups');
+web/src/pages/admin/SubscriptionsAdminPage.tsx:143:      const res = await adminApiClient.post('/v1/admin/subscriptions/assign', payload);
+web/src/pages/admin/SubscriptionsAdminPage.tsx:156:      const res = await adminApiClient.post(`/v1/admin/subscriptions/${id}/revoke`, { reason });
+web/src/pages/admin/SubscriptionsAdminPage.tsx:168:      const res = await adminApiClient.post(`/v1/admin/subscriptions/${id}/extend`, {
+web/src/pages/admin/SubscriptionsAdminPage.tsx:183:      const res = await adminApiClient.post(`/v1/admin/subscriptions/${id}/reset-quota`, { scope });
+web/src/lib/account-queries.ts:54:    const response = await apiClient.get('/user/self', { signal });
+web/src/lib/account-queries.ts:64:    const response = await apiClient.get('/user/dashboard', { signal });
+web/src/lib/account-queries.ts:91:      const response = await apiClient.get(`/v1/subscriptions/progress?user_id=${userId}`, { signal });
+web/src/pages/admin/ChannelsPage.tsx:166:      const res = await adminApiClient.get(`/channel?${params}`);
+web/src/pages/admin/ChannelsPage.tsx:175:      const res = await adminApiClient.get(`/channel?${params}`);
+web/src/pages/admin/ChannelsPage.tsx:182:      const res = await adminApiClient.post('/channel', {
+web/src/pages/admin/ChannelsPage.tsx:213:        res = await adminApiClient.post(`/channel/disable/${id}`);
+web/src/pages/admin/ChannelsPage.tsx:215:        res = await adminApiClient.post(`/channel/enable/${id}`);
+web/src/pages/admin/ChannelsPage.tsx:227:      const res = await adminApiClient.put('/channel', {
+web/src/pages/admin/ChannelsPage.tsx:249:      const res = await adminApiClient.get(`/channel/update_balance/${id}`);
+web/src/pages/admin/ChannelsPage.tsx:261:      const res = await adminApiClient.get(`/channel/test/${id}`);
+web/src/pages/admin/ChannelsPage.tsx:273:      const res = await adminApiClient.delete(`/channel/${id}`);
+web/src/pages/admin/RoutingOpsPage.tsx:111:      const res = await adminApiClient.get<RoutingOpsView>('/admin/routing-ops');
+web/src/pages/admin/SubscriptionGroupsPage.tsx:192:      const res = await adminApiClient.get('/v1/admin/subscription-groups');
+web/src/pages/admin/SubscriptionGroupsPage.tsx:199:      const res = await adminApiClient.post('/v1/admin/subscription-groups', payload);
+web/src/pages/admin/SubscriptionGroupsPage.tsx:212:      const res = await adminApiClient.put(`/v1/admin/subscription-groups/${payload.id}`, payload);
+web/src/pages/admin/SubscriptionGroupsPage.tsx:225:      const res = await adminApiClient.delete(`/v1/admin/subscription-groups/${id}`);
+web/src/pages/admin/CostAnalysisPage.tsx:162:      const res = await adminApiClient.get('/admin/summary');
+web/src/pages/admin/VendorReportsPage.tsx:29:    queryFn: async () => (await adminApiClient.get<Payload>('/admin/vendor-reports', { params: { start: from, end: to, limit: 100 } })).data });
+web/src/pages/admin/SubscriptionAccountsPage.tsx:533:      const res = await adminApiClient.get(`/subscription-accounts?${params}`);
+web/src/pages/admin/SubscriptionAccountsPage.tsx:541:      const res = await adminApiClient.post('/subscription-accounts', payload);
+web/src/pages/admin/SubscriptionAccountsPage.tsx:583:      const res = await adminApiClient.put(`/subscription-accounts/${draft.id}`, payload);
+web/src/pages/admin/SubscriptionAccountsPage.tsx:596:      const res = await adminApiClient.put(`/subscription-accounts/${id}/status`, {
+web/src/pages/admin/SubscriptionAccountsPage.tsx:610:      const res = await adminApiClient.post(`/subscription-accounts/${id}/reset-quota`, { account_id: id, scope });
+web/src/pages/admin/SubscriptionAccountsPage.tsx:621:      const res = await adminApiClient.post('/subscription-accounts/batch-reset-quota', {
+web/src/pages/admin/SubscriptionAccountsPage.tsx:636:      const res = await adminApiClient.post('/subscription-accounts/batch-quota-template', {
+web/src/pages/admin/SubscriptionAccountsPage.tsx:652:      const res = await adminApiClient.delete(`/subscription-accounts/${id}`);
+web/src/pages/admin/SubscriptionAccountsPage.tsx:663:      const res = await adminApiClient.get(`/subscription-accounts/${account.id}`);
+web/src/pages/admin/LogsPage.tsx:203:      const res = await adminApiClient.get(`/log?${params}`);
+web/src/pages/admin/LogsPage.tsx:215:      const res = await adminApiClient.get(`/log/${selectedLogId}`);
+web/src/pages/admin/LogsPage.tsx:230:      const res = await adminApiClient.delete(`/log?${params}`);
+web/src/pages/admin/RoutingGroupsPage.tsx:37:      const res = await adminApiClient.get('/v1/admin/routing-groups', { params: {
+web/src/pages/admin/RoutingGroupsPage.tsx:47:      const res = await adminApiClient.get(`/v1/admin/routing-groups/${selected}`);
+web/src/pages/admin/RoutingGroupsPage.tsx:53:    queryFn: async () => unwrapApiData<{ version: number; billing_mode: string; price_ratio: number }>((await adminApiClient.get(`/v1/admin/routing-groups/${selected}/billing`)).data),
+web/src/pages/admin/RoutingGroupsPage.tsx:84:      const res = await adminApiClient.put(`/v1/admin/routing-groups/${detail.data.group.id}/resource-overrides`, { source_kind: sourceKind, source_id: sourceID, priority_override: priority, weight_override: weight });
+web/src/pages/admin/RoutingGroupsPage.tsx:95:      const res = await adminApiClient.post('/v1/admin/routing-groups', {
+web/src/pages/admin/RoutingGroupsPage.tsx:116:      const res = await adminApiClient.patch(`/v1/admin/routing-groups/${detail.data.group.id}`, { expected_revision: detail.data.group.revision, status, access_mode: accessMode });
+web/src/lib/model-management.ts:190:  const { data } = await adminApiClient.get<ListModelsResponse>('/admin/models', { params });
+web/src/lib/model-management.ts:198:  const { data } = await adminApiClient.get<GetModelResponse>(`/admin/models/${modelPk}`);
+web/src/lib/model-management.ts:234:  const { data } = await adminApiClient.post<CreateModelResponse>('/admin/models', payload);
+web/src/lib/model-management.ts:239:  const { data } = await adminApiClient.put<UpdateModelResponse>('/admin/models', payload);
+web/src/lib/model-management.ts:244:  const { data } = await adminApiClient.delete<UpdateModelResponse>(`/admin/models/${modelPk}`);
+web/src/lib/model-management.ts:249:  const { data } = await adminApiClient.patch<UpdateModelResponse>(`/admin/models/${modelPk}/status`, { status });
+web/src/lib/model-management.ts:254:  const { data } = await adminApiClient.post<BatchModelsResponse>('/admin/models/batch', payload);
+web/src/lib/model-management.ts:306:  const { data } = await adminApiClient.get<ListModelUsageStatsResponse>(`/admin/models/${modelPk}/usage-stats`, { params });
+web/src/lib/model-management.ts:317:  const { data } = await adminApiClient.get<ListModelHealthResponse>('/admin/model-health', { params });
+web/src/lib/model-management.ts:335:  const { data } = await adminApiClient.post<CreateModelAliasResponse>(`/admin/models/${modelPk}/aliases`, payload);
+web/src/lib/model-management.ts:340:  const { data } = await adminApiClient.delete<UpdateModelResponse>(`/admin/models/${modelPk}/aliases/${aliasId}`);
+web/src/lib/model-management.ts:345:  const { data } = await adminApiClient.post<UpdateModelResponse>(`/admin/channels/${mapping.channel_id}/models`, {
+web/src/lib/model-management.ts:353:  const { data } = await adminApiClient.post<UpdateModelResponse>(`/admin/subscription-accounts/${mapping.subscription_account_id}/models`, {
+web/src/pages/admin/OptionsPage.tsx:97:      const res = await adminApiClient.get('/option/');
+web/src/pages/admin/OptionsPage.tsx:104:      const res = await adminApiClient.put('/option/', { key, value });
+web/src/pages/admin/PaymentOrdersPage.tsx:172:      const res = await adminApiClient.get(`/payment/orders?${params}`);
+web/src/pages/admin/UpstreamCostsPage.tsx:126:      const res = await adminApiClient.get<UpstreamCostView>('/admin/upstream-costs');
+web/src/pages/admin/UpstreamCostsPage.tsx:157:      const res = await adminApiClient.post('/admin/upstream-costs', payload);
+web/src/pages/admin/UpstreamCostsPage.tsx:174:      const res = await adminApiClient.delete('/admin/upstream-costs', { params: { key } });
+web/src/pages/admin/UpstreamCostsPage.tsx:189:      const res = await adminApiClient.post<MigrationPlan>('/admin/upstream-costs/migrate', { dry_run: dryRun });
+web/src/pages/admin/OAuthBindDialog.tsx:68:      const res = await adminApiClient.post(
+web/src/pages/admin/OAuthBindDialog.tsx:93:      const res = await adminApiClient.post(

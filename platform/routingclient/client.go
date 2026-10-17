@@ -4,6 +4,7 @@ package routingclient
 import (
 	"context"
 	"fmt"
+	"micro-one-api/platform/grpc/xgrpc"
 	"micro-one-api/platform/security/serviceidentity"
 	"time"
 
@@ -25,7 +26,7 @@ func Dial(endpoint string) (*Client, func(), error) {
 	if endpoint == "" {
 		return nil, nil, fmt.Errorf("CHANNEL_GRPC_ENDPOINT is required for routing v2")
 	}
-	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())))
+	conn, err := grpc.NewClient(endpoint, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceidentity.ClientToken())))
 	if err != nil {
 		return nil, nil, err
 	}

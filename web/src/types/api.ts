@@ -1799,6 +1799,7 @@ export interface components {
             reservationId?: string;
             sourceKind?: string;
             upstreamModelId?: string;
+            requestTiming?: components["schemas"]["api.log.v1.RequestTimingSummary"];
         };
         "api.log.v1.IngestLogRequest": {
             level?: string;
@@ -1847,6 +1848,11 @@ export interface components {
             reservationId?: string;
             sourceKind?: string;
             upstreamModelId?: string;
+            /**
+             * @description Independent observation snapshot. Consumers must support this field and
+             *      its attempt references before producers are enabled.
+             */
+            requestTiming?: components["schemas"]["api.log.v1.RequestTimingSummary"];
         };
         "api.log.v1.IngestLogResponse": {
             id?: string;
@@ -1861,6 +1867,70 @@ export interface components {
         };
         "api.log.v1.PurgeLogsResponse": {
             deleted?: string;
+        };
+        "api.log.v1.RequestTimingAttempt": {
+            /** Format: int32 */
+            number?: number;
+            requestId?: string;
+            reservationId?: string;
+            sourceKind?: string;
+            sourceId?: string;
+            upstreamModelId?: string;
+            outcome?: string;
+        };
+        "api.log.v1.RequestTimingSettlement": {
+            /** @description enqueued is not a successful financial commit. */
+            status?: string;
+            observedAtMs?: string;
+        };
+        "api.log.v1.RequestTimingStage": {
+            phase?: string;
+            /** Format: double */
+            durationMs?: number;
+            /** Format: int32 */
+            count?: number;
+        };
+        /**
+         * @description All durations are milliseconds. Optional fields preserve unknown versus zero.
+         *      This is a summary, never a duplicate store of spans or request content.
+         */
+        "api.log.v1.RequestTimingSummary": {
+            /** Format: int32 */
+            version?: number;
+            observationId?: string;
+            observationKind?: string;
+            otelTraceId?: string;
+            spanId?: string;
+            compatibilityTraceId?: string;
+            rootRequestId?: string;
+            userId?: string;
+            endpoint?: string;
+            protocol?: string;
+            executionPath?: string;
+            outcome?: string;
+            startedAtMs?: string;
+            outputFinishedAtMs?: string;
+            handlerFinishedAtMs?: string;
+            turnFinishedAtMs?: string;
+            rpcFinishedAtMs?: string;
+            /** Format: double */
+            outputDurationMs?: number;
+            /** Format: double */
+            handlerDurationMs?: number;
+            /** Format: double */
+            turnDurationMs?: number;
+            /** Format: double */
+            rpcDurationMs?: number;
+            /** Format: double */
+            firstContentMs?: number;
+            outputComplete?: boolean;
+            collectionState?: string;
+            missingReasons?: string[];
+            attempts?: components["schemas"]["api.log.v1.RequestTimingAttempt"][];
+            stages?: components["schemas"]["api.log.v1.RequestTimingStage"][];
+            settlementSnapshot?: components["schemas"]["api.log.v1.RequestTimingSettlement"];
+            connectionId?: string;
+            outputOutcome?: string;
         };
         "api.monitor.v1.AlertRuleItem": {
             id?: string;

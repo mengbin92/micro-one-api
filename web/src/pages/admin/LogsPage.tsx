@@ -27,6 +27,8 @@ import { formatAmountUnits } from '@/lib/amount';
 import type { SortState } from '@/lib/table-utils';
 import { UsageAuditPanel, UsageSummaryCell, type UsageAuditLog } from '@/components/admin/UsageAuditPanel';
 import { RoutingAuditDialog } from '@/components/admin/RoutingAuditDialog';
+import { RequestTracePanel } from '@/components/admin/RequestTracePanel';
+import { RequestTraceSearchDialog } from '@/components/admin/RequestTraceSearchDialog';
 import {
   Table,
   TableBody,
@@ -150,6 +152,7 @@ function formatUpstreamProvider(log: LogEntry) {
 export function AdminLogsPage() {
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
   const [isCleanOpen, setIsCleanOpen] = useState(false);
+  const [detailTab, setDetailTab] = useState('basic');
   const [cleanEndTime, setCleanEndTime] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -283,6 +286,7 @@ export function AdminLogsPage() {
         <h2 className="text-2xl font-semibold">{t('调用日志')}</h2>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <RoutingAuditDialog defaultUserID={userId} />
+          <RequestTraceSearchDialog />
           <Button
             type="button"
             variant="outline"
@@ -457,7 +461,7 @@ export function AdminLogsPage() {
         </>
       )}
 
-      <Dialog open={selectedLogId !== null} onOpenChange={(open) => !open && setSelectedLogId(null)}>
+      <Dialog open={selectedLogId !== null} onOpenChange={(open) => { if (!open) { setSelectedLogId(null); setDetailTab('basic'); } }}>
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>{t('日志详情')}</DialogTitle>
@@ -469,28 +473,17 @@ export function AdminLogsPage() {
             <TableSkeleton columns={[t('字段'), t('值')]} rows={8} />
           ) : selectedLog ? (
             <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
-              <div className="overflow-x-auto rounded-lg border">
-                <Table>
-                  <TableBody>
-                    {detailRows.map(([label, value]) => (
-                      <TableRow key={label}>
-                        <TableCell className="w-40 bg-muted/40 text-xs font-medium text-muted-foreground">{label}</TableCell>
-                        <TableCell className="font-mono text-xs">{displayValue(value)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <div role="tablist" aria-label={t('日志详情')} className="flex gap-2">
+                {[['basic', '基本信息'], ['usage', '用量计费'], ...(selectedLog.type === 'consume' || selectedLog.level === 'consume' ? [['trace', '调用链']] : [])].map(([value, label]) => <Button key={value} permission={value === 'trace' ? 'log.request.read' : undefined} role="tab" aria-selected={detailTab === value} variant={detailTab === value ? 'default' : 'outline'} onClick={() => setDetailTab(value)}>{t(label)}</Button>)}
               </div>
-              <div>
-                <div className="mb-2 text-xs font-medium text-muted-foreground">{t('用量与计费口径')}</div>
-                <UsageAuditPanel log={selectedLog} />
-              </div>
-              <div className="rounded-lg border bg-muted/30 p-3">
-                <div className="mb-2 text-xs font-medium text-muted-foreground">{t('消息')}</div>
-                <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs leading-5">
-                  {displayValue(selectedLog.message || selectedLog.remark)}
-                </pre>
-              </div>
+              {detailTab === 'basic' && <div role="tabpanel" className="space-y-4">
+                <div className="overflow-x-auto rounded-lg border"><Table><TableBody>
+                  {detailRows.map(([label, value]) => <TableRow key={label}><TableCell className="w-40 bg-muted/40 text-xs font-medium text-muted-foreground">{label}</TableCell><TableCell className="font-mono text-xs">{displayValue(value)}</TableCell></TableRow>)}
+                </TableBody></Table></div>
+                <div className="rounded-lg border bg-muted/30 p-3"><div className="mb-2 text-xs font-medium text-muted-foreground">{t('消息')}</div><pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs leading-5">{displayValue(selectedLog.message || selectedLog.remark)}</pre></div>
+              </div>}
+              {detailTab === 'usage' && <div role="tabpanel"><UsageAuditPanel log={selectedLog} /></div>}
+              {detailTab === 'trace' && (selectedLog.type === 'consume' || selectedLog.level === 'consume') && <div role="tabpanel"><RequestTracePanel key={selectedLogId} ledgerID={selectedLogId!} /></div>}
             </div>
           ) : (
             <EmptyState title={t('日志详情不可用')} description={t('日志服务未返回此条目的详情。')} />

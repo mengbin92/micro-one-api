@@ -97,6 +97,7 @@ func newApp(
 	reg registrarResult,
 ) (*kratos.App, func()) {
 	svc.SetIAMService(iam)
+	svc.SetLogClient(clients.logClient)
 	svc.SetRoutingGroupUsecase(routingGroups)
 	svc.SetRoutingAccessUsecase(routingAccess)
 	// Wire optional subscription usecases onto the admin service.
@@ -145,6 +146,9 @@ func newApp(
 			clients.identityConn.Close()
 			clients.channelConn.Close()
 			clients.billingConn.Close()
+			if clients.logConn != nil {
+				clients.logConn.Close()
+			}
 		}
 	}
 }

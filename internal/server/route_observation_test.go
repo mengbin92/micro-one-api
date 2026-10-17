@@ -79,8 +79,20 @@ func TestRegisteredRouteCorrelatesTraceThroughSelectionOutcome(t *testing.T) {
 		require.Equal(t, "compat-test", event.TraceID)
 		require.Equal(t, "00112233445566778899aabbccddeeff", event.OTelTraceID)
 	}
-	require.Len(t, spans.Ended(), 1)
-	require.Equal(t, rec.Header().Get(xtrace.OTelTraceIDHeader), spans.Ended()[0].SpanContext().TraceID().String())
+	require.Len(t, spans.Ended(), 2)
+	var root, plan sdktrace.ReadOnlySpan
+	for _, span := range spans.Ended() {
+		switch span.Name() {
+		case "HTTP POST":
+			root = span
+		case "relay.plan":
+			plan = span
+		}
+	}
+	require.NotNil(t, root)
+	require.NotNil(t, plan)
+	require.Equal(t, root.SpanContext().SpanID(), plan.Parent().SpanID())
+	require.Equal(t, rec.Header().Get(xtrace.OTelTraceIDHeader), root.SpanContext().TraceID().String())
 }
 
 func TestRelayObservationPanicRecordsFailure(t *testing.T) {

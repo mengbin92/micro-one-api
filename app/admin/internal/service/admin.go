@@ -20,6 +20,7 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	identityv1 "micro-one-api/api/identity/v1"
+	logv1 "micro-one-api/api/log/v1"
 	adminbiz "micro-one-api/app/admin/internal/biz"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	relayprovider "micro-one-api/domain/upstream/provider"
@@ -34,6 +35,7 @@ import (
 
 // AdminService is the transport layer entry for admin-api.
 type AdminService struct {
+	logClient logv1.LogServiceClient
 	adminv1.UnimplementedAdminServiceServer
 	billingClient   billingv1.BillingServiceClient
 	identityClient  identityv1.IdentityServiceClient

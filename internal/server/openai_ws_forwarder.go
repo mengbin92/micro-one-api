@@ -66,10 +66,14 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 		return
 	}
 	// Accept the upgrade. Compression with context takeover matches both the
-	// Codex CLI and the sub2api upstream dialer.
+	// Codex CLI and the sub2api upstream dialer. The handshake and the wait for
+	// the first frame happen before any turn observation exists, so they are
+	// measured here and attached to the first turn once timings start.
+	acceptStartedAt := time.Now()
 	wsConn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 		CompressionMode: coderws.CompressionContextTakeover,
 	})
+	acceptedAt := time.Now()
 	if err != nil {
 		applogger.Log.Warn("failed to accept openai responses websocket upgrade", zap.Error(err))
 		return
@@ -86,6 +90,7 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 	readCtx, cancelRead := context.WithTimeout(ctx, s.openAIWSFirstMessageTimeout())
 	msgType, firstMessage, err := clientFrameConn.ReadFrame(readCtx)
 	cancelRead()
+	firstFrameAt := time.Now()
 	if err != nil {
 		closeOpenAIWSClientConn(wsConn, coderws.StatusPolicyViolation, "missing first response.create message")
 		return
@@ -95,6 +100,10 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 		return
 	}
 
+	ctx, timings := s.startWSTimings(ctx, firstMessage)
+	timings.ConnectionMilestones(acceptStartedAt, acceptedAt, firstFrameAt)
+	defer timings.Close()
+	r = r.WithContext(ctx)
 	clientModel := extractOpenAIWSClientModel(firstMessage)
 	if clientModel == "" {
 		closeOpenAIWSClientConn(wsConn, coderws.StatusPolicyViolation, "model is required in first response.create payload")
@@ -224,6 +233,7 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 		}
 	}
 
+	timings.Identity(plan.Auth.UserID, requestID)
 	execution = s.runResponsesWSRelayWithFailover(ctx, wsConn, clientFrameConn, r, clientModel, sessionHash, plan, firstMessage, reservation, requestID, maxSwitches)
 }
 
@@ -641,7 +651,9 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			s.relayUsecase.RecordPrimaryAttempt(currentChannel)
 			primaryRecorded = true
 		}
-		pooledConn, err := s.acquireOpenAIWSUpstreamConn(ctx, currentChannel, wsURL, headers)
+		acquireCtx, endAcquire := requesttrace.Phase(ctx, "ws.pool.acquire")
+		pooledConn, err := s.acquireOpenAIWSUpstreamConn(acquireCtx, currentChannel, wsURL, headers)
+		endAcquire(err)
 		if err != nil {
 			releaseChannel()
 			releaseAccount()
@@ -700,6 +712,11 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		// Per-turn usage logging / quota commit. Closure captures the current
 		// channel so failover switches log against the right channel.
 		onTurnComplete := func(turn openAIWSTurnResult) {
+			callbackCtx := ctx
+			if turn.ctx != nil {
+				callbackCtx = turn.ctx
+			}
+			ctx := callbackCtx
 			turnChannel := currentChannel
 			var admittedReservation *billingv1.ReserveQuotaResponse
 			if v2Turns != nil {
@@ -775,7 +792,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 						zap.Error(commitErr),
 					)
 				} else {
-					s.ingestUsageLogAfterResponse(logInput)
+					s.ingestUsageLogAfterResponse(logInput, ctx)
 				}
 			}
 			// Bind the upstream response id -> channel both locally and in the
@@ -802,6 +819,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		}
 
 		relayOptions := openAIWSRelayOptions{
+			timings:        wsTimings(ctx),
 			writeTimeout:   s.openAIWSWriteTimeout(),
 			idleTimeout:    s.openAIWSIdleTimeout(),
 			onTurnComplete: onTurnComplete,
@@ -1031,9 +1049,11 @@ func (s *HTTPServer) acquireOpenAIWSUpstreamConn(ctx context.Context, ch *relayb
 	}
 	// Pool disabled: dial directly.
 	dialer := newCoderWSUpstreamDialer()
-	dialCtx, cancel := context.WithTimeout(ctx, s.openAIWSDialTimeout())
+	dialPhaseCtx, endDial := requesttrace.Phase(ctx, "ws.upstream.dial")
+	dialCtx, cancel := context.WithTimeout(dialPhaseCtx, s.openAIWSDialTimeout())
 	defer cancel()
 	conn, statusCode, _, err := dialer.Dial(dialCtx, wsURL, headers)
+	endDial(err)
 	if err != nil {
 		if statusCode > 0 {
 			return nil, errors.Join(&relayprovider.UpstreamHTTPError{StatusCode: statusCode}, err)

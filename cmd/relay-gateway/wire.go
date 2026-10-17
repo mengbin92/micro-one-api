@@ -6,6 +6,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"micro-one-api/domain/requesttrace"
+	"micro-one-api/platform/timingdto"
 	"net/http"
 	"os"
 	"strings"
@@ -340,6 +342,14 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	relayUsecase.SetSelectionRecorder(relayservice.NewSelectionAuditRecorder(relaybiz.NewMetricsSelectionRecorder(applogger.Current()), logClient))
 
 	httpServer := server.NewHTTPServer(identityClient, channelClient, billingClient, providerFactory, relayUsecase, logClient)
+	var timingExporter *requesttrace.Exporter
+	if os.Getenv("RELAY_REQUEST_TIMING_ENABLED") == "true" {
+		timingExporter = requesttrace.NewExporter(func(ctx context.Context, s *requesttrace.TimingSummary) error {
+			_, err := logClient.IngestLog(ctx, &logv1.IngestLogRequest{Source: requesttrace.TimingSource, UserId: s.UserID, RootRequestId: s.RootRequestID, RequestTiming: timingdto.ToProto(s)})
+			return err
+		}, func(result string) { metrics.RequestTimingExportTotal.WithLabelValues(result).Inc() })
+		httpServer.SetTimingExporter(timingExporter)
+	}
 	delivery, stopExecution, err := newExecutionDelivery(billingClient)
 	if err != nil {
 		return nil, nil, err
@@ -454,6 +464,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 
 	grpcSvc := relayservice.NewRelayGrpcService(identityClient, channelClient, logClient, billingClient, providerFactory, relayUsecase)
 	grpcSvc.SetExecutionDelivery(delivery)
+	grpcSvc.SetTimingExporter(timingExporter)
 	targets, err := configuredUpstreamProbes()
 	if err != nil {
 		stopExecution()
@@ -507,6 +518,11 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	applogger.Log.Info("relay-gateway starting", zap.String("http_addr", cfg.Bootstrap.Server.Http.Addr))
 
 	cleanup := func() {
+		if timingExporter != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = timingExporter.Close(ctx)
+			cancel()
+		}
 		stopExecution()
 		stopPermit()
 		if modelReloadStop != nil {

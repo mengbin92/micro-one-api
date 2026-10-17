@@ -18,6 +18,7 @@ import (
 	"micro-one-api/api/channel/v1"
 	"micro-one-api/api/identity/v1"
 	"micro-one-api/api/log/v1"
+	"micro-one-api/domain/requesttrace"
 	biz2 "micro-one-api/domain/subscription/biz"
 	data2 "micro-one-api/domain/subscription/data"
 	"micro-one-api/domain/upstream/credential"
@@ -41,6 +42,7 @@ import (
 	"micro-one-api/platform/registry"
 	"micro-one-api/platform/routingoutbox"
 	"micro-one-api/platform/security/auth"
+	"micro-one-api/platform/timingdto"
 	"micro-one-api/platform/tls"
 	"net/http"
 	"os"
@@ -330,6 +332,16 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	relayUsecase.SetSelectionRecorder(service.NewSelectionAuditRecorder(biz.NewMetricsSelectionRecorder(logger.Current()), logClient))
 
 	httpServer := server.NewHTTPServer(identityClient, channelClient, billingClient, providerFactory, relayUsecase, logClient)
+	var timingExporter *requesttrace.Exporter
+	if os.Getenv("RELAY_REQUEST_TIMING_ENABLED") == "true" {
+		timingExporter = requesttrace.NewExporter(func(ctx context.Context, s *requesttrace.TimingSummary) error {
+			_, err := logClient.IngestLog(ctx, &logv1.IngestLogRequest{Source: requesttrace.TimingSource, UserId: s.UserID, RootRequestId: s.RootRequestID, RequestTiming: timingdto.ToProto(s)})
+			return err
+		}, func(result string) {
+			metrics.RequestTimingExportTotal.WithLabelValues(result).Inc()
+		})
+		httpServer.SetTimingExporter(timingExporter)
+	}
 	delivery, stopExecution, err := newExecutionDelivery(billingClient)
 	if err != nil {
 		return nil, nil, err
@@ -430,6 +442,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 
 	grpcSvc := service.NewRelayGrpcService(identityClient, channelClient, logClient, billingClient, providerFactory, relayUsecase)
 	grpcSvc.SetExecutionDelivery(delivery)
+	grpcSvc.SetTimingExporter(timingExporter)
 	targets, err := configuredUpstreamProbes()
 	if err != nil {
 		stopExecution()
@@ -475,6 +488,11 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		Info("relay-gateway starting", zap.String("http_addr", cfg.Bootstrap.Server.Http.Addr))
 
 	cleanup := func() {
+		if timingExporter != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = timingExporter.Close(ctx)
+			cancel()
+		}
 		stopExecution()
 		stopPermit()
 		if modelReloadStop != nil {

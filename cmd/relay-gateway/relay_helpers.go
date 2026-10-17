@@ -90,7 +90,7 @@ func createAuthenticatedClient(
 		tokenCreds := &tokenAuth{token: serviceAuth.Token}
 		opts = append(opts, grpc.WithPerRPCCredentials(tokenCreds))
 	}
-	conn, err := grpc.NewClient(endpoint, opts...)
+	conn, err := grpc.NewClient(endpoint, append(opts, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()))...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to %s: %w", endpoint, err)
 	}
@@ -128,7 +128,7 @@ func createInsecureClient(serviceName, endpoint string, tokenCreds grpc.DialOpti
 	// The interceptor is pure timing + labels (no I/O), keeping overhead
 	// negligible for chat P95 (P4 constraint).
 	opts = append(opts, grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor(serviceName)))
-	return grpc.NewClient(endpoint, opts...)
+	return grpc.NewClient(endpoint, append(opts, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()))...)
 }
 
 // parseDurationOrDefault parses a duration string, returning the default on error.

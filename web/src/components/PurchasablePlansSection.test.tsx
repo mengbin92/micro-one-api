@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router';
+import { toast } from 'sonner';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { PurchasablePlansSection } from '@/components/PurchasablePlansSection';
 import { DashboardPage } from '@/pages/DashboardPage';
@@ -371,5 +372,25 @@ describe('subscription status before purchase', () => {
 
     expect(await screen.findByText('$8.0000')).toBeInTheDocument();
     expect(dashboardReads).toBe(2);
+  });
+});
+
+describe('purchase response contracts', () => {
+  it.each([{ success: true }, { subscription: { id: 7 } }])('does not report a purchase as complete without an envelope payload: %j', async response => {
+    window.localStorage.setItem('userId', '42');
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    const success = vi.spyOn(toast, 'success');
+    const error = vi.spyOn(toast, 'error');
+    server.use(
+      http.get('/api/v1/subscriptions/progress', () => HttpResponse.json({ success: false, message: 'subscription not found' })),
+      http.get('/api/v1/subscriptions/plans', () => HttpResponse.json({ success: true, data: [] })),
+      http.get('/api/v1/subscriptions/groups', () => HttpResponse.json({ success: true, data: [{ id: 9, name: 'Contract plan', price_quota: 10, duration_days: 30 }] })),
+      http.post('/api/v1/subscriptions/purchase/payment', () => HttpResponse.json(response)),
+    );
+    renderWithQuery(<MemoryRouter><PurchasablePlansSection /></MemoryRouter>);
+    await userEvent.click(await screen.findByRole('button', { name: '购买订阅' }));
+    await userEvent.click(screen.getByRole('button', { name: '确认购买' }));
+    await waitFor(() => expect(error).toHaveBeenCalled());
+    expect(success).not.toHaveBeenCalled();
   });
 });

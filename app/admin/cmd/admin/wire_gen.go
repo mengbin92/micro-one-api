@@ -117,6 +117,7 @@ func newApp(
 	reg registrarResult,
 ) (*kratos.App, func()) {
 	svc.SetIAMService(iam2)
+	svc.SetLogClient(clients.logClient)
 	svc.SetRoutingGroupUsecase(routingGroups)
 	svc.SetRoutingAccessUsecase(routingAccess)
 
@@ -160,6 +161,9 @@ func newApp(
 			clients.identityConn.Close()
 			clients.channelConn.Close()
 			clients.billingConn.Close()
+			if clients.logConn != nil {
+				clients.logConn.Close()
+			}
 		}
 	}
 }
