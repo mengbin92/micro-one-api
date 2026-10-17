@@ -9,9 +9,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"micro-one-api/domain/requesttrace"
 	relayprovider "micro-one-api/domain/upstream/provider"
 
 	coderws "github.com/coder/websocket"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // openAIWSConnPool is a per-source upstream WebSocket connection pool. It
@@ -120,8 +123,12 @@ func (p *openAIWSConnPool) AcquireOrDial(ctx context.Context, poolKey string, ws
 	fingerprint := openAIWSConnFingerprint(wsURL, headers)
 	if reused := p.tryReuse(poolKey, fingerprint); reused != nil {
 		p.acquireReuse.Add(1)
+		// Reuse is charged to the acquiring turn: mark it on the enclosing
+		// ws.pool.acquire phase span and skip any dial phase.
+		trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("ws.pool.reused", true))
 		return reused, nil
 	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("ws.pool.reused", false))
 	conn, err := p.dialNew(ctx, poolKey, wsURL, headers)
 	if err != nil {
 		p.acquireFail.Add(1)
@@ -191,17 +198,21 @@ func (p *openAIWSConnPool) tryReuse(poolKey, fingerprint string) *openAIWSPooled
 	return nil
 }
 
-// dialNew dials a fresh upstream connection and wraps it as a pooled conn.
+// dialNew dials a fresh upstream connection and wraps it as a pooled conn. The
+// dial is only reached on a pool miss, so recording it as a per-turn phase can
+// never double-count a reuse.
 func (p *openAIWSConnPool) dialNew(ctx context.Context, poolKey string, wsURL string, headers map[string][]string) (*openAIWSPooledConn, error) {
 	dialer := p.dialer
 	if dialer == nil {
 		dialer = newCoderWSUpstreamDialer()
 	}
-	dialCtx, cancel := context.WithTimeout(ctx, p.dialTimeout)
+	dialPhaseCtx, endDial := requesttrace.Phase(ctx, "ws.upstream.dial")
+	dialCtx, cancel := context.WithTimeout(dialPhaseCtx, p.dialTimeout)
 	defer cancel()
 	hdr := make(map[string][]string, len(headers))
 	maps.Copy(hdr, headers)
 	conn, statusCode, _, err := dialer.Dial(dialCtx, wsURL, hdr)
+	endDial(err)
 	if err != nil {
 		if statusCode > 0 {
 			return nil, errors.Join(&relayprovider.UpstreamHTTPError{StatusCode: statusCode}, err)
