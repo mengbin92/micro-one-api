@@ -1,6 +1,7 @@
 package server
 
 import (
+	"google.golang.org/grpc"
 	"micro-one-api/platform/authz"
 	"os"
 
@@ -15,6 +16,7 @@ import (
 // NewGRPCServer wires gRPC transport for config-service.
 func NewGRPCServer(addr string, svc *service.ConfigService) *kgrpc.Server {
 	srv := kgrpc.NewServer(
+		kgrpc.Options(grpc.StatsHandler(xgrpc.ServerStatsHandler(nil))),
 		kgrpc.Address(addr),
 		kgrpc.Timeout(apptimeout.GetGRPCTimeout()),
 		kgrpc.UnaryInterceptor(xgrpc.ServiceTokenUnaryInterceptor(os.Getenv("SERVICE_TOKEN")), authz.OperatorUnaryInterceptor(), authz.CoverageUnaryInterceptor(svc.OwnerAuthorizationClient(), "system.options.read", configReadyMethods)),

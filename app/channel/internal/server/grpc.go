@@ -1,6 +1,7 @@
 package server
 
 import (
+	"google.golang.org/grpc"
 	"micro-one-api/platform/authz"
 	"os"
 
@@ -15,6 +16,7 @@ import (
 // NewGRPCServer wires gRPC transport for channel-service.
 func NewGRPCServer(addr string, svc *service.ChannelService) *kgrpc.Server {
 	srv := kgrpc.NewServer(
+		kgrpc.Options(grpc.StatsHandler(xgrpc.ServerStatsHandler(nil))),
 		kgrpc.Address(addr),
 		kgrpc.Timeout(apptimeout.GetGRPCTimeout()),
 		// Metrics outermost: server-side handling latency (incl. auth) is the

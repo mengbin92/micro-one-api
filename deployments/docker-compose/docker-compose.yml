@@ -66,6 +66,8 @@ services:
         SERVICE_PATH: ./app/identity/cmd/identity
     container_name: identity-service
     environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - OTEL_GO_X_OBSERVABILITY=true
       # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
       - IDENTITY_ROUTING_V2=${IDENTITY_ROUTING_V2:-false}
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002
@@ -119,6 +121,8 @@ services:
         SERVICE_PATH: ./app/channel/cmd/channel
     container_name: channel-service
     environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - OTEL_GO_X_OBSERVABILITY=true
       - UPSTREAM_PROBES_ENABLED=${UPSTREAM_PROBES_ENABLED:-false}
       - UPSTREAM_CONTRACTS_V1_ENABLED=${UPSTREAM_CONTRACTS_V1_ENABLED:-false}
       - UPSTREAM_REPAIR_REVIEW_KEYS=${UPSTREAM_REPAIR_REVIEW_KEYS:-}
@@ -199,6 +203,8 @@ services:
         SERVICE_PATH: ./app/billing/cmd/billing
     container_name: billing-service
     environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - OTEL_GO_X_OBSERVABILITY=true
       # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
       - BILLING_EXECUTION_DELIVERY_V1=${BILLING_EXECUTION_DELIVERY_V1:-false}
       - BILLING_SETTLEMENT_RECEIPTS_V1=${BILLING_SETTLEMENT_RECEIPTS_V1:-false}
@@ -284,6 +290,7 @@ services:
       - ADMIN_SCHEMA=${ADMIN_SCHEMA:-}
       - SUBSCRIPTION_SCHEMA=${SUBSCRIPTION_SCHEMA:-}
       - LOG_HTTP_ENDPOINT=http://log-service:8006
+      - LOG_GRPC_ENDPOINT=log-service:9006
       - ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN is required}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
@@ -336,6 +343,8 @@ services:
         SERVICE_PATH: ./app/config/cmd/config
     container_name: config-service
     environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - OTEL_GO_X_OBSERVABILITY=true
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DSN=${CONFIG_SQL_DSN:-${DATABASE_DSN}}
       - SQL_DSN=${CONFIG_SQL_DSN:-${DATABASE_DSN}}
@@ -373,6 +382,9 @@ services:
         SERVICE_PATH: ./app/log/cmd/log
     container_name: log-service
     environment:
+      - JAEGER_QUERY_ENDPOINT=${JAEGER_QUERY_ENDPOINT:-http://jaeger:16686}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - OTEL_GO_X_OBSERVABILITY=true
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DSN=${LOG_SQL_DSN:-${DATABASE_DSN}}
       - SQL_DSN=${LOG_SQL_DSN:-${DATABASE_DSN}}
@@ -507,6 +519,8 @@ services:
         SERVICE_PATH: ./cmd/relay-gateway
     container_name: relay-gateway
     environment:
+      - RELAY_REQUEST_TIMING_ENABLED=${RELAY_REQUEST_TIMING_ENABLED:-false}
+      - OTEL_GO_X_OBSERVABILITY=true
       # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
       - RELAY_ROUTING_CONTEXT_V2=${RELAY_ROUTING_CONTEXT_V2:-false}
       - RELAY_ROUTING_ORDERED=${RELAY_ROUTING_ORDERED:-false}

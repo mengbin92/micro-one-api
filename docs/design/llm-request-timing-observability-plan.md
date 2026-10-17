@@ -1,8 +1,8 @@
 # 大模型调用链分段耗时与管理端展示方案
 
 - 日期：2026-10-16
-- 状态：已完成源码交叉审查的技术方案，尚未实施
-- 分析依据：当前本地源码、Relay 执行边界 ADR、已有 O2 可观测性验收记录；本次未连接生产环境。
+- 状态：已实现并部署生产（2026-10-17）；producer 与管理端已启用，验收及范围边界见第 12 节；上线复核缺口补齐见第 13 节
+- 分析依据：本地源码、Relay 执行边界 ADR、已有 O2 验收记录；方案初稿未连接生产，后续实施已核实生产并完成部署。
 
 ## 1. 建议与交付边界
 
@@ -255,6 +255,85 @@ SQL 容量也需计入摘要与尝试引用、索引和去重事务的额外写�
 
 ## 10. 本次分析范围
 
-本次仅新增方案文档，没有修改运行时代码、执行构建/测试、访问线上环境或部署。未核实当前生产开关、实时请求量、磁盘容量及实际 Jaeger API 响应；这些属于实施后的契约和灰度验收工作。
+本节记录方案编写时的分析范围：当时仅新增方案文档，没有修改运行时代码、执行构建/测试、访问线上环境或部署。后续实施记录见第 11、12 节。生产开关、请求量、容量及实际 Jaeger v3 响应已在第 12 节所述验收中核实。
 
 首版不增加新的追踪平台、全量 span SQL 副本、逐 token 事件、请求正文采集或 tracing 数据零丢失保证。供应商内部处理和客户端实际接收时间保持“不可观测”边界。
+
+## 11. 实施进度（2026-10-16）
+
+首批交付是 rollout 的 consumer 前置条件，**不代表切片 1 或全链路覆盖已完成**。
+当前没有启用 Relay 自动采集、访问生产环境、部署或发布。
+
+已完成：
+
+- `api/log/v1` 增加 `RequestTimingSummary`、全部 attempts、有限阶段聚合和结束时结算快照；
+  时间统一 Unix 毫秒，耗时统一毫秒，optional 字段保留未观测/实测零值的区别。
+- `domain/requesttrace` 增加无 DTO/存储依赖的摘要 DO、校验和深拷贝；独立 UUID observation
+  不依赖 OTel 或业务账务 ID。HTTP、WS turn、unary gRPC 的可用终点分别校验，禁止
+  为 unary RPC 填造客户端输出/首内容里程碑；`enqueued` 与 `committed` 保持不同状态。
+- log-service 的 service → biz → data 完整往返保存摘要；owner 校验归属与 source，
+  强制摘要专属 observation 去重键，清空误带的用量/正文。即使启用日志批处理，摘要仍在
+  去重事务持久化后应答。普通消费日志的批写和金融去重语义保持原样。
+- `137_add_request_timing_summaries` 提供 MySQL/PostgreSQL/SQLite 的可空 JSON/文本列、
+  独立检索列、observation 唯一索引、用户/平台时间扫描索引、根请求时间索引，以及
+  `request_trace_attempt_refs`。摘要、去重 claim、全部尝试关联同事务写入，失败不泄露
+  已回滚的 ID，重放不覆盖原始关联；没有 reservation 的尝试也持久化。
+- 内存 repo 同步支持深拷贝、幂等、全部引用和清理；用户日志与用量聚合在数据库/内存
+  两条路径均排除新 source，避免摘要污染调用次数、token 和费用。
+- 保留清理与 owner 授权删除同步清理摘要引用/摘要去重记录，既有消费/选路去重保留策略
+  不变。未知归属摘要只允许平台范围读取，resource/user 范围无法借旧 Get/List 接口读取。
+- 更新可选 MySQL 分区脚本与 runbook：分区后 observation 索引转普通索引，全局幂等由
+  独立去重表主键保证；自动 DROP PARTITION 前先执行 owner 关联清理，失败则保留分区。
+- `make all` 生成 Go/Wire/OpenAPI；前端 API 类型同步生成，RBAC 源码矩阵复审更新。
+
+本批验证：
+
+- `go test -race ./domain/requesttrace ./app/log/internal/... ./platform/database/migrate ./app/log/cmd/log -count=1`，
+  显式提供本地临时 MySQL 8.4 / PostgreSQL 16 DSN，三库真实 fresh/repeat 迁移与 owner 测试
+  均执行；测试结束后删除临时容器。
+- 四种 repo 的摘要往返、未预占尝试、同 root/同 reservation 多 observation、重放不可变、
+  统计/用户日志/选路审计隔离、摘要及关联清理；SQLite 触发器验证写入/删除失败事务回滚。
+- protobuf optional presence 往返、非法嵌套 DTO、未知用户的平台权限限制；bufconn 真实
+  gRPC 验证专用 Relay 写入身份、未认证/非生产者拒绝以及 producer 无读取能力。
+- SQLite 历史升级 NULL 兼容、重复迁移、唯一索引，EXPLAIN 验证无 root 的用户/平台时间
+  查询及带 root 查询各自走对应索引，没有排序临时表。
+- `make all`、`make wire-check`、架构检查、`make migration-check`、
+  `make rbac-contract-check`（864 行），以及前端类型生成和 `npm run build`。
+- `make test-unit` 全仓单元回归通过；未执行需要整套运行环境的生产/E2E 容量验收。
+
+后续实施顺序：
+
+1. 请求内 recorder、有界摘要 exporter 和指标；HTTP/SSE 早退与写出边界、WS 独立 turn、
+   gRPC stats 生命周期及可信 W3C 传播。先确认所有部署中的 owner 实例能够往返新字段，
+   再启用 producer。
+2. 逐条覆盖实际执行路径、上游网络与流生命周期、重试、内部服务、缓存/事务，贯通结算
+   outbox 和日志共享批次的恢复/关联。
+3. owner List/GetRequestTraces 与 IAM 接线、billing 账单关联、Jaeger v3 契约验证及安全
+   查询、管理端失败请求查询与瀑布图。
+4. 可控上游验收、容量/性能基线与灰度；完成之前不宣称任意请求均有完整瀑布图。
+
+
+## 12. 实现完成与生产上线（2026-10-17）
+
+本节更新第 11 节历史阶段记录：四个实施切片已交付，七个服务和前端已部署，Relay producer 已启用。完整实现、验证数据、生产证据和回滚方法见[上线验收记录](../runbooks/llm-request-timing-acceptance-2026-10-17.md)。
+
+- 完成独立 observation、HTTP/SSE 输出边界、WS 独立轮、gRPC 传输生命周期和可信传播；补齐 Plan/鉴权/准入/预占/上游/重试/结算/日志/健康阶段、网络里程碑、DB/Redis 与后台任务恢复关联。
+- 摘要有界异步导出与 drop/error 指标已接线；金融 payload/digest、预留幂等不变。异步结算记录请求结束快照，共享日志批次以明确 links 安全关联。
+- owner 查询、账单关联、Jaeger v3 安全读取和累计限额、IAM 真实调用链、前端瀑布及独立失败请求查询已完成；历史、缺失、延迟、过期与不可用状态不补造耗时。
+- `make all`、完整 `make verify`、三数据库真实迁移/存储及 race、真实 IAM、Jaeger 2.20、流式/WS/gRPC 边界通过。前端 86 文件/544 测试通过。
+- 固定 50 ms 上游、并发 8 的受控基线：P95 从 53.185542 ms 到 53.933708 ms，增量 1.4067%，摘要 168 条全部导出；CPU 与分配开销和容量估算见验收记录。该测试不替代高峰/长期容量观测。
+- 线上先应用 137/138，再验证兼容 consumer 的字段、全部关联及幂等；其余服务健康后才开启 producer，dist 单独发布。运行账号不获 DDL；新关联表仅授予 log 账号所需 SELECT/INSERT/DELETE。
+- 线上无计费 canary：401 拒绝的摘要真实落库，返回 observation/trace ID，Jaeger 查询得到请求及解析/日志阶段。七个服务健康、重启 0、OOM 0；检查时摘要导出成功、SDK 队列丢弃 0。保留配置/SQL/镜像/前端备份。
+
+覆盖结论限于上述实现边界与明确验收场景。详细 spans 沿用 48h TTL，摘要沿用日志保留；不承诺观测数据零丢失，也不推断供应商内部推理、客户端接收或后台最终账务状态。当前生产验证没有调用真实收费模型，不把低流量 canary 当作所有供应商路径与峰值容量验收。
+
+## 13. 缺口补齐（2026-10-17，第二批）
+
+上线复核发现的四项缺口中，三项代码类缺口本批补齐；容量持续实测属于运行观测而非代码交付，已补齐其监控载体并给出执行方案。
+
+- **WS 连接细项**：`ws.accept`（握手）与 `ws.first_frame`（首帧等待）在 `handleResponsesWebSocket` 实测、由 `wsTimingSession.ConnectionMilestones` 作为回溯阶段记入**首轮** observation（`Recorder.AddElapsedStage` 生成回溯 span 并计入阶段聚合）；`ws.pool.acquire` 包裹连接池获取并以 `ws.pool.reused` 属性区分复用/新建，`ws.upstream.dial` 仅在池未命中真实拨号时记录，复用不重复计拨号（`openai_ws_pool.go`、`openai_ws_forwarder.go`）。四个阶段计入摘要 Stages 与 `relay_request_stage_duration_seconds{phase}`。
+- **L1 内存缓存**：`cache.l1` 阶段在 `MultiLevelCache.get` 的 L1 探测处记录，带 `cache.hit` / `cache.name` 安全属性，覆盖 AuthCache 与 ChannelCache；命中时请求不再静默丢失其鉴权/选路阶段。无 observation 的后台调用零开销。凭证内存缓存已有 `credential.resolve` 覆盖，未另立阶段。
+- **可选“当前结算状态”**：billing 新增 `GetSettlementStatus` RPC（owner 授权 `billing.account.ledger.read`，读 reservation 行 + 异步 settlement task 位置，返回 status/observed_at/source）；admin `GetRequestTrace` 以最后一个已预占 attempt 的 reservation 非阻断组装 `settlement_current`（权限不足/billing 不可用/未预占时缺省，不推断）；前端瀑布新增「当前结算」格与读取时间/来源说明。已注册 serviceidentity 调用策略与 billing ready methods，RBAC 矩阵复审至 876 行。
+- **完整容量验收（监控载体 + 方案）**：relay-gateway Grafana 面板新增摘要导出、阶段 P95、OTel 导出/队列丢弃、异步 carrier 失效四个面板；Prometheus 新增 `request-timing` 告警组（摘要丢弃/导出失败、OTel 队列丢弃、OTLP 导出失败、carrier 失效）。SQL 增长通过既有 log 保留/分区 runbook 观测。持续实测方案：长流以生产 WS 长跑连接核对 `ws.*` 阶段与 turn 独立性；高峰以基线同法对比开启/关闭采集的 P95/CPU/分配；Jaeger Badger 与 SQL 摘要增长按日记录 48h TTL 稳态，阈值超限时先调整存储/保留期再放量。高峰与长流实测需在真实流量窗口执行，不在本批宣称完成。
+
+回滚：WS/L1 阶段只增不删，关闭 `RELAY_REQUEST_TIMING_ENABLED` 即不再产生；`settlement_current` 为查询时附加，前端缺省即隐藏，无需数据迁移。

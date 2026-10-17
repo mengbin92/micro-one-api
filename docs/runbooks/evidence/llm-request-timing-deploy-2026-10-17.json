@@ -1,0 +1,169 @@
+{
+  "verified_at": "2026-10-17T06:33:17.778785+08:00",
+  "source_digest": "6b63e016919f1b18a202a8a1debc4c0df6c5f098010e781f72b646258cd25d8b",
+  "deployment_tag": "timing-20261017-061259-6b63e01691",
+  "producer_enabled": true,
+  "migrations": [
+    "137_add_request_timing_summaries",
+    "138_add_settlement_telemetry"
+  ],
+  "intake": {
+    "observation_id": "425e98d6-0c0e-4380-adca-545daae8b36f",
+    "log_id": 171810,
+    "attempt_refs": 2,
+    "unreserved_refs": 1,
+    "dedupe": "passed",
+    "producer_read": "denied"
+  },
+  "services": {
+    "log-service": {
+      "healthy": true,
+      "image_id": "sha256:d6761dc9ebd154e7391dc2f2a86c3d77875d98bf519057a3d0edd0c862831639"
+    },
+    "billing-service": {
+      "healthy": true,
+      "image_id": "sha256:6c5a1ab59d136af8926e16b69590b6a11dc2477cf0e8b9c838e1190eb31f291b"
+    },
+    "identity-service": {
+      "healthy": true,
+      "image_id": "sha256:ed03f3b6a8dd423fe062ddb85c05bef98dda67afb37f8ddf364a6ba7f6f14153"
+    },
+    "channel-service": {
+      "healthy": true,
+      "image_id": "sha256:a8b88e130ff3880842c9589e0b9d09f74ad9f16577512bdd38a5f77495c4acdd"
+    },
+    "config-service": {
+      "healthy": true,
+      "image_id": "sha256:e648c9bcf591b593640debf4d78bf8b3288cfcd05bff2dcef40004f4e3abc7e1"
+    },
+    "relay-gateway": {
+      "healthy": true,
+      "image_id": "sha256:8b9acade959a05361e00da3e0cecef3b03cd0ca0b5be9510c8a75b77fbcfcb1c"
+    },
+    "admin-api": {
+      "healthy": true,
+      "image_id": "sha256:4c3af459412aa69095cdafe13a3ccd7c3584f29916a7314060e7a983803578d0"
+    }
+  },
+  "canary": {
+    "observation_id": "d8450f8a-3d17-4339-822d-66aabbe7ebc3",
+    "otel_trace_id": "708a31079463db95ee8d95102741e893",
+    "outcome": "rejected",
+    "span_count": 4,
+    "phases": [
+      "/api.log.v1.LogService/IngestLog",
+      "relay.request",
+      "request.parse",
+      "usage.log"
+    ]
+  },
+  "frontend_published": true,
+  "backup": "/opt/micro-one-api/docker-compose/backups/request-timing-20261017-061259",
+  "postcheck": {
+    "frontend_sha256": "409c2fac6cef33aa938a0030d6a8db6f1f5d7ff143e1332a4c0cd6856b4383a6",
+    "metrics": [
+      "otel_trace_export_spans_total{result=\"success\"} 556",
+      "otel_trace_queue_dropped_total 0",
+      "relay_request_timing_export_total{result=\"exported\"} 1",
+      "relay_request_timing_export_total{result=\"queued\"} 1"
+    ],
+    "runtime": {
+      "log-service": {
+        "restarts": 0,
+        "oom_killed": false
+      },
+      "billing-service": {
+        "restarts": 0,
+        "oom_killed": false
+      },
+      "identity-service": {
+        "restarts": 0,
+        "oom_killed": false
+      },
+      "channel-service": {
+        "restarts": 0,
+        "oom_killed": false
+      },
+      "config-service": {
+        "restarts": 0,
+        "oom_killed": false
+      },
+      "relay-gateway": {
+        "restarts": 0,
+        "oom_killed": false
+      },
+      "admin-api": {
+        "restarts": 0,
+        "oom_killed": false
+      }
+    }
+  },
+  "query_indexes": {
+    "platform_time": [
+      {
+        "table_name": "logs",
+        "access_type": "range",
+        "key": "idx_log_trace_time",
+        "used_key_parts": [
+          "source",
+          "request_started_at_ms"
+        ],
+        "rows_examined_per_scan": 2
+      }
+    ],
+    "user_time": [
+      {
+        "table_name": "logs",
+        "access_type": "range",
+        "key": "idx_log_trace_time",
+        "used_key_parts": [
+          "source",
+          "request_started_at_ms"
+        ],
+        "rows_examined_per_scan": 2
+      }
+    ],
+    "user_reservation": [
+      {
+        "table_name": "request_trace_attempt_refs",
+        "access_type": "ref",
+        "key": "idx_trace_ref_reservation",
+        "used_key_parts": [
+          "user_id",
+          "reservation_id"
+        ],
+        "rows_examined_per_scan": 1
+      }
+    ]
+  },
+  "otlp_configuration": {
+    "log-service": {
+      "otlp_configured": true,
+      "otlp_http": true
+    },
+    "billing-service": {
+      "otlp_configured": true,
+      "otlp_http": true
+    },
+    "identity-service": {
+      "otlp_configured": true,
+      "otlp_http": true
+    },
+    "channel-service": {
+      "otlp_configured": true,
+      "otlp_http": true
+    },
+    "config-service": {
+      "otlp_configured": true,
+      "otlp_http": true
+    },
+    "relay-gateway": {
+      "otlp_configured": true,
+      "otlp_http": true
+    },
+    "admin-api": {
+      "otlp_configured": false,
+      "otlp_http": false
+    }
+  }
+}

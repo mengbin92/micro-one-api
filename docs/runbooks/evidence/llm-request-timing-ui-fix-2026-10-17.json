@@ -1,0 +1,28 @@
+{
+  "frontend_only": true,
+  "frontend_sha256": "56ca18c1fdb191c7871ec1f35975b37cab6b52bcc764c01d8e6385bc3e3c5f95",
+  "backup": "/opt/web/dist.bak.timing-ui-20261017-090731",
+  "asset_requests": "passed",
+  "containers_restarted": false,
+  "stamp": "20261017-090731",
+  "root_cause": "frontend unwrapped a raw JSON trace response as an API data envelope",
+  "regression_tests": {
+    "files": 2,
+    "passed": 10,
+    "raw_contract_failures_before_fix": 3,
+    "actual_403_denial_preserved": true
+  },
+  "checks": {
+    "lint": "passed",
+    "typescript_build": "passed",
+    "asset_budget": "passed"
+  },
+  "authenticated_browser_verification": {
+    "ledger_id": 68668,
+    "trace_detail_state": "available",
+    "output_duration_display": "8.55 s",
+    "first_content_display": "7.24 s",
+    "waterfall_visible": true,
+    "original_error_visible": false
+  }
+}

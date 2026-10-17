@@ -184,7 +184,7 @@ func newBillingClient(cfg *Config) (billingv1.BillingServiceClient, *grpc.Client
 		return nil, nil, fmt.Errorf("SERVICE_IDENTITY_TOKEN or legacy SERVICE_TOKEN is required")
 	}
 	conn, err := grpc.NewClient(
-		cfg.Bootstrap.Clients.Billing.Endpoint,
+		cfg.Bootstrap.Clients.Billing.Endpoint, grpc.WithStatsHandler(xgrpc.ClientStatsHandler()),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceToken)),
 		grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("billing-service")),

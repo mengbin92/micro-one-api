@@ -82,7 +82,11 @@ RUN make proto
 # platform, Go's host detection yields the correct GOOS/GOARCH and the
 # platform-native gcc is used — no manual CC/CXX selection is needed.
 ARG SERVICE_PATH
-RUN CGO_ENABLED=1 go build \
+ARG TARGETOS
+ARG TARGETARCH
+# Share compiled packages across local cross-builds without changing binaries.
+RUN --mount=type=cache,id=micro-one-api-gobuild-${TARGETOS}-${TARGETARCH},target=/root/.cache/go-build \
+    CGO_ENABLED=1 go build \
       -ldflags='-s -w -extldflags "-static"' \
       -o /app/bin/service ${SERVICE_PATH}
 
