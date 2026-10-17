@@ -60,6 +60,7 @@ export function TraceWaterfall({ detail }: { detail: TraceDetail }) {
     return level;
   };
   const duration = summary.observation_kind === 'grpc' ? summary.rpc_duration_ms : summary.observation_kind === 'ws_turn' ? summary.turn_duration_ms : summary.output_duration_ms;
+  const outputEnd = summary.observation_kind === 'grpc' ? summary.rpc_duration_ms : summary.output_duration_ms;
   const durationLabel = summary.observation_kind === 'grpc' ? 'RPC 耗时' : summary.observation_kind === 'ws_turn' ? '单轮耗时' : '应用输出耗时';
   return <div className="space-y-3" aria-label={t('请求调用链')}>
     <div className="grid grid-cols-2 gap-2 rounded-lg border p-3 text-sm sm:grid-cols-5">
@@ -71,6 +72,7 @@ export function TraceWaterfall({ detail }: { detail: TraceDetail }) {
     </div>
     {detail.settlement_current && <p className="text-xs text-muted-foreground">{t('当前结算读取于 {time}（{source}）', { time: new Date(detail.settlement_current.observed_at_ms).toLocaleString(locale()), source: detail.settlement_current.source })}</p>}
     {summary.output_outcome === 'write_failed' && <p className="text-xs text-destructive">{t('客户端写出失败；业务结果与输出完成状态分别记录。')}</p>}
+    {(summary.output_outcome === 'incomplete' || summary.output_outcome === 'cancelled') && <p className="text-xs text-destructive">{t('应用输出：{outcome}', { outcome: t(outcomeNames[summary.output_outcome]) })}</p>}
     <p className="text-xs text-muted-foreground">{t(stateNames[detail.detail_state] ?? '未知')} · {t('详细链路保留 {hours} 小时', { hours: detail.detail_retention_hours })}</p>
     {detail.missing_reasons?.length ? <p className="break-words text-xs text-amber-700">{t('未细分或缺失阶段')}：{detail.missing_reasons.join(' · ')}</p> : null}
     <p className="text-xs text-muted-foreground">{t('应用输出完成不代表客户端已收到；父子阶段与流水线可能重叠，不能相加。')}</p>
@@ -85,7 +87,7 @@ export function TraceWaterfall({ detail }: { detail: TraceDetail }) {
       <div className="grid grid-cols-[230px_1fr_125px] gap-2 text-xs text-muted-foreground"><span>{t('阶段与服务')}</span><span>{min.toFixed(0)} → {max.toFixed(0)} ms</span><span>{t('起始 / 耗时')}</span></div>
       {spans.map(span => <details key={span.id} className="text-xs">
         <summary className="grid cursor-pointer grid-cols-[230px_1fr_125px] items-center gap-2 rounded py-1 hover:bg-muted/40">
-          <span className="min-w-0 truncate" style={{ paddingLeft: depth(span.id) * 8 }} title={`${span.phase} · ${span.service}`}>{t(phaseNames[span.phase] ?? span.phase)}{duration !== undefined && span.start_offset_ms >= duration ? ` · ${t('结束后处理')}` : ''} <span className="text-muted-foreground">{span.service}</span></span>
+          <span className="min-w-0 truncate" style={{ paddingLeft: depth(span.id) * 8 }} title={`${span.phase} · ${span.service}`}>{t(phaseNames[span.phase] ?? span.phase)}{outputEnd !== undefined && span.start_offset_ms >= outputEnd ? ` · ${t('结束后处理')}` : ''} <span className="text-muted-foreground">{span.service}</span></span>
           <span className="relative block h-4 rounded bg-muted/40"><span className={`absolute top-0.5 h-3 min-w-px rounded ${span.outcome === 'failed' || span.outcome === 'incomplete' ? 'bg-red-500' : span.outcome === 'success' ? 'bg-emerald-500' : 'bg-sky-500'}`} style={{ left: `${(span.start_offset_ms - min) / (max - min) * 100}%`, width: `${Math.min(100, span.duration_ms / (max - min) * 100)}%` }} /></span>
           <span className="font-mono">{span.start_offset_ms.toFixed(1)} / {timingDuration(span.duration_ms)}</span>
         </summary>
@@ -105,17 +107,22 @@ export function TraceWaterfall({ detail }: { detail: TraceDetail }) {
 
 export function RequestTracePanel({ ledgerID, observationID }: { ledgerID?: string; observationID?: string }) {
   const [selected, setSelected] = useState('');
+  const [pageTokens, setPageTokens] = useState(['']);
+  const pageToken = pageTokens[pageTokens.length - 1];
   // Trace endpoints return their payload directly, without an API data envelope.
-  const candidates = useAuthorizedQuery({ permission: 'log.request.read', queryKey: ['ledger-request-traces', ledgerID], enabled: !!ledgerID,
-    queryFn: async () => (await adminApiClient.get<TraceList>(`/log/${ledgerID}/trace`)).data, retry: false });
-  const effectiveID = observationID || selected || (candidates.data?.items.length === 1 ? candidates.data.items[0].observation_id : '');
+  const candidates = useAuthorizedQuery({ permission: 'log.request.read', queryKey: ['ledger-request-traces', ledgerID, pageToken], enabled: !!ledgerID,
+    queryFn: async () => (await adminApiClient.get<TraceList>(`/log/${ledgerID}/trace`, { params: { page_token: pageToken } })).data, retry: false });
+  const needsSelection = pageTokens.length > 1 || !!candidates.data?.next_page_token || (candidates.data?.items.length ?? 0) > 1;
+  const effectiveID = observationID || selected || (!needsSelection && candidates.data?.items.length === 1 ? candidates.data.items[0].observation_id : '');
   const query = useAuthorizedQuery({ permission: 'log.request.read', queryKey: ['request-trace', effectiveID], enabled: !!effectiveID,
     queryFn: async () => (await adminApiClient.get<TraceDetail>(`/log/request-traces/${effectiveID}`)).data, retry: false,
     refetchInterval: query => (query.state.data?.detail_state === 'pending' && query.state.dataUpdateCount < 4 ? 3000 : false) });
   if (candidates.isLoading || query.isLoading) return <p className="text-sm">{t('正在读取调用链…')}</p>;
-  if (candidates.isError || query.isError) return <p role="alert" className="text-sm text-destructive">{t('调用链暂不可用或无权读取。')}</p>;
+  if (candidates.isError || query.isError) return <div className="space-y-2">{!candidates.isError && !observationID && needsSelection && <Button variant="outline" onClick={() => setSelected('')}>{t('返回观测列表')}</Button>}<p role="alert" className="text-sm text-destructive">{t('调用链暂不可用或无权读取。')}</p></div>;
   if (candidates.data?.applicable === false) return <p className="text-sm text-muted-foreground">{t('此账单不对应模型调用。')}</p>;
-  if (query.data) return <TraceWaterfall detail={query.data} />;
-  if (candidates.data && candidates.data.items.length > 1) return <div className="space-y-2"><p>{t('此预留关联多次请求，请选择一次观测。')}</p>{candidates.data.items.map(summary => <Button key={summary.observation_id} variant="outline" className="h-auto w-full justify-start whitespace-normal" onClick={() => setSelected(summary.observation_id)}>{new Date(summary.started_at_ms).toLocaleString(locale())} · {t(outcomeNames[summary.outcome] ?? '未知')} · {summary.observation_id}</Button>)}</div>;
+  if (query.data) return <div className="space-y-2">{!observationID && needsSelection && <Button variant="outline" onClick={() => setSelected('')}>{t('返回观测列表')}</Button>}<TraceWaterfall detail={query.data} /></div>;
+  if (candidates.data && needsSelection) return <div className="space-y-2"><p>{t('此预留关联多次请求，请选择一次观测。')}</p>{candidates.data.items.map(summary => <Button key={summary.observation_id} variant="outline" className="h-auto w-full justify-start whitespace-normal" onClick={() => setSelected(summary.observation_id)}>{new Date(summary.started_at_ms).toLocaleString(locale())} · {t(outcomeNames[summary.outcome] ?? '未知')} · {summary.observation_id}</Button>)}
+    <div className="flex gap-2"><Button variant="outline" disabled={pageTokens.length < 2} onClick={() => setPageTokens(pageTokens.slice(0, -1))}>{t('上一页')}</Button><Button variant="outline" disabled={!candidates.data.next_page_token} onClick={() => setPageTokens([...pageTokens, candidates.data!.next_page_token!])}>{t('下一页')}</Button></div>
+  </div>;
   return <p className="text-sm text-muted-foreground">{t('此请求未采集耗时摘要，历史记录不会推算阶段耗时。')}</p>;
 }

@@ -40,6 +40,17 @@ describe('request trace presentation', () => {
     const grpc: TraceDetail = { ...detail, summary: { ...detail.summary, observation_kind: 'grpc', protocol: 'grpc', output_duration_ms: undefined, rpc_duration_ms: 25 } };
     render(<TraceWaterfall detail={grpc} />); expect(screen.getByText('RPC 耗时')).toBeInTheDocument(); expect(screen.getByText('25.00 ms')).toBeInTheDocument(); expect(screen.queryByText('应用输出耗时')).not.toBeInTheDocument();
   });
+  it.each(['incomplete', 'cancelled'])('shows the output result when the business result is successful: %s', outputOutcome => {
+    render(<TraceWaterfall detail={{ ...detail, summary: { ...detail.summary, outcome: 'success', output_complete: false, output_outcome: outputOutcome } }} />);
+    expect(screen.getByText(outputOutcome === 'cancelled' ? '应用输出：已取消' : '应用输出：未完整输出')).toBeInTheDocument();
+  });
+  it('marks WS work after output using the output endpoint rather than the turn endpoint', () => {
+    render(<TraceWaterfall detail={{ ...detail,
+      summary: { ...detail.summary, observation_kind: 'ws_turn', output_duration_ms: 10, turn_duration_ms: 20 },
+      spans: [{ id: 'cleanup', phase: 'usage.log', service: 'relay', start_offset_ms: 12, duration_ms: 3, outcome: 'success' }],
+    }} />);
+    expect(screen.getByText(/用量日志 · 结束后处理/)).toBeInTheDocument();
+  });
   it('loads the single ledger observation using the raw HTTP response contract', async () => {
     const requests: string[] = [];
     server.use(http.get('/api/log/68668/trace', () => HttpResponse.json({ applicable: true, items: [detail.summary], next_page_token: '' })),
@@ -74,5 +85,36 @@ describe('request trace presentation', () => {
     const candidate = screen.getByRole('button', { name: /observation-2/ }); await user.click(candidate);
     await screen.findByLabelText('请求调用链'); expect(requests).toEqual(['observation-2']);
     expect(within(screen.getByLabelText('请求调用链')).getByText('failed-attempt')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '返回观测列表' }));
+    await user.click(screen.getByRole('button', { name: /observation-1/ }));
+    await screen.findByLabelText('请求调用链'); expect(requests).toEqual(['observation-2', 'observation-1']);
+  });
+  it('paginates ledger observations and preserves the choice on the last page', async () => {
+    const user = userEvent.setup(); const tokens: string[] = [];
+    server.use(http.get('/api/log/42/trace', ({ request }) => {
+      const token = new URL(request.url).searchParams.get('page_token') ?? ''; tokens.push(token);
+      return HttpResponse.json(token ? { applicable: true, items: [{ ...detail.summary, observation_id: 'older-observation' }] } : { applicable: true, items: [detail.summary], next_page_token: 'next-cursor' });
+    }), http.get('/api/log/request-traces/:id', () => HttpResponse.json(detail)));
+    renderWithQuery(<RequestTracePanel ledgerID="42" />);
+    await screen.findByRole('button', { name: /observation-1/ });
+    expect(screen.queryByLabelText('请求调用链')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '下一页' }));
+    await screen.findByRole('button', { name: /older-observation/ });
+    expect(tokens).toEqual(['', 'next-cursor']);
+    expect(screen.getByRole('button', { name: '上一页' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: /older-observation/ }));
+    await screen.findByLabelText('请求调用链');
+    await user.click(screen.getByRole('button', { name: '返回观测列表' }));
+    expect(screen.getByRole('button', { name: /older-observation/ })).toBeInTheDocument();
+  });
+  it('keeps the observation list reachable when a candidate cannot be read', async () => {
+    const user = userEvent.setup();
+    server.use(http.get('/api/log/42/trace', () => HttpResponse.json({ applicable: true, items: [detail.summary, { ...detail.summary, observation_id: 'expired-observation' }] })),
+      http.get('/api/log/request-traces/expired-observation', () => HttpResponse.json({ message: 'not found' }, { status: 404 })));
+    renderWithQuery(<RequestTracePanel ledgerID="42" />);
+    await user.click(await screen.findByRole('button', { name: /expired-observation/ }));
+    await screen.findByRole('alert');
+    await user.click(screen.getByRole('button', { name: '返回观测列表' }));
+    expect(screen.getByRole('button', { name: /observation-1/ })).toBeInTheDocument();
   });
 });

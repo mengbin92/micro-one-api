@@ -1,4 +1,7 @@
 export const EN_US_REQUEST_TIMING_MESSAGES: Record<string, string> = {
+ '应用输出：{outcome}': 'Application output: {outcome}', '返回观测列表': 'Back to observations',
+ 'WS 握手': 'WS handshake', '首帧等待': 'First frame wait', '连接池获取': 'Acquire pooled connection',
+ '上游 WS 拨号': 'Upstream WS dial', '内存缓存查询': 'Memory cache lookup',
  '上游首字节': 'Upstream first byte', '上游首正文': 'Upstream first body', '上游首有效输出': 'Upstream first content', '上游终态': 'Upstream terminal', '应用输出终态': 'Output terminal', '应用输出结束': 'Output finished', '处理结束': 'Handler finished', '单轮处理结束': 'Turn finished', 'RPC 结束': 'RPC finished', '结束后处理': 'Post-completion work', 
  '客户端写出失败；业务结果与输出完成状态分别记录。': 'Client write failed. Business outcome and output completion are recorded separately.', 
  '共享批次（多请求共享，不重复累计）': 'Shared batch (shared by multiple requests; counted once)',
