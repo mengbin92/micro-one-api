@@ -3,6 +3,11 @@
 .claude
 .DS_Store
 
+# Documentation and Go tests are not inputs to service images.
+docs
+*.md
+**/*_test.go
+
 # Runtime credentials and private migration evidence are never build inputs.
 .env
 .env.*
