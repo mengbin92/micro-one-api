@@ -147,6 +147,9 @@ func (r *Repository) createTimingBatchDB(ctx context.Context, entries []*biz.Log
 	sort.Strings(keys)
 	idsByKey := make(map[string]int64, len(keys))
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if tx.Dialector.Name() == "postgres" {
+			return createTimingPostgresBatch(tx, keys, byKey, idsByKey)
+		}
 		claims := make([]logIngestDedupeClaimModel, 0, len(keys))
 		for _, key := range keys {
 			claims = append(claims, logIngestDedupeClaimModel{DedupeKey: key, CreatedAt: time.Now().Unix()})
