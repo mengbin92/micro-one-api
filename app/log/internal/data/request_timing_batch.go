@@ -166,7 +166,9 @@ func (r *Repository) createTimingBatchDB(ctx context.Context, entries []*biz.Log
 				return err
 			}
 		}
-		updateSQL += " END"
+		// The existing BIGINT column anchors CASE's result type on PostgreSQL;
+		// otherwise all-parameter THEN branches can be inferred as text.
+		updateSQL += " ELSE log_id END"
 		return tx.Model(&logIngestDedupeClaimModel{}).Where("dedupe_key IN ?", freshKeys).
 			Update("log_id", gorm.Expr(updateSQL, updateArgs...)).Error
 	})
