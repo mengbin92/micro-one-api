@@ -19,16 +19,17 @@ import (
 
 // openAIWSRelayOptions configures the bidirectional Responses WebSocket relay.
 type openAIWSRelayOptions struct {
-	timings           *wsTimingSession
-	contractSelection func() contract.Selection
-	durableRecord     func(evidence.Record) error
-	durableBefore     func() error
-	beforeWriteUp     func(context.Context, coderws.MessageType, []byte) ([]byte, error)
-	writeTimeout      time.Duration
-	idleTimeout       time.Duration
-	onTurnComplete    func(turn openAIWSTurnResult)
-	beforeWriteDown   func(msgType coderws.MessageType, payload []byte) error
-	readClientFrame   func(ctx context.Context, conn openAIWSFrameConn) (coderws.MessageType, []byte, error)
+	timings             *wsTimingSession
+	contractSelection   func() contract.Selection
+	durableRecord       func(evidence.Record) error
+	durableBefore       func() error
+	durableHistoryLimit bool
+	beforeWriteUp       func(context.Context, coderws.MessageType, []byte) ([]byte, error)
+	writeTimeout        time.Duration
+	idleTimeout         time.Duration
+	onTurnComplete      func(turn openAIWSTurnResult)
+	beforeWriteDown     func(msgType coderws.MessageType, payload []byte) error
+	readClientFrame     func(ctx context.Context, conn openAIWSFrameConn) (coderws.MessageType, []byte, error)
 }
 
 // openAIWSRelayUsage is the per-turn / per-session usage accumulator. The field
@@ -594,7 +595,7 @@ func relayOpenAIWSFrames(
 							seenShadowResponses[o.ProviderRequestID] = true
 							shadowResponseOrder = append(shadowResponseOrder, o.ProviderRequestID)
 							if len(shadowResponseOrder) > evidence.MaxEvents {
-								if durable != nil {
+								if opts.durableHistoryLimit {
 									exitCh <- openAIWSRelayExit{stage: "durable_history_limit", err: errors.New("durable websocket history limit reached"), wroteDownstream: wroteDownstream}
 									return
 								}

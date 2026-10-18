@@ -1,0 +1,35 @@
+{
+  "checked_at": "2026-10-18T09:40:40.010589+08:00",
+  "backup": "/opt/micro-one-api/monitoring/prometheus/alerts.yml.bak.request-timing-20261018-094036",
+  "before_sha256": "2f4555801b2f65eac1cc41f709b3a16ef32cd3d73ce4ef6ad3599ceece30554d",
+  "after_sha256": "8440cc00094f0cf1b6169fa7d750c987d475112deadbff4547b0c2b21c28a570",
+  "reload_status": 200,
+  "rules": [
+    {
+      "name": "RequestTimingExportDropped",
+      "health": "unknown",
+      "query": "sum by (instance) (increase(relay_request_timing_export_total{result=~\"full|closed|failed|invalid|turn_capacity\"}[5m])) > 0",
+      "state": "inactive"
+    },
+    {
+      "name": "OtelTraceQueueDropping",
+      "health": "unknown",
+      "query": "sum by (instance) (increase(otel_trace_queue_dropped_total[5m])) > 0",
+      "state": "inactive"
+    },
+    {
+      "name": "OtelTraceExportFailing",
+      "health": "unknown",
+      "query": "sum by (instance) (rate(otel_trace_export_spans_total{result!=\"success\"}[5m])) > 0",
+      "state": "inactive"
+    },
+    {
+      "name": "AsyncTraceCarrierInvalid",
+      "health": "unknown",
+      "query": "sum by (instance) (increase(relay_async_trace_carrier_invalid_total[30m])) > 0",
+      "state": "inactive"
+    }
+  ],
+  "service_instances_preserved": true,
+  "scope": "Preserved existing production rules and appended the tested request-timing group only."
+}

@@ -2,7 +2,8 @@
 """Fresh SQLite Compose smoke; only writes to its own temporary project.
 
 Uses the current contents of tracked files, no ignored .env, generated stubs or
-existing volumes. Only the upstream is mocked; all user actions use public HTTP.
+existing volumes. Verifies backup recovery into a second project's empty volumes.
+Only the upstream is mocked; all user actions use public HTTP.
 Requires Python 3, git and Docker Compose. --keep retains the isolated demo.
 """
 import argparse
@@ -72,8 +73,12 @@ def main():
     settings.update(CHANNEL_ENCRYPTION_KEY=secrets.token_hex(16), LITE_ADMIN_PORT="0", LITE_RELAY_PORT="0",
                     INITIAL_ADMIN_PASSWORD="", ALIPAY_CERT_DIR=str(scratch / "cert"))
     (scratch / "cert").mkdir()
+    identities = scratch / "identities.env"
+    subprocess.run(["python3", str(repo / "scripts/prepare-rbac-service-identities.py"), "--output", str(identities)], check=True)
+    settings.update(line.split("=", 1) for line in identities.read_text().splitlines() if line and not line.startswith("#"))
     env_path.write_text("".join(f"{key}={value}\n" for key, value in settings.items()))
     env_path.chmod(0o600)
+    subprocess.run(["python3", str(repo / "scripts/check-service-identities.py"), "--env", str(env_path)], check=True)
     # Do not inherit deployment/Compose variables from the caller's shell.
     child_env = {key: value for key, value in os.environ.items()
                  if key not in settings and not key.startswith(("COMPOSE_", "BILLING_CANONICAL_", "RELAY_"))}
@@ -87,8 +92,11 @@ def main():
         "relay-gateway": {"environment": {"PROVIDER_DISABLE_SSRF_CHECK": "true"}},
         "channel-service": {"environment": {"PROVIDER_DISABLE_SSRF_CHECK": "true"}},
     }}))
-    compose = ["docker", "compose", "--project-name", project, "--env-file", str(env_path),
-               "-f", str(compose_dir / "docker-compose.lite.yml"), "-f", str(override)]
+    compose_options = ["--env-file", str(env_path), "-f", str(compose_dir / "docker-compose.lite.yml"),
+                       "-f", str(override)]
+    compose = ["docker", "compose", "--project-name", project, *compose_options]
+    source_compose = compose
+    recovery_compose = None
     log_path = scratch / "compose.log"
 
     def run(*args):
@@ -145,6 +153,68 @@ def main():
         eventually(lambda: request(relay + "/v1/models", token=token).get("data"), "persisted Token and channel after restart")
         require(run("exec", "-T", "identity-service", "cat", "/data/initial-admin-password.txt") == password, "bootstrap must not reset on restart")
         print("[lite] PASS repeat migration and persistence after restart", flush=True)
+
+        # Stop both stores at one point; restore only into a new project's empty volumes.
+        backup_dir = scratch / "backup"
+        backup_dir.mkdir(mode=0o700)
+        child_env["REDISCLI_AUTH"] = settings["REDIS_PASSWORD"]
+        marker = secrets.token_hex(16)
+        require(run("exec", "-T", "-e", "REDISCLI_AUTH", "redis", "redis-cli", "SET", "lite-smoke:recovery", marker) == "OK",
+                "Redis recovery marker")
+        saved_user = request(admin + "/api/user/self", token=session)["data"]
+        saved_wallet = request(admin + "/api/user/quota", token=session)["data"]
+        logged("stop")
+        with log_path.open("a") as log:
+            for service, name in (("sqlite-init", "sqlite"), ("redis", "redis")):
+                with (backup_dir / (name + ".tar.gz")).open("wb") as archive:
+                    subprocess.run(compose + ["run", "--rm", "-T", "--no-deps", service,
+                                              "tar", "-C", "/data", "-czf", "-", "."],
+                                   cwd=compose_dir, env=child_env, stdout=archive, stderr=log, check=True)
+        shutil.copy2(env_path, backup_dir / "env")
+        print("[lite] PASS stopped SQLite/Redis backup and saved encryption keys", flush=True)
+
+        recovery_project = project + "-restore"
+        require(not subprocess.check_output(["docker", "volume", "ls", "-q", "--filter",
+                                             "label=com.docker.compose.project=" + recovery_project]).strip(),
+                "recovery project must start without existing volumes")
+        config = json.loads(run("config", "--format", "json"))
+        recovery_override = compose_dir / "recovery.json"
+        recovery_override.write_text(json.dumps({"services": {
+            name: {"image": project + "-" + name} for name, service in config["services"].items() if "build" in service
+        }}))
+        # Reuse this run's built images; do not rebuild or touch another project's images.
+        recovery_options = compose_options.copy()
+        recovery_options[1] = str(backup_dir / "env")
+        recovery_compose = ["docker", "compose", "--project-name", recovery_project, *recovery_options,
+                            "-f", str(recovery_override)]
+        compose = recovery_compose
+        with log_path.open("a") as log:
+            for service, name in (("sqlite-init", "sqlite"), ("redis", "redis")):
+                with (backup_dir / (name + ".tar.gz")).open("rb") as archive:
+                    subprocess.run(compose + ["run", "--rm", "-T", "--no-deps", service,
+                                              "tar", "-C", "/data", "-xzf", "-"],
+                                   cwd=compose_dir, env=child_env, stdin=archive, stdout=log, stderr=log, check=True)
+        logged("up", "-d", "--no-build")
+        admin = "http://" + run("port", "admin-api", "8000")
+        relay = "http://" + run("port", "relay-gateway", "8080")
+        recovered_login = eventually(lambda: request(admin + "/api/user/login", {"username": "admin", "password": password}),
+                                     "restored admin login")
+        recovered_session = recovered_login["data"] if isinstance(recovered_login["data"], str) else recovered_login["data"]["token"]
+        recovered_user = request(admin + "/api/user/self", token=recovered_session)["data"]
+        for key in ("id", "username"):
+            require(recovered_user[key] == saved_user[key], "restored user field: " + key)
+        recovered_wallet = request(admin + "/api/user/quota", token=recovered_session)["data"]
+        for key in ("balance", "used_amount", "frozen_amount", "request_count"):
+            require(recovered_wallet[key] == saved_wallet[key], "restored wallet field: " + key)
+        require(run("exec", "-T", "identity-service", "cat", "/data/initial-admin-password.txt") == password,
+                "restored private bootstrap password")
+        require(run("exec", "-T", "-e", "REDISCLI_AUTH", "redis", "redis-cli", "GET", "lite-smoke:recovery") == marker,
+                "Redis data restored from the same backup")
+        eventually(lambda: request(relay + "/v1/models", token=token).get("data"), "restored original Token")
+        chat = request(relay + "/v1/chat/completions", {"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": "Hello lite"}],
+                       "max_tokens": 16, "stream": False}, token)
+        require(chat["choices"][0]["message"]["content"] == "Mock response for: Hello lite", "restored channel credential decryption")
+        print("[lite] PASS empty-volume recovery: login, wallet, Redis, original Token and encrypted channel", flush=True)
         print(f"[lite] PASS complete; admin={admin}, relay={relay}", flush=True)
     except Exception:
         # Keep diagnostics private; service logs can contain test credentials.
@@ -153,10 +223,15 @@ def main():
         print(f"[lite] FAIL; private diagnostics: {scratch}", flush=True)
         raise
     finally:
-        if args.keep:
-            print(f"[lite] Retained for inspection. Cleanup: docker compose -p {project} --env-file {env_path} -f {compose_dir}/docker-compose.lite.yml -f {override} down -v --rmi local", flush=True)
-        else:
-            logged("down", "-v", "--rmi", "local")
+        for compose in (recovery_compose, source_compose):
+            if compose is None:
+                continue
+            if args.keep:
+                print("[lite] Retained for inspection. Cleanup: " + " ".join(compose) + " down -v" +
+                      (" --rmi local" if compose is source_compose else ""), flush=True)
+            else:
+                logged("down", "-v", *(["--rmi", "local"] if compose is source_compose else []))
+        if not args.keep:
             print("[lite] Removed only this smoke project's containers, images, network and volumes", flush=True)
 
 

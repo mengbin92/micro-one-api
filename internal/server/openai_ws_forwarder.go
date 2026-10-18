@@ -819,10 +819,12 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		}
 
 		relayOptions := openAIWSRelayOptions{
-			timings:        wsTimings(ctx),
-			writeTimeout:   s.openAIWSWriteTimeout(),
-			idleTimeout:    s.openAIWSIdleTimeout(),
-			onTurnComplete: onTurnComplete,
+			timings: wsTimings(ctx),
+			// The callback also reports contracts when durable delivery is disabled.
+			durableHistoryLimit: reservation.GetExecutionDeliveryVersion() > 0,
+			writeTimeout:        s.openAIWSWriteTimeout(),
+			idleTimeout:         s.openAIWSIdleTimeout(),
+			onTurnComplete:      onTurnComplete,
 		}
 		if v2Turns != nil {
 			relayOptions.beforeWriteUp = v2Turns.beforeWrite

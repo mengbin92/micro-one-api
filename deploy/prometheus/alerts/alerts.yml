@@ -569,7 +569,7 @@ groups:
     interval: 30s
     rules:
       - alert: RequestTimingExportDropped
-        expr: sum by (instance) (increase(relay_request_timing_export_total{result=~"dropped|error"}[5m])) > 0
+        expr: sum by (instance) (increase(relay_request_timing_export_total{result=~"full|closed|failed|invalid|turn_capacity"}[5m])) > 0
         for: 5m
         labels:
           severity: warning

@@ -1,0 +1,10 @@
+{
+  "billing_commits": 1200,
+  "completed_history_limit": 64,
+  "duration_seconds": 69.805671042,
+  "exported": 1200,
+  "heap_after_gc_at_128": 10569976,
+  "heap_after_gc_at_end": 12130552,
+  "heap_scope": "includes retained fake billing requests, assertion maps and sticky routes; no production memory claim",
+  "turns": 1200
+}

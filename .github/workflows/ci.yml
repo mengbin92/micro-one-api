@@ -235,7 +235,7 @@ jobs:
         run: |
           docker run --rm --entrypoint /bin/promtool \
             -v "$PWD/deploy/prometheus/alerts:/rules:ro" -w /rules \
-            prom/prometheus:v3.6.0 test rules operations.test.yml credential.test.yml routing.test.yml
+            prom/prometheus:v3.6.0 test rules operations.test.yml credential.test.yml routing.test.yml vendor-evidence.test.yml request-timing.test.yml
 
       - name: Set up Go
         uses: actions/setup-go@v6

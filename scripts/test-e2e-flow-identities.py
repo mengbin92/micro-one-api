@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the real E2E startup wiring without building or starting containers."""
+"""Check real E2E/Lite startup wiring without building or starting containers."""
 import os
 from pathlib import Path
 import shutil
@@ -11,6 +11,37 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 class E2EIdentityTest(unittest.TestCase):
+    def test_lite_smoke_provisions_service_identities_before_building(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            scratch = Path(scratch)
+            docker = scratch / "docker"
+            docker.write_text('''#!/usr/bin/env python3
+import json, os, subprocess, sys
+from pathlib import Path
+args = sys.argv[1:]
+if "config" in args:
+    config = json.loads(subprocess.check_output(
+        [os.environ["TEST_DOCKER"]] + args[:args.index("config")] + ["config", "--format", "json"]))
+    services = config["services"]
+    relay = services["relay-gateway"]["environment"]["SERVICE_IDENTITY_TOKEN"]
+    assert relay and relay != services["relay-gateway"]["environment"]["SERVICE_TOKEN"]
+    for owner in ("channel-service", "identity-service", "billing-service", "log-service", "config-service"):
+        callers = json.loads(services[owner]["environment"]["SERVICE_CALLER_TOKENS"])
+        assert callers.get("relay") == relay, owner + " does not trust the Lite relay"
+    Path(os.environ["TEST_RESULT"]).write_text("PASS")
+    sys.exit(1)  # Stop before any build, container or HTTP operation.
+assert "build" not in args and "up" not in args
+''')
+            docker.chmod(0o700)
+            result_file = scratch / "result"
+            env = dict(os.environ, PATH=str(scratch) + os.pathsep + os.environ["PATH"],
+                       TEST_DOCKER=shutil.which("docker"), TEST_RESULT=str(result_file), TMPDIR=str(scratch))
+            result = subprocess.run(["python3", str(ROOT / "scripts/test-lite-smoke.py")],
+                                    env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertTrue(result_file.exists(), result.stdout + result.stderr)
+            self.assertEqual(result_file.read_text(), "PASS")
+
     def test_compose_receivers_trust_dedicated_relay(self):
         with tempfile.TemporaryDirectory() as scratch:
             scratch = Path(scratch)

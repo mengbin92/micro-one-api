@@ -1,0 +1,54 @@
+{
+  "checked_at": "2026-10-18T09:47:26.252104+08:00",
+  "git_head": "15feb4231a56f758a16e8c7cdee8e6305632f2e5",
+  "go_version": "go version go1.27.2 darwin/arm64",
+  "platform": "Darwin arm64",
+  "original_fixture_sha256": "057731d3447350be82909f328c513903a35de11fe1558fa95d044a682004072d",
+  "overlay": "perf-peak.patch",
+  "concurrency": 64,
+  "requests_per_mode": 1280,
+  "warmup_per_mode": 8,
+  "fake_upstream_wait_ms": 50,
+  "gate_percent": 5,
+  "runs": [
+    {
+      "run": 1,
+      "file": "perf-peak-run1.json",
+      "p95_overhead_percent": 5.326616649461724,
+      "passes_existing_5_percent_gate": false,
+      "exported": 1288,
+      "dropped": 0
+    },
+    {
+      "run": 2,
+      "file": "perf-peak-run2.json",
+      "p95_overhead_percent": 5.084493238445775,
+      "passes_existing_5_percent_gate": false,
+      "exported": 1288,
+      "dropped": 0
+    },
+    {
+      "run": 3,
+      "file": "perf-peak-run3.json",
+      "p95_overhead_percent": 0.8116621672316748,
+      "passes_existing_5_percent_gate": true,
+      "exported": 1288,
+      "dropped": 0
+    },
+    {
+      "run": 4,
+      "file": "perf-peak-run4.json",
+      "p95_overhead_percent": 3.449299481564938,
+      "passes_existing_5_percent_gate": true,
+      "exported": 1288,
+      "dropped": 0
+    }
+  ],
+  "verdict": "NOT_PASSED: two of four runs exceed the existing controlled 5 percent P95 gate.",
+  "limitations": [
+    "Local arm64 mock-upstream experiment; no production pressure or feature-flag changes.",
+    "Fixed disabled-then-enabled order and short duration remain sensitive to scheduling and GC.",
+    "The original production/test source is unchanged; the overlay only changes load parameters.",
+    "No peak capacity approval, WS long-run approval, or cross-platform performance claim."
+  ]
+}

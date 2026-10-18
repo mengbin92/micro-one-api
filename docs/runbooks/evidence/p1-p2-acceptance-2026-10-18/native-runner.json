@@ -1,0 +1,33 @@
+{
+  "cpu_limit": 4.0,
+  "memory_limit_bytes": 1073741824,
+  "network_mode": "none",
+  "image_id": "sha256:ee4851781507a617e5a5e527b3edeebc0f803385e9a47b380c1ed58fe88e60e6",
+  "state": {
+    "ExitCode": 0,
+    "OOMKilled": false,
+    "StartedAt": "2026-10-18T06:10:20.864154099Z",
+    "FinishedAt": "2026-10-18T06:14:24.85416193Z"
+  },
+  "binary_sha256": "771d321dadb871e29926183dc6a21d3385693b03ece358554668d6f2c53a4675",
+  "source_archive_sha256": "100479e4c3500cc153c22896069be1803bc0d1820f5be704cd8cefd0843c6793",
+  "amd64_dependency_archive_sha256": "1a865a4398439775a97cbb752e4ef20c0b604e86cac39f314dcd6109dc471933",
+  "scope": "Existing independent native amd64 builder; 4CPU/1GiB isolated container; no production changes; no external network during compilation or measurement.",
+  "hardware": {
+    "cpu_model": "Intel(R) Xeon(R) CPU E5-2686 v4 @ 2.30GHz",
+    "cpu_features": [
+      "avx",
+      "avx2",
+      "sse4_2"
+    ],
+    "kernel": "Linux 7.0.0-31-generic"
+  },
+  "source_files_verified_against_working_tree": {
+    "go.mod": "28168464087b76c92c9a207b020236baf47df1b85647d53951711a8409594d3d",
+    "go.sum": "d42188ed3c09570d2f59440b8e13f6be6de35c5bb387d3df8db0af0a27263360",
+    "internal/server/openai_ws_forwarder.go": "8e5050d54f738eb34d614573d7f9f6a9df4abd54941b31fd8b0b314874964b0f",
+    "internal/server/openai_ws_relay.go": "417ac4af43080c1f7e1d4a2ce4cc6c6754845d4e33bd78db6ceb952d5a815112",
+    "internal/server/request_timing_perf_test.go": "a0567b603bf6c8d30bf73c1f87f24f0d9db9f06c7e78ff9e5537bc9b8231af89",
+    "internal/server/request_timing_ws_e2e_test.go": "8db0d0d11b0739ecc03763a9ecfcac98b22fbf590e12184b7b0d4e35cb6bb3d5"
+  }
+}

@@ -1,0 +1,545 @@
+{
+  "checked_at": "2026-10-18T09:39:43.920925+08:00",
+  "query_end": "2026-10-18T09:37:41+08:00",
+  "runtime": [
+    {
+      "service": "relay-gateway",
+      "container_id": "8c1208bd48fc5a93ae7dc07e65288a0e7b69aa40869ed21e18eaaecc33bcf382",
+      "image_id": "sha256:bf54390258bc5edfa827bdb2e63932edfa0e5eadb70eff15462b1823d1b0d80a",
+      "started_at": "2026-10-17T08:34:43.941505276Z",
+      "restart_count": 0,
+      "oom": false,
+      "memory_limit": 0
+    },
+    {
+      "service": "log-service",
+      "container_id": "bc093ea21b9bc545bd2a59c94a21e62731637d81e1e7f64703d74f69e476a4af",
+      "image_id": "sha256:1eff0624911100a2f51740731b8c1d0bed0a9c373bc8e3a9ae548d05043d7292",
+      "started_at": "2026-10-17T08:35:10.15486759Z",
+      "restart_count": 0,
+      "oom": false,
+      "memory_limit": 0
+    },
+    {
+      "service": "jaeger",
+      "container_id": "70aa84d09cdcdc96207e8a9cef8b7e94473418586c605a6f9ee15674edabca67",
+      "image_id": "sha256:4a130978c31a30d9baadd9fd902eeb779ed7bf2efd53e8b17bd79069e689da1b",
+      "started_at": "2026-09-27T07:37:59.975007646Z",
+      "restart_count": 0,
+      "oom": false,
+      "memory_limit": 536870912
+    },
+    {
+      "service": "prometheus",
+      "container_id": "49ba7338940c2de741612bcff061dfd33405e12ddfbd15a28ccabb1f9f1cee85",
+      "image_id": "sha256:76947e7ef22f8a698fc638f706685909be425dbe09bd7a2cd7aca849f79b5f64",
+      "started_at": "2026-09-26T12:59:11.122483528Z",
+      "restart_count": 0,
+      "oom": false,
+      "memory_limit": 0
+    }
+  ],
+  "config": {
+    "timing_enabled": "true",
+    "otlp_configured": true,
+    "log_retention_days": null,
+    "jaeger_retention": [
+      "spans: 48h"
+    ]
+  },
+  "queries": {
+    "export_snapshot": {
+      "promql": "sum by(result)(relay_request_timing_export_total{instance=\"relay-gateway:8080\"})",
+      "result": [
+        {
+          "metric": {
+            "result": "exported"
+          },
+          "value": [
+            1792287461,
+            "169"
+          ]
+        },
+        {
+          "metric": {
+            "result": "queued"
+          },
+          "value": [
+            1792287461,
+            "169"
+          ]
+        }
+      ]
+    },
+    "export_increase_24h": {
+      "promql": "sum by(result)(increase(relay_request_timing_export_total{instance=\"relay-gateway:8080\"}[24h]))",
+      "result": [
+        {
+          "metric": {
+            "result": "exported"
+          },
+          "value": [
+            1792287461,
+            "665.1154714360132"
+          ]
+        },
+        {
+          "metric": {
+            "result": "queued"
+          },
+          "value": [
+            1792287461,
+            "665.1154714360132"
+          ]
+        }
+      ]
+    },
+    "otel_drops_24h": {
+      "promql": "sum(increase(otel_trace_queue_dropped_total[24h]))",
+      "result": [
+        {
+          "metric": {},
+          "value": [
+            1792287461,
+            "0"
+          ]
+        }
+      ]
+    },
+    "otel_export_24h": {
+      "promql": "sum by(result)(increase(otel_trace_export_spans_total[24h]))",
+      "result": [
+        {
+          "metric": {
+            "result": "success"
+          },
+          "value": [
+            1792287461,
+            "906175.322104532"
+          ]
+        }
+      ]
+    },
+    "carrier_invalid_24h": {
+      "promql": "sum(increase(relay_async_trace_carrier_invalid_total[24h]))",
+      "result": [
+        {
+          "metric": {},
+          "value": [
+            1792287461,
+            "0"
+          ]
+        }
+      ]
+    },
+    "stage_p95_24h": {
+      "promql": "histogram_quantile(0.95,sum by(le,phase)(rate(relay_request_stage_duration_seconds_bucket[24h])))",
+      "result": [
+        {
+          "metric": {
+            "phase": "upstream.http"
+          },
+          "value": [
+            1792287461,
+            "61.50756288659793"
+          ]
+        },
+        {
+          "metric": {
+            "phase": "usage.log"
+          },
+          "value": [
+            1792287461,
+            "0.015426450116009282"
+          ]
+        },
+        {
+          "metric": {
+            "phase": "admission.check"
+          },
+          "value": [
+            1792287461,
+            "0.014388135593220337"
+          ]
+        },
+        {
+          "metric": {
+            "phase": "health.report"
+          },
+          "value": [
+            1792287461,
+            "0.015399999999999999"
+          ]
+        },
+        {
+          "metric": {
+            "phase": "quota.commit"
+          },
+          "value": [
+            1792287461,
+            "0.015418152866242037"
+          ]
+        },
+        {
+          "metric": {
+            "phase": "quota.reserve"
+          },
+          "value": [
+            1792287461,
+            "0.01596622516556291"
+          ]
+        },
+        {
+          "metric": {
+            "phase": "relay.plan"
+          },
+          "value": [
+            1792287461,
+            "0.061806959152798796"
+          ]
+        },
+        {
+          "metric": {
+            "phase": "request.transform"
+          },
+          "value": [
+            1792287461,
+            "0.011752000000000014"
+          ]
+        },
+        {
+          "metric": {
+            "phase": "response.stream"
+          },
+          "value": [
+            1792287461,
+            "34.952533333333264"
+          ]
+        },
+        {
+          "metric": {
+            "phase": "response.transform"
+          },
+          "value": [
+            1792287461,
+            "0.0025599999999999876"
+          ]
+        },
+        {
+          "metric": {
+            "phase": "request.parse"
+          },
+          "value": [
+            1792287461,
+            "0.0009773049493040041"
+          ]
+        },
+        {
+          "metric": {
+            "phase": "auth.snapshot"
+          },
+          "value": [
+            1792287461,
+            "0.013514792899408282"
+          ]
+        },
+        {
+          "metric": {
+            "phase": "quota.release"
+          },
+          "value": [
+            1792287461,
+            "0.0154"
+          ]
+        },
+        {
+          "metric": {
+            "phase": "relay.attempt"
+          },
+          "value": [
+            1792287461,
+            "89.01973333333305"
+          ]
+        }
+      ]
+    },
+    "ws_stage_count": {
+      "promql": "sum by(phase)(relay_request_stage_duration_seconds_count{phase=~\"ws.*\"})",
+      "result": []
+    },
+    "process_rss_max_24h": {
+      "promql": "max_over_time(process_resident_memory_bytes{instance=\"relay-gateway:8080\"}[24h])",
+      "result": [
+        {
+          "metric": {
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792287461,
+            "106700800"
+          ]
+        }
+      ]
+    },
+    "go_allocated_24h": {
+      "promql": "increase(go_memstats_alloc_bytes_total{instance=\"relay-gateway:8080\"}[24h])",
+      "result": [
+        {
+          "metric": {
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792287461,
+            "27941061398.715054"
+          ]
+        }
+      ]
+    },
+    "cpu_seconds_24h": {
+      "promql": "increase(process_cpu_seconds_total{instance=\"relay-gateway:8080\"}[24h])",
+      "result": [
+        {
+          "metric": {
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792287461,
+            "172.940024309776"
+          ]
+        }
+      ]
+    },
+    "requests_24h": {
+      "promql": "sum by(endpoint,stream,execution_path,result)(increase(micro_one_api_relay_executor_requests_total{instance=\"relay-gateway:8080\"}[24h]))",
+      "result": [
+        {
+          "metric": {
+            "endpoint": "/v1/chat/completions",
+            "execution_path": "legacy",
+            "result": "error",
+            "stream": "unknown"
+          },
+          "value": [
+            1792287461,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "endpoint": "/v1/messages",
+            "execution_path": "orchestrator",
+            "result": "canceled",
+            "stream": "false"
+          },
+          "value": [
+            1792287461,
+            "1.0011641443538999"
+          ]
+        },
+        {
+          "metric": {
+            "endpoint": "/v1/messages",
+            "execution_path": "orchestrator",
+            "result": "success",
+            "stream": "false"
+          },
+          "value": [
+            1792287461,
+            "43.02770618556701"
+          ]
+        },
+        {
+          "metric": {
+            "endpoint": "/v1/messages",
+            "execution_path": "orchestrator",
+            "result": "success",
+            "stream": "true"
+          },
+          "value": [
+            1792287461,
+            "352.1127300939812"
+          ]
+        },
+        {
+          "metric": {
+            "endpoint": "/v1/responses",
+            "execution_path": "legacy",
+            "result": "success",
+            "stream": "true"
+          },
+          "value": [
+            1792287461,
+            "9.191234782608696"
+          ]
+        },
+        {
+          "metric": {
+            "endpoint": "/v1/responses",
+            "execution_path": "orchestrator",
+            "result": "canceled",
+            "stream": "true"
+          },
+          "value": [
+            1792287461,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "endpoint": "/v1/responses",
+            "execution_path": "orchestrator",
+            "result": "canceled",
+            "stream": "unknown"
+          },
+          "value": [
+            1792287461,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "endpoint": "/v1/responses",
+            "execution_path": "orchestrator",
+            "result": "error",
+            "stream": "true"
+          },
+          "value": [
+            1792287461,
+            "26.03087885985748"
+          ]
+        },
+        {
+          "metric": {
+            "endpoint": "/v1/responses",
+            "execution_path": "orchestrator",
+            "result": "stream_error",
+            "stream": "true"
+          },
+          "value": [
+            1792287461,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "endpoint": "/v1/responses",
+            "execution_path": "orchestrator",
+            "result": "success",
+            "stream": "true"
+          },
+          "value": [
+            1792287461,
+            "222.06626753316118"
+          ]
+        }
+      ]
+    }
+  },
+  "stats": [
+    {
+      "BlockIO": "3.44MB / 31.4MB",
+      "CPUPerc": "0.06%",
+      "Container": "relay-gateway",
+      "ID": "8c1208bd48fc",
+      "MemPerc": "0.76%",
+      "MemUsage": "28.4MiB / 3.637GiB",
+      "Name": "relay-gateway",
+      "NetIO": "183MB / 257MB",
+      "PIDs": "9"
+    },
+    {
+      "BlockIO": "168kB / 459kB",
+      "CPUPerc": "0.19%",
+      "Container": "log-service",
+      "ID": "bc093ea21b9b",
+      "MemPerc": "0.33%",
+      "MemUsage": "12.38MiB / 3.637GiB",
+      "Name": "log-service",
+      "NetIO": "4.91MB / 21MB",
+      "PIDs": "8"
+    },
+    {
+      "BlockIO": "4.82GB / 6.7GB",
+      "CPUPerc": "0.51%",
+      "Container": "jaeger",
+      "ID": "70aa84d09cdc",
+      "MemPerc": "47.59%",
+      "MemUsage": "243.7MiB / 512MiB",
+      "Name": "jaeger",
+      "NetIO": "160MB / 20.9MB",
+      "PIDs": "9"
+    },
+    {
+      "BlockIO": "12GB / 125GB",
+      "CPUPerc": "0.64%",
+      "Container": "mysql",
+      "ID": "e22f5535617b",
+      "MemPerc": "13.51%",
+      "MemUsage": "503MiB / 3.637GiB",
+      "Name": "mysql",
+      "NetIO": "12.6GB / 48.1GB",
+      "PIDs": "56"
+    },
+    {
+      "BlockIO": "1.53GB / 6.36GB",
+      "CPUPerc": "0.05%",
+      "Container": "prometheus",
+      "ID": "49ba7338940c",
+      "MemPerc": "2.56%",
+      "MemUsage": "95.45MiB / 3.637GiB",
+      "Name": "prometheus",
+      "NetIO": "5.67GB / 675MB",
+      "PIDs": "9"
+    }
+  ],
+  "storage": {
+    "jaeger_bytes": 2670332228,
+    "filesystem_available_bytes": 24462512128
+  },
+  "sql": [
+    "summary_total\t669\t1792189826868\t1792286708858\t1203487\t1870",
+    "summary_group\tsse\tsuccess\t587",
+    "summary_group\thttp\tsuccess\t44",
+    "summary_group\tsse\tincomplete\t1",
+    "summary_group\thttp\tfailed\t30",
+    "summary_group\thttp\tcancelled\t3",
+    "summary_group\tgrpc\trejected\t1",
+    "summary_group\tsse\tcancelled\t2",
+    "summary_group\thttp\trejected\t1",
+    "summary_hour\t497830\t2\t1402",
+    "summary_hour\t497833\t6\t11086",
+    "summary_hour\t497834\t261\t481569",
+    "summary_hour\t497835\t87\t158853",
+    "summary_hour\t497836\t44\t80470",
+    "summary_hour\t497837\t58\t80396",
+    "summary_hour\t497839\t16\t29618",
+    "summary_hour\t497840\t40\t74154",
+    "summary_hour\t497841\t41\t75960",
+    "summary_hour\t497842\t35\t64812",
+    "summary_hour\t497843\t36\t66621",
+    "summary_hour\t497844\t22\t40764",
+    "summary_hour\t497845\t11\t19291",
+    "summary_hour\t497857\t10\t18491",
+    "attempt_ref_count\t638",
+    "table_size\tlogs\t47022\t26279936\t15859712",
+    "table_size\trequest_trace_attempt_refs\t638\t147456\t98304",
+    "vendor_reports\t0",
+    "vendor_reconciliations\t0"
+  ],
+  "timing_rules": [],
+  "rules_path": "/opt/micro-one-api/monitoring/prometheus/alerts.yml",
+  "rules_sha256": "2f4555801b2f65eac1cc41f709b3a16ef32cd3d73ce4ef6ad3599ceece30554d",
+  "instances_preserved": true,
+  "limitations": [
+    "One snapshot does not prove 48h storage steady state.",
+    "Historical 24h metrics cross deployment boundaries.",
+    "Stage counts do not prove WS long-running turn isolation.",
+    "No production requests or financial writes were issued."
+  ]
+}
