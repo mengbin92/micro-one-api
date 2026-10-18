@@ -127,29 +127,33 @@ for label in baseline candidate; do
       -e MYSQL_ALLOW_EMPTY_PASSWORD=yes mysql:8.0 --bind-address=127.0.0.1 >/dev/null
     created_database=true
     for attempt in {1..60}; do
-      if docker exec "$database" mysqladmin ping --silent >/dev/null 2>&1; then break; fi
+      if docker exec "$database" mysql --protocol=tcp -h127.0.0.1 -uroot -e 'SELECT 1' >/dev/null 2>&1; then break; fi
       sleep 2
     done
-    docker exec "$database" mysqladmin ping --silent
+    docker exec "$database" mysql --protocol=tcp -h127.0.0.1 -uroot -e 'SELECT 1'
   elif [[ "$driver" == postgres ]]; then
     docker run -d --name "$database" --network "container:$measurement" --cpus=1 --memory=512m \
       -e POSTGRES_HOST_AUTH_METHOD=trust postgres:18 -c listen_addresses=127.0.0.1 >/dev/null
     created_database=true
     for attempt in {1..60}; do
-      if docker exec "$database" pg_isready -U postgres >/dev/null 2>&1; then break; fi
+      if docker exec "$database" psql -h127.0.0.1 -U postgres -c 'SELECT 1' >/dev/null 2>&1; then break; fi
       sleep 2
     done
-    docker exec "$database" pg_isready -U postgres
+    docker exec "$database" psql -h127.0.0.1 -U postgres -c 'SELECT 1'
   fi
   for concurrency in 16 32; do run_case "$label" "$concurrency" diagnostic; done
   run_case "$label" 64 acceptance
   docker inspect "$measurement" --format '{{json .State}}' > "$results/$label-container-state.json"
   docker inspect "$measurement" --format '{{json .HostConfig}}' > "$results/$label-container-limits.json"
+  if "$created_database"; then
+    docker inspect "$database" --format '{{json .State}}' > "$results/$label-database-state.json"
+    docker logs "$database" > "$results/$label-database.log" 2>&1
+  fi
   docker image inspect golang:1.27.2-bookworm --format '{{.Id}} {{.Architecture}}' > "$results/image.txt"
   sha256sum "$results/server-$label.test" > "$results/$label-binary.sha256"
   if [[ "$label" == candidate ]]; then
     for binary in data server requesttrace; do
-      pattern='TestTiming|TestExporter|TestRequestTimingSQL(FailureRecovery|BackpressureAndLostAck)$'
+      pattern='TestTiming|TestRequestTrace|TestExporter|TestRequestTimingSQL(FailureRecovery|BackpressureAndLostAck)$'
       if [[ "$binary" == requesttrace ]]; then pattern='.'; fi
       set +e
       docker exec -e GOMAXPROCS=4 "${db_args[@]}" "$measurement" \
