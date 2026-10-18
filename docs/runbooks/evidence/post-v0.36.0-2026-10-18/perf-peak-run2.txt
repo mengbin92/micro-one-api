@@ -1,0 +1,34 @@
+=== RUN   TestRequestTimingControlledOverhead
+{
+  "concurrency": 64,
+  "fake_upstream_wait_ms": 50,
+  "otlp_bytes": 1947326,
+  "p95_overhead_percent": 5.084493238445775,
+  "requests_per_mode": 1280,
+  "results": {
+    "disabled": {
+      "p95_ms": 53.695125,
+      "allocated_bytes_per_request": 56311.325,
+      "cpu_us_per_request": 218.278125,
+      "exported": 0,
+      "dropped": 0
+    },
+    "enabled": {
+      "p95_ms": 56.42525,
+      "allocated_bytes_per_request": 198392.70625,
+      "cpu_us_per_request": 244.65234375,
+      "exported": 1288,
+      "dropped": 0
+    }
+  },
+  "spans": 11058
+}
+    request_timing_perf_test.go:157: 
+        	Error Trace:	/Users/neo/vscode/mengbin/micro-one-api/internal/server/request_timing_perf_test.go:157
+        	Error:      	"5.084493238445775" is not less than or equal to "5"
+        	Test:       	TestRequestTimingControlledOverhead
+        	Messages:   	controlled initial P95 gate
+--- FAIL: TestRequestTimingControlledOverhead (2.90s)
+FAIL
+FAIL	micro-one-api/internal/server	3.255s
+FAIL

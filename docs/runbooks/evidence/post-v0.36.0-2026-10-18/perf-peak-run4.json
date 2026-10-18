@@ -1,0 +1,24 @@
+{
+  "concurrency": 64,
+  "fake_upstream_wait_ms": 50,
+  "otlp_bytes": 1939591,
+  "p95_overhead_percent": 3.449299481564938,
+  "requests_per_mode": 1280,
+  "results": {
+    "disabled": {
+      "p95_ms": 53.47825,
+      "allocated_bytes_per_request": 56438.325,
+      "cpu_us_per_request": 224.47265625,
+      "exported": 0,
+      "dropped": 0
+    },
+    "enabled": {
+      "p95_ms": 55.322875,
+      "allocated_bytes_per_request": 143185.94375,
+      "cpu_us_per_request": 235.92578125,
+      "exported": 1288,
+      "dropped": 0
+    }
+  },
+  "spans": 10967
+}

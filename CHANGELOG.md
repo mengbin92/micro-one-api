@@ -7,6 +7,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复请求计时摘要导出告警的 result 标签：覆盖 full、closed、failed、invalid、turn_capacity；新增触发/恢复/成功与无流量规则测试，并纳入 CI。
+
+### Changed
+
+- 精简中文 README 的历史升级内容，新增英文 README 与完整英文 SQLite Lite Quickstart；本地链接检查覆盖全部根 README。
+- 更新 v0.36.0 后续计划与生产基线，记录计时告警组热加载、容量待验收边界和 executor 同窗证据不足，保留供应商与灰度门禁。
+
 ## [0.36.0] - 2026-10-17
 
 v0.36.0 是 v0.35.2 之后的 **MINOR 功能版本**：按 llm-request-timing-observability-plan 上线端到端请求计时观测——Relay 跨 HTTP/SSE/WebSocket/gRPC 记录阶段耗时与业务终态，Log 存储摘要并从 Jaeger 投影瀑布，账单关联模型调用观测并展示实时结算状态，管理端提供瀑布与失败检索；含评审修复一轮。新增迁移 137/138，proto 仅新增，运行时更新 Relay、Log、Billing、Admin 与独立前端。详见 [release-v0.36.0.md](docs/releases/release-v0.36.0.md)。

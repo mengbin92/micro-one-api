@@ -1,5 +1,7 @@
 # SQLite Lite：从空目录到第一个 Relay 请求
 
+[简体中文](./quickstart-lite.md) | [English](./quickstart-lite.en.md)
+
 Lite 保留现有 9 个服务，用 SQLite 文件卷替代 MySQL，另运行一个 Redis。
 适合单机、低并发的个人或小团队使用。本文验证入口是
 [`scripts/test-lite-smoke.py`](../scripts/test-lite-smoke.py)：真实启动各服务，通过 HTTP

@@ -1,0 +1,28 @@
+=== RUN   TestRequestTimingControlledOverhead
+{
+  "concurrency": 64,
+  "fake_upstream_wait_ms": 50,
+  "otlp_bytes": 1939846,
+  "p95_overhead_percent": 0.8116621672316748,
+  "requests_per_mode": 1280,
+  "results": {
+    "disabled": {
+      "p95_ms": 54.312375,
+      "allocated_bytes_per_request": 55458.35,
+      "cpu_us_per_request": 208.60234375,
+      "exported": 0,
+      "dropped": 0
+    },
+    "enabled": {
+      "p95_ms": 54.753208,
+      "allocated_bytes_per_request": 177757.975,
+      "cpu_us_per_request": 257.66796875,
+      "exported": 1288,
+      "dropped": 0
+    }
+  },
+  "spans": 10970
+}
+--- PASS: TestRequestTimingControlledOverhead (2.89s)
+PASS
+ok  	micro-one-api/internal/server	3.287s

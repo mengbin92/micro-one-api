@@ -1,0 +1,3 @@
+# Preserve archived test output and replay patches byte-for-byte for their hashes.
+/docs/runbooks/evidence/post-v0.36.0-2026-10-18/*.txt -whitespace
+/docs/runbooks/evidence/post-v0.36.0-2026-10-18/*.patch -whitespace

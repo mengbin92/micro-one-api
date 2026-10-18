@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-18",
+  "timezone": "Asia/Shanghai",
+  "baseline_commit": "15feb423",
+  "artifacts": [
+    {
+      "file": "alert-deploy.json",
+      "sha256": "eb757c63497de0d3cfd6ba3ce758131effdccf5a40f8f6dfe9e7392085102fdf",
+      "bytes": 1372
+    },
+    {
+      "file": "executor-cohort.json",
+      "sha256": "149d75b26a9ef657b5181ed4180f4806f82870108422968adb244903901654f2",
+      "bytes": 32235
+    },
+    {
+      "file": "executor.json",
+      "sha256": "9309b24257d51124575674bae6c7f79641e64264aab4afb5df26f12cce3c30dc",
+      "bytes": 56527
+    },
+    {
+      "file": "perf-peak-run1.json",
+      "sha256": "ec2a8ed1c66e0956a0434de9ec361e2030cbe5787d839cc55fd0acee9594fad8",
+      "bytes": 549
+    },
+    {
+      "file": "perf-peak-run2.json",
+      "sha256": "eb586f092be834bf85694e85fddf21c66e91fea4e3c2fcd5954b9b0109ca319a",
+      "bytes": 556
+    },
+    {
+      "file": "perf-peak-run2.txt",
+      "sha256": "74802eaa18a11a8552d6249d1efc164a0189319c462faf0f6dae508563b0f463",
+      "bytes": 1040
+    },
+    {
+      "file": "perf-peak-run3.json",
+      "sha256": "904ef7644eeae28c4cf75271237a913965fd1514a376d538c91654f99445ccd0",
+      "bytes": 557
+    },
+    {
+      "file": "perf-peak-run3.txt",
+      "sha256": "a3e299eb87899fcf672a86ccb9caa6a05060cbbc5323556624d37317254cbc52",
+      "bytes": 705
+    },
+    {
+      "file": "perf-peak-run4.json",
+      "sha256": "03baeecc6405faf299dfcddaf355abffe13a9c2091a9b87e86acfaa829cc4ea1",
+      "bytes": 558
+    },
+    {
+      "file": "perf-peak-run4.txt",
+      "sha256": "86fbe29522e066dc57b1d8bd5104ae89b4e1c39a5ab14b98801f663e3b2ad213",
+      "bytes": 706
+    },
+    {
+      "file": "perf-peak-summary.json",
+      "sha256": "852cc1e602a24dc446934988b2e0c5efd6441fc84ede277b3968bacf863e7c7d",
+      "bytes": 1788
+    },
+    {
+      "file": "perf-peak.patch",
+      "sha256": "f64443ee89b015c3fbb08671db687f1c8df975f4fa0bf284af88a21bd5d409a9",
+      "bytes": 1912
+    },
+    {
+      "file": "timing-capacity.json",
+      "sha256": "85937c9c81b6474c0daa8f426d53fed8bef7f02a7e67d4592426ba056b430d6a",
+      "bytes": 13922
+    }
+  ],
+  "boundaries": [
+    "Read-only runtime and accounting collection; only the Prometheus request-timing group was added and reloaded.",
+    "No model calls, financial writes, supplier imports, or gray expansion.",
+    "Peak experiment has two gate failures; 48h storage steady state and formal executor seven-day admission remain unapproved."
+  ]
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check that local links in README.md and docs/**/*.md resolve to files.
+"""Check that local links in README*.md and docs/**/*.md resolve to files.
 
 Links must stay inside the repository. A relative target that escapes the
 project root (for example `../../../new-api/service/group.go`) is rejected
@@ -17,7 +17,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parent.parent
-MARKDOWN_FILES = [ROOT / "README.md", *sorted((ROOT / "docs").rglob("*.md"))]
+MARKDOWN_FILES = [*sorted(ROOT.glob("README*.md")), *sorted((ROOT / "docs").rglob("*.md"))]
 INLINE_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 REFERENCE_LINK_RE = re.compile(r"^\s*\[[^\]]+\]:\s*(\S+)")
 EXTERNAL_PREFIXES = ("http://", "https://", "mailto:", "tel:", "data:")

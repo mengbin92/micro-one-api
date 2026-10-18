@@ -1,0 +1,39 @@
+--- a/internal/server/request_timing_perf_test.go
++++ b/internal/server/request_timing_perf_test.go
+@@ -104,14 +104,14 @@
+ 		var cpuBefore, cpuAfter syscall.Rusage
+ 		require.NoError(t, syscall.Getrusage(syscall.RUSAGE_SELF, &cpuBefore))
+ 		var mu sync.Mutex
+-		durations := make([]float64, 0, 160)
+-		jobs := make(chan struct{}, 160)
+-		for range 160 {
++		durations := make([]float64, 0, 1280)
++		jobs := make(chan struct{}, 1280)
++		for range 1280 {
+ 			jobs <- struct{}{}
+ 		}
+ 		close(jobs)
+ 		var workers sync.WaitGroup
+-		for range 8 {
++		for range 64 {
+ 			workers.Go(func() {
+ 				for range jobs {
+ 					start := time.Now()
+@@ -135,7 +135,7 @@
+ 			return r.Utime.Sec*1e6 + int64(r.Utime.Usec) + r.Stime.Sec*1e6 + int64(r.Stime.Usec)
+ 		}
+ 		sort.Float64s(durations)
+-		entry := sample{P95MS: durations[len(durations)*95/100], AllocatedBytesPerRequest: float64(after.TotalAlloc-before.TotalAlloc) / 160, CPUUsPerRequest: float64(cpu(cpuAfter)-cpu(cpuBefore)) / 160}
++		entry := sample{P95MS: durations[len(durations)*95/100], AllocatedBytesPerRequest: float64(after.TotalAlloc-before.TotalAlloc) / 1280, CPUUsPerRequest: float64(cpu(cpuAfter)-cpu(cpuBefore)) / 1280}
+ 		name := "disabled"
+ 		if enabled {
+ 			name = "enabled"
+@@ -147,7 +147,7 @@
+ 		results[name] = entry
+ 	}
+ 	overhead := (results["enabled"].P95MS/results["disabled"].P95MS - 1) * 100
+-	report := map[string]any{"requests_per_mode": 160, "concurrency": 8, "fake_upstream_wait_ms": 50, "results": results, "p95_overhead_percent": overhead, "spans": spans.count.Load(), "otlp_bytes": bytesExported.Load()}
++	report := map[string]any{"requests_per_mode": 1280, "concurrency": 64, "fake_upstream_wait_ms": 50, "results": results, "p95_overhead_percent": overhead, "spans": spans.count.Load(), "otlp_bytes": bytesExported.Load()}
+ 	encoded, err := jsonx.MarshalIndent(report, "", "  ")
+ 	require.NoError(t, err)
+ 	fmt.Println(string(encoded))

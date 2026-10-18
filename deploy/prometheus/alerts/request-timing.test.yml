@@ -1,0 +1,58 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+tests:
+  - name: summary exporter failures fire and recovery clears the alert
+    interval: 1m
+    input_series:
+      - series: 'relay_request_timing_export_total{instance="queue-full",result="full"}'
+        values: '0+1x8 8+0x7'
+      - series: 'relay_request_timing_export_total{instance="queue-closed",result="closed"}'
+        values: '0+1x8 8+0x7'
+      - series: 'relay_request_timing_export_total{instance="sink-failed",result="failed"}'
+        values: '0+1x8 8+0x7'
+      - series: 'relay_request_timing_export_total{instance="invalid-summary",result="invalid"}'
+        values: '0+1x8 8+0x7'
+      - series: 'relay_request_timing_export_total{instance="turn-limit",result="turn_capacity"}'
+        values: '0+1x8 8+0x7'
+      - series: 'relay_request_timing_export_total{instance="healthy",result="queued"}'
+        values: '0+10x16'
+      - series: 'relay_request_timing_export_total{instance="healthy",result="exported"}'
+        values: '0+10x16'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: RequestTimingExportDropped
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: RequestTimingExportDropped
+        exp_alerts:
+          - exp_labels: {instance: queue-full, severity: warning}
+            exp_annotations:
+              summary: Request timing summaries are being dropped or failing export
+              description: 'The bounded summary exporter is saturated or the log-service ingest path is failing. Forwarding and billing are unaffected, but recent requests have no timing summary. Check relay_request_timing_export_total and log-service health.'
+          - exp_labels: {instance: queue-closed, severity: warning}
+            exp_annotations:
+              summary: Request timing summaries are being dropped or failing export
+              description: 'The bounded summary exporter is saturated or the log-service ingest path is failing. Forwarding and billing are unaffected, but recent requests have no timing summary. Check relay_request_timing_export_total and log-service health.'
+          - exp_labels: {instance: sink-failed, severity: warning}
+            exp_annotations:
+              summary: Request timing summaries are being dropped or failing export
+              description: 'The bounded summary exporter is saturated or the log-service ingest path is failing. Forwarding and billing are unaffected, but recent requests have no timing summary. Check relay_request_timing_export_total and log-service health.'
+          - exp_labels: {instance: invalid-summary, severity: warning}
+            exp_annotations:
+              summary: Request timing summaries are being dropped or failing export
+              description: 'The bounded summary exporter is saturated or the log-service ingest path is failing. Forwarding and billing are unaffected, but recent requests have no timing summary. Check relay_request_timing_export_total and log-service health.'
+          - exp_labels: {instance: turn-limit, severity: warning}
+            exp_annotations:
+              summary: Request timing summaries are being dropped or failing export
+              description: 'The bounded summary exporter is saturated or the log-service ingest path is failing. Forwarding and billing are unaffected, but recent requests have no timing summary. Check relay_request_timing_export_total and log-service health.'
+      - eval_time: 14m
+        alertname: RequestTimingExportDropped
+        exp_alerts: []
+  - name: no traffic does not alert
+    interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: RequestTimingExportDropped
+        exp_alerts: []
