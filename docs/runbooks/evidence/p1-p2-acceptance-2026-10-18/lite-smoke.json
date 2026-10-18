@@ -1,0 +1,30 @@
+{
+  "checked_at": "2026-10-18T14:27:42.450354+08:00",
+  "command": "python3 scripts/test-lite-smoke.py",
+  "exit_code": 0,
+  "checks": [
+    "[lite] PASS migration, frontend, private bootstrap password and login",
+    "[lite] PASS create channel, wallet credit, create Token, models and chat completion",
+    "[lite] PASS repeat migration and persistence after restart",
+    "[lite] PASS stopped SQLite/Redis backup and saved encryption keys",
+    "[lite] PASS empty-volume recovery: login, wallet, Redis, original Token and encrypted channel",
+    "[lite] PASS complete; admin=http://127.0.0.1:55019, relay=http://127.0.0.1:55018"
+  ],
+  "scope": "Fresh tracked source, generated proto, nine application services, isolated SQLite/Redis, real public HTTP and local fake upstream; restore uses a second project and empty volumes.",
+  "identity_wiring": "Existing credential generator and checker; fixed RPC policies; no relaxed authorization.",
+  "restore_wallet_fields": [
+    "balance",
+    "used_amount",
+    "frozen_amount",
+    "request_count"
+  ],
+  "secrets_and_backups": "Only private temporary directories; no credentials/backups included here.",
+  "remaining_own_local_resources": {
+    "containers": [],
+    "volumes": [],
+    "networks": [],
+    "images": []
+  },
+  "remaining_own_remote_containers": [],
+  "production_modified": false
+}

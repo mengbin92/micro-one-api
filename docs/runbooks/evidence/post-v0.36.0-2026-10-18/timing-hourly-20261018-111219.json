@@ -1,0 +1,1189 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-10-18T11:12:21.045789+08:00",
+  "query_end": "2026-10-18T11:10:21+08:00",
+  "errors": [],
+  "runtime": [
+    {
+      "service": "relay-gateway",
+      "container_id": "8c1208bd48fc5a93ae7dc07e65288a0e7b69aa40869ed21e18eaaecc33bcf382",
+      "image_id": "sha256:bf54390258bc5edfa827bdb2e63932edfa0e5eadb70eff15462b1823d1b0d80a",
+      "started_at": "2026-10-17T08:34:43.941505276Z",
+      "running": true,
+      "restart_count": 0,
+      "oom": false,
+      "memory_limit": 0
+    },
+    {
+      "service": "log-service",
+      "container_id": "bc093ea21b9bc545bd2a59c94a21e62731637d81e1e7f64703d74f69e476a4af",
+      "image_id": "sha256:1eff0624911100a2f51740731b8c1d0bed0a9c373bc8e3a9ae548d05043d7292",
+      "started_at": "2026-10-17T08:35:10.15486759Z",
+      "running": true,
+      "restart_count": 0,
+      "oom": false,
+      "memory_limit": 0
+    },
+    {
+      "service": "jaeger",
+      "container_id": "70aa84d09cdcdc96207e8a9cef8b7e94473418586c605a6f9ee15674edabca67",
+      "image_id": "sha256:4a130978c31a30d9baadd9fd902eeb779ed7bf2efd53e8b17bd79069e689da1b",
+      "started_at": "2026-09-27T07:37:59.975007646Z",
+      "running": true,
+      "restart_count": 0,
+      "oom": false,
+      "memory_limit": 536870912
+    },
+    {
+      "service": "prometheus",
+      "container_id": "49ba7338940c2de741612bcff061dfd33405e12ddfbd15a28ccabb1f9f1cee85",
+      "image_id": "sha256:76947e7ef22f8a698fc638f706685909be425dbe09bd7a2cd7aca849f79b5f64",
+      "started_at": "2026-09-26T12:59:11.122483528Z",
+      "running": true,
+      "restart_count": 0,
+      "oom": false,
+      "memory_limit": 0
+    }
+  ],
+  "queries": {
+    "export_snapshot": {
+      "promql": "sum by(result)(relay_request_timing_export_total{instance=\"relay-gateway:8080\"})",
+      "result": [
+        {
+          "metric": {
+            "result": "exported"
+          },
+          "value": [
+            1792293021,
+            "169"
+          ]
+        },
+        {
+          "metric": {
+            "result": "queued"
+          },
+          "value": [
+            1792293021,
+            "169"
+          ]
+        }
+      ],
+      "missing_series": false
+    },
+    "export_raw_snapshot": {
+      "promql": "relay_request_timing_export_total",
+      "result": [
+        {
+          "metric": {
+            "__name__": "relay_request_timing_export_total",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "result": "exported",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "169"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "relay_request_timing_export_total",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "result": "queued",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "169"
+          ]
+        }
+      ],
+      "missing_series": false
+    },
+    "otel_drops_snapshot": {
+      "promql": "otel_trace_queue_dropped_total",
+      "result": [
+        {
+          "metric": {
+            "__name__": "otel_trace_queue_dropped_total",
+            "instance": "log-service:8006",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "otel_trace_queue_dropped_total",
+            "instance": "billing-service:8004",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "otel_trace_queue_dropped_total",
+            "instance": "identity-service:8001",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "otel_trace_queue_dropped_total",
+            "instance": "config-service:8005",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "otel_trace_queue_dropped_total",
+            "instance": "channel-service:8002",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "otel_trace_queue_dropped_total",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "otel_trace_queue_dropped_total",
+            "instance": "admin-api:8000",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        }
+      ],
+      "missing_series": false
+    },
+    "otel_export_snapshot": {
+      "promql": "otel_trace_export_spans_total",
+      "result": [
+        {
+          "metric": {
+            "__name__": "otel_trace_export_spans_total",
+            "instance": "log-service:8006",
+            "job": "micro-one-api",
+            "result": "success",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "3541"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "otel_trace_export_spans_total",
+            "instance": "billing-service:8004",
+            "job": "micro-one-api",
+            "result": "success",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "236773"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "otel_trace_export_spans_total",
+            "instance": "identity-service:8001",
+            "job": "micro-one-api",
+            "result": "success",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "275285"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "otel_trace_export_spans_total",
+            "instance": "channel-service:8002",
+            "job": "micro-one-api",
+            "result": "success",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "303526"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "otel_trace_export_spans_total",
+            "instance": "config-service:8005",
+            "job": "micro-one-api",
+            "result": "success",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "4"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "otel_trace_export_spans_total",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "result": "success",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "36653"
+          ]
+        }
+      ],
+      "missing_series": false
+    },
+    "carrier_invalid_snapshot": {
+      "promql": "relay_async_trace_carrier_invalid_total",
+      "result": [
+        {
+          "metric": {
+            "__name__": "relay_async_trace_carrier_invalid_total",
+            "instance": "log-service:8006",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "relay_async_trace_carrier_invalid_total",
+            "instance": "billing-service:8004",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "relay_async_trace_carrier_invalid_total",
+            "instance": "identity-service:8001",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "relay_async_trace_carrier_invalid_total",
+            "instance": "config-service:8005",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "relay_async_trace_carrier_invalid_total",
+            "instance": "channel-service:8002",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "relay_async_trace_carrier_invalid_total",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "relay_async_trace_carrier_invalid_total",
+            "instance": "admin-api:8000",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        }
+      ],
+      "missing_series": false
+    },
+    "otel_failure_window": {
+      "promql": "increase(otel_trace_export_spans_total{result!=\"success\"}[3601s])",
+      "result": [],
+      "missing_series": true
+    },
+    "otel_drops_window": {
+      "promql": "increase(otel_trace_queue_dropped_total[3601s])",
+      "result": [
+        {
+          "metric": {
+            "instance": "log-service:8006",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "instance": "billing-service:8004",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "instance": "identity-service:8001",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "instance": "config-service:8005",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "instance": "channel-service:8002",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "instance": "admin-api:8000",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        }
+      ],
+      "missing_series": false
+    },
+    "export_failure_window": {
+      "promql": "increase(relay_request_timing_export_total{result=~\"full|closed|failed|invalid|turn_capacity\"}[3601s])",
+      "result": [],
+      "missing_series": true
+    },
+    "export_counter_resets_window": {
+      "promql": "resets(relay_request_timing_export_total[3601s])",
+      "result": [
+        {
+          "metric": {
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "result": "exported",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "result": "queued",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        }
+      ],
+      "missing_series": false
+    },
+    "otel_counter_resets_window": {
+      "promql": "resets(otel_trace_export_spans_total[3601s])",
+      "result": [
+        {
+          "metric": {
+            "instance": "log-service:8006",
+            "job": "micro-one-api",
+            "result": "success",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "instance": "billing-service:8004",
+            "job": "micro-one-api",
+            "result": "success",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "instance": "identity-service:8001",
+            "job": "micro-one-api",
+            "result": "success",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "instance": "channel-service:8002",
+            "job": "micro-one-api",
+            "result": "success",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "instance": "config-service:8005",
+            "job": "micro-one-api",
+            "result": "success",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "result": "success",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "0"
+          ]
+        }
+      ],
+      "missing_series": false
+    },
+    "ws_stage_count": {
+      "promql": "sum by(phase)(relay_request_stage_duration_seconds_count{phase=~\"ws.*\"})",
+      "result": [],
+      "missing_series": true
+    },
+    "process_rss": {
+      "promql": "process_resident_memory_bytes",
+      "result": [
+        {
+          "metric": {
+            "__name__": "process_resident_memory_bytes",
+            "instance": "notify-worker:8008",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "20754432"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_resident_memory_bytes",
+            "instance": "identity-service:8001",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "26898432"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_resident_memory_bytes",
+            "instance": "config-service:8005",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "14151680"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_resident_memory_bytes",
+            "instance": "log-service:8006",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "34713600"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_resident_memory_bytes",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "45461504"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_resident_memory_bytes",
+            "instance": "localhost:9090",
+            "job": "prometheus"
+          },
+          "value": [
+            1792293021,
+            "94818304"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_resident_memory_bytes",
+            "instance": "admin-api:8000",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "39452672"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_resident_memory_bytes",
+            "instance": "channel-service:8002",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "28315648"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_resident_memory_bytes",
+            "instance": "billing-service:8004",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "39673856"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_resident_memory_bytes",
+            "instance": "monitor-worker:8007",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "21946368"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_resident_memory_bytes",
+            "instance": "channel-account-ops-worker:8002",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "17502208"
+          ]
+        }
+      ],
+      "missing_series": false
+    },
+    "process_cpu_seconds": {
+      "promql": "process_cpu_seconds_total",
+      "result": [
+        {
+          "metric": {
+            "__name__": "process_cpu_seconds_total",
+            "instance": "notify-worker:8008",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "108.01"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_cpu_seconds_total",
+            "instance": "identity-service:8001",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "142.76"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_cpu_seconds_total",
+            "instance": "config-service:8005",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "17.96"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_cpu_seconds_total",
+            "instance": "log-service:8006",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "19.66"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_cpu_seconds_total",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "114.44"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_cpu_seconds_total",
+            "instance": "localhost:9090",
+            "job": "prometheus"
+          },
+          "value": [
+            1792293021,
+            "3336.22"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_cpu_seconds_total",
+            "instance": "admin-api:8000",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "65.88"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_cpu_seconds_total",
+            "instance": "channel-service:8002",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "143.64"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_cpu_seconds_total",
+            "instance": "billing-service:8004",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "99.04"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_cpu_seconds_total",
+            "instance": "monitor-worker:8007",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "44.63"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_cpu_seconds_total",
+            "instance": "channel-account-ops-worker:8002",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "36.21"
+          ]
+        }
+      ],
+      "missing_series": false
+    },
+    "process_starts": {
+      "promql": "process_start_time_seconds",
+      "result": [
+        {
+          "metric": {
+            "__name__": "process_start_time_seconds",
+            "instance": "notify-worker:8008",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "1791639474.63"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_start_time_seconds",
+            "instance": "identity-service:8001",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "1792189848.71"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_start_time_seconds",
+            "instance": "config-service:8005",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "1792189862.08"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_start_time_seconds",
+            "instance": "log-service:8006",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "1792226109.45"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_start_time_seconds",
+            "instance": "relay-gateway:8080",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "1792226083.28"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_start_time_seconds",
+            "instance": "localhost:9090",
+            "job": "prometheus"
+          },
+          "value": [
+            1792293021,
+            "1790427550.41"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_start_time_seconds",
+            "instance": "admin-api:8000",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "1792226170.21"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_start_time_seconds",
+            "instance": "channel-service:8002",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "1792189855.99"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_start_time_seconds",
+            "instance": "billing-service:8004",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "1792226138.71"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_start_time_seconds",
+            "instance": "monitor-worker:8007",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "1792076460.71"
+          ]
+        },
+        {
+          "metric": {
+            "__name__": "process_start_time_seconds",
+            "instance": "channel-account-ops-worker:8002",
+            "job": "micro-one-api",
+            "stack": "micro-one-api"
+          },
+          "value": [
+            1792293021,
+            "1792093872.98"
+          ]
+        }
+      ],
+      "missing_series": false
+    }
+  },
+  "scrape_continuity": {
+    "promql": "up{instance=\"relay-gateway:8080\"}[3601s]",
+    "query_end": "2026-10-18T11:10:21+08:00",
+    "series": [
+      {
+        "metric": {
+          "__name__": "up",
+          "instance": "relay-gateway:8080",
+          "job": "micro-one-api",
+          "stack": "micro-one-api"
+        },
+        "samples": 240,
+        "failed_samples": 0,
+        "first": "2026-10-18T10:10:26.508000+08:00",
+        "last": "2026-10-18T11:10:11.508000+08:00",
+        "maximum_gap_seconds": 15.0,
+        "gaps_over_16_seconds": 0
+      }
+    ]
+  },
+  "timing_rules": [
+    {
+      "name": "RequestTimingExportDropped",
+      "health": "ok",
+      "state": "inactive",
+      "has_error": false
+    },
+    {
+      "name": "OtelTraceQueueDropping",
+      "health": "ok",
+      "state": "inactive",
+      "has_error": false
+    },
+    {
+      "name": "OtelTraceExportFailing",
+      "health": "ok",
+      "state": "inactive",
+      "has_error": false
+    },
+    {
+      "name": "AsyncTraceCarrierInvalid",
+      "health": "ok",
+      "state": "inactive",
+      "has_error": false
+    }
+  ],
+  "stats": [
+    {
+      "BlockIO": "4.74MB / 35.3MB",
+      "CPUPerc": "0.09%",
+      "Container": "relay-gateway",
+      "ID": "8c1208bd48fc",
+      "MemPerc": "0.74%",
+      "MemUsage": "27.67MiB / 3.637GiB",
+      "Name": "relay-gateway",
+      "NetIO": "184MB / 262MB",
+      "PIDs": "9"
+    },
+    {
+      "BlockIO": "168kB / 991kB",
+      "CPUPerc": "0.02%",
+      "Container": "log-service",
+      "ID": "bc093ea21b9b",
+      "MemPerc": "0.32%",
+      "MemUsage": "11.8MiB / 3.637GiB",
+      "Name": "log-service",
+      "NetIO": "5.13MB / 22.6MB",
+      "PIDs": "8"
+    },
+    {
+      "BlockIO": "8.44GB / 10.2GB",
+      "CPUPerc": "0.88%",
+      "Container": "jaeger",
+      "ID": "70aa84d09cdc",
+      "MemPerc": "25.52%",
+      "MemUsage": "130.6MiB / 512MiB",
+      "Name": "jaeger",
+      "NetIO": "167MB / 21.8MB",
+      "PIDs": "9"
+    },
+    {
+      "BlockIO": "1.61GB / 6.38GB",
+      "CPUPerc": "0.02%",
+      "Container": "prometheus",
+      "ID": "49ba7338940c",
+      "MemPerc": "4.28%",
+      "MemUsage": "159.6MiB / 3.637GiB",
+      "Name": "prometheus",
+      "NetIO": "5.69GB / 678MB",
+      "PIDs": "9"
+    }
+  ],
+  "storage": {
+    "checked_at": "2026-10-18T11:12:23.304045+08:00",
+    "jaeger_bytes": 2692620696,
+    "filesystem_available_bytes": 24421978112,
+    "filesystem_total_bytes": 63290032128
+  },
+  "config": {
+    "jaeger_retention": [
+      "spans: 48h"
+    ],
+    "timing_enabled": "true",
+    "otlp_configured": true
+  },
+  "ttl_evidence": {
+    "oldest_queryable_span": null,
+    "logical_expiry_verified": false,
+    "physical_reclamation_verified": false,
+    "reason": "No metadata-only span query used; no span bodies or attributes fetched. Physical bytes and configured TTL are separate evidence."
+  },
+  "sql": {
+    "checked_at": "2026-10-18T11:12:23.436717+08:00",
+    "summary_query_end": "2026-10-18T11:10:21+08:00",
+    "transaction": "read-only consistent snapshot; per-statement MAX_EXECUTION_TIME=15000",
+    "rows": [
+      "summary_total\t669\t1792189826868\t1792286708858\t1203487\t1870",
+      "summary_hour\t497830\t2\t1402",
+      "summary_hour\t497833\t6\t11086",
+      "summary_hour\t497834\t261\t481569",
+      "summary_hour\t497835\t87\t158853",
+      "summary_hour\t497836\t44\t80470",
+      "summary_hour\t497837\t58\t80396",
+      "summary_hour\t497839\t16\t29618",
+      "summary_hour\t497840\t40\t74154",
+      "summary_hour\t497841\t41\t75960",
+      "summary_hour\t497842\t35\t64812",
+      "summary_hour\t497843\t36\t66621",
+      "summary_hour\t497844\t22\t40764",
+      "summary_hour\t497845\t11\t19291",
+      "summary_hour\t497857\t10\t18491",
+      "summary_protocol\tsse\t590",
+      "summary_protocol\thttp\t78",
+      "summary_protocol\tgrpc\t1",
+      "attempt_ref_count\t638",
+      "table_size\tlogs\t47022\t26279936\t15859712",
+      "table_size\trequest_trace_attempt_refs\t638\t147456\t98304"
+    ],
+    "limitations": [
+      "Attempt references and table-size estimates are at transaction time, not bounded by summary query_end.",
+      "information_schema sizes cover all logs and are estimates."
+    ]
+  },
+  "instances_preserved": true,
+  "duration_seconds": 2.452,
+  "automation_id": "v0-36-0-48",
+  "window": {
+    "start": "2026-10-18T10:10:20+08:00",
+    "end": "2026-10-20T10:10:20+08:00",
+    "scheduled_trigger": "2026-10-18T03:08:08.101Z",
+    "extends_on_failure": false
+  },
+  "local_duration_seconds": 4.493,
+  "attempt_errors": [
+    {
+      "stage": "local_collector_parse",
+      "error_type": "SyntaxError",
+      "recovered_before_ssh": true
+    }
+  ],
+  "limitations": [
+    "Hourly point samples do not prove continuous zero loss.",
+    "Missing metric series are not healthy zero.",
+    "WS without samples remains unverified.",
+    "No pressure test, model call, restart, configuration or financial mutation.",
+    "Peak and seven-day admission remain unapproved."
+  ],
+  "comparison": {
+    "reference_file": "timing-capacity.json",
+    "reference_query_end": "2026-10-18T09:37:41+08:00",
+    "reference_precedes_monitor_window": true,
+    "changed_runtime_services": [],
+    "export_counter_delta_same_relay_instance": {
+      "exported": 0.0,
+      "queued": 0.0
+    },
+    "summary_count_delta": 0,
+    "summary_json_bytes_delta": 0,
+    "jaeger_physical_bytes_delta": 22288468,
+    "filesystem_available_bytes_delta": -40534016,
+    "limits": "Comparison is against the pre-window baseline, not a fabricated point sample at the monitor start. Raw counter deltas only computed for matching Relay instance."
+  },
+  "assessment": {
+    "state": "ONGOING",
+    "actionable_findings": [],
+    "notification": "none; unchanged or non-actionable observations remain silent",
+    "observed_metric_zero": [
+      "OTel queue drop counters for seven observed instances",
+      "invalid carrier counters for seven observed instances"
+    ],
+    "missing_series_not_zero": [
+      "otel_failure_window",
+      "export_failure_window",
+      "ws_stage_count"
+    ],
+    "capacity_limits": [
+      "No new model summaries or WS samples; this hour does not validate peak or WS capacity.",
+      "48h TTL/queryable oldest span and physical reclamation remain unverified.",
+      "Existing two failed peak experiments and executor admission remain unchanged."
+    ],
+    "collector_preparation_error_recovered": true
+  }
+}

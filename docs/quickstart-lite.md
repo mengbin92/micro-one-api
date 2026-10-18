@@ -5,7 +5,7 @@
 Lite 保留现有 9 个服务，用 SQLite 文件卷替代 MySQL，另运行一个 Redis。
 适合单机、低并发的个人或小团队使用。本文验证入口是
 [`scripts/test-lite-smoke.py`](../scripts/test-lite-smoke.py)：真实启动各服务，通过 HTTP
-登录、创建渠道、充值测试钱包、创建 Token、列出模型并完成聊天，最后验证重启后数据仍在。
+登录、创建渠道、充值测试钱包、创建 Token、列出模型并完成聊天，再验证重启持久化及空卷恢复。
 只有上游模型响应由本地 mock 提供，不需要真实供应商凭证。
 
 这里的「10 分钟」指镜像就绪后的配置和首次请求操作。当前 lite compose 从源码构建，
@@ -43,6 +43,10 @@ p.write_text('\n'.join(
 ) + '\n')
 p.chmod(0o600)
 PY
+python3 ../../scripts/prepare-rbac-service-identities.py --output .env.service-identities
+cat .env.service-identities >> .env
+python3 ../../scripts/check-service-identities.py --env .env
+rm .env.service-identities
 
 # 后续命令均在此目录运行；每个新终端重新定义此函数。
 lite() { docker compose -p oneapi-lite --env-file .env -f docker-compose.lite.yml "$@"; }
@@ -59,6 +63,8 @@ lite logs migrate
 `sqlite-init` 和 `migrate` 应为 `Exited (0)`，Redis 应为 healthy，其余服务保持 running。
 `sqlite-init` 只初始化共享卷目录权限，迁移与服务均以 UID 65534 访问 SQLite。
 后续启动会检查并应用尚未执行的增量迁移。
+独立服务身份与接收方信任表是执行准入的必要配置，共享 `SERVICE_TOKEN` 不能代替；
+上面的工具从现有 RPC 权限表生成它们，不切换 IAM 模式或扩大灰度。升级时保留这些密钥。
 
 | 入口 | 默认地址 | 端口被占用时修改 `.env` |
 |---|---|---|
@@ -208,6 +214,8 @@ python3 scripts/test-lite-smoke.py
 脚本复制当前受 Git 管理的源码到全新临时目录，生成独立测试密钥，分配唯一 project 名称、
 随机本机端口和全新卷，构建时自动生成 proto。它不会读取现有 `.env`，不会复用生产卷，
 不会请求外部模型。成功输出逐项 PASS，默认自动清理本次容器、镜像、网络和卷。
+脚本还会停机备份 SQLite、Redis 与 `.env`，在第二个独立 project 的空卷中恢复，
+核对原登录、钱包、Redis 数据、原 Token 和渠道凭证解密；恢复复用本次构建的镜像。
 `--keep` 可保留隔离环境用于人工检查，末尾会输出该环境的清理命令；诊断日志保存在
 私有临时目录，可能含测试数据，不应直接公开上传。
 

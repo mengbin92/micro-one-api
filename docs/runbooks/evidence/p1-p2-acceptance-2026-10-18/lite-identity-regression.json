@@ -1,0 +1,14 @@
+{
+  "before": {
+    "relay_http_status": 503,
+    "claim_rpc_status": "PermissionDenied",
+    "reason": "authorization denied"
+  },
+  "change": "Only isolated service credentials and receiver maps changed; same images, stores and channel.",
+  "after": {
+    "relay_http_status": 200,
+    "mock_content_matches": true,
+    "usage_present": true
+  },
+  "production_modified": false
+}

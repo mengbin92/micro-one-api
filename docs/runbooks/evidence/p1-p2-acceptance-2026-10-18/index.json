@@ -1,0 +1,49 @@
+{
+  "checked_at": "2026-10-18T14:32:16.355926+08:00",
+  "git_head": "a6691d1d9f6d1899c32aa9d676ac5b4e77e72cbb",
+  "scope": "Two P1 tasks and P2 isolated acceptance; working-tree changes only; no release or production rollout.",
+  "verdicts": {
+    "controlled_native_performance": "PASS",
+    "ordinary_ws_socket_soak": "PASS",
+    "durable_history_limit_preserved": "PASS",
+    "lite_fresh_install_and_empty_volume_recovery": "PASS",
+    "production_admission": "NOT_EVALUATED; fixed 48h observation and external evidence gates remain separate"
+  },
+  "artifacts": [
+    {
+      "file": "checks.json",
+      "sha256": "4534124c2a492103a494b4c262fd94869680eef4784dddcf60472a224c02d103",
+      "bytes": 2227
+    },
+    {
+      "file": "lite-identity-regression.json",
+      "sha256": "dcf03fa9cf5cfb61f858d9bfa0c01147c68d50b826679821b627916bbcfe5541",
+      "bytes": 382
+    },
+    {
+      "file": "lite-smoke.json",
+      "sha256": "dd03ea163572d0be2e97383b774f0eeca9e31e456d4a8626266f71144c9edc5c",
+      "bytes": 1349
+    },
+    {
+      "file": "native-runner.json",
+      "sha256": "0759bb90810a1f0e20a5c2faa0e45342f238cace509130d03174fe2f4efe7006",
+      "bytes": 1663
+    },
+    {
+      "file": "timing-perf-linux-amd64.json",
+      "sha256": "2def681acb65aa2944e8aa0755930a9014be5dcb255af47a6e495b8605db7a01",
+      "bytes": 4868
+    },
+    {
+      "file": "ws-before-fix.json",
+      "sha256": "7a7871c02dd8042e5509c583a0c529bf39dd74c4ee42e8dfc19fa237e54d70f6",
+      "bytes": 2092
+    },
+    {
+      "file": "ws-soak.json",
+      "sha256": "a832fec0dbe239335fc66c38535dc62c10bb8fb9c645e2efdd3e20cbdf3f18b6",
+      "bytes": 328
+    }
+  ]
+}

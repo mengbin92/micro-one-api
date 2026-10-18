@@ -6,7 +6,7 @@ Lite keeps all nine application services and Redis, replacing MySQL with SQLite
 files in a Docker volume. It is intended for single-host, low-concurrency use.
 The existing [smoke test](../scripts/test-lite-smoke.py) starts the services,
 logs in over HTTP, creates a channel, funds a test wallet, creates a token,
-lists models, sends a chat request and checks persistence after a restart.
+lists models, sends a chat request, checks restart persistence and restores a backup into empty volumes.
 Only the upstream model is mocked; no provider credentials are needed for that test.
 
 Initial dependency downloads and source compilation take additional time. Any
@@ -47,6 +47,10 @@ p.write_text('\n'.join(
 ) + '\n')
 p.chmod(0o600)
 PY
+python3 ../../scripts/prepare-rbac-service-identities.py --output .env.service-identities
+cat .env.service-identities >> .env
+python3 ../../scripts/check-service-identities.py --env .env
+rm .env.service-identities
 
 # Run subsequent commands in this directory. Redefine this in each new terminal.
 lite() { docker compose -p oneapi-lite --env-file .env -f docker-compose.lite.yml "$@"; }
@@ -59,6 +63,11 @@ lite up -d
 lite ps -a
 lite logs migrate
 ```
+
+Dedicated service identities and receiver trust maps are required for execution
+admission; the shared `SERVICE_TOKEN` cannot replace them. The existing tool
+derives these credentials from the RPC policies without switching IAM mode or
+expanding rollouts. Preserve them on upgrades.
 
 `sqlite-init` and `migrate` should exit with code 0. Redis should be healthy and
 the application services should remain running. `sqlite-init` sets volume
@@ -233,6 +242,9 @@ secrets, uses a unique project name, random loopback ports and new volumes, and
 generates protobuf inputs during image builds. It does not read your `.env`,
 reuse production volumes or call external model providers. Successful checks
 print PASS; containers, images, networks and volumes are cleaned up by default.
+It also stops the stores, backs up SQLite, Redis and `.env`, and restores them
+into a second project's empty volumes using the same built images. Recovery
+checks the original login, wallet, Redis data, Token and encrypted channel credentials.
 `--keep` retains the isolated environment and prints cleanup instructions.
 Diagnostic logs remain in a private temporary directory and may contain test data.
 
