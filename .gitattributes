@@ -1,3 +1,5 @@
 # Preserve archived test output and replay patches byte-for-byte for their hashes.
 /docs/runbooks/evidence/post-v0.36.0-2026-10-18/*.txt -whitespace
 /docs/runbooks/evidence/post-v0.36.0-2026-10-18/*.patch -whitespace
+# Keep the reviewed CSV's existing CRLF without hiding other whitespace errors.
+/docs/design/rbac/entry-matrix.csv whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

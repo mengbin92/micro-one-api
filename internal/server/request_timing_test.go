@@ -101,6 +101,58 @@ type failedTimingWriter struct{ http.ResponseWriter }
 func (f failedTimingWriter) Write([]byte) (int, error) { return 0, errors.New("client left") }
 func (f failedTimingWriter) FlushError() error         { return errors.New("client left") }
 
+type earlyReplyTimingConn struct {
+	*fakeFrameConn
+	writes  int
+	release <-chan struct{}
+}
+
+func (c *earlyReplyTimingConn) WriteFrame(ctx context.Context, kind coderws.MessageType, payload []byte) error {
+	c.writes++
+	if c.writes == 2 {
+		c.in <- fakeFrame{msgType: coderws.MessageText, payload: []byte(`{"type":"response.completed","response":{"id":"second","status":"completed"}}`)}
+		select {
+		case <-c.release:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return c.fakeFrameConn.WriteFrame(ctx, kind, payload)
+}
+
+func TestWSTimingResponseCanFinishBeforeSendReturns(t *testing.T) {
+	exporter, summaries := timingSink(t)
+	server := &HTTPServer{timingExporter: exporter}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	create := []byte(`{"type":"response.create","model":"test"}`)
+	ctx, session := server.startWSTimings(ctx, create)
+	defer session.Close()
+	release := make(chan struct{})
+	upstream := &earlyReplyTimingConn{fakeFrameConn: newFakeFrameConn(4), release: release}
+	upstream.in <- fakeFrame{msgType: coderws.MessageText, payload: []byte(`{"type":"response.completed","response":{"id":"first","status":"completed"}}`)}
+	client := newFakeFrameConn(4)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = relayOpenAIWSFrames(ctx, client, upstream, create, openAIWSRelayOptions{timings: session})
+	}()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Error("WS relay did not release its pumps")
+		}
+	}()
+	require.Equal(t, "success", awaitTiming(t, summaries).Outcome)
+	client.in <- fakeFrame{msgType: coderws.MessageText, payload: create}
+	second := awaitTiming(t, summaries)
+	close(release)
+	require.Equal(t, "success", second.Outcome, "a completed response proves the turn was admitted even before WriteFrame returns")
+	require.True(t, second.OutputComplete)
+}
+
 func TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput(t *testing.T) {
 	exporter, summaries := timingSink(t)
 	server := &HTTPServer{timingExporter: exporter}

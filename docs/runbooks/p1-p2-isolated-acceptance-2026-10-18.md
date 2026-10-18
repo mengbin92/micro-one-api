@@ -79,4 +79,14 @@ python3 scripts/test-lite-smoke.py
 
 源码、指南和测试修改均未提交、推送、打 tag 或部署。生产模型请求、存储/保留期、收费配置和灰度范围未改变；小时观察任务继续按原窗口采样，executor 七天任务继续暂停。存储稳态、生产 WS、供应商账期与 executor 同窗门禁仍各自待证。
 
-[校验与源码指纹](evidence/p1-p2-acceptance-2026-10-18/checks.json) · [证据索引](evidence/p1-p2-acceptance-2026-10-18/index.json)。原生测量所用六份 Go/模块文件已与当前工作区逐一核对 SHA-256。
+[校验与源码指纹](evidence/p1-p2-acceptance-2026-10-18/checks.json) · [证据索引](evidence/p1-p2-acceptance-2026-10-18/index.json)。原生测量所用六份 Go/模块文件已与 `6b656cd8` 验收时点逐一核对 SHA-256；后续发布门禁的 WS 发送边界补修见下节，原始测量不追改。
+
+## 5. 发布门禁补修：快响应终态时序
+
+develop 的 Linux Backend 单测检出 `TestWSTimingMultiTurnSocket`：预留已关联、结算 committed、输出已完成，但 summary outcome 为 rejected。不是修改断言：另加实际 relay 泵的可控写入测试，让第二轮响应先完成、再放行该轮 `WriteFrame` 返回；原实现连续 20 次均失败，稳定复现 CI 症状。
+
+根因是发送状态只在 `WriteFrame` 返回后建立。普通同步测试与带 50ms 假上游的长跑没有触发这个调度顺序。修复把状态转换放在所有准入/契约/持久化检查之后、实际 I/O 之前；写失败仍写入失败状态，未通过准入的请求不进入发送状态。金额、账本和权限判断不变。
+
+本机 darwin/arm64 与原生 Linux/amd64 的同组 100 次 race 重复检查均通过，保留普通多轮 socket、可控早响应、真实持久化历史保护三类检查；完整 `make verify` 已重新通过。原生编译/验证在关闭外部网络的独立 4 CPU / 4 GiB 容器完成，无 OOM，临时容器已清理。[失败与通过证据](evidence/ws-send-boundary-2026-10-18/index.json)
+
+本补修只改 WS 路径，§1 的受控 HTTP 性能数据保留其原始源码指纹，不冒充补修后的新一轮性能测量。生产实例和观察窗口保持原值。发布前还为既有 CRLF 的 RBAC CSV 声明限定的 `cr-at-eol` 属性，保持原文件换行并继续检查其他空白错误；清单仅刷新已评审的源摘要，未改授权分类。
