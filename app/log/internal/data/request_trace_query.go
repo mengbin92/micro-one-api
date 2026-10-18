@@ -49,13 +49,26 @@ func (r *Repository) ListRequestTraces(ctx context.Context, f biz.RequestTraceFi
 	}
 	// Select the page from the covering timing index before loading JSON. A
 	// SELECT * can make MySQL choose a growing row scan/filesort despite LIMIT.
-	var ids []int64
-	if err = q.Session(&gorm.Session{}).Order("request_started_at_ms DESC, id DESC").Limit(int(f.PageSize)+1).Pluck("id", &ids).Error; err != nil {
+	var keys []struct {
+		ID          int64
+		StartedAtMS int64 `gorm:"column:request_started_at_ms"`
+	}
+	if err = q.Session(&gorm.Session{}).Select("id, request_started_at_ms").Order("request_started_at_ms DESC, id DESC").Limit(int(f.PageSize) + 1).Find(&keys).Error; err != nil {
 		return nil, c, false, err
 	}
-	more := len(ids) > int(f.PageSize)
+	more := len(keys) > int(f.PageSize)
 	if more {
-		ids = ids[:f.PageSize]
+		keys = keys[:f.PageSize]
+	}
+	ids := make([]int64, len(keys))
+	for i, key := range keys {
+		ids[i] = key.ID
+	}
+	if len(keys) > 0 {
+		// Retention may remove this entire page before materialization. Keep
+		// advancing past its selected keys rather than emitting an invalid token.
+		last := keys[len(keys)-1]
+		c.AfterID, c.AfterStartMS = last.ID, last.StartedAtMS
 	}
 	var models []logModel
 	if len(ids) > 0 {
@@ -72,11 +85,6 @@ func (r *Repository) ListRequestTraces(ctx context.Context, f biz.RequestTraceFi
 			return nil, c, false, err
 		}
 		entries = append(entries, entry)
-	}
-	if len(entries) > 0 {
-		last := entries[len(entries)-1]
-		c.AfterID = last.ID
-		c.AfterStartMS = last.RequestTiming.StartedAtMS
 	}
 	return entries, c, more, nil
 }

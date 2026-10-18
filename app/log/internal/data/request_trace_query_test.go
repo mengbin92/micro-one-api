@@ -4,13 +4,67 @@ import (
 	"context"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"micro-one-api/app/log/internal/biz"
 	"micro-one-api/domain/authorization"
 	authztest "micro-one-api/domain/authorization/testutil"
 	dbtest "micro-one-api/platform/database/testutil"
+	"sync"
 	"testing"
 	"time"
 )
+
+func TestRequestTraceCursorSurvivesDeletionBetweenPageReads(t *testing.T) {
+	r := timingSQLite(t)
+	entries := make([]*biz.LogEntry, 4)
+	for i := range entries {
+		entries[i] = timingEntry()
+		entries[i].RequestTiming.StartedAtMS = int64(1000 + i)
+		finished := entries[i].RequestTiming.StartedAtMS
+		entries[i].RequestTiming.HandlerFinishedAtMS = &finished
+		require.NoError(t, r.Create(context.Background(), entries[i]))
+	}
+	var once sync.Once
+	require.NoError(t, r.db.Callback().Query().Before("gorm:query").Register("purge_selected_timing_page", func(tx *gorm.DB) {
+		if tx.Statement.Table != "logs" {
+			return
+		}
+		where, _ := tx.Statement.Clauses["WHERE"].Expression.(clause.Where)
+		materializing := false
+		for _, expression := range where.Exprs {
+			if predicate, ok := expression.(clause.Expr); ok && predicate.SQL == "id IN ?" {
+				materializing = true
+			}
+		}
+		if !materializing {
+			return
+		}
+		once.Do(func() {
+			ids := []int64{entries[2].ID, entries[3].ID}
+			observations := []string{entries[2].RequestTiming.ObservationID, entries[3].RequestTiming.ObservationID}
+			require.NoError(t, r.db.Transaction(func(purge *gorm.DB) error {
+				if err := purge.Where("observation_id IN ?", observations).Delete(&requestTraceAttemptRefModel{}).Error; err != nil {
+					return err
+				}
+				if err := purge.Where("log_id IN ?", ids).Delete(&logIngestDedupeClaimModel{}).Error; err != nil {
+					return err
+				}
+				return purge.Where("id IN ?", ids).Delete(&logModel{}).Error
+			}))
+		})
+	}))
+	uc := biz.NewLogUsecase(r)
+	filter := biz.RequestTraceFilter{StartMS: 1000, EndMS: 2000, PageSize: 2}
+	items, token, err := uc.ListRequestTraces(context.Background(), filter)
+	require.NoError(t, err)
+	require.Empty(t, items, "selected page was concurrently purged")
+	require.NotEmpty(t, token, "cursor must advance past purged keys")
+	filter.PageToken = token
+	items, token, err = uc.ListRequestTraces(context.Background(), filter)
+	require.NoError(t, err, "a concurrently empty page must not produce an invalid cursor")
+	require.Len(t, items, 2)
+	require.Empty(t, token)
+}
 
 func TestRequestTraceFirstPageSnapshotReadIsBounded(t *testing.T) {
 	db := dbtest.RoutingContextDB(t, "mysql")
