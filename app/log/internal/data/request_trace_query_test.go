@@ -2,13 +2,16 @@ package data
 
 import (
 	"context"
+	"encoding/base64"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"micro-one-api/app/log/internal/biz"
 	"micro-one-api/domain/authorization"
 	authztest "micro-one-api/domain/authorization/testutil"
+	"micro-one-api/pkg/jsonx"
 	dbtest "micro-one-api/platform/database/testutil"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -92,6 +95,82 @@ func TestRequestTraceSQLitePageKeysUseCoveringIndex(t *testing.T) {
 			for _, step := range plan {
 				require.NotContains(t, step.Detail, "TEMP B-TREE", "page keys must not sort the growing history: %s", pageSQL)
 			}
+		})
+	}
+}
+
+func TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort(t *testing.T) {
+	db := dbtest.RoutingContextDB(t, "postgres")
+	r := &Repository{db: db}
+	for start := 0; start < 2048; start += timingCommitBatchSize {
+		entries := make([]*biz.LogEntry, timingCommitBatchSize)
+		for i := range entries {
+			entries[i] = timingEntry()
+		}
+		require.NoError(t, r.CreateBatch(context.Background(), entries))
+	}
+	require.NoError(t, db.Exec("ANALYZE logs").Error)
+	var snapshotSQL string
+	var snapshotArgs []any
+	require.NoError(t, db.Callback().Query().After("gorm:query").Register("capture_snapshot_generic_plan", func(tx *gorm.DB) {
+		if snapshotSQL == "" && tx.Statement.Table == "logs" {
+			snapshotSQL = tx.Statement.SQL.String()
+			snapshotArgs = append([]any(nil), tx.Statement.Vars...)
+		}
+	}))
+	_, _, _, err := r.ListRequestTraces(context.Background(), biz.RequestTraceFilter{StartMS: 1, EndMS: 100000, UserID: new(int64(7)), PageSize: 20}, biz.RequestTraceCursor{})
+	require.NoError(t, err)
+	require.NotEmpty(t, snapshotSQL)
+	var plan string
+	require.NoError(t, db.Connection(func(conn *gorm.DB) error {
+		if err := conn.Exec("SET plan_cache_mode = force_generic_plan").Error; err != nil {
+			return err
+		}
+		defer conn.Exec("RESET plan_cache_mode")
+		if err := conn.Exec("PREPARE timing_snapshot AS " + snapshotSQL).Error; err != nil {
+			return err
+		}
+		defer conn.Exec("DEALLOCATE timing_snapshot")
+		explain := conn.ToSQL(func(tx *gorm.DB) *gorm.DB {
+			return tx.Raw("EXPLAIN (FORMAT JSON) EXECUTE timing_snapshot("+strings.TrimSuffix(strings.Repeat("?,", len(snapshotArgs)), ",")+")", snapshotArgs...)
+		})
+		return conn.Raw(explain).Scan(&plan).Error
+	}))
+	require.NotContains(t, plan, `"Node Type": "Sort"`, "snapshot must stream its primary-key bound rather than sort the matching time range: %s", plan)
+}
+
+func TestRequestTraceSnapshotKeepsOwnerScopeOutsideSearchWindow(t *testing.T) {
+	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(driver, func(t *testing.T) {
+			r := &Repository{db: dbtest.RoutingContextDB(t, driver)}
+			visible, visible2, ownOutside, otherOwner := timingEntry(), timingEntry(), timingEntry(), timingEntry()
+			ownOutside.RequestTiming.StartedAtMS = 3000
+			finish := int64(3000)
+			ownOutside.RequestTiming.HandlerFinishedAtMS = &finish
+			otherOwner.UserID = 8
+			otherOwner.RequestTiming.UserID = 8
+			for _, e := range []*biz.LogEntry{visible, visible2, ownOutside, otherOwner} {
+				require.NoError(t, r.Create(context.Background(), e))
+			}
+			policy := &authztest.Resolver{ActorID: 7, Scopes: map[string]authorization.QueryScope{"log.request.list": authztest.Users(7)}}
+			// Resolve the same owner scope through the usecase before reading the repo.
+			uc := biz.NewLogUsecase(r)
+			uc.SetAuthorization(policy)
+			items, token, err := uc.ListRequestTraces(authztest.Context(), biz.RequestTraceFilter{StartMS: 1, EndMS: 2000, PageSize: 1})
+			require.NoError(t, err)
+			require.Len(t, items, 1)
+			encoded, err := base64.RawURLEncoding.DecodeString(token)
+			require.NoError(t, err)
+			var watermark biz.RequestTraceCursor
+			require.NoError(t, jsonx.Unmarshal(encoded, &watermark))
+			require.Equal(t, ownOutside.ID, watermark.SnapshotMaxID, "authorization scope must also bound the watermark without an explicit user filter")
+			// An explicit user restriction must also bound the watermark; the time
+			// window limits returned rows, while newer owned rows can fence late writes.
+			rows, c, _, err := r.ListRequestTraces(context.Background(), biz.RequestTraceFilter{StartMS: 1, EndMS: 2000, UserID: new(int64(7)), PageSize: 20}, biz.RequestTraceCursor{})
+			require.NoError(t, err)
+			require.Len(t, rows, 2)
+			require.Equal(t, ownOutside.ID, c.SnapshotMaxID)
+			require.Less(t, c.SnapshotMaxID, otherOwner.ID)
 		})
 	}
 }

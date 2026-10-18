@@ -20,10 +20,22 @@ func (r *Repository) ListRequestTraces(ctx context.Context, f biz.RequestTraceFi
 	if err != nil {
 		return nil, c, false, err
 	}
-	q = applyTimingVisibility(ctx, q).Where("source = ? AND request_started_at_ms >= ? AND request_started_at_ms < ?", requesttrace.TimingSource, f.StartMS, f.EndMS)
+	q = applyTimingVisibility(ctx, q).Where("source = ?", requesttrace.TimingSource)
 	if f.UserID != nil {
 		q = q.Where("user_id = ?", *f.UserID)
 	}
+	if c.SnapshotMaxID == 0 {
+		var maxID struct{ ID int64 }
+		// Fence late inserts within the caller's visible owner scope, before
+		// applying search filters. PostgreSQL generic plans estimate moving time
+		// ranges as selective and otherwise scan/sort the growing timing index.
+		// Search predicates still apply to page keys and materialized rows.
+		if err = q.Session(&gorm.Session{}).Select("id").Order("id DESC").Limit(1).Find(&maxID).Error; err != nil {
+			return nil, c, false, err
+		}
+		c.SnapshotMaxID = maxID.ID
+	}
+	q = q.Where("request_started_at_ms >= ? AND request_started_at_ms < ?", f.StartMS, f.EndMS)
 	if f.RootRequestID != "" {
 		q = q.Where("root_request_id = ?", f.RootRequestID)
 	}
@@ -34,15 +46,7 @@ func (r *Repository) ListRequestTraces(ctx context.Context, f biz.RequestTraceFi
 		refs := r.db.Model(&requestTraceAttemptRefModel{}).Select("observation_id").Where("user_id = ? AND reservation_id = ?", *f.UserID, f.ReservationID)
 		q = q.Where("observation_id IN (?)", refs)
 	}
-	if c.SnapshotMaxID == 0 {
-		var maxID struct{ ID int64 }
-		// LIMIT permits an early stop; a filtered MAX(id) scans the entire
-		// matching timing range even though only the snapshot fence is needed.
-		if err = q.Session(&gorm.Session{}).Select("id").Order("id DESC").Limit(1).Find(&maxID).Error; err != nil {
-			return nil, c, false, err
-		}
-		c.SnapshotMaxID = maxID.ID
-	}
+
 	q = q.Where("id <= ?", c.SnapshotMaxID)
 	if c.AfterID > 0 {
 		q = q.Where("(request_started_at_ms < ? OR (request_started_at_ms = ? AND id < ?))", c.AfterStartMS, c.AfterStartMS, c.AfterID)

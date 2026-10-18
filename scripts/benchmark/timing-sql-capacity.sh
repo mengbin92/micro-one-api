@@ -183,7 +183,7 @@ for label in baseline candidate; do
       if [[ "$binary" == requesttrace ]]; then pattern='.'; fi
       set +e
       docker exec -e GOMAXPROCS=4 "${db_args[@]}" "$measurement" \
-        "$results/$binary-race.test" -test.run "$pattern" -test.count=10 -test.v -test.timeout=5m \
+        "$results/$binary-race.test" -test.run "$pattern" -test.count=10 -test.v -test.timeout=10m \
         > "$results/$binary-race.log" 2>&1
       rc=$?
       set -e
