@@ -66,6 +66,36 @@ func TestRequestTraceCursorSurvivesDeletionBetweenPageReads(t *testing.T) {
 	require.Empty(t, token)
 }
 
+func TestRequestTraceSQLitePageKeysUseCoveringIndex(t *testing.T) {
+	for _, userFilter := range []bool{false, true} {
+		t.Run(map[bool]string{false: "all_users", true: "one_user"}[userFilter], func(t *testing.T) {
+			r := &Repository{db: dbtest.RoutingContextDB(t, "sqlite")}
+			entry := timingEntry()
+			require.NoError(t, r.Create(context.Background(), entry))
+			var pageSQL string
+			var pageArgs []any
+			require.NoError(t, r.db.Callback().Query().After("gorm:query").Register("capture_page_keys", func(tx *gorm.DB) {
+				if len(tx.Statement.Selects) == 1 && tx.Statement.Selects[0] == "id, request_started_at_ms" {
+					pageSQL = tx.Statement.SQL.String()
+					pageArgs = append([]any(nil), tx.Statement.Vars...)
+				}
+			}))
+			filter := biz.RequestTraceFilter{StartMS: 1, EndMS: time.Now().Add(time.Hour).UnixMilli(), PageSize: 20}
+			if userFilter {
+				filter.UserID = new(int64(7))
+			}
+			_, _, _, err := r.ListRequestTraces(context.Background(), filter, biz.RequestTraceCursor{})
+			require.NoError(t, err)
+			require.NotEmpty(t, pageSQL)
+			var plan []struct{ Detail string }
+			require.NoError(t, r.db.Raw("EXPLAIN QUERY PLAN "+pageSQL, pageArgs...).Scan(&plan).Error)
+			for _, step := range plan {
+				require.NotContains(t, step.Detail, "TEMP B-TREE", "page keys must not sort the growing history: %s", pageSQL)
+			}
+		})
+	}
+}
+
 func TestRequestTraceFirstPageSnapshotReadIsBounded(t *testing.T) {
 	db := dbtest.RoutingContextDB(t, "mysql")
 	r := &Repository{db: db}

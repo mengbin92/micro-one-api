@@ -188,14 +188,15 @@ func TestRequestTimingSQLBackpressureAndLostAck(t *testing.T) {
 		}
 	}
 	start := time.Now()
-	for range 401 - requesttrace.ExporterWorkerCount {
+	total := requesttrace.ExporterWorkerCount + requesttrace.ExporterQueueCapacity + 81
+	for range total - requesttrace.ExporterWorkerCount {
 		exporter.Submit(context.Background(), sqlTimingSummary())
 	}
 	elapsed := time.Since(start)
 	stats := exporter.Stats()
 	require.Less(t, elapsed, time.Second, "stalled SQL must not block producer")
 	require.EqualValues(t, requesttrace.ExporterWorkerCount+requesttrace.ExporterQueueCapacity, stats.Accepted, "workers plus fixed queue")
-	require.EqualValues(t, 401-requesttrace.ExporterWorkerCount-requesttrace.ExporterQueueCapacity, stats.Dropped)
+	require.EqualValues(t, total-requesttrace.ExporterWorkerCount-requesttrace.ExporterQueueCapacity, stats.Dropped)
 	server := &HTTPServer{}
 	server.SetTimingExporter(exporter)
 	response := httptest.NewRecorder()

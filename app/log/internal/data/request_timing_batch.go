@@ -10,7 +10,7 @@ import (
 	"micro-one-api/app/log/internal/biz"
 )
 
-const timingCommitBatchSize = 32
+const timingCommitBatchSize = 128
 
 type timingWrite struct {
 	ctx   context.Context
@@ -25,7 +25,7 @@ type timingWriteResult struct {
 
 // Concurrent, individually authenticated ingests share a durable transaction.
 // A caller sees success only after its summary, claim and refs have committed.
-// At most 32 snapshots are retained; the drain goroutine exits when idle.
+// At most 128 snapshots are retained; the drain goroutine exits when idle.
 func (r *Repository) createTimingGrouped(ctx context.Context, entry *biz.LogEntry) error {
 	r.timingInit.Do(func() {
 		r.timingSlots = make(chan struct{}, timingCommitBatchSize)

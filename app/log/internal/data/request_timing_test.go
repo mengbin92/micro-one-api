@@ -58,6 +58,28 @@ func timingRefs(t *testing.T, r *Repository, id string) []requestTraceAttemptRef
 	return refs
 }
 
+func TestTimingBatchAtMaximumSize(t *testing.T) {
+	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(driver, func(t *testing.T) {
+			r := &Repository{db: dbtest.RoutingContextDB(t, driver)}
+			entries := make([]*biz.LogEntry, timingCommitBatchSize)
+			for i := range entries {
+				entries[i] = timingEntry()
+			}
+			require.NoError(t, r.CreateBatch(context.Background(), entries))
+			for _, entry := range entries {
+				require.Positive(t, entry.ID)
+			}
+			require.NoError(t, r.CreateBatch(context.Background(), entries), "replay of a maximum group is idempotent")
+			for table, expected := range map[string]int64{"logs": timingCommitBatchSize, "log_ingest_dedupe_claims": timingCommitBatchSize, "request_trace_attempt_refs": 2 * timingCommitBatchSize} {
+				var n int64
+				require.NoError(t, r.db.Table(table).Count(&n).Error)
+				require.Equal(t, expected, n, table)
+			}
+		})
+	}
+}
+
 func TestTimingBatchFailureDoesNotCommitAnEarlierSummary(t *testing.T) {
 	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
 		t.Run(driver, func(t *testing.T) {

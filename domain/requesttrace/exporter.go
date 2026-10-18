@@ -13,9 +13,9 @@ type exportItem struct {
 }
 type ExportStats struct{ Accepted, Exported, Failed, Dropped int64 }
 
-// Pipeline the next group of RPCs while the Log owner's bounded 32-item
+// Pipeline the next group of RPCs while the Log owner's bounded 128-item
 // group writer waits for SQL, acknowledgement and encoding of the current one.
-const ExporterWorkerCount = 64
+const ExporterWorkerCount = 256
 const ExporterQueueCapacity = 256
 
 // Exporter owns a fixed queue and worker count. A slow/down log owner never
