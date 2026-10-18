@@ -1,0 +1,9 @@
+{
+  "before": "FAIL: zero required routing test sources",
+  "after": "PASS",
+  "routing_test_files": 10,
+  "service_test_files_excluded": true,
+  "production_go_configs_migrations_proto_frontend_retained": true,
+  "docs_and_env_excluded": true,
+  "mechanism": "real BuildKit COPY using repository .dockerignore; no service image or production change"
+}

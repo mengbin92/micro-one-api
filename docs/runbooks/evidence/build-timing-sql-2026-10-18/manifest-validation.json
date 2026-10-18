@@ -1,0 +1,21 @@
+{
+  "complete": {
+    "exit_code": 0,
+    "expected_success": true
+  },
+  "missing_platform": {
+    "exit_code": 1,
+    "expected_success": false,
+    "tag_absent": true
+  },
+  "malformed_digest": {
+    "exit_code": 1,
+    "expected_success": false,
+    "tag_absent": true
+  },
+  "wrong_platform": {
+    "exit_code": 1,
+    "expected_success": false,
+    "tag_absent": true
+  }
+}

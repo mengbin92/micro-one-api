@@ -1,0 +1,34 @@
+[
+  {
+    "command": "make test-unit",
+    "result": "PASS",
+    "log_sha256": "0b6028b5d3b9d183f1afd89e32882863307945eaceec803b4c08ac5357d32808",
+    "ok_packages": 121
+  },
+  {
+    "command": "go test -race ./internal/server -run SQL fault/recovery tests -count=20",
+    "result": "PASS",
+    "log_sha256": "77be256fbfec7bf5350fa0a9310710650b0f32a5a5bbcacd36f278e8a3192809",
+    "ok_packages": 1
+  },
+  {
+    "command": "go test ./internal/server ./app/log/internal/... ./platform/grpc/xgrpc ./domain/requesttrace -count=1",
+    "result": "PASS",
+    "log_sha256": "366ee5f20ef0329ee3c824eefe140a39350363fe0dfdd3cfea940d42cf0755af",
+    "ok_packages": 9
+  },
+  {
+    "command": "actionlint v1.7.12 ci.yml release.yml (shellcheck disabled; actual shell run separately)",
+    "result": "PASS",
+    "binary_archive_verified_against_official_sha256": true
+  },
+  {
+    "command": "check-architecture.sh",
+    "result": "PASS"
+  },
+  {
+    "command": "check-markdown-links.py",
+    "result": "PASS",
+    "files": 308
+  }
+]

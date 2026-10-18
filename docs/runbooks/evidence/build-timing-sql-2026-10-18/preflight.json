@@ -1,0 +1,11 @@
+{
+  "darwin_initial_run": {
+    "status": "ABORTED",
+    "reason": "Default HTTP transport idle pool was too small for 64 workers, causing connection churn and local ephemeral-port exhaustion. No complete acceptance result. Corrected both test client pools to 64 idle connections before native measurements.",
+    "log_sha256": "da1ef9c3e9352ed72b6e64ae70820ca7ead01ee17d41f7cb8b535a9df05ec6d3"
+  },
+  "native_initial_probe": {
+    "status": "ABORTED",
+    "reason": "Stopped before accepting results because database migration/fault checks overlapped the measurement container. Formal driver runs are sequential."
+  }
+}

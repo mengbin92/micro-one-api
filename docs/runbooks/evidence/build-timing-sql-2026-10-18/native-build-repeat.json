@@ -1,0 +1,159 @@
+{
+  "run_id": 39124283484,
+  "url": "https://github.com/mengbin92/micro-one-api/actions/runs/39124283484",
+  "image_matrix": "PASS (18/18)",
+  "backend": "FAIL: server End span assertion read before asynchronous callback",
+  "jobs": [
+    {
+      "name": "Docker Build (identity-service / linux/amd64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:42:04Z",
+      "completedAt": "2026-10-18T11:46:12Z",
+      "databaseId": 117666065236
+    },
+    {
+      "name": "Docker Build (admin-api / linux/amd64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:42:04Z",
+      "completedAt": "2026-10-18T11:48:06Z",
+      "databaseId": 117666065239
+    },
+    {
+      "name": "Docker Build (billing-service / linux/amd64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:42:04Z",
+      "completedAt": "2026-10-18T11:44:11Z",
+      "databaseId": 117666065255
+    },
+    {
+      "name": "Docker Build (monitor-worker / linux/arm64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:42:07Z",
+      "completedAt": "2026-10-18T11:46:34Z",
+      "databaseId": 117666065265
+    },
+    {
+      "name": "Docker Build (config-service / linux/arm64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:42:07Z",
+      "completedAt": "2026-10-18T11:44:24Z",
+      "databaseId": 117666065269
+    },
+    {
+      "name": "Docker Build (identity-service / linux/arm64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:42:07Z",
+      "completedAt": "2026-10-18T11:44:13Z",
+      "databaseId": 117666065283
+    },
+    {
+      "name": "Docker Build (channel-service / linux/amd64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:42:04Z",
+      "completedAt": "2026-10-18T11:44:26Z",
+      "databaseId": 117666065291
+    },
+    {
+      "name": "Docker Build (relay-gateway / linux/amd64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:42:05Z",
+      "completedAt": "2026-10-18T11:48:19Z",
+      "databaseId": 117666065295
+    },
+    {
+      "name": "Docker Build (relay-gateway / linux/arm64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:44:29Z",
+      "completedAt": "2026-10-18T11:49:39Z",
+      "databaseId": 117666065320
+    },
+    {
+      "name": "Docker Build (admin-api / linux/arm64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:44:17Z",
+      "completedAt": "2026-10-18T11:49:23Z",
+      "databaseId": 117666065321
+    },
+    {
+      "name": "Docker Build (channel-service / linux/arm64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:43:30Z",
+      "completedAt": "2026-10-18T11:45:52Z",
+      "databaseId": 117666065329
+    },
+    {
+      "name": "Docker Build (log-service / linux/arm64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:44:15Z",
+      "completedAt": "2026-10-18T11:49:15Z",
+      "databaseId": 117666065330
+    },
+    {
+      "name": "Docker Build (billing-service / linux/arm64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:44:29Z",
+      "completedAt": "2026-10-18T11:48:54Z",
+      "databaseId": 117666065335
+    },
+    {
+      "name": "Docker Build (monitor-worker / linux/amd64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:42:04Z",
+      "completedAt": "2026-10-18T11:44:42Z",
+      "databaseId": 117666065340
+    },
+    {
+      "name": "Docker Build (log-service / linux/amd64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:42:04Z",
+      "completedAt": "2026-10-18T11:44:25Z",
+      "databaseId": 117666065349
+    },
+    {
+      "name": "Docker Build (config-service / linux/amd64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:44:33Z",
+      "completedAt": "2026-10-18T11:49:29Z",
+      "databaseId": 117666065373
+    },
+    {
+      "name": "Docker Build (notify-worker / linux/amd64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:44:02Z",
+      "completedAt": "2026-10-18T11:46:37Z",
+      "databaseId": 117666065387
+    },
+    {
+      "name": "Docker Build (notify-worker / linux/arm64)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-18T11:44:30Z",
+      "completedAt": "2026-10-18T11:46:38Z",
+      "databaseId": 117666065431
+    }
+  ],
+  "cache_witness": {
+    "job_id": 117666065269,
+    "runner": "native arm64",
+    "generator_layer": "CACHED",
+    "export_seconds": 9.1,
+    "note": "Some entries, including Log, rebuilt; cache hits are not guaranteed."
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "goos": "linux",
+  "goarch": "amd64",
+  "go_version": "go1.27.2",
+  "cgo": true,
+  "gomaxprocs": 4,
+  "measurement_container": {
+    "cpus": 4,
+    "memory_bytes": 1073741824,
+    "network": "none"
+  },
+  "mysql": {
+    "version": "8.0",
+    "cpus": 1,
+    "memory_bytes": 1073741824
+  },
+  "postgres": {
+    "version": "18",
+    "cpus": 1,
+    "memory_bytes": 536870912
+  },
+  "sqlite": {
+    "storage": "temporary file",
+    "journal_mode": "WAL",
+    "synchronous": "FULL",
+    "max_open_connections": 1
+  },
+  "databases": "Share isolated container network namespace; listen only on its loopback. No published ports, no deployment DSNs. Existing migration helper creates/drops scratch MySQL database and PostgreSQL schema.",
+  "production_changed": false,
+  "snapshots_are_peak_or_average": false,
+  "mysql_point_sample": [
+    {
+      "BlockIO": "0B / 14GB",
+      "CPUPerc": "0.00%",
+      "Container": "timing-sql-native",
+      "ID": "ed15f3f96c26",
+      "MemPerc": "9.47%",
+      "MemUsage": "96.98MiB / 1GiB",
+      "Name": "timing-sql-native",
+      "NetIO": "0B / 0B",
+      "PIDs": "1"
+    },
+    {
+      "BlockIO": "144MB / 4.02GB",
+      "CPUPerc": "0.75%",
+      "Container": "timing-sql-mysql",
+      "ID": "1d9844431d9c",
+      "MemPerc": "55.47%",
+      "MemUsage": "568MiB / 1GiB",
+      "Name": "timing-sql-mysql",
+      "NetIO": "0B / 0B",
+      "PIDs": "41"
+    },
+    {
+      "BlockIO": "20.3MB / 139MB",
+      "CPUPerc": "0.00%",
+      "Container": "timing-sql-postgres",
+      "ID": "a09ee99d2ff2",
+      "MemPerc": "8.52%",
+      "MemUsage": "43.61MiB / 512MiB",
+      "Name": "timing-sql-postgres",
+      "NetIO": "0B / 0B",
+      "PIDs": "9"
+    }
+  ],
+  "64_binary_sha256": "ff83e5953bc18d6d55999e7172a0d261ba3f656f9343730d77c813494450539a",
+  "64_measurement_sources": {
+    "internal/server/request_timing_perf_test.go": "8f5d16e7a2f79c99c583957805c3e340c1ebeab987d1f12a0fb088025d62c932",
+    "internal/server/request_timing_sql_test.go": "bd19b3ace3edb776d8e246fcc16797680aab3591b42ded5241d25bb948bc94bd"
+  },
+  "source_note": "The later test-only TIMING_SQL_CONCURRENCY input retains default 64 and enables separate lower-load measurements; earlier 64 results retain their original hashes.",
+  "final_binary_sha256": "9fd6947501b5c0b6b0eb926410e1b8043ecbc3e7ccca6de1742cedd26f2f2926",
+  "final_benchmark_sha256": "d6ac5e266bde69450169175fc736fdb6f418a03d02afc41dbf8e6306cfd387b1",
+  "postgres_point_sample": [
+    {
+      "BlockIO": "22MB / 14.1GB",
+      "CPUPerc": "262.02%",
+      "Container": "timing-sql-native",
+      "ID": "ed15f3f96c26",
+      "MemPerc": "13.68%",
+      "MemUsage": "140.1MiB / 1GiB",
+      "Name": "timing-sql-native",
+      "NetIO": "0B / 0B",
+      "PIDs": "10"
+    },
+    {
+      "BlockIO": "20.3MB / 1.72GB",
+      "CPUPerc": "66.85%",
+      "Container": "timing-sql-postgres",
+      "ID": "a09ee99d2ff2",
+      "MemPerc": "34.41%",
+      "MemUsage": "176.2MiB / 512MiB",
+      "Name": "timing-sql-postgres",
+      "NetIO": "0B / 0B",
+      "PIDs": "13"
+    }
+  ],
+  "compilation_container_memory_bytes": 4294967296,
+  "final_container_image_ids_and_state": [
+    "/timing-sql-native golang:1.27.2-bookworm sha256:ee4851781507a617e5a5e527b3edeebc0f803385e9a47b380c1ed58fe88e60e6 oom=false restarts=0",
+    "/timing-sql-mysql mysql:8.0 sha256:6cd09145362dfe6831b14545de3d5fd6cc75c37cfd6ef8561429c1fc73518b39 oom=false restarts=0",
+    "/timing-sql-postgres postgres:18 sha256:80c0891f5de95d70f2fd664165fa6b8aa246b805a5c13c97824c4bd0970f4c8e oom=false restarts=0"
+  ],
+  "cleanup": {
+    "local_registry_builder_network": "removed",
+    "remote_measurement_and_database_containers": "removed",
+    "other_local_containers": "preserved",
+    "production": "untouched"
+  }
+}

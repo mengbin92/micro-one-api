@@ -1,0 +1,19 @@
+{
+  "ci_run_id": 39124283484,
+  "failed_test": "TestGRPCStatsPropagateTrustedW3CParentExactlyOnce",
+  "ungated_darwin_race_500": "PASS (did not reproduce CI ordering)",
+  "controlled_server_end_before_fix": {
+    "race_repetitions": 20,
+    "failures": 20
+  },
+  "controlled_server_end_after_fix": {
+    "darwin_arm64_race_repetitions": 500,
+    "result": "PASS",
+    "linux_amd64_race_repetitions": 500,
+    "linux_entire_package_race_repetitions": 20
+  },
+  "fix": "Test-only transport End gate plus bounded wait; original duplicate and trace/parent-child assertions preserved. Production stats handler unchanged.",
+  "before_log_sha256": "ab8c5c48be12a7b158c047fdbc59052f578e161ae1d1fbf1bd6d84d6f981d406",
+  "after_log_sha256": "78227003552fcb6af86a617d5a6090ab5d6d361f4bc99679970ceed44d29ab2e",
+  "linux_log_sha256": "c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431"
+}

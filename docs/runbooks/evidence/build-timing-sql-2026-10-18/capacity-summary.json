@@ -1,0 +1,268 @@
+{
+  "high_load": [
+    {
+      "driver": "sqlite",
+      "concurrency": 64,
+      "outcome": "FAIL",
+      "p95_overhead_percent": [
+        5.715614133239599,
+        4.339140743960712,
+        4.293419088085848,
+        5.468325978369326
+      ],
+      "produced_with_warmup": 146565,
+      "exported": 34568,
+      "dropped": 111997,
+      "drop_percent": 76.41456009279159,
+      "export_failed": 0,
+      "http_failures": 0,
+      "query_failures": 0,
+      "persistence_p95_ms": [
+        988,
+        1000,
+        1023,
+        1019
+      ],
+      "query_p95_ms": [
+        30.11629,
+        38.689613,
+        41.364207,
+        45.208037
+      ],
+      "exported_per_steady_second_approx": [
+        293.8071061626947,
+        288.6593217140744,
+        284.5565508837147,
+        283.34224586800343
+      ],
+      "spans_completed": 1311512,
+      "spans_received": 1311512
+    },
+    {
+      "driver": "mysql",
+      "concurrency": 64,
+      "outcome": "FAIL",
+      "p95_overhead_percent": [
+        0.0738314378142535,
+        -0.13901436363745745,
+        -0.8619029824664004,
+        1.2524126382519984
+      ],
+      "produced_with_warmup": 148472,
+      "exported": 23821,
+      "dropped": 124651,
+      "drop_percent": 83.95589740826553,
+      "export_failed": 0,
+      "http_failures": 0,
+      "query_failures": 0,
+      "persistence_p95_ms": [
+        1441,
+        1494,
+        1532,
+        1498
+      ],
+      "query_p95_ms": [
+        20.173143,
+        58.770464,
+        45.379546,
+        69.925915
+      ],
+      "exported_per_steady_second_approx": [
+        203.00849892764847,
+        199.00851770115557,
+        195.7367412127846,
+        194.76600750843892
+      ],
+      "spans_completed": 1283780,
+      "spans_received": 1283780
+    },
+    {
+      "driver": "postgres",
+      "concurrency": 64,
+      "outcome": "FAIL",
+      "p95_overhead_percent": [
+        5.125411064482099,
+        0.9939534526686611,
+        3.474115961881541,
+        0.4121761237251498
+      ],
+      "produced_with_warmup": 147683,
+      "exported": 52892,
+      "dropped": 94791,
+      "drop_percent": 64.18545127062696,
+      "export_failed": 0,
+      "http_failures": 0,
+      "query_failures": 0,
+      "persistence_p95_ms": [
+        664,
+        817,
+        678,
+        831
+      ],
+      "query_p95_ms": [
+        29.0246,
+        39.867867,
+        18.766561,
+        20.079647
+      ],
+      "exported_per_steady_second_approx": [
+        448.25775545871835,
+        433.8434896854224,
+        447.59010174864153,
+        430.4446059269761
+      ],
+      "spans_completed": 1393752,
+      "spans_received": 1393752
+    }
+  ],
+  "scope": "Approximate export rates include warmup/drain and are not an exact maximum throughput; tested load points are not production admission.",
+  "low_load": [
+    {
+      "driver": "sqlite",
+      "concurrency": 8,
+      "outcome": "PASS",
+      "produced_with_warmup": 18607,
+      "exported": 18607,
+      "dropped": 0,
+      "failed": 0,
+      "p95_overhead_percent": [
+        1.8274827674484628,
+        1.3127405326048613,
+        2.6146589357100902,
+        2.2491164214288872
+      ],
+      "persistence_p95_ms": [
+        78,
+        76,
+        88,
+        79
+      ],
+      "query_p95_ms": [
+        31.499123,
+        24.471497,
+        22.200312,
+        22.751989
+      ],
+      "cpu_us_per_request_disabled": [
+        978.1856684491978,
+        1075.0609234715691,
+        1095.5420060008573,
+        1083.9531450577663
+      ],
+      "cpu_us_per_request_enabled": [
+        5058.5034423407915,
+        5095.52203827134,
+        5169.695079844627,
+        5185.881516587678
+      ],
+      "allocated_bytes_per_request_enabled": [
+        193312.30981067126,
+        192200.08428294992,
+        192410.46007768667,
+        192292.67557087462
+      ],
+      "http_failures": 0,
+      "query_failures": 0,
+      "spans_completed": 224004,
+      "spans_received": 224004
+    },
+    {
+      "driver": "mysql",
+      "concurrency": 8,
+      "outcome": "PASS",
+      "produced_with_warmup": 18499,
+      "exported": 18499,
+      "dropped": 0,
+      "failed": 0,
+      "p95_overhead_percent": [
+        3.4615479050325026,
+        2.5992082960615503,
+        3.62501898538532,
+        3.995513209808488
+      ],
+      "persistence_p95_ms": [
+        92,
+        106,
+        104,
+        97
+      ],
+      "query_p95_ms": [
+        15.360064,
+        36.381674,
+        32.637923,
+        44.269373
+      ],
+      "cpu_us_per_request_disabled": [
+        1021.8855614973262,
+        986.5945887910672,
+        997.2685897435897,
+        1017.4854948805461
+      ],
+      "cpu_us_per_request_enabled": [
+        5235.94952339688,
+        5224.768781121455,
+        5302.950606585789,
+        5190.613301559792
+      ],
+      "allocated_bytes_per_request_enabled": [
+        189558.90121317157,
+        188891.39640614853,
+        188947.7642980936,
+        188433.00173310225
+      ],
+      "http_failures": 0,
+      "query_failures": 0,
+      "spans_completed": 222708,
+      "spans_received": 222708
+    },
+    {
+      "driver": "postgres",
+      "concurrency": 8,
+      "outcome": "PASS",
+      "produced_with_warmup": 18523,
+      "exported": 18523,
+      "dropped": 0,
+      "failed": 0,
+      "p95_overhead_percent": [
+        3.173102554724161,
+        3.2483415107023905,
+        2.882528915520277,
+        2.93137761578659
+      ],
+      "persistence_p95_ms": [
+        84,
+        89,
+        115,
+        89
+      ],
+      "query_p95_ms": [
+        16.202847,
+        17.70099,
+        12.714458,
+        12.418599
+      ],
+      "cpu_us_per_request_disabled": [
+        952.0100750267953,
+        1022.2387676508343,
+        1018.2745980707396,
+        1026.0034290612946
+      ],
+      "cpu_us_per_request_enabled": [
+        4266.117825427767,
+        4265.014270270271,
+        4253.022702702703,
+        4185.889705882353
+      ],
+      "allocated_bytes_per_request_enabled": [
+        199793.60797054364,
+        198806.28237837838,
+        198380.4730810811,
+        198566.7474048443
+      ],
+      "http_failures": 0,
+      "query_failures": 0,
+      "spans_completed": 222996,
+      "spans_received": 222996
+    }
+  ]
+}

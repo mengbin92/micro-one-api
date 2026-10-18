@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-18",
+  "timezone": "Asia/Shanghai",
+  "production_changed": false,
+  "result": {
+    "native_builds": "PASS",
+    "sql_concurrency_8_all_drivers": "PASS",
+    "sql_concurrency_64_all_drivers": "FAIL (queue saturation)",
+    "production_capacity_admission": "NOT_GRANTED"
+  },
+  "artifacts": [
+    {
+      "path": "capacity-summary.json",
+      "sha256": "4b3b1621e81c59adcb15bd7b62fb1d9569c711ee4263bc770eb07270eb8fd074"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "2be7c8fef11c25fd8b5588b84fe446b72c04ecead4aeb6ffb60fe280954f3c02"
+    },
+    {
+      "path": "context-validation.json",
+      "sha256": "c637ec9ec454f265c4e5b5432426f5125587cdd8142ec381462f176dad268ede"
+    },
+    {
+      "path": "fault-recovery.json",
+      "sha256": "36863032aa470236c83376a9282b10bbb17c3d21333626554e592f9c54e2d3d1"
+    },
+    {
+      "path": "grpc-end-regression.json",
+      "sha256": "4ba3638a7f9455f1e9bcdc9e515bf1ee41692c72a8e3ce942fd375e650650b9b"
+    },
+    {
+      "path": "manifest-validation.json",
+      "sha256": "c80230eedbc70f808a5ac68d68f01833971079af254afcc0ded4db41a755e715"
+    },
+    {
+      "path": "mysql-64.json",
+      "sha256": "48c1b0d399c412b3414907ec86a5970abd3a8209055922da02e28f0eee05512b"
+    },
+    {
+      "path": "mysql-8.json",
+      "sha256": "2e3cf58be1f58d1010ace49fed5a61877c6ecb358f3528203a09753eaf4643c1"
+    },
+    {
+      "path": "native-build-cold.json",
+      "sha256": "eca6ea0fc6fb92b303cf7c0218573668a3e7e9879e3fe62bd2fe9eb994d1a7a5"
+    },
+    {
+      "path": "native-build-repeat.json",
+      "sha256": "66fdf1a985af1bc3f68cf255e07caa1a392f8b1ac8e9140bad67c54292d5ce4e"
+    },
+    {
+      "path": "postgres-64.json",
+      "sha256": "67949d011fbc15433bd620b90dfba98afb323619e1ca797480e823acf0fcb757"
+    },
+    {
+      "path": "postgres-8.json",
+      "sha256": "b43d9d5e809b6a8af5d19c86ba9eec0b079d2d74be966fd0b6c088e854054270"
+    },
+    {
+      "path": "preflight.json",
+      "sha256": "77968c03e4b7f181b501913fba3e15bb24080790ecde229abe7abc0eada52471"
+    },
+    {
+      "path": "qemu-build-baseline.json",
+      "sha256": "bf8c276ba85df352df195a405cb02706c4448bcde1a3956f7df0272bc7142c24"
+    },
+    {
+      "path": "runner.json",
+      "sha256": "51ffeb1b3048a416f856dd7027917567b8cef3b95528431e48e0761ecdfefcfe"
+    },
+    {
+      "path": "sqlite-64.json",
+      "sha256": "30fcde4c1569c449ca670e2b92f35ab75256479abde7b27ff675cf55530938ef"
+    },
+    {
+      "path": "sqlite-8.json",
+      "sha256": "93bb58d79d2df637f4ade95cd1185fb799191f16de67e97958a0aac0c5b17f8b"
+    }
+  ]
+}

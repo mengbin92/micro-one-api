@@ -1,0 +1,35 @@
+{
+  "native_linux_amd64": {
+    "drivers": [
+      "sqlite",
+      "mysql",
+      "postgres"
+    ],
+    "storage_failure_recovery": "PASS",
+    "atomic_rollback_tables": [
+      "logs",
+      "log_ingest_dedupe_claims",
+      "request_trace_attempt_refs"
+    ],
+    "lost_ack_dedupe": "PASS",
+    "backpressure": {
+      "accepted": 258,
+      "exported": 258,
+      "failed": 0,
+      "dropped": 144,
+      "producer_401_submit_ms": 1.137,
+      "saturated_http_status": 200,
+      "saturated_http_body": "ok"
+    }
+  },
+  "darwin_arm64": {
+    "race_repetitions": 20,
+    "result": "PASS",
+    "drivers": [
+      "sqlite"
+    ],
+    "external_drivers": "MySQL/PostgreSQL subtests explicitly skipped without local DSNs; all three executed separately on native Linux."
+  },
+  "scope": "Production Log gRPC server/interceptors/service/usecase/repository, full migrations and disposable SQL; legacy authorization resolver; fixed dedicated test callers. Failure and stall injected at GORM storage boundary, not a production database outage. Query uses admin service identity; actual IAM owner matrix remains covered by existing integration tests.",
+  "log_sha256": "afb9f6cf591ff812040164caebbad6bfda283c4b7e76d8cc22cc595545b60327"
+}

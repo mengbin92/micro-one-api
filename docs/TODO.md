@@ -8,6 +8,8 @@
 >
 > **P1/P2 隔离补验完成**：原生 Linux/amd64 四组长时交替性能对照 P95 +1.09%–1.32%，摘要/OTLP 无丢失；普通 WS 1200 轮、结算关联与 race 通过；Lite 安装、首请求、重启和 SQLite/Redis 空卷恢复通过。修复普通 WS 第 33 轮误断开及 Lite 缺独立服务身份的首请求 503，实现已提交为 `6b656cd8` 并纳入 [v0.36.1](./releases/release-v0.36.1.md) 发布范围，生产未部署。见 [P1/P2 记录](./runbooks/p1-p2-isolated-acceptance-2026-10-18.md)。
 >
+> **构建与 SQL 链路补验**：原生 arm64 镜像任务耗时缩短约 76%–90%；三库真实 Log RPC/SQL 的 8 并发长测共 55,629 条摘要完整落库。64 并发队列饱和、摘要丢弃 64%–84%，容量门禁 FAIL；未扩大生产采集负载。实现与边界见 [本轮记录](./runbooks/build-timing-sql-acceptance-2026-10-18.md) / [PR #24](https://github.com/mengbin92/micro-one-api/pull/24)，未部署。
+>
 > **当前剩余**：生产 WS 自然长连接与跨 48h TTL 存储稳态仍待验收，旧 arm64 短测两次失败保留；受控性能通过不代替生产 Log RPC/SQL 或整体容量准入。生产 vendor report/run 均为 0，DeepSeek 手工日窗相符不替代来源绑定、最终水位/API 对照。executor 当前新旧 SSE 无同窗可比增量，仍为 INSUFFICIENT、正式七天未起算。收费与灰度不自动扩面。
 
 ## 历史进度（2026-10-16）

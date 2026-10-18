@@ -24,6 +24,7 @@ docs/
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
 | 查看下一阶段执行路线与条件保留项 | [design/next-stage-plan-2026-10-18.md](./design/next-stage-plan-2026-10-18.md) |
 | 查看告警修复、生产容量基线与 executor 同窗复核 | [runbooks/post-v0.36.0-acceptance-2026-10-18.md](./runbooks/post-v0.36.0-acceptance-2026-10-18.md) |
+| 查看原生镜像提速与真实 Log RPC/SQL 容量边界 | [构建与 SQL 链路验收](./runbooks/build-timing-sql-acceptance-2026-10-18.md) |
 | English introduction and first Relay request | [README.en.md](../README.en.md) · [Lite Quickstart](./quickstart-lite.en.md) |
 | 查看 10 月 16 日发布、定价原子保存和条件验收结果 | [runbooks/plan-execution-2026-10-16.md](./runbooks/plan-execution-2026-10-16.md) |
 | 复核 DeepSeek 已结束日窗的官方费用与手工调用 | [runbooks/deepseek-closed-day-2026-10-16.md](./runbooks/deepseek-closed-day-2026-10-16.md) |
