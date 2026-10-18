@@ -49,6 +49,12 @@ cp "$repo_root/internal/server/request_timing_sql_diagnostic_test.go" "$baseline
   sha256sum "$repo_root/internal/server/request_timing_perf_test.go" "$repo_root/internal/server/request_timing_sql_diagnostic_test.go"
 } > "$results/environment.txt"
 
+# Generated stubs are intentionally ignored by Git. Generate in both source
+# trees rather than copying or hand-editing protobuf outputs.
+make init
+export PATH="$(go env GOPATH)/bin:$PATH"
+make proto
+(cd "$baseline" && make proto)
 go mod download
 docker pull golang:1.27.2-bookworm
 case "$driver" in
