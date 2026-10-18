@@ -8,7 +8,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.36.0 发布公告](./docs/releases/release-v0.36.0.md)（LLM 请求计时观测：瀑布追踪、账务关联与完整性判定） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.36.0)
+> 📣 **最新发布**：[v0.36.1 发布公告](./docs/releases/release-v0.36.1.md)（普通 WS 长连接修复、Lite 首请求恢复与计时验收） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.36.1)
 
 ## 功能概览
 
@@ -184,6 +184,7 @@ make web-dist
 
 ## 发布与升级
 
+- [v0.36.1](./docs/releases/release-v0.36.1.md)：普通 WS 长连接、Lite 首请求与导出告警修复；原生性能和空卷恢复验收。无新增迁移；生产 48 小时观察保持原窗口。
 - [v0.36.0](./docs/releases/release-v0.36.0.md)：LLM 请求计时观测、瀑布追踪、账单关联和完整性判定。新增 Log 137／Billing 138 迁移；按说明先迁移，再更新 Relay、Log、Billing、Admin 与独立前端。
 - [v0.35.2](./docs/releases/release-v0.35.2.md)：模型定价原子保存、并发版本保护及撤权草稿清理。
 

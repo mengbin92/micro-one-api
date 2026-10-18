@@ -1,0 +1,18 @@
+{
+  "scope": "Only the pre-fix history guard is restored with Go overlay; working tree remains fixed.",
+  "command": [
+    "go",
+    "test",
+    "-overlay",
+    "/tmp/micro-one-p1-p2-20261018/ws-before-overlay.json",
+    "./internal/server",
+    "-run",
+    "^(TestWSTimingMultiTurnSocket|TestWSEvidenceHistoryLimitRequiresDurableDelivery)$",
+    "-count=1",
+    "-v"
+  ],
+  "exit_code": 1,
+  "stdout": "=== RUN   TestWSEvidenceHistoryLimitRequiresDurableDelivery\n=== RUN   TestWSEvidenceHistoryLimitRequiresDurableDelivery/durable=false\n    request_timing_ws_e2e_test.go:80: \n        \tError Trace:\t/Users/neo/vscode/mengbin/micro-one-api/internal/server/request_timing_ws_e2e_test.go:80\n        \tError:      \tNot equal: \n        \t            \texpected: \"read_upstream\"\n        \t            \tactual  : \"durable_history_limit\"\n        \t            \t\n        \t            \tDiff:\n        \t            \t--- Expected\n        \t            \t+++ Actual\n        \t            \t@@ -1 +1 @@\n        \t            \t-read_upstream\n        \t            \t+durable_history_limit\n        \tTest:       \tTestWSEvidenceHistoryLimitRequiresDurableDelivery/durable=false\n=== RUN   TestWSEvidenceHistoryLimitRequiresDurableDelivery/durable=true\n--- FAIL: TestWSEvidenceHistoryLimitRequiresDurableDelivery (0.00s)\n    --- FAIL: TestWSEvidenceHistoryLimitRequiresDurableDelivery/durable=false (0.00s)\n    --- PASS: TestWSEvidenceHistoryLimitRequiresDurableDelivery/durable=true (0.00s)\n=== RUN   TestWSTimingMultiTurnSocket\n    request_timing_ws_e2e_test.go:181: \n        \tError Trace:\t/Users/neo/vscode/mengbin/micro-one-api/internal/server/request_timing_ws_e2e_test.go:181\n        \tError:      \tReceived unexpected error:\n        \t            \tfailed to get reader: failed to read frame header: EOF\n        \tTest:       \tTestWSTimingMultiTurnSocket\n        \tMessages:   \tclient read turn 32\n--- FAIL: TestWSTimingMultiTurnSocket (0.02s)\nFAIL\nFAIL\tmicro-one-api/internal/server\t0.735s\nFAIL\n",
+  "stderr": "",
+  "expected_failure_observed": true
+}

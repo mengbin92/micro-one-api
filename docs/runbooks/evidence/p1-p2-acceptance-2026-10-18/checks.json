@@ -1,0 +1,53 @@
+{
+  "checked_at": "2026-10-18T14:32:16.355926+08:00",
+  "git_head": "a6691d1d9f6d1899c32aa9d676ac5b4e77e72cbb",
+  "checks": [
+    {
+      "command": "go test -race ./internal/server ./domain/requesttrace ./platform/grpc/xgrpc -count=1",
+      "exit_code": 0,
+      "result": "3 packages passed; controlled performance remains opt-in and was measured separately on native amd64"
+    },
+    {
+      "command": "TIMING_WS_SOAK=1 go test -race ./internal/server -run ^TestWSTimingMultiTurnSocket$ -count=1 -v",
+      "exit_code": 0,
+      "turns": 1200,
+      "duration_seconds": 69.805671042,
+      "platform": "darwin/arm64"
+    },
+    {
+      "command": "python3 scripts/test-e2e-flow-identities.py",
+      "exit_code": 0,
+      "tests": 2
+    },
+    {
+      "command": "python3 scripts/check-service-identities.py",
+      "exit_code": 0
+    },
+    {
+      "command": "python3 scripts/check-markdown-links.py",
+      "exit_code": 0,
+      "markdown_files": 306
+    },
+    {
+      "command": "bash -n and bilingual Bash command comparison",
+      "exit_code": 0,
+      "blocks_per_guide": 7
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "source_sha256": {
+    "internal/server/openai_ws_forwarder.go": "8e5050d54f738eb34d614573d7f9f6a9df4abd54941b31fd8b0b314874964b0f",
+    "internal/server/openai_ws_relay.go": "417ac4af43080c1f7e1d4a2ce4cc6c6754845d4e33bd78db6ceb952d5a815112",
+    "internal/server/request_timing_perf_test.go": "a0567b603bf6c8d30bf73c1f87f24f0d9db9f06c7e78ff9e5537bc9b8231af89",
+    "internal/server/request_timing_ws_e2e_test.go": "8db0d0d11b0739ecc03763a9ecfcac98b22fbf590e12184b7b0d4e35cb6bb3d5",
+    "scripts/test-lite-smoke.py": "24c7d306a2813aa26e15931ba7d7c615d3c37276d5aee875de9cc66a5c73339c",
+    "scripts/test-e2e-flow-identities.py": "c4641fc483fb538886dbd4d5653d24c781f2ab54ce9a229b26ccc3ec54bf0cd6",
+    "deployments/docker-compose/.env.lite.example": "f210a7d433f81b457c7b0eee7b73f87239722386a28bf6feab247658a7742097",
+    "docs/quickstart-lite.md": "3cd44611783ae29668eea2ca7668015e8ddd4dd24190cd672da1852e5f388df5",
+    "docs/quickstart-lite.en.md": "972c4e1c09f94319674c33bd9a5e8d2d6511a676de2d83da6a59a1573a88cb8f"
+  },
+  "production_modified": false
+}
