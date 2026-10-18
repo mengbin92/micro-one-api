@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 	"micro-one-api/app/log/internal/biz"
 	"micro-one-api/domain/authorization"
 	authztest "micro-one-api/domain/authorization/testutil"
@@ -10,6 +11,49 @@ import (
 	"testing"
 	"time"
 )
+
+func TestRequestTraceFirstPageSnapshotReadIsBounded(t *testing.T) {
+	db := dbtest.RoutingContextDB(t, "mysql")
+	r := &Repository{db: db}
+	for start := 0; start < 2048; start += timingCommitBatchSize {
+		entries := make([]*biz.LogEntry, 0, timingCommitBatchSize)
+		for i := start; i < start+timingCommitBatchSize; i++ {
+			entry := timingEntry()
+			entry.RequestTiming.StartedAtMS = int64(1000 + i)
+			finished := entry.RequestTiming.StartedAtMS
+			entry.RequestTiming.HandlerFinishedAtMS = &finished
+			entries = append(entries, entry)
+		}
+		require.NoError(t, r.CreateBatch(context.Background(), entries))
+	}
+	// A session counter measures index records read, avoiding wall-clock timing
+	// assertions and distinguishing a bounded page from a growing MAX scan.
+	require.NoError(t, db.Connection(func(conn *gorm.DB) error {
+		reads := func() uint64 {
+			var counters []struct {
+				Name  string `gorm:"column:Variable_name"`
+				Value uint64 `gorm:"column:Value"`
+			}
+			require.NoError(t, conn.Raw("SHOW SESSION STATUS WHERE Variable_name IN ('Handler_read_first','Handler_read_key','Handler_read_last','Handler_read_next','Handler_read_prev','Handler_read_rnd','Handler_read_rnd_next')").Scan(&counters).Error)
+			var total uint64
+			for _, counter := range counters {
+				total += counter.Value
+			}
+			return total
+		}
+		before := reads()
+		page, _, more, err := (&Repository{db: conn}).ListRequestTraces(context.Background(), biz.RequestTraceFilter{
+			StartMS: 1000, EndMS: 100000, UserID: new(int64(7)), PageSize: 20,
+		}, biz.RequestTraceCursor{})
+		require.NoError(t, err)
+		require.Len(t, page, 20)
+		require.True(t, more)
+		examined := reads() - before
+		t.Logf("first page of 2048 summaries read %d index records", examined)
+		require.LessOrEqual(t, examined, uint64(128), "snapshot acquisition must not scan every matching summary")
+		return nil
+	}))
+}
 
 func TestRequestTraceCursorLateIngestScopeAndReservationCandidates(t *testing.T) {
 	for _, driver := range []string{"memory", "sqlite", "mysql", "postgres"} {

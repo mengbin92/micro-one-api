@@ -36,7 +36,9 @@ func (r *Repository) ListRequestTraces(ctx context.Context, f biz.RequestTraceFi
 	}
 	if c.SnapshotMaxID == 0 {
 		var maxID struct{ ID int64 }
-		if err = q.Session(&gorm.Session{}).Select("COALESCE(MAX(id),0) AS id").Scan(&maxID).Error; err != nil {
+		// LIMIT permits an early stop; a filtered MAX(id) scans the entire
+		// matching timing range even though only the snapshot fence is needed.
+		if err = q.Session(&gorm.Session{}).Select("id").Order("id DESC").Limit(1).Find(&maxID).Error; err != nil {
 			return nil, c, false, err
 		}
 		c.SnapshotMaxID = maxID.ID
@@ -45,13 +47,23 @@ func (r *Repository) ListRequestTraces(ctx context.Context, f biz.RequestTraceFi
 	if c.AfterID > 0 {
 		q = q.Where("(request_started_at_ms < ? OR (request_started_at_ms = ? AND id < ?))", c.AfterStartMS, c.AfterStartMS, c.AfterID)
 	}
-	var models []logModel
-	if err = q.Order("request_started_at_ms DESC, id DESC").Limit(int(f.PageSize) + 1).Find(&models).Error; err != nil {
+	// Select the page from the covering timing index before loading JSON. A
+	// SELECT * can make MySQL choose a growing row scan/filesort despite LIMIT.
+	var ids []int64
+	if err = q.Session(&gorm.Session{}).Order("request_started_at_ms DESC, id DESC").Limit(int(f.PageSize)+1).Pluck("id", &ids).Error; err != nil {
 		return nil, c, false, err
 	}
-	more := len(models) > int(f.PageSize)
+	more := len(ids) > int(f.PageSize)
 	if more {
-		models = models[:f.PageSize]
+		ids = ids[:f.PageSize]
+	}
+	var models []logModel
+	if len(ids) > 0 {
+		// Reapply the full visibility/filter predicate, including the snapshot
+		// fence, when materializing only this page's rows.
+		if err = q.Where("id IN ?", ids).Order("request_started_at_ms DESC, id DESC").Find(&models).Error; err != nil {
+			return nil, c, false, err
+		}
 	}
 	entries := make([]*biz.LogEntry, 0, len(models))
 	for _, model := range models {
