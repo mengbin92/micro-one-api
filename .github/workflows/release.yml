@@ -180,12 +180,15 @@ jobs:
           test "${#digests[@]}" -eq 2
           sources=()
           for digest in "${digests[@]}"; do
-            [[ "$digest" =~ ^[a-f0-9]{64}$ ]]
+            [[ "$digest" =~ ^[a-f0-9]{64}$ ]] || exit 1
             sources+=("$IMAGE@sha256:$digest")
           done
-          mapfile -t tags < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
           args=()
-          for tag in "${tags[@]}"; do args+=(-t "$tag"); done
+          while IFS= read -r tag; do args+=(-t "$tag"); done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          test "${#args[@]}" -gt 0
+          # Reject an incomplete/wrong platform pair before changing stable tags.
+          docker buildx imagetools create --dry-run "${sources[@]}" | jq -e '
+            [.manifests[].platform | select(.os == "linux") | .architecture] | sort == ["amd64", "arm64"]'
           docker buildx imagetools create "${args[@]}" "${sources[@]}"
           docker buildx imagetools inspect "$IMAGE:$TAG" --raw | jq -e '
             [.manifests[].platform | select(.os == "linux") | .architecture] | sort == ["amd64", "arm64"]'
