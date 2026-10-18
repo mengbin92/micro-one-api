@@ -36,6 +36,12 @@ jobs:
         env:
           TIMING_SQL_BASELINE: 54e6425ce296db138362275fdcf7184d4d7f1608
           TIMING_SQL_RESULTS: ${{ runner.temp }}/timing-sql-results
+      - name: Restore runner ownership of private test artifacts
+        if: always()
+        run: |
+          if [ -d "$RUNNER_TEMP/timing-sql-results" ]; then
+            sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/timing-sql-results"
+          fi
       - name: Upload all results, including failed gates
         if: always()
         uses: actions/upload-artifact@v4

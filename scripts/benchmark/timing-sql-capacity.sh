@@ -118,7 +118,7 @@ candidate_failed=0
 for label in baseline candidate; do
   checkout="$repo_root"
   if [[ "$label" == baseline ]]; then checkout="$baseline"; fi
-  docker run -d --name "$measurement" --network none --cpus=4 --memory=1g \
+  docker run -d --name "$measurement" --network none --cpus=4 --memory=1g --user "$(id -u):$(id -g)" \
     -v "$checkout:$checkout:ro" -w "$checkout" -v "$results:$results" \
     golang:1.27.2-bookworm sleep infinity >/dev/null
   created_measurement=true
