@@ -45,6 +45,10 @@ func TestRequestTimingControlledOverhead(t *testing.T) {
 }
 
 func runRequestTimingOverhead(t *testing.T, sqlStack *timingSQLStack, driver string) {
+	runRequestTimingOverheadDuration(t, sqlStack, driver, 30*time.Second)
+}
+
+func runRequestTimingOverheadDuration(t *testing.T, sqlStack *timingSQLStack, driver string, duration time.Duration) {
 	var bytesExported, receivedSpans atomic.Int64
 	collector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		payload, err := io.ReadAll(r.Body)
@@ -99,7 +103,6 @@ func runRequestTimingOverhead(t *testing.T, sqlStack *timingSQLStack, driver str
 		require.GreaterOrEqual(t, concurrency, 1)
 		require.LessOrEqual(t, concurrency, 64)
 	}
-	const duration = 30 * time.Second
 	previous := otel.GetTracerProvider()
 	defer otel.SetTracerProvider(previous)
 	spans := &perfSpanCounter{}

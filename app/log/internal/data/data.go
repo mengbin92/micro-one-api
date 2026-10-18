@@ -21,13 +21,18 @@ import (
 )
 
 type Repository struct {
-	data       *Data
-	db         *gorm.DB
-	mu         sync.RWMutex
-	mem        map[int64]*biz.LogEntry
-	dedupe     map[string]int64
-	seq        int64
-	timingRefs map[string][]requestTraceAttemptRefModel
+	data          *Data
+	db            *gorm.DB
+	mu            sync.RWMutex
+	mem           map[int64]*biz.LogEntry
+	dedupe        map[string]int64
+	seq           int64
+	timingRefs    map[string][]requestTraceAttemptRefModel
+	timingInit    sync.Once
+	timingMu      sync.Mutex
+	timingSlots   chan struct{}
+	timingPending []*timingWrite
+	timingRunning bool
 }
 
 type logModel struct {
@@ -218,6 +223,9 @@ func (r *Repository) Create(ctx context.Context, entry *biz.LogEntry) error {
 		return err
 	}
 	if r.db != nil {
+		if entry.RequestTiming != nil {
+			return r.createTimingGrouped(ctx, entry)
+		}
 		return r.createDB(ctx, entry)
 	}
 	return r.createMemory(entry)
@@ -486,6 +494,26 @@ func isLogDuplicateKeyErr(err error) bool {
 // they would on the synchronous path.
 func (r *Repository) CreateBatch(ctx context.Context, entries []*biz.LogEntry) error {
 	if len(entries) == 0 {
+		return nil
+	}
+	allTiming := r.db != nil
+	for _, entry := range entries {
+		if entry == nil || entry.RequestTiming == nil {
+			allTiming = false
+			break
+		}
+	}
+	if allTiming {
+		for start := 0; start < len(entries); start += timingCommitBatchSize {
+			batch := entries[start:min(start+timingCommitBatchSize, len(entries))]
+			ids, err := r.createTimingBatchDB(ctx, batch)
+			if err != nil {
+				return err
+			}
+			for i, entry := range batch {
+				entry.ID = ids[i]
+			}
+		}
 		return nil
 	}
 	for _, entry := range entries {

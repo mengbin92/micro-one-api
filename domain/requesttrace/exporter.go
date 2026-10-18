@@ -13,6 +13,9 @@ type exportItem struct {
 }
 type ExportStats struct{ Accepted, Exported, Failed, Dropped int64 }
 
+const ExporterWorkerCount = 16
+const ExporterQueueCapacity = 256
+
 // Exporter owns a fixed queue and worker count. A slow/down log owner never
 // blocks the request, output, billing or shutdown indefinitely.
 type Exporter struct {
@@ -29,8 +32,8 @@ type Exporter struct {
 
 func NewExporter(sink func(context.Context, *TimingSummary) error, onResult func(string)) *Exporter {
 	ctx, cancel := context.WithCancel(context.Background())
-	e := &Exporter{queue: make(chan exportItem, 256), ctx: ctx, cancel: cancel, sink: sink, onResult: onResult}
-	for range 2 {
+	e := &Exporter{queue: make(chan exportItem, ExporterQueueCapacity), ctx: ctx, cancel: cancel, sink: sink, onResult: onResult}
+	for range ExporterWorkerCount {
 		e.wg.Go(e.worker)
 	}
 	return e
