@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/proto"
@@ -96,6 +97,19 @@ func TestGRPCTransportSummariesIncludeDecodeRejectionAndEncodingFailure(t *testi
 	require.NotEqual(t, first.ObservationID, rejected.ObservationID)
 }
 
+// Hold the server's transport End after its response is already readable.
+type gatedServerEnd struct {
+	stats.Handler
+	release <-chan struct{}
+}
+
+func (h gatedServerEnd) HandleRPC(ctx context.Context, event stats.RPCStats) {
+	if _, ok := event.(*stats.End); ok {
+		<-h.release
+	}
+	h.Handler.HandleRPC(ctx, event)
+}
+
 func TestGRPCStatsPropagateTrustedW3CParentExactlyOnce(t *testing.T) {
 	t.Setenv("SERVICE_TOKEN", "timing-token")
 	spans := tracetest.NewSpanRecorder()
@@ -103,19 +117,31 @@ func TestGRPCStatsPropagateTrustedW3CParentExactlyOnce(t *testing.T) {
 	previous := otel.GetTracerProvider()
 	otel.SetTracerProvider(provider)
 	defer otel.SetTracerProvider(previous)
-	srv := grpc.NewServer(grpc.StatsHandler(ServerStatsHandler(nil)), grpc.UnaryInterceptor(ServiceTokenUnaryInterceptor("timing-token")))
+	endCtx, unblock := context.WithCancel(context.Background())
+	srv := grpc.NewServer(grpc.StatsHandler(gatedServerEnd{ServerStatsHandler(nil), endCtx.Done()}), grpc.UnaryInterceptor(ServiceTokenUnaryInterceptor("timing-token")))
 	logv1.RegisterLogServiceServer(srv, timedLogServer{})
 	lis := bufconn.Listen(1 << 20)
 	go func() { _ = srv.Serve(lis) }()
-	defer srv.Stop()
+	defer func() { unblock(); srv.Stop() }()
 	conn, err := grpc.NewClient("passthrough:///log-timing", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(ClientStatsHandler()), grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return lis.DialContext(ctx) }))
 	require.NoError(t, err)
 	defer conn.Close()
-	ctx, root := otel.Tracer("test").Start(context.Background(), "request")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	ctx, root := otel.Tracer("test").Start(ctx, "request")
 	ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer timing-token")
 	_, err = logv1.NewLogServiceClient(conn).IngestLog(ctx, &logv1.IngestLogRequest{})
 	require.NoError(t, err)
 	root.End()
+	unblock()
+	require.Eventually(t, func() bool {
+		for _, span := range spans.Ended() {
+			if span.Name() == "/api.log.v1.LogService/IngestLog" && span.SpanKind().String() == "server" {
+				return true
+			}
+		}
+		return false
+	}, time.Second, time.Millisecond, "client completion can precede the server transport End")
 	var client, server sdktrace.ReadOnlySpan
 	for _, span := range spans.Ended() {
 		if span.Name() == "/api.log.v1.LogService/IngestLog" {
