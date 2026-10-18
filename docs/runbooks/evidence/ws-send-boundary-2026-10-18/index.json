@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-10-18T14:59:30.546188+08:00",
+  "artifacts": [
+    {
+      "file": "after.json",
+      "sha256": "9c77d9524384ad092ed6722d7fd95f26a3c017b6828cef2829238ad312077398",
+      "bytes": 1642
+    },
+    {
+      "file": "before.json",
+      "sha256": "4be1d5990fa5144a5ba8150c8b71b55e91cb0a31c674707c5bcf5958c4dc5dae",
+      "bytes": 15501
+    }
+  ]
+}

@@ -486,8 +486,12 @@ func relayOpenAIWSFrames(
 				turnStartedAt.Store(nowFn().UnixNano())
 			}
 		}
+		// A fast reply can finish the turn before WriteFrame returns.
+		opts.timings.Sent(turnCtx, nil)
 		err := upstreamConn.WriteFrame(writeCtx, msgType, payload)
-		opts.timings.Sent(turnCtx, err)
+		if err != nil {
+			opts.timings.Sent(turnCtx, err)
+		}
 		return err
 	}
 	writeClient := func(msgType coderws.MessageType, payload []byte) error {

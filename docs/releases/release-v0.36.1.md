@@ -16,6 +16,8 @@ v0.36.1 是 v0.36.0 之后的 **PATCH 修复版本**：修复普通 Responses We
 
 **影响服务**：`relay-gateway`。新增真实 WebSocket / 本地 gRPC 集成测试，验证逐轮摘要、独立观测与业务 root、预留/提交关联、首轮连接阶段和关闭清理；旧判断通过 overlay 可稳定复现失败，修复后 1200 轮 race 长跑通过。
 
+**发布门禁补修**：Linux Backend 另检出极速上游的时序缺陷：响应可在 `WriteFrame` 返回前完成，摘要仍保留初始 `rejected`，与已经提交的结算和完整输出矛盾。现在在全部准入/契约/持久化检查通过后、实际写入前进入发送状态；写入失败仍更新失败，准入拒绝不变。新增可控制响应早于写返回的确定性回归，原实现 20/20 失败；补修后重复检查见[验收补记](../runbooks/p1-p2-isolated-acceptance-2026-10-18.md#5-发布门禁补修快响应终态时序)。未修改结算金额或费用策略。
+
 ### 2. Lite 空环境恢复首个模型请求
 
 **根因**：旧指南与 Lite smoke 仅生成共享 `SERVICE_TOKEN`，而 `ClaimUpstreamExecution` 要求独立 Relay 身份。共享令牌不会获得该系统能力，即使 IAM 仍处于 legacy 模式，首请求也会被拒绝并返回 503。
@@ -71,3 +73,4 @@ v0.36.1 是 v0.36.0 之后的 **PATCH 修复版本**：修复普通 Responses We
 - `a6691d1d` fix(observability): align timing alerts and record rollout checks
 - `6b656cd8` fix(relay): preserve websocket sessions and restore Lite startup
 - `docs(release): v0.36.1`
+- `fix(relay): mark websocket sends before fast upstream replies`
