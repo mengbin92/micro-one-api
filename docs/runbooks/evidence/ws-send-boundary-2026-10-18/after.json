@@ -1,0 +1,36 @@
+{
+  "checked_at": "2026-10-18T14:59:30.546188+08:00",
+  "source_sha256": {
+    "internal/server/openai_ws_relay.go": "09102040e9af3d60767843da3fbc158b4aefab9b8ce48866dc2f80d306c679cb",
+    "internal/server/request_timing_test.go": "ce33f317cdb07874a4cade0745acea51961e6622d92c78092e5938630b0d6cc8"
+  },
+  "deterministic_failure_repetitions": 20,
+  "after": [
+    {
+      "platform": "darwin/arm64",
+      "command": "go test -race ./internal/server -run ^(TestWSTimingResponseCanFinishBeforeSendReturns|TestWSTimingMultiTurnSocket|TestWSEvidenceHistoryLimitRequiresDurableDelivery)$ -count=100",
+      "exit_code": 0,
+      "stdout": "ok  \tmicro-one-api/internal/server\t32.406s\n"
+    },
+    {
+      "platform": "linux/amd64",
+      "go_version": "go1.27.2",
+      "race": true,
+      "repeat_count": 100,
+      "test_filter": "^(TestWSTimingResponseCanFinishBeforeSendReturns|TestWSTimingMultiTurnSocket|TestWSEvidenceHistoryLimitRequiresDurableDelivery)$",
+      "exit_code": 0,
+      "oom_killed": false,
+      "cpus": 4.0,
+      "memory_limit_bytes": 4294967296,
+      "network_mode": "none",
+      "image_id": "sha256:ee4851781507a617e5a5e527b3edeebc0f803385e9a47b380c1ed58fe88e60e6",
+      "stdout": "go version go1.27.2 linux/amd64\nPASS\n",
+      "source_overlay_sha256": "6bb974d5219252906aac4d20881bec741a35afd80fd17820b352d359bcd4608b"
+    }
+  ],
+  "make_verify": {
+    "exit_code": 0,
+    "log_sha256": "9481267578409ce1a7c78879ee17ef304e3144ac94fd590e527520906aee5fea"
+  },
+  "scope": "Transition after all admission/contract/durable checks and before I/O; preserve write failure and rejection checks; no production change."
+}
