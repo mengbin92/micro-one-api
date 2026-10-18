@@ -27,7 +27,10 @@ type timingWriteResult struct {
 // A caller sees success only after its summary, claim and refs have committed.
 // At most 32 snapshots are retained; the drain goroutine exits when idle.
 func (r *Repository) createTimingGrouped(ctx context.Context, entry *biz.LogEntry) error {
-	r.timingInit.Do(func() { r.timingSlots = make(chan struct{}, timingCommitBatchSize) })
+	r.timingInit.Do(func() {
+		r.timingSlots = make(chan struct{}, timingCommitBatchSize)
+		r.timingReady = make(chan struct{}, 1)
+	})
 	select {
 	case r.timingSlots <- struct{}{}:
 	case <-ctx.Done():
@@ -38,6 +41,12 @@ func (r *Repository) createTimingGrouped(ctx context.Context, entry *biz.LogEntr
 	write := &timingWrite{ctx: ctx, entry: &snapshot, done: make(chan timingWriteResult, 1)}
 	r.timingMu.Lock()
 	r.timingPending = append(r.timingPending, write)
+	if len(r.timingPending) == timingCommitBatchSize {
+		select {
+		case r.timingReady <- struct{}{}:
+		default:
+		}
+	}
 	if !r.timingRunning {
 		r.timingRunning = true
 		go r.drainTimingWrites()
@@ -58,14 +67,32 @@ func (r *Repository) createTimingGrouped(ctx context.Context, entry *biz.LogEntr
 
 func (r *Repository) drainTimingWrites() {
 	for {
-		time.Sleep(time.Millisecond)
 		r.timingMu.Lock()
-		pending := r.timingPending
-		r.timingPending = nil
-		if len(pending) == 0 {
+		if len(r.timingPending) == 0 {
 			r.timingRunning = false
 			r.timingMu.Unlock()
 			return
+		}
+		full := len(r.timingPending) == timingCommitBatchSize
+		r.timingMu.Unlock()
+		if !full {
+			// Sparse arrivals need a short collection window; backlogged full
+			// groups proceed immediately rather than paying a per-group sleep.
+			timer := time.NewTimer(5 * time.Millisecond)
+			select {
+			case <-r.timingReady:
+			case <-timer.C:
+			}
+			timer.Stop()
+		}
+		r.timingMu.Lock()
+		pending := r.timingPending
+		r.timingPending = nil
+		// Consume only the notification for this snapshot while holding the
+		// enqueue lock, so a stale signal cannot prematurely flush a new group.
+		select {
+		case <-r.timingReady:
+		default:
 		}
 		r.timingMu.Unlock()
 		writes := make([]*timingWrite, 0, len(pending))

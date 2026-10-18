@@ -31,6 +31,7 @@ type Repository struct {
 	timingInit    sync.Once
 	timingMu      sync.Mutex
 	timingSlots   chan struct{}
+	timingReady   chan struct{}
 	timingPending []*timingWrite
 	timingRunning bool
 }
