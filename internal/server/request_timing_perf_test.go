@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -40,6 +41,10 @@ func TestRequestTimingControlledOverhead(t *testing.T) {
 	if os.Getenv("TIMING_PERF_ACCEPTANCE") != "1" {
 		t.Skip("controlled acceptance is opt-in")
 	}
+	runRequestTimingOverhead(t, nil, "")
+}
+
+func runRequestTimingOverhead(t *testing.T, sqlStack *timingSQLStack, driver string) {
 	var bytesExported, receivedSpans atomic.Int64
 	collector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		payload, err := io.ReadAll(r.Body)
@@ -63,6 +68,8 @@ func TestRequestTimingControlledOverhead(t *testing.T) {
 		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\ndata: [DONE]\n\n")
 	}))
 	defer upstream.Close()
+	upstream.Client().Transport = &http.Transport{MaxIdleConns: 64, MaxIdleConnsPerHost: 64}
+	defer upstream.Client().CloseIdleConnections()
 	type sample struct {
 		Requests                 int     `json:"requests"`
 		DurationSeconds          float64 `json:"duration_seconds"`
@@ -76,9 +83,22 @@ func TestRequestTimingControlledOverhead(t *testing.T) {
 		Exported                 int64   `json:"exported"`
 		Dropped                  int64   `json:"dropped"`
 		Failed                   int64   `json:"failed"`
+		PersistenceP95MS         float64 `json:"persistence_p95_ms"`
+		ExportRPCP95MS           float64 `json:"export_rpc_p95_ms"`
+		QueryP95MS               float64 `json:"query_p95_ms"`
+		Queries                  int     `json:"queries"`
+		QueryFailures            int64   `json:"query_failures"`
 		HTTPFailures             int64   `json:"http_failures"`
 	}
-	const concurrency, warmup, pairs = 64, 8, 4
+	const warmup, pairs = 8, 4
+	concurrency := 64
+	if sqlStack != nil && os.Getenv("TIMING_SQL_CONCURRENCY") != "" {
+		var err error
+		concurrency, err = strconv.Atoi(os.Getenv("TIMING_SQL_CONCURRENCY"))
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, concurrency, 1)
+		require.LessOrEqual(t, concurrency, 64)
+	}
 	const duration = 30 * time.Second
 	previous := otel.GetTracerProvider()
 	defer otel.SetTracerProvider(previous)
@@ -106,8 +126,24 @@ func TestRequestTimingControlledOverhead(t *testing.T) {
 			}
 			server := &HTTPServer{}
 			var summaries *requesttrace.Exporter
+			var commitMu sync.Mutex
+			var commitDurations, rpcDurations []float64
 			if enabled {
-				summaries = requesttrace.NewExporter(func(context.Context, *requesttrace.TimingSummary) error { return nil }, nil)
+				sink := func(context.Context, *requesttrace.TimingSummary) error { return nil }
+				if sqlStack != nil {
+					sink = func(ctx context.Context, summary *requesttrace.TimingSummary) error {
+						started := time.Now()
+						err := sqlStack.ingest(ctx, summary)
+						if err == nil {
+							commitMu.Lock()
+							rpcDurations = append(rpcDurations, float64(time.Since(started))/1e6)
+							commitDurations = append(commitDurations, float64(time.Now().UnixMilli()-summary.StartedAtMS))
+							commitMu.Unlock()
+						}
+						return err
+					}
+				}
+				summaries = requesttrace.NewExporter(sink, nil)
 				server.SetTimingExporter(summaries)
 			}
 			handler := server.wrapRoute("/v1/perf", executionRoute("/v1/perf", "legacy"), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +151,10 @@ func TestRequestTimingControlledOverhead(t *testing.T) {
 				requesttrace.BindUser(ctx, 7)
 				end(nil)
 				ctx = requesttrace.WithAttempt(ctx, requesttrace.Attempt{Number: 1, SourceKind: "channel"})
-				requesttrace.RecordAttempt(ctx, requesttrace.TimingAttempt{Number: 1, RequestID: "controlled-perf", Outcome: "success"})
+				id := requesttrace.Capture(ctx).ObservationID
+				requesttrace.Observation(ctx).Update(func(s *requesttrace.TimingSummary) { s.RootRequestID = id })
+				reservation := "reservation-" + id
+				requesttrace.RecordAttempt(ctx, requesttrace.TimingAttempt{Number: 1, RequestID: id, ReservationID: &reservation, Outcome: "success"})
 				req, _ := http.NewRequestWithContext(ctx, "GET", upstream.URL, nil)
 				resp, err := evidence.Do(upstream.Client(), req, "openai_chat")
 				if err != nil {
@@ -127,8 +166,35 @@ func TestRequestTimingControlledOverhead(t *testing.T) {
 				_, _ = io.Copy(w, resp.Body)
 				_ = http.NewResponseController(w).Flush()
 			}))
+			serve := func() int {
+				response := httptest.NewRecorder()
+				handler.ServeHTTP(response, httptest.NewRequest("POST", "/v1/perf", nil))
+				return response.Code
+			}
+			var front *httptest.Server
+			if sqlStack != nil {
+				front = httptest.NewServer(handler)
+				front.Client().Timeout = 5 * time.Second
+				front.Client().Transport = &http.Transport{MaxIdleConns: 64, MaxIdleConnsPerHost: 64}
+				serve = func() int {
+					response, err := front.Client().Post(front.URL+"/v1/perf", "application/json", nil)
+					if err != nil {
+						return 0
+					}
+					_, err = io.Copy(io.Discard, response.Body)
+					_ = response.Body.Close()
+					if err != nil {
+						return 0
+					}
+					return response.StatusCode
+				}
+			}
+			var storedBefore map[string]int64
+			if sqlStack != nil {
+				storedBefore = sqlStack.counts(t)
+			}
 			for range warmup {
-				handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/v1/perf", nil))
+				require.Equal(t, http.StatusOK, serve())
 			}
 			runtime.GC()
 			var before, after runtime.MemStats
@@ -140,15 +206,39 @@ func TestRequestTimingControlledOverhead(t *testing.T) {
 			durations := make([]float64, 0, concurrency*int(duration/(50*time.Millisecond)))
 			started := time.Now()
 			deadline := started.Add(duration)
+			var queries sync.WaitGroup
+			queryStop := make(chan struct{})
+			var queryDurations []float64
+			var queryFailures int64
+			if sqlStack != nil {
+				queries.Go(func() {
+					ticker := time.NewTicker(500 * time.Millisecond)
+					defer ticker.Stop()
+					for {
+						select {
+						case <-queryStop:
+							return
+						case <-ticker.C:
+						}
+						ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+						start := time.Now()
+						_, err := sqlStack.query(ctx)
+						cancel()
+						queryDurations = append(queryDurations, float64(time.Since(start))/1e6)
+						if err != nil {
+							queryFailures++
+						}
+					}
+				})
+			}
 			var workers sync.WaitGroup
 			for range concurrency {
 				workers.Go(func() {
 					for time.Now().Before(deadline) {
 						start := time.Now()
-						response := httptest.NewRecorder()
-						handler.ServeHTTP(response, httptest.NewRequest("POST", "/v1/perf", nil))
+						code := serve()
 						elapsed := float64(time.Since(start)) / 1e6
-						if response.Code != http.StatusOK {
+						if code != http.StatusOK {
 							failures.Add(1)
 						}
 						mu.Lock()
@@ -158,6 +248,8 @@ func TestRequestTimingControlledOverhead(t *testing.T) {
 				})
 			}
 			workers.Wait()
+			close(queryStop)
+			queries.Wait()
 			elapsed := time.Since(started)
 			runtime.ReadMemStats(&after)
 			require.NoError(t, syscall.Getrusage(syscall.RUSAGE_SELF, &cpuAfter))
@@ -168,10 +260,14 @@ func TestRequestTimingControlledOverhead(t *testing.T) {
 			// Keep shutdown costs visible without including them in steady-state CPU/allocation.
 			if enabled {
 				drainStart := time.Now()
-				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				require.NoError(t, summaries.Close(ctx))
 				require.NoError(t, provider.Shutdown(ctx))
 				cancel()
+				commitMu.Lock()
+				entry.PersistenceP95MS = timingP95(commitDurations)
+				entry.ExportRPCP95MS = timingP95(rpcDurations)
+				commitMu.Unlock()
 				entry.DrainMS = float64(time.Since(drainStart)) / 1e6
 				var drained runtime.MemStats
 				var cpuDrained syscall.Rusage
@@ -180,12 +276,23 @@ func TestRequestTimingControlledOverhead(t *testing.T) {
 				entry.DrainAllocatedBytes = drained.TotalAlloc - after.TotalAlloc
 				entry.DrainCPUUs = cpu(cpuDrained) - cpu(cpuAfter)
 			}
-			sort.Float64s(durations)
-			entry.P95MS = durations[len(durations)*95/100]
+			entry.P95MS = timingP95(durations)
+			entry.QueryP95MS = timingP95(queryDurations)
+			entry.Queries, entry.QueryFailures = len(queryDurations), queryFailures
+			if queryFailures != 0 {
+				gateFailures = append(gateFailures, fmt.Sprintf("pair %d: SQL query failures %d", pair+1, queryFailures))
+			}
 			name := "disabled"
 			if enabled {
 				name = "enabled"
 				entry.Exported = summaries.Stats().Exported
+				if sqlStack != nil {
+					for table, n := range sqlStack.counts(t) {
+						if n-storedBefore[table] != entry.Exported {
+							gateFailures = append(gateFailures, fmt.Sprintf("pair %d: %s persisted %d != exported %d", pair+1, table, n-storedBefore[table], entry.Exported))
+						}
+					}
+				}
 				entry.Dropped = summaries.Stats().Dropped
 				entry.Failed = summaries.Stats().Failed
 				if entry.Exported != int64(entry.Requests+warmup) || entry.Dropped != 0 || entry.Failed != 0 {
@@ -194,6 +301,10 @@ func TestRequestTimingControlledOverhead(t *testing.T) {
 			}
 			if entry.HTTPFailures != 0 {
 				gateFailures = append(gateFailures, fmt.Sprintf("pair %d %s: failed HTTP requests", pair+1, name))
+			}
+			if front != nil {
+				front.Client().CloseIdleConnections()
+				front.Close()
 			}
 			results[name] = entry
 			t.Logf("pair=%d enabled=%t requests=%d p95_ms=%.3f gcs=%d", pair+1, enabled, entry.Requests, entry.P95MS, entry.GCs)
@@ -212,6 +323,11 @@ func TestRequestTimingControlledOverhead(t *testing.T) {
 		"goos": runtime.GOOS, "goarch": runtime.GOARCH, "go_version": runtime.Version(), "gomaxprocs": runtime.GOMAXPROCS(0),
 		"scope": "controlled fake SSE; summary sink succeeds in memory; real local OTLP HTTP receiver; excludes log RPC/SQL",
 		"spans": spans.count.Load(), "otlp_received_spans": receivedSpans.Load(), "otlp_bytes": bytesExported.Load()}
+	if sqlStack != nil {
+		report["scope"] = "real loopback HTTP/SSE, bounded exporter, authenticated Log gRPC, production service/usecase/repository, migrated SQL, real local OTLP receiver; fake upstream; shared process"
+		report["sql_driver"] = driver
+		report["sql_counts"] = sqlStack.counts(t)
+	}
 	encoded, err := jsonx.MarshalIndent(report, "", "  ")
 	require.NoError(t, err)
 	fmt.Println(string(encoded))
@@ -219,4 +335,12 @@ func TestRequestTimingControlledOverhead(t *testing.T) {
 		require.NoError(t, os.WriteFile(path, encoded, 0600))
 	}
 	require.Empty(t, gateFailures, "controlled P95/export gate; all pairs retained")
+}
+
+func timingP95(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	sort.Float64s(values)
+	return values[len(values)*95/100]
 }
