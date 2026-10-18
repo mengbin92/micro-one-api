@@ -7,14 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.36.1] - 2026-10-18
+
+v0.36.1 是 v0.36.0 之后的 **PATCH 修复版本**：修复普通 WS 第 33 轮误断开、Lite 缺独立服务身份导致首请求 503 与计时导出告警漏报；补齐原生长时性能、多轮 WS 和 Lite 空卷恢复证据，完善双语入口。无新增迁移或 API 破坏性变更；生产 48 小时观察保持原窗口，不随发布重启。详见 [release-v0.36.1.md](docs/releases/release-v0.36.1.md)。
+
 ### Fixed
 
 - 修复请求计时摘要导出告警的 result 标签：覆盖 full、closed、failed、invalid、turn_capacity；新增触发/恢复/成功与无流量规则测试，并纳入 CI。
+- 修复普通 Responses WebSocket 连接在第 33 轮被持久化历史上限误切断：按预留实际交付能力启用限制，保留持久化模式保护，新增多轮 socket/gRPC 计时与结算回归。
+- 修复 Lite 空环境首请求因缺少独立服务身份而返回 503：双语指南与 smoke 复用既有身份生成和校验工具，补齐 outbound token 与接收方信任表，保留执行准入授权要求。
 
 ### Changed
 
 - 精简中文 README 的历史升级内容，新增英文 README 与完整英文 SQLite Lite Quickstart；本地链接检查覆盖全部根 README。
 - 更新 v0.36.0 后续计划与生产基线，记录计时告警组热加载、容量待验收边界和 executor 同窗证据不足，保留供应商与灰度门禁。
+- 计时性能验收改用 64 并发、四组成对交替顺序与每模式 30 秒测量，分开稳态与排空开销，并核对 OTLP 接收数量；Lite smoke 增加 SQLite/Redis 停机备份与独立空卷恢复检查。
 
 ## [0.36.0] - 2026-10-17
 

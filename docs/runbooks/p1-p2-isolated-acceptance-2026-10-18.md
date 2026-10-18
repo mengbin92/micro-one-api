@@ -2,6 +2,8 @@
 
 日期：2026-10-18（Asia/Shanghai）。承接[当前计划](../design/next-stage-plan-2026-10-18.md)。两项 P1 与 P2 均完成隔离验收；发现的两项修复仅在工作区，未提交、部署或发版。生产的 48 小时观察仍使用原实例和配置，固定截止 2026-10-20 10:10:20 CST。
 
+> 发布更新（同日）：本文“未提交/发版”描述隔离验收时点。后续实现已提交为 `6b656cd8`，纳入 [v0.36.1](../releases/release-v0.36.1.md)；生产实例、配置和原观察窗口保持。
+
 ## 1. P1：原生 Linux/amd64 长时性能对照
 
 复用并修改 [TestRequestTimingControlledOverhead](../../internal/server/request_timing_perf_test.go)，不修改请求采集生产逻辑：64 并发、每模式至少 30 秒、四组成对实验，顺序交替为关闭→开启、开启→关闭。保留 50ms 假上游、每模式 8 次预热与真实本地 OTLP HTTP 接收；接收端解析 protobuf，核对收到的 span 与 SDK 完成数。

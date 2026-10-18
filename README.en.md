@@ -14,9 +14,9 @@ multi-channel API distribution and [sub2api](https://github.com/Wei-Shaw/sub2api
 for subscription windows, account pools, rate limits and usage management.
 You provide your own authorized upstream accounts and API keys.
 
-> Latest release: [v0.36.0](./docs/releases/release-v0.36.0.md) — request timing,
-> trace waterfalls, billing links and trace completeness checks.
-> [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.36.0)
+> Latest release: [v0.36.1](./docs/releases/release-v0.36.1.md) — ordinary WS session
+> fixes, Lite startup recovery and timing acceptance evidence.
+> [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.36.1)
 
 ## Features
 
@@ -142,6 +142,9 @@ and [repository development rules](./AGENTS.md). Both are currently maintained i
 
 ## Releases and upgrades
 
+- [v0.36.1](./docs/releases/release-v0.36.1.md): ordinary WS sessions, Lite startup
+  and timing-alert fixes, with native performance and empty-volume recovery checks.
+  No new migrations; the production observation window continues unchanged.
 - [v0.36.0](./docs/releases/release-v0.36.0.md): request timing, trace waterfalls,
   ledger links and completeness checks. Adds Log migration 137 and Billing migration 138.
 - [v0.35.2](./docs/releases/release-v0.35.2.md): atomic pricing updates,
