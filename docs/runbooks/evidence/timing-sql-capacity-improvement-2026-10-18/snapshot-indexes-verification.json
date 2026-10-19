@@ -1,0 +1,21 @@
+{
+  "source_revision": "bde245f1146a38b33fab1debef5a620daf2ec04e",
+  "migration": "139_add_request_trace_snapshot_indexes",
+  "indexes": [
+    "logs(source,id)",
+    "logs(source,user_id,id)"
+  ],
+  "cold_statistics_probe_rows": 65536,
+  "cold_probe_autoanalyze_disabled": true,
+  "negative_control": "Expected FAIL after dropping both snapshot indexes",
+  "unit_packages_passed": 121,
+  "three_database_race_repetitions": 2,
+  "three_database_race_duration_seconds": 65.51,
+  "checks": [
+    "migration-check",
+    "architecture",
+    "format",
+    "SQLite incremental upgrade creates both indexes"
+  ],
+  "production_changed": false
+}

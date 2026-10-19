@@ -1,0 +1,27 @@
+=== RUN   TestRequestTimingCheckpointBuffer
+    request_timing_checkpoint_test.go:97: {
+          "accepted": 1792,
+          "backlog_at_release": 512,
+          "dropped": 3136,
+          "exported": 1792,
+          "failed": 0,
+          "fake_upstream_wait_ms": 50,
+          "heap_alloc_at_release": 9705184,
+          "http_failures": 0,
+          "http_workers": 64,
+          "load_seconds": 4,
+          "pause_seconds": 3,
+          "queue_capacity": 256,
+          "requests": 4928,
+          "scope": "synthetic sink pause; not SQL capacity admission",
+          "worker_count": 256
+        }
+    request_timing_checkpoint_test.go:103: 
+        	Error Trace:	/private/tmp/timing-capacity-work/checkout/internal/server/request_timing_checkpoint_test.go:103
+        	Error:      	Should be zero, but was 3136
+        	Test:       	TestRequestTimingCheckpointBuffer
+        	Messages:   	the fixed buffer must absorb the diagnostic pause
+--- FAIL: TestRequestTimingCheckpointBuffer (4.05s)
+FAIL
+FAIL	micro-one-api/internal/server	4.905s
+FAIL

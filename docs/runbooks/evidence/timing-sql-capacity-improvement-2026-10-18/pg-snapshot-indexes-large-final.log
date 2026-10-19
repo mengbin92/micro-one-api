@@ -1,0 +1,6 @@
+=== RUN   TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort
+=== RUN   TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort/cold_statistics
+--- PASS: TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort (5.91s)
+    --- PASS: TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort/cold_statistics (5.91s)
+PASS
+ok  	micro-one-api/app/log/internal/data	6.429s

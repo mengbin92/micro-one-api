@@ -10,6 +10,8 @@
 >
 > **构建与 SQL 链路补验**：原生 arm64 镜像任务耗时缩短约 76%–90%；三库真实 Log RPC/SQL 的 8 并发长测共 55,629 条摘要完整落库。64 并发队列饱和、摘要丢弃 64%–84%，容量门禁 FAIL；未扩大生产采集负载。实现与边界见 [本轮记录](./runbooks/build-timing-sql-acceptance-2026-10-18.md) / [PR #24](https://github.com/mengbin92/micro-one-api/pull/24)，未部署。
 >
+> **计时 SQL 容量改进（2026-10-19）**：已补分组持久事务、PostgreSQL 新 claim 插入即分配最终 ID，以及有界分页读取；原生三库 64 并发四组长测、十轮 race 与适用 CI/E2E 已通过，448,532 条摘要完整落库；新增 139 号快照索引迁移和固定 4,096 项缓冲预算。历史 FAIL 与资源上界变化见 [改进记录](./runbooks/request-timing-capacity-improvement-2026-10-18.md) / [PR #25](https://github.com/mengbin92/micro-one-api/pull/25)。生产 48h 观察仍由另一台电脑继续，本轮未部署。
+
 > **当前剩余**：生产 WS 自然长连接与跨 48h TTL 存储稳态仍待验收，旧 arm64 短测两次失败保留；受控性能通过不代替生产 Log RPC/SQL 或整体容量准入。生产 vendor report/run 均为 0，DeepSeek 手工日窗相符不替代来源绑定、最终水位/API 对照。executor 当前新旧 SSE 无同窗可比增量，仍为 INSUFFICIENT、正式七天未起算。收费与灰度不自动扩面。
 
 ## 历史进度（2026-10-16）

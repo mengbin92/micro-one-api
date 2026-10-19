@@ -1,0 +1,8 @@
+=== RUN   TestTimingPostgresFreshClaimsNeedNoReadOrRewrite
+    request_timing_postgres_test.go:31: 
+        	Error Trace:	/home/runner/work/micro-one-api/micro-one-api/app/log/internal/data/request_timing_postgres_test.go:31
+        	Error:      	Received unexpected error:
+        	            	fresh claims must come from INSERT RETURNING
+        	Test:       	TestTimingPostgresFreshClaimsNeedNoReadOrRewrite
+--- FAIL: TestTimingPostgresFreshClaimsNeedNoReadOrRewrite (0.46s)
+FAIL

@@ -1,0 +1,55 @@
+=== RUN   TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort
+    request_trace_query_test.go:139: 
+        	Error Trace:	/private/tmp/timing-capacity-work/checkout/app/log/internal/data/request_trace_query_test.go:139
+        	Error:      	"[\n  {\n    \"Plan\": {\n      \"Node Type\": \"Limit\",\n      \"Parallel Aware\": false,\n      \"Async Capable\": false,\n      \"Startup Cost\": 8.30,\n      \"Total Cost\": 8.31,\n      \"Plan Rows\": 1,\n      \"Plan Width\": 8,\n      \"Disabled\": false,\n      \"Plans\": [\n        {\n          \"Node Type\": \"Sort\",\n          \"Parent Relationship\": \"Outer\",\n          \"Parallel Aware\": false,\n          \"Async Capable\": false,\n          \"Startup Cost\": 8.30,\n          \"Total Cost\": 8.31,\n          \"Plan Rows\": 1,\n          \"Plan Width\": 8,\n          \"Disabled\": false,\n          \"Sort Key\": [\"id DESC\"],\n          \"Plans\": [\n            {\n              \"Node Type\": \"Index Only Scan\",\n              \"Parent Relationship\": \"Outer\",\n              \"Parallel Aware\": false,\n              \"Async Capable\": false,\n              \"Scan Direction\": \"Forward\",\n              \"Index Name\": \"idx_log_trace_user_time\",\n              \"Relation Name\": \"logs\",\n              \"Alias\": \"logs\",\n              \"Startup Cost\": 0.28,\n              \"Total Cost\": 8.29,\n              \"Plan Rows\": 1,\n              \"Plan Width\": 8,\n              \"Disabled\": false,\n              \"Index Cond\": \"((source = $1) AND (user_id = $2))\"\n            }\n          ]\n        }\n      ]\n    }\n  }\n]" should not contain "\"Node Type\": \"Sort\""
+        	Test:       	TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort
+        	Messages:   	snapshot must stream its primary-key bound rather than sort the matching time range: [
+        	            	  {
+        	            	    "Plan": {
+        	            	      "Node Type": "Limit",
+        	            	      "Parallel Aware": false,
+        	            	      "Async Capable": false,
+        	            	      "Startup Cost": 8.30,
+        	            	      "Total Cost": 8.31,
+        	            	      "Plan Rows": 1,
+        	            	      "Plan Width": 8,
+        	            	      "Disabled": false,
+        	            	      "Plans": [
+        	            	        {
+        	            	          "Node Type": "Sort",
+        	            	          "Parent Relationship": "Outer",
+        	            	          "Parallel Aware": false,
+        	            	          "Async Capable": false,
+        	            	          "Startup Cost": 8.30,
+        	            	          "Total Cost": 8.31,
+        	            	          "Plan Rows": 1,
+        	            	          "Plan Width": 8,
+        	            	          "Disabled": false,
+        	            	          "Sort Key": ["id DESC"],
+        	            	          "Plans": [
+        	            	            {
+        	            	              "Node Type": "Index Only Scan",
+        	            	              "Parent Relationship": "Outer",
+        	            	              "Parallel Aware": false,
+        	            	              "Async Capable": false,
+        	            	              "Scan Direction": "Forward",
+        	            	              "Index Name": "idx_log_trace_user_time",
+        	            	              "Relation Name": "logs",
+        	            	              "Alias": "logs",
+        	            	              "Startup Cost": 0.28,
+        	            	              "Total Cost": 8.29,
+        	            	              "Plan Rows": 1,
+        	            	              "Plan Width": 8,
+        	            	              "Disabled": false,
+        	            	              "Index Cond": "((source = $1) AND (user_id = $2))"
+        	            	            }
+        	            	          ]
+        	            	        }
+        	            	      ]
+        	            	    }
+        	            	  }
+        	            	]
+--- FAIL: TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort (0.57s)
+FAIL
+FAIL	micro-one-api/app/log/internal/data	1.239s
+FAIL

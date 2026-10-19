@@ -1,0 +1,9 @@
+baseline sqlite 16 diagnostic 0
+baseline sqlite 32 diagnostic 0
+baseline sqlite 64 acceptance 1
+candidate sqlite 16 diagnostic 0
+candidate sqlite 32 diagnostic 0
+candidate sqlite 64 acceptance 0
+candidate sqlite data-race 0
+candidate sqlite server-race 0
+candidate sqlite requesttrace-race 0

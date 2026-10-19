@@ -1,0 +1,9 @@
+baseline mysql 16 diagnostic 0
+baseline mysql 32 diagnostic 0
+baseline mysql 64 acceptance 1
+candidate mysql 16 diagnostic 0
+candidate mysql 32 diagnostic 0
+candidate mysql 64 acceptance 0
+candidate mysql data-race 0
+candidate mysql server-race 0
+candidate mysql requesttrace-race 0

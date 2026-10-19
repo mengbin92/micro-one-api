@@ -1,0 +1,241 @@
+=== RUN   TestTimingPostgresFreshClaimsNeedNoReadOrRewrite
+--- PASS: TestTimingPostgresFreshClaimsNeedNoReadOrRewrite (0.72s)
+=== RUN   TestTimingPostgresClaimOrderIsCompatibleWithLegacyWriter
+--- PASS: TestTimingPostgresClaimOrderIsCompatibleWithLegacyWriter (0.45s)
+=== RUN   TestTimingBatchFailureDoesNotCommitAnEarlierSummary
+=== RUN   TestTimingBatchFailureDoesNotCommitAnEarlierSummary/sqlite
+=== RUN   TestTimingBatchFailureDoesNotCommitAnEarlierSummary/mysql
+    request_timing_test.go:64: disposable local database DSN not supplied
+=== RUN   TestTimingBatchFailureDoesNotCommitAnEarlierSummary/postgres
+--- PASS: TestTimingBatchFailureDoesNotCommitAnEarlierSummary (0.70s)
+    --- PASS: TestTimingBatchFailureDoesNotCommitAnEarlierSummary/sqlite (0.26s)
+    --- SKIP: TestTimingBatchFailureDoesNotCommitAnEarlierSummary/mysql (0.00s)
+    --- PASS: TestTimingBatchFailureDoesNotCommitAnEarlierSummary/postgres (0.45s)
+=== RUN   TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups
+=== RUN   TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/sqlite
+=== RUN   TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/mysql
+    request_timing_test.go:99: disposable local database DSN not supplied
+=== RUN   TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/postgres
+--- PASS: TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups (0.73s)
+    --- PASS: TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/sqlite (0.26s)
+    --- SKIP: TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/mysql (0.00s)
+    --- PASS: TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/postgres (0.46s)
+=== RUN   TestTimingCancelledCallerCannotMutatePendingSnapshot
+--- PASS: TestTimingCancelledCallerCannotMutatePendingSnapshot (0.02s)
+=== RUN   TestTimingPersistenceIsolationReplayAndRetention
+=== RUN   TestTimingPersistenceIsolationReplayAndRetention/memory
+=== RUN   TestTimingPersistenceIsolationReplayAndRetention/sqlite
+=== RUN   TestTimingPersistenceIsolationReplayAndRetention/mysql
+    request_timing_test.go:190: disposable local database DSN not supplied
+=== RUN   TestTimingPersistenceIsolationReplayAndRetention/postgres
+--- PASS: TestTimingPersistenceIsolationReplayAndRetention (0.59s)
+    --- PASS: TestTimingPersistenceIsolationReplayAndRetention/memory (0.00s)
+    --- PASS: TestTimingPersistenceIsolationReplayAndRetention/sqlite (0.03s)
+    --- SKIP: TestTimingPersistenceIsolationReplayAndRetention/mysql (0.00s)
+    --- PASS: TestTimingPersistenceIsolationReplayAndRetention/postgres (0.55s)
+=== RUN   TestTimingCreateAndDeleteAreAtomic
+--- PASS: TestTimingCreateAndDeleteAreAtomic (0.02s)
+=== RUN   TestTimingConcurrentReplay
+=== RUN   TestTimingConcurrentReplay/memory=true
+=== RUN   TestTimingConcurrentReplay/memory=false
+--- PASS: TestTimingConcurrentReplay (0.01s)
+    --- PASS: TestTimingConcurrentReplay/memory=true (0.00s)
+    --- PASS: TestTimingConcurrentReplay/memory=false (0.01s)
+=== RUN   TestTimingScopedDeleteDialects
+=== RUN   TestTimingScopedDeleteDialects/sqlite
+=== RUN   TestTimingScopedDeleteDialects/mysql
+    request_timing_test.go:324: disposable local database DSN not supplied
+=== RUN   TestTimingScopedDeleteDialects/postgres
+--- PASS: TestTimingScopedDeleteDialects (0.74s)
+    --- PASS: TestTimingScopedDeleteDialects/sqlite (0.28s)
+    --- SKIP: TestTimingScopedDeleteDialects/mysql (0.00s)
+    --- PASS: TestTimingScopedDeleteDialects/postgres (0.47s)
+=== RUN   TestTimingUnknownOwnerRequiresPlatformScope
+=== RUN   TestTimingUnknownOwnerRequiresPlatformScope/memory=true
+=== RUN   TestTimingUnknownOwnerRequiresPlatformScope/memory=false
+--- PASS: TestTimingUnknownOwnerRequiresPlatformScope (0.02s)
+    --- PASS: TestTimingUnknownOwnerRequiresPlatformScope/memory=true (0.00s)
+    --- PASS: TestTimingUnknownOwnerRequiresPlatformScope/memory=false (0.02s)
+=== RUN   TestTimingDoesNotEnterSelectionAudit
+=== RUN   TestTimingDoesNotEnterSelectionAudit/memory=true
+=== RUN   TestTimingDoesNotEnterSelectionAudit/memory=false
+--- PASS: TestTimingDoesNotEnterSelectionAudit (0.02s)
+    --- PASS: TestTimingDoesNotEnterSelectionAudit/memory=true (0.00s)
+    --- PASS: TestTimingDoesNotEnterSelectionAudit/memory=false (0.01s)
+=== RUN   TestRequestTraceCursorSurvivesDeletionBetweenPageReads
+--- PASS: TestRequestTraceCursorSurvivesDeletionBetweenPageReads (0.07s)
+=== RUN   TestRequestTraceFirstPageSnapshotReadIsBounded
+    request_trace_query_test.go:70: disposable local database DSN not supplied
+--- SKIP: TestRequestTraceFirstPageSnapshotReadIsBounded (0.00s)
+=== RUN   TestRequestTraceCursorLateIngestScopeAndReservationCandidates
+=== RUN   TestRequestTraceCursorLateIngestScopeAndReservationCandidates/memory
+=== RUN   TestRequestTraceCursorLateIngestScopeAndReservationCandidates/sqlite
+=== RUN   TestRequestTraceCursorLateIngestScopeAndReservationCandidates/mysql
+    request_trace_query_test.go:117: disposable local database DSN not supplied
+=== RUN   TestRequestTraceCursorLateIngestScopeAndReservationCandidates/postgres
+--- PASS: TestRequestTraceCursorLateIngestScopeAndReservationCandidates (0.78s)
+    --- PASS: TestRequestTraceCursorLateIngestScopeAndReservationCandidates/memory (0.00s)
+    --- PASS: TestRequestTraceCursorLateIngestScopeAndReservationCandidates/sqlite (0.30s)
+    --- SKIP: TestRequestTraceCursorLateIngestScopeAndReservationCandidates/mysql (0.00s)
+    --- PASS: TestRequestTraceCursorLateIngestScopeAndReservationCandidates/postgres (0.48s)
+=== RUN   TestTimingPostgresFreshClaimsNeedNoReadOrRewrite
+--- PASS: TestTimingPostgresFreshClaimsNeedNoReadOrRewrite (0.45s)
+=== RUN   TestTimingPostgresClaimOrderIsCompatibleWithLegacyWriter
+--- PASS: TestTimingPostgresClaimOrderIsCompatibleWithLegacyWriter (0.59s)
+=== RUN   TestTimingBatchFailureDoesNotCommitAnEarlierSummary
+=== RUN   TestTimingBatchFailureDoesNotCommitAnEarlierSummary/sqlite
+=== RUN   TestTimingBatchFailureDoesNotCommitAnEarlierSummary/mysql
+    request_timing_test.go:64: disposable local database DSN not supplied
+=== RUN   TestTimingBatchFailureDoesNotCommitAnEarlierSummary/postgres
+--- PASS: TestTimingBatchFailureDoesNotCommitAnEarlierSummary (0.70s)
+    --- PASS: TestTimingBatchFailureDoesNotCommitAnEarlierSummary/sqlite (0.26s)
+    --- SKIP: TestTimingBatchFailureDoesNotCommitAnEarlierSummary/mysql (0.00s)
+    --- PASS: TestTimingBatchFailureDoesNotCommitAnEarlierSummary/postgres (0.44s)
+=== RUN   TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups
+=== RUN   TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/sqlite
+=== RUN   TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/mysql
+    request_timing_test.go:99: disposable local database DSN not supplied
+=== RUN   TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/postgres
+--- PASS: TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups (0.72s)
+    --- PASS: TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/sqlite (0.26s)
+    --- SKIP: TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/mysql (0.00s)
+    --- PASS: TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/postgres (0.45s)
+=== RUN   TestTimingCancelledCallerCannotMutatePendingSnapshot
+--- PASS: TestTimingCancelledCallerCannotMutatePendingSnapshot (0.02s)
+=== RUN   TestTimingPersistenceIsolationReplayAndRetention
+=== RUN   TestTimingPersistenceIsolationReplayAndRetention/memory
+=== RUN   TestTimingPersistenceIsolationReplayAndRetention/sqlite
+=== RUN   TestTimingPersistenceIsolationReplayAndRetention/mysql
+    request_timing_test.go:190: disposable local database DSN not supplied
+=== RUN   TestTimingPersistenceIsolationReplayAndRetention/postgres
+--- PASS: TestTimingPersistenceIsolationReplayAndRetention (0.58s)
+    --- PASS: TestTimingPersistenceIsolationReplayAndRetention/memory (0.00s)
+    --- PASS: TestTimingPersistenceIsolationReplayAndRetention/sqlite (0.03s)
+    --- SKIP: TestTimingPersistenceIsolationReplayAndRetention/mysql (0.00s)
+    --- PASS: TestTimingPersistenceIsolationReplayAndRetention/postgres (0.55s)
+=== RUN   TestTimingCreateAndDeleteAreAtomic
+--- PASS: TestTimingCreateAndDeleteAreAtomic (0.02s)
+=== RUN   TestTimingConcurrentReplay
+=== RUN   TestTimingConcurrentReplay/memory=true
+=== RUN   TestTimingConcurrentReplay/memory=false
+--- PASS: TestTimingConcurrentReplay (0.02s)
+    --- PASS: TestTimingConcurrentReplay/memory=true (0.00s)
+    --- PASS: TestTimingConcurrentReplay/memory=false (0.02s)
+=== RUN   TestTimingScopedDeleteDialects
+=== RUN   TestTimingScopedDeleteDialects/sqlite
+=== RUN   TestTimingScopedDeleteDialects/mysql
+    request_timing_test.go:324: disposable local database DSN not supplied
+=== RUN   TestTimingScopedDeleteDialects/postgres
+--- PASS: TestTimingScopedDeleteDialects (0.79s)
+    --- PASS: TestTimingScopedDeleteDialects/sqlite (0.33s)
+    --- SKIP: TestTimingScopedDeleteDialects/mysql (0.00s)
+    --- PASS: TestTimingScopedDeleteDialects/postgres (0.46s)
+=== RUN   TestTimingUnknownOwnerRequiresPlatformScope
+=== RUN   TestTimingUnknownOwnerRequiresPlatformScope/memory=true
+=== RUN   TestTimingUnknownOwnerRequiresPlatformScope/memory=false
+--- PASS: TestTimingUnknownOwnerRequiresPlatformScope (0.02s)
+    --- PASS: TestTimingUnknownOwnerRequiresPlatformScope/memory=true (0.00s)
+    --- PASS: TestTimingUnknownOwnerRequiresPlatformScope/memory=false (0.02s)
+=== RUN   TestTimingDoesNotEnterSelectionAudit
+=== RUN   TestTimingDoesNotEnterSelectionAudit/memory=true
+=== RUN   TestTimingDoesNotEnterSelectionAudit/memory=false
+--- PASS: TestTimingDoesNotEnterSelectionAudit (0.01s)
+    --- PASS: TestTimingDoesNotEnterSelectionAudit/memory=true (0.00s)
+    --- PASS: TestTimingDoesNotEnterSelectionAudit/memory=false (0.01s)
+=== RUN   TestRequestTraceCursorSurvivesDeletionBetweenPageReads
+--- PASS: TestRequestTraceCursorSurvivesDeletionBetweenPageReads (0.04s)
+=== RUN   TestRequestTraceFirstPageSnapshotReadIsBounded
+    request_trace_query_test.go:70: disposable local database DSN not supplied
+--- SKIP: TestRequestTraceFirstPageSnapshotReadIsBounded (0.00s)
+=== RUN   TestRequestTraceCursorLateIngestScopeAndReservationCandidates
+=== RUN   TestRequestTraceCursorLateIngestScopeAndReservationCandidates/memory
+=== RUN   TestRequestTraceCursorLateIngestScopeAndReservationCandidates/sqlite
+=== RUN   TestRequestTraceCursorLateIngestScopeAndReservationCandidates/mysql
+    request_trace_query_test.go:117: disposable local database DSN not supplied
+=== RUN   TestRequestTraceCursorLateIngestScopeAndReservationCandidates/postgres
+--- PASS: TestRequestTraceCursorLateIngestScopeAndReservationCandidates (0.80s)
+    --- PASS: TestRequestTraceCursorLateIngestScopeAndReservationCandidates/memory (0.00s)
+    --- PASS: TestRequestTraceCursorLateIngestScopeAndReservationCandidates/sqlite (0.30s)
+    --- SKIP: TestRequestTraceCursorLateIngestScopeAndReservationCandidates/mysql (0.00s)
+    --- PASS: TestRequestTraceCursorLateIngestScopeAndReservationCandidates/postgres (0.50s)
+=== RUN   TestTimingPostgresFreshClaimsNeedNoReadOrRewrite
+--- PASS: TestTimingPostgresFreshClaimsNeedNoReadOrRewrite (0.44s)
+=== RUN   TestTimingPostgresClaimOrderIsCompatibleWithLegacyWriter
+--- PASS: TestTimingPostgresClaimOrderIsCompatibleWithLegacyWriter (0.52s)
+=== RUN   TestTimingBatchFailureDoesNotCommitAnEarlierSummary
+=== RUN   TestTimingBatchFailureDoesNotCommitAnEarlierSummary/sqlite
+=== RUN   TestTimingBatchFailureDoesNotCommitAnEarlierSummary/mysql
+    request_timing_test.go:64: disposable local database DSN not supplied
+=== RUN   TestTimingBatchFailureDoesNotCommitAnEarlierSummary/postgres
+--- PASS: TestTimingBatchFailureDoesNotCommitAnEarlierSummary (0.80s)
+    --- PASS: TestTimingBatchFailureDoesNotCommitAnEarlierSummary/sqlite (0.26s)
+    --- SKIP: TestTimingBatchFailureDoesNotCommitAnEarlierSummary/mysql (0.00s)
+    --- PASS: TestTimingBatchFailureDoesNotCommitAnEarlierSummary/postgres (0.54s)
+=== RUN   TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups
+=== RUN   TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/sqlite
+=== RUN   TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/mysql
+    request_timing_test.go:99: disposable local database DSN not supplied
+=== RUN   TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/postgres
+--- PASS: TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups (0.72s)
+    --- PASS: TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/sqlite (0.27s)
+    --- SKIP: TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/mysql (0.00s)
+    --- PASS: TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/postgres (0.45s)
+=== RUN   TestTimingCancelledCallerCannotMutatePendingSnapshot
+--- PASS: TestTimingCancelledCallerCannotMutatePendingSnapshot (0.02s)
+=== RUN   TestTimingPersistenceIsolationReplayAndRetention
+=== RUN   TestTimingPersistenceIsolationReplayAndRetention/memory
+=== RUN   TestTimingPersistenceIsolationReplayAndRetention/sqlite
+=== RUN   TestTimingPersistenceIsolationReplayAndRetention/mysql
+    request_timing_test.go:190: disposable local database DSN not supplied
+=== RUN   TestTimingPersistenceIsolationReplayAndRetention/postgres
+--- PASS: TestTimingPersistenceIsolationReplayAndRetention (0.60s)
+    --- PASS: TestTimingPersistenceIsolationReplayAndRetention/memory (0.00s)
+    --- PASS: TestTimingPersistenceIsolationReplayAndRetention/sqlite (0.03s)
+    --- SKIP: TestTimingPersistenceIsolationReplayAndRetention/mysql (0.00s)
+    --- PASS: TestTimingPersistenceIsolationReplayAndRetention/postgres (0.56s)
+=== RUN   TestTimingCreateAndDeleteAreAtomic
+--- PASS: TestTimingCreateAndDeleteAreAtomic (0.02s)
+=== RUN   TestTimingConcurrentReplay
+=== RUN   TestTimingConcurrentReplay/memory=true
+=== RUN   TestTimingConcurrentReplay/memory=false
+--- PASS: TestTimingConcurrentReplay (0.02s)
+    --- PASS: TestTimingConcurrentReplay/memory=true (0.00s)
+    --- PASS: TestTimingConcurrentReplay/memory=false (0.01s)
+=== RUN   TestTimingScopedDeleteDialects
+=== RUN   TestTimingScopedDeleteDialects/sqlite
+=== RUN   TestTimingScopedDeleteDialects/mysql
+    request_timing_test.go:324: disposable local database DSN not supplied
+=== RUN   TestTimingScopedDeleteDialects/postgres
+--- PASS: TestTimingScopedDeleteDialects (0.73s)
+    --- PASS: TestTimingScopedDeleteDialects/sqlite (0.28s)
+    --- SKIP: TestTimingScopedDeleteDialects/mysql (0.00s)
+    --- PASS: TestTimingScopedDeleteDialects/postgres (0.45s)
+=== RUN   TestTimingUnknownOwnerRequiresPlatformScope
+=== RUN   TestTimingUnknownOwnerRequiresPlatformScope/memory=true
+=== RUN   TestTimingUnknownOwnerRequiresPlatformScope/memory=false
+--- PASS: TestTimingUnknownOwnerRequiresPlatformScope (0.02s)
+    --- PASS: TestTimingUnknownOwnerRequiresPlatformScope/memory=true (0.00s)
+    --- PASS: TestTimingUnknownOwnerRequiresPlatformScope/memory=false (0.02s)
+=== RUN   TestTimingDoesNotEnterSelectionAudit
+=== RUN   TestTimingDoesNotEnterSelectionAudit/memory=true
+=== RUN   TestTimingDoesNotEnterSelectionAudit/memory=false
+--- PASS: TestTimingDoesNotEnterSelectionAudit (0.01s)
+    --- PASS: TestTimingDoesNotEnterSelectionAudit/memory=true (0.00s)
+    --- PASS: TestTimingDoesNotEnterSelectionAudit/memory=false (0.01s)
+=== RUN   TestRequestTraceCursorSurvivesDeletionBetweenPageReads
+--- PASS: TestRequestTraceCursorSurvivesDeletionBetweenPageReads (0.04s)
+=== RUN   TestRequestTraceFirstPageSnapshotReadIsBounded
+    request_trace_query_test.go:70: disposable local database DSN not supplied
+--- SKIP: TestRequestTraceFirstPageSnapshotReadIsBounded (0.00s)
+=== RUN   TestRequestTraceCursorLateIngestScopeAndReservationCandidates
+=== RUN   TestRequestTraceCursorLateIngestScopeAndReservationCandidates/memory
+=== RUN   TestRequestTraceCursorLateIngestScopeAndReservationCandidates/sqlite
+=== RUN   TestRequestTraceCursorLateIngestScopeAndReservationCandidates/mysql
+    request_trace_query_test.go:117: disposable local database DSN not supplied
+=== RUN   TestRequestTraceCursorLateIngestScopeAndReservationCandidates/postgres
+--- PASS: TestRequestTraceCursorLateIngestScopeAndReservationCandidates (0.79s)
+    --- PASS: TestRequestTraceCursorLateIngestScopeAndReservationCandidates/memory (0.00s)
+    --- PASS: TestRequestTraceCursorLateIngestScopeAndReservationCandidates/sqlite (0.30s)
+    --- SKIP: TestRequestTraceCursorLateIngestScopeAndReservationCandidates/mysql (0.00s)
+    --- PASS: TestRequestTraceCursorLateIngestScopeAndReservationCandidates/postgres (0.49s)
+PASS

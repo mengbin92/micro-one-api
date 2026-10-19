@@ -1,0 +1,17 @@
+{
+  "accepted": 1792,
+  "backlog_at_release": 512,
+  "dropped": 3136,
+  "exported": 1792,
+  "failed": 0,
+  "fake_upstream_wait_ms": 50,
+  "heap_alloc_at_release": 9705184,
+  "http_failures": 0,
+  "http_workers": 64,
+  "load_seconds": 4,
+  "pause_seconds": 3,
+  "queue_capacity": 256,
+  "requests": 4928,
+  "scope": "synthetic sink pause; not SQL capacity admission",
+  "worker_count": 256
+}

@@ -1,0 +1,31 @@
+{
+  "source_revision": "a2d34e474a0346e0190f4a6653e9aab2efb2099c",
+  "platform": "darwin/arm64",
+  "checks": {
+    "make test-unit": {
+      "result": "PASS",
+      "packages_passed": 121
+    },
+    "focused race x2": {
+      "result": "PASS",
+      "packages": [
+        "app/log/internal/data",
+        "domain/requesttrace",
+        "internal/server"
+      ]
+    },
+    "make format-check": "PASS",
+    "scripts/check-architecture.sh": "PASS",
+    "make rbac-contract-check": {
+      "result": "PASS",
+      "rows": 876
+    },
+    "scripts/check-markdown-links.py": {
+      "result": "PASS",
+      "files": 309
+    },
+    "scripts/check-commit-bodies.sh develop..HEAD": "PASS",
+    "scripts/check-deployment-docs.sh": "NOT_RUN_TO_COMPLETION: local kustomize missing; covered by native CI"
+  },
+  "external_dsn_policy": "Missing external database DSNs skip tests and are not database PASS evidence; final native run supplies isolated real MySQL/PostgreSQL."
+}

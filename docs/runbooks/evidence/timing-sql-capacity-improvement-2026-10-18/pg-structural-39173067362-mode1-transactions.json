@@ -1,0 +1,140 @@
+{
+  "connection_wait_count": 0,
+  "connection_wait_ms": 0,
+  "diagnostic_errors": null,
+  "force_custom_plan": true,
+  "postgres_tables": [
+    {
+      "autoanalyze_count": 4,
+      "idx_scan": 1781,
+      "idx_tup_fetch": 1172956,
+      "last_autoanalyze": "2026-10-18 22:46:46.523391+00",
+      "n_dead_tup": 0,
+      "n_live_tup": 138529,
+      "relname": "logs",
+      "seq_scan": 17,
+      "seq_tup_read": 0
+    },
+    {
+      "autoanalyze_count": 4,
+      "idx_scan": 138594,
+      "idx_tup_fetch": 65,
+      "last_autoanalyze": "2026-10-18 22:46:43.201378+00",
+      "n_dead_tup": 0,
+      "n_live_tup": 138529,
+      "relname": "log_ingest_dedupe_claims",
+      "seq_scan": 14,
+      "seq_tup_read": 815402
+    },
+    {
+      "autoanalyze_count": 4,
+      "idx_scan": 0,
+      "idx_tup_fetch": 0,
+      "last_autoanalyze": "2026-10-18 22:46:46.808863+00",
+      "n_dead_tup": 0,
+      "n_live_tup": 138529,
+      "relname": "request_trace_attempt_refs",
+      "seq_scan": 14,
+      "seq_tup_read": 815402
+    }
+  ],
+  "prepared_statements": [
+    {
+      "custom_plans": 0,
+      "generic_plans": 1,
+      "name": "stmtcache_4490c7929b60adde7d481abe689b8dca879a9fae4c603335",
+      "statement": "SELECT name,left(statement,180) AS statement,generic_plans,custom_plans FROM pg_prepared_statements WHERE statement LIKE '%log_ingest_dedupe_claims%'"
+    },
+    {
+      "custom_plans": 1,
+      "generic_plans": 0,
+      "name": "stmtcache_7b93a389d165930ea10f18e36b417d00dfb37210b1a29b50",
+      "statement": "SELECT * FROM \"log_ingest_dedupe_claims\" WHERE dedupe_key IN ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32"
+    },
+    {
+      "custom_plans": 2919,
+      "generic_plans": 0,
+      "name": "stmtcache_69481ed54976704b7a6abf727ef7fd78e7221777aeb4da79",
+      "statement": "INSERT INTO \"log_ingest_dedupe_claims\" (\"dedupe_key\", \"log_id\", \"created_at\")\nSELECT incoming.dedupe_key, nextval(pg_get_serial_sequence($2, 'id')::regclass), $3::bigint\nFROM jsonb"
+    },
+    {
+      "custom_plans": 0,
+      "generic_plans": 9,
+      "name": "stmtcache_31d928241d4a986b00e6f8c07bf8fd3db9dcd6a83ca24a57",
+      "statement": "SELECT count(*) FROM \"log_ingest_dedupe_claims\""
+    },
+    {
+      "custom_plans": 0,
+      "generic_plans": 1,
+      "name": "stmtcache_f27936776004080caaa77c513271cc8c7bfef50d2b1fe80a",
+      "statement": "SELECT relname,seq_scan,seq_tup_read,COALESCE(idx_scan,0) AS idx_scan,COALESCE(idx_tup_fetch,0) AS idx_tup_fetch,n_live_tup,n_dead_tup,autoanalyze_count,COALESCE(last_autoanalyze::"
+    }
+  ],
+  "scope": "test-only GORM statements and SQL transaction begin/commit/rollback; excludes RPC overhead; SQL text/values are never recorded",
+  "statements": {
+    "create:logs": {
+      "count": 10305,
+      "total_ms": 17642.265487999874,
+      "max_ms": 30.623504,
+      "errors": 0,
+      "p95_ms": 3.583158,
+      "p99_ms": 5.580821
+    },
+    "create:request_trace_attempt_refs": {
+      "count": 10305,
+      "total_ms": 5679.219087000006,
+      "max_ms": 46.333953,
+      "errors": 0,
+      "p95_ms": 1.208566,
+      "p99_ms": 2.076381
+    },
+    "query:log_ingest_dedupe_claims": {
+      "count": 14,
+      "total_ms": 136.59692199999998,
+      "max_ms": 82.308517,
+      "errors": 0,
+      "p95_ms": 82.308517,
+      "p99_ms": 82.308517
+    },
+    "query:logs": {
+      "count": 1382,
+      "total_ms": 4648.602650000006,
+      "max_ms": 1999.922241,
+      "errors": 1,
+      "p95_ms": 3.711596,
+      "p99_ms": 17.185145
+    },
+    "query:request_trace_attempt_refs": {
+      "count": 13,
+      "total_ms": 183.89028,
+      "max_ms": 124.256762,
+      "errors": 0,
+      "p95_ms": 124.256762,
+      "p99_ms": 124.256762
+    },
+    "transaction_begin": {
+      "count": 10307,
+      "total_ms": 3263.7444630000127,
+      "max_ms": 712.143119,
+      "errors": 0,
+      "p95_ms": 1.031562,
+      "p99_ms": 1.770317
+    },
+    "transaction_commit": {
+      "count": 10306,
+      "total_ms": 17698.96019099998,
+      "max_ms": 1994.827529,
+      "errors": 1,
+      "p95_ms": 1.11176,
+      "p99_ms": 24.505302
+    },
+    "transaction_rollback": {
+      "count": 2,
+      "total_ms": 0.00049,
+      "max_ms": 0.00031,
+      "errors": 2,
+      "p95_ms": 0.00031,
+      "p99_ms": 0.00031
+    }
+  }
+}

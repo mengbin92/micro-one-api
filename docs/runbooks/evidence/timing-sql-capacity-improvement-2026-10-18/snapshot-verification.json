@@ -1,0 +1,24 @@
+{
+  "source_revision": "b013ef06",
+  "platform": "darwin/arm64",
+  "postgres_versions_tested": [
+    16,
+    18
+  ],
+  "old_snapshot_source": "a2d34e47",
+  "generic_plan_negative_control": "EXPECTED FAIL: time-index scan followed by Sort",
+  "corrected_plan": "PASS: logs_pkey backward scan, no Sort",
+  "production_plan_cache_mode_changed": false,
+  "authorization_watermark_regression": "PASS with both owner scope and explicit user restriction",
+  "three_database_race": {
+    "result": "PASS",
+    "repetitions": 2,
+    "duration_seconds": 63.13,
+    "drivers": [
+      "sqlite",
+      "mysql",
+      "postgres18"
+    ]
+  },
+  "unit_packages_passed": 121
+}

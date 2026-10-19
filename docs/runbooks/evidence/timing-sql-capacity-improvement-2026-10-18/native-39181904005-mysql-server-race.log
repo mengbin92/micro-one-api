@@ -1,0 +1,301 @@
+=== RUN   TestRequestTimingSQLFailureRecovery
+=== RUN   TestRequestTimingSQLFailureRecovery/sqlite
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/mysql
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/postgres
+    request_timing_sql_test.go:92: disposable local database DSN not supplied
+--- PASS: TestRequestTimingSQLFailureRecovery (5.02s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/sqlite (0.50s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/mysql (4.52s)
+    --- SKIP: TestRequestTimingSQLFailureRecovery/postgres (0.00s)
+=== RUN   TestRequestTimingSQLBackpressureAndLostAck
+    request_timing_sql_test.go:220: backpressure recovered: submit_ms=51.724 stats={Accepted:4352 Exported:4352 Failed:0 Dropped:82}
+--- PASS: TestRequestTimingSQLBackpressureAndLostAck (2.49s)
+=== RUN   TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement
+--- PASS: TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement (0.14s)
+=== RUN   TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded
+--- PASS: TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded (0.00s)
+=== RUN   TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput
+--- PASS: TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput (0.00s)
+=== RUN   TestTimingBodyLimitEarlyReturnStillHasSummary
+--- PASS: TestTimingBodyLimitEarlyReturnStillHasSummary (0.00s)
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete
+--- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete (0.00s)
+=== RUN   TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput
+--- PASS: TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput (0.00s)
+=== RUN   TestRequestTimingSQLFailureRecovery
+=== RUN   TestRequestTimingSQLFailureRecovery/sqlite
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/mysql
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/postgres
+    request_timing_sql_test.go:92: disposable local database DSN not supplied
+--- PASS: TestRequestTimingSQLFailureRecovery (4.89s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/sqlite (0.31s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/mysql (4.59s)
+    --- SKIP: TestRequestTimingSQLFailureRecovery/postgres (0.00s)
+=== RUN   TestRequestTimingSQLBackpressureAndLostAck
+    request_timing_sql_test.go:220: backpressure recovered: submit_ms=47.811 stats={Accepted:4352 Exported:4352 Failed:0 Dropped:82}
+--- PASS: TestRequestTimingSQLBackpressureAndLostAck (2.96s)
+=== RUN   TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement
+--- PASS: TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement (0.01s)
+=== RUN   TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded
+--- PASS: TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded (0.00s)
+=== RUN   TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput
+--- PASS: TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput (0.00s)
+=== RUN   TestTimingBodyLimitEarlyReturnStillHasSummary
+--- PASS: TestTimingBodyLimitEarlyReturnStillHasSummary (0.00s)
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete
+--- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete (0.00s)
+=== RUN   TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput
+--- PASS: TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput (0.00s)
+=== RUN   TestRequestTimingSQLFailureRecovery
+=== RUN   TestRequestTimingSQLFailureRecovery/sqlite
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/mysql
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/postgres
+    request_timing_sql_test.go:92: disposable local database DSN not supplied
+--- PASS: TestRequestTimingSQLFailureRecovery (4.90s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/sqlite (0.33s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/mysql (4.57s)
+    --- SKIP: TestRequestTimingSQLFailureRecovery/postgres (0.00s)
+=== RUN   TestRequestTimingSQLBackpressureAndLostAck
+    request_timing_sql_test.go:220: backpressure recovered: submit_ms=40.047 stats={Accepted:4352 Exported:4352 Failed:0 Dropped:82}
+--- PASS: TestRequestTimingSQLBackpressureAndLostAck (2.43s)
+=== RUN   TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement
+--- PASS: TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement (0.01s)
+=== RUN   TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded
+--- PASS: TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded (0.00s)
+=== RUN   TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput
+--- PASS: TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput (0.00s)
+=== RUN   TestTimingBodyLimitEarlyReturnStillHasSummary
+--- PASS: TestTimingBodyLimitEarlyReturnStillHasSummary (0.00s)
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete
+--- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete (0.00s)
+=== RUN   TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput
+--- PASS: TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput (0.00s)
+=== RUN   TestRequestTimingSQLFailureRecovery
+=== RUN   TestRequestTimingSQLFailureRecovery/sqlite
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/mysql
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/postgres
+    request_timing_sql_test.go:92: disposable local database DSN not supplied
+--- PASS: TestRequestTimingSQLFailureRecovery (4.89s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/sqlite (0.30s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/mysql (4.60s)
+    --- SKIP: TestRequestTimingSQLFailureRecovery/postgres (0.00s)
+=== RUN   TestRequestTimingSQLBackpressureAndLostAck
+    request_timing_sql_test.go:220: backpressure recovered: submit_ms=48.013 stats={Accepted:4352 Exported:4352 Failed:0 Dropped:82}
+--- PASS: TestRequestTimingSQLBackpressureAndLostAck (2.47s)
+=== RUN   TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement
+--- PASS: TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement (0.01s)
+=== RUN   TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded
+--- PASS: TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded (0.00s)
+=== RUN   TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput
+--- PASS: TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput (0.00s)
+=== RUN   TestTimingBodyLimitEarlyReturnStillHasSummary
+--- PASS: TestTimingBodyLimitEarlyReturnStillHasSummary (0.00s)
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete
+--- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete (0.00s)
+=== RUN   TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput
+--- PASS: TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput (0.00s)
+=== RUN   TestRequestTimingSQLFailureRecovery
+=== RUN   TestRequestTimingSQLFailureRecovery/sqlite
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/mysql
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/postgres
+    request_timing_sql_test.go:92: disposable local database DSN not supplied
+--- PASS: TestRequestTimingSQLFailureRecovery (4.98s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/sqlite (0.29s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/mysql (4.69s)
+    --- SKIP: TestRequestTimingSQLFailureRecovery/postgres (0.00s)
+=== RUN   TestRequestTimingSQLBackpressureAndLostAck
+    request_timing_sql_test.go:220: backpressure recovered: submit_ms=47.676 stats={Accepted:4352 Exported:4352 Failed:0 Dropped:82}
+--- PASS: TestRequestTimingSQLBackpressureAndLostAck (2.48s)
+=== RUN   TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement
+--- PASS: TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement (0.01s)
+=== RUN   TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded
+--- PASS: TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded (0.00s)
+=== RUN   TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput
+--- PASS: TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput (0.00s)
+=== RUN   TestTimingBodyLimitEarlyReturnStillHasSummary
+--- PASS: TestTimingBodyLimitEarlyReturnStillHasSummary (0.00s)
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete
+--- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete (0.00s)
+=== RUN   TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput
+--- PASS: TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput (0.00s)
+=== RUN   TestRequestTimingSQLFailureRecovery
+=== RUN   TestRequestTimingSQLFailureRecovery/sqlite
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/mysql
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/postgres
+    request_timing_sql_test.go:92: disposable local database DSN not supplied
+--- PASS: TestRequestTimingSQLFailureRecovery (4.76s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/sqlite (0.31s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/mysql (4.45s)
+    --- SKIP: TestRequestTimingSQLFailureRecovery/postgres (0.00s)
+=== RUN   TestRequestTimingSQLBackpressureAndLostAck
+    request_timing_sql_test.go:220: backpressure recovered: submit_ms=46.013 stats={Accepted:4352 Exported:4352 Failed:0 Dropped:82}
+--- PASS: TestRequestTimingSQLBackpressureAndLostAck (2.39s)
+=== RUN   TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement
+--- PASS: TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement (0.01s)
+=== RUN   TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded
+--- PASS: TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded (0.00s)
+=== RUN   TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput
+--- PASS: TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput (0.00s)
+=== RUN   TestTimingBodyLimitEarlyReturnStillHasSummary
+--- PASS: TestTimingBodyLimitEarlyReturnStillHasSummary (0.00s)
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete
+--- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete (0.00s)
+=== RUN   TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput
+--- PASS: TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput (0.00s)
+=== RUN   TestRequestTimingSQLFailureRecovery
+=== RUN   TestRequestTimingSQLFailureRecovery/sqlite
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/mysql
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/postgres
+    request_timing_sql_test.go:92: disposable local database DSN not supplied
+--- PASS: TestRequestTimingSQLFailureRecovery (4.83s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/sqlite (0.30s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/mysql (4.53s)
+    --- SKIP: TestRequestTimingSQLFailureRecovery/postgres (0.00s)
+=== RUN   TestRequestTimingSQLBackpressureAndLostAck
+    request_timing_sql_test.go:220: backpressure recovered: submit_ms=36.904 stats={Accepted:4352 Exported:4352 Failed:0 Dropped:82}
+--- PASS: TestRequestTimingSQLBackpressureAndLostAck (2.48s)
+=== RUN   TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement
+--- PASS: TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement (0.01s)
+=== RUN   TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded
+--- PASS: TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded (0.00s)
+=== RUN   TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput
+--- PASS: TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput (0.00s)
+=== RUN   TestTimingBodyLimitEarlyReturnStillHasSummary
+--- PASS: TestTimingBodyLimitEarlyReturnStillHasSummary (0.00s)
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete
+--- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete (0.00s)
+=== RUN   TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput
+--- PASS: TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput (0.00s)
+=== RUN   TestRequestTimingSQLFailureRecovery
+=== RUN   TestRequestTimingSQLFailureRecovery/sqlite
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/mysql
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/postgres
+    request_timing_sql_test.go:92: disposable local database DSN not supplied
+--- PASS: TestRequestTimingSQLFailureRecovery (4.94s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/sqlite (0.31s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/mysql (4.62s)
+    --- SKIP: TestRequestTimingSQLFailureRecovery/postgres (0.00s)
+=== RUN   TestRequestTimingSQLBackpressureAndLostAck
+    request_timing_sql_test.go:220: backpressure recovered: submit_ms=50.443 stats={Accepted:4352 Exported:4352 Failed:0 Dropped:82}
+--- PASS: TestRequestTimingSQLBackpressureAndLostAck (2.49s)
+=== RUN   TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement
+--- PASS: TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement (0.01s)
+=== RUN   TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded
+--- PASS: TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded (0.00s)
+=== RUN   TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput
+--- PASS: TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput (0.00s)
+=== RUN   TestTimingBodyLimitEarlyReturnStillHasSummary
+--- PASS: TestTimingBodyLimitEarlyReturnStillHasSummary (0.00s)
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete
+--- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete (0.00s)
+=== RUN   TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput
+--- PASS: TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput (0.00s)
+=== RUN   TestRequestTimingSQLFailureRecovery
+=== RUN   TestRequestTimingSQLFailureRecovery/sqlite
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/mysql
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/postgres
+    request_timing_sql_test.go:92: disposable local database DSN not supplied
+--- PASS: TestRequestTimingSQLFailureRecovery (4.82s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/sqlite (0.30s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/mysql (4.53s)
+    --- SKIP: TestRequestTimingSQLFailureRecovery/postgres (0.00s)
+=== RUN   TestRequestTimingSQLBackpressureAndLostAck
+    request_timing_sql_test.go:220: backpressure recovered: submit_ms=50.020 stats={Accepted:4352 Exported:4352 Failed:0 Dropped:82}
+--- PASS: TestRequestTimingSQLBackpressureAndLostAck (2.51s)
+=== RUN   TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement
+--- PASS: TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement (0.01s)
+=== RUN   TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded
+--- PASS: TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded (0.00s)
+=== RUN   TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput
+--- PASS: TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput (0.00s)
+=== RUN   TestTimingBodyLimitEarlyReturnStillHasSummary
+--- PASS: TestTimingBodyLimitEarlyReturnStillHasSummary (0.00s)
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete
+--- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete (0.00s)
+=== RUN   TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput
+--- PASS: TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput (0.00s)
+=== RUN   TestRequestTimingSQLFailureRecovery
+=== RUN   TestRequestTimingSQLFailureRecovery/sqlite
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/mysql
+    request_timing_sql_test.go:124: storage failure/recovery: stats={Accepted:2 Exported:1 Failed:1 Dropped:0} counts=map[log_ingest_dedupe_claims:1 logs:1 request_trace_attempt_refs:1]
+=== RUN   TestRequestTimingSQLFailureRecovery/postgres
+    request_timing_sql_test.go:92: disposable local database DSN not supplied
+--- PASS: TestRequestTimingSQLFailureRecovery (5.05s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/sqlite (0.30s)
+    --- PASS: TestRequestTimingSQLFailureRecovery/mysql (4.74s)
+    --- SKIP: TestRequestTimingSQLFailureRecovery/postgres (0.00s)
+=== RUN   TestRequestTimingSQLBackpressureAndLostAck
+    request_timing_sql_test.go:220: backpressure recovered: submit_ms=45.262 stats={Accepted:4352 Exported:4352 Failed:0 Dropped:82}
+--- PASS: TestRequestTimingSQLBackpressureAndLostAck (2.48s)
+=== RUN   TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement
+--- PASS: TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement (0.01s)
+=== RUN   TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded
+--- PASS: TestTimingEarlyRejectsAreUniqueWithoutOTelAndPreflightIsExcluded (0.00s)
+=== RUN   TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput
+--- PASS: TestTimingWriteFailureDoesNotInventFirstContentOrCompletedOutput (0.00s)
+=== RUN   TestTimingBodyLimitEarlyReturnStillHasSummary
+--- PASS: TestTimingBodyLimitEarlyReturnStillHasSummary (0.00s)
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled
+=== RUN   TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete
+--- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/cancelled (0.00s)
+    --- PASS: TestTimingCancelledAndIncompleteSSETerminalsRetainOutcome/incomplete (0.00s)
+=== RUN   TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput
+--- PASS: TestTimingRequestedStreamReturningJSONIsCompletedHTTPOutput (0.00s)
+PASS

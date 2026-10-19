@@ -1,0 +1,20 @@
+=== RUN   TestRequestTimingCheckpointBuffer
+    request_timing_checkpoint_test.go:97: {
+          "accepted": 5056,
+          "backlog_at_release": 3712,
+          "dropped": 0,
+          "exported": 5056,
+          "failed": 0,
+          "fake_upstream_wait_ms": 50,
+          "heap_alloc_at_release": 15926448,
+          "http_failures": 0,
+          "http_workers": 64,
+          "load_seconds": 4,
+          "pause_seconds": 3,
+          "queue_capacity": 4096,
+          "requests": 5056,
+          "scope": "synthetic sink pause; not SQL capacity admission",
+          "worker_count": 256
+        }
+--- PASS: TestRequestTimingCheckpointBuffer (4.05s)
+PASS
