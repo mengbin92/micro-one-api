@@ -7,7 +7,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
-baseline_ref="${Q3_BASELINE_REF:-v0.33.1}"
+baseline_ref="${Q3_BASELINE_REF:-v0.36.1}"
 results_dir="${Q3_RESULTS_DIR:-${RUNNER_TEMP:-/tmp}/q3-benchmark-results}"
 baseline_dir=""
 compose_overlay="$repo_root/scripts/benchmark/q3-compose.yml"
@@ -107,6 +107,13 @@ ALIPAY_CERT_DIR=$checkout/cert/alipay
 CHANNEL_HEALTH_ALERT_ENABLED=false
 RECON_ALERT_ENABLED=false
 EOF
+  # Execution claims require dedicated identities even in legacy IAM mode.
+  local identities="$env_file.identities"
+  created_env_files+=("$identities")
+  python3 "$repo_root/scripts/prepare-rbac-service-identities.py" --output "$identities"
+  cat "$identities" >> "$env_file"
+  rm -f "$identities"
+  python3 "$repo_root/scripts/check-service-identities.py" --env "$env_file"
 }
 
 reset_samples() {

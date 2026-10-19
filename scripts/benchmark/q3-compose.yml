@@ -6,6 +6,9 @@ services:
   relay-gateway:
     environment:
       PROVIDER_DISABLE_SSRF_CHECK: "true"
+    # Keep container-owned outbox files out of the disposable Git worktree.
+    volumes:
+      - q3_relay_outbox:/var/lib/relay-outbox
   mysql:
     healthcheck:
       # Baseline checkouts (e.g. ff518b1c) probe via the Unix socket
@@ -16,3 +19,6 @@ services:
       # this overlay is stacked on; never regress this, even after the
       # baseline moves past ff518b1c.
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+
+volumes:
+  q3_relay_outbox:

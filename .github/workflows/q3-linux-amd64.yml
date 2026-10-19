@@ -24,6 +24,8 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      - name: Check benchmark service identity wiring
+        run: python3 scripts/test-e2e-flow-identities.py E2EIdentityTest.test_q3_environment_provisions_receiver_trust
       - name: Run isolated Linux/amd64 comparison
         run: bash scripts/benchmark/run-q3-ci.sh
         env:
