@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Check real E2E/Lite startup wiring without building or starting containers."""
+import json
 import os
 from pathlib import Path
 import shutil
@@ -11,6 +12,34 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 class E2EIdentityTest(unittest.TestCase):
+    def test_q3_environment_provisions_receiver_trust(self):
+        script = (ROOT / "scripts/benchmark/run-q3-ci.sh").read_text()
+        writer = script[script.index("write_environment() {"):script.index("\nreset_samples() {")]
+        with tempfile.TemporaryDirectory() as scratch:
+            checkout = Path(scratch)
+            (checkout / "deployments/docker-compose").mkdir(parents=True)
+            env = dict(os.environ, repo_root=str(ROOT), root_password="q3-test-root",
+                       redis_password="q3-test-redis", admin_token="q3-test-admin",
+                       service_token="q3-test-shared", jwt_secret="q3-test-jwt",
+                       channel_key=os.urandom(16).hex(), user_password="q3-test-user")
+            subprocess.run(["bash", "-euc", writer + '\nwrite_environment "$1"', "q3-test", str(checkout)],
+                           env=env, check=True, capture_output=True, text=True)
+            env_file = checkout / "deployments/docker-compose/.env"
+            result = subprocess.run(["python3", str(ROOT / "scripts/check-service-identities.py"),
+                                     "--env", str(env_file)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            config = json.loads(subprocess.check_output([
+                "docker", "compose", "--env-file", str(env_file),
+                "-f", str(ROOT / "deployments/docker-compose/docker-compose.yml"),
+                "-f", str(ROOT / "scripts/benchmark/q3-compose.yml"), "config", "--format", "json"]))
+            services = config["services"]
+            relay = services["relay-gateway"]["environment"]["SERVICE_IDENTITY_TOKEN"]
+            self.assertTrue(relay, "Q3 relay has no identity; execution claims return 503")
+            for owner in ("channel-service", "identity-service", "billing-service", "log-service", "config-service"):
+                callers = json.loads(services[owner]["environment"]["SERVICE_CALLER_TOKENS"])
+                self.assertEqual(callers.get("relay"), relay, owner + " does not trust the Q3 relay")
+            self.assertEqual(env_file.stat().st_mode & 0o777, 0o600)
+
     def test_lite_smoke_provisions_service_identities_before_building(self):
         with tempfile.TemporaryDirectory() as scratch:
             scratch = Path(scratch)

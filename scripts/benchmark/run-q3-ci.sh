@@ -107,6 +107,13 @@ ALIPAY_CERT_DIR=$checkout/cert/alipay
 CHANNEL_HEALTH_ALERT_ENABLED=false
 RECON_ALERT_ENABLED=false
 EOF
+  # Execution claims require dedicated identities even in legacy IAM mode.
+  local identities="$env_file.identities"
+  created_env_files+=("$identities")
+  python3 "$repo_root/scripts/prepare-rbac-service-identities.py" --output "$identities"
+  cat "$identities" >> "$env_file"
+  rm -f "$identities"
+  python3 "$repo_root/scripts/check-service-identities.py" --env "$env_file"
 }
 
 reset_samples() {
