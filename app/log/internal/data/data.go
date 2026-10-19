@@ -42,17 +42,17 @@ type logModel struct {
 	OTelTraceID           *string  `gorm:"column:otel_trace_id"`
 	RequestStartedAtMS    *int64   `gorm:"column:request_started_at_ms"`
 	RequestOutcome        *string  `gorm:"column:request_outcome"`
-	ID                    int64    `gorm:"column:id;primaryKey;autoIncrement"`
+	ID                    int64    `gorm:"column:id;primaryKey;autoIncrement;index:idx_log_trace_snapshot,priority:2;index:idx_log_trace_user_snapshot,priority:3"`
 	Level                 string   `gorm:"column:level;index"`
 	Message               string   `gorm:"column:message"`
-	Source                string   `gorm:"column:source;index"`
+	Source                string   `gorm:"column:source;index;index:idx_log_trace_snapshot,priority:1;index:idx_log_trace_user_snapshot,priority:1"`
 	RequestID             string   `gorm:"column:request_id"`
 	RootRequestID         string   `gorm:"column:root_request_id"`
 	AttemptNumber         int32    `gorm:"column:attempt_number"`
 	ReservationID         string   `gorm:"column:reservation_id"`
 	SourceKind            string   `gorm:"column:source_kind"`
 	UpstreamModelID       string   `gorm:"column:upstream_model_id"`
-	UserID                int64    `gorm:"column:user_id"`
+	UserID                int64    `gorm:"column:user_id;index:idx_log_trace_user_snapshot,priority:2"`
 	CreatedAt             int64    `gorm:"column:created_at;index"`
 	Username              string   `gorm:"column:username"`
 	TokenName             string   `gorm:"column:token_name"`

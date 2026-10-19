@@ -9,6 +9,7 @@ on:
       - scripts/benchmark/timing-sql-capacity.sh
       - domain/requesttrace/**
       - app/log/internal/data/**
+      - migrations/**
       - internal/server/request_timing*test.go
 
 permissions:

@@ -161,6 +161,7 @@ services:
     - 086_add_log_usage_semantics             # reported/canonical usage split + parse verdict on logs
     - 107_add_log_request_trace
     - 137_add_request_timing_summaries
+    - 139_add_request_trace_snapshot_indexes
 
   admin:
     - 119_upstream_cost_resource_ids

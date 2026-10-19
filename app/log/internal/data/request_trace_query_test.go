@@ -100,43 +100,56 @@ func TestRequestTraceSQLitePageKeysUseCoveringIndex(t *testing.T) {
 }
 
 func TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort(t *testing.T) {
-	db := dbtest.RoutingContextDB(t, "postgres")
-	r := &Repository{db: db}
-	for start := 0; start < 2048; start += timingCommitBatchSize {
-		entries := make([]*biz.LogEntry, timingCommitBatchSize)
-		for i := range entries {
-			entries[i] = timingEntry()
-		}
-		require.NoError(t, r.CreateBatch(context.Background(), entries))
-	}
-	require.NoError(t, db.Exec("ANALYZE logs").Error)
-	var snapshotSQL string
-	var snapshotArgs []any
-	require.NoError(t, db.Callback().Query().After("gorm:query").Register("capture_snapshot_generic_plan", func(tx *gorm.DB) {
-		if snapshotSQL == "" && tx.Statement.Table == "logs" {
-			snapshotSQL = tx.Statement.SQL.String()
-			snapshotArgs = append([]any(nil), tx.Statement.Vars...)
-		}
-	}))
-	_, _, _, err := r.ListRequestTraces(context.Background(), biz.RequestTraceFilter{StartMS: 1, EndMS: 100000, UserID: new(int64(7)), PageSize: 20}, biz.RequestTraceCursor{})
-	require.NoError(t, err)
-	require.NotEmpty(t, snapshotSQL)
-	var plan string
-	require.NoError(t, db.Connection(func(conn *gorm.DB) error {
-		if err := conn.Exec("SET plan_cache_mode = force_generic_plan").Error; err != nil {
-			return err
-		}
-		defer conn.Exec("RESET plan_cache_mode")
-		if err := conn.Exec("PREPARE timing_snapshot AS " + snapshotSQL).Error; err != nil {
-			return err
-		}
-		defer conn.Exec("DEALLOCATE timing_snapshot")
-		explain := conn.ToSQL(func(tx *gorm.DB) *gorm.DB {
-			return tx.Raw("EXPLAIN (FORMAT JSON) EXECUTE timing_snapshot("+strings.TrimSuffix(strings.Repeat("?,", len(snapshotArgs)), ",")+")", snapshotArgs...)
+	for _, analyzed := range []bool{false, true} {
+		t.Run(map[bool]string{false: "cold_statistics", true: "analyzed"}[analyzed], func(t *testing.T) {
+
+			db := dbtest.RoutingContextDB(t, "postgres")
+			require.NoError(t, db.Exec("ALTER TABLE logs SET (autovacuum_enabled = false)").Error)
+			r := &Repository{db: db}
+			for start := 0; start < 2048; start += timingCommitBatchSize {
+				entries := make([]*biz.LogEntry, timingCommitBatchSize)
+				for i := range entries {
+					entries[i] = timingEntry()
+				}
+				require.NoError(t, r.CreateBatch(context.Background(), entries))
+			}
+			if analyzed {
+				require.NoError(t, db.Exec("ANALYZE logs").Error)
+			}
+			var snapshotSQL string
+			var snapshotArgs []any
+			require.NoError(t, db.Callback().Query().After("gorm:query").Register("capture_snapshot_generic_plan", func(tx *gorm.DB) {
+				if snapshotSQL == "" && tx.Statement.Table == "logs" {
+					snapshotSQL = tx.Statement.SQL.String()
+					snapshotArgs = append([]any(nil), tx.Statement.Vars...)
+				}
+			}))
+			for _, userFilter := range []*int64{nil, new(int64(7))} {
+				snapshotSQL = ""
+				snapshotArgs = nil
+				_, _, _, err := r.ListRequestTraces(context.Background(), biz.RequestTraceFilter{StartMS: 1, EndMS: 100000, UserID: userFilter, PageSize: 20}, biz.RequestTraceCursor{})
+				require.NoError(t, err)
+				require.NotEmpty(t, snapshotSQL)
+				var plan string
+				require.NoError(t, db.Connection(func(conn *gorm.DB) error {
+					if err := conn.Exec("SET plan_cache_mode = force_generic_plan").Error; err != nil {
+						return err
+					}
+					defer conn.Exec("RESET plan_cache_mode")
+					if err := conn.Exec("PREPARE timing_snapshot AS " + snapshotSQL).Error; err != nil {
+						return err
+					}
+					defer conn.Exec("DEALLOCATE timing_snapshot")
+					explain := conn.ToSQL(func(tx *gorm.DB) *gorm.DB {
+						return tx.Raw("EXPLAIN (FORMAT JSON) EXECUTE timing_snapshot("+strings.TrimSuffix(strings.Repeat("?,", len(snapshotArgs)), ",")+")", snapshotArgs...)
+					})
+					return conn.Raw(explain).Scan(&plan).Error
+				}))
+				require.NotContains(t, plan, `"Node Type": "Sort"`, "snapshot must stream its primary-key bound rather than sort the matching time range: %s", plan)
+
+			}
 		})
-		return conn.Raw(explain).Scan(&plan).Error
-	}))
-	require.NotContains(t, plan, `"Node Type": "Sort"`, "snapshot must stream its primary-key bound rather than sort the matching time range: %s", plan)
+	}
 }
 
 func TestRequestTraceSnapshotKeepsOwnerScopeOutsideSearchWindow(t *testing.T) {
