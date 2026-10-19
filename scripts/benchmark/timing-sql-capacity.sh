@@ -191,6 +191,22 @@ for label in baseline candidate; do
       if [[ "$rc" != 0 ]]; then candidate_failed=1; fi
       tail -n 5 "$results/$binary-race.log"
     done
+    # A short controlled pause probes buffer headroom separately from the
+    # unchanged four-pair real-SQL admission gate above.
+    set +e
+    docker exec -e GOMAXPROCS=4 -e TIMING_CHECKPOINT_BUFFER_PROBE=1 \
+      -e "TIMING_CHECKPOINT_BUFFER_OUTPUT=$results/candidate-$driver-checkpoint-buffer.json" \
+      "$measurement" "$results/server-candidate.test" \
+      -test.run '^TestRequestTimingCheckpointBuffer$' -test.v -test.timeout=30s \
+      > "$results/checkpoint-buffer.log" 2>&1
+    rc=$?
+    set -e
+    printf 'candidate %s checkpoint-buffer %d\n' "$driver" "$rc" >> "$results/exit-status.txt"
+    if [[ "$rc" != 0 ]]; then candidate_failed=1; fi
+    tail -n 5 "$results/checkpoint-buffer.log"
+    if "$created_database"; then
+      docker logs "$database" > "$results/candidate-database-after-race.log" 2>&1
+    fi
   fi
   cleanup_containers
 done

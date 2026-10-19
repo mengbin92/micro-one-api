@@ -16,7 +16,10 @@ type ExportStats struct{ Accepted, Exported, Failed, Dropped int64 }
 // Pipeline the next group of RPCs while the Log owner's bounded 128-item
 // group writer waits for SQL, acknowledgement and encoding of the current one.
 const ExporterWorkerCount = 256
-const ExporterQueueCapacity = 256
+
+// Absorb a brief durable-storage pause without blocking the producer.
+// At the controlled 64 x 50ms load, this is roughly three seconds of slack.
+const ExporterQueueCapacity = 4096
 
 // Exporter owns a fixed queue and worker count. A slow/down log owner never
 // blocks the request, output, billing or shutdown indefinitely.
