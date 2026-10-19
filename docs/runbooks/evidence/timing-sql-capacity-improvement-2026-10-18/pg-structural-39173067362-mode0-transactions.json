@@ -1,0 +1,126 @@
+{
+  "connection_wait_count": 0,
+  "connection_wait_ms": 0,
+  "diagnostic_errors": null,
+  "force_custom_plan": false,
+  "postgres_tables": [
+    {
+      "autoanalyze_count": 4,
+      "idx_scan": 1869,
+      "idx_tup_fetch": 1158299,
+      "last_autoanalyze": "2026-10-18 22:46:45.198946+00",
+      "n_dead_tup": 0,
+      "n_live_tup": 148934,
+      "relname": "logs",
+      "seq_scan": 17,
+      "seq_tup_read": 0
+    },
+    {
+      "autoanalyze_count": 4,
+      "idx_scan": 148936,
+      "idx_tup_fetch": 0,
+      "last_autoanalyze": "2026-10-18 22:46:41.93201+00",
+      "n_dead_tup": 0,
+      "n_live_tup": 148936,
+      "relname": "log_ingest_dedupe_claims",
+      "seq_scan": 14,
+      "seq_tup_read": 895826
+    },
+    {
+      "autoanalyze_count": 4,
+      "idx_scan": 0,
+      "idx_tup_fetch": 0,
+      "last_autoanalyze": "2026-10-18 22:46:45.484476+00",
+      "n_dead_tup": 0,
+      "n_live_tup": 148936,
+      "relname": "request_trace_attempt_refs",
+      "seq_scan": 20,
+      "seq_tup_read": 944466
+    }
+  ],
+  "prepared_statements": [
+    {
+      "custom_plans": 0,
+      "generic_plans": 1,
+      "name": "stmtcache_4490c7929b60adde7d481abe689b8dca879a9fae4c603335",
+      "statement": "SELECT name,left(statement,180) AS statement,generic_plans,custom_plans FROM pg_prepared_statements WHERE statement LIKE '%log_ingest_dedupe_claims%'"
+    },
+    {
+      "custom_plans": 5,
+      "generic_plans": 5506,
+      "name": "stmtcache_69481ed54976704b7a6abf727ef7fd78e7221777aeb4da79",
+      "statement": "INSERT INTO \"log_ingest_dedupe_claims\" (\"dedupe_key\", \"log_id\", \"created_at\")\nSELECT incoming.dedupe_key, nextval(pg_get_serial_sequence($2, 'id')::regclass), $3::bigint\nFROM jsonb"
+    },
+    {
+      "custom_plans": 0,
+      "generic_plans": 3,
+      "name": "stmtcache_31d928241d4a986b00e6f8c07bf8fd3db9dcd6a83ca24a57",
+      "statement": "SELECT count(*) FROM \"log_ingest_dedupe_claims\""
+    },
+    {
+      "custom_plans": 0,
+      "generic_plans": 1,
+      "name": "stmtcache_f27936776004080caaa77c513271cc8c7bfef50d2b1fe80a",
+      "statement": "SELECT relname,seq_scan,seq_tup_read,COALESCE(idx_scan,0) AS idx_scan,COALESCE(idx_tup_fetch,0) AS idx_tup_fetch,n_live_tup,n_dead_tup,autoanalyze_count,COALESCE(last_autoanalyze::"
+    }
+  ],
+  "scope": "test-only GORM statements and SQL transaction begin/commit/rollback; excludes RPC overhead; SQL text/values are never recorded",
+  "statements": {
+    "create:logs": {
+      "count": 12012,
+      "total_ms": 18006.53758699994,
+      "max_ms": 74.530205,
+      "errors": 0,
+      "p95_ms": 3.11266,
+      "p99_ms": 5.229583
+    },
+    "create:request_trace_attempt_refs": {
+      "count": 12012,
+      "total_ms": 5977.49548000002,
+      "max_ms": 35.879022,
+      "errors": 0,
+      "p95_ms": 1.161338,
+      "p99_ms": 2.303736
+    },
+    "query:log_ingest_dedupe_claims": {
+      "count": 13,
+      "total_ms": 87.261664,
+      "max_ms": 31.831678,
+      "errors": 0,
+      "p95_ms": 31.831678,
+      "p99_ms": 31.831678
+    },
+    "query:logs": {
+      "count": 1393,
+      "total_ms": 1828.392875999999,
+      "max_ms": 274.367367,
+      "errors": 0,
+      "p95_ms": 3.199834,
+      "p99_ms": 14.287359
+    },
+    "query:request_trace_attempt_refs": {
+      "count": 13,
+      "total_ms": 109.924273,
+      "max_ms": 42.932403,
+      "errors": 0,
+      "p95_ms": 42.932403,
+      "p99_ms": 42.932403
+    },
+    "transaction_begin": {
+      "count": 12012,
+      "total_ms": 2923.1337569999964,
+      "max_ms": 14.960944,
+      "errors": 0,
+      "p95_ms": 0.941768,
+      "p99_ms": 1.738622
+    },
+    "transaction_commit": {
+      "count": 12012,
+      "total_ms": 10092.08668199999,
+      "max_ms": 343.89099,
+      "errors": 0,
+      "p95_ms": 0.772424,
+      "p99_ms": 2.477756
+    }
+  }
+}

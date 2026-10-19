@@ -121,7 +121,7 @@ func TestNewPhaseNamesAreWhitelisted(t *testing.T) {
 }
 
 func TestExporterSaturationIsNonblockingAndShutdownIsBounded(t *testing.T) {
-	started := make(chan struct{}, 2)
+	started := make(chan struct{}, ExporterWorkerCount)
 	release := make(chan struct{})
 	exporter := NewExporter(func(ctx context.Context, s *TimingSummary) error {
 		select {
@@ -137,11 +137,13 @@ func TestExporterSaturationIsNonblockingAndShutdownIsBounded(t *testing.T) {
 	}, nil)
 	ctx, recorder := StartObservation(context.Background(), "http", "/v1/responses", "http", "legacy", true)
 	summary := recorder.Finish("rejected")
-	require.True(t, exporter.Submit(ctx, summary))
-	require.True(t, exporter.Submit(ctx, summary))
-	<-started
-	<-started
-	for range 256 {
+	for range ExporterWorkerCount {
+		require.True(t, exporter.Submit(ctx, summary))
+	}
+	for range ExporterWorkerCount {
+		<-started
+	}
+	for range ExporterQueueCapacity {
 		require.True(t, exporter.Submit(ctx, summary))
 	}
 	done := make(chan bool, 1)

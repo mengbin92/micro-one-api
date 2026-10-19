@@ -170,7 +170,7 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 78, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 79, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
 	// Keep seeded legacy prices before 084 regardless of later appended migrations.
 	cut := sort.SearchStrings(files, "084_add_model_pricing_cache_read.sql")
@@ -224,6 +224,10 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		"model health migration must have applied during upgrade")
 	require.True(t, sqliteColumnExists(t, db, "subscription_accounts", "credential_refresh_pending"),
 		"credential refresh pending migration must have applied during upgrade")
+	var snapshotIndexes int
+	require.NoError(t, db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='index' AND name IN ('idx_log_trace_snapshot','idx_log_trace_user_snapshot')`).Scan(&snapshotIndexes))
+	require.Equal(t, 2, snapshotIndexes, "139 snapshot indexes must be created during upgrade")
+
 	var inputPrice, outputPrice, cacheReadPrice float64
 	err = db.QueryRow(`
 		SELECT pricing_input, pricing_output, pricing_cache_read

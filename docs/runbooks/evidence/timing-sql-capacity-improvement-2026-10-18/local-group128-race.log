@@ -1,0 +1,3 @@
+ok  	micro-one-api/app/log/internal/data	2.083s
+ok  	micro-one-api/domain/requesttrace	1.407s
+ok  	micro-one-api/internal/server	2.127s

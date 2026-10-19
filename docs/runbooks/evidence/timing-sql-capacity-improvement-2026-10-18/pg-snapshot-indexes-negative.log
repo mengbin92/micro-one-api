@@ -1,0 +1,72 @@
+=== RUN   TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort
+=== RUN   TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort/cold_statistics
+    request_trace_query_test.go:150: 
+        	Error Trace:	/private/tmp/timing-capacity-work/checkout/app/log/internal/data/request_trace_query_test.go:150
+        	Error:      	"[\n  {\n    \"Plan\": {\n      \"Node Type\": \"Limit\",\n      \"Parallel Aware\": false,\n      \"Async Capable\": false,\n      \"Startup Cost\": 18.99,\n      \"Total Cost\": 19.00,\n      \"Plan Rows\": 1,\n      \"Plan Width\": 8,\n      \"Disabled\": false,\n      \"Plans\": [\n        {\n          \"Node Type\": \"Sort\",\n          \"Parent Relationship\": \"Outer\",\n          \"Parallel Aware\": false,\n          \"Async Capable\": false,\n          \"Startup Cost\": 18.99,\n          \"Total Cost\": 19.00,\n          \"Plan Rows\": 4,\n          \"Plan Width\": 8,\n          \"Disabled\": false,\n          \"Sort Key\": [\"id DESC\"],\n          \"Plans\": [\n            {\n              \"Node Type\": \"Bitmap Heap Scan\",\n              \"Parent Relationship\": \"Outer\",\n              \"Parallel Aware\": false,\n              \"Async Capable\": false,\n              \"Relation Name\": \"logs\",\n              \"Alias\": \"logs\",\n              \"Startup Cost\": 4.31,\n              \"Total Cost\": 18.95,\n              \"Plan Rows\": 4,\n              \"Plan Width\": 8,\n              \"Disabled\": false,\n              \"Recheck Cond\": \"(source = $1)\",\n              \"Plans\": [\n                {\n                  \"Node Type\": \"Bitmap Index Scan\",\n                  \"Parent Relationship\": \"Outer\",\n                  \"Parallel Aware\": false,\n                  \"Async Capable\": false,\n                  \"Index Name\": \"idx_log_trace_time\",\n                  \"Startup Cost\": 0.00,\n                  \"Total Cost\": 4.31,\n                  \"Plan Rows\": 4,\n                  \"Plan Width\": 0,\n                  \"Disabled\": false,\n                  \"Index Cond\": \"(source = $1)\"\n                }\n              ]\n            }\n          ]\n        }\n      ]\n    }\n  }\n]" should not contain "\"Node Type\": \"Sort\""
+        	Test:       	TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort/cold_statistics
+        	Messages:   	snapshot must stream its primary-key bound rather than sort the matching time range: [
+        	            	  {
+        	            	    "Plan": {
+        	            	      "Node Type": "Limit",
+        	            	      "Parallel Aware": false,
+        	            	      "Async Capable": false,
+        	            	      "Startup Cost": 18.99,
+        	            	      "Total Cost": 19.00,
+        	            	      "Plan Rows": 1,
+        	            	      "Plan Width": 8,
+        	            	      "Disabled": false,
+        	            	      "Plans": [
+        	            	        {
+        	            	          "Node Type": "Sort",
+        	            	          "Parent Relationship": "Outer",
+        	            	          "Parallel Aware": false,
+        	            	          "Async Capable": false,
+        	            	          "Startup Cost": 18.99,
+        	            	          "Total Cost": 19.00,
+        	            	          "Plan Rows": 4,
+        	            	          "Plan Width": 8,
+        	            	          "Disabled": false,
+        	            	          "Sort Key": ["id DESC"],
+        	            	          "Plans": [
+        	            	            {
+        	            	              "Node Type": "Bitmap Heap Scan",
+        	            	              "Parent Relationship": "Outer",
+        	            	              "Parallel Aware": false,
+        	            	              "Async Capable": false,
+        	            	              "Relation Name": "logs",
+        	            	              "Alias": "logs",
+        	            	              "Startup Cost": 4.31,
+        	            	              "Total Cost": 18.95,
+        	            	              "Plan Rows": 4,
+        	            	              "Plan Width": 8,
+        	            	              "Disabled": false,
+        	            	              "Recheck Cond": "(source = $1)",
+        	            	              "Plans": [
+        	            	                {
+        	            	                  "Node Type": "Bitmap Index Scan",
+        	            	                  "Parent Relationship": "Outer",
+        	            	                  "Parallel Aware": false,
+        	            	                  "Async Capable": false,
+        	            	                  "Index Name": "idx_log_trace_time",
+        	            	                  "Startup Cost": 0.00,
+        	            	                  "Total Cost": 4.31,
+        	            	                  "Plan Rows": 4,
+        	            	                  "Plan Width": 0,
+        	            	                  "Disabled": false,
+        	            	                  "Index Cond": "(source = $1)"
+        	            	                }
+        	            	              ]
+        	            	            }
+        	            	          ]
+        	            	        }
+        	            	      ]
+        	            	    }
+        	            	  }
+        	            	]
+=== RUN   TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort/analyzed
+--- FAIL: TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort (1.10s)
+    --- FAIL: TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort/cold_statistics (0.57s)
+    --- PASS: TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort/analyzed (0.52s)
+FAIL
+FAIL	micro-one-api/app/log/internal/data	1.624s
+FAIL

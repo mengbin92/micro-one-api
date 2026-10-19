@@ -21,13 +21,19 @@ import (
 )
 
 type Repository struct {
-	data       *Data
-	db         *gorm.DB
-	mu         sync.RWMutex
-	mem        map[int64]*biz.LogEntry
-	dedupe     map[string]int64
-	seq        int64
-	timingRefs map[string][]requestTraceAttemptRefModel
+	data          *Data
+	db            *gorm.DB
+	mu            sync.RWMutex
+	mem           map[int64]*biz.LogEntry
+	dedupe        map[string]int64
+	seq           int64
+	timingRefs    map[string][]requestTraceAttemptRefModel
+	timingInit    sync.Once
+	timingMu      sync.Mutex
+	timingSlots   chan struct{}
+	timingReady   chan struct{}
+	timingPending []*timingWrite
+	timingRunning bool
 }
 
 type logModel struct {
@@ -36,17 +42,17 @@ type logModel struct {
 	OTelTraceID           *string  `gorm:"column:otel_trace_id"`
 	RequestStartedAtMS    *int64   `gorm:"column:request_started_at_ms"`
 	RequestOutcome        *string  `gorm:"column:request_outcome"`
-	ID                    int64    `gorm:"column:id;primaryKey;autoIncrement"`
+	ID                    int64    `gorm:"column:id;primaryKey;autoIncrement;index:idx_log_trace_snapshot,priority:2;index:idx_log_trace_user_snapshot,priority:3"`
 	Level                 string   `gorm:"column:level;index"`
 	Message               string   `gorm:"column:message"`
-	Source                string   `gorm:"column:source;index"`
+	Source                string   `gorm:"column:source;index;index:idx_log_trace_snapshot,priority:1;index:idx_log_trace_user_snapshot,priority:1"`
 	RequestID             string   `gorm:"column:request_id"`
 	RootRequestID         string   `gorm:"column:root_request_id"`
 	AttemptNumber         int32    `gorm:"column:attempt_number"`
 	ReservationID         string   `gorm:"column:reservation_id"`
 	SourceKind            string   `gorm:"column:source_kind"`
 	UpstreamModelID       string   `gorm:"column:upstream_model_id"`
-	UserID                int64    `gorm:"column:user_id"`
+	UserID                int64    `gorm:"column:user_id;index:idx_log_trace_user_snapshot,priority:2"`
 	CreatedAt             int64    `gorm:"column:created_at;index"`
 	Username              string   `gorm:"column:username"`
 	TokenName             string   `gorm:"column:token_name"`
@@ -218,6 +224,9 @@ func (r *Repository) Create(ctx context.Context, entry *biz.LogEntry) error {
 		return err
 	}
 	if r.db != nil {
+		if entry.RequestTiming != nil {
+			return r.createTimingGrouped(ctx, entry)
+		}
 		return r.createDB(ctx, entry)
 	}
 	return r.createMemory(entry)
@@ -486,6 +495,26 @@ func isLogDuplicateKeyErr(err error) bool {
 // they would on the synchronous path.
 func (r *Repository) CreateBatch(ctx context.Context, entries []*biz.LogEntry) error {
 	if len(entries) == 0 {
+		return nil
+	}
+	allTiming := r.db != nil
+	for _, entry := range entries {
+		if entry == nil || entry.RequestTiming == nil {
+			allTiming = false
+			break
+		}
+	}
+	if allTiming {
+		for start := 0; start < len(entries); start += timingCommitBatchSize {
+			batch := entries[start:min(start+timingCommitBatchSize, len(entries))]
+			ids, err := r.createTimingBatchDB(ctx, batch)
+			if err != nil {
+				return err
+			}
+			for i, entry := range batch {
+				entry.ID = ids[i]
+			}
+		}
 		return nil
 	}
 	for _, entry := range entries {

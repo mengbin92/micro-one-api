@@ -1,0 +1,9 @@
+baseline postgres 16 diagnostic 0
+baseline postgres 32 diagnostic 0
+baseline postgres 64 acceptance 1
+candidate postgres 16 diagnostic 0
+candidate postgres 32 diagnostic 0
+candidate postgres 64 acceptance 1
+candidate postgres data-race 0
+candidate postgres server-race 0
+candidate postgres requesttrace-race 0

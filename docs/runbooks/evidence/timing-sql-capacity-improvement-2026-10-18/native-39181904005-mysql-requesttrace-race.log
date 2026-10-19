@@ -1,0 +1,581 @@
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.15s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.18s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+PASS

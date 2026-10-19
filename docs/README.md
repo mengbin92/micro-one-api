@@ -25,6 +25,7 @@ docs/
 | 查看下一阶段执行路线与条件保留项 | [design/next-stage-plan-2026-10-18.md](./design/next-stage-plan-2026-10-18.md) |
 | 查看告警修复、生产容量基线与 executor 同窗复核 | [runbooks/post-v0.36.0-acceptance-2026-10-18.md](./runbooks/post-v0.36.0-acceptance-2026-10-18.md) |
 | 查看原生镜像提速与真实 Log RPC/SQL 容量边界 | [构建与 SQL 链路验收](./runbooks/build-timing-sql-acceptance-2026-10-18.md) |
+| 查看计时 SQL 分组写入优化与三库复验 | [容量定位与改进](./runbooks/request-timing-capacity-improvement-2026-10-18.md) |
 | English introduction and first Relay request | [README.en.md](../README.en.md) · [Lite Quickstart](./quickstart-lite.en.md) |
 | 查看 10 月 16 日发布、定价原子保存和条件验收结果 | [runbooks/plan-execution-2026-10-16.md](./runbooks/plan-execution-2026-10-16.md) |
 | 复核 DeepSeek 已结束日窗的官方费用与手工调用 | [runbooks/deepseek-closed-day-2026-10-16.md](./runbooks/deepseek-closed-day-2026-10-16.md) |
@@ -51,6 +52,8 @@ docs/
 最新发布登记：[v0.36.1](./releases/release-v0.36.1.md)（2026-10-18），普通 WS 长连接、Lite 首请求和计时告警修复；原生性能与空卷恢复验收，生产观察继续。版本验证见 [发布记录](./releases/release-v0.36.1.md#验证)。
 
 **当前实施（2026-10-18）**：导出告警标签修复、五组规则测试和生产 request-timing 组追加/热加载完成；中文 README 精简、英文 README/Quickstart 已补齐。生产容量基线已取，64 并发四次实验有两次 P95 超线，WS/长时峰值/48h 稳态继续验收；供应商生产报告尚无导入，executor 新旧样本不在同一时间段、正式七天未起算。见 [当前计划](./design/next-stage-plan-2026-10-18.md)和 [执行记录](./runbooks/post-v0.36.0-acceptance-2026-10-18.md)。
+
+**SQL 隔离容量改进（2026-10-19）**：三库真实 Log RPC/SQL 的 64 并发四组长测、十轮 race 与适用 CI/E2E 通过，448,532 条摘要完整落库；139 号迁移补充快照索引，固定缓冲吸收短时存储停顿。见 [改进记录](./runbooks/request-timing-capacity-improvement-2026-10-18.md)。本轮合入 develop，生产观察由另一台电脑继续负责。
 
 **上一阶段实施（2026-10-16）**：审查修复、定价原子保存及撤权草稿保护已发布上线；协议矩阵、现存误暂停核对及实库验收完成。已补齐 [DeepSeek 手工日窗合计核验](./runbooks/deepseek-closed-day-2026-10-16.md)，其他独立证据条件保留；见 [归档计划](./design/next-stage-plan-2026-10-16.md)和 [记录](./runbooks/plan-execution-2026-10-16.md)。
 

@@ -1,0 +1,57 @@
+name: Timing SQL capacity
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/timing-sql-capacity]
+    paths:
+      - .github/workflows/timing-sql-capacity.yml
+      - scripts/benchmark/timing-sql-capacity.sh
+      - domain/requesttrace/**
+      - app/log/internal/data/**
+      - migrations/**
+      - internal/server/request_timing*test.go
+
+permissions:
+  contents: read
+
+jobs:
+  capacity:
+    name: Native amd64 SQL (${{ matrix.driver }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        driver: [sqlite, mysql, postgres]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache: true
+      - name: Compare baseline and candidate without production access
+        run: bash scripts/benchmark/timing-sql-capacity.sh "${{ matrix.driver }}"
+        env:
+          TIMING_SQL_BASELINE: 54e6425ce296db138362275fdcf7184d4d7f1608
+          TIMING_SQL_RESULTS: ${{ runner.temp }}/timing-sql-results
+      - name: Restore runner ownership of private test artifacts
+        if: always()
+        run: |
+          if [ -d "$RUNNER_TEMP/timing-sql-results" ]; then
+            sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/timing-sql-results"
+          fi
+      - name: Upload all results, including failed gates
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: timing-sql-${{ matrix.driver }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/timing-sql-results/*.json
+            ${{ runner.temp }}/timing-sql-results/*.log
+            ${{ runner.temp }}/timing-sql-results/*.txt
+            ${{ runner.temp }}/timing-sql-results/*.sha256
+          retention-days: 30
+          if-no-files-found: warn

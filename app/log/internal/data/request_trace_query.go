@@ -20,10 +20,22 @@ func (r *Repository) ListRequestTraces(ctx context.Context, f biz.RequestTraceFi
 	if err != nil {
 		return nil, c, false, err
 	}
-	q = applyTimingVisibility(ctx, q).Where("source = ? AND request_started_at_ms >= ? AND request_started_at_ms < ?", requesttrace.TimingSource, f.StartMS, f.EndMS)
+	q = applyTimingVisibility(ctx, q).Where("source = ?", requesttrace.TimingSource)
 	if f.UserID != nil {
 		q = q.Where("user_id = ?", *f.UserID)
 	}
+	if c.SnapshotMaxID == 0 {
+		var maxID struct{ ID int64 }
+		// Fence late inserts within the caller's visible owner scope, before
+		// applying search filters. PostgreSQL generic plans estimate moving time
+		// ranges as selective and otherwise scan/sort the growing timing index.
+		// Search predicates still apply to page keys and materialized rows.
+		if err = q.Session(&gorm.Session{}).Select("id").Order("id DESC").Limit(1).Find(&maxID).Error; err != nil {
+			return nil, c, false, err
+		}
+		c.SnapshotMaxID = maxID.ID
+	}
+	q = q.Where("request_started_at_ms >= ? AND request_started_at_ms < ?", f.StartMS, f.EndMS)
 	if f.RootRequestID != "" {
 		q = q.Where("root_request_id = ?", f.RootRequestID)
 	}
@@ -34,24 +46,41 @@ func (r *Repository) ListRequestTraces(ctx context.Context, f biz.RequestTraceFi
 		refs := r.db.Model(&requestTraceAttemptRefModel{}).Select("observation_id").Where("user_id = ? AND reservation_id = ?", *f.UserID, f.ReservationID)
 		q = q.Where("observation_id IN (?)", refs)
 	}
-	if c.SnapshotMaxID == 0 {
-		var maxID struct{ ID int64 }
-		if err = q.Session(&gorm.Session{}).Select("COALESCE(MAX(id),0) AS id").Scan(&maxID).Error; err != nil {
-			return nil, c, false, err
-		}
-		c.SnapshotMaxID = maxID.ID
-	}
+
 	q = q.Where("id <= ?", c.SnapshotMaxID)
 	if c.AfterID > 0 {
 		q = q.Where("(request_started_at_ms < ? OR (request_started_at_ms = ? AND id < ?))", c.AfterStartMS, c.AfterStartMS, c.AfterID)
 	}
-	var models []logModel
-	if err = q.Order("request_started_at_ms DESC, id DESC").Limit(int(f.PageSize) + 1).Find(&models).Error; err != nil {
+	// Select the page from the covering timing index before loading JSON. A
+	// SELECT * can make MySQL choose a growing row scan/filesort despite LIMIT.
+	var keys []struct {
+		ID          int64
+		StartedAtMS int64 `gorm:"column:request_started_at_ms"`
+	}
+	if err = q.Session(&gorm.Session{}).Select("id, request_started_at_ms").Order("request_started_at_ms DESC, id DESC").Limit(int(f.PageSize) + 1).Find(&keys).Error; err != nil {
 		return nil, c, false, err
 	}
-	more := len(models) > int(f.PageSize)
+	more := len(keys) > int(f.PageSize)
 	if more {
-		models = models[:f.PageSize]
+		keys = keys[:f.PageSize]
+	}
+	ids := make([]int64, len(keys))
+	for i, key := range keys {
+		ids[i] = key.ID
+	}
+	if len(keys) > 0 {
+		// Retention may remove this entire page before materialization. Keep
+		// advancing past its selected keys rather than emitting an invalid token.
+		last := keys[len(keys)-1]
+		c.AfterID, c.AfterStartMS = last.ID, last.StartedAtMS
+	}
+	var models []logModel
+	if len(ids) > 0 {
+		// Reapply the full visibility/filter predicate, including the snapshot
+		// fence, when materializing only this page's rows.
+		if err = q.Where("id IN ?", ids).Order("request_started_at_ms DESC, id DESC").Find(&models).Error; err != nil {
+			return nil, c, false, err
+		}
 	}
 	entries := make([]*biz.LogEntry, 0, len(models))
 	for _, model := range models {
@@ -60,11 +89,6 @@ func (r *Repository) ListRequestTraces(ctx context.Context, f biz.RequestTraceFi
 			return nil, c, false, err
 		}
 		entries = append(entries, entry)
-	}
-	if len(entries) > 0 {
-		last := entries[len(entries)-1]
-		c.AfterID = last.ID
-		c.AfterStartMS = last.RequestTiming.StartedAtMS
 	}
 	return entries, c, more, nil
 }

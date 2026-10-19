@@ -58,6 +58,149 @@ func timingRefs(t *testing.T, r *Repository, id string) []requestTraceAttemptRef
 	return refs
 }
 
+func TestTimingBatchAtMaximumSize(t *testing.T) {
+	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(driver, func(t *testing.T) {
+			r := &Repository{db: dbtest.RoutingContextDB(t, driver)}
+			entries := make([]*biz.LogEntry, timingCommitBatchSize)
+			for i := range entries {
+				entries[i] = timingEntry()
+			}
+			require.NoError(t, r.CreateBatch(context.Background(), entries))
+			for _, entry := range entries {
+				require.Positive(t, entry.ID)
+			}
+			require.NoError(t, r.CreateBatch(context.Background(), entries), "replay of a maximum group is idempotent")
+			for table, expected := range map[string]int64{"logs": timingCommitBatchSize, "log_ingest_dedupe_claims": timingCommitBatchSize, "request_trace_attempt_refs": 2 * timingCommitBatchSize} {
+				var n int64
+				require.NoError(t, r.db.Table(table).Count(&n).Error)
+				require.Equal(t, expected, n, table)
+			}
+		})
+	}
+}
+
+func TestTimingBatchFailureDoesNotCommitAnEarlierSummary(t *testing.T) {
+	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(driver, func(t *testing.T) {
+			r := &Repository{db: dbtest.RoutingContextDB(t, driver)}
+			first, second := timingEntry(), timingEntry()
+			second.RequestTiming.Attempts[0].RequestID = "fail-this-association"
+			require.NoError(t, r.db.Callback().Create().After("gorm:create").Register("timing_batch_failure", func(tx *gorm.DB) {
+				if tx.Statement.Table != "request_trace_attempt_refs" {
+					return
+				}
+				var refs []requestTraceAttemptRefModel
+				switch value := tx.Statement.Dest.(type) {
+				case *[]requestTraceAttemptRefModel:
+					refs = *value
+				case []requestTraceAttemptRefModel:
+					refs = value
+				}
+				for _, ref := range refs {
+					if ref.RequestID == "fail-this-association" {
+						tx.AddError(fmt.Errorf("injected timing batch association failure"))
+					}
+				}
+			}))
+			require.Error(t, r.CreateBatch(context.Background(), []*biz.LogEntry{first, second}))
+			for _, table := range []string{"logs", "log_ingest_dedupe_claims", "request_trace_attempt_refs"} {
+				var count int64
+				require.NoError(t, r.db.Table(table).Count(&count).Error)
+				require.Zero(t, count, table+": one durable batch must commit or roll back together")
+			}
+			require.Zero(t, first.ID, "failed batch cannot publish an uncommitted row ID")
+			require.Zero(t, second.ID)
+		})
+	}
+}
+
+func TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups(t *testing.T) {
+	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(driver, func(t *testing.T) {
+			db := dbtest.RoutingContextDB(t, driver)
+			if driver == "sqlite" {
+				sqlDB, err := db.DB()
+				require.NoError(t, err)
+				sqlDB.SetMaxOpenConns(1)
+			}
+			repos := []*Repository{{db: db}, {db: db}}
+			originals := make([]*biz.LogEntry, 8)
+			for i := range originals {
+				originals[i] = timingEntry()
+			}
+			type result struct {
+				index int
+				id    int64
+				err   error
+			}
+			results := make(chan result, 32)
+			start := make(chan struct{})
+			for i := range 32 {
+				go func() {
+					<-start
+					entry := *originals[i%len(originals)]
+					entry.RequestTiming = entry.RequestTiming.Clone()
+					err := repos[(i/8)%2].Create(context.Background(), &entry)
+					results <- result{i % len(originals), entry.ID, err}
+				}()
+			}
+			close(start)
+			ids := make(map[int]int64)
+			for range 32 {
+				result := <-results
+				require.NoError(t, result.err)
+				require.Positive(t, result.id)
+				if previous := ids[result.index]; previous != 0 {
+					require.Equal(t, previous, result.id, "overlapping batch replay returns original row")
+				}
+				ids[result.index] = result.id
+			}
+			for table, want := range map[string]int64{"logs": 8, "log_ingest_dedupe_claims": 8, "request_trace_attempt_refs": 16} {
+				var count int64
+				require.NoError(t, db.Table(table).Count(&count).Error)
+				require.Equal(t, want, count, table)
+			}
+		})
+	}
+}
+
+func TestTimingCancelledCallerCannotMutatePendingSnapshot(t *testing.T) {
+	r := timingSQLite(t)
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	require.NoError(t, r.db.Callback().Create().Before("gorm:create").Register("timing_cancel_stall", func(tx *gorm.DB) {
+		if tx.Statement.Table == "logs" {
+			once.Do(func() { close(entered); <-release })
+		}
+	}))
+	var unblock sync.Once
+	t.Cleanup(func() { unblock.Do(func() { close(release) }) })
+	entry := timingEntry()
+	original := entry.RequestTiming.Clone()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- r.Create(ctx, entry) }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("grouped write never reached storage")
+	}
+	cancel()
+	require.ErrorIs(t, <-done, context.Canceled)
+	require.Zero(t, entry.ID)
+	entry.RequestTiming.Outcome = "failed"
+	entry.RequestTiming.Attempts[0].RequestID = "caller-mutated-after-cancel"
+	unblock.Do(func() { close(release) })
+	replay := timingEntry()
+	replay.RequestTiming, replay.DedupeKey = original, entry.DedupeKey
+	require.NoError(t, r.Create(context.Background(), replay))
+	stored, err := r.Get(context.Background(), replay.ID)
+	require.NoError(t, err)
+	require.Equal(t, original, stored.RequestTiming)
+}
+
 func TestTimingPersistenceIsolationReplayAndRetention(t *testing.T) {
 	for _, driver := range []string{"memory", "sqlite", "mysql", "postgres"} {
 		t.Run(driver, func(t *testing.T) {

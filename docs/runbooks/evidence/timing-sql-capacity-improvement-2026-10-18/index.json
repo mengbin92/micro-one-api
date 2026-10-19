@@ -1,0 +1,1666 @@
+{
+  "schema_version": 1,
+  "initial_date": "2026-10-18",
+  "continued_date": "2026-10-19",
+  "timezone": "Asia/Shanghai",
+  "production_changed": false,
+  "baseline_revision": "54e6425ce296db138362275fdcf7184d4d7f1608",
+  "status": "PASS_isolated_native_capacity",
+  "unit_packages_passed": 121,
+  "scope": "Final controlled native Linux/amd64 SQL capacity and applicable PR gates PASS. All historical failures remain verbatim; no production capacity, WS/TTL, memory-at-maximum-input, or deployment admission is granted.",
+  "historical_runs": [
+    {
+      "id": 39133571004,
+      "result": "FAIL",
+      "reason": "Ignored generated stubs missing from fresh checkout"
+    },
+    {
+      "id": 39133697491,
+      "result": "FAIL",
+      "reason": "Premature MySQL socket readiness; private root-owned artifacts could not upload"
+    },
+    {
+      "id": 39135318837,
+      "result": "FAIL",
+      "reason": "16 in-flight RPCs: MySQL/PostgreSQL summary loss; SQLite full gate PASS, short P95 probe FAIL"
+    },
+    {
+      "id": 39167069723,
+      "result": "FAIL",
+      "reason": "64-worker native capacity: SQLite final-pair loss; PostgreSQL loss and one query failure"
+    },
+    {
+      "id": 39167595472,
+      "result": "FAIL",
+      "reason": "MySQL and SQLite passed; PostgreSQL full gate failed"
+    },
+    {
+      "id": 39168955586,
+      "result": "FAIL",
+      "reason": "Adaptive collection: MySQL and SQLite passed; PostgreSQL full gate failed"
+    },
+    {
+      "id": 39171568284,
+      "result": "FAIL",
+      "reason": "PostgreSQL default versus force_custom_plan profile: forcing plans reduced claim scans but retained loss"
+    },
+    {
+      "id": 39173067362,
+      "result": "FAIL",
+      "reason": "Structural PostgreSQL insert path correctness, race and negative control verified; remaining commit-tail capacity loss"
+    },
+    {
+      "id": 39173453064,
+      "result": "FAIL",
+      "reason": "All three 64-concurrency gates retained summary loss; PostgreSQL two query errors"
+    },
+    {
+      "id": 39176185333,
+      "source_revision": "a2d34e474a0346e0190f4a6653e9aab2efb2099c",
+      "result": "FAIL",
+      "formal_capacity": {
+        "sqlite": "PASS",
+        "mysql": "PASS",
+        "postgres": "FAIL: pair 2 snapshot query timeout and 3573 dropped"
+      },
+      "correctness": "PostgreSQL/SQLite race PASS; MySQL repetition ten timed out during schema migration after 133 passes, with no assertion or data-race failures"
+    },
+    {
+      "id": 39177936355,
+      "source_revision": "b013ef06",
+      "result": "FAIL",
+      "formal_capacity": {
+        "sqlite": "PASS",
+        "mysql": "PASS",
+        "postgres": "FAIL: cold-statistics snapshot plan timeout and summary loss"
+      },
+      "correctness": "all three native race suites completed ten repetitions successfully; CI/security/E2E PASS"
+    },
+    {
+      "id": 39179783407,
+      "source_revision": "bde245f1",
+      "result": "FAIL",
+      "formal_capacity": {
+        "sqlite": "PASS",
+        "mysql": "FAIL: pair4 dropped500 andP95+6.169",
+        "postgres": "FAIL: no query errors, pair4 dropped3087 during WAL checkpoint"
+      },
+      "correctness": "all three native ten-repeat race suites PASS; normal CI/security/E2E PASS"
+    }
+  ],
+  "files": [
+    {
+      "path": "buffer4096-final-unit.log",
+      "sha256": "7c86cd37a70d6f34e0c318b2d1683db02e0990593f2064bbbf35c8aefa42ca47"
+    },
+    {
+      "path": "buffer4096-race.log",
+      "sha256": "71eb01e8774ca156bfc7173a1d78d6d3cd2cda0a793f06a64df8e467379cc774"
+    },
+    {
+      "path": "checkpoint-buffer256-red.json",
+      "sha256": "bd9d3d1e6a16d73bc5dfb3c2ef81cc30009bb176fe92d09ef939cb8ff0fcbaeb"
+    },
+    {
+      "path": "checkpoint-buffer256-red.log",
+      "sha256": "be1c566ea14f08d74aec156a0713536a630c4341248216651ac2f89c35f20329"
+    },
+    {
+      "path": "checkpoint-buffer4096-green.json",
+      "sha256": "d201633602af9eb7c4a6e3145b7f9e1fcb3476bb66616e1c6ab89a65f26eb509"
+    },
+    {
+      "path": "checkpoint-buffer4096-green.log",
+      "sha256": "02556df98c96dcddf598877ccd25e7d2530a913a131ec5f694b2cd50ae0a9431"
+    },
+    {
+      "path": "final-native-verification.json",
+      "sha256": "f85e643a19a0778583519a1411f8443882156465c237f752aac7088761f1d5e2"
+    },
+    {
+      "path": "final-pr-checks.json",
+      "sha256": "dded2c8a9d2a2a97c47b515dac84ff012c594201db9f04373d28776b128086b2"
+    },
+    {
+      "path": "local-group128-race.log",
+      "sha256": "3e98a050ff8922e73136fd2cd49328b423f5334336ee02a22ea6a4e833d96979"
+    },
+    {
+      "path": "local-group128-unit.log",
+      "sha256": "9ace0c184b9c8674458c853ea9b023612158c5a19f6069519dc6b8d0970af8a0"
+    },
+    {
+      "path": "local-mysql-adaptive-diagnostic.json",
+      "sha256": "1466a8ccafa4232ecd5c5f749fcf28eea19874f5641d30eb7b9e4c8e5f40c94c"
+    },
+    {
+      "path": "local-mysql-adaptive-statements.json",
+      "sha256": "23e19ac535dd9a08a4aa8222ca14dc9ff14acba2743985c3534e6eae45dd40be"
+    },
+    {
+      "path": "local-mysql-baseline-16-diagnostic.json",
+      "sha256": "445135041c92e530b4bee5432d4ebe523fee096ac4970729b62786bec3e92550"
+    },
+    {
+      "path": "local-mysql-baseline-32-diagnostic.json",
+      "sha256": "8550e7922d4f0b17f75b0897a9e16f8a3f3d74d36d44f5316a2375e75f343d99"
+    },
+    {
+      "path": "local-mysql-baseline-64-diagnostic.json",
+      "sha256": "e685cf145b95dbed523cce95b6a66f6cf63e575ea58d6a8fb9b3c34c4598f6bc"
+    },
+    {
+      "path": "local-mysql-baseline-statements.json",
+      "sha256": "1bd1d29946278ff9ff58e00ebab7a0e9f768e1fbd008515c03dd0453ae5f3b91"
+    },
+    {
+      "path": "local-mysql-grouped-before-query-fix-64.json",
+      "sha256": "2e37b6a0d4907fa558613af270df1f3e9591797eac807cdbe6b767806a03d428"
+    },
+    {
+      "path": "local-mysql-query-fixed-64.json",
+      "sha256": "f797781439e9f258971393c4a43db14dbff77dd90067f9f5ed7515837bb5fe08"
+    },
+    {
+      "path": "local-mysql-workers32-diagnostic.json",
+      "sha256": "afe63801e5847ca38a501bf8b14364d10216f1612b0c30990a8011253a6eca79"
+    },
+    {
+      "path": "local-mysql-workers32-statements.json",
+      "sha256": "3dd70312a66b577f696d30c500abebe1a86812edc6b2036c63fced896bb4d606"
+    },
+    {
+      "path": "local-mysql-workers64-diagnostic.json",
+      "sha256": "70d43ee16204dcb59d48d7e5c62c131f36ef335bdeeadb663a3e9640ee353345"
+    },
+    {
+      "path": "local-mysql-workers64-statements.json",
+      "sha256": "fdc31175d85ff75f5edbfe03d956772347a6c2e65ba622c425a3879b5fb3119b"
+    },
+    {
+      "path": "local-mysql-workers8-64-diagnostic.json",
+      "sha256": "cbae6e454d9e0fd4512f49bcd5734fa6e7a7466638dac84382683a8821b3f860"
+    },
+    {
+      "path": "local-postgres18-snapshot-fixed-64-acceptance.json",
+      "sha256": "adcc6327a1b8cbea08e13a0d8e9a2e3afadcaa1056a9413dd23c2dd62c1c76ca"
+    },
+    {
+      "path": "local-sqlite-group128-64-acceptance.json",
+      "sha256": "2605a7a94a0de8ea60ba658f46ba59919df608938565a8b0aa89b711c97608cf"
+    },
+    {
+      "path": "local-verification.json",
+      "sha256": "027cc2d9178b1da7165f276bc4db8440123c94a1f600fcd55e6e7eb42a45de00"
+    },
+    {
+      "path": "native-39173453064-baseline-mysql-64-acceptance.json",
+      "sha256": "5afb9eb172c24e64240421416ccd563bebc2106f9faa76676d5d54e19ae4f7d7"
+    },
+    {
+      "path": "native-39173453064-baseline-postgres-64-acceptance.json",
+      "sha256": "04957223b4562425443fbfb170c4b71f5ee39d9b85f32f41a7be3ab92bc2b89a"
+    },
+    {
+      "path": "native-39173453064-baseline-sqlite-64-acceptance.json",
+      "sha256": "41db90ace04c51666e9b0782268dfc7fe31571776e5469262fb447703b31958d"
+    },
+    {
+      "path": "native-39173453064-candidate-mysql-64-acceptance.json",
+      "sha256": "5ccecb14b5e9e3cbf61dfc73fad318899e35fa95c7a4c9f977f3cce0b98a5e24"
+    },
+    {
+      "path": "native-39173453064-candidate-postgres-64-acceptance.json",
+      "sha256": "277937a2a218c5380902f8b3d1d3d641861aaf898bab6f936143d018eb9534ce"
+    },
+    {
+      "path": "native-39173453064-candidate-sqlite-64-acceptance.json",
+      "sha256": "8c8a5667092a19dd446a1ef6c028cec0214548fea5836e2318380690480d11a0"
+    },
+    {
+      "path": "native-39173453064-postgres-database.log",
+      "sha256": "16f020999c68e0022aff25b93470da2b970413238a0ee875904e623ae2a913e0"
+    },
+    {
+      "path": "native-39176185333-mysql-baseline-binary.sha256",
+      "sha256": "cff6b4192210f6b60544a582ed5a9772febc94d31de9948e1c5016b165b4c340"
+    },
+    {
+      "path": "native-39176185333-mysql-baseline-container-limits.json",
+      "sha256": "9085de4edf12ff5b39559309df644728b0da4b8bb4ec7e83a52e5d8c0828bf5c"
+    },
+    {
+      "path": "native-39176185333-mysql-baseline-container-state.json",
+      "sha256": "72ad816705df256c46103ec77c631ba922a319dbf5759a56128bae1b116fbc02"
+    },
+    {
+      "path": "native-39176185333-mysql-baseline-database-image.txt",
+      "sha256": "0237c60d0bc6a46ac73c506a7b59a61a18f9da9cec9833eae49639f93f6f912c"
+    },
+    {
+      "path": "native-39176185333-mysql-baseline-database-state.json",
+      "sha256": "7929cb6044117e684019c004152fe0b5bd78cbacebe7ea1082cbffb6c7aa2025"
+    },
+    {
+      "path": "native-39176185333-mysql-baseline-database-version.txt",
+      "sha256": "f970ac65c6a5169e951014fd121fbf42aaaa3665b133e6409afa2d2df48b37f1"
+    },
+    {
+      "path": "native-39176185333-mysql-baseline-mysql-16-diagnostic.json",
+      "sha256": "0d236262859791893b77c57170439a6524883ab54f01a210159c2645ce56f39d"
+    },
+    {
+      "path": "native-39176185333-mysql-baseline-mysql-32-diagnostic.json",
+      "sha256": "5a9c8352aad26b01d23dc80ea1e34645a9a23edbc9cb3bca8c625bb650b64c51"
+    },
+    {
+      "path": "native-39176185333-mysql-baseline-mysql-64-acceptance.json",
+      "sha256": "0a56e9c16537cb5b979d2120a171f7288f06b10de73567929c2ffbd2f9d68328"
+    },
+    {
+      "path": "native-39176185333-mysql-candidate-binary.sha256",
+      "sha256": "f869a849b83d346b7254dbf3cabfb6f217bf9c0567f3b5516961f6678834db2c"
+    },
+    {
+      "path": "native-39176185333-mysql-candidate-container-limits.json",
+      "sha256": "eca94b76ff5dd98b436ee88614766adb7586a94244d32c3276efe7f8c149f5ba"
+    },
+    {
+      "path": "native-39176185333-mysql-candidate-container-state.json",
+      "sha256": "dd4614c30f84bb577efcbdbad14c65c4ebb2cfc58ee95d62eb9f26df60ca6524"
+    },
+    {
+      "path": "native-39176185333-mysql-candidate-database-image.txt",
+      "sha256": "0237c60d0bc6a46ac73c506a7b59a61a18f9da9cec9833eae49639f93f6f912c"
+    },
+    {
+      "path": "native-39176185333-mysql-candidate-database-state.json",
+      "sha256": "00bb66f351f00fbde7ad695e866bbc096a48e659adb75aaa3af9679530a19cb1"
+    },
+    {
+      "path": "native-39176185333-mysql-candidate-database-version.txt",
+      "sha256": "f970ac65c6a5169e951014fd121fbf42aaaa3665b133e6409afa2d2df48b37f1"
+    },
+    {
+      "path": "native-39176185333-mysql-candidate-mysql-16-diagnostic.json",
+      "sha256": "0b87d607696043376bdb3c16e19cde23705304888b07e21e8f052b588f1923e9"
+    },
+    {
+      "path": "native-39176185333-mysql-candidate-mysql-16-statements.json",
+      "sha256": "5cb0081bc7a6d004cadf308c52a19ab4d4ec468e4f8863449d041a13e35ccaf6"
+    },
+    {
+      "path": "native-39176185333-mysql-candidate-mysql-32-diagnostic.json",
+      "sha256": "a21a90618b23beb0167af8f6412286e20a3995fe5ff512f6a36c0e11023dab57"
+    },
+    {
+      "path": "native-39176185333-mysql-candidate-mysql-32-statements.json",
+      "sha256": "49bd09dfe9591393f1cec6d633b234da562c5ac9e6807d17d6162f6256edb2ac"
+    },
+    {
+      "path": "native-39176185333-mysql-candidate-mysql-64-acceptance.json",
+      "sha256": "9e47071a5bbe232e2546b292f8b88b42d390defc6f3d791598d5cdef9f32b612"
+    },
+    {
+      "path": "native-39176185333-mysql-data-race.log",
+      "sha256": "e28ae9a80517ede83566c26a43e23f5032182a2b3657db05a2be7466d81bb475"
+    },
+    {
+      "path": "native-39176185333-mysql-environment.txt",
+      "sha256": "9227d8f9b1d7adf2450a83a492c6c3060f07d35ef825bfa8aba82bd6c1423ae5"
+    },
+    {
+      "path": "native-39176185333-mysql-exit-status.txt",
+      "sha256": "259f10bb992c68493115b6c8dfcb8a5019fd5c2c1929c11dd4e67d399fedbf1f"
+    },
+    {
+      "path": "native-39176185333-mysql-image.txt",
+      "sha256": "d86217bd5367b6603c431608cd9575882f2afc389cd7d014aed506d1cead5107"
+    },
+    {
+      "path": "native-39176185333-postgres-baseline-binary.sha256",
+      "sha256": "bed4c757c70fe4a5c132d897b345dc433e94526721f3b506b1913aa5b10b9e8f"
+    },
+    {
+      "path": "native-39176185333-postgres-baseline-container-limits.json",
+      "sha256": "ba5f12032b6b1da8d3a3aa79b500a2fb2abcf4921bca38eb90896a60fb7d5464"
+    },
+    {
+      "path": "native-39176185333-postgres-baseline-container-state.json",
+      "sha256": "c151e938c00490c27e8d34dda95078ef7c8af9be566ede4cec1166896792dd61"
+    },
+    {
+      "path": "native-39176185333-postgres-baseline-database-image.txt",
+      "sha256": "b7f96ba784ccdd15607da4b81cf456075224e37eb3923cd38fe9c42b74af8a4f"
+    },
+    {
+      "path": "native-39176185333-postgres-baseline-database-state.json",
+      "sha256": "6e917d29d45ffd30eb1ad8913ff8691511942c8bcc9acb38e1df21f688190d3d"
+    },
+    {
+      "path": "native-39176185333-postgres-baseline-database-version.txt",
+      "sha256": "01491b0db046beeef789de329e17e4ab4d177033a0e0813371416c493a4613b0"
+    },
+    {
+      "path": "native-39176185333-postgres-baseline-postgres-16-diagnostic.json",
+      "sha256": "37c90c9b91650d836d7952d2f7abfef5e28eff84e483096020788e943c6ab097"
+    },
+    {
+      "path": "native-39176185333-postgres-baseline-postgres-32-diagnostic.json",
+      "sha256": "ff6f5f077186e0a673df2c02919583610ebe7f9174a778facc41593221789c3d"
+    },
+    {
+      "path": "native-39176185333-postgres-baseline-postgres-64-acceptance.json",
+      "sha256": "4b3ffb77599d1aa0f7cf125a9f22a2fcd09f2a3e16e1ca36fe0db1e3bf525f9a"
+    },
+    {
+      "path": "native-39176185333-postgres-candidate-binary.sha256",
+      "sha256": "f869a849b83d346b7254dbf3cabfb6f217bf9c0567f3b5516961f6678834db2c"
+    },
+    {
+      "path": "native-39176185333-postgres-candidate-container-limits.json",
+      "sha256": "eca94b76ff5dd98b436ee88614766adb7586a94244d32c3276efe7f8c149f5ba"
+    },
+    {
+      "path": "native-39176185333-postgres-candidate-container-state.json",
+      "sha256": "636d45aebad132980c70b3c4ebad7e9d76bbad2fc6234109bd30a14931062876"
+    },
+    {
+      "path": "native-39176185333-postgres-candidate-database-image.txt",
+      "sha256": "b7f96ba784ccdd15607da4b81cf456075224e37eb3923cd38fe9c42b74af8a4f"
+    },
+    {
+      "path": "native-39176185333-postgres-candidate-database-state.json",
+      "sha256": "60de6a1d5441e0baf153391595eea22574ec9fcd17d359c98b91c6e28ff732fc"
+    },
+    {
+      "path": "native-39176185333-postgres-candidate-database-version.txt",
+      "sha256": "01491b0db046beeef789de329e17e4ab4d177033a0e0813371416c493a4613b0"
+    },
+    {
+      "path": "native-39176185333-postgres-candidate-postgres-16-diagnostic.json",
+      "sha256": "bb3fd514cd2f360bbd126a3dc5a8f6106cef53545d4b64ea16691a4db0d06509"
+    },
+    {
+      "path": "native-39176185333-postgres-candidate-postgres-16-statements.json",
+      "sha256": "b304574b58bbb467c5816100b96c5bbcb08697e208c00a183da3d4214046cfc5"
+    },
+    {
+      "path": "native-39176185333-postgres-candidate-postgres-32-diagnostic.json",
+      "sha256": "54f328336eef144d4f97b83216aa35c76ed07a44803f3959e379fce42813c558"
+    },
+    {
+      "path": "native-39176185333-postgres-candidate-postgres-32-statements.json",
+      "sha256": "668f4e002793f4c7092646f0baa5b9ed6585f21b2e4e1fd7c047dbca8748b520"
+    },
+    {
+      "path": "native-39176185333-postgres-candidate-postgres-64-acceptance.json",
+      "sha256": "e9b286b5205841f802270420a20bd5f3167a2bee3aaacfb0c3982ff5b5cbc43b"
+    },
+    {
+      "path": "native-39176185333-postgres-data-race.log",
+      "sha256": "619445ada9d69acb99c9cee60705454895da0d7b25f5b90ffdc4b6592d891aea"
+    },
+    {
+      "path": "native-39176185333-postgres-database.log",
+      "sha256": "bde971f65735e3ca1474a126668a4b31b59030aae7870cc17147e37e80e3e117"
+    },
+    {
+      "path": "native-39176185333-postgres-environment.txt",
+      "sha256": "dfa97040ca20120748c698a08aaf61fcc7d72178769b6d44311dc528701d9d5e"
+    },
+    {
+      "path": "native-39176185333-postgres-exit-status.txt",
+      "sha256": "99da7303da8581eb30beb79abd88da71ee66905a51b937a73a5ce7705d47362b"
+    },
+    {
+      "path": "native-39176185333-postgres-image.txt",
+      "sha256": "d86217bd5367b6603c431608cd9575882f2afc389cd7d014aed506d1cead5107"
+    },
+    {
+      "path": "native-39176185333-sqlite-baseline-binary.sha256",
+      "sha256": "b0e1fe217e022e893e3210aed308f365de34bdfb9606f604055fb371a4db3440"
+    },
+    {
+      "path": "native-39176185333-sqlite-baseline-container-limits.json",
+      "sha256": "fb74325024c2990b5db43feb1b3d5bd2bc919b6ddd0756a588b4fce8aedaadb6"
+    },
+    {
+      "path": "native-39176185333-sqlite-baseline-container-state.json",
+      "sha256": "a9c8bd8274eede83816c64a96315ac3895e4c62a818937ad54369a970cb97dc9"
+    },
+    {
+      "path": "native-39176185333-sqlite-baseline-sqlite-16-diagnostic.json",
+      "sha256": "b0d60571e482d64fec04532568b4ef90facdd6013ec1dbb3c9a0959025e2a2ce"
+    },
+    {
+      "path": "native-39176185333-sqlite-baseline-sqlite-32-diagnostic.json",
+      "sha256": "ef9d8af95813fb5d626e5d0c02091da5351f1f5a88a7b29f8b539f6741369a81"
+    },
+    {
+      "path": "native-39176185333-sqlite-baseline-sqlite-64-acceptance.json",
+      "sha256": "522f7fc53cc8af9f3f56f13a9db8cc3f001bd606c4d8dab21291764212c05c89"
+    },
+    {
+      "path": "native-39176185333-sqlite-candidate-binary.sha256",
+      "sha256": "f869a849b83d346b7254dbf3cabfb6f217bf9c0567f3b5516961f6678834db2c"
+    },
+    {
+      "path": "native-39176185333-sqlite-candidate-container-limits.json",
+      "sha256": "eca94b76ff5dd98b436ee88614766adb7586a94244d32c3276efe7f8c149f5ba"
+    },
+    {
+      "path": "native-39176185333-sqlite-candidate-container-state.json",
+      "sha256": "7ff3b8c947a1eb7515efe4a1e579cc2c1f290745d1f234259a8e06661aa3f35d"
+    },
+    {
+      "path": "native-39176185333-sqlite-candidate-sqlite-16-diagnostic.json",
+      "sha256": "cbb5933afe09ec137d468a2c6eb11f86e7a17fb7932f9950b6f31fb8f9a1d553"
+    },
+    {
+      "path": "native-39176185333-sqlite-candidate-sqlite-16-statements.json",
+      "sha256": "1d7a69fac5bff3afc1d0feb043f072194dffac8bd5678ada1f74d324d280cc41"
+    },
+    {
+      "path": "native-39176185333-sqlite-candidate-sqlite-32-diagnostic.json",
+      "sha256": "9aad53fa8fa9c95bfb45af3cd3f5d7d95baa53a4f53df371bfac645957858a3d"
+    },
+    {
+      "path": "native-39176185333-sqlite-candidate-sqlite-32-statements.json",
+      "sha256": "24dfd65bfbec62864b4e86a7290eb259b47862fbef2c389598e78a24dafe7d62"
+    },
+    {
+      "path": "native-39176185333-sqlite-candidate-sqlite-64-acceptance.json",
+      "sha256": "6db7551b746453810c6d61cd1ff880c66d6e5ffdf114243be31a28abd3243619"
+    },
+    {
+      "path": "native-39176185333-sqlite-environment.txt",
+      "sha256": "01d9da2c46dd58249601a5e9d9a76ad992f39ae829d609ec2ada9b233c1f67a2"
+    },
+    {
+      "path": "native-39176185333-sqlite-exit-status.txt",
+      "sha256": "dd1c8f2f5cdde7ad3df2b280444e7d8b0d5c836d652efb6f8a6c325aaf3e8b86"
+    },
+    {
+      "path": "native-39176185333-sqlite-image.txt",
+      "sha256": "d86217bd5367b6603c431608cd9575882f2afc389cd7d014aed506d1cead5107"
+    },
+    {
+      "path": "native-39177936355-mysql-baseline-binary.sha256",
+      "sha256": "2faf87ce5884fd5c1b6aac2e7a1ebaec426ba5d8dd30015f91ca5a96b6e2649a"
+    },
+    {
+      "path": "native-39177936355-mysql-baseline-container-limits.json",
+      "sha256": "aa6dc04504d938c7e71c32f3540e2b6b362222716d58f07446df69d2f50d0fa4"
+    },
+    {
+      "path": "native-39177936355-mysql-baseline-container-state.json",
+      "sha256": "7da3ff2349a28d8213fe9d4e5f689e7449ee2cf73905b7542648a511ce248560"
+    },
+    {
+      "path": "native-39177936355-mysql-baseline-database-image.txt",
+      "sha256": "0237c60d0bc6a46ac73c506a7b59a61a18f9da9cec9833eae49639f93f6f912c"
+    },
+    {
+      "path": "native-39177936355-mysql-baseline-database-state.json",
+      "sha256": "4363e92ff25a05b6914ab749562e2f0b05d03a26a914da5d9a09aef5bf8aa8cd"
+    },
+    {
+      "path": "native-39177936355-mysql-baseline-database-version.txt",
+      "sha256": "f970ac65c6a5169e951014fd121fbf42aaaa3665b133e6409afa2d2df48b37f1"
+    },
+    {
+      "path": "native-39177936355-mysql-baseline-mysql-16-diagnostic.json",
+      "sha256": "204d4e5a8f0740b421c90c3efa1c3b2f33f81f09809a7364292096544449f909"
+    },
+    {
+      "path": "native-39177936355-mysql-baseline-mysql-32-diagnostic.json",
+      "sha256": "9460fe74dc314533c66f1aa8a7b330acbb2437514efdd616e88c2f556fc32e7f"
+    },
+    {
+      "path": "native-39177936355-mysql-baseline-mysql-64-acceptance.json",
+      "sha256": "8824dea7a676778ea8167257c808fbe25fe2ec288558db5984b51e7ed2954942"
+    },
+    {
+      "path": "native-39177936355-mysql-candidate-binary.sha256",
+      "sha256": "946507115491b0b9d88ab56ad6558dfb4deec066e42308f16e8f8509131a45a9"
+    },
+    {
+      "path": "native-39177936355-mysql-candidate-container-limits.json",
+      "sha256": "eca94b76ff5dd98b436ee88614766adb7586a94244d32c3276efe7f8c149f5ba"
+    },
+    {
+      "path": "native-39177936355-mysql-candidate-container-state.json",
+      "sha256": "1483ccce30233cbe0143ee05eab2ca72147709f90689f250a770b44fe5cdb94c"
+    },
+    {
+      "path": "native-39177936355-mysql-candidate-database-image.txt",
+      "sha256": "0237c60d0bc6a46ac73c506a7b59a61a18f9da9cec9833eae49639f93f6f912c"
+    },
+    {
+      "path": "native-39177936355-mysql-candidate-database-state.json",
+      "sha256": "d2e8f7ca281d0f0ccfde199f558357129971cc37843604ab02a4ec2ceddcda86"
+    },
+    {
+      "path": "native-39177936355-mysql-candidate-database-version.txt",
+      "sha256": "f970ac65c6a5169e951014fd121fbf42aaaa3665b133e6409afa2d2df48b37f1"
+    },
+    {
+      "path": "native-39177936355-mysql-candidate-mysql-16-diagnostic.json",
+      "sha256": "bcd1a53ee8886ca9e4917bb37a4f7c8140f735e48df2743c7797a8730e092612"
+    },
+    {
+      "path": "native-39177936355-mysql-candidate-mysql-16-statements.json",
+      "sha256": "045ef5e542b69847a39137c78788f56c6a8c86e621a37a8df71f0de18b4b44a8"
+    },
+    {
+      "path": "native-39177936355-mysql-candidate-mysql-32-diagnostic.json",
+      "sha256": "0d9707e825696bcef08eb5bb204e9867607780c3d80177f8b034535d80b89dea"
+    },
+    {
+      "path": "native-39177936355-mysql-candidate-mysql-32-statements.json",
+      "sha256": "355d8ad02b312ccb6a179bc079caa9917fccf04ad39e68c8415f668153a05c21"
+    },
+    {
+      "path": "native-39177936355-mysql-candidate-mysql-64-acceptance.json",
+      "sha256": "3dc602f5f2bbb0c5dab17125c6f19418a1875491403e18787ff71d6d4c5550c6"
+    },
+    {
+      "path": "native-39177936355-mysql-data-race.log",
+      "sha256": "2cb14a5bf665213eca6d23057c1f95fc6c95520d84777eba742ada43cc932793"
+    },
+    {
+      "path": "native-39177936355-mysql-environment.txt",
+      "sha256": "bc7d687acaac64c0d6e94af1e7896a4192cdbc0b789b3d88b44104f5d2df115a"
+    },
+    {
+      "path": "native-39177936355-mysql-exit-status.txt",
+      "sha256": "99caf150299cc75bd4df95acdc913d462e37cd0fcd76e6f4541c785ce7b20f28"
+    },
+    {
+      "path": "native-39177936355-mysql-image.txt",
+      "sha256": "d86217bd5367b6603c431608cd9575882f2afc389cd7d014aed506d1cead5107"
+    },
+    {
+      "path": "native-39177936355-postgres-baseline-binary.sha256",
+      "sha256": "da2c2559810dafdc4f7070eb6a15f0800fff68f734c2a14bd17bbd5e4ba012ee"
+    },
+    {
+      "path": "native-39177936355-postgres-baseline-container-limits.json",
+      "sha256": "4b30105930dc771f5c3744a14f308fad52dad8aae3b9ec05ee7fd536a8f68fed"
+    },
+    {
+      "path": "native-39177936355-postgres-baseline-container-state.json",
+      "sha256": "e56869fe7d972a60e11ce71c1ea6c3f72e462dd35dcaf5b008fba58adf1e2414"
+    },
+    {
+      "path": "native-39177936355-postgres-baseline-database-image.txt",
+      "sha256": "b7f96ba784ccdd15607da4b81cf456075224e37eb3923cd38fe9c42b74af8a4f"
+    },
+    {
+      "path": "native-39177936355-postgres-baseline-database-state.json",
+      "sha256": "0670fe516a7f599936d2c3ca171bd3d69e662d47825ef87641917cd18d1a53c0"
+    },
+    {
+      "path": "native-39177936355-postgres-baseline-database-version.txt",
+      "sha256": "01491b0db046beeef789de329e17e4ab4d177033a0e0813371416c493a4613b0"
+    },
+    {
+      "path": "native-39177936355-postgres-baseline-postgres-16-diagnostic.json",
+      "sha256": "05a64ffcd8e576238f09c6e90d782b96ea9296937487e23943ec97abbb2f1fe7"
+    },
+    {
+      "path": "native-39177936355-postgres-baseline-postgres-32-diagnostic.json",
+      "sha256": "85d4af76b53a9eee61183cda11d9c333e2ca366e0bfa78d8e1887253753125be"
+    },
+    {
+      "path": "native-39177936355-postgres-baseline-postgres-64-acceptance.json",
+      "sha256": "e06c9d41dd62d427407879a36d4c9bb647c84eef65d3da65292ee0674a8f7759"
+    },
+    {
+      "path": "native-39177936355-postgres-candidate-binary.sha256",
+      "sha256": "946507115491b0b9d88ab56ad6558dfb4deec066e42308f16e8f8509131a45a9"
+    },
+    {
+      "path": "native-39177936355-postgres-candidate-container-limits.json",
+      "sha256": "eca94b76ff5dd98b436ee88614766adb7586a94244d32c3276efe7f8c149f5ba"
+    },
+    {
+      "path": "native-39177936355-postgres-candidate-container-state.json",
+      "sha256": "6413bb17593e26ad290ee9cad7f1befa76d753e3886db097cbb1dbb6a0cc8ddc"
+    },
+    {
+      "path": "native-39177936355-postgres-candidate-database-image.txt",
+      "sha256": "b7f96ba784ccdd15607da4b81cf456075224e37eb3923cd38fe9c42b74af8a4f"
+    },
+    {
+      "path": "native-39177936355-postgres-candidate-database-state.json",
+      "sha256": "02002f6aabe5a147d74777c12cea60018707daad1cb4482f99e2d7b03e298854"
+    },
+    {
+      "path": "native-39177936355-postgres-candidate-database-version.txt",
+      "sha256": "01491b0db046beeef789de329e17e4ab4d177033a0e0813371416c493a4613b0"
+    },
+    {
+      "path": "native-39177936355-postgres-candidate-postgres-16-diagnostic.json",
+      "sha256": "cabcd009498ef1972972b9668d8aad049e60fa80ae57304e70b3556c3e58366f"
+    },
+    {
+      "path": "native-39177936355-postgres-candidate-postgres-16-statements.json",
+      "sha256": "5a5de87289c083ee6253190ae0aed8abea7305e93fa5e130b87ccb73cfbe6910"
+    },
+    {
+      "path": "native-39177936355-postgres-candidate-postgres-32-diagnostic.json",
+      "sha256": "ba107d7e6458ba150af3666ec9ced617f0caebd61ed32466ce10c1ae52d1d3f8"
+    },
+    {
+      "path": "native-39177936355-postgres-candidate-postgres-32-statements.json",
+      "sha256": "5811b8f1d22dc527b9dfdc764cec640e1b6e2895a2c35c2fb4a98c251bd6d4cd"
+    },
+    {
+      "path": "native-39177936355-postgres-candidate-postgres-64-acceptance.json",
+      "sha256": "0b33df16f41c17cf9a929339f1cb0f2c8e901b068656c3293612cd02a5209fd8"
+    },
+    {
+      "path": "native-39177936355-postgres-data-race.log",
+      "sha256": "474f0abceb157236f0a9501738138506d6d516abc1116ea65e2649c50d5ecd92"
+    },
+    {
+      "path": "native-39177936355-postgres-database.log",
+      "sha256": "ee09d364e7236a5963332291c22033a4de4594a1e8903ef12945386404360ea5"
+    },
+    {
+      "path": "native-39177936355-postgres-environment.txt",
+      "sha256": "0800d1230e9bc2daee3fabd93931941078c3d9026fd20f6612e404c036c752a4"
+    },
+    {
+      "path": "native-39177936355-postgres-exit-status.txt",
+      "sha256": "99da7303da8581eb30beb79abd88da71ee66905a51b937a73a5ce7705d47362b"
+    },
+    {
+      "path": "native-39177936355-postgres-image.txt",
+      "sha256": "d86217bd5367b6603c431608cd9575882f2afc389cd7d014aed506d1cead5107"
+    },
+    {
+      "path": "native-39177936355-sqlite-baseline-binary.sha256",
+      "sha256": "84d9bd706a4a15560dc759111921f1f51fdbee26f502f320b38e6b1196b25dc6"
+    },
+    {
+      "path": "native-39177936355-sqlite-baseline-container-limits.json",
+      "sha256": "c095b7ce7b8514d18180dc529e9b3decfd3fe527abe7da2bdb0b6e648ca22f13"
+    },
+    {
+      "path": "native-39177936355-sqlite-baseline-container-state.json",
+      "sha256": "05a92ecce5c250bbe9d850049ef73f4f8a5bbdee9300dd367253ddc7704e27f4"
+    },
+    {
+      "path": "native-39177936355-sqlite-baseline-sqlite-16-diagnostic.json",
+      "sha256": "59c60c78a39f5df726a0241edafc18078ab5e6007ccf424a91e75c8569a46a14"
+    },
+    {
+      "path": "native-39177936355-sqlite-baseline-sqlite-32-diagnostic.json",
+      "sha256": "b93910f8eefd9717d28499e7220bfdba7420fedf55d1202c410e8133619afb89"
+    },
+    {
+      "path": "native-39177936355-sqlite-baseline-sqlite-64-acceptance.json",
+      "sha256": "76d43f3020f19c0cc18c702ab9780efc7af8734d6ec3e7e19ef38bf11839bcda"
+    },
+    {
+      "path": "native-39177936355-sqlite-candidate-binary.sha256",
+      "sha256": "946507115491b0b9d88ab56ad6558dfb4deec066e42308f16e8f8509131a45a9"
+    },
+    {
+      "path": "native-39177936355-sqlite-candidate-container-limits.json",
+      "sha256": "eca94b76ff5dd98b436ee88614766adb7586a94244d32c3276efe7f8c149f5ba"
+    },
+    {
+      "path": "native-39177936355-sqlite-candidate-container-state.json",
+      "sha256": "27e7703e8247e8cb6d1b709dd31b5dcf4299f9f20daf554505640458c1355ccf"
+    },
+    {
+      "path": "native-39177936355-sqlite-candidate-sqlite-16-diagnostic.json",
+      "sha256": "431111f85c0db86c1b247ac54a142931d33ce900772dd707b3719175ba2684a7"
+    },
+    {
+      "path": "native-39177936355-sqlite-candidate-sqlite-16-statements.json",
+      "sha256": "91a80169a96438d184f46575846e2035613963c425610df12a5e0b50773ae80e"
+    },
+    {
+      "path": "native-39177936355-sqlite-candidate-sqlite-32-diagnostic.json",
+      "sha256": "b518f22bc1da9a3d5cb461dc33d6e29662bf7f4a9f45917bef35d27bb8207822"
+    },
+    {
+      "path": "native-39177936355-sqlite-candidate-sqlite-32-statements.json",
+      "sha256": "d3bfc9b441f0ca2cc56543da83aff2a1eaaaa2c92e797190a892397c3bc09be3"
+    },
+    {
+      "path": "native-39177936355-sqlite-candidate-sqlite-64-acceptance.json",
+      "sha256": "d5978b14305fc33fd81eedf05cfad97fc6575db36af165df589afd761f35ef71"
+    },
+    {
+      "path": "native-39177936355-sqlite-data-race.log",
+      "sha256": "14cb3bf830194492e7638a6acd30e102aef1bc5c7292edf6a2dd06d39485a9a8"
+    },
+    {
+      "path": "native-39177936355-sqlite-environment.txt",
+      "sha256": "7ade725dda62f3ca3ab9ecdf922a2c35c78eefac1e47b5b0a6d702c774ae88f8"
+    },
+    {
+      "path": "native-39177936355-sqlite-exit-status.txt",
+      "sha256": "dd1c8f2f5cdde7ad3df2b280444e7d8b0d5c836d652efb6f8a6c325aaf3e8b86"
+    },
+    {
+      "path": "native-39177936355-sqlite-image.txt",
+      "sha256": "d86217bd5367b6603c431608cd9575882f2afc389cd7d014aed506d1cead5107"
+    },
+    {
+      "path": "native-39179783407-mysql-baseline-binary.sha256",
+      "sha256": "846122471bb196ad1619725334bed18b693fbd46871aa0087e40fd69c3d817cb"
+    },
+    {
+      "path": "native-39179783407-mysql-baseline-container-limits.json",
+      "sha256": "61351956d5980f698da7ee14bf771c750ea235c29ec8a36fecd56931e40d5f2e"
+    },
+    {
+      "path": "native-39179783407-mysql-baseline-container-state.json",
+      "sha256": "4546e639e2c05b89c062b7ea1c6b9581e6fc359ea5ee490ffc715b51aee216ae"
+    },
+    {
+      "path": "native-39179783407-mysql-baseline-database-image.txt",
+      "sha256": "0237c60d0bc6a46ac73c506a7b59a61a18f9da9cec9833eae49639f93f6f912c"
+    },
+    {
+      "path": "native-39179783407-mysql-baseline-database-state.json",
+      "sha256": "353e883c3752c708af51d3cff3d722e6b707e111641727c34f5c4e66f2eab262"
+    },
+    {
+      "path": "native-39179783407-mysql-baseline-database-version.txt",
+      "sha256": "f970ac65c6a5169e951014fd121fbf42aaaa3665b133e6409afa2d2df48b37f1"
+    },
+    {
+      "path": "native-39179783407-mysql-baseline-mysql-16-diagnostic.json",
+      "sha256": "9a75a6bae1715f05d8af3c46c3291d5fafb092c2b7474e4e6756491f194891b5"
+    },
+    {
+      "path": "native-39179783407-mysql-baseline-mysql-32-diagnostic.json",
+      "sha256": "e311018c10427260fa3a43573998a6df8b224553fac24124a0ec4b81cf2cd426"
+    },
+    {
+      "path": "native-39179783407-mysql-baseline-mysql-64-acceptance.json",
+      "sha256": "c3ce6621739c065f05538de4d0163b7f188fb3cd4039f97d8ffe56b71a7fa02f"
+    },
+    {
+      "path": "native-39179783407-mysql-candidate-binary.sha256",
+      "sha256": "4360b00513d00a41d1174f8dff6e2cc41789165afd6a294811559b4896d0bc47"
+    },
+    {
+      "path": "native-39179783407-mysql-candidate-container-limits.json",
+      "sha256": "a9c1dd171ba6cbe594ae6e44f9565bc61acbdbca58604164f3bb8ca3be61e385"
+    },
+    {
+      "path": "native-39179783407-mysql-candidate-container-state.json",
+      "sha256": "1d88663da1c4473cc6931f430ff229f1d80daf20a4ba623cce7fab80632c3183"
+    },
+    {
+      "path": "native-39179783407-mysql-candidate-database-image.txt",
+      "sha256": "0237c60d0bc6a46ac73c506a7b59a61a18f9da9cec9833eae49639f93f6f912c"
+    },
+    {
+      "path": "native-39179783407-mysql-candidate-database-state.json",
+      "sha256": "44df6fd0b0ec2df1378f310b0e8f64b36a2b200bd65096c615a6bfccd36be676"
+    },
+    {
+      "path": "native-39179783407-mysql-candidate-database-version.txt",
+      "sha256": "f970ac65c6a5169e951014fd121fbf42aaaa3665b133e6409afa2d2df48b37f1"
+    },
+    {
+      "path": "native-39179783407-mysql-candidate-database.log",
+      "sha256": "ca1199aee557662456803527c97e757d626a9e172c8a9adca075989d5e340a70"
+    },
+    {
+      "path": "native-39179783407-mysql-candidate-mysql-16-diagnostic.json",
+      "sha256": "b6189d86495e70973dbfedbc4cb5c2b91b34fac175a64464bb6bab52267e4012"
+    },
+    {
+      "path": "native-39179783407-mysql-candidate-mysql-16-statements.json",
+      "sha256": "464bb47f2c76677aedaa9ba17e1ca2ccd02fa42d557511debd32664c3f8f42a4"
+    },
+    {
+      "path": "native-39179783407-mysql-candidate-mysql-32-diagnostic.json",
+      "sha256": "50c0ed1bddfdbd09e927615abb88356b279de605ebcac8d6803a6ef20ce31b1e"
+    },
+    {
+      "path": "native-39179783407-mysql-candidate-mysql-32-statements.json",
+      "sha256": "d61d25aec502aa65d8b54270a64cc62db4974cf184a19c07de05d05f9f8ceaa2"
+    },
+    {
+      "path": "native-39179783407-mysql-candidate-mysql-64-acceptance.json",
+      "sha256": "19ae20f666784a7d0e022aae33885e2db53803bea86d5be3fe2b20894ea126a8"
+    },
+    {
+      "path": "native-39179783407-mysql-data-race.log",
+      "sha256": "f050fb12a9f37d39e3abbed33a9658753e253cc9cfcbefb63b1c5332028936f7"
+    },
+    {
+      "path": "native-39179783407-mysql-environment.txt",
+      "sha256": "563519340cd15b134d4551ab462fa3cc2c55a01005dcf8139cb3374be693248f"
+    },
+    {
+      "path": "native-39179783407-mysql-exit-status.txt",
+      "sha256": "3ca50fbf9984db757d310b0e8718de2ed86f70cafe63aa5347e3fd69fc977b0e"
+    },
+    {
+      "path": "native-39179783407-mysql-image.txt",
+      "sha256": "d86217bd5367b6603c431608cd9575882f2afc389cd7d014aed506d1cead5107"
+    },
+    {
+      "path": "native-39179783407-postgres-baseline-binary.sha256",
+      "sha256": "83c926696f67d2b735b3618356c4ce658f4d6bfa9e672583c0a37a3e61c7cb4f"
+    },
+    {
+      "path": "native-39179783407-postgres-baseline-container-limits.json",
+      "sha256": "675225ab1052f5101ad59e5368eaffb20b440ff78707634bd31515051b720d8a"
+    },
+    {
+      "path": "native-39179783407-postgres-baseline-container-state.json",
+      "sha256": "d8f9a1a0d7d1209d70872fa3bea0f33d76f7ecd5adb31545ef38a9696b0eba22"
+    },
+    {
+      "path": "native-39179783407-postgres-baseline-database-image.txt",
+      "sha256": "b7f96ba784ccdd15607da4b81cf456075224e37eb3923cd38fe9c42b74af8a4f"
+    },
+    {
+      "path": "native-39179783407-postgres-baseline-database-state.json",
+      "sha256": "d8f06e900c0192314eba8c703c3fc367a2e4f794729d8f221cd35b9a2a3b3e1f"
+    },
+    {
+      "path": "native-39179783407-postgres-baseline-database-version.txt",
+      "sha256": "01491b0db046beeef789de329e17e4ab4d177033a0e0813371416c493a4613b0"
+    },
+    {
+      "path": "native-39179783407-postgres-baseline-postgres-16-diagnostic.json",
+      "sha256": "cda5f83c4c21b64ff41aae77e2e1f67124af4deebde174e3cc0f93a100c9820c"
+    },
+    {
+      "path": "native-39179783407-postgres-baseline-postgres-32-diagnostic.json",
+      "sha256": "1b8f47b11f6257c5b8cead91acb1e7d0b11b3a324702f9ab6e04656849e23ceb"
+    },
+    {
+      "path": "native-39179783407-postgres-baseline-postgres-64-acceptance.json",
+      "sha256": "f2af67e1efa9c096710472de22daac725b44b786b362ad1765c96dd2c7d59bba"
+    },
+    {
+      "path": "native-39179783407-postgres-candidate-binary.sha256",
+      "sha256": "4360b00513d00a41d1174f8dff6e2cc41789165afd6a294811559b4896d0bc47"
+    },
+    {
+      "path": "native-39179783407-postgres-candidate-container-limits.json",
+      "sha256": "eca94b76ff5dd98b436ee88614766adb7586a94244d32c3276efe7f8c149f5ba"
+    },
+    {
+      "path": "native-39179783407-postgres-candidate-container-state.json",
+      "sha256": "0736523ddc11e9013c5e03a45927bdd268ec81ee77fe16a0bf38bcce538b9d69"
+    },
+    {
+      "path": "native-39179783407-postgres-candidate-database-image.txt",
+      "sha256": "b7f96ba784ccdd15607da4b81cf456075224e37eb3923cd38fe9c42b74af8a4f"
+    },
+    {
+      "path": "native-39179783407-postgres-candidate-database-state.json",
+      "sha256": "595d950e8e9839f8c688bca5b2b13c9c9f91d5bb0c0b8848a0ec29f93ef48884"
+    },
+    {
+      "path": "native-39179783407-postgres-candidate-database-version.txt",
+      "sha256": "01491b0db046beeef789de329e17e4ab4d177033a0e0813371416c493a4613b0"
+    },
+    {
+      "path": "native-39179783407-postgres-candidate-database.log",
+      "sha256": "b0b31fd78d019bc4c0e30038a98585cbccec9fd321f451bc2c9830bc61b8ffce"
+    },
+    {
+      "path": "native-39179783407-postgres-candidate-postgres-16-diagnostic.json",
+      "sha256": "f49e0b4dee7496f8d08b42326e896ced523ffdc165d56ed18b6b4eb18a1afe72"
+    },
+    {
+      "path": "native-39179783407-postgres-candidate-postgres-16-statements.json",
+      "sha256": "5d6923a26f8463be9ce4c160c2acb10db6f1540ae29249a5e28bb10ce7db87cc"
+    },
+    {
+      "path": "native-39179783407-postgres-candidate-postgres-32-diagnostic.json",
+      "sha256": "34dbd4604e3539adf3758e2bdf51a4b7df97f509e19af1c3cdff71ced0253490"
+    },
+    {
+      "path": "native-39179783407-postgres-candidate-postgres-32-statements.json",
+      "sha256": "96eebb38a83db9f95a7f99ce27d38964e63091bf9339214c64fd0cd3f6871be4"
+    },
+    {
+      "path": "native-39179783407-postgres-candidate-postgres-64-acceptance.json",
+      "sha256": "779bdf010208d32ba4456ac117bd0644076b21b07fc6122ca06e68a4f2cd9f60"
+    },
+    {
+      "path": "native-39179783407-postgres-data-race.log",
+      "sha256": "6dede758f356c4366badb5a8812f9794262a6e7f3e9d485c0966099722fb13fb"
+    },
+    {
+      "path": "native-39179783407-postgres-environment.txt",
+      "sha256": "3243e5e092ec1fc1528711de2115c6d64c181d3be675ec0fc5071d6d3c6a3e15"
+    },
+    {
+      "path": "native-39179783407-postgres-exit-status.txt",
+      "sha256": "99da7303da8581eb30beb79abd88da71ee66905a51b937a73a5ce7705d47362b"
+    },
+    {
+      "path": "native-39179783407-postgres-image.txt",
+      "sha256": "d86217bd5367b6603c431608cd9575882f2afc389cd7d014aed506d1cead5107"
+    },
+    {
+      "path": "native-39179783407-sqlite-baseline-binary.sha256",
+      "sha256": "131917869fd76946240429bef31b1fc09684d2055094e874f001605b898b459d"
+    },
+    {
+      "path": "native-39179783407-sqlite-baseline-container-limits.json",
+      "sha256": "c18988e246007d8b94c29b1904e317cf065a3c3002cfab9ad91cda4fac38906a"
+    },
+    {
+      "path": "native-39179783407-sqlite-baseline-container-state.json",
+      "sha256": "7683003f274f84970625418819df5f9f60098d4dcaf0894d3816760780822931"
+    },
+    {
+      "path": "native-39179783407-sqlite-baseline-sqlite-16-diagnostic.json",
+      "sha256": "d38545d78056e6aa28de04d8d2c8303aafe5eb5b5642035d22af2d84bb2c7ac8"
+    },
+    {
+      "path": "native-39179783407-sqlite-baseline-sqlite-32-diagnostic.json",
+      "sha256": "c81b8034781b0475554a87023a0eef5d0ce093fb3e3732bab273f1ab951e69de"
+    },
+    {
+      "path": "native-39179783407-sqlite-baseline-sqlite-64-acceptance.json",
+      "sha256": "bbe62595c41fd52b67a0c12af95220055400cf37d5679ec3c065572fea68219c"
+    },
+    {
+      "path": "native-39179783407-sqlite-candidate-binary.sha256",
+      "sha256": "4360b00513d00a41d1174f8dff6e2cc41789165afd6a294811559b4896d0bc47"
+    },
+    {
+      "path": "native-39179783407-sqlite-candidate-container-limits.json",
+      "sha256": "eca94b76ff5dd98b436ee88614766adb7586a94244d32c3276efe7f8c149f5ba"
+    },
+    {
+      "path": "native-39179783407-sqlite-candidate-container-state.json",
+      "sha256": "f38bdcfc40ca98e9726ade37440d95e6356a2404eec56cb0478c2d22aa28d371"
+    },
+    {
+      "path": "native-39179783407-sqlite-candidate-sqlite-16-diagnostic.json",
+      "sha256": "1d3caeaaa32a2d72495f524fc46bce537cbaf86fde4a7760262a3b7d6f69e652"
+    },
+    {
+      "path": "native-39179783407-sqlite-candidate-sqlite-16-statements.json",
+      "sha256": "78783e6720e7004967992c3c36fb3087a0a8182f435d8187e13d28aaf2b7dab3"
+    },
+    {
+      "path": "native-39179783407-sqlite-candidate-sqlite-32-diagnostic.json",
+      "sha256": "000a0157f976ece41672330341649f93bd0c7b201fe2a8f6828aced93456c591"
+    },
+    {
+      "path": "native-39179783407-sqlite-candidate-sqlite-32-statements.json",
+      "sha256": "7f3eb695d5ebcb5be8784a06a15595b019587bc2db51eefd2c959ecf78f58ebb"
+    },
+    {
+      "path": "native-39179783407-sqlite-candidate-sqlite-64-acceptance.json",
+      "sha256": "d81d8c3f7f05576872f898a6274ce6ba2d920d5d72477a411ccfebeff100d902"
+    },
+    {
+      "path": "native-39179783407-sqlite-data-race.log",
+      "sha256": "4087531deacfc914146075d786d4faa15d55cbd8bdc6027f231feb005bd367dd"
+    },
+    {
+      "path": "native-39179783407-sqlite-environment.txt",
+      "sha256": "d617750aec6b0affdba4fc728ebfa0ce16942edc9a7074129126fed922d5f893"
+    },
+    {
+      "path": "native-39179783407-sqlite-exit-status.txt",
+      "sha256": "dd1c8f2f5cdde7ad3df2b280444e7d8b0d5c836d652efb6f8a6c325aaf3e8b86"
+    },
+    {
+      "path": "native-39179783407-sqlite-image.txt",
+      "sha256": "d86217bd5367b6603c431608cd9575882f2afc389cd7d014aed506d1cead5107"
+    },
+    {
+      "path": "native-39181904005-mysql-baseline-binary.sha256",
+      "sha256": "1c797b11213a2e5e8e5f659ff2f788ce5793cb74f36a8658375b56b9864a30f4"
+    },
+    {
+      "path": "native-39181904005-mysql-baseline-container-limits.json",
+      "sha256": "6ebc7b6f29c0eedf8de1a0eaea40ee3d2d3789fb47fa94deb152574104f802d6"
+    },
+    {
+      "path": "native-39181904005-mysql-baseline-container-state.json",
+      "sha256": "cb5978a1e4906531a8b4abb4e18219221464f00ead372ae8e6fb1bfdb06b34fe"
+    },
+    {
+      "path": "native-39181904005-mysql-baseline-database-image.txt",
+      "sha256": "0237c60d0bc6a46ac73c506a7b59a61a18f9da9cec9833eae49639f93f6f912c"
+    },
+    {
+      "path": "native-39181904005-mysql-baseline-database-state.json",
+      "sha256": "a81fcff1f7bd5b7b3bcd72ac80fe697c2b5e0777cec28212d6a595504c713e60"
+    },
+    {
+      "path": "native-39181904005-mysql-baseline-database-version.txt",
+      "sha256": "f970ac65c6a5169e951014fd121fbf42aaaa3665b133e6409afa2d2df48b37f1"
+    },
+    {
+      "path": "native-39181904005-mysql-baseline-mysql-16-diagnostic.json",
+      "sha256": "0efa1528e4c2847e894a9b9b5ce46849301fc595ca3d25c5ecafa81e74d454e4"
+    },
+    {
+      "path": "native-39181904005-mysql-baseline-mysql-32-diagnostic.json",
+      "sha256": "be6d62535b955e61de82ff30e53d67dad977ee1b1d97e10204ba94e769dfe5f4"
+    },
+    {
+      "path": "native-39181904005-mysql-baseline-mysql-64-acceptance.json",
+      "sha256": "70837cacf5b1b94a3d89807d184e5f5acf263f49375b16f6f2ba1fd8a25151e7"
+    },
+    {
+      "path": "native-39181904005-mysql-build-data-race.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-39181904005-mysql-build-requesttrace-race.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-39181904005-mysql-build-server-race.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-39181904005-mysql-candidate-binary.sha256",
+      "sha256": "1065ee1d9645b0cf6772ee8c2c83beb7764b932e3a70c67e92755353fbb754e8"
+    },
+    {
+      "path": "native-39181904005-mysql-candidate-container-limits.json",
+      "sha256": "eca94b76ff5dd98b436ee88614766adb7586a94244d32c3276efe7f8c149f5ba"
+    },
+    {
+      "path": "native-39181904005-mysql-candidate-container-state.json",
+      "sha256": "979cb56d5a340aeae68b54534305e4bdfd0c65b165c6388e742eca8571f6f200"
+    },
+    {
+      "path": "native-39181904005-mysql-candidate-database-after-race.log",
+      "sha256": "7dc4d24ca45c835854fd6a470924de9187290ad3cc9e683c3f586955f8a34e8c"
+    },
+    {
+      "path": "native-39181904005-mysql-candidate-database-image.txt",
+      "sha256": "0237c60d0bc6a46ac73c506a7b59a61a18f9da9cec9833eae49639f93f6f912c"
+    },
+    {
+      "path": "native-39181904005-mysql-candidate-database-state.json",
+      "sha256": "833871b4def032b92371de4950ba2f383e6e9b628cc66224df07e64075660ef7"
+    },
+    {
+      "path": "native-39181904005-mysql-candidate-database-version.txt",
+      "sha256": "f970ac65c6a5169e951014fd121fbf42aaaa3665b133e6409afa2d2df48b37f1"
+    },
+    {
+      "path": "native-39181904005-mysql-candidate-mysql-16-diagnostic.json",
+      "sha256": "c8268f7e60bf84a870360c361546115d36eee874f93795125fc6f737c2fe2b03"
+    },
+    {
+      "path": "native-39181904005-mysql-candidate-mysql-16-statements.json",
+      "sha256": "096a65b775f5377651645020100e6c3bc25f6f8d445fe66bca5f782c4136c994"
+    },
+    {
+      "path": "native-39181904005-mysql-candidate-mysql-32-diagnostic.json",
+      "sha256": "fb565f73cbe14b31d3830f541e057f981bf5eb83e466e88d7290ec814e6bbed4"
+    },
+    {
+      "path": "native-39181904005-mysql-candidate-mysql-32-statements.json",
+      "sha256": "dd94ac2692f3ee74f756436be8d8a7e9f970f6ca3fabdec4ba962e957ee9bb94"
+    },
+    {
+      "path": "native-39181904005-mysql-candidate-mysql-64-acceptance.json",
+      "sha256": "2ada92ba1b4ceaee5a8ed3584a690df8e53f525ac598232390365f6c8bdfe659"
+    },
+    {
+      "path": "native-39181904005-mysql-candidate-mysql-checkpoint-buffer.json",
+      "sha256": "a4637cb2026117d5b3aab21c19448ac8f607b28c9de15fc8f1958eb19b4913c8"
+    },
+    {
+      "path": "native-39181904005-mysql-checkpoint-buffer.log",
+      "sha256": "b43607f9a32a255bf35fbf4198c04ecbfa22347a456aea8130bd0c8a4f64c9cc"
+    },
+    {
+      "path": "native-39181904005-mysql-data-race.log",
+      "sha256": "56b2fd5879ff2f2b9b4e485911550262236fe2da04e1285af9492b14603a3d2d"
+    },
+    {
+      "path": "native-39181904005-mysql-environment.txt",
+      "sha256": "ca07b1e4ab4b06a46166cc8341b3eb442b94344b4b46d371dcc160e46d089626"
+    },
+    {
+      "path": "native-39181904005-mysql-exit-status.txt",
+      "sha256": "1149448a16c5ff460842660d7b0aa1522be8dd6d929af4aaf5c78fa474c6dd64"
+    },
+    {
+      "path": "native-39181904005-mysql-image.txt",
+      "sha256": "d86217bd5367b6603c431608cd9575882f2afc389cd7d014aed506d1cead5107"
+    },
+    {
+      "path": "native-39181904005-mysql-requesttrace-race.log",
+      "sha256": "0f5d5594928b46349013355a863d034b2203fed74562552ae979e466837f40b6"
+    },
+    {
+      "path": "native-39181904005-mysql-server-race.log",
+      "sha256": "58b62b5dc1e5ff46a1a609074f8a160f98b1cda5fba303e0996fc95847795995"
+    },
+    {
+      "path": "native-39181904005-postgres-baseline-binary.sha256",
+      "sha256": "0915750cfe70b198a99324585c3d2e77d02e48534b08f83c4e47c946f9d0ce99"
+    },
+    {
+      "path": "native-39181904005-postgres-baseline-container-limits.json",
+      "sha256": "a03caaefc4fbfded21466faa703db8df1a541f0e2b5de1ef53978155ec8642c5"
+    },
+    {
+      "path": "native-39181904005-postgres-baseline-container-state.json",
+      "sha256": "0bfc3f12bf0275235461db84062fa12dccb4fc0cb5540d9ae3fec3a4f494b561"
+    },
+    {
+      "path": "native-39181904005-postgres-baseline-database-image.txt",
+      "sha256": "b7f96ba784ccdd15607da4b81cf456075224e37eb3923cd38fe9c42b74af8a4f"
+    },
+    {
+      "path": "native-39181904005-postgres-baseline-database-state.json",
+      "sha256": "05d758ec099087c621b5403227e8f1e08576e74d9320246e07771b41ef4d35ef"
+    },
+    {
+      "path": "native-39181904005-postgres-baseline-database-version.txt",
+      "sha256": "01491b0db046beeef789de329e17e4ab4d177033a0e0813371416c493a4613b0"
+    },
+    {
+      "path": "native-39181904005-postgres-baseline-postgres-16-diagnostic.json",
+      "sha256": "99729294bdcaba9e97f217605067c5396f4a0e4675bb8f837c4d8a0a5dbdb17c"
+    },
+    {
+      "path": "native-39181904005-postgres-baseline-postgres-32-diagnostic.json",
+      "sha256": "28ce75adfab270ccefb5c202709ea6cf1282541914d1629c701772e4518f0403"
+    },
+    {
+      "path": "native-39181904005-postgres-baseline-postgres-64-acceptance.json",
+      "sha256": "dffe7f36d93dca017a42dd8aafbbd86bd33de7a4327f58ba9db636105ef4847b"
+    },
+    {
+      "path": "native-39181904005-postgres-build-data-race.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-39181904005-postgres-build-requesttrace-race.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-39181904005-postgres-build-server-race.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-39181904005-postgres-candidate-binary.sha256",
+      "sha256": "1065ee1d9645b0cf6772ee8c2c83beb7764b932e3a70c67e92755353fbb754e8"
+    },
+    {
+      "path": "native-39181904005-postgres-candidate-container-limits.json",
+      "sha256": "eca94b76ff5dd98b436ee88614766adb7586a94244d32c3276efe7f8c149f5ba"
+    },
+    {
+      "path": "native-39181904005-postgres-candidate-container-state.json",
+      "sha256": "83edae23931fb1069f8ec611431b1b8dece862689a7e4d6bb6ddd3339f031012"
+    },
+    {
+      "path": "native-39181904005-postgres-candidate-database-after-race.log",
+      "sha256": "735138dfe63118adf2caecce669aa74287bfd2a49702b1a1dbb62d8b504a908c"
+    },
+    {
+      "path": "native-39181904005-postgres-candidate-database-image.txt",
+      "sha256": "b7f96ba784ccdd15607da4b81cf456075224e37eb3923cd38fe9c42b74af8a4f"
+    },
+    {
+      "path": "native-39181904005-postgres-candidate-database-state.json",
+      "sha256": "c1ebb27debb18072decb52bcdfe60041679038f54910ab4ffa974f5acaf3b80d"
+    },
+    {
+      "path": "native-39181904005-postgres-candidate-database-version.txt",
+      "sha256": "01491b0db046beeef789de329e17e4ab4d177033a0e0813371416c493a4613b0"
+    },
+    {
+      "path": "native-39181904005-postgres-candidate-postgres-16-diagnostic.json",
+      "sha256": "239804f194406ac796be7e6e1d6b45cd0870c1f33d9c4437d6319e2357f6c915"
+    },
+    {
+      "path": "native-39181904005-postgres-candidate-postgres-16-statements.json",
+      "sha256": "30962ee8687fe7f01067b2e7c118ba1fe80f63864246593838c12a1c3c739840"
+    },
+    {
+      "path": "native-39181904005-postgres-candidate-postgres-32-diagnostic.json",
+      "sha256": "727d7af8c366ddb0845f5c6d1d986e4de0df95f3a700e6add9f90d3b0debb16c"
+    },
+    {
+      "path": "native-39181904005-postgres-candidate-postgres-32-statements.json",
+      "sha256": "034566de2ca384af43678ac98508f3aabdd3d897d49a1c37eda47ba966d29aa6"
+    },
+    {
+      "path": "native-39181904005-postgres-candidate-postgres-64-acceptance.json",
+      "sha256": "669293aae09a366a750c22c20237d85ce75375a5d73407d81d8901e30f4f0254"
+    },
+    {
+      "path": "native-39181904005-postgres-candidate-postgres-checkpoint-buffer.json",
+      "sha256": "a0b8bd26cb7f41f509863a7be636d358bf15da091e058d5fcbae6561f2bea5aa"
+    },
+    {
+      "path": "native-39181904005-postgres-checkpoint-buffer.log",
+      "sha256": "44b5a1d7f642c2387c22aac63c43726f3f5e4b8def5a3192eae806277338eaee"
+    },
+    {
+      "path": "native-39181904005-postgres-data-race.log",
+      "sha256": "86a13fa818a416a5fc7943458ff3d0c13c782f9c87d433336e14eafbd67a7267"
+    },
+    {
+      "path": "native-39181904005-postgres-environment.txt",
+      "sha256": "8354aa379f7cf70a5bff101a4312fc1463ce742ce07ccfce8b31a72022df2755"
+    },
+    {
+      "path": "native-39181904005-postgres-exit-status.txt",
+      "sha256": "bed7e978d74cff4e11288353ce5e5c441f66bdd614b7cd2e0f236aed0b53ae5d"
+    },
+    {
+      "path": "native-39181904005-postgres-image.txt",
+      "sha256": "d86217bd5367b6603c431608cd9575882f2afc389cd7d014aed506d1cead5107"
+    },
+    {
+      "path": "native-39181904005-postgres-requesttrace-race.log",
+      "sha256": "186c2c5b4e0d7962772830005e6e5226febf2d3702e745db2d3493b9265567e9"
+    },
+    {
+      "path": "native-39181904005-postgres-server-race.log",
+      "sha256": "238607ab02ddd53ec4200c5e9bc6cc52ae445545a7c629d4759b4bbf97f56897"
+    },
+    {
+      "path": "native-39181904005-sqlite-baseline-binary.sha256",
+      "sha256": "c0884ba41904dc2f3b5ec1f1e68fe7f34bbd00a773d7fff1d26e8a056f9753c4"
+    },
+    {
+      "path": "native-39181904005-sqlite-baseline-container-limits.json",
+      "sha256": "702f90b50a8e3983fb116da786dae373ad904ca67777bd5e58a5a4004e9839fb"
+    },
+    {
+      "path": "native-39181904005-sqlite-baseline-container-state.json",
+      "sha256": "687695f81a0173ce3248acfdc29e0a63aa9809ae6dc1dfd9c8c8bb69ae6b230d"
+    },
+    {
+      "path": "native-39181904005-sqlite-baseline-sqlite-16-diagnostic.json",
+      "sha256": "56b09eb6aabbbd10a22475c2f1cff78beacc2afc8e146fb4ce12931e4f192257"
+    },
+    {
+      "path": "native-39181904005-sqlite-baseline-sqlite-32-diagnostic.json",
+      "sha256": "0962c86b9754fbc95672708962df31f22f87407e26d8768012e0c9a1c3fe91e2"
+    },
+    {
+      "path": "native-39181904005-sqlite-baseline-sqlite-64-acceptance.json",
+      "sha256": "8ba51d0f575027947d7f33db37099b34bf629c3c7b45d8ed0a3ca00c3c28573e"
+    },
+    {
+      "path": "native-39181904005-sqlite-build-data-race.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-39181904005-sqlite-build-requesttrace-race.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-39181904005-sqlite-build-server-race.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-39181904005-sqlite-candidate-binary.sha256",
+      "sha256": "1065ee1d9645b0cf6772ee8c2c83beb7764b932e3a70c67e92755353fbb754e8"
+    },
+    {
+      "path": "native-39181904005-sqlite-candidate-container-limits.json",
+      "sha256": "eca94b76ff5dd98b436ee88614766adb7586a94244d32c3276efe7f8c149f5ba"
+    },
+    {
+      "path": "native-39181904005-sqlite-candidate-container-state.json",
+      "sha256": "906185695ccc0d2d5673c045796afe33a54734aa7a27a547e7cc6d9e9e751bc4"
+    },
+    {
+      "path": "native-39181904005-sqlite-candidate-sqlite-16-diagnostic.json",
+      "sha256": "867328323a528b9b7864bd93c38e63753c36cb9527ad5a5ecab629a6ceec0a2f"
+    },
+    {
+      "path": "native-39181904005-sqlite-candidate-sqlite-16-statements.json",
+      "sha256": "a4cdbec471f19fbe14d3eb76a41d580f7eb1c151d2bb59be517f37628d1adabe"
+    },
+    {
+      "path": "native-39181904005-sqlite-candidate-sqlite-32-diagnostic.json",
+      "sha256": "19e59ad4692c165481ff8d8b894cb61a5350605bb8ef145640a0037567278cd3"
+    },
+    {
+      "path": "native-39181904005-sqlite-candidate-sqlite-32-statements.json",
+      "sha256": "29f4ea0baa95c2da924ccf9095f2481d79f0c6a56802b59e96e3e8dc0faa613f"
+    },
+    {
+      "path": "native-39181904005-sqlite-candidate-sqlite-64-acceptance.json",
+      "sha256": "0592014ce8471dda315e2c52031a889e21df9ff7a2d5b36cf9dfbbee335ac5ad"
+    },
+    {
+      "path": "native-39181904005-sqlite-candidate-sqlite-checkpoint-buffer.json",
+      "sha256": "e7d94ac7daa6a215233702284e3d9efa8bea58396c5e0cd73519cce56d7e34fc"
+    },
+    {
+      "path": "native-39181904005-sqlite-checkpoint-buffer.log",
+      "sha256": "ff1f19647f0df195ff4f57658b9a3469a7d53dce7041cf8ff8aab04c452be590"
+    },
+    {
+      "path": "native-39181904005-sqlite-data-race.log",
+      "sha256": "a34d25a5ce0eb3dc0c0287616112f46b02ee573d24bb73878e79affa9a01b02a"
+    },
+    {
+      "path": "native-39181904005-sqlite-environment.txt",
+      "sha256": "09154c0f9d4ddcc44b296cd2b5ec3dda84c3f2019cc586e802ce045236313245"
+    },
+    {
+      "path": "native-39181904005-sqlite-exit-status.txt",
+      "sha256": "335f435f8e91a5b31bec26ee2b73a3921b1a720aae48c6f350b8207d77e63e36"
+    },
+    {
+      "path": "native-39181904005-sqlite-image.txt",
+      "sha256": "d86217bd5367b6603c431608cd9575882f2afc389cd7d014aed506d1cead5107"
+    },
+    {
+      "path": "native-39181904005-sqlite-requesttrace-race.log",
+      "sha256": "50a1854d3c15e333b810ee4f7d7335b4d0da246f022132988526e41b4fcfa61a"
+    },
+    {
+      "path": "native-39181904005-sqlite-server-race.log",
+      "sha256": "5fe5c9cc8ddc8d04a8b06fbf3b167e8d46ee1e6853a31f9bffb992ffc5ce863f"
+    },
+    {
+      "path": "native-v4-baseline-mysql-16-diagnostic.json",
+      "sha256": "22ba0404d053debf110a93422f096a88556f36632dcc4fe738d576c051427909"
+    },
+    {
+      "path": "native-v4-baseline-mysql-32-diagnostic.json",
+      "sha256": "d1604d0987f98a71b8efc9126400402c4847739d268c1b912c5a093555644515"
+    },
+    {
+      "path": "native-v4-baseline-mysql-64-acceptance.json",
+      "sha256": "10f641e4d92ddd8ae03a25356a361dfb48b2e527565c1a949aeeacde1c2c2310"
+    },
+    {
+      "path": "native-v4-baseline-postgres-16-diagnostic.json",
+      "sha256": "82bda8633c517cb68ab8e853f55cfe62b0b69f4f2f90be1512a39ee1d13f3411"
+    },
+    {
+      "path": "native-v4-baseline-postgres-32-diagnostic.json",
+      "sha256": "8f6fa305dc61d9c8dd8394bdc4064f915a7cb8d6d89790f77c8666e8b4f72ec7"
+    },
+    {
+      "path": "native-v4-baseline-postgres-64-acceptance.json",
+      "sha256": "2fda8f079ebef363dd31045fb8db1ffa6fec3959b46d4bffe4d93f063e4c42ab"
+    },
+    {
+      "path": "native-v4-baseline-sqlite-16-diagnostic.json",
+      "sha256": "8eb70bc418643f7f62694f638d42118488634ba01c3f6d5a0e24e29b5014da9d"
+    },
+    {
+      "path": "native-v4-baseline-sqlite-32-diagnostic.json",
+      "sha256": "c24ab7807afc216b60e8c7210a0588f3cefb53bbfd57af4dfc15e759ba696cd7"
+    },
+    {
+      "path": "native-v4-baseline-sqlite-64-acceptance.json",
+      "sha256": "dc927b77975e406fd03ef45dfcf0782c4225824caad2a9ea2832512d4acf87e5"
+    },
+    {
+      "path": "native-v4-candidate-mysql-16-diagnostic.json",
+      "sha256": "fd6a8b40534016913e77ef400348e171d764a79663efbe587b861ad32afcb505"
+    },
+    {
+      "path": "native-v4-candidate-mysql-32-diagnostic.json",
+      "sha256": "09461c838d825883b2beb0b819f30f3841f8fd66ac5f00f3daba9116eabd0700"
+    },
+    {
+      "path": "native-v4-candidate-mysql-64-acceptance.json",
+      "sha256": "cba1a737b8ffb17ad3629b1a94dea83a291db23a9b8b1072e1428ab048f214f5"
+    },
+    {
+      "path": "native-v4-candidate-postgres-16-diagnostic.json",
+      "sha256": "0af19b8e2dac470e2b514f48a284bce64d8bac92efa615017264417ec6e71eab"
+    },
+    {
+      "path": "native-v4-candidate-postgres-32-diagnostic.json",
+      "sha256": "fffd02f7eecfd82844f496a7ddeb3a6c2504a84276dff849f81c510385d36f13"
+    },
+    {
+      "path": "native-v4-candidate-postgres-64-acceptance.json",
+      "sha256": "f26c197f7b397c52e2e727d9423cec5d94b946e8229d6de4a6b01b842795e923"
+    },
+    {
+      "path": "native-v4-candidate-sqlite-16-diagnostic.json",
+      "sha256": "de9b1a1598aac4f5613e0cce25a430b18bac45ef7514e18acc8680e662a0a3a7"
+    },
+    {
+      "path": "native-v4-candidate-sqlite-32-diagnostic.json",
+      "sha256": "a01629ff7c1f55d6f3ec2dadb32f4599343d2edd26ee1309a710a866e043a0cd"
+    },
+    {
+      "path": "native-v4-candidate-sqlite-64-acceptance.json",
+      "sha256": "16bf512c6767c5e90f4e5a060ec27761d8901bb3097a79c99b70e7388dcf72f3"
+    },
+    {
+      "path": "pg-cold-index-probe.log",
+      "sha256": "f27a35dd17857aad69299492beaad9f76abbd5010ee9005f4974a505445d46f8"
+    },
+    {
+      "path": "pg-cold-plan-red.log",
+      "sha256": "68ed0a683f3dc2fbf676c09ec17ae4b28f542670ca1bdcb14e614fce3ecb74ee"
+    },
+    {
+      "path": "pg-snapshot-index-large.log",
+      "sha256": "2d076324184d5b16cece463afaaae2ebee0cc05c9bf01c9b7e86a1fee748bc87"
+    },
+    {
+      "path": "pg-snapshot-indexes-large-final.log",
+      "sha256": "de181b472b9394ef72da1ad4babf9408870fc822f4e4c0a0f7d19a58d642f16a"
+    },
+    {
+      "path": "pg-snapshot-indexes-negative.log",
+      "sha256": "75c383a65a2888de8d055589a97cd38c978bf37e61e7d435d4122c75c1c974d7"
+    },
+    {
+      "path": "pg-snapshot-plan-red.log",
+      "sha256": "58e1c972c2a8bfd08b9cfdadd075fbf1f8edaad208103c2d9933a881406d4589"
+    },
+    {
+      "path": "pg-structural-39173067362-mode0-data-race.log",
+      "sha256": "e04169977b09f66805c9e6684759c89b52257ad60f794baadd304d82f15472b4"
+    },
+    {
+      "path": "pg-structural-39173067362-mode0-negative-control.log",
+      "sha256": "4b6f94d22d08943ff1bcd52340f768c3126188de672956c5fb4e3fb6b99865eb"
+    },
+    {
+      "path": "pg-structural-39173067362-mode0-negative-exit.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "pg-structural-39173067362-mode0-overhead.json",
+      "sha256": "bc7a925ef422b59b9e6f8e1721c2dbbb8af8f39ac100f06481111a21b946f6fd"
+    },
+    {
+      "path": "pg-structural-39173067362-mode0-race-exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "pg-structural-39173067362-mode0-test-exit.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "pg-structural-39173067362-mode0-transactions.json",
+      "sha256": "c5cd76fbdb8196b001ae51c1b06ffce90b3ce45e4eac348a47fec611bd595148"
+    },
+    {
+      "path": "pg-structural-39173067362-mode1-data-race.log",
+      "sha256": "8431b47b869cb731309f8f65a9f8acd2feccc0d2e2b1f2e004f730453a4f34c2"
+    },
+    {
+      "path": "pg-structural-39173067362-mode1-negative-control.log",
+      "sha256": "6b53b86ae95c29dcc577a98a97ca300707ac773b5051c20c935e06f9787cd46e"
+    },
+    {
+      "path": "pg-structural-39173067362-mode1-negative-exit.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "pg-structural-39173067362-mode1-overhead.json",
+      "sha256": "8164919ec8605059248ba9421f2c8d9751dbab931bd06ddd23019d3838603471"
+    },
+    {
+      "path": "pg-structural-39173067362-mode1-race-exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "pg-structural-39173067362-mode1-test-exit.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "pg-structural-39173067362-mode1-transactions.json",
+      "sha256": "591c760471314623071720e124c202cbe2de06b8a88fe772d883c6e8cee12d4d"
+    },
+    {
+      "path": "pg18-snapshot-green.log",
+      "sha256": "2e7d8dcfb020501cee4ac00180063c4331c5948d7bc6d180a37f44aed468cfd5"
+    },
+    {
+      "path": "pg18-snapshot-plan-green.log",
+      "sha256": "f388553b9d96cd9420940e7a8b81ffec2383a4a77a4f026af458c05be10b1b18"
+    },
+    {
+      "path": "pg18-snapshot-plan-negative.log",
+      "sha256": "9e60889d64e39c4874daade620d209ce1af27a93dd07429a463ee6d48ff89a20"
+    },
+    {
+      "path": "snapshot-final-unit.log",
+      "sha256": "4a7091fbc203afd8db7d6f972ef0f6ab3864aa86d2ba0849d9b63b7d78af442f"
+    },
+    {
+      "path": "snapshot-indexes-final-three-db-race.log",
+      "sha256": "cc6123a8ffa3eadbfe10c03a9867b268903d6da5fc99340706b82bd1075994f8"
+    },
+    {
+      "path": "snapshot-indexes-final-unit.log",
+      "sha256": "c5a8f0b841f737769bab872dd2c9dca0b2ba8e4ddbe17d661b3ca0a2c7f04aa5"
+    },
+    {
+      "path": "snapshot-indexes-verification.json",
+      "sha256": "857276061ce4ed5c7e6ce6e115fde5232e8055537571622197e39d89281a4d20"
+    },
+    {
+      "path": "snapshot-verification.json",
+      "sha256": "1ff21005343367345cd33a87714582f27916c6afd057052f80364b69dfde3fc2"
+    },
+    {
+      "path": "three-db-snapshot-race.log",
+      "sha256": "0d822f0bf9030077aa8e8ee4258dc1d15b511473f3547efd19a3976aa4838adc"
+    }
+  ],
+  "resource_bounds": {
+    "exporter_workers": 256,
+    "exporter_queue": 4096,
+    "exporter_total": 4352,
+    "repository_snapshots": 128,
+    "collection_window_ms": 5,
+    "transaction_timeout_seconds": 2,
+    "baseline_exporter_workers": 2,
+    "baseline_exporter_total": 258
+  },
+  "race_repetitions": 10,
+  "race_suite_timeout_minutes": 10,
+  "schema_migration": "139_add_request_trace_snapshot_indexes",
+  "snapshot_indexes": [
+    "logs(source,id)",
+    "logs(source,user_id,id)"
+  ],
+  "native_acceptance": {
+    "run_id": 39181904005,
+    "source_revision": "734dc3d1ef36567a819636d8ee9049c4ba50013f",
+    "result": "PASS",
+    "summary_rows": 448532,
+    "drivers": [
+      {
+        "driver": "sqlite",
+        "rows": 149480,
+        "p95_overhead_percent": [
+          2.4380003570109388,
+          1.2617906873638063,
+          1.4333892508725965,
+          1.880816090777726
+        ],
+        "spans": 1794480,
+        "query_p95_ms": [
+          17.878421,
+          21.334639,
+          33.198997,
+          39.40095
+        ]
+      },
+      {
+        "driver": "mysql",
+        "rows": 149555,
+        "p95_overhead_percent": [
+          2.8307882509559734,
+          1.1244702046382393,
+          1.6782307547449804,
+          1.9115708244961116
+        ],
+        "spans": 1795380,
+        "query_p95_ms": [
+          11.26573,
+          9.620446,
+          7.868636,
+          9.748697
+        ]
+      },
+      {
+        "driver": "postgres",
+        "rows": 149497,
+        "p95_overhead_percent": [
+          2.070286356425588,
+          2.4737234523902973,
+          2.0014901504329607,
+          3.338081409316107
+        ],
+        "spans": 1794684,
+        "query_p95_ms": [
+          7.927016,
+          15.543141,
+          5.27698,
+          5.359632
+        ]
+      }
+    ],
+    "app_cpu": 4,
+    "app_memory_bytes": 1073741824,
+    "mysql_cpu": 1,
+    "mysql_memory_bytes": 1073741824,
+    "postgres_cpu": 1,
+    "postgres_memory_bytes": 536870912,
+    "race_repetitions_per_driver": 10,
+    "app_and_database_oom": false,
+    "synthetic_pause_probe": "PASS separately after formal/race; not SQL admission by itself"
+  },
+  "pr_checks": {
+    "passed": 40,
+    "skipped": [
+      "Affected E2E / Playwright admin smoke"
+    ],
+    "failed": 0,
+    "pending": 0
+  }
+}

@@ -45,6 +45,10 @@ func TestRequestTimingControlledOverhead(t *testing.T) {
 }
 
 func runRequestTimingOverhead(t *testing.T, sqlStack *timingSQLStack, driver string) {
+	runRequestTimingOverheadDuration(t, sqlStack, driver, 30*time.Second)
+}
+
+func runRequestTimingOverheadDuration(t *testing.T, sqlStack *timingSQLStack, driver string, duration time.Duration) {
 	var bytesExported, receivedSpans atomic.Int64
 	collector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		payload, err := io.ReadAll(r.Body)
@@ -85,6 +89,8 @@ func runRequestTimingOverhead(t *testing.T, sqlStack *timingSQLStack, driver str
 		Failed                   int64   `json:"failed"`
 		PersistenceP95MS         float64 `json:"persistence_p95_ms"`
 		ExportRPCP95MS           float64 `json:"export_rpc_p95_ms"`
+		QueueWaitP95MS           float64 `json:"queue_wait_p95_ms"`
+		SummaryBacklogPeak       int64   `json:"summary_backlog_peak"`
 		QueryP95MS               float64 `json:"query_p95_ms"`
 		Queries                  int     `json:"queries"`
 		QueryFailures            int64   `json:"query_failures"`
@@ -99,7 +105,6 @@ func runRequestTimingOverhead(t *testing.T, sqlStack *timingSQLStack, driver str
 		require.GreaterOrEqual(t, concurrency, 1)
 		require.LessOrEqual(t, concurrency, 64)
 	}
-	const duration = 30 * time.Second
 	previous := otel.GetTracerProvider()
 	defer otel.SetTracerProvider(previous)
 	spans := &perfSpanCounter{}
@@ -127,7 +132,8 @@ func runRequestTimingOverhead(t *testing.T, sqlStack *timingSQLStack, driver str
 			server := &HTTPServer{}
 			var summaries *requesttrace.Exporter
 			var commitMu sync.Mutex
-			var commitDurations, rpcDurations []float64
+			var commitDurations, rpcDurations, queueDurations []float64
+			var backlogPeak atomic.Int64
 			if enabled {
 				sink := func(context.Context, *requesttrace.TimingSummary) error { return nil }
 				if sqlStack != nil {
@@ -137,13 +143,27 @@ func runRequestTimingOverhead(t *testing.T, sqlStack *timingSQLStack, driver str
 						if err == nil {
 							commitMu.Lock()
 							rpcDurations = append(rpcDurations, float64(time.Since(started))/1e6)
+							if summary.HandlerFinishedAtMS != nil {
+								queueDurations = append(queueDurations, float64(max(0, started.UnixMilli()-*summary.HandlerFinishedAtMS)))
+							}
 							commitDurations = append(commitDurations, float64(time.Now().UnixMilli()-summary.StartedAtMS))
 							commitMu.Unlock()
 						}
 						return err
 					}
 				}
-				summaries = requesttrace.NewExporter(sink, nil)
+				summaries = requesttrace.NewExporter(sink, func(result string) {
+					if result != "queued" {
+						return
+					}
+					stats := summaries.Stats()
+					backlog := stats.Accepted - stats.Exported - stats.Failed
+					for peak := backlogPeak.Load(); backlog > peak; peak = backlogPeak.Load() {
+						if backlogPeak.CompareAndSwap(peak, backlog) {
+							break
+						}
+					}
+				})
 				server.SetTimingExporter(summaries)
 			}
 			handler := server.wrapRoute("/v1/perf", executionRoute("/v1/perf", "legacy"), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -267,6 +287,8 @@ func runRequestTimingOverhead(t *testing.T, sqlStack *timingSQLStack, driver str
 				commitMu.Lock()
 				entry.PersistenceP95MS = timingP95(commitDurations)
 				entry.ExportRPCP95MS = timingP95(rpcDurations)
+				entry.QueueWaitP95MS = timingP95(queueDurations)
+				entry.SummaryBacklogPeak = backlogPeak.Load()
 				commitMu.Unlock()
 				entry.DrainMS = float64(time.Since(drainStart)) / 1e6
 				var drained runtime.MemStats

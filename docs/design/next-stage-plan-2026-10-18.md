@@ -27,6 +27,10 @@
 - **真实 Log RPC/SQL 隔离容量**：三库 8 并发四组长测均 PASS，55,629 条摘要全部落库、丢弃/失败 0；64 并发约 1,200 请求/秒时三库队列饱和，丢弃 64.19%–83.96%，容量门禁 FAIL。失败回滚、背压、恢复、丢失确认重试去重已验证；不把低档通过当作生产整体容量准入。
 - 实现、CI 补修与证据见 [PR #24](https://github.com/mengbin92/micro-one-api/pull/24) 和 [独立验收记录](../runbooks/build-timing-sql-acceptance-2026-10-18.md)。本轮未合入发布分支、未部署或改动原观察窗口；生产 WS/TTL、供应商费用与 executor 条件继续独立办理。
 
+## SQL 容量改进续验（2026-10-19）
+
+分组事务、PostgreSQL claim 热路径与分页补修已提交到 [PR #25](https://github.com/mengbin92/micro-one-api/pull/25)。原生三库 64 并发四组完整门禁及十轮 race 已通过，448,532 条摘要完整落库、各组 P95 增量低于 5%；新增 139 号快照索引迁移和固定 4,096 项缓冲预算。结论与历史失败见 [改进记录](../runbooks/request-timing-capacity-improvement-2026-10-18.md)。本轮只合入 develop；不改动由另一台电脑继续的生产 48h 观察窗口，也不据此发布、部署或扩面。
+
 ## 运行验收范围
 
 ### 计时容量

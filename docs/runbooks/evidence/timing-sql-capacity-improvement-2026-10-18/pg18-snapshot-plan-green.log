@@ -1,0 +1,36 @@
+=== RUN   TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort
+    request_trace_query_test.go:139: snapshot_plan=[
+          {
+            "Plan": {
+              "Node Type": "Limit",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Startup Cost": 0.28,
+              "Total Cost": 37.21,
+              "Plan Rows": 205,
+              "Plan Width": 8,
+              "Disabled": false,
+              "Plans": [
+                {
+                  "Node Type": "Index Scan",
+                  "Parent Relationship": "Outer",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Scan Direction": "Backward",
+                  "Index Name": "logs_pkey",
+                  "Relation Name": "logs",
+                  "Alias": "logs",
+                  "Startup Cost": 0.28,
+                  "Total Cost": 369.24,
+                  "Plan Rows": 2048,
+                  "Plan Width": 8,
+                  "Disabled": false,
+                  "Filter": "((source = $1) AND (user_id = $2))"
+                }
+              ]
+            }
+          }
+        ]
+--- PASS: TestRequestTracePostgresSnapshotGenericPlanNeedsNoSort (0.60s)
+PASS
+ok  	micro-one-api/app/log/internal/data	1.261s
