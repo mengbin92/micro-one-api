@@ -33,6 +33,9 @@ class E2EIdentityTest(unittest.TestCase):
                 "-f", str(ROOT / "deployments/docker-compose/docker-compose.yml"),
                 "-f", str(ROOT / "scripts/benchmark/q3-compose.yml"), "config", "--format", "json"]))
             services = config["services"]
+            outbox = next(v for v in services["relay-gateway"]["volumes"]
+                          if v["target"] == "/var/lib/relay-outbox")
+            self.assertEqual(outbox["type"], "volume", "Docker-owned outbox files must not block worktree cleanup")
             relay = services["relay-gateway"]["environment"]["SERVICE_IDENTITY_TOKEN"]
             self.assertTrue(relay, "Q3 relay has no identity; execution claims return 503")
             for owner in ("channel-service", "identity-service", "billing-service", "log-service", "config-service"):

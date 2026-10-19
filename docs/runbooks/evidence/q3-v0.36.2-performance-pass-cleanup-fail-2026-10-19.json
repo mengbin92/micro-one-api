@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "gate": {
+    "minimum_runs_per_version": 3,
+    "max_regression_percent": 20.0,
+    "max_error_rate": 0.01,
+    "description": "Engineering admission gate; it is not a statistical significance claim."
+  },
+  "baseline_files": [
+    "/home/runner/work/_temp/q3-results/summary-baseline-1.json",
+    "/home/runner/work/_temp/q3-results/summary-baseline-2.json",
+    "/home/runner/work/_temp/q3-results/summary-baseline-3.json"
+  ],
+  "candidate_files": [
+    "/home/runner/work/_temp/q3-results/summary-candidate-1.json",
+    "/home/runner/work/_temp/q3-results/summary-candidate-2.json",
+    "/home/runner/work/_temp/q3-results/summary-candidate-3.json"
+  ],
+  "baseline_samples": {
+    "throughput_req_per_second": [
+      19.306193057952203,
+      19.306214921814124,
+      19.306226087107262
+    ],
+    "http_error_rate": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "aggregate_p95_ms": [
+      47.8975555,
+      47.2044982,
+      47.3605892
+    ],
+    "chat_p95_ms": [
+      48.9740622,
+      48.3643792,
+      48.5447126
+    ],
+    "models_p95_ms": [
+      5.7809154,
+      5.7323256,
+      5.7525471999999995
+    ],
+    "healthz_p95_ms": [
+      0.48325539999999995,
+      0.4758832,
+      0.4770182
+    ],
+    "dropped_iterations": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "candidate_samples": {
+    "throughput_req_per_second": [
+      19.306214010803807,
+      19.306227764735933,
+      19.306211489980384
+    ],
+    "http_error_rate": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "aggregate_p95_ms": [
+      47.373706399999996,
+      47.165897599999994,
+      47.0800961
+    ],
+    "chat_p95_ms": [
+      48.4166954,
+      48.182797199999996,
+      48.0555164
+    ],
+    "models_p95_ms": [
+      5.712606,
+      5.7593832,
+      5.775536799999999
+    ],
+    "healthz_p95_ms": [
+      0.47970559999999995,
+      0.4746024,
+      0.475037
+    ],
+    "dropped_iterations": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "checks": {
+    "throughput_req_per_second": {
+      "baseline_median": 19.306214921814124,
+      "candidate_median": 19.306214010803807,
+      "required": ">= 15.445",
+      "passed": true
+    },
+    "http_error_rate": {
+      "baseline_median": 0.0,
+      "candidate_median": 0.0,
+      "required": "<= 0.01",
+      "passed": true
+    },
+    "aggregate_p95_ms": {
+      "baseline_median": 47.3605892,
+      "candidate_median": 47.165897599999994,
+      "required": "<= 56.8327",
+      "passed": true
+    },
+    "chat_p95_ms": {
+      "baseline_median": 48.5447126,
+      "candidate_median": 48.182797199999996,
+      "required": "<= 58.2537",
+      "passed": true
+    },
+    "models_p95_ms": {
+      "baseline_median": 5.7525471999999995,
+      "candidate_median": 5.7593832,
+      "required": "<= 6.90306",
+      "passed": true
+    },
+    "healthz_p95_ms": {
+      "baseline_median": 0.4770182,
+      "candidate_median": 0.475037,
+      "required": "<= 0.572422",
+      "passed": true
+    },
+    "dropped_iterations": {
+      "baseline_median": 0.0,
+      "candidate_median": 0.0,
+      "required": "== 0",
+      "passed": true
+    }
+  },
+  "passed": true,
+  "run_url": "https://github.com/mengbin92/micro-one-api/actions/runs/39219348260",
+  "baseline_ref": "v0.36.1",
+  "candidate_sha": "bc898edada7f915d677b8559b74e54d9c56c967d",
+  "workflow_conclusion": "failure",
+  "failure_stage": "worktree cleanup after all seven performance checks passed",
+  "failure_exit_code": 255
+}

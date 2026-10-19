@@ -30,7 +30,7 @@ v0.36.2 是 v0.36.1 之后的 **PATCH 修复版本**：改进计时摘要的持�
 
 **修复**：两侧隔离环境均复用既有身份生成器和校验器，生成各服务独立 outbound token 与接收方信任表；临时凭据保持私有权限并随实验清理。新增直接执行真实环境生成函数并解析 Compose 配置的快速回归，Q3 在完整对照前先运行该检查。没有放宽业务授权。
 
-**影响服务**：Q3 测试脚本与 workflow；生产服务身份、配置和权限不变。完整基准仍保留每侧三轮、原负载与原比较阈值。按既有发版约定将默认基线从 v0.33.1 更新为最近已发布的 v0.36.1；旧基线跨版本性能 FAIL 与原始样本保留，不视为已优化，详见 [Q3 记录](../runbooks/q3-v0.36.2-2026-10-19.md)。
+**影响服务**：Q3 测试脚本与 workflow；生产服务身份、配置和权限不变。Q3 的 outbox 改为随测试清理的命名卷，避免容器创建的私有绑定目录阻止临时 Git worktree 删除；生产挂载不变。完整基准仍保留每侧三轮、原负载与原比较阈值。按既有发版约定将默认基线从 v0.33.1 更新为最近已发布的 v0.36.1；旧基线跨版本性能 FAIL 与原始样本保留，不视为已优化，详见 [Q3 记录](../runbooks/q3-v0.36.2-2026-10-19.md)。
 
 ### 4. 双架构镜像改用原生构建与独立缓存
 
@@ -62,6 +62,7 @@ v0.36.2 是 v0.36.1 之后的 **PATCH 修复版本**：改进计时摘要的持�
 - 原生 Linux/amd64 三库 SQL 容量门禁通过：各库四组、64 并发、每模式 30 秒，合计 448,532 条摘要，5,384,544 个完成/接收 OTLP span；摘要失败/丢弃、HTTP/查询错误均为 0，各组 HTTP P95 增量不超过 3.34%。三库各十轮 race 与独立暂停探针通过。源版本与完整资源边界见[最终验收](../runbooks/request-timing-capacity-improvement-2026-10-18.md#最终通过结果2026-10-19)。
 - Q3 身份回归先在原环境生成器上失败，修复后全部三项 E2E/Lite/Q3 启动身份回归通过；服务身份、gRPC allowlist 和 Channel 执行 claim 聚焦测试通过。Bash 语法、提交正文与差异格式检查通过。
 - Q3 修复 503 后的 [v0.33.1 完整对照](https://github.com/mengbin92/micro-one-api/actions/runs/39211342704) 两侧零 HTTP 错误、零丢弃，但 models/chat/aggregate 延迟比较失败，保留为 FAIL。按既有约定以最近发布的 v0.36.1 检验本版增量；每侧三轮原剖面与原比较阈值不变。源码边界、旧版失败报告和正式门禁说明见 [Q3 记录](../runbooks/q3-v0.36.2-2026-10-19.md)。打标签以前须确认正式 Q3、CI 与安全检查全部通过。
+- [v0.36.1 正式对照](https://github.com/mengbin92/micro-one-api/actions/runs/39219348260) 七项性能门禁全部通过，chat P95 -0.75%、models P95 +0.12%，HTTP 错误与丢弃均为 0；该运行因收尾 worktree 权限退出 255，整体仍记 FAIL。Q3 overlay 改用 outbox 命名卷后需确认完整 workflow 包括清理阶段通过。
 - 发布前常规门禁：[CI](https://github.com/mengbin92/micro-one-api/actions/runs/39212165288)、[安全](https://github.com/mengbin92/micro-one-api/actions/runs/39212165320)；发布流水线继续执行完整 Release E2E、九服务双架构构建与清单验证。
 - 生产 48 小时观察、WS 自然样本、存储 TTL、最大输入内存、供应商账期与 executor 扩面继续遵守独立门禁。
 
@@ -91,4 +92,5 @@ v0.36.2 是 v0.36.1 之后的 **PATCH 修复版本**：改进计时摘要的持�
 - `docs(timing): record native SQL capacity and resource budgets`
 - `fix(benchmark): provision Q3 service identities before startup`
 - `fix(benchmark): compare Q3 with the latest published release`
+- `fix(benchmark): isolate Q3 outbox state from temporary worktrees`
 - `docs(release): v0.36.2`
