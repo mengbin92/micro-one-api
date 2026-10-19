@@ -15,7 +15,7 @@ for subscription windows, account pools, rate limits and usage management.
 You provide your own authorized upstream accounts and API keys.
 
 > Latest release: [v0.36.2](./docs/releases/release-v0.36.2.md) — timing SQL capacity,
-> pagination fixes and Q3 startup recovery.
+> pagination fixes and Q3 benchmark recovery.
 > [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.36.2)
 
 ## Features
@@ -143,7 +143,7 @@ and [repository development rules](./AGENTS.md). Both are currently maintained i
 ## Releases and upgrades
 
 - [v0.36.2](./docs/releases/release-v0.36.2.md): grouped timing writes, pagination
-  fixes, Q3 startup recovery and native builds. Adds Log index migration 139;
+  fixes, Q3 benchmark recovery and native builds. Adds Log index migration 139;
   upgrade Log before Relay and preserve the production observation window.
 - [v0.36.1](./docs/releases/release-v0.36.1.md): ordinary WS sessions, Lite startup
   and timing-alert fixes, with native performance and empty-volume recovery checks.

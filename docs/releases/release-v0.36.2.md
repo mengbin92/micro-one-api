@@ -1,4 +1,4 @@
-# Micro-One-API v0.36.2 发布：计时 SQL 容量改进、分页修复与 Q3 启动恢复
+# Micro-One-API v0.36.2 发布：计时 SQL 容量改进、分页修复与 Q3 基准恢复
 
 > 2026-10-19 · 上一版：[v0.36.1](./release-v0.36.1.md)（2026-10-18）· [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.36.2)
 
@@ -61,9 +61,10 @@ v0.36.2 是 v0.36.1 之后的 **PATCH 修复版本**：改进计时摘要的持�
 
 - 原生 Linux/amd64 三库 SQL 容量门禁通过：各库四组、64 并发、每模式 30 秒，合计 448,532 条摘要，5,384,544 个完成/接收 OTLP span；摘要失败/丢弃、HTTP/查询错误均为 0，各组 HTTP P95 增量不超过 3.34%。三库各十轮 race 与独立暂停探针通过。源版本与完整资源边界见[最终验收](../runbooks/request-timing-capacity-improvement-2026-10-18.md#最终通过结果2026-10-19)。
 - Q3 身份回归先在原环境生成器上失败，修复后全部三项 E2E/Lite/Q3 启动身份回归通过；服务身份、gRPC allowlist 和 Channel 执行 claim 聚焦测试通过。Bash 语法、提交正文与差异格式检查通过。
-- Q3 修复 503 后的 [v0.33.1 完整对照](https://github.com/mengbin92/micro-one-api/actions/runs/39211342704) 两侧零 HTTP 错误、零丢弃，但 models/chat/aggregate 延迟比较失败，保留为 FAIL。按既有约定以最近发布的 v0.36.1 检验本版增量；每侧三轮原剖面与原比较阈值不变。源码边界、旧版失败报告和正式门禁说明见 [Q3 记录](../runbooks/q3-v0.36.2-2026-10-19.md)。打标签以前须确认正式 Q3、CI 与安全检查全部通过。
-- [v0.36.1 正式对照](https://github.com/mengbin92/micro-one-api/actions/runs/39219348260) 七项性能门禁全部通过，chat P95 -0.75%、models P95 +0.12%，HTTP 错误与丢弃均为 0；该运行因收尾 worktree 权限退出 255，整体仍记 FAIL。Q3 overlay 改用 outbox 命名卷后需确认完整 workflow 包括清理阶段通过。
-- 发布前常规门禁：[CI](https://github.com/mengbin92/micro-one-api/actions/runs/39212165288)、[安全](https://github.com/mengbin92/micro-one-api/actions/runs/39212165320)；发布流水线继续执行完整 Release E2E、九服务双架构构建与清单验证。
+- Q3 修复 503 后的 [v0.33.1 完整对照](https://github.com/mengbin92/micro-one-api/actions/runs/39211342704) 两侧零 HTTP 错误、零丢弃，但 models/chat/aggregate 延迟比较失败，保留为 FAIL。按既有约定以最近发布的 v0.36.1 检验本版增量；每侧三轮原剖面与原比较阈值不变。源码边界、旧版失败报告和正式门禁说明见 [Q3 记录](../runbooks/q3-v0.36.2-2026-10-19.md)。正式门禁最终结果见下方完整 PASS 记录。
+- [v0.36.1 正式对照](https://github.com/mengbin92/micro-one-api/actions/runs/39219348260) 七项性能门禁全部通过，chat P95 -0.75%、models P95 +0.12%，HTTP 错误与丢弃均为 0；该运行因收尾 worktree 权限退出 255，整体仍记 FAIL。Q3 overlay 改用 outbox 命名卷后，最终运行已验证包括清理阶段在内的完整 workflow 成功。
+- 最终 [Q3 完整 workflow](https://github.com/mengbin92/micro-one-api/actions/runs/39227505045) **SUCCESS**：基线 v0.36.1，两侧各三轮 8 分钟，七项性能门禁、worktree 清理和证据上传全部通过；chat P95 -2.48%、models P95 -2.87%，HTTP 错误/丢弃为 0。全部样本与源摘要见 [Q3 最终记录](../runbooks/q3-v0.36.2-2026-10-19.md#6-最终完整-workflow-pass)。验证后只补发布文档和证据，业务代码与基准配置不变。
+- 发布前常规门禁：[CI](https://github.com/mengbin92/micro-one-api/actions/runs/39227508088)、[安全](https://github.com/mengbin92/micro-one-api/actions/runs/39227508072)；发布流水线继续执行完整 Release E2E、九服务双架构构建与清单验证。
 - 生产 48 小时观察、WS 自然样本、存储 TTL、最大输入内存、供应商账期与 executor 扩面继续遵守独立门禁。
 
 ## 完整变更日志
@@ -91,6 +92,7 @@ v0.36.2 是 v0.36.1 之后的 **PATCH 修复版本**：改进计时摘要的持�
 - `perf(timing): buffer brief durable-storage pauses within a fixed budget`
 - `docs(timing): record native SQL capacity and resource budgets`
 - `fix(benchmark): provision Q3 service identities before startup`
+- `docs(release): v0.36.2`
 - `fix(benchmark): compare Q3 with the latest published release`
 - `fix(benchmark): isolate Q3 outbox state from temporary worktrees`
-- `docs(release): v0.36.2`
+- `docs(release): record verified v0.36.2 gates`
