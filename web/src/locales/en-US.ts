@@ -6,6 +6,20 @@ import { EN_US_LEGAL_MESSAGES } from '@/locales/en-US.legal';
 // Product terminology overrides. Keep these concise and consistent across
 // user and admin surfaces; the generated catalog provides the long-tail copy.
 export const EN_US_MESSAGES: Record<string, string> = {
+  '账期开始': 'Period start', '账期结束（不含）': 'Period end (exclusive)', '账期时区': 'Period timezone',
+  '币种 / 单位': 'Currency / unit', '报告完整性': 'Report completeness', '分页完整性': 'Pagination completeness',
+  '供应商水位': 'Vendor watermark', '本地水位': 'Local watermark', '覆盖证据': 'Coverage evidence',
+  '后续动作': 'Next action', '执行时间未知': 'Unknown execution time', '未映射执行': 'Unmapped attempts',
+  '用户预留': 'User reservations', '绝对容差': 'Absolute tolerance', '相对容差': 'Relative tolerance',
+  '舍入证据': 'Rounding evidence', '更正差额': 'Correction delta', '完整': 'Complete', '不完整': 'Incomplete',
+  '来源映射': 'Source mappings', '生效范围': 'Effective period', '映射版本': 'Mapping revision', '映射证据': 'Mapping evidence',
+  '未提供来源映射，不能确认生产来源覆盖。': 'No source mappings provided. Production source coverage is unconfirmed.',
+  '比较与归因': 'Comparisons and attribution', '用量状态': 'Usage status', '金额状态': 'Amount status',
+  '供应商金额': 'Vendor amount', '本地估价': 'Local estimate', '调用用途': 'Request purposes', '归因证据': 'Attribution evidence',
+  '未提供差异归因证据。': 'No difference attribution evidence provided.',
+  '查看证据': 'View evidence', '核验状态': 'Verification status', '核验范围': 'Verification scope',
+  '内部调用': 'Internal calls', '不可比较': 'Not comparable', '待验证': 'Unconfirmed', '差额': 'Difference',
+  '状态由服务端判定；证据引用不代表核验通过，账期核验不证明逐请求实扣。': 'The server determines status. Evidence references do not establish verification, and period verification does not prove per-request charges.',
   '请刷新价格配置后再继续编辑。': 'Refresh the pricing configuration before editing again.',
   ...GENERATED_MESSAGES,
   ...EN_US_LEGAL_MESSAGES,
