@@ -1,0 +1,65 @@
+=== RUN   TestMaximumTimingExporterMemory
+    timing_maximum_test.go:126: {
+          "budget_bytes": 805306368,
+          "points": [
+            {
+              "VmHWM:": 22061056,
+              "VmRSS:": 22061056,
+              "heap_alloc": 1223032,
+              "memory.current": 8155136,
+              "memory.max": 1073741824,
+              "memory.peak": 8155136
+            },
+            {
+              "VmHWM:": 458252288,
+              "VmRSS:": 458252288,
+              "heap_alloc": 418552032,
+              "memory.current": 444407808,
+              "memory.max": 1073741824,
+              "memory.peak": 444407808
+            },
+            {
+              "VmHWM:": 718499840,
+              "VmRSS:": 713375744,
+              "heap_alloc": 1307568,
+              "memory.current": 699756544,
+              "memory.max": 1073741824,
+              "memory.peak": 705736704
+            },
+            {
+              "VmHWM:": 718499840,
+              "VmRSS:": 502771712,
+              "heap_alloc": 428990880,
+              "memory.current": 488624128,
+              "memory.max": 1073741824,
+              "memory.peak": 705736704
+            },
+            {
+              "VmHWM:": 747491328,
+              "VmRSS:": 728051712,
+              "heap_alloc": 1380592,
+              "memory.current": 714506240,
+              "memory.max": 1073741824,
+              "memory.peak": 734978048
+            },
+            {
+              "VmHWM:": 747491328,
+              "VmRSS:": 495251456,
+              "heap_alloc": 428420120,
+              "memory.current": 481411072,
+              "memory.max": 1073741824,
+              "memory.peak": 734978048
+            },
+            {
+              "VmHWM:": 776024064,
+              "VmRSS:": 768143360,
+              "heap_alloc": 1416760,
+              "memory.current": 754192384,
+              "memory.max": 1073741824,
+              "memory.peak": 763600896
+            }
+          ],
+          "scope": "maximum summary exporter; background context; isolated admission only"
+        }
+--- PASS: TestMaximumTimingExporterMemory (3.90s)
+PASS

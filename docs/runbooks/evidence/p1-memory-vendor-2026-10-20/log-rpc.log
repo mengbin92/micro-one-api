@@ -1,0 +1,43 @@
+=== RUN   TestRequestTimingMaximumRPCBatch
+=== RUN   TestRequestTimingMaximumRPCBatch/sqlite
+    request_timing_sql_test.go:113: maximum batch RPC including commit/replay: 924.663754ms
+    request_timing_sql_test.go:113: maximum batch RPC including commit/replay: 71.559343ms
+    request_timing_sql_test.go:118: 
+        	Error Trace:	/work/internal/server/request_timing_sql_test.go:118
+        	Error:      	"[]" should have 20 item(s), but has 0
+        	Test:       	TestRequestTimingMaximumRPCBatch/sqlite
+=== RUN   TestRequestTimingMaximumRPCBatch/mysql
+    request_timing_sql_test.go:111: 
+        	Error Trace:	/work/internal/server/request_timing_sql_test.go:111
+        	Error:      	Received unexpected error:
+        	            	rpc error: code = DeadlineExceeded desc = context deadline exceeded; context deadline exceeded; context deadline exceeded
+        	Test:       	TestRequestTimingMaximumRPCBatch/mysql
+=== RUN   TestRequestTimingMaximumRPCBatch/postgres
+    request_timing_sql_test.go:113: maximum batch RPC including commit/replay: 1.683584029s
+    request_timing_sql_test.go:113: maximum batch RPC including commit/replay: 58.733231ms
+    request_timing_sql_test.go:118: 
+        	Error Trace:	/work/internal/server/request_timing_sql_test.go:118
+        	Error:      	"[]" should have 20 item(s), but has 0
+        	Test:       	TestRequestTimingMaximumRPCBatch/postgres
+=== NAME  TestRequestTimingMaximumRPCBatch
+    request_timing_sql_test.go:130: {
+          "budget_bytes": 536870912,
+          "point": {
+            "VmHWM:": 961814528,
+            "VmRSS:": 956186624,
+            "heap_alloc": 224215280,
+            "memory.current": 925655040,
+            "memory.max": 1073741824,
+            "memory.peak": 937963520
+          }
+        }
+    request_timing_sql_test.go:130: 
+        	Error Trace:	/work/domain/requesttrace/testutil/memory.go:52
+        	            				/work/internal/server/request_timing_sql_test.go:130
+        	Error:      	"961814528" is not less than or equal to "536870912"
+        	Test:       	TestRequestTimingMaximumRPCBatch
+--- FAIL: TestRequestTimingMaximumRPCBatch (38.48s)
+    --- FAIL: TestRequestTimingMaximumRPCBatch/sqlite (1.96s)
+    --- FAIL: TestRequestTimingMaximumRPCBatch/mysql (33.57s)
+    --- FAIL: TestRequestTimingMaximumRPCBatch/postgres (2.94s)
+FAIL

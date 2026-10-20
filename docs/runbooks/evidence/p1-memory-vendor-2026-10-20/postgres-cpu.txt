@@ -1,0 +1,274 @@
+File: data.test
+Build ID: 1ecc64e53e7fd1ebf5427aa317bef4e279e66039
+Type: cpu
+Time: 2026-10-20 08:39:00 UTC
+Duration: 2.73s, Total samples = 1.30s (47.56%)
+Showing nodes accounting for 1.30s, 100% of 1.30s total
+      flat  flat%   sum%        cum   cum%
+     0.52s 40.00% 40.00%      0.52s 40.00%  runtime.memmove
+     0.10s  7.69% 47.69%      0.10s  7.69%  _html_escape
+     0.10s  7.69% 55.38%      0.10s  7.69%  internal/runtime/syscall/linux.Syscall6
+     0.08s  6.15% 61.54%      0.08s  6.15%  runtime.memclrNoHeapPointers
+     0.05s  3.85% 65.38%      0.11s  8.46%  runtime.scanObject
+     0.04s  3.08% 68.46%      0.04s  3.08%  runtime.futex
+     0.03s  2.31% 70.77%      0.03s  2.31%  runtime.osyield
+     0.02s  1.54% 72.31%      0.02s  1.54%  runtime.arenaIndex (inline)
+     0.02s  1.54% 73.85%      0.02s  1.54%  runtime.tgkill
+     0.01s  0.77% 74.62%      0.01s  0.77%  _quote
+     0.01s  0.77% 75.38%      0.01s  0.77%  database/sql.driverArgsConnLocked
+     0.01s  0.77% 76.15%      0.01s  0.77%  github.com/bytedance/sonic/internal/jit.(*Backend).New (inline)
+     0.01s  0.77% 76.92%      0.32s 24.62%  github.com/jackc/pgx/v5/pgtype.(*Map).Encode
+     0.01s  0.77% 77.69%      0.02s  1.54%  github.com/jackc/pgx/v5/pgtype.(*Map).planEncodeDepth
+     0.01s  0.77% 78.46%      0.01s  0.77%  github.com/twitchyliquid64/golang-asm/obj/x86.span6
+     0.01s  0.77% 79.23%      0.01s  0.77%  gorm.io/gorm/clause.Values.Build
+     0.01s  0.77% 80.00%      0.01s  0.77%  indexbytebody
+     0.01s  0.77% 80.77%      0.01s  0.77%  internal/runtime/maps.(*ctrlGroup).setEmpty (inline)
+     0.01s  0.77% 81.54%      0.01s  0.77%  internal/runtime/maps.(*groupReference).key (inline)
+     0.01s  0.77% 82.31%      0.01s  0.77%  internal/runtime/maps.ctrlGroup.matchH2 (inline)
+     0.01s  0.77% 83.08%      0.01s  0.77%  internal/runtime/maps.memHash64AES
+     0.01s  0.77% 83.85%      0.01s  0.77%  micro-one-api/platform/database/migrate.splitStatements
+     0.01s  0.77% 84.62%      0.01s  0.77%  runtime.(*lfstack).pop
+     0.01s  0.77% 85.38%      0.01s  0.77%  runtime.(*mheap).tryAllocMSpan (inline)
+     0.01s  0.77% 86.15%      0.02s  1.54%  runtime.(*unwinder).next
+     0.01s  0.77% 86.92%      0.01s  0.77%  runtime.exitsyscall
+     0.01s  0.77% 87.69%      0.02s  1.54%  runtime.findObject
+     0.01s  0.77% 88.46%      0.01s  0.77%  runtime.gcFlushBgCredit
+     0.01s  0.77% 89.23%      0.01s  0.77%  runtime.getpid
+     0.01s  0.77% 90.00%      0.02s  1.54%  runtime.heapArenaOf (inline)
+     0.01s  0.77% 90.77%      0.01s  0.77%  runtime.heapSetTypeSmallHeader (inline)
+     0.01s  0.77% 91.54%      0.08s  6.15%  runtime.mallocgc
+     0.01s  0.77% 92.31%      0.01s  0.77%  runtime.mallocgcSmallNoScanSC6
+     0.01s  0.77% 93.08%      0.04s  3.08%  runtime.mallocgcSmallNoscan
+     0.01s  0.77% 93.85%      0.01s  0.77%  runtime.procyieldAsm
+     0.01s  0.77% 94.62%      0.01s  0.77%  runtime.runqgrab
+     0.01s  0.77% 95.38%      0.01s  0.77%  runtime.spanClass.sizeclass (inline)
+     0.01s  0.77% 96.15%      0.01s  0.77%  runtime.step
+     0.01s  0.77% 96.92%      0.04s  3.08%  runtime.tryDeferToSpanScan
+     0.01s  0.77% 97.69%      0.02s  1.54%  runtime.typePointers.next
+     0.01s  0.77% 98.46%      0.01s  0.77%  runtime.typePointers.nextFast (inline)
+     0.01s  0.77% 99.23%      0.01s  0.77%  sync.(*Pool).Put
+     0.01s  0.77%   100%      0.02s  1.54%  syscall.Read (inline)
+         0     0%   100%      0.10s  7.69%  _html_escape_go
+         0     0%   100%      0.01s  0.77%  bytes.IndexByte (inline)
+         0     0%   100%      0.01s  0.77%  database/sql.(*DB).Ping
+         0     0%   100%      0.01s  0.77%  database/sql.(*DB).PingContext
+         0     0%   100%      0.19s 14.62%  database/sql.(*DB).execDC
+         0     0%   100%      0.19s 14.62%  database/sql.(*DB).execDC.func2
+         0     0%   100%      0.01s  0.77%  database/sql.(*DB).pingDC
+         0     0%   100%      0.01s  0.77%  database/sql.(*DB).pingDC.func1
+         0     0%   100%      0.51s 39.23%  database/sql.(*DB).queryDC
+         0     0%   100%      0.51s 39.23%  database/sql.(*DB).queryDC.func1
+         0     0%   100%      0.19s 14.62%  database/sql.(*Tx).ExecContext
+         0     0%   100%      0.51s 39.23%  database/sql.(*Tx).QueryContext
+         0     0%   100%      0.18s 13.85%  database/sql.ctxDriverExec
+         0     0%   100%      0.51s 39.23%  database/sql.ctxDriverQuery
+         0     0%   100%      0.71s 54.62%  database/sql.withLock
+         0     0%   100%      0.02s  1.54%  encode_*requesttrace.TimingSummary
+         0     0%   100%      0.01s  0.77%  encode_requesttrace.TimingAttempt
+         0     0%   100%      0.01s  0.77%  fmt.(*pp).free
+         0     0%   100%      0.01s  0.77%  fmt.Sprintf
+         0     0%   100%      0.17s 13.08%  github.com/bytedance/sonic.frozenConfig.Marshal
+         0     0%   100%      0.02s  1.54%  github.com/bytedance/sonic/internal/caching.(*ProgramCache).Compute
+         0     0%   100%      0.17s 13.08%  github.com/bytedance/sonic/internal/encoder.Encode
+         0     0%   100%      0.10s  7.69%  github.com/bytedance/sonic/internal/encoder.HTMLEscape (inline)
+         0     0%   100%      0.10s  7.69%  github.com/bytedance/sonic/internal/encoder.encodeFinishWithPool
+         0     0%   100%      0.03s  2.31%  github.com/bytedance/sonic/internal/encoder.encodeInto
+         0     0%   100%      0.03s  2.31%  github.com/bytedance/sonic/internal/encoder.encodeIntoCheckRace (inline)
+         0     0%   100%      0.02s  1.54%  github.com/bytedance/sonic/internal/encoder.makeEncoderX86
+         0     0%   100%      0.10s  7.69%  github.com/bytedance/sonic/internal/encoder/alg.HtmlEscape
+         0     0%   100%      0.02s  1.54%  github.com/bytedance/sonic/internal/encoder/vars.FindOrCompile
+         0     0%   100%      0.02s  1.54%  github.com/bytedance/sonic/internal/encoder/x86.(*Assembler).Load (inline)
+         0     0%   100%      0.01s  0.77%  github.com/bytedance/sonic/internal/encoder/x86.(*Assembler).WritePtr
+         0     0%   100%      0.01s  0.77%  github.com/bytedance/sonic/internal/encoder/x86.(*Assembler)._asm_OP_save
+         0     0%   100%      0.01s  0.77%  github.com/bytedance/sonic/internal/encoder/x86.(*Assembler).compile
+         0     0%   100%      0.01s  0.77%  github.com/bytedance/sonic/internal/encoder/x86.(*Assembler).instr
+         0     0%   100%      0.01s  0.77%  github.com/bytedance/sonic/internal/encoder/x86.(*Assembler).instrs
+         0     0%   100%      0.01s  0.77%  github.com/bytedance/sonic/internal/encoder/x86.(*Assembler).save_state
+         0     0%   100%      0.03s  2.31%  github.com/bytedance/sonic/internal/encoder/x86.EncodeTypedPointer
+         0     0%   100%      0.01s  0.77%  github.com/bytedance/sonic/internal/jit.(*Backend).Assemble
+         0     0%   100%      0.01s  0.77%  github.com/bytedance/sonic/internal/jit.(*BaseAssembler).Emit
+         0     0%   100%      0.02s  1.54%  github.com/bytedance/sonic/internal/jit.(*BaseAssembler).Load
+         0     0%   100%      0.01s  0.77%  github.com/bytedance/sonic/internal/jit.(*BaseAssembler).assemble (inline)
+         0     0%   100%      0.02s  1.54%  github.com/bytedance/sonic/internal/jit.(*BaseAssembler).build
+         0     0%   100%      0.02s  1.54%  github.com/bytedance/sonic/internal/jit.(*BaseAssembler).build.func1
+         0     0%   100%      0.10s  7.69%  github.com/bytedance/sonic/internal/native.HTMLEscape
+         0     0%   100%      0.18s 13.85%  github.com/jackc/pgx/v5.(*Conn).Exec
+         0     0%   100%      0.01s  0.77%  github.com/jackc/pgx/v5.(*Conn).Ping (inline)
+         0     0%   100%      0.51s 39.23%  github.com/jackc/pgx/v5.(*Conn).Query
+         0     0%   100%      0.18s 13.85%  github.com/jackc/pgx/v5.(*Conn).exec
+         0     0%   100%      0.10s  7.69%  github.com/jackc/pgx/v5.(*Conn).execPrepared
+         0     0%   100%      0.08s  6.15%  github.com/jackc/pgx/v5.(*Conn).execSimpleProtocol
+         0     0%   100%      0.32s 24.62%  github.com/jackc/pgx/v5.(*ExtendedQueryBuilder).Build
+         0     0%   100%      0.32s 24.62%  github.com/jackc/pgx/v5.(*ExtendedQueryBuilder).appendParam
+         0     0%   100%      0.32s 24.62%  github.com/jackc/pgx/v5.(*ExtendedQueryBuilder).encodeExtendedParamValue
+         0     0%   100%      0.02s  1.54%  github.com/jackc/pgx/v5/pgconn.(*MultiResultReader).NextResult
+         0     0%   100%      0.07s  5.38%  github.com/jackc/pgx/v5/pgconn.(*PgConn).Exec
+         0     0%   100%      0.29s 22.31%  github.com/jackc/pgx/v5/pgconn.(*PgConn).ExecStatement
+         0     0%   100%      0.01s  0.77%  github.com/jackc/pgx/v5/pgconn.(*PgConn).Ping
+         0     0%   100%      0.01s  0.77%  github.com/jackc/pgx/v5/pgconn.(*PgConn).enterPotentialWriteReadDeadlock (inline)
+         0     0%   100%      0.04s  3.08%  github.com/jackc/pgx/v5/pgconn.(*PgConn).execExtendedSuffix
+         0     0%   100%      0.11s  8.46%  github.com/jackc/pgx/v5/pgconn.(*PgConn).flushWithPotentialWriteReadDeadlock
+         0     0%   100%      0.02s  1.54%  github.com/jackc/pgx/v5/pgconn.(*PgConn).peekMessage
+         0     0%   100%      0.01s  0.77%  github.com/jackc/pgx/v5/pgconn/internal/bgreader.(*BGReader).Read
+         0     0%   100%      0.25s 19.23%  github.com/jackc/pgx/v5/pgproto3.(*Bind).Encode
+         0     0%   100%      0.01s  0.77%  github.com/jackc/pgx/v5/pgproto3.(*CommandComplete).Decode
+         0     0%   100%      0.10s  7.69%  github.com/jackc/pgx/v5/pgproto3.(*Frontend).Flush
+         0     0%   100%      0.02s  1.54%  github.com/jackc/pgx/v5/pgproto3.(*Frontend).Receive
+         0     0%   100%      0.25s 19.23%  github.com/jackc/pgx/v5/pgproto3.(*Frontend).SendBind
+         0     0%   100%      0.01s  0.77%  github.com/jackc/pgx/v5/pgproto3.(*chunkReader).Next
+         0     0%   100%      0.02s  1.54%  github.com/jackc/pgx/v5/pgtype.(*Map).PlanEncode (inline)
+         0     0%   100%      0.28s 21.54%  github.com/jackc/pgx/v5/pgtype.(*derefPointerEncodePlan).Encode
+         0     0%   100%      0.27s 20.77%  github.com/jackc/pgx/v5/pgtype.encodePlanJSONCodecEitherFormatString.Encode
+         0     0%   100%      0.02s  1.54%  github.com/jackc/pgx/v5/pgtype.encodePlanStringToAnyTextFormat.Encode
+         0     0%   100%      0.18s 13.85%  github.com/jackc/pgx/v5/stdlib.(*Conn).ExecContext
+         0     0%   100%      0.01s  0.77%  github.com/jackc/pgx/v5/stdlib.(*Conn).Ping
+         0     0%   100%      0.51s 39.23%  github.com/jackc/pgx/v5/stdlib.(*Conn).QueryContext
+         0     0%   100%      0.51s 39.23%  gorm.io/gorm.(*DB).Create
+         0     0%   100%      0.13s 10.00%  gorm.io/gorm.(*DB).CreateInBatches
+         0     0%   100%      0.13s 10.00%  gorm.io/gorm.(*DB).CreateInBatches.func1
+         0     0%   100%      0.87s 66.92%  gorm.io/gorm.(*DB).Transaction
+         0     0%   100%      0.01s  0.77%  gorm.io/gorm.(*Statement).Build
+         0     0%   100%      0.64s 49.23%  gorm.io/gorm.(*processor).Execute
+         0     0%   100%      0.01s  0.77%  gorm.io/gorm.Open
+         0     0%   100%      0.02s  1.54%  gorm.io/gorm/callbacks.ConvertToCreateValues
+         0     0%   100%      0.64s 49.23%  gorm.io/gorm/callbacks.Create.func1
+         0     0%   100%      0.01s  0.77%  gorm.io/gorm/clause.Clause.Build
+         0     0%   100%      0.01s  0.77%  gorm.io/gorm/schema.(*Field).setupValuerAndSetter.func1
+         0     0%   100%      0.02s  1.54%  internal/bytealg.MakeNoZero
+         0     0%   100%      0.01s  0.77%  internal/poll.(*FD).Init
+         0     0%   100%      0.02s  1.54%  internal/poll.(*FD).Read
+         0     0%   100%      0.10s  7.69%  internal/poll.(*FD).Write
+         0     0%   100%      0.01s  0.77%  internal/poll.(*pollDesc).init
+         0     0%   100%      0.12s  9.23%  internal/poll.ignoringEINTRIO (inline)
+         0     0%   100%      0.01s  0.77%  internal/poll.runtime_pollOpen
+         0     0%   100%      0.01s  0.77%  internal/runtime/maps.(*Map).getWithoutKeySmallFastStr
+         0     0%   100%      0.01s  0.77%  internal/runtime/maps.(*table).reset
+         0     0%   100%      0.01s  0.77%  internal/runtime/maps.MemHash64
+         0     0%   100%      0.01s  0.77%  internal/runtime/maps.NewMap
+         0     0%   100%      0.01s  0.77%  internal/runtime/maps.newTable
+         0     0%   100%      0.01s  0.77%  internal/runtime/syscall/linux.EpollCtl (inline)
+         0     0%   100%      0.01s  0.77%  io.ReadAtLeast
+         0     0%   100%      0.88s 67.69%  micro-one-api/app/log/internal/data.(*Repository).CreateBatch
+         0     0%   100%      0.88s 67.69%  micro-one-api/app/log/internal/data.(*Repository).createTimingBatchDB
+         0     0%   100%      0.87s 66.92%  micro-one-api/app/log/internal/data.(*Repository).createTimingBatchDB.func1
+         0     0%   100%      1.06s 81.54%  micro-one-api/app/log/internal/data.TestTimingBatchAtMaximumSize.func1
+         0     0%   100%      0.87s 66.92%  micro-one-api/app/log/internal/data.createTimingPostgresBatch
+         0     0%   100%      0.23s 17.69%  micro-one-api/app/log/internal/data.encodeRequestTiming
+         0     0%   100%      0.23s 17.69%  micro-one-api/app/log/internal/data.newLog
+         0     0%   100%      0.02s  1.54%  micro-one-api/app/log/internal/data.validateRequestTimingEntry
+         0     0%   100%      0.02s  1.54%  micro-one-api/domain/requesttrace.(*TimingSummary).Validate
+         0     0%   100%      0.05s  3.85%  micro-one-api/domain/requesttrace/testutil.MaximumTiming
+         0     0%   100%      0.03s  2.31%  micro-one-api/domain/requesttrace/testutil.MaximumTiming.func1 (inline)
+         0     0%   100%      0.17s 13.08%  micro-one-api/pkg/jsonx.Marshal (inline)
+         0     0%   100%      0.02s  1.54%  micro-one-api/pkg/safefile.ReadFile
+         0     0%   100%      0.12s  9.23%  micro-one-api/platform/database/migrate.(*Runner).Apply
+         0     0%   100%      0.12s  9.23%  micro-one-api/platform/database/migrate.(*Runner).applyOne
+         0     0%   100%      0.13s 10.00%  micro-one-api/platform/database/testutil.RoutingContextDB
+         0     0%   100%      0.01s  0.77%  net.(*conn).Read
+         0     0%   100%      0.10s  7.69%  net.(*conn).Write
+         0     0%   100%      0.01s  0.77%  net.(*netFD).Read
+         0     0%   100%      0.10s  7.69%  net.(*netFD).Write
+         0     0%   100%      0.01s  0.77%  os.(*File).Read
+         0     0%   100%      0.01s  0.77%  os.(*File).read (inline)
+         0     0%   100%      0.01s  0.77%  os.Open (inline)
+         0     0%   100%      0.01s  0.77%  os.OpenFile
+         0     0%   100%      0.02s  1.54%  os.ReadFile
+         0     0%   100%      0.01s  0.77%  os.newFile
+         0     0%   100%      0.01s  0.77%  os.openFileNolog
+         0     0%   100%      0.01s  0.77%  os.readFileContents
+         0     0%   100%      0.01s  0.77%  reflect.Value.Interface (inline)
+         0     0%   100%      0.01s  0.77%  reflect.packEface (inline)
+         0     0%   100%      0.01s  0.77%  reflect.packEfaceData
+         0     0%   100%      0.01s  0.77%  reflect.unsafe_New
+         0     0%   100%      0.01s  0.77%  reflect.valueInterface
+         0     0%   100%      0.01s  0.77%  runtime.(*mcache).nextFree
+         0     0%   100%      0.01s  0.77%  runtime.(*mcache).refill
+         0     0%   100%      0.01s  0.77%  runtime.(*mcentral).cacheSpan
+         0     0%   100%      0.01s  0.77%  runtime.(*mcentral).grow
+         0     0%   100%      0.01s  0.77%  runtime.(*mheap).alloc
+         0     0%   100%      0.01s  0.77%  runtime.(*mheap).alloc.func1
+         0     0%   100%      0.01s  0.77%  runtime.(*mheap).allocSpan
+         0     0%   100%      0.01s  0.77%  runtime.(*spanSet).push
+         0     0%   100%      0.01s  0.77%  runtime.(*spanSetBlockAlloc).alloc
+         0     0%   100%      0.01s  0.77%  runtime.(*sweepLocked).sweep
+         0     0%   100%      0.01s  0.77%  runtime.(*timer).maybeAdd
+         0     0%   100%      0.01s  0.77%  runtime.(*timer).modify
+         0     0%   100%      0.01s  0.77%  runtime.(*timer).reset (inline)
+         0     0%   100%      0.01s  0.77%  runtime.(*unwinder).resolveInternal
+         0     0%   100%      0.01s  0.77%  runtime.bgsweep
+         0     0%   100%      0.02s  1.54%  runtime.callers
+         0     0%   100%      0.02s  1.54%  runtime.callers.func1
+         0     0%   100%      0.01s  0.77%  runtime.deductAssistCredit
+         0     0%   100%      0.01s  0.77%  runtime.entersyscall
+         0     0%   100%      0.01s  0.77%  runtime.entersyscallWakeSysmon
+         0     0%   100%      0.03s  2.31%  runtime.findRunnable
+         0     0%   100%      0.01s  0.77%  runtime.funcspdelta (inline)
+         0     0%   100%      0.02s  1.54%  runtime.futexsleep
+         0     0%   100%      0.02s  1.54%  runtime.futexwakeup
+         0     0%   100%      0.01s  0.77%  runtime.gcAssistAlloc
+         0     0%   100%      0.01s  0.77%  runtime.gcAssistAlloc.func2
+         0     0%   100%      0.01s  0.77%  runtime.gcAssistAlloc1
+         0     0%   100%      0.20s 15.38%  runtime.gcBgMarkWorker
+         0     0%   100%      0.20s 15.38%  runtime.gcBgMarkWorker.func2
+         0     0%   100%      0.20s 15.38%  runtime.gcDrain
+         0     0%   100%      0.05s  3.85%  runtime.gcDrainMarkWorkerDedicated (inline)
+         0     0%   100%      0.15s 11.54%  runtime.gcDrainMarkWorkerIdle (inline)
+         0     0%   100%      0.01s  0.77%  runtime.gcDrainN
+         0     0%   100%      0.52s 40.00%  runtime.growslice
+         0     0%   100%      0.01s  0.77%  runtime.interhash
+         0     0%   100%      0.02s  1.54%  runtime.mPark (inline)
+         0     0%   100%      0.02s  1.54%  runtime.mProf_Malloc
+         0     0%   100%      0.01s  0.77%  runtime.makemap
+         0     0%   100%      0.01s  0.77%  runtime.mallocgcSmallScanHeader
+         0     0%   100%      0.01s  0.77%  runtime.mapaccess1
+         0     0%   100%      0.01s  0.77%  runtime.mapaccess1_fast32
+         0     0%   100%      0.01s  0.77%  runtime.mapaccess1_faststr
+         0     0%   100%      0.01s  0.77%  runtime.mapaccess2
+         0     0%   100%      0.01s  0.77%  runtime.mapaccess2_fast32
+         0     0%   100%      0.01s  0.77%  runtime.mapaccess2_faststr
+         0     0%   100%      0.08s  6.15%  runtime.markroot
+         0     0%   100%      0.07s  5.38%  runtime.markroot.func1
+         0     0%   100%      0.01s  0.77%  runtime.markrootBlock
+         0     0%   100%      0.03s  2.31%  runtime.mcall
+         0     0%   100%      0.01s  0.77%  runtime.memhash64 (inline)
+         0     0%   100%      0.01s  0.77%  runtime.netpollopen
+         0     0%   100%      0.02s  1.54%  runtime.notesleep
+         0     0%   100%      0.02s  1.54%  runtime.notewakeup
+         0     0%   100%      0.03s  2.31%  runtime.park_m
+         0     0%   100%      0.01s  0.77%  runtime.pcvalue
+         0     0%   100%      0.03s  2.31%  runtime.preemptM (inline)
+         0     0%   100%      0.01s  0.77%  runtime.procyield (inline)
+         0     0%   100%      0.02s  1.54%  runtime.profilealloc
+         0     0%   100%      0.01s  0.77%  runtime.reentersyscall
+         0     0%   100%      0.01s  0.77%  runtime.runqsteal
+         0     0%   100%      0.01s  0.77%  runtime.scanObjectsSmall
+         0     0%   100%      0.01s  0.77%  runtime.scanSpan
+         0     0%   100%      0.01s  0.77%  runtime.scanblock
+         0     0%   100%      0.03s  2.31%  runtime.schedule
+         0     0%   100%      0.03s  2.31%  runtime.signalM
+         0     0%   100%      0.05s  3.85%  runtime.slicebytetostring
+         0     0%   100%      0.01s  0.77%  runtime.spanOf (inline)
+         0     0%   100%      0.01s  0.77%  runtime.startm
+         0     0%   100%      0.01s  0.77%  runtime.stealWork
+         0     0%   100%      0.02s  1.54%  runtime.stopm
+         0     0%   100%      0.07s  5.38%  runtime.suspendG
+         0     0%   100%      0.01s  0.77%  runtime.sweepone
+         0     0%   100%      0.25s 19.23%  runtime.systemstack
+         0     0%   100%      0.02s  1.54%  runtime.tracebackPCs
+         0     0%   100%      0.01s  0.77%  runtime.typehash
+         0     0%   100%      0.01s  0.77%  runtime.wakeNetPoller
+         0     0%   100%      0.01s  0.77%  runtime.wakep
+         0     0%   100%      0.02s  1.54%  strings.(*Builder).Grow
+         0     0%   100%      0.01s  0.77%  strings.(*Builder).WriteString (inline)
+         0     0%   100%      0.02s  1.54%  strings.(*Builder).grow
+         0     0%   100%      0.03s  2.31%  strings.Repeat
+         0     0%   100%      0.02s  1.54%  sync.(*Once).Do (inline)
+         0     0%   100%      0.02s  1.54%  sync.(*Once).doSlow
+         0     0%   100%      0.09s  6.92%  syscall.RawSyscall6
+         0     0%   100%      0.11s  8.46%  syscall.Syscall
+         0     0%   100%      0.10s  7.69%  syscall.Write (inline)
+         0     0%   100%      0.01s  0.77%  syscall.read
+         0     0%   100%      0.10s  7.69%  syscall.write
+         0     0%   100%      1.06s 81.54%  testing.tRunner
+         0     0%   100%      0.01s  0.77%  time.(*Timer).Reset
+         0     0%   100%      0.01s  0.77%  time.resetTimer

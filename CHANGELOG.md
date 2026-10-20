@@ -7,6 +7,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- 供应商费用核验页展示完整性、水位、来源映射、差异归因和更正证据；金额保持原始精度，授权变化时清除已选详情。
+
+### Fixed
+
+- 最大合法计时摘要按 4 MiB JSON 预算拆分 SQL INSERT，保留同组事务、去重和超时边界；关联引用合并为三库安全批次，补齐最大输入内存、回滚和 RPC 重放验收。
+- Jaeger Compose 内存上限同步维护者已调整的 768 MiB，后续重建保留该预算。
+
 ## [0.36.2] - 2026-10-19
 
 v0.36.2 是 v0.36.1 之后的 **PATCH 修复版本**：改进计时摘要 SQL 分组写入与积累数据查询，修复授权范围分页和并发清理后的游标，恢复 Q3 独立服务身份配置，并启用双架构原生构建。新增 Log 139 索引迁移，无 API 破坏性变更；生产观察保持原窗口。详见 [release-v0.36.2.md](docs/releases/release-v0.36.2.md)。

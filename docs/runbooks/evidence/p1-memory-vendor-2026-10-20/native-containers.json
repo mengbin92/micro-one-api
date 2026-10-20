@@ -1,0 +1,478 @@
+[
+  {
+    "name": "micro-one-p1-final-relay-memory-20261020",
+    "image": "sha256:ee4851781507a617e5a5e527b3edeebc0f803385e9a47b380c1ed58fe88e60e6",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T09:19:06.803811882Z",
+      "FinishedAt": "2026-10-20T09:19:10.93249988Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-final-batch-mysql-20261020",
+    "image": "sha256:c8122169cd8f89457b01d63a750518b169a52c21725fc18f9c74f2f65e454254",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "14-17",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:59:42.116843864Z",
+      "FinishedAt": "2026-10-20T09:01:05.927632855Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-final-batch-sqlite-20261020",
+    "image": "sha256:c8122169cd8f89457b01d63a750518b169a52c21725fc18f9c74f2f65e454254",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "14-17",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:59:37.272202326Z",
+      "FinishedAt": "2026-10-20T08:59:40.529853719Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-final-rpc-postgres-20261020",
+    "image": "sha256:3c219223fba7b79dff8b0c6c8b9fc647b607e3958fdc45972b62c5b40719cd09",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "14-17",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:54:15.61963857Z",
+      "FinishedAt": "2026-10-20T08:54:19.509547578Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-final-rpc-mysql-20261020",
+    "image": "sha256:3c219223fba7b79dff8b0c6c8b9fc647b607e3958fdc45972b62c5b40719cd09",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "14-17",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:53:51.464164858Z",
+      "FinishedAt": "2026-10-20T08:54:14.40300116Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-final-rpc-sqlite-20261020",
+    "image": "sha256:3c219223fba7b79dff8b0c6c8b9fc647b607e3958fdc45972b62c5b40719cd09",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "14-17",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:53:47.517266612Z",
+      "FinishedAt": "2026-10-20T08:53:50.378852468Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-final-capacity-postgres-20261020",
+    "image": "sha256:3c219223fba7b79dff8b0c6c8b9fc647b607e3958fdc45972b62c5b40719cd09",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "8-11",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 1,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:53:46.276167936Z",
+      "FinishedAt": "2026-10-20T08:57:54.549561108Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-final-capacity-mysql-20261020",
+    "image": "sha256:3c219223fba7b79dff8b0c6c8b9fc647b607e3958fdc45972b62c5b40719cd09",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "4-7",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 1,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:53:46.313903334Z",
+      "FinishedAt": "2026-10-20T08:57:29.887691636Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-final-capacity-sqlite-20261020",
+    "image": "sha256:3c219223fba7b79dff8b0c6c8b9fc647b607e3958fdc45972b62c5b40719cd09",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "0-3",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 1,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:53:46.274154749Z",
+      "FinishedAt": "2026-10-20T08:57:57.210742774Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-final3-batch-postgres-20261020",
+    "image": "sha256:c8122169cd8f89457b01d63a750518b169a52c21725fc18f9c74f2f65e454254",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:50:24.825710309Z",
+      "FinishedAt": "2026-10-20T08:50:27.37181705Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-final3-rpc-mysql-20261020",
+    "image": "sha256:e63046bc6fcf847121597a94a16245fafb360ba6c3741f5f8d74361bbb6e2752",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 1,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:49:40.958575296Z",
+      "FinishedAt": "2026-10-20T08:50:03.632157314Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-final3-short-20261020",
+    "image": "sha256:e63046bc6fcf847121597a94a16245fafb360ba6c3741f5f8d74361bbb6e2752",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "0-3",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 1,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:49:40.960808307Z",
+      "FinishedAt": "2026-10-20T08:50:01.786442311Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-baseline-diagnostic-20261020",
+    "image": "sha256:9973734afc458e73ad1df1ad35fdd7affb6762cf472d175b969938168d72c73d",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 1,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:48:24.90352879Z",
+      "FinishedAt": "2026-10-20T08:48:45.581143985Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-fixed-rpc-postgres-20261020",
+    "image": "sha256:01cd26b3c7b4ac0f96a287518a3e945e76501a470d4c4933d3c6572a95f6f7a0",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:46:58.632046342Z",
+      "FinishedAt": "2026-10-20T08:47:01.655894775Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-rpc-mysql-diagnostic-20261020",
+    "image": "sha256:01cd26b3c7b4ac0f96a287518a3e945e76501a470d4c4933d3c6572a95f6f7a0",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 1,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:46:58.638899264Z",
+      "FinishedAt": "2026-10-20T08:47:21.094531016Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-fixed-rpc-mysql-20261020",
+    "image": "sha256:01cd26b3c7b4ac0f96a287518a3e945e76501a470d4c4933d3c6572a95f6f7a0",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 1,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:42:59.942748902Z",
+      "FinishedAt": "2026-10-20T08:43:28.025859265Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-fixed-rpc-sqlite-20261020",
+    "image": "sha256:01cd26b3c7b4ac0f96a287518a3e945e76501a470d4c4933d3c6572a95f6f7a0",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:42:56.60099011Z",
+      "FinishedAt": "2026-10-20T08:42:58.844610997Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-fixed-batch-postgres-20261020",
+    "image": "sha256:15dc28752f93eb87799258a219d09b62a1d8d75b30be3076fde48e082d4e483c",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:42:52.892358438Z",
+      "FinishedAt": "2026-10-20T08:42:55.49832081Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-fixed-batch-mysql-20261020",
+    "image": "sha256:15dc28752f93eb87799258a219d09b62a1d8d75b30be3076fde48e082d4e483c",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:42:24.710193917Z",
+      "FinishedAt": "2026-10-20T08:42:51.768214242Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-capacity-sqlite-20261020",
+    "image": "sha256:01cd26b3c7b4ac0f96a287518a3e945e76501a470d4c4933d3c6572a95f6f7a0",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 1,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:42:23.371950154Z",
+      "FinishedAt": "2026-10-20T08:46:28.586041033Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-fixed-batch-sqlite-20261020",
+    "image": "sha256:15dc28752f93eb87799258a219d09b62a1d8d75b30be3076fde48e082d4e483c",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:42:22.210574302Z",
+      "FinishedAt": "2026-10-20T08:42:23.642330717Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-rpc-sqlite-20261020",
+    "image": "sha256:9973734afc458e73ad1df1ad35fdd7affb6762cf472d175b969938168d72c73d",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:39:00.149400921Z",
+      "FinishedAt": "2026-10-20T08:39:02.212629824Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-postgres-profile-20261020",
+    "image": "sha256:2acc98707039a1106eea19e18a978770b87e5ae37ba66a851639b76eafd923bb",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 1,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:39:00.147369388Z",
+      "FinishedAt": "2026-10-20T08:39:03.112152615Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-batch-postgres-20261020",
+    "image": "sha256:2acc98707039a1106eea19e18a978770b87e5ae37ba66a851639b76eafd923bb",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 1,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:37:43.941581248Z",
+      "FinishedAt": "2026-10-20T08:37:46.922655064Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-batch-mysql-20261020",
+    "image": "sha256:2acc98707039a1106eea19e18a978770b87e5ae37ba66a851639b76eafd923bb",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:37:20.135870619Z",
+      "FinishedAt": "2026-10-20T08:37:42.808075482Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-batch-sqlite-20261020",
+    "image": "sha256:2acc98707039a1106eea19e18a978770b87e5ae37ba66a851639b76eafd923bb",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:36:44.743377143Z",
+      "FinishedAt": "2026-10-20T08:36:46.444107383Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-log-rpc-final-20261020",
+    "image": "sha256:ee4851781507a617e5a5e527b3edeebc0f803385e9a47b380c1ed58fe88e60e6",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 1,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:34:30.506046353Z",
+      "FinishedAt": "2026-10-20T08:35:09.199505922Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-log-batch-final-20261020",
+    "image": "sha256:ee4851781507a617e5a5e527b3edeebc0f803385e9a47b380c1ed58fe88e60e6",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 1,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:34:30.508171152Z",
+      "FinishedAt": "2026-10-20T08:35:09.195281259Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-log-batch-20261020",
+    "image": "sha256:ee4851781507a617e5a5e527b3edeebc0f803385e9a47b380c1ed58fe88e60e6",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 127,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:30:33.356611487Z",
+      "FinishedAt": "2026-10-20T08:30:33.46495431Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-log-rpc-20261020",
+    "image": "sha256:ee4851781507a617e5a5e527b3edeebc0f803385e9a47b380c1ed58fe88e60e6",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 127,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:30:25.088379304Z",
+      "FinishedAt": "2026-10-20T08:30:25.212066303Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-postgres-20261020",
+    "image": "sha256:80c0891f5de95d70f2fd664165fa6b8aa246b805a5c13c97824c4bd0970f4c8e",
+    "memory_bytes": 536870912,
+    "cpu_nanos": 1000000000,
+    "cpuset": "13",
+    "state": {
+      "Status": "running",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:29:36.659958456Z",
+      "FinishedAt": "0001-01-01T00:00:00Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-mysql-20261020",
+    "image": "sha256:6cd09145362dfe6831b14545de3d5fd6cc75c37cfd6ef8561429c1fc73518b39",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 1000000000,
+    "cpuset": "12",
+    "state": {
+      "Status": "running",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:29:36.022900167Z",
+      "FinishedAt": "0001-01-01T00:00:00Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-relay-memory-20261020",
+    "image": "sha256:ee4851781507a617e5a5e527b3edeebc0f803385e9a47b380c1ed58fe88e60e6",
+    "memory_bytes": 1073741824,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "exited",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:28:57.840175945Z",
+      "FinishedAt": "2026-10-20T08:29:01.850125783Z"
+    }
+  },
+  {
+    "name": "micro-one-p1-native-20261020",
+    "image": "sha256:ee4851781507a617e5a5e527b3edeebc0f803385e9a47b380c1ed58fe88e60e6",
+    "memory_bytes": 4294967296,
+    "cpu_nanos": 4000000000,
+    "cpuset": "",
+    "state": {
+      "Status": "running",
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "StartedAt": "2026-10-20T08:25:06.866064751Z",
+      "FinishedAt": "0001-01-01T00:00:00Z"
+    }
+  }
+]

@@ -1,0 +1,37 @@
+{
+  "connection_wait_count": 0,
+  "connection_wait_ms": 0,
+  "scope": "test-only GORM statement callbacks; excludes outer transaction commit and RPC overhead; SQL text/values are never recorded",
+  "statements": {
+    "create:logs": {
+      "count": 279,
+      "total_ms": 365.8519209999997,
+      "max_ms": 5.75238,
+      "errors": 0
+    },
+    "create:request_trace_attempt_refs": {
+      "count": 279,
+      "total_ms": 102.85798600000007,
+      "max_ms": 2.259001,
+      "errors": 0
+    },
+    "query:log_ingest_dedupe_claims": {
+      "count": 13,
+      "total_ms": 3.5415640000000006,
+      "max_ms": 0.585467,
+      "errors": 0
+    },
+    "query:logs": {
+      "count": 105,
+      "total_ms": 83.649647,
+      "max_ms": 4.664132,
+      "errors": 0
+    },
+    "query:request_trace_attempt_refs": {
+      "count": 13,
+      "total_ms": 3.317447,
+      "max_ms": 0.490248,
+      "errors": 0
+    }
+  }
+}

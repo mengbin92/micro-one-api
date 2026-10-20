@@ -1,0 +1,18 @@
+=== RUN   TestTimingBatchAtMaximumSize
+=== RUN   TestTimingBatchAtMaximumSize/postgres
+    request_timing_test.go:102: maximum durable batch commit: 1.380671454s
+=== NAME  TestTimingBatchAtMaximumSize
+    request_timing_test.go:114: {
+          "budget_bytes": 536870912,
+          "point": {
+            "VmHWM:": 207302656,
+            "VmRSS:": 61112320,
+            "heap_alloc": 23683400,
+            "memory.current": 39182336,
+            "memory.max": 1073741824,
+            "memory.peak": 187305984
+          }
+        }
+--- PASS: TestTimingBatchAtMaximumSize (2.40s)
+    --- PASS: TestTimingBatchAtMaximumSize/postgres (2.39s)
+PASS

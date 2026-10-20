@@ -1,0 +1,11 @@
+npm notice run web@0.0.0 test
+npm notice run vitest run src/pages/admin/VendorReportsPage.test.tsx --maxWorkers=2
+
+ RUN  v5.0.0 /Users/neo/vscode/mengbin/micro-one-api/web
+
+
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  16:48:59
+   Duration  697ms (tests 38%, environment 29%, import 14%, transform 13%, setup 6%)
+

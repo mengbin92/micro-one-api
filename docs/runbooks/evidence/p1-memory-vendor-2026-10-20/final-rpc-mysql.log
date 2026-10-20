@@ -1,0 +1,18 @@
+=== RUN   TestRequestTimingMaximumRPCBatch
+=== RUN   TestRequestTimingMaximumRPCBatch/mysql
+    request_timing_sql_test.go:120: maximum-input burst: 2.090570247s; bounded deadline responses=0
+=== NAME  TestRequestTimingMaximumRPCBatch
+    request_timing_sql_test.go:143: {
+          "budget_bytes": 536870912,
+          "point": {
+            "VmHWM:": 294035456,
+            "VmRSS:": 294035456,
+            "heap_alloc": 182226368,
+            "memory.current": 264736768,
+            "memory.max": 1073741824,
+            "memory.peak": 265027584
+          }
+        }
+--- PASS: TestRequestTimingMaximumRPCBatch (22.78s)
+    --- PASS: TestRequestTimingMaximumRPCBatch/mysql (22.77s)
+PASS

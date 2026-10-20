@@ -1,0 +1,15 @@
+npm notice run web@0.0.0 test
+npm notice run vitest run --maxWorkers=2
+
+ RUN  v5.0.0 /Users/neo/vscode/mengbin/micro-one-api/web
+
+
+ Test Files  86 passed (86)
+      Tests  573 passed (573)
+   Start at  16:41:30
+   Duration  26.64s (environment 36%, tests 35%, import 18%, setup 8%, transform 3%)
+
+Environment  jsdom was created 86 times · 17.77s total, 36% of tracked time
+             create it once per worker with pool: 'vmThreads' (keeps per-file isolation) or isolate: false (shares it across files)
+             learn more: https://vitest.dev/guide/improving-performance#test-environments
+

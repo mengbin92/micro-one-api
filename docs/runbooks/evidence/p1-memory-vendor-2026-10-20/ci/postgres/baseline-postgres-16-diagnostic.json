@@ -1,0 +1,239 @@
+{
+  "concurrency": 16,
+  "duration_per_mode_seconds": 2,
+  "fake_upstream_wait_ms": 50,
+  "gate_failures": null,
+  "go_version": "go1.27.2",
+  "goarch": "amd64",
+  "gomaxprocs": 4,
+  "goos": "linux",
+  "otlp_bytes": 5171145,
+  "otlp_received_spans": 30384,
+  "rounds": [
+    {
+      "order": [
+        false,
+        true
+      ],
+      "p95_overhead_percent": 3.407675636156049,
+      "pair": 1,
+      "results": {
+        "disabled": {
+          "requests": 632,
+          "duration_seconds": 2.0394868329999998,
+          "p95_ms": 52.268267,
+          "allocated_bytes_per_request": 55724.73417721519,
+          "cpu_us_per_request": 467.05221518987344,
+          "gcs": 9,
+          "drain_ms": 0,
+          "drain_cpu_us": 0,
+          "drain_allocated_bytes": 0,
+          "exported": 0,
+          "dropped": 0,
+          "failed": 0,
+          "persistence_p95_ms": 0,
+          "export_rpc_p95_ms": 0,
+          "queue_wait_p95_ms": 0,
+          "summary_backlog_peak": 0,
+          "query_p95_ms": 5.854708,
+          "queries": 4,
+          "query_failures": 0,
+          "http_failures": 0
+        },
+        "enabled": {
+          "requests": 624,
+          "duration_seconds": 2.015463859,
+          "p95_ms": 54.0494,
+          "allocated_bytes_per_request": 201016.87179487178,
+          "cpu_us_per_request": 1890.1858974358975,
+          "gcs": 23,
+          "drain_ms": 11.432916,
+          "drain_cpu_us": 20127,
+          "drain_allocated_bytes": 1409496,
+          "exported": 632,
+          "dropped": 0,
+          "failed": 0,
+          "persistence_p95_ms": 65,
+          "export_rpc_p95_ms": 3.006542,
+          "queue_wait_p95_ms": 11,
+          "summary_backlog_peak": 16,
+          "query_p95_ms": 14.842064,
+          "queries": 4,
+          "query_failures": 0,
+          "http_failures": 0
+        }
+      }
+    },
+    {
+      "order": [
+        true,
+        false
+      ],
+      "p95_overhead_percent": 3.284683693578061,
+      "pair": 2,
+      "results": {
+        "disabled": {
+          "requests": 631,
+          "duration_seconds": 2.051175752,
+          "p95_ms": 52.250267,
+          "allocated_bytes_per_request": 56530.586370839934,
+          "cpu_us_per_request": 454.2488114104596,
+          "gcs": 8,
+          "drain_ms": 0,
+          "drain_cpu_us": 0,
+          "drain_allocated_bytes": 0,
+          "exported": 0,
+          "dropped": 0,
+          "failed": 0,
+          "persistence_p95_ms": 0,
+          "export_rpc_p95_ms": 0,
+          "queue_wait_p95_ms": 0,
+          "summary_backlog_peak": 0,
+          "query_p95_ms": 3.546271,
+          "queries": 4,
+          "query_failures": 0,
+          "http_failures": 0
+        },
+        "enabled": {
+          "requests": 624,
+          "duration_seconds": 2.01448447,
+          "p95_ms": 53.966523,
+          "allocated_bytes_per_request": 190301.78205128206,
+          "cpu_us_per_request": 1954.6746794871794,
+          "gcs": 23,
+          "drain_ms": 14.901992,
+          "drain_cpu_us": 25169,
+          "drain_allocated_bytes": 1579736,
+          "exported": 632,
+          "dropped": 0,
+          "failed": 0,
+          "persistence_p95_ms": 66,
+          "export_rpc_p95_ms": 3.30036,
+          "queue_wait_p95_ms": 12,
+          "summary_backlog_peak": 16,
+          "query_p95_ms": 11.859007,
+          "queries": 4,
+          "query_failures": 0,
+          "http_failures": 0
+        }
+      }
+    },
+    {
+      "order": [
+        false,
+        true
+      ],
+      "p95_overhead_percent": 1.527666183380605,
+      "pair": 3,
+      "results": {
+        "disabled": {
+          "requests": 636,
+          "duration_seconds": 2.04874724,
+          "p95_ms": 52.520309,
+          "allocated_bytes_per_request": 56560.93081761006,
+          "cpu_us_per_request": 443.35849056603774,
+          "gcs": 8,
+          "drain_ms": 0,
+          "drain_cpu_us": 0,
+          "drain_allocated_bytes": 0,
+          "exported": 0,
+          "dropped": 0,
+          "failed": 0,
+          "persistence_p95_ms": 0,
+          "export_rpc_p95_ms": 0,
+          "queue_wait_p95_ms": 0,
+          "summary_backlog_peak": 0,
+          "query_p95_ms": 2.755988,
+          "queries": 4,
+          "query_failures": 0,
+          "http_failures": 0
+        },
+        "enabled": {
+          "requests": 624,
+          "duration_seconds": 2.013570542,
+          "p95_ms": 53.322644,
+          "allocated_bytes_per_request": 190137.42307692306,
+          "cpu_us_per_request": 1829.5416666666667,
+          "gcs": 22,
+          "drain_ms": 14.246798,
+          "drain_cpu_us": 21960,
+          "drain_allocated_bytes": 1749776,
+          "exported": 632,
+          "dropped": 0,
+          "failed": 0,
+          "persistence_p95_ms": 64,
+          "export_rpc_p95_ms": 3.105691,
+          "queue_wait_p95_ms": 11,
+          "summary_backlog_peak": 16,
+          "query_p95_ms": 10.209815,
+          "queries": 4,
+          "query_failures": 0,
+          "http_failures": 0
+        }
+      }
+    },
+    {
+      "order": [
+        true,
+        false
+      ],
+      "p95_overhead_percent": 1.7938333451948951,
+      "pair": 4,
+      "results": {
+        "disabled": {
+          "requests": 640,
+          "duration_seconds": 2.051200881,
+          "p95_ms": 52.508501,
+          "allocated_bytes_per_request": 56377.1125,
+          "cpu_us_per_request": 445.25,
+          "gcs": 8,
+          "drain_ms": 0,
+          "drain_cpu_us": 0,
+          "drain_allocated_bytes": 0,
+          "exported": 0,
+          "dropped": 0,
+          "failed": 0,
+          "persistence_p95_ms": 0,
+          "export_rpc_p95_ms": 0,
+          "queue_wait_p95_ms": 0,
+          "summary_backlog_peak": 0,
+          "query_p95_ms": 5.214007,
+          "queries": 4,
+          "query_failures": 0,
+          "http_failures": 0
+        },
+        "enabled": {
+          "requests": 624,
+          "duration_seconds": 2.010936169,
+          "p95_ms": 53.450416,
+          "allocated_bytes_per_request": 189371.58974358975,
+          "cpu_us_per_request": 1857.386217948718,
+          "gcs": 22,
+          "drain_ms": 10.887795,
+          "drain_cpu_us": 15515,
+          "drain_allocated_bytes": 1445608,
+          "exported": 632,
+          "dropped": 0,
+          "failed": 0,
+          "persistence_p95_ms": 64,
+          "export_rpc_p95_ms": 3.260895,
+          "queue_wait_p95_ms": 11,
+          "summary_backlog_peak": 16,
+          "query_p95_ms": 3.839455,
+          "queries": 4,
+          "query_failures": 0,
+          "http_failures": 0
+        }
+      }
+    }
+  ],
+  "scope": "real loopback HTTP/SSE, bounded exporter, authenticated Log gRPC, production service/usecase/repository, migrated SQL, real local OTLP receiver; fake upstream; shared process",
+  "spans": 30384,
+  "sql_counts": {
+    "log_ingest_dedupe_claims": 2528,
+    "logs": 2528,
+    "request_trace_attempt_refs": 2528
+  },
+  "sql_driver": "postgres",
+  "warmup_per_mode": 8
+}

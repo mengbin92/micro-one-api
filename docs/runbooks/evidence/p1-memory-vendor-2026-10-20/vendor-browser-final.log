@@ -1,0 +1,27 @@
+npm notice run web@0.0.0 npx
+npm notice run 'playwright' test e2e/vendor-reports.spec.ts --project=chrome --project=mobile-chrome --workers=1
+[2m[WebServer] [22mnpm notice run web@0.0.0 dev
+[2m[WebServer] [22mnpm notice run vite --host 127.0.0.1
+[2m[WebServer] [22m(node:35629) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 8 tests using 1 worker
+
+(node:35630) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:35630) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chrome] › e2e/vendor-reports.spec.ts:10:7 › zh-CN light › supplier evidence remains readable and exports the complete owner response (1.3s)
+  ✓  2 [chrome] › e2e/vendor-reports.spec.ts:10:7 › zh-CN dark › supplier evidence remains readable and exports the complete owner response (1.2s)
+  ✓  3 [chrome] › e2e/vendor-reports.spec.ts:10:7 › en-US light › supplier evidence remains readable and exports the complete owner response (1.2s)
+  ✓  4 [chrome] › e2e/vendor-reports.spec.ts:10:7 › en-US dark › supplier evidence remains readable and exports the complete owner response (1.2s)
+(node:35710) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:35710) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  5 [mobile-chrome] › e2e/vendor-reports.spec.ts:10:7 › zh-CN light › supplier evidence remains readable and exports the complete owner response (1.3s)
+  ✓  6 [mobile-chrome] › e2e/vendor-reports.spec.ts:10:7 › zh-CN dark › supplier evidence remains readable and exports the complete owner response (1.3s)
+  ✓  7 [mobile-chrome] › e2e/vendor-reports.spec.ts:10:7 › en-US light › supplier evidence remains readable and exports the complete owner response (1.3s)
+  ✓  8 [mobile-chrome] › e2e/vendor-reports.spec.ts:10:7 › en-US dark › supplier evidence remains readable and exports the complete owner response (1.2s)
+
+  8 passed (11.2s)

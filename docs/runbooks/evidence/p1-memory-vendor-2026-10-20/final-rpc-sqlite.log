@@ -1,0 +1,18 @@
+=== RUN   TestRequestTimingMaximumRPCBatch
+=== RUN   TestRequestTimingMaximumRPCBatch/sqlite
+    request_timing_sql_test.go:120: maximum-input burst: 806.409524ms; bounded deadline responses=0
+=== NAME  TestRequestTimingMaximumRPCBatch
+    request_timing_sql_test.go:143: {
+          "budget_bytes": 536870912,
+          "point": {
+            "VmHWM:": 305672192,
+            "VmRSS:": 299126784,
+            "heap_alloc": 194258576,
+            "memory.current": 269160448,
+            "memory.max": 1073741824,
+            "memory.peak": 390332416
+          }
+        }
+--- PASS: TestRequestTimingMaximumRPCBatch (2.69s)
+    --- PASS: TestRequestTimingMaximumRPCBatch/sqlite (2.68s)
+PASS

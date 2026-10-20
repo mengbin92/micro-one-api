@@ -1,0 +1,14 @@
+{
+  "scope": "static checks only; no service restart or production change",
+  "jaeger_compose_memory_bytes": 805306368,
+  "compose_variants_checked": 4,
+  "kubernetes_schema": {
+    "valid": 41,
+    "invalid": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "kubernetes_references_checked": 83,
+  "markdown_files_checked": 313,
+  "result": "PASS"
+}

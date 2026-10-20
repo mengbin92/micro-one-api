@@ -1,0 +1,17 @@
+=== RUN   TestTimingBatchAtMaximumSize
+=== RUN   TestTimingBatchAtMaximumSize/postgres
+=== NAME  TestTimingBatchAtMaximumSize
+    request_timing_test.go:112: {
+          "budget_bytes": 536870912,
+          "point": {
+            "VmHWM:": 214458368,
+            "VmRSS:": 102326272,
+            "heap_alloc": 17488936,
+            "memory.current": 80093184,
+            "memory.max": 1073741824,
+            "memory.peak": 194777088
+          }
+        }
+--- PASS: TestTimingBatchAtMaximumSize (2.46s)
+    --- PASS: TestTimingBatchAtMaximumSize/postgres (2.45s)
+PASS

@@ -22,7 +22,7 @@ docs/
 |---------|--------|
 | 个人单机，创建首个渠道和 Token | [quickstart-lite.md](./quickstart-lite.md) |
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
-| 查看下一阶段执行路线与条件保留项 | [design/next-stage-plan-2026-10-18.md](./design/next-stage-plan-2026-10-18.md) |
+| 查看下一阶段执行路线与条件保留项 | [design/next-stage-plan-2026-10-20.md](./design/next-stage-plan-2026-10-20.md) |
 | 查看告警修复、生产容量基线与 executor 同窗复核 | [runbooks/post-v0.36.0-acceptance-2026-10-18.md](./runbooks/post-v0.36.0-acceptance-2026-10-18.md) |
 | 查看原生镜像提速与真实 Log RPC/SQL 容量边界 | [构建与 SQL 链路验收](./runbooks/build-timing-sql-acceptance-2026-10-18.md) |
 | 查看计时 SQL 分组写入优化与三库复验 | [容量定位与改进](./runbooks/request-timing-capacity-improvement-2026-10-18.md) |
@@ -49,11 +49,15 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——本表明确指向且头部标注「当前执行入口」的计划。未定发布版本时使用 `design/next-stage-plan-YYYY-MM-DD.md`，已定版本时使用 `design/vX.Y-roadmap.md`。新阶段立项时：新建计划 → 旧路线图标为「已归档」并指回新入口 → 同步本表、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-最新发布登记：[v0.36.2](./releases/release-v0.36.2.md)（2026-10-19），计时 SQL 容量、分页修复、Q3 基准恢复与原生构建；新增 Log 139 索引迁移，生产观察继续。版本验证见 [发布记录](./releases/release-v0.36.2.md#验证)。
+最新发布登记：[v0.36.2](./releases/release-v0.36.2.md)（2026-10-19），计时 SQL 容量、分页修复、Q3 基准恢复与原生构建；新增 Log 139 索引迁移。版本验证见 [发布记录](./releases/release-v0.36.2.md#验证)。
 
-**当前实施（2026-10-18）**：导出告警标签修复、五组规则测试和生产 request-timing 组追加/热加载完成；中文 README 精简、英文 README/Quickstart 已补齐。生产容量基线已取，64 并发四次实验有两次 P95 超线，WS/长时峰值/48h 稳态继续验收；供应商生产报告尚无导入，executor 新旧样本不在同一时间段、正式七天未起算。见 [当前计划](./design/next-stage-plan-2026-10-18.md)和 [执行记录](./runbooks/post-v0.36.0-acceptance-2026-10-18.md)。
+**当前实施（2026-10-20）**：N1 已补最大输入/恢复验收与 SQL 语句字节预算，N2 已补齐供应商核验只读详情。实现及隔离验收已提交，完整原生三库容量 CI 已通过；见 [当前计划](./design/next-stage-plan-2026-10-20.md)和 [实施记录](./runbooks/p1-memory-vendor-evidence-2026-10-20.md)。真实账期、契约晋级与 executor 扩面保留条件。
 
-**SQL 隔离容量改进（2026-10-19）**：三库真实 Log RPC/SQL 的 64 并发四组长测、十轮 race 与适用 CI/E2E 通过，448,532 条摘要完整落库；139 号迁移补充快照索引，固定缓冲吸收短时存储停顿。见 [改进记录](./runbooks/request-timing-capacity-improvement-2026-10-18.md)。本轮合入 develop，生产观察由另一台电脑继续负责。
+**独立生产验收（2026-10-20）**：原固定 48h 窗口结论 FAIL，自动任务 PAUSED；截止后新 Jaeger、TTL 与生产 WS 仍按独立证据办理，不因新研发计划重开或追认原窗口。见 [最终记录](./runbooks/post-v0.36.0-acceptance-2026-10-18.md)。
+
+**上一阶段实施（2026-10-18）**：导出告警标签修复、规则测试和生产 request-timing 组追加/热加载完成，双语 README/Quickstart 已交付；后续 WS/Lite、构建与 SQL 改进已纳入 v0.36.1/v0.36.2。历史失败及验收边界保留在 [归档计划](./design/next-stage-plan-2026-10-18.md)与 [执行记录](./runbooks/post-v0.36.0-acceptance-2026-10-18.md)。
+
+**SQL 隔离容量改进（2026-10-19）**：三库真实 Log RPC/SQL 的 64 并发四组长测、十轮 race 与适用 CI/E2E 通过，448,532 条摘要完整落库；139 号迁移补充快照索引，固定缓冲吸收短时存储停顿。见 [改进记录](./runbooks/request-timing-capacity-improvement-2026-10-18.md)。已纳入 v0.36.2，不替代生产容量或最大输入内存验收。
 
 **上一阶段实施（2026-10-16）**：审查修复、定价原子保存及撤权草稿保护已发布上线；协议矩阵、现存误暂停核对及实库验收完成。已补齐 [DeepSeek 手工日窗合计核验](./runbooks/deepseek-closed-day-2026-10-16.md)，其他独立证据条件保留；见 [归档计划](./design/next-stage-plan-2026-10-16.md)和 [记录](./runbooks/plan-execution-2026-10-16.md)。
 
@@ -142,7 +146,8 @@ docs/
 | [v0.23-roadmap.md](./design/v0.23-roadmap.md) | v0.23 路线图：上线观察与 Relay executor 首切片（已归档） |
 | [v0.23-executor-observation.md](./design/v0.23-executor-observation.md) | executor 新旧路径 7 天生产观察与回滚事实源 |
 | [v0.24-web-release-readiness.md](./design/v0.24-web-release-readiness.md) | v0.24 双语 Web、中国法律协议与发布隔离准备清单 |
-| [next-stage-plan-2026-10-18.md](./design/next-stage-plan-2026-10-18.md) | 当前计划：v0.36.0 运行验收、证据收口与双语入口 |
+| [next-stage-plan-2026-10-20.md](./design/next-stage-plan-2026-10-20.md) | 当前计划：计时内存预算与供应商证据可读性 |
+| [next-stage-plan-2026-10-18.md](./design/next-stage-plan-2026-10-18.md) | 已归档：v0.36.0 运行验收、证据收口与双语入口；保留独立生产结论 |
 | [next-stage-plan-2026-10-16.md](./design/next-stage-plan-2026-10-16.md) | 已归档：审查修复交付、定价原子保存与真实证据验收 |
 | [next-stage-plan-2026-10-12.md](./design/next-stage-plan-2026-10-12.md) | 已归档：发布与生产收口、当前代码长流复验及 N5 准入 |
 | [next-stage-plan-2026-10-08.md](./design/next-stage-plan-2026-10-08.md) | 已归档：用户购买闭环、本地门禁/部署一致性与 executor 长流及七天验收 |

@@ -1,0 +1,15 @@
+=== RUN   TestRequestTimingSQLOverhead
+    request_timing_perf_test.go:332: pair=1 enabled=false requests=37095 p95_ms=54.177 gcs=274
+    request_timing_perf_test.go:332: pair=1 enabled=true requests=36427 p95_ms=58.429 gcs=573
+    request_timing_perf_test.go:332: pair=2 enabled=true requests=36471 p95_ms=58.049 gcs=577
+    request_timing_perf_test.go:332: pair=2 enabled=false requests=36904 p95_ms=55.434 gcs=252
+    request_timing_perf_test.go:332: pair=3 enabled=false requests=36983 p95_ms=55.253 gcs=255
+    request_timing_perf_test.go:285: 
+        	Error Trace:	/work/internal/server/request_timing_perf_test.go:285
+        	            				/work/internal/server/request_timing_perf_test.go:48
+        	            				/work/internal/server/request_timing_sql_test.go:288
+        	Error:      	Received unexpected error:
+        	            	context deadline exceeded
+        	Test:       	TestRequestTimingSQLOverhead
+--- FAIL: TestRequestTimingSQLOverhead (223.45s)
+FAIL

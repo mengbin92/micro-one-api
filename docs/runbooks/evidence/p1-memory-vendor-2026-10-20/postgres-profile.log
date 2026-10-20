@@ -1,0 +1,22 @@
+=== RUN   TestTimingBatchAtMaximumSize
+=== RUN   TestTimingBatchAtMaximumSize/postgres
+=== NAME  TestTimingBatchAtMaximumSize
+    request_timing_test.go:86: {
+          "budget_bytes": 536870912,
+          "point": {
+            "VmHWM:": 614440960,
+            "VmRSS:": 614440960,
+            "heap_alloc": 581556416,
+            "memory.current": 592097280,
+            "memory.max": 1073741824,
+            "memory.peak": 592097280
+          }
+        }
+    request_timing_test.go:86: 
+        	Error Trace:	/work/domain/requesttrace/testutil/memory.go:52
+        	            				/work/app/log/internal/data/request_timing_test.go:86
+        	Error:      	"614440960" is not less than or equal to "536870912"
+        	Test:       	TestTimingBatchAtMaximumSize
+--- FAIL: TestTimingBatchAtMaximumSize (2.73s)
+    --- PASS: TestTimingBatchAtMaximumSize/postgres (2.73s)
+FAIL

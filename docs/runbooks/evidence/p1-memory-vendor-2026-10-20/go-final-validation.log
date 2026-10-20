@@ -1,0 +1,4 @@
+ok  	micro-one-api/internal/server	5.121s
+ok  	micro-one-api/app/log/internal/data	1.658s
+ok  	micro-one-api/domain/requesttrace	0.575s
+?   	micro-one-api/domain/requesttrace/testutil	[no test files]
