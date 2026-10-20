@@ -2,7 +2,7 @@
 
 > 最后更新：2026-10-20
 >
-> **当前执行入口**：[计时内存预算与供应商证据可读性](./design/next-stage-plan-2026-10-20.md)。N1/N2 实现已分别提交为 `64fa1478` / `1d945b81`，原生最大输入及前端隔离验收通过，完整原生三库容量 CI 已通过，见 [实施记录](./runbooks/p1-memory-vendor-evidence-2026-10-20.md)。真实账期与契约晋级按条件启动，executor 不扩面。
+> **当前执行入口**：[计时内存预算与供应商证据可读性](./design/next-stage-plan-2026-10-20.md)。N1/N2 实现已分别提交为 `64fa1478` / `1d945b81`，原生最大输入及前端隔离验收通过，完整原生三库容量 CI 已通过；2026-10-20 已完成 [生产部署](./runbooks/p1-production-deployment-2026-10-20.md)，见 [实施记录](./runbooks/p1-memory-vendor-evidence-2026-10-20.md)。真实账期与契约晋级按条件启动，executor 不扩面。
 >
 > **独立生产验收**：原 48h 窗口已结束，结论 FAIL，自动任务 PAUSED；新 Jaeger 实例、TTL 与生产 WS 仍须独立验收。本轮不重开窗口或修改证据，见 [最终记录](./runbooks/post-v0.36.0-acceptance-2026-10-18.md)。
 
