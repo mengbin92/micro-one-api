@@ -1,0 +1,18 @@
+=== RUN   TestRequestTimingMaximumRPCBatch
+=== RUN   TestRequestTimingMaximumRPCBatch/postgres
+    request_timing_sql_test.go:120: maximum-input burst: 1.557339328s; bounded deadline responses=0
+=== NAME  TestRequestTimingMaximumRPCBatch
+    request_timing_sql_test.go:143: {
+          "budget_bytes": 536870912,
+          "point": {
+            "VmHWM:": 407941120,
+            "VmRSS:": 326664192,
+            "heap_alloc": 179966216,
+            "memory.current": 294817792,
+            "memory.max": 1073741824,
+            "memory.peak": 378163200
+          }
+        }
+--- PASS: TestRequestTimingMaximumRPCBatch (3.71s)
+    --- PASS: TestRequestTimingMaximumRPCBatch/postgres (3.71s)
+PASS

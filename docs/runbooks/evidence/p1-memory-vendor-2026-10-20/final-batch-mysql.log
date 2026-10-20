@@ -1,0 +1,18 @@
+=== RUN   TestTimingBatchAtMaximumSize
+=== RUN   TestTimingBatchAtMaximumSize/mysql
+    request_timing_test.go:102: maximum durable batch commit: 3.387868147s
+=== NAME  TestTimingBatchAtMaximumSize
+    request_timing_test.go:114: {
+          "budget_bytes": 536870912,
+          "point": {
+            "VmHWM:": 153264128,
+            "VmRSS:": 53579776,
+            "heap_alloc": 12438832,
+            "memory.current": 31944704,
+            "memory.max": 1073741824,
+            "memory.peak": 132513792
+          }
+        }
+--- PASS: TestTimingBatchAtMaximumSize (83.66s)
+    --- PASS: TestTimingBatchAtMaximumSize/mysql (83.66s)
+PASS

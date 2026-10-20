@@ -1,8 +1,14 @@
 # 项目 TODO
 
-> 最后更新：2026-10-18
+> 最后更新：2026-10-20
 >
-> **当前执行入口**：[v0.36.0 运行验收、证据收口与双语入口](./design/next-stage-plan-2026-10-18.md)。v0.35.1 审查修复、v0.35.2 定价原子保存/协议与实库验收、v0.36.0 请求计时/账单关联已交付。本轮告警标签修复与五组规则测试通过，生产已追加四条 request-timing 告警并热加载，业务实例保持；见 [本轮执行记录](./runbooks/post-v0.36.0-acceptance-2026-10-18.md)。
+> **当前执行入口**：[计时内存预算与供应商证据可读性](./design/next-stage-plan-2026-10-20.md)。N1/N2 实现已分别提交为 `64fa1478` / `1d945b81`，原生最大输入及前端隔离验收通过，完整原生三库容量 CI 已通过；2026-10-20 已完成 [生产部署](./runbooks/p1-production-deployment-2026-10-20.md)，见 [实施记录](./runbooks/p1-memory-vendor-evidence-2026-10-20.md)。真实账期与契约晋级按条件启动，executor 不扩面。
+>
+> **独立生产验收**：原 48h 窗口已结束，结论 FAIL，自动任务 PAUSED；新 Jaeger 实例、TTL 与生产 WS 仍须独立验收。本轮不重开窗口或修改证据，见 [最终记录](./runbooks/post-v0.36.0-acceptance-2026-10-18.md)。
+
+## 历史进度（2026-10-18）
+
+> **当轮执行入口（已归档）**：[v0.36.0 运行验收、证据收口与双语入口](./design/next-stage-plan-2026-10-18.md)。v0.35.1 审查修复、v0.35.2 定价原子保存/协议与实库验收、v0.36.0 请求计时/账单关联已交付。本轮告警标签修复与五组规则测试通过，生产已追加四条 request-timing 告警并热加载，业务实例保持；见 [当轮执行记录](./runbooks/post-v0.36.0-acceptance-2026-10-18.md)。
 >
 > **文档交付**：中文 README 精简历史升级内容，新增英文 README 和英文 Lite Quickstart，保留中文默认与互链；文档索引与旧计划归档同步。本轮按常规提交交付，不发布新 tag。
 >
@@ -12,7 +18,7 @@
 >
 > **计时 SQL 容量改进（2026-10-19）**：已补分组持久事务、PostgreSQL 新 claim 插入即分配最终 ID，以及有界分页读取；原生三库 64 并发四组长测、十轮 race 与适用 CI/E2E 已通过，448,532 条摘要完整落库；新增 139 号快照索引迁移和固定 4,096 项缓冲预算。历史 FAIL 与资源上界变化见 [改进记录](./runbooks/request-timing-capacity-improvement-2026-10-18.md) / [PR #25](https://github.com/mengbin92/micro-one-api/pull/25)。生产 48h 观察仍由另一台电脑继续，本轮未部署。
 
-> **当前剩余**：生产 WS 自然长连接与跨 48h TTL 存储稳态仍待验收，旧 arm64 短测两次失败保留；受控性能通过不代替生产 Log RPC/SQL 或整体容量准入。生产 vendor report/run 均为 0，DeepSeek 手工日窗相符不替代来源绑定、最终水位/API 对照。executor 当前新旧 SSE 无同窗可比增量，仍为 INSUFFICIENT、正式七天未起算。收费与灰度不自动扩面。
+> **当轮剩余**：生产 WS 自然长连接与跨 48h TTL 存储稳态仍待验收，旧 arm64 短测两次失败保留；受控性能通过不代替生产 Log RPC/SQL 或整体容量准入。生产 vendor report/run 均为 0，DeepSeek 手工日窗相符不替代来源绑定、最终水位/API 对照。executor 当前新旧 SSE 无同窗可比增量，仍为 INSUFFICIENT、正式七天未起算。收费与灰度不自动扩面。
 
 ## 历史进度（2026-10-16）
 

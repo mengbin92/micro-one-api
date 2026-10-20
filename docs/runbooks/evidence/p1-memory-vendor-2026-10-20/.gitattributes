@@ -1,0 +1,2 @@
+# Keep captured test output byte-for-byte, including its diagnostic indentation.
+*.log -whitespace

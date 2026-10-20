@@ -16,6 +16,7 @@ import (
 	"micro-one-api/domain/authorization"
 	authztest "micro-one-api/domain/authorization/testutil"
 	"micro-one-api/domain/requesttrace"
+	timingtest "micro-one-api/domain/requesttrace/testutil"
 	dbtest "micro-one-api/platform/database/testutil"
 )
 
@@ -34,6 +35,14 @@ func timingEntry() *biz.LogEntry {
 	s.HandlerFinishedAtMS, s.HandlerDurationMS = &finish, new(float64)
 	return &biz.LogEntry{UserID: s.UserID, Source: requesttrace.TimingSource, RootRequestID: s.RootRequestID,
 		DedupeKey: requesttrace.TimingDedupeKey(s.ObservationID), RequestTiming: s, CreatedAt: time.Now().Add(-time.Hour)}
+}
+
+func maximumTimingEntry() *biz.LogEntry {
+	entry := timingEntry()
+	entry.RequestTiming = timingtest.MaximumTiming()
+	entry.RootRequestID = entry.RequestTiming.RootRequestID
+	entry.DedupeKey = requesttrace.TimingDedupeKey(entry.RequestTiming.ObservationID)
+	return entry
 }
 
 func timingSQLite(t *testing.T) *Repository {
@@ -59,19 +68,43 @@ func timingRefs(t *testing.T, r *Repository, id string) []requestTraceAttemptRef
 }
 
 func TestTimingBatchAtMaximumSize(t *testing.T) {
+	defer timingtest.CheckMemoryBudget(t, 512<<20)
 	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
 		t.Run(driver, func(t *testing.T) {
 			r := &Repository{db: dbtest.RoutingContextDB(t, driver)}
+			require.NoError(t, r.db.Callback().Create().Before("gorm:create").Register("timing_statement_budget", func(tx *gorm.DB) {
+				if tx.Statement.Table != "logs" {
+					return
+				}
+				var models []logModel
+				switch value := tx.Statement.Dest.(type) {
+				case *[]logModel:
+					models = *value
+				case []logModel:
+					models = value
+				}
+				bytes := 0
+				for _, model := range models {
+					if model.RequestTimingJSON != nil {
+						bytes += len(*model.RequestTimingJSON)
+					}
+				}
+				if bytes > 4<<20 {
+					tx.AddError(fmt.Errorf("timing INSERT JSON payload %d exceeds 4 MiB", bytes))
+				}
+			}))
 			entries := make([]*biz.LogEntry, timingCommitBatchSize)
 			for i := range entries {
-				entries[i] = timingEntry()
+				entries[i] = maximumTimingEntry()
 			}
+			start := time.Now()
 			require.NoError(t, r.CreateBatch(context.Background(), entries))
+			t.Logf("maximum durable batch commit: %s", time.Since(start))
 			for _, entry := range entries {
 				require.Positive(t, entry.ID)
 			}
 			require.NoError(t, r.CreateBatch(context.Background(), entries), "replay of a maximum group is idempotent")
-			for table, expected := range map[string]int64{"logs": timingCommitBatchSize, "log_ingest_dedupe_claims": timingCommitBatchSize, "request_trace_attempt_refs": 2 * timingCommitBatchSize} {
+			for table, expected := range map[string]int64{"logs": timingCommitBatchSize, "log_ingest_dedupe_claims": timingCommitBatchSize, "request_trace_attempt_refs": 128 * timingCommitBatchSize} {
 				var n int64
 				require.NoError(t, r.db.Table(table).Count(&n).Error)
 				require.Equal(t, expected, n, table)
@@ -84,8 +117,11 @@ func TestTimingBatchFailureDoesNotCommitAnEarlierSummary(t *testing.T) {
 	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
 		t.Run(driver, func(t *testing.T) {
 			r := &Repository{db: dbtest.RoutingContextDB(t, driver)}
-			first, second := timingEntry(), timingEntry()
-			second.RequestTiming.Attempts[0].RequestID = "fail-this-association"
+			entries := make([]*biz.LogEntry, 16)
+			for i := range entries {
+				entries[i] = maximumTimingEntry()
+			}
+			entries[len(entries)-1].RequestTiming.Attempts[0].RequestID = "fail-this-association"
 			require.NoError(t, r.db.Callback().Create().After("gorm:create").Register("timing_batch_failure", func(tx *gorm.DB) {
 				if tx.Statement.Table != "request_trace_attempt_refs" {
 					return
@@ -103,14 +139,15 @@ func TestTimingBatchFailureDoesNotCommitAnEarlierSummary(t *testing.T) {
 					}
 				}
 			}))
-			require.Error(t, r.CreateBatch(context.Background(), []*biz.LogEntry{first, second}))
+			require.Error(t, r.CreateBatch(context.Background(), entries))
 			for _, table := range []string{"logs", "log_ingest_dedupe_claims", "request_trace_attempt_refs"} {
 				var count int64
 				require.NoError(t, r.db.Table(table).Count(&count).Error)
 				require.Zero(t, count, table+": one durable batch must commit or roll back together")
 			}
-			require.Zero(t, first.ID, "failed batch cannot publish an uncommitted row ID")
-			require.Zero(t, second.ID)
+			for _, entry := range entries {
+				require.Zero(t, entry.ID, "failed batch cannot publish an uncommitted row ID")
+			}
 		})
 	}
 }

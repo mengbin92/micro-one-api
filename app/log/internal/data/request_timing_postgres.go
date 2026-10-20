@@ -55,11 +55,11 @@ func createTimingPostgresBatch(tx *gorm.DB, keys []string, entries map[string]*b
 	if len(models) == 0 {
 		return nil
 	}
-	if err := tx.Create(&models).Error; err != nil {
+	if err := createTimingLogModels(tx, models); err != nil {
 		return err
 	}
 	if len(refs) > 0 {
-		return tx.CreateInBatches(&refs, 256).Error
+		return tx.CreateInBatches(&refs, timingRefInsertBatchSize).Error
 	}
 	return nil
 }

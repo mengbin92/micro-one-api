@@ -1,0 +1,10 @@
+--- FAIL: TestTimingBatchAtMaximumSize (0.17s)
+    --- FAIL: TestTimingBatchAtMaximumSize/sqlite (0.17s)
+        request_timing_test.go:95: 
+            	Error Trace:	/Users/neo/vscode/mengbin/micro-one-api/app/log/internal/data/request_timing_test.go:95
+            	Error:      	Received unexpected error:
+            	            	timing INSERT JSON payload 47156096 exceeds 4 MiB
+            	Test:       	TestTimingBatchAtMaximumSize/sqlite
+FAIL
+FAIL	micro-one-api/app/log/internal/data	0.779s
+FAIL

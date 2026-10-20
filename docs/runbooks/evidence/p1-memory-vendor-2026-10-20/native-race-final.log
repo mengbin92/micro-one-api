@@ -1,0 +1,114 @@
+panic: test timed out after 4m0s
+	running tests:
+		TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups (1m15s)
+		TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups/mysql (1m13s)
+
+goroutine 1109 [running]:
+testing.(*M).startAlarm.func1()
+	/usr/local/go/src/testing/testing.go:2961 +0x605
+created by time.goFunc
+	/usr/local/go/src/time/sleep.go:182 +0x45
+
+goroutine 1 [chan receive, 1 minutes]:
+testing.(*T).Run(0xc0000df208, {0x1af2710, 0x3c}, 0x29955d8)
+	/usr/local/go/src/testing/testing.go:2268 +0xb3e
+testing.runTests.func1(0xc0000df208)
+	/usr/local/go/src/testing/testing.go:2744 +0x85
+testing.tRunner(0xc0000df208, 0xc000545a40)
+	/usr/local/go/src/testing/testing.go:2195 +0x21d
+testing.runTests({0x1ab143a, 0xd}, {0x1ad46ee, 0x23}, 0xc0001d20a8, {0x29ef240, 0x29, 0x29}, {0xc2ade94e62f232d0, 0x37e46b8a25, ...})
+	/usr/local/go/src/testing/testing.go:2742 +0x9ea
+testing.(*M).Run(0xc0004e6780)
+	/usr/local/go/src/testing/testing.go:2602 +0xf45
+main.main()
+	_testmain.go:126 +0x165
+
+goroutine 956 [select, 1 minutes]:
+database/sql.(*DB).connectionOpener(0xc003978410, {0x298df48, 0xc0010221e0})
+	/usr/local/go/src/database/sql/sql.go:1266 +0xed
+created by database/sql.OpenDB in goroutine 953
+	/usr/local/go/src/database/sql/sql.go:846 +0x287
+
+goroutine 957 [select, 1 minutes]:
+github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1()
+	/go/pkg/mod/github.com/go-sql-driver/mysql@v1.7.0/connection.go:614 +0x105
+created by github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher in goroutine 953
+	/go/pkg/mod/github.com/go-sql-driver/mysql@v1.7.0/connection.go:611 +0x1c5
+
+goroutine 798 [chan receive, 1 minutes]:
+testing.(*T).Run(0xc0008e2248, {0x1aa167a, 0x5}, 0xc0001d21c8)
+	/usr/local/go/src/testing/testing.go:2268 +0xb3e
+micro-one-api/app/log/internal/data.TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups(0xc0008e2248)
+	/work/app/log/internal/data/request_timing_test.go:157 +0xb4
+testing.tRunner(0xc0008e2248, 0x29955d8)
+	/usr/local/go/src/testing/testing.go:2195 +0x21d
+created by testing.(*T).Run in goroutine 1
+	/usr/local/go/src/testing/testing.go:2260 +0xb13
+
+goroutine 953 [IO wait]:
+internal/poll.runtime_pollWait(0x7198b1d6ce00, 0x72)
+	/usr/local/go/src/runtime/netpoll.go:351 +0x85
+internal/poll.(*pollDesc).wait(0xc00017e6a0, 0x72, 0x0)
+	/usr/local/go/src/internal/poll/fd_poll_runtime.go:84 +0xb1
+internal/poll.(*pollDesc).waitRead(...)
+	/usr/local/go/src/internal/poll/fd_poll_runtime.go:89
+internal/poll.(*FD).Read(0xc00017e680, {0xc003d28000, 0x1000, 0x1000})
+	/usr/local/go/src/internal/poll/fd_unix.go:170 +0x499
+net.(*netFD).Read(0xc00017e680, {0xc003d28000, 0x1000, 0x1000})
+	/usr/local/go/src/net/fd_posix.go:68 +0x4b
+net.(*conn).Read(0xc0000061b0, {0xc003d28000, 0x1000, 0x1000})
+	/usr/local/go/src/net/net.go:196 +0xad
+github.com/go-sql-driver/mysql.(*buffer).fill(0xc003d15440, 0x4)
+	/go/pkg/mod/github.com/go-sql-driver/mysql@v1.7.0/buffer.go:90 +0x448
+github.com/go-sql-driver/mysql.(*buffer).readNext(0xc003d15440, 0x4)
+	/go/pkg/mod/github.com/go-sql-driver/mysql@v1.7.0/buffer.go:119 +0x50
+github.com/go-sql-driver/mysql.(*mysqlConn).readPacket(0xc003d15440)
+	/go/pkg/mod/github.com/go-sql-driver/mysql@v1.7.0/packets.go:32 +0xaa
+github.com/go-sql-driver/mysql.(*mysqlConn).readResultSetHeaderPacket(0xc003d15440)
+	/go/pkg/mod/github.com/go-sql-driver/mysql@v1.7.0/packets.go:537 +0x2f
+github.com/go-sql-driver/mysql.(*mysqlConn).exec(0xc003d15440, {0xc00024d002, 0xa3})
+	/go/pkg/mod/github.com/go-sql-driver/mysql@v1.7.0/connection.go:334 +0x119
+github.com/go-sql-driver/mysql.(*mysqlConn).Exec(0xc003d15440, {0xc00024d002, 0xa3}, {0xc003ac0d40, 0x0, 0x0})
+	/go/pkg/mod/github.com/go-sql-driver/mysql@v1.7.0/connection.go:316 +0x19c
+github.com/go-sql-driver/mysql.(*mysqlConn).ExecContext(0xc003d15440, {0x298de68, 0x3ac51a0}, {0xc00024d002, 0xa3}, {0x3ac51a0, 0x0, 0x0?})
+	/go/pkg/mod/github.com/go-sql-driver/mysql@v1.7.0/connection.go:525 +0x2e5
+database/sql.ctxDriverExec({0x298de68, 0x3ac51a0}, {0x71985a86b680, 0xc003d15440}, {0x0, 0x0}, {0xc00024d002, 0xa3}, {0x3ac51a0, 0x0, ...})
+	/usr/local/go/src/database/sql/ctxutil.go:31 +0xeb
+database/sql.(*DB).execDC.func2()
+	/usr/local/go/src/database/sql/sql.go:1718 +0x266
+database/sql.withLock({0x2987e20, 0xc003b18000}, 0xc003ac1198)
+	/usr/local/go/src/database/sql/sql.go:3621 +0xa3
+database/sql.(*DB).execDC(0x1da?, {0x298de68, 0x3ac51a0}, 0xc003b18000, 0xc001016520, {0xc00024d002, 0xa3}, {0x0, 0x0, 0x0})
+	/usr/local/go/src/database/sql/sql.go:1713 +0x405
+database/sql.(*Tx).ExecContext(0xc000448990, {0x298de68, 0x3ac51a0}, {0xc00024d002, 0xa3}, {0x0, 0x0, 0x0})
+	/usr/local/go/src/database/sql/sql.go:2521 +0x129
+micro-one-api/platform/database/migrate.(*Runner).applyOne(0xc003ac1aa8, {0x298de68, 0x3ac51a0}, {0xc0000d5bf0, 0x2f}, {0xc0000d5c01, 0x1a})
+	/work/platform/database/migrate/runner.go:467 +0x53d
+micro-one-api/platform/database/migrate.(*Runner).Apply(0xc003ac1aa8, {0x298de68, 0x3ac51a0})
+	/work/platform/database/migrate/runner.go:247 +0xefd
+micro-one-api/platform/database/testutil.RoutingContextDB(0xc0008e2008, {0x1aa167a, 0x5})
+	/work/platform/database/testutil/scratch.go:89 +0xe85
+micro-one-api/app/log/internal/data.TestTimingConcurrentRepositoriesDeduplicateOverlappingGroups.func1(0xc0008e2008)
+	/work/app/log/internal/data/request_timing_test.go:158 +0x65
+testing.tRunner(0xc0008e2008, 0xc0001d21c8)
+	/usr/local/go/src/testing/testing.go:2195 +0x21d
+created by testing.(*T).Run in goroutine 798
+	/usr/local/go/src/testing/testing.go:2260 +0xb13
+
+goroutine 954 [select, 1 minutes]:
+database/sql.(*DB).connectionOpener(0xc0039781a0, {0x298df48, 0xc001022190})
+	/usr/local/go/src/database/sql/sql.go:1266 +0xed
+created by database/sql.OpenDB in goroutine 953
+	/usr/local/go/src/database/sql/sql.go:846 +0x287
+
+goroutine 955 [select, 1 minutes]:
+github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1()
+	/go/pkg/mod/github.com/go-sql-driver/mysql@v1.7.0/connection.go:614 +0x105
+created by github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher in goroutine 953
+	/go/pkg/mod/github.com/go-sql-driver/mysql@v1.7.0/connection.go:611 +0x1c5
+
+goroutine 1108 [chan receive]:
+database/sql.(*Tx).awaitDone(0xc000448990)
+	/usr/local/go/src/database/sql/sql.go:2217 +0x4a
+created by database/sql.(*DB).beginDC in goroutine 953
+	/usr/local/go/src/database/sql/sql.go:1930 +0x428

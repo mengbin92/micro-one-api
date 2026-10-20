@@ -656,7 +656,7 @@ services:
     networks:
       - backend
     restart: unless-stopped
-    mem_limit: 512m
+    mem_limit: 768m
     security_opt:
       - no-new-privileges:true
     read_only: true

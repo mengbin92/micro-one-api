@@ -1,0 +1,22 @@
+=== RUN   TestRequestTimingMaximumRPCBatch
+=== RUN   TestRequestTimingMaximumRPCBatch/mysql
+    request_timing_sql_test.go:112: 
+        	Error Trace:	/work/internal/server/request_timing_sql_test.go:112
+        	Error:      	Received unexpected error:
+        	            	rpc error: code = DeadlineExceeded desc = context deadline exceeded; context deadline exceeded; context deadline exceeded
+        	Test:       	TestRequestTimingMaximumRPCBatch/mysql
+=== NAME  TestRequestTimingMaximumRPCBatch
+    request_timing_sql_test.go:131: {
+          "budget_bytes": 536870912,
+          "point": {
+            "VmHWM:": 256466944,
+            "VmRSS:": 256466944,
+            "heap_alloc": 335765456,
+            "memory.current": 227000320,
+            "memory.max": 1073741824,
+            "memory.peak": 227008512
+          }
+        }
+--- FAIL: TestRequestTimingMaximumRPCBatch (27.92s)
+    --- FAIL: TestRequestTimingMaximumRPCBatch/mysql (27.92s)
+FAIL

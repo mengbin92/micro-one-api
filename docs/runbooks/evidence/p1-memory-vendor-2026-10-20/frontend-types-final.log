@@ -1,0 +1,2 @@
+npm notice run web@0.0.0 npx
+npm notice run 'tsc' --noEmit -p tsconfig.app.json

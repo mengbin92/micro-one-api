@@ -14,12 +14,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"gorm.io/gorm"
 	logv1 "micro-one-api/api/log/v1"
 	logtest "micro-one-api/app/log/testutil"
 	"micro-one-api/domain/requesttrace"
+	timingtest "micro-one-api/domain/requesttrace/testutil"
 	"micro-one-api/platform/authz"
 	dbtest "micro-one-api/platform/database/testutil"
 	"micro-one-api/platform/grpc/xgrpc"
@@ -84,6 +87,59 @@ func sqlTimingSummary() *requesttrace.TimingSummary {
 	id := uuid.NewString()
 	reservation := "reservation-" + id
 	return &requesttrace.TimingSummary{Version: 1, ObservationID: id, ObservationKind: "http", Protocol: "sse", Endpoint: "/v1/perf", ExecutionPath: "legacy", UserID: 7, RootRequestID: id, StartedAtMS: time.Now().UnixMilli(), Outcome: "success", CollectionState: "not_recorded", Attempts: []requesttrace.TimingAttempt{{Number: 1, RequestID: id, ReservationID: &reservation, Outcome: "success"}}}
+}
+
+func TestRequestTimingMaximumRPCBatch(t *testing.T) {
+	defer timingtest.CheckMemoryBudget(t, 512<<20)
+	if os.Getenv("TIMING_MAXIMUM_RPC") != "1" {
+		t.Skip("maximum-input RPC/storage acceptance is opt-in")
+	}
+	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(driver, func(t *testing.T) {
+			s := newTimingSQLStack(t, driver)
+			summaries := make([]*requesttrace.TimingSummary, 128)
+			for i := range summaries {
+				summaries[i] = timingtest.MaximumTiming()
+				summaries[i].StartedAtMS = time.Now().UnixMilli()
+			}
+			start := time.Now()
+			ready := make(chan struct{})
+			results := make(chan error, len(summaries))
+			for _, summary := range summaries {
+				go func() { <-ready; results <- s.ingest(context.Background(), summary) }()
+			}
+			close(ready)
+			deadlines := 0
+			for range summaries {
+				if err := <-results; err != nil {
+					// Maximum-input overload keeps the existing bounded transaction deadline.
+					require.Equal(t, codes.DeadlineExceeded, status.Code(err), "%v", err)
+					deadlines++
+				}
+			}
+			t.Logf("maximum-input burst: %s; bounded deadline responses=%d", time.Since(start), deadlines)
+			counts := s.counts(t)
+			require.Equal(t, counts["logs"], counts["log_ingest_dedupe_claims"])
+			require.Equal(t, 128*counts["logs"], counts["request_trace_attempt_refs"], "timed-out groups cannot publish partial associations")
+			// Retry after overload at a sustainable rate; committed observations dedupe.
+			for _, summary := range summaries {
+				require.NoError(t, s.ingest(context.Background(), summary))
+			}
+			require.Equal(t, map[string]int64{"logs": 128, "log_ingest_dedupe_claims": 128, "request_trace_attempt_refs": 16384}, s.counts(t))
+			result, err := s.query(context.Background())
+			require.NoError(t, err)
+			require.Len(t, result.Items, 20)
+			originals := map[string]*requesttrace.TimingSummary{}
+			for _, summary := range summaries {
+				originals[summary.ObservationID] = summary
+			}
+			for _, item := range result.Items {
+				decoded, err := timingdto.FromProto(item)
+				require.NoError(t, err)
+				require.Equal(t, originals[decoded.ObservationID], decoded)
+			}
+		})
+	}
 }
 
 func TestRequestTimingSQLFailureRecovery(t *testing.T) {

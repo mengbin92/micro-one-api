@@ -1,0 +1,11 @@
+{
+  "budget_bytes": 536870912,
+  "point": {
+    "VmHWM:": 961814528,
+    "VmRSS:": 956186624,
+    "heap_alloc": 224215280,
+    "memory.current": 925655040,
+    "memory.max": 1073741824,
+    "memory.peak": 937963520
+  }
+}

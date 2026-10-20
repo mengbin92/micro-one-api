@@ -6,23 +6,29 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { t } from '@/lib/i18n';
 
-interface Scope { provider: string; account: string; project?: string; upstream_model_id?: string; currency: string; unit: string; start: string; end: string; granularity: string }
-interface Comparison { key: string; status: string; vendor_amount: string | null; estimated_amount: string | null; unexplained: string | null; unknown_amounts: number }
-interface Report { id: string; manifest: { scope: Scope; version: string; evidence_id: string; supersedes?: string }; status: string; cost_basis: string; verification_scope: string; correction_delta?: string; comparisons: Comparison[] }
+interface Scope { provider: string; account: string; project?: string; upstream_model_id?: string; currency: string; unit: string; start: string; end: string; timezone?: string; granularity: string }
+interface SourceMapping { source_kind: string; source_id: string | number; provider: string; account: string; project?: string; start: string; end: string; revision: string; evidence_id: string }
+interface Attribution { category: string; amount: string; status: string; evidence_id: string; verification_scope: string }
+interface Comparison { key: string; status: string; usage_status?: string; amount_status?: string; vendor_amount: string | null; estimated_amount: string | null; difference?: string | null; unexplained: string | null; unknown_amounts?: number; purpose_counts?: Record<string, number>; attributions?: Attribution[] }
+interface Report { id: string; manifest: { scope: Scope; version: string; evidence_id: string; supersedes?: string; complete?: boolean; pages_complete?: boolean; vendor_watermark?: string; local_watermark?: string; coverage_evidence_id?: string; mappings?: SourceMapping[]; absolute_tolerance?: string; relative_tolerance?: string; rounding_evidence_id?: string }; status: string; cost_basis: string; verification_scope: string; correction_delta?: string | null; unknown_time_attempts?: number; unmapped_attempts?: number; internal_attempts?: number; user_reservations?: number; comparisons: Comparison[] }
 interface ReviewItem { report_id: string; status: string; age_seconds: number; unknown_amounts: number; next_action: string }
 interface Payload { reports?: Report[]; daily_coverage?: unknown[]; weekly_review?: { pending: number; attention: number; unknown_amounts: number; items: ReviewItem[] } }
 function vendorMoney(value: string | null | undefined, scope: Scope) { return value == null ? t('未知') : `${value} ${scope.currency}${scope.unit === 'currency' ? '' : ` (${scope.unit})`}`; }
-const statusLabel = (value: string) => ({ pending: t('待补证'), attention: t('需复核'), matched: t('已核对'), variance: t('有差异'), unknown: t('未知'), not_applicable: t('不适用') })[value] ?? value;
+const statusLabel = (value: string) => ({ pending: t('待补证'), attention: t('需复核'), matched: t('已核对'), variance: t('有差异'), unknown: t('未知'), not_applicable: t('不适用'), not_comparable: t('不可比较'), confirmed: t('已确认'), hypothesis: t('待验证') })[value] ?? value;
 const scopeLabel = (value: string) => ({ none: t('尚未核验'), request: t('按请求核验'), account_period: t('按账号账期核验') })[value] ?? value;
 const basisLabel = (value: string) => ({ provider_reported: t('供应商费用报告'), invoice: t('账单凭据'), tariff_estimate: t('费率估价'), monthly_allocation: t('月费分摊'), unknown: t('未知') })[value] ?? value;
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const actionLabel = (value: string) => ({ retain_evidence: t('保留证据'), complete_watermarks_or_late_evidence: t('补齐水位或迟到证据'), review_unexplained_difference: t('复核未解释差额'), resolve_attempt_scope: t('核对执行范围') })[value] ?? value;
 
 export function VendorReportsPage() {
+  const auth = useAuthorization();
+  return <VendorReportsWorkspace key={auth.generation} auth={auth} />;
+}
+
+function VendorReportsWorkspace({ auth }: { auth: ReturnType<typeof useAuthorization> }) {
   const [start, setStart] = useState(() => day(Date.now() - 7 * 86400000));
   const [end, setEnd] = useState(() => day(Date.now() + 86400000));
   const [selected, setSelected] = useState<string | null>(null);
-  const auth = useAuthorization();
   const from = Date.parse(`${start}T00:00:00Z`) / 1000, to = Date.parse(`${end}T00:00:00Z`) / 1000;
   const valid = Number.isFinite(from) && Number.isFinite(to) && to > from && to - from <= 31 * 86400;
   const query = useAuthorizedQuery({ permission: 'billing.vendor_report.read', queryKey: ['vendor-reports', from, to], enabled: valid,
@@ -54,6 +60,50 @@ export function VendorReportsPage() {
         <TableCell><Button variant="outline" onClick={() => setSelected(r.id)}>{t('查看证据')}</Button></TableCell></TableRow>)}</TableBody></Table>
     {!query.isLoading && !query.isError && reports.length === 0 && <p>{t('此窗口暂无供应商报告，费用核验覆盖保持未知。')}</p>}
     {review?.items?.length ? <section className="rounded-lg border p-4"><h3 className="font-semibold">{t('周复盘待办')}</h3>{review.items.map(i => <div key={i.report_id} className="my-2 text-sm"><span className="font-mono">{i.report_id.slice(0, 12)}</span> · {statusLabel(i.status)} · {Math.floor(i.age_seconds / 3600)}h · {actionLabel(i.next_action)}</div>)}</section> : null}
-    {detail && <section className="rounded-lg border p-4"><div className="flex justify-between"><h3 className="font-semibold">{t('报告证据')}</h3><Button variant="ghost" onClick={() => setSelected(null)}>{t('关闭')}</Button></div><dl className="break-all text-sm"><dt>{t('报告 ID')}</dt><dd>{detail.id}</dd><dt>{t('版本 / 证据引用')}</dt><dd>{detail.manifest.version} / {detail.manifest.evidence_id}</dd><dt>{t('更正前序')}</dt><dd>{detail.manifest.supersedes ?? '-'}</dd></dl></section>}
+    {detail && !query.isError && auth.displayCan('billing.vendor_report.read') && <VendorReportEvidence report={detail} review={review?.items.find(i => i.report_id === detail.id)} close={() => setSelected(null)} />}
   </div>;
+}
+
+const provided = (value: string | number | null | undefined) => value == null || value === '' || (typeof value === 'string' && value.startsWith('0001-01-01T')) ? t('未提供') : String(value);
+const completeLabel = (value: boolean | null | undefined) => value == null ? t('未知') : value ? t('完整') : t('不完整');
+
+function VendorReportEvidence({ report, review, close }: { report: Report; review?: ReviewItem; close: () => void }) {
+  const m = report.manifest, scope = m.scope;
+  const fields = [
+    ['报告 ID', report.id], ['版本 / 证据引用', `${m.version} / ${m.evidence_id}`],
+    ['核验状态', statusLabel(report.status)], ['核验范围', scopeLabel(report.verification_scope)],
+    ['账期开始', scope.start], ['账期结束（不含）', scope.end], ['账期时区', provided(scope.timezone)],
+    ['币种 / 单位', `${scope.currency} / ${scope.unit}`], ['上游模型', provided(scope.upstream_model_id)],
+    ['报告完整性', completeLabel(m.complete)], ['分页完整性', completeLabel(m.pages_complete)],
+    ['供应商水位', provided(m.vendor_watermark)], ['本地水位', provided(m.local_watermark)], ['覆盖证据', provided(m.coverage_evidence_id)],
+    ['后续动作', review ? actionLabel(review.next_action) : t('未提供')],
+    ['执行时间未知', provided(report.unknown_time_attempts)], ['未映射执行', provided(report.unmapped_attempts)],
+    ['内部调用', provided(report.internal_attempts)], ['用户预留', provided(report.user_reservations)],
+    ['绝对容差', vendorMoney(m.absolute_tolerance, scope)], ['相对容差', provided(m.relative_tolerance)], ['舍入证据', provided(m.rounding_evidence_id)],
+    ['更正前序', provided(m.supersedes)], ['更正差额', vendorMoney(report.correction_delta, scope)],
+  ];
+  return <section aria-label={t('报告证据')} className="min-w-0 space-y-4 rounded-lg border p-4">
+    <div className="flex items-center justify-between gap-3"><h3 className="font-semibold">{t('报告证据')}</h3><Button variant="ghost" onClick={close}>{t('关闭')}</Button></div>
+    <p className="text-sm text-muted-foreground">{t('状态由服务端判定；证据引用不代表核验通过，账期核验不证明逐请求实扣。')}</p>
+    <dl className="grid min-w-0 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">{fields.map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-muted-foreground">{t(label)}</dt><dd className="break-all">{value}</dd></div>)}</dl>
+    <h4 className="font-medium">{t('来源映射')}</h4>
+    {m.mappings?.length ? <ul className="space-y-3 text-sm">{m.mappings.map((mapping, i) => <li key={i} className="min-w-0 break-all rounded border p-3">
+      <div>{mapping.source_kind} / {mapping.source_id} → {mapping.provider} / {mapping.account}{mapping.project ? ` / ${mapping.project}` : ''}</div>
+      <div>{t('生效范围')}：{mapping.start} → {mapping.end}</div>
+      <div>{t('映射版本')}：{mapping.revision}</div><div>{t('映射证据')}：{mapping.evidence_id}</div>
+    </li>)}</ul> : <p className="text-sm">{t('未提供来源映射，不能确认生产来源覆盖。')}</p>}
+    <h4 className="font-medium">{t('比较与归因')}</h4>
+    {report.comparisons.map(c => <div key={c.key} className="min-w-0 space-y-3 rounded border p-3 text-sm">
+      <div className="break-all font-medium">{c.key} · {statusLabel(c.status)}</div>
+      <dl className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">{[
+        ['用量状态', statusLabel(c.usage_status ?? 'unknown')], ['金额状态', statusLabel(c.amount_status ?? 'unknown')],
+        ['供应商金额', vendorMoney(c.vendor_amount, scope)], ['本地估价', vendorMoney(c.estimated_amount, scope)],
+        ['差额', vendorMoney(c.difference, scope)], ['未解释差额', vendorMoney(c.unexplained, scope)], ['未知金额记录', provided(c.unknown_amounts)],
+      ].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-muted-foreground">{t(label)}</dt><dd className="break-all">{value}</dd></div>)}</dl>
+      <div>{t('调用用途')}：{c.purpose_counts ? Object.entries(c.purpose_counts).map(([purpose, count]) => `${purpose}: ${count}`).join(' · ') : t('未提供')}</div>
+      {c.attributions?.length ? <ul className="space-y-2">{c.attributions.map((a, i) => <li key={i} className="break-all border-l-2 pl-3">
+        <div>{a.category} · {statusLabel(a.status)} · {vendorMoney(a.amount, scope)} · {scopeLabel(a.verification_scope)}</div><div>{t('归因证据')}：{a.evidence_id}</div>
+      </li>)}</ul> : <p>{t('未提供差异归因证据。')}</p>}
+    </div>)}
+  </section>;
 }

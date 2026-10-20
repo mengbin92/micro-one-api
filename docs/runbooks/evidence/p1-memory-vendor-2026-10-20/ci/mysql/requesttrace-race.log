@@ -1,0 +1,861 @@
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.15s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.16s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+=== RUN   TestMaximumTimingBoundsAndTransport
+    timing_maximum_test.go:34: maximum legal summary: JSON=368407 protobuf=69409 bytes
+=== RUN   TestMaximumTimingBoundsAndTransport/reservation
+=== RUN   TestMaximumTimingBoundsAndTransport/reasons
+=== RUN   TestMaximumTimingBoundsAndTransport/root
+=== RUN   TestMaximumTimingBoundsAndTransport/request
+=== RUN   TestMaximumTimingBoundsAndTransport/model
+=== RUN   TestMaximumTimingBoundsAndTransport/stages
+=== RUN   TestMaximumTimingBoundsAndTransport/reason
+=== RUN   TestMaximumTimingBoundsAndTransport/compatibility
+=== RUN   TestMaximumTimingBoundsAndTransport/endpoint
+=== RUN   TestMaximumTimingBoundsAndTransport/path
+=== RUN   TestMaximumTimingBoundsAndTransport/attempts
+--- PASS: TestMaximumTimingBoundsAndTransport (0.04s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reservation (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reasons (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/root (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/request (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/model (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/stages (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reason (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/compatibility (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/endpoint (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/path (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/attempts (0.00s)
+=== RUN   TestMaximumTimingExporterMemory
+    timing_maximum_test.go:60: maximum-input memory acceptance requires a dedicated Linux cgroup
+--- SKIP: TestMaximumTimingExporterMemory (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+=== RUN   TestMaximumTimingBoundsAndTransport
+    timing_maximum_test.go:34: maximum legal summary: JSON=368407 protobuf=69409 bytes
+=== RUN   TestMaximumTimingBoundsAndTransport/request
+=== RUN   TestMaximumTimingBoundsAndTransport/model
+=== RUN   TestMaximumTimingBoundsAndTransport/stages
+=== RUN   TestMaximumTimingBoundsAndTransport/path
+=== RUN   TestMaximumTimingBoundsAndTransport/reservation
+=== RUN   TestMaximumTimingBoundsAndTransport/reasons
+=== RUN   TestMaximumTimingBoundsAndTransport/reason
+=== RUN   TestMaximumTimingBoundsAndTransport/root
+=== RUN   TestMaximumTimingBoundsAndTransport/compatibility
+=== RUN   TestMaximumTimingBoundsAndTransport/endpoint
+=== RUN   TestMaximumTimingBoundsAndTransport/attempts
+--- PASS: TestMaximumTimingBoundsAndTransport (0.03s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/request (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/model (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/stages (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/path (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reservation (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reasons (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reason (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/root (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/compatibility (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/endpoint (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/attempts (0.00s)
+=== RUN   TestMaximumTimingExporterMemory
+    timing_maximum_test.go:60: maximum-input memory acceptance requires a dedicated Linux cgroup
+--- SKIP: TestMaximumTimingExporterMemory (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+=== RUN   TestMaximumTimingBoundsAndTransport
+    timing_maximum_test.go:34: maximum legal summary: JSON=368407 protobuf=69409 bytes
+=== RUN   TestMaximumTimingBoundsAndTransport/root
+=== RUN   TestMaximumTimingBoundsAndTransport/endpoint
+=== RUN   TestMaximumTimingBoundsAndTransport/reservation
+=== RUN   TestMaximumTimingBoundsAndTransport/reasons
+=== RUN   TestMaximumTimingBoundsAndTransport/compatibility
+=== RUN   TestMaximumTimingBoundsAndTransport/path
+=== RUN   TestMaximumTimingBoundsAndTransport/attempts
+=== RUN   TestMaximumTimingBoundsAndTransport/request
+=== RUN   TestMaximumTimingBoundsAndTransport/model
+=== RUN   TestMaximumTimingBoundsAndTransport/stages
+=== RUN   TestMaximumTimingBoundsAndTransport/reason
+--- PASS: TestMaximumTimingBoundsAndTransport (0.03s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/root (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/endpoint (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reservation (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reasons (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/compatibility (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/path (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/attempts (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/request (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/model (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/stages (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reason (0.00s)
+=== RUN   TestMaximumTimingExporterMemory
+    timing_maximum_test.go:60: maximum-input memory acceptance requires a dedicated Linux cgroup
+--- SKIP: TestMaximumTimingExporterMemory (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+=== RUN   TestMaximumTimingBoundsAndTransport
+    timing_maximum_test.go:34: maximum legal summary: JSON=368407 protobuf=69409 bytes
+=== RUN   TestMaximumTimingBoundsAndTransport/root
+=== RUN   TestMaximumTimingBoundsAndTransport/attempts
+=== RUN   TestMaximumTimingBoundsAndTransport/request
+=== RUN   TestMaximumTimingBoundsAndTransport/reservation
+=== RUN   TestMaximumTimingBoundsAndTransport/stages
+=== RUN   TestMaximumTimingBoundsAndTransport/reasons
+=== RUN   TestMaximumTimingBoundsAndTransport/compatibility
+=== RUN   TestMaximumTimingBoundsAndTransport/endpoint
+=== RUN   TestMaximumTimingBoundsAndTransport/path
+=== RUN   TestMaximumTimingBoundsAndTransport/model
+=== RUN   TestMaximumTimingBoundsAndTransport/reason
+--- PASS: TestMaximumTimingBoundsAndTransport (0.03s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/root (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/attempts (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/request (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reservation (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/stages (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reasons (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/compatibility (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/endpoint (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/path (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/model (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reason (0.00s)
+=== RUN   TestMaximumTimingExporterMemory
+    timing_maximum_test.go:60: maximum-input memory acceptance requires a dedicated Linux cgroup
+--- SKIP: TestMaximumTimingExporterMemory (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+=== RUN   TestMaximumTimingBoundsAndTransport
+    timing_maximum_test.go:34: maximum legal summary: JSON=368407 protobuf=69409 bytes
+=== RUN   TestMaximumTimingBoundsAndTransport/root
+=== RUN   TestMaximumTimingBoundsAndTransport/endpoint
+=== RUN   TestMaximumTimingBoundsAndTransport/request
+=== RUN   TestMaximumTimingBoundsAndTransport/reservation
+=== RUN   TestMaximumTimingBoundsAndTransport/stages
+=== RUN   TestMaximumTimingBoundsAndTransport/compatibility
+=== RUN   TestMaximumTimingBoundsAndTransport/path
+=== RUN   TestMaximumTimingBoundsAndTransport/attempts
+=== RUN   TestMaximumTimingBoundsAndTransport/model
+=== RUN   TestMaximumTimingBoundsAndTransport/reasons
+=== RUN   TestMaximumTimingBoundsAndTransport/reason
+--- PASS: TestMaximumTimingBoundsAndTransport (0.03s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/root (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/endpoint (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/request (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reservation (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/stages (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/compatibility (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/path (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/attempts (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/model (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reasons (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reason (0.00s)
+=== RUN   TestMaximumTimingExporterMemory
+    timing_maximum_test.go:60: maximum-input memory acceptance requires a dedicated Linux cgroup
+--- SKIP: TestMaximumTimingExporterMemory (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+=== RUN   TestMaximumTimingBoundsAndTransport
+    timing_maximum_test.go:34: maximum legal summary: JSON=368407 protobuf=69409 bytes
+=== RUN   TestMaximumTimingBoundsAndTransport/endpoint
+=== RUN   TestMaximumTimingBoundsAndTransport/request
+=== RUN   TestMaximumTimingBoundsAndTransport/reason
+=== RUN   TestMaximumTimingBoundsAndTransport/root
+=== RUN   TestMaximumTimingBoundsAndTransport/path
+=== RUN   TestMaximumTimingBoundsAndTransport/attempts
+=== RUN   TestMaximumTimingBoundsAndTransport/reservation
+=== RUN   TestMaximumTimingBoundsAndTransport/model
+=== RUN   TestMaximumTimingBoundsAndTransport/stages
+=== RUN   TestMaximumTimingBoundsAndTransport/reasons
+=== RUN   TestMaximumTimingBoundsAndTransport/compatibility
+--- PASS: TestMaximumTimingBoundsAndTransport (0.03s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/endpoint (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/request (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reason (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/root (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/path (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/attempts (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reservation (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/model (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/stages (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reasons (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/compatibility (0.00s)
+=== RUN   TestMaximumTimingExporterMemory
+    timing_maximum_test.go:60: maximum-input memory acceptance requires a dedicated Linux cgroup
+--- SKIP: TestMaximumTimingExporterMemory (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+=== RUN   TestMaximumTimingBoundsAndTransport
+    timing_maximum_test.go:34: maximum legal summary: JSON=368407 protobuf=69409 bytes
+=== RUN   TestMaximumTimingBoundsAndTransport/root
+=== RUN   TestMaximumTimingBoundsAndTransport/compatibility
+=== RUN   TestMaximumTimingBoundsAndTransport/path
+=== RUN   TestMaximumTimingBoundsAndTransport/model
+=== RUN   TestMaximumTimingBoundsAndTransport/reasons
+=== RUN   TestMaximumTimingBoundsAndTransport/endpoint
+=== RUN   TestMaximumTimingBoundsAndTransport/attempts
+=== RUN   TestMaximumTimingBoundsAndTransport/request
+=== RUN   TestMaximumTimingBoundsAndTransport/reservation
+=== RUN   TestMaximumTimingBoundsAndTransport/stages
+=== RUN   TestMaximumTimingBoundsAndTransport/reason
+--- PASS: TestMaximumTimingBoundsAndTransport (0.03s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/root (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/compatibility (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/path (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/model (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reasons (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/endpoint (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/attempts (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/request (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reservation (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/stages (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reason (0.00s)
+=== RUN   TestMaximumTimingExporterMemory
+    timing_maximum_test.go:60: maximum-input memory acceptance requires a dedicated Linux cgroup
+--- SKIP: TestMaximumTimingExporterMemory (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+=== RUN   TestMaximumTimingBoundsAndTransport
+    timing_maximum_test.go:34: maximum legal summary: JSON=368407 protobuf=69409 bytes
+=== RUN   TestMaximumTimingBoundsAndTransport/model
+=== RUN   TestMaximumTimingBoundsAndTransport/root
+=== RUN   TestMaximumTimingBoundsAndTransport/compatibility
+=== RUN   TestMaximumTimingBoundsAndTransport/endpoint
+=== RUN   TestMaximumTimingBoundsAndTransport/attempts
+=== RUN   TestMaximumTimingBoundsAndTransport/stages
+=== RUN   TestMaximumTimingBoundsAndTransport/reasons
+=== RUN   TestMaximumTimingBoundsAndTransport/reason
+=== RUN   TestMaximumTimingBoundsAndTransport/path
+=== RUN   TestMaximumTimingBoundsAndTransport/request
+=== RUN   TestMaximumTimingBoundsAndTransport/reservation
+--- PASS: TestMaximumTimingBoundsAndTransport (0.03s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/model (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/root (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/compatibility (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/endpoint (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/attempts (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/stages (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reasons (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reason (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/path (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/request (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reservation (0.00s)
+=== RUN   TestMaximumTimingExporterMemory
+    timing_maximum_test.go:60: maximum-input memory acceptance requires a dedicated Linux cgroup
+--- SKIP: TestMaximumTimingExporterMemory (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+=== RUN   TestMaximumTimingBoundsAndTransport
+    timing_maximum_test.go:34: maximum legal summary: JSON=368407 protobuf=69409 bytes
+=== RUN   TestMaximumTimingBoundsAndTransport/root
+=== RUN   TestMaximumTimingBoundsAndTransport/endpoint
+=== RUN   TestMaximumTimingBoundsAndTransport/attempts
+=== RUN   TestMaximumTimingBoundsAndTransport/request
+=== RUN   TestMaximumTimingBoundsAndTransport/reservation
+=== RUN   TestMaximumTimingBoundsAndTransport/reasons
+=== RUN   TestMaximumTimingBoundsAndTransport/compatibility
+=== RUN   TestMaximumTimingBoundsAndTransport/path
+=== RUN   TestMaximumTimingBoundsAndTransport/model
+=== RUN   TestMaximumTimingBoundsAndTransport/stages
+=== RUN   TestMaximumTimingBoundsAndTransport/reason
+--- PASS: TestMaximumTimingBoundsAndTransport (0.03s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/root (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/endpoint (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/attempts (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/request (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reservation (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reasons (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/compatibility (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/path (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/model (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/stages (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reason (0.00s)
+=== RUN   TestMaximumTimingExporterMemory
+    timing_maximum_test.go:60: maximum-input memory acceptance requires a dedicated Linux cgroup
+--- SKIP: TestMaximumTimingExporterMemory (0.00s)
+=== RUN   TestObservationIsolationAttemptLifetimeAndFrozenSnapshot
+--- PASS: TestObservationIsolationAttemptLifetimeAndFrozenSnapshot (0.00s)
+=== RUN   TestAddElapsedStageBackdatesSpanAndAccumulatesStage
+--- PASS: TestAddElapsedStageBackdatesSpanAndAccumulatesStage (0.00s)
+=== RUN   TestNewPhaseNamesAreWhitelisted
+--- PASS: TestNewPhaseNamesAreWhitelisted (0.00s)
+=== RUN   TestExporterSaturationIsNonblockingAndShutdownIsBounded
+--- PASS: TestExporterSaturationIsNonblockingAndShutdownIsBounded (0.04s)
+=== RUN   TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks
+--- PASS: TestRecorderConcurrentBindingsAndInvalidCarrierNeverRejectsTasks (0.00s)
+=== RUN   TestContentProbeIgnoresControlFramesAndBoundsMemory
+--- PASS: TestContentProbeIgnoresControlFramesAndBoundsMemory (0.00s)
+=== RUN   TestFailedBusinessTerminalCanStillBeCompletelyWritten
+--- PASS: TestFailedBusinessTerminalCanStillBeCompletelyWritten (0.00s)
+=== RUN   TestContentProbeRecognizesCompletionTextAndCancellation
+--- PASS: TestContentProbeRecognizesCompletionTextAndCancellation (0.00s)
+=== RUN   TestTimingSummaryPresenceAndClone
+--- PASS: TestTimingSummaryPresenceAndClone (0.00s)
+=== RUN   TestTimingSummaryRejectsInvalidMetadata
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/outcome
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/route_query
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/complete_without_write
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/mismatched_kind
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unary_output
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/duplicate_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_settlement
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/external_id
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/version
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative_user
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/negative
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/span_without_trace
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/unpaired_finish
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/invalid_phase
+=== RUN   TestTimingSummaryRejectsInvalidMetadata/nan
+--- PASS: TestTimingSummaryRejectsInvalidMetadata (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/outcome (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/route_query (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/complete_without_write (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/mismatched_kind (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_attempt (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unary_output (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nonstream_ttft (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/duplicate_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_settlement (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/external_id (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/version (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative_user (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/negative (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/span_without_trace (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/raw_missing_reason (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/unpaired_finish (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/invalid_phase (0.00s)
+    --- PASS: TestTimingSummaryRejectsInvalidMetadata/nan (0.00s)
+=== RUN   TestMaximumTimingBoundsAndTransport
+    timing_maximum_test.go:34: maximum legal summary: JSON=368407 protobuf=69409 bytes
+=== RUN   TestMaximumTimingBoundsAndTransport/endpoint
+=== RUN   TestMaximumTimingBoundsAndTransport/attempts
+=== RUN   TestMaximumTimingBoundsAndTransport/model
+=== RUN   TestMaximumTimingBoundsAndTransport/stages
+=== RUN   TestMaximumTimingBoundsAndTransport/root
+=== RUN   TestMaximumTimingBoundsAndTransport/compatibility
+=== RUN   TestMaximumTimingBoundsAndTransport/path
+=== RUN   TestMaximumTimingBoundsAndTransport/request
+=== RUN   TestMaximumTimingBoundsAndTransport/reservation
+=== RUN   TestMaximumTimingBoundsAndTransport/reasons
+=== RUN   TestMaximumTimingBoundsAndTransport/reason
+--- PASS: TestMaximumTimingBoundsAndTransport (0.03s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/endpoint (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/attempts (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/model (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/stages (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/root (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/compatibility (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/path (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/request (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reservation (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reasons (0.00s)
+    --- PASS: TestMaximumTimingBoundsAndTransport/reason (0.00s)
+=== RUN   TestMaximumTimingExporterMemory
+    timing_maximum_test.go:60: maximum-input memory acceptance requires a dedicated Linux cgroup
+--- SKIP: TestMaximumTimingExporterMemory (0.00s)
+PASS

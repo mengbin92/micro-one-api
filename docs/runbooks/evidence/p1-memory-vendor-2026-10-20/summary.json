@@ -1,0 +1,99 @@
+{
+  "date": "2026-10-20",
+  "code_revision": "64fa14782d7bf0ff637333fef884276ae151f750",
+  "workflow_url": "https://github.com/mengbin92/micro-one-api/actions/runs/39397036764",
+  "workflow_conclusion": "success",
+  "native_memory_budget_bytes": {
+    "relay": 805306368,
+    "log": 536870912,
+    "container": 1073741824
+  },
+  "drivers": {
+    "sqlite": {
+      "p95_overhead_percent": [
+        2.2641370220956913,
+        1.9325463250829733,
+        1.5262278887054226,
+        2.6279919339733615
+      ],
+      "persisted_summaries": 149335,
+      "spans": 1792740,
+      "candidate_checks": "all zero exit codes; ten race repetitions and checkpoint probe passed"
+    },
+    "mysql": {
+      "p95_overhead_percent": [
+        3.2669918005790555,
+        1.9576264856798753,
+        2.911772299139437,
+        4.649927856752023
+      ],
+      "persisted_summaries": 149211,
+      "spans": 1791252,
+      "candidate_checks": "all zero exit codes; ten race repetitions and checkpoint probe passed"
+    },
+    "postgres": {
+      "p95_overhead_percent": [
+        1.6644025845348853,
+        1.543580190144045,
+        1.9752231870723502,
+        3.0088207908262943
+      ],
+      "persisted_summaries": 149285,
+      "spans": 1792140,
+      "candidate_checks": "all zero exit codes; ten race repetitions and checkpoint probe passed"
+    }
+  },
+  "boundaries": [
+    "isolated fake upstream; no production requests",
+    "maximum RPC harness includes client and owner in one process",
+    "Relay maximum-memory probe uses background context",
+    "48h observation files excluded from this commit"
+  ],
+  "total_persisted_summaries": 447831,
+  "total_spans": 5376132,
+  "memory_cases": {
+    "final-relay-memory": {
+      "rss_peak_bytes": 776024064,
+      "cgroup_peak_bytes": 763600896,
+      "source": "final-relay-memory.json"
+    },
+    "final-batch-sqlite-memory": {
+      "rss_peak_bytes": 156733440,
+      "cgroup_peak_bytes": 193327104,
+      "source": "final-batch-sqlite-memory.json"
+    },
+    "final-batch-mysql-memory": {
+      "rss_peak_bytes": 153264128,
+      "cgroup_peak_bytes": 132513792,
+      "source": "final-batch-mysql-memory.json"
+    },
+    "final3-batch-postgres-memory": {
+      "rss_peak_bytes": 207302656,
+      "cgroup_peak_bytes": 187305984,
+      "source": "final3-batch-postgres-memory.json"
+    },
+    "final-rpc-sqlite-memory": {
+      "rss_peak_bytes": 305672192,
+      "cgroup_peak_bytes": 390332416,
+      "source": "final-rpc-sqlite-memory.json"
+    },
+    "final-rpc-mysql-memory": {
+      "rss_peak_bytes": 294035456,
+      "cgroup_peak_bytes": 265027584,
+      "source": "final-rpc-mysql-memory.json"
+    },
+    "final-rpc-postgres-memory": {
+      "rss_peak_bytes": 407941120,
+      "cgroup_peak_bytes": 378163200,
+      "source": "final-rpc-postgres-memory.json"
+    }
+  },
+  "frontend_checks": {
+    "full_unit_suite": 573,
+    "page_unit_suite": 9,
+    "browser_cases": 8,
+    "build_budget_checks": 6,
+    "counts_overlap": true
+  },
+  "production_changes": "none; Compose records maintainer-confirmed 768 MiB Jaeger limit"
+}
