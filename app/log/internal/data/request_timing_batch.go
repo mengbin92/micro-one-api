@@ -12,6 +12,23 @@ import (
 
 const timingCommitBatchSize = 128
 
+// Bound driver encoding buffers for large summaries without splitting the transaction.
+const timingInsertJSONBudget = 4 << 20
+
+// Five columns per ref stay below SQLite's parameter limit while amortizing RPC-sized groups.
+const timingRefInsertBatchSize = 1024
+
+func createTimingLogModels(tx *gorm.DB, models []logModel) error {
+	batchSize := len(models)
+	for _, model := range models {
+		batchSize = min(batchSize, max(1, timingInsertJSONBudget/len(*model.RequestTimingJSON)))
+	}
+	if batchSize == len(models) {
+		return tx.Create(&models).Error
+	}
+	return tx.CreateInBatches(&models, batchSize).Error
+}
+
 type timingWrite struct {
 	ctx   context.Context
 	entry *biz.LogEntry
@@ -178,7 +195,7 @@ func (r *Repository) createTimingBatchDB(ctx context.Context, entries []*biz.Log
 		if len(models) == 0 {
 			return nil
 		}
-		if err := tx.Create(&models).Error; err != nil {
+		if err := createTimingLogModels(tx, models); err != nil {
 			return err
 		}
 		refs := make([]requestTraceAttemptRefModel, 0)
@@ -191,8 +208,7 @@ func (r *Repository) createTimingBatchDB(ctx context.Context, entries []*biz.Log
 			updateArgs = append(updateArgs, key, models[i].ID)
 		}
 		if len(refs) > 0 {
-			// A summary can carry 128 refs; bound statement parameters on SQLite.
-			if err := tx.CreateInBatches(&refs, 256).Error; err != nil {
+			if err := tx.CreateInBatches(&refs, timingRefInsertBatchSize).Error; err != nil {
 				return err
 			}
 		}
