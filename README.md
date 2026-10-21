@@ -8,7 +8,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.36.2 发布公告](./docs/releases/release-v0.36.2.md)（计时 SQL 容量、分页修复与 Q3 基准恢复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.36.2)
+> 📣 **最新发布**：[v0.36.3 发布公告](./docs/releases/release-v0.36.3.md)（最大计时摘要内存修复、供应商证据详情与 Jaeger 768 MiB） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.36.3)
 
 ## 功能概览
 
@@ -184,6 +184,7 @@ make web-dist
 
 ## 发布与升级
 
+- [v0.36.3](./docs/releases/release-v0.36.3.md)：最大计时摘要 SQL 内存修复、供应商证据详情与 Jaeger 768 MiB 配置。无新增迁移；已部署生产，发版不重复重启，长期验收独立保留。
 - [v0.36.2](./docs/releases/release-v0.36.2.md)：计时 SQL 分组写入、分页修复、Q3 基准恢复与原生构建。新增 Log 139 索引迁移；上线先 Log、后 Relay，生产观察保持原窗口。
 - [v0.36.1](./docs/releases/release-v0.36.1.md)：普通 WS 长连接、Lite 首请求与导出告警修复；原生性能和空卷恢复验收。无新增迁移；生产 48 小时观察保持原窗口。
 - [v0.36.0](./docs/releases/release-v0.36.0.md)：LLM 请求计时观测、瀑布追踪、账单关联和完整性判定。新增 Log 137／Billing 138 迁移；按说明先迁移，再更新 Relay、Log、Billing、Admin 与独立前端。
