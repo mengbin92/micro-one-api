@@ -1,0 +1,81 @@
+{
+  "budget_cny": "0.10",
+  "calls": [
+    {
+      "automatic_retries": 0,
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "message": {
+            "content": "OK",
+            "reasoning_content": ""
+          }
+        }
+      ],
+      "completed_at": "2026-10-21T02:47:19.317662818Z",
+      "cost_basis": "tariff_estimate; provider report pending",
+      "http_status": 200,
+      "model": "deepseek-flash",
+      "native_usage": {
+        "prompt_tokens": 8,
+        "completion_tokens": 1,
+        "total_tokens": 9,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 8
+      },
+      "number": 1,
+      "provider_header_request_id": "",
+      "response_id": "1ad8a604-2e13-4570-bc6b-678d31b6173d",
+      "response_sha256": "9b4e67dd8f1975fc96f965fe759017894899e679d7e5b3b39f0279db840fd978",
+      "started_at": "2026-10-21T02:47:18.349633046Z",
+      "state": "completed",
+      "tariff_estimate_cny": "0.00002400"
+    },
+    {
+      "automatic_retries": 0,
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "message": {
+            "content": "OK",
+            "reasoning_content": ""
+          }
+        }
+      ],
+      "completed_at": "2026-10-21T02:47:20.126169448Z",
+      "cost_basis": "tariff_estimate; provider report pending",
+      "http_status": 200,
+      "model": "deepseek-flash",
+      "native_usage": {
+        "prompt_tokens": 8,
+        "completion_tokens": 1,
+        "total_tokens": 9,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 8
+      },
+      "number": 2,
+      "provider_header_request_id": "",
+      "response_id": "7d2a9d45-e54d-4582-98d4-6a2503c970cc",
+      "response_sha256": "d83b51235f86af03ec07d1e43fecb3743676ef14b81e93b757ba2f279ae00236",
+      "started_at": "2026-10-21T02:47:19.322293755Z",
+      "state": "completed",
+      "tariff_estimate_cny": "0.00002400"
+    }
+  ],
+  "input_token_reservation_per_call": 4096,
+  "maximum_calls": 2,
+  "maximum_output_tokens_per_call": 16,
+  "path": "direct provider using production source credential; no Relay user settlement",
+  "pricing_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+  "purpose": "internal_test",
+  "request_body_sha256": "26cad6eaeb8a05cce70f0f22f73f0ce1cd1534d9271092c708b320ac8c8a07c9",
+  "reserved_peak_cny": "0.016640",
+  "source_id": 11,
+  "source_kind": "channel",
+  "source_revision": 4,
+  "status": "completed",
+  "thinking": "disabled",
+  "runner_exit_code": 0,
+  "credential_left_production": false,
+  "temporary_binary_removed": true
+}

@@ -38,6 +38,8 @@
 
 当前结论：**WAITING_FOR_MATERIALS**。没有生产 report/run 可重放，也没有收到新增来源绑定和账期材料；不以 fixture 或新增付费调用补足。
 
+**后续状态（同日另行授权）**：维护者已选择 DeepSeek 渠道 11、两天核验周期并允许小额测试。当前来源/凭据掩码已核对，10/19–20 零推理基线与两次授权短调用已归档；N3 转为等待 10/21–22 已结束窗口报告及覆盖审查。上述 WAITING_FOR_MATERIALS 保留 10:33 核对时点，详见 [DeepSeek 记录](deepseek-channel11-two-day-2026-10-21.md)。N4 未因此取得签名或晋级批准。
+
 ### N4：一个上游契约候选的现场准入
 
 1. 指定一个已审候选的精确生产来源、模型、协议、endpoint/inbound、basis/source/binding revision；候选需有独立回放及相应 CI 证据。

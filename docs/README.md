@@ -53,6 +53,8 @@ docs/
 
 **当前实施（2026-10-21）**：N1 最大输入/恢复与 SQL 语句预算、N2 供应商核验只读详情已完成验收并于 2026-10-20 [部署生产](./runbooks/p1-production-deployment-2026-10-20.md)。v0.36.3 完整 Release、分支 CI 与安全检查全部通过；后续 N3/N4 已完成生产只读条件核对，等待真实来源/账期与已审候选/reviewer/预算。见 [当前计划](./design/next-stage-plan-2026-10-20.md)、[实施记录](./runbooks/p1-memory-vendor-evidence-2026-10-20.md)和 [发布及剩余材料记录](./runbooks/post-v0.36.3-followups-2026-10-21.md)。
 
+**N3 后续授权与实测（2026-10-21）**：选定 DeepSeek 渠道 11、两天核验周期，来源和当前 Key 掩码已确认，10/19–20 官方/本地无推理；两次授权短调用成功，18 token 合计费率估价 0.000048 CNY，与官方当前日 CSV 精确相符。10/21–22 窗口结束后再核对完整报告、内部测试与 owner 覆盖；见 [执行与证据](./runbooks/deepseek-channel11-two-day-2026-10-21.md)。
+
 **独立生产验收（2026-10-20）**：原固定 48h 窗口结论 FAIL，自动任务 PAUSED；截止后新 Jaeger、TTL 与生产 WS 仍按独立证据办理，不因新研发计划重开或追认原窗口。见 [最终记录](./runbooks/post-v0.36.0-acceptance-2026-10-18.md)。
 
 **上一阶段实施（2026-10-18）**：导出告警标签修复、规则测试和生产 request-timing 组追加/热加载完成，双语 README/Quickstart 已交付；后续 WS/Lite、构建与 SQL 改进已纳入 v0.36.1/v0.36.2。历史失败及验收边界保留在 [归档计划](./design/next-stage-plan-2026-10-18.md)与 [执行记录](./runbooks/post-v0.36.0-acceptance-2026-10-18.md)。

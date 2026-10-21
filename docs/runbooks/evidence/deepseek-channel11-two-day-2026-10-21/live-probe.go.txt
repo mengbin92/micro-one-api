@@ -1,0 +1,73 @@
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"micro-one-api/pkg/jsonx"
+	appcrypto "micro-one-api/platform/security/crypto"
+)
+
+func main() {
+	if err := run(); err != nil { fmt.Fprintln(os.Stderr, "bounded DeepSeek test stopped; inspect private receipts before any further call"); os.Exit(2) }
+}
+
+func run() error {
+	const dir = "/tmp/micro-one-deepseek-live-20261021"
+	const inputBudget = 4096
+	const outputBudget = 16
+	// Reserve both calls at the verified peak tariff before any provider IO.
+	reserved := int64(2 * (inputBudget*2 + outputBudget*8))
+	if reserved > 100000 { return fmt.Errorf("budget") } // 0.10 CNY in millionths.
+	s := bufio.NewScanner(os.Stdin)
+	if !s.Scan() { return fmt.Errorf("key") }; cipherKey := []byte(s.Text())
+	if !s.Scan() { return fmt.Errorf("ciphertext") }
+	key, err := appcrypto.Decrypt(s.Text(), cipherKey)
+	if err != nil || len(key) < 16 || key[:8]+"**"+key[len(key)-4:] != "sk-7e117**a6fc" { return fmt.Errorf("source binding") }
+	body := []byte(`{"model":"deepseek-flash","messages":[{"role":"user","content":"Reply only OK."}],"max_tokens":16,"thinking":{"type":"disabled"},"stream":false}`)
+	if !jsonx.Valid(body) || len(body) > 512 || !bytes.Contains(body, []byte(`"max_tokens":16`)) || !bytes.Contains(body, []byte(`"type":"disabled"`)) { return fmt.Errorf("payload") }
+	if err := os.Mkdir(dir, 0700); err != nil { return err }
+	client := &http.Client{Timeout: 25*time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	report := map[string]any{"source_kind":"channel", "source_id":11, "source_revision":4, "purpose":"internal_test", "path":"direct provider using production source credential; no Relay user settlement", "budget_cny":"0.10", "reserved_peak_cny":fmt.Sprintf("%.6f",float64(reserved)/1e6), "maximum_calls":2, "maximum_output_tokens_per_call":outputBudget, "input_token_reservation_per_call":inputBudget, "thinking":"disabled", "pricing_url":"https://api-docs.deepseek.com/zh-cn/quick_start/pricing/", "request_body_sha256":fmt.Sprintf("%x",sha256.Sum256(body)), "calls":[]any{}}
+	calls := []any{}
+	for n := 1; n <= 2; n++ {
+		// Claim the attempt before IO; an interrupted or uncertain call is never retried.
+		claim, err := os.OpenFile(fmt.Sprintf("%s/attempt-%d.claim",dir,n),os.O_CREATE|os.O_EXCL|os.O_WRONLY,0600)
+		if err != nil { return err }; if err := claim.Close(); err != nil { return err }
+		ctx, cancel := context.WithTimeout(context.Background(),25*time.Second)
+		req, err := http.NewRequestWithContext(ctx,"POST","https://api.deepseek.com/chat/completions",bytes.NewReader(body))
+		if err != nil { cancel(); return err }
+		req.Header.Set("Authorization","Bearer "+key); req.Header.Set("Content-Type","application/json")
+		started := time.Now().UTC()
+		resp, callErr := client.Do(req)
+		call := map[string]any{"number":n,"started_at":started.Format(time.RFC3339Nano),"automatic_retries":0}
+		stop := callErr != nil
+		if callErr != nil { call["state"]="uncertain_transport_failure" } else {
+			raw, readErr := io.ReadAll(io.LimitReader(resp.Body,65537)); resp.Body.Close()
+			call["http_status"]=resp.StatusCode
+			call["provider_header_request_id"]=resp.Header.Get("x-request-id")
+			if readErr != nil || len(raw)>65536 || resp.StatusCode!=200 { call["state"]="failed_or_uncertain"; stop=true } else {
+				var reply struct { ID string `json:"id"`; Model string `json:"model"`; Usage struct { Prompt int64 `json:"prompt_tokens"`; Completion int64 `json:"completion_tokens"`; Total int64 `json:"total_tokens"`; Hit int64 `json:"prompt_cache_hit_tokens"`; Miss int64 `json:"prompt_cache_miss_tokens"` } `json:"usage"`; Choices []struct{ Finish string `json:"finish_reason"`; Message struct {Content string `json:"content"`; Reasoning string `json:"reasoning_content"`} `json:"message"` } `json:"choices"` }
+				if jsonx.Unmarshal(raw,&reply)!=nil || reply.ID=="" || reply.Usage.Prompt<=0 || reply.Usage.Prompt>inputBudget || reply.Usage.Completion<0 || reply.Usage.Completion>outputBudget || reply.Usage.Total!=reply.Usage.Prompt+reply.Usage.Completion || reply.Usage.Hit+reply.Usage.Miss!=reply.Usage.Prompt || len(reply.Choices)!=1 || reply.Choices[0].Message.Reasoning!="" || strings.TrimSpace(reply.Choices[0].Message.Content)!="OK" || reply.Choices[0].Finish!="stop" { call["state"]="unexpected_response"; stop=true } else { call["state"]="completed" }
+				call["response_id"]=reply.ID; call["model"]=reply.Model; call["native_usage"]=reply.Usage; call["choices"]=reply.Choices
+				call["tariff_estimate_cny"]=fmt.Sprintf("%.8f",float64(reply.Usage.Hit*4+reply.Usage.Miss*200+reply.Usage.Completion*800)/1e8)
+				call["cost_basis"]="tariff_estimate; provider report pending"
+				call["response_sha256"]=fmt.Sprintf("%x",sha256.Sum256(raw))
+				if err := os.WriteFile(fmt.Sprintf("%s/response-%d.json",dir,n),raw,0600); err!=nil { cancel(); return err }
+			}
+		}
+		cancel(); call["completed_at"]=time.Now().UTC().Format(time.RFC3339Nano)
+		calls=append(calls,call); report["calls"]=calls; report["status"]="completed"; if stop {report["status"]="stopped"}
+		encoded,err:=jsonx.MarshalIndent(report,"","  ");if err!=nil{return err}; if err=os.WriteFile(dir+"/report.json",encoded,0600);err!=nil{return err}
+		if stop { return fmt.Errorf("stopped") }
+	}
+	raw,err:=jsonx.MarshalIndent(report,"","  ");if err!=nil{return err};fmt.Println(string(raw));return nil
+}

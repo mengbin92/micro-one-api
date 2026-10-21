@@ -1,0 +1,45 @@
+{
+  "captured_at": "2026-10-21T02:40:50.819689+00:00",
+  "source_kind": "channel",
+  "source_id": 11,
+  "current_credential_mask": "sk-7e117**a6fc",
+  "credential_left_production": false,
+  "decryption": "existing repository AES-GCM implementation; local cross-built helper; no provider request",
+  "received_window_event_groups": [
+    [
+      "checkpoint",
+      "health_probe",
+      "other",
+      "",
+      "599",
+      "599",
+      "599",
+      "/models",
+      "response_headers_only"
+    ],
+    [
+      "intent",
+      "health_probe",
+      "",
+      "",
+      "600",
+      "600",
+      "600",
+      "missing",
+      "missing"
+    ],
+    [
+      "terminal",
+      "health_probe",
+      "other",
+      "",
+      "599",
+      "599",
+      "599",
+      "/models",
+      "usage_absent"
+    ]
+  ],
+  "received_window_is_execution_time_proof": false,
+  "temporary_helper_removed": true
+}

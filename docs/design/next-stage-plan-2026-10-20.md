@@ -24,7 +24,7 @@
 | N3 / 条件 P1 | 首个生产来源费用闭环；运营 / Billing owner | 已授权来源、完整已结束账期与真实报告 | 一个可重放的核验 run；按实际证据给结论 | 材料齐备后评估 |
 | N4 / 条件项 | 一个上游契约候选的现场准入；运营 / Channel owner | 已审候选、独立签名权限、凭据与预算 | 一次候选到晋级或隔离/回滚的完整记录 | 不承诺采样等待时长 |
 
-**原执行估算：N1 与 N2 可并行，随后汇总验收与交付；N3/N4 单独判断条件。** 两项工程按一轮约 3–5 个工程日估算，不含现场等待。N1/N2 现已发布；2026-10-21 生产只读核对后，N3/N4 均为 WAITING_FOR_MATERIALS，所需材料与通过条件见 [后续记录](../runbooks/post-v0.36.3-followups-2026-10-21.md#下一步所需材料与通过条件)。
+**原执行估算：N1 与 N2 可并行，随后汇总验收与交付；N3/N4 单独判断条件。** 两项工程按一轮约 3–5 个工程日估算，不含现场等待。N1/N2 现已发布；2026-10-21 后续维护者选择 DeepSeek 渠道 11、两天核验周期，来源与当前凭据掩码已核对，10/19–20 零推理基线及两次授权小额调用已留证。N3 等待已结束窗口报告与覆盖审查，N4 仍待 reviewer/候选/预算；见 [DeepSeek 记录](../runbooks/deepseek-channel11-two-day-2026-10-21.md)及 [现场材料条件](../runbooks/post-v0.36.3-followups-2026-10-21.md#下一步所需材料与通过条件)。
 
 ## 3. N1：最大合法摘要内存与恢复预算
 
@@ -78,7 +78,11 @@
 
 先选择一个已有授权且能提供真实材料的来源，固定账号/项目、source 生效映射、模型范围、币种、已结束账期、分页完整性和报告摘要，复用既有导入与重放能力。首份 run 必须能够解释双方缺行、内部调用、unknown 与差额；重复导入不重复生效，不修改用户账本。
 
-当前证据仍是 [DeepSeek 六次手工调用的完整日窗](../runbooks/deepseek-closed-day-2026-10-16.md)，不能代替生产来源绑定和最终水位。[费用 API](../../app/billing/internal/biz/vendor_cost_api.go)当前只接受 OpenAI/Anthropic 的 USD、UTC 整日 account_period 范围；不能套用于 DeepSeek 或捏造 API/CSV 对照。不具备供应商材料的部分继续记 unknown/INSUFFICIENT，不额外制造付费样本来填计划。
+制定本计划时证据为 [DeepSeek 六次手工调用的完整日窗](../runbooks/deepseek-closed-day-2026-10-16.md)，不能代替生产来源绑定和最终水位。[费用 API](../../app/billing/internal/biz/vendor_cost_api.go)当前只接受 OpenAI/Anthropic 的 USD、UTC 整日 account_period 范围；不能套用于 DeepSeek 或捏造 API/CSV 对照。不具备供应商材料的部分继续记 unknown/INSUFFICIENT，付费样本须有单独授权。
+
+**2026-10-21 后续授权**：维护者明确选择 DeepSeek 渠道 11、两天周期，并允许小额测试。已核对官方地址、当前 revision 4、启用的 `deepseek-flash` 及当前凭据/官方 micro-one-api Key 的相同掩码；最近 10/19–20 为官方空 CSV、本地无消费的零推理窗口。随后以总上限 0.10 CNY、最多两次、关闭思考和 16 输出 token 上限完成两次直连测试，18 token 合计费率估价 0.000048 CNY，标记外部归档 `internal_test`，没有合成 Relay/owner 用户账本。新两天核验切片为 10/21–22，结束后仍需官方完整报告及覆盖审查；不以当前日快照、直连测试或 CNY/USD 估价混算认定 N3 通过。详见 [执行记录](../runbooks/deepseek-channel11-two-day-2026-10-21.md)。
+
+官方当前日导出随后回补 2 请求、18 token、0.0000480000000000 CNY，与原生 usage 和原币估价精确相符，当前受控来源费用快照核对通过；完整两天窗口、最终水位与 owner 覆盖仍待验收。
 
 ### N4：上游契约现场准入
 

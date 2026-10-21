@@ -4,7 +4,7 @@
 >
 > **当前执行入口**：[计时内存预算与供应商证据可读性](./design/next-stage-plan-2026-10-20.md)。N1/N2 原生最大输入、前端隔离及完整三库容量验收通过；2026-10-20 已完成 [生产部署](./runbooks/p1-production-deployment-2026-10-20.md)，2026-10-21 已发布 [v0.36.3](./releases/release-v0.36.3.md)，完整 Release、分支 CI 和安全检查均 SUCCESS。见 [发布核验及剩余任务](./runbooks/post-v0.36.3-followups-2026-10-21.md)。
 >
-> **N3/N4 现场材料待齐备**：10:33 CST 只读核对生产 vendor report/run 均为 0，契约版本/绑定/probe/审计均为 0，契约开关关闭且 reviewer 公钥未配置。已整理真实来源与账期报告、已审候选与独立 reviewer/预算的 [最小材料清单](./runbooks/post-v0.36.3-followups-2026-10-21.md#下一步所需材料与通过条件)；不新增付费样本、签名、收费或 executor 扩面。
+> **N3/N4 现场推进**：10:33 CST 只读基线中 vendor report/run、契约版本/绑定/probe/审计均为 0，契约开关关闭且 reviewer 公钥未配置。随后维护者选择 DeepSeek 渠道 11、两天周期并授权小额验证；已核对当前来源/Key 掩码，保存 10/19–20 零推理基线，并完成两次关闭思考的短调用，18 token、费率估价 0.000048 CNY，低于 0.10 CNY 上限。官方当前日 CSV 随后回补相同的 2 请求、18 token 和 0.0000480000000000 CNY，受控费用快照精确相符。N3 等 10/21–22 完整窗口与覆盖审查，N4 仍待独立 reviewer、已审候选和预算。见 [DeepSeek 执行记录](./runbooks/deepseek-channel11-two-day-2026-10-21.md)及 [现场材料清单](./runbooks/post-v0.36.3-followups-2026-10-21.md#下一步所需材料与通过条件)；不签名、开启契约或扩大 executor。
 >
 > **独立生产验收**：原 48h 窗口已结束，结论 FAIL，自动任务 PAUSED；新 Jaeger 实例、TTL 与生产 WS 仍须独立验收。本轮不重开窗口或修改证据，见 [最终记录](./runbooks/post-v0.36.0-acceptance-2026-10-18.md)。
 

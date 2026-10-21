@@ -1,0 +1,55 @@
+{
+  "captured_at": "2026-10-21T02:38:56.117861+00:00",
+  "window": {
+    "start": "2026-10-19T00:00:00+08:00",
+    "end_exclusive": "2026-10-21T00:00:00+08:00",
+    "timezone": "Asia/Shanghai",
+    "duration_hours": 48
+  },
+  "counts": {
+    "source": [
+      [
+        "11",
+        "6",
+        "1",
+        "4",
+        "https://api.deepseek.com/",
+        "0",
+        "healthy",
+        "1"
+      ]
+    ],
+    "models": [
+      [
+        "deepseek-flash",
+        "1",
+        "1791953021",
+        "1792051660"
+      ],
+      [
+        "deepseek-v4-pro",
+        "0",
+        "1791953021",
+        "1791953021"
+      ]
+    ],
+    "ledger": [
+      [
+        "0",
+        "0",
+        "0",
+        "0"
+      ]
+    ],
+    "logs": [],
+    "execution_events": [],
+    "history": [
+      [
+        "5597",
+        "1791939801",
+        "1792550184"
+      ]
+    ]
+  },
+  "production_changes": false
+}

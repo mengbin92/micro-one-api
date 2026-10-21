@@ -1,0 +1,169 @@
+{
+  "captured_at": "2026-10-21T02:42:15.069149+00:00",
+  "status": "NO_INFERENCE_ACTIVITY_OBSERVED",
+  "n3_fee_closure": "WAITING_FOR_NONEMPTY_COMPARABLE_USAGE",
+  "provider": "deepseek",
+  "source_kind": "channel",
+  "source_id": 11,
+  "source_revision_at_collection": 4,
+  "window": {
+    "start": "2026-10-19T00:00:00+08:00",
+    "end_exclusive": "2026-10-21T00:00:00+08:00",
+    "timezone": "Asia/Shanghai",
+    "duration_hours": 48
+  },
+  "window_selection": "most recent two complete Asia/Shanghai calendar days; 48-hour reconciliation slice, not a supplier invoice finality claim",
+  "operator_context": {
+    "single_production_user": "maintainer stated current use is exclusive",
+    "recent_models": "maintainer stated no DeepSeek model use in these two days; mainly kimi-k3 and some glm-5.3"
+  },
+  "provider_evidence": {
+    "url": "https://platform.deepseek.com/usage",
+    "selected_key_name": "micro-one-api",
+    "selected_key_mask": "sk-7e117**a6fc",
+    "date_selection": "10/19 - 10/20",
+    "timezone_display": "GMT+8",
+    "data_delay_notice": "data may be delayed by 5 minutes",
+    "ui_requests": 0,
+    "ui_tokens": 0,
+    "ui_amount_display": "0.00 CNY",
+    "csv_amount": null,
+    "csv_amount_reason": "empty cost CSV has no amount row; no synthetic zero row created",
+    "supplier_final_watermark": null,
+    "raw_zip_sha256": "5a964fdbb3ddc6afa5152f998ef188ecadc35a62874afafcb3a3d4c89cbe84b1",
+    "raw_zip_bytes": 465,
+    "csv_headers_only": true
+  },
+  "binding_boundary": "current source credential mask matches the selected key shown by the official UI; no full key/account ID exposed, no historical credential mapping or explicit supplier finality inferred",
+  "local_counts": {
+    "consumption_ledger_rows": 0,
+    "channel_log_rows": 0,
+    "execution_events_with_known_send_time_in_window": 0,
+    "received_window_health_probe_intents": 600,
+    "received_window_health_probe_header_checkpoints": 599,
+    "received_window_health_probe_terminals": 599,
+    "received_window_time_is_send_time": false
+  },
+  "raw_count_columns": {
+    "source": [
+      "id",
+      "type",
+      "status",
+      "authorization_revision",
+      "base_url",
+      "created_time",
+      "health_status",
+      "has_credential"
+    ],
+    "models": [
+      "upstream_model_id",
+      "enabled",
+      "created_at",
+      "updated_at"
+    ],
+    "ledger": [
+      "rows",
+      "prompt_tokens",
+      "completion_tokens",
+      "cache_read_tokens"
+    ],
+    "logs": [
+      "level",
+      "rows",
+      "min_created_at",
+      "max_created_at"
+    ],
+    "execution_events": [
+      "category",
+      "purpose",
+      "model",
+      "rows",
+      "distinct_intents",
+      "min_received_at",
+      "max_received_at"
+    ],
+    "history": [
+      "rows",
+      "min_received_at",
+      "max_received_at"
+    ],
+    "received_window_event_groups": [
+      "category",
+      "purpose",
+      "protocol",
+      "model",
+      "rows",
+      "distinct_intents",
+      "missing_send_time",
+      "endpoint",
+      "observation_reason"
+    ]
+  },
+  "files": {
+    "cost-2026-10-19_2026-10-20.csv": {
+      "sha256": "cfafbfafa6e075457b13cf7d70a9dd4746ed85970c1215b5c5b2eeef2c19308c",
+      "data_rows": 0,
+      "bytes": 77
+    },
+    "amount-2026-10-19_2026-10-20.csv": {
+      "sha256": "162b12477c5b18fa47d85ce7466abac19b2b9454dca221148d3315ad77aaffcd",
+      "data_rows": 0,
+      "bytes": 90
+    },
+    "production-readonly.json": {
+      "sha256": "32c586ce9de69c5b226d4b472d6a1ba9cf2e9442d3e9b63dbeb50549f4521cde"
+    },
+    "source-binding.json": {
+      "sha256": "68de8d934b7e6cc9c9e8c03ef98ba9c22cb3954d8245f95ccb4f80f7c9e66c33"
+    },
+    "live-test.json": {
+      "sha256": "14c0c2ccb8b2911740c7806f9518f6a8ac189fcc5e6a9643e835497d33da476e"
+    },
+    "live-probe.go.txt": {
+      "sha256": "0bc2e3c106ddfab2d532fc85dc6abce508e4d720d6e6929eed90b7e4828b0fcd"
+    },
+    "cost-2026-10-21_2026-10-21.csv": {
+      "sha256": "12814d1fcb58a8f28f2401fb069358e1aa55497bded3f4fa559039e7bd45805a",
+      "data_rows": 1,
+      "redaction": "user_id replaced by SHA256; api_key redacted when present"
+    },
+    "amount-2026-10-21_2026-10-21.csv": {
+      "sha256": "6407c097975607023b496dbf17839c6567490aa684648306f68f0032cd1a04bd",
+      "data_rows": 3,
+      "redaction": "user_id replaced by SHA256; api_key redacted when present"
+    },
+    "provider-live-snapshot.json": {
+      "sha256": "07e1ddd4efae45d74efac0f613fe96601e3fdb08c0e806ec0c8942447e4bf91c"
+    },
+    "check.py": {
+      "sha256": "badfefbf0cedb68a1f2cc9fb0eb55c5b40ea68eec87853bc473c91a116983333"
+    }
+  },
+  "production_report_imported": false,
+  "provider_inference_requests_sent": 0,
+  "gate_or_price_changes": false,
+  "independent_observation_modified": false,
+  "n4_status": "reviewer, signed candidate and budget remain missing; no canary started",
+  "subsequent_live_test": {
+    "date": "2026-10-21",
+    "window_relation": "outside the closed 2026-10-19/20 baseline; recorded separately",
+    "purpose": "internal_test in external test archive only; no owner execution intent or customer ledger was synthesized",
+    "http_successes": 2,
+    "prompt_tokens": 16,
+    "completion_tokens": 2,
+    "total_tokens": 18,
+    "tariff_estimate_cny": "0.000048",
+    "provider_reported_amount": "0.0000480000000000",
+    "cost_basis": "provider_reported aggregate snapshot; individual native calls remain tariff_estimate",
+    "budget_cny": "0.10",
+    "requested_reconciliation_period_days": 2,
+    "proposed_closed_day_window": {
+      "start": "2026-10-21T00:00:00+08:00",
+      "end_exclusive": "2026-10-23T00:00:00+08:00"
+    },
+    "n3_status": "CONTROLLED_SOURCE_COST_SNAPSHOT_MATCHED; CLOSED_PERIOD_AND_OWNER_COVERAGE_PENDING",
+    "prices_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+    "follow_up_automation_created": false,
+    "provider_snapshot": "provider-live-snapshot.json"
+  }
+}

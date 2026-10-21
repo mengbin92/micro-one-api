@@ -1,0 +1,49 @@
+{
+  "captured_at": "2026-10-21T02:52:30.662247+00:00",
+  "status": "CONTROLLED_SOURCE_COST_SNAPSHOT_MATCHED",
+  "cost_basis": "provider_reported",
+  "provider_reported_amount_cny": "0.0000480000000000",
+  "native_tariff_estimate_cny": "0.00004800",
+  "exact_difference_cny": "0E-16",
+  "request_count": 2,
+  "input_cache_miss_tokens": 16,
+  "input_cache_hit_tokens": 0,
+  "output_tokens": 2,
+  "total_tokens": 18,
+  "account_sha256": "d6cea0bf519c646c07a5d5199a0420c3cb4d0edadc572a1c676f7f2345a7bbc6",
+  "source_kind": "channel",
+  "source_id": 11,
+  "source_revision": 4,
+  "selected_key_name": "micro-one-api",
+  "supplier_ui_amount_display": "<0.01 CNY",
+  "cost_wallet_type": "Granted",
+  "cost_is_cash_invoice": false,
+  "selected_ui_day": "2026-10-21",
+  "export_row_window": {
+    "start": "2026-10-21T10:00:00+08:00",
+    "end": "2026-10-21T11:00:00+08:00"
+  },
+  "complete_day": false,
+  "complete_two_day_period": false,
+  "supplier_final_watermark": null,
+  "individual_request_costs_proven": false,
+  "raw_zip_sha256": "dde7661267acc493c7fe7936023b9d1a768b49a093887eb9ecb59556fe84653d",
+  "raw_file_sha256": {
+    "cost-2026-10-21_2026-10-21.csv": "2e776e7aefce4dfa9ab06f7c2f5dc50ce23559d0e2748f395cc735aac55162a3",
+    "amount-2026-10-21_2026-10-21.csv": "8306feb2471958fd30d4f4adf1f7ebb5056fbb68be0d4e47dd62a649a54ce781"
+  },
+  "redacted_files": {
+    "cost-2026-10-21_2026-10-21.csv": {
+      "sha256": "12814d1fcb58a8f28f2401fb069358e1aa55497bded3f4fa559039e7bd45805a",
+      "data_rows": 1,
+      "redaction": "user_id replaced by SHA256; api_key redacted when present"
+    },
+    "amount-2026-10-21_2026-10-21.csv": {
+      "sha256": "6407c097975607023b496dbf17839c6567490aa684648306f68f0032cd1a04bd",
+      "data_rows": 3,
+      "redaction": "user_id replaced by SHA256; api_key redacted when present"
+    }
+  },
+  "no_provider_requests_sent_for_report_collection": true,
+  "production_owner_imported": false
+}
