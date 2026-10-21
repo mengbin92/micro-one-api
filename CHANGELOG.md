@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- 内存验收工具通过 `os.Root` 读取固定 cgroup 目录并限制报告写入目录，拒绝越界符号链接；补齐报告写入边界回归，消除 G304/G703 告警。
+- 更新 `follow-redirects` 至 1.16.1，修复跨域重定向凭据泄漏 CVE-2026-111755 / CVE-2026-111756；Vite 保持 8.1 分支并更新至 8.1.6，修复开发服务器 launch-editor 参数处理漏洞。
+
 ## [0.36.3] - 2026-10-21
 
 v0.36.3 是 v0.36.2 之后的 **PATCH 修复版本**：限制最大合法计时摘要的 SQL 语句内存，补齐供应商费用核验页证据详情与撤权清理，同步 Jaeger 768 MiB 配置。无新增迁移或 API 变更；本批代码已于 2026-10-20 部署生产，本次发版不重复部署，长期验收独立保留。详见 [release-v0.36.3.md](docs/releases/release-v0.36.3.md)。

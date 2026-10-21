@@ -124,9 +124,7 @@ func TestMaximumTimingExporterMemory(t *testing.T) {
 	report, err := jsonx.MarshalIndent(map[string]any{"scope": "maximum summary exporter; background context; isolated admission only", "budget_bytes": budget, "points": points}, "", "  ")
 	require.NoError(t, err)
 	t.Log(string(report))
-	if path := os.Getenv("TIMING_MEMORY_OUTPUT"); path != "" {
-		require.NoError(t, os.WriteFile(path, report, 0600))
-	}
+	require.NoError(t, timingtest.WriteMemoryReport(report))
 	for _, point := range points {
 		require.LessOrEqual(t, point["VmHWM:"], uint64(budget))
 		require.LessOrEqual(t, point["memory.peak"], uint64(budget))

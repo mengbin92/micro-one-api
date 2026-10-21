@@ -3,6 +3,7 @@ package testutil
 
 import (
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -27,8 +28,11 @@ func MemoryPoint(t testing.TB) map[string]uint64 {
 			point[fields[0]] = value * 1024
 		}
 	}
+	cgroup, err := os.OpenRoot("/sys/fs/cgroup")
+	require.NoError(t, err)
+	defer cgroup.Close()
 	for _, metric := range []string{"memory.current", "memory.peak", "memory.max"} {
-		encoded, err := os.ReadFile("/sys/fs/cgroup/" + metric)
+		encoded, err := cgroup.ReadFile(metric)
 		require.NoError(t, err)
 		value, err := strconv.ParseUint(strings.TrimSpace(string(encoded)), 10, 64)
 		require.NoError(t, err)
@@ -46,9 +50,20 @@ func CheckMemoryBudget(t testing.TB, budget uint64) {
 	report, err := jsonx.MarshalIndent(map[string]any{"budget_bytes": budget, "point": point}, "", "  ")
 	require.NoError(t, err)
 	t.Log(string(report))
-	if path := os.Getenv("TIMING_MEMORY_OUTPUT"); path != "" {
-		require.NoError(t, os.WriteFile(path, report, 0600))
-	}
+	require.NoError(t, WriteMemoryReport(report))
 	require.LessOrEqual(t, point["VmHWM:"], budget)
 	require.LessOrEqual(t, point["memory.peak"], budget)
+}
+
+// WriteMemoryReport confines the operator-selected output to its parent directory.
+func WriteMemoryReport(report []byte) error {
+	if path := os.Getenv("TIMING_MEMORY_OUTPUT"); path != "" {
+		root, err := os.OpenRoot(filepath.Dir(path))
+		if err != nil {
+			return err
+		}
+		defer root.Close()
+		return root.WriteFile(filepath.Base(path), report, 0600)
+	}
+	return nil
 }
