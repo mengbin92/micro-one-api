@@ -1,8 +1,10 @@
 # 项目 TODO
 
-> 最后更新：2026-10-20
+> 最后更新：2026-10-21
 >
-> **当前执行入口**：[计时内存预算与供应商证据可读性](./design/next-stage-plan-2026-10-20.md)。N1/N2 实现已分别提交为 `64fa1478` / `1d945b81`，原生最大输入及前端隔离验收通过，完整原生三库容量 CI 已通过；2026-10-20 已完成 [生产部署](./runbooks/p1-production-deployment-2026-10-20.md)，见 [实施记录](./runbooks/p1-memory-vendor-evidence-2026-10-20.md)。真实账期与契约晋级按条件启动，executor 不扩面。
+> **当前执行入口**：[计时内存预算与供应商证据可读性](./design/next-stage-plan-2026-10-20.md)。N1/N2 原生最大输入、前端隔离及完整三库容量验收通过；2026-10-20 已完成 [生产部署](./runbooks/p1-production-deployment-2026-10-20.md)，2026-10-21 已发布 [v0.36.3](./releases/release-v0.36.3.md)，完整 Release、分支 CI 和安全检查均 SUCCESS。见 [发布核验及剩余任务](./runbooks/post-v0.36.3-followups-2026-10-21.md)。
+>
+> **N3/N4 现场材料待齐备**：10:33 CST 只读核对生产 vendor report/run 均为 0，契约版本/绑定/probe/审计均为 0，契约开关关闭且 reviewer 公钥未配置。已整理真实来源与账期报告、已审候选与独立 reviewer/预算的 [最小材料清单](./runbooks/post-v0.36.3-followups-2026-10-21.md#下一步所需材料与通过条件)；不新增付费样本、签名、收费或 executor 扩面。
 >
 > **独立生产验收**：原 48h 窗口已结束，结论 FAIL，自动任务 PAUSED；新 Jaeger 实例、TTL 与生产 WS 仍须独立验收。本轮不重开窗口或修改证据，见 [最终记录](./runbooks/post-v0.36.0-acceptance-2026-10-18.md)。
 

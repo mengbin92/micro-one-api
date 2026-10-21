@@ -1,0 +1,42 @@
+{
+  "captured_at": "2026-10-21T02:33:33.063268+00:00",
+  "method": "read-only container configuration presence and owner table aggregate counts; no provider requests",
+  "services": {
+    "billing-service": {
+      "running": true,
+      "flags": {
+        "BILLING_VENDOR_REPORT_MONITOR_V1": "false",
+        "UPSTREAM_CONTRACTS_V1_ENABLED": "unset",
+        "UPSTREAM_PROBES_ENABLED": "unset"
+      },
+      "reviewer_public_keys_configured": false
+    },
+    "channel-service": {
+      "running": true,
+      "flags": {
+        "BILLING_VENDOR_REPORT_MONITOR_V1": "unset",
+        "UPSTREAM_CONTRACTS_V1_ENABLED": "false",
+        "UPSTREAM_PROBES_ENABLED": "true"
+      },
+      "reviewer_public_keys_configured": false
+    },
+    "relay-gateway": {
+      "running": true,
+      "flags": {
+        "BILLING_VENDOR_REPORT_MONITOR_V1": "unset",
+        "UPSTREAM_CONTRACTS_V1_ENABLED": "false",
+        "UPSTREAM_PROBES_ENABLED": "true"
+      },
+      "reviewer_public_keys_configured": false
+    }
+  },
+  "owner_counts": {
+    "vendor_reports": 0,
+    "vendor_runs": 0,
+    "contract_versions": 0,
+    "contract_bindings": 0,
+    "contract_probes": 0,
+    "contract_audits": 0
+  },
+  "production_changes": false
+}

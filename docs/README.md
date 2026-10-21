@@ -51,7 +51,7 @@ docs/
 
 最新发布登记：[v0.36.3](./releases/release-v0.36.3.md)（2026-10-21），最大计时摘要内存修复、供应商证据详情与 Jaeger 768 MiB；无新增迁移，已部署生产。版本验证见 [发布记录](./releases/release-v0.36.3.md#验证)。
 
-**当前实施（2026-10-20）**：N1 已补最大输入/恢复验收与 SQL 语句字节预算，N2 已补齐供应商核验只读详情。实现及隔离验收已提交，完整原生三库容量 CI 已通过；2026-10-20 已完成 [生产部署](./runbooks/p1-production-deployment-2026-10-20.md)；见 [当前计划](./design/next-stage-plan-2026-10-20.md)和 [实施记录](./runbooks/p1-memory-vendor-evidence-2026-10-20.md)。真实账期、契约晋级与 executor 扩面保留条件。
+**当前实施（2026-10-21）**：N1 最大输入/恢复与 SQL 语句预算、N2 供应商核验只读详情已完成验收并于 2026-10-20 [部署生产](./runbooks/p1-production-deployment-2026-10-20.md)。v0.36.3 完整 Release、分支 CI 与安全检查全部通过；后续 N3/N4 已完成生产只读条件核对，等待真实来源/账期与已审候选/reviewer/预算。见 [当前计划](./design/next-stage-plan-2026-10-20.md)、[实施记录](./runbooks/p1-memory-vendor-evidence-2026-10-20.md)和 [发布及剩余材料记录](./runbooks/post-v0.36.3-followups-2026-10-21.md)。
 
 **独立生产验收（2026-10-20）**：原固定 48h 窗口结论 FAIL，自动任务 PAUSED；截止后新 Jaeger、TTL 与生产 WS 仍按独立证据办理，不因新研发计划重开或追认原窗口。见 [最终记录](./runbooks/post-v0.36.0-acceptance-2026-10-18.md)。
 

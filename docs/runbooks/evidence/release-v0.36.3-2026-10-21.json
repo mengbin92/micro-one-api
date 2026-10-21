@@ -1,0 +1,241 @@
+{
+  "captured_at": "2026-10-21T02:34:15.283145+00:00",
+  "release": {
+    "isDraft": false,
+    "isPrerelease": false,
+    "publishedAt": "2026-10-21T02:17:15Z",
+    "tagName": "v0.36.3",
+    "targetCommitish": "main",
+    "url": "https://github.com/mengbin92/micro-one-api/releases/tag/v0.36.3"
+  },
+  "release_workflow": {
+    "conclusion": "success",
+    "databaseId": 39529684743,
+    "headSha": "946f25a09df15fb2bef4dcd99de7b12800eb4484",
+    "status": "completed",
+    "url": "https://github.com/mengbin92/micro-one-api/actions/runs/39529684743"
+  },
+  "release_jobs": [
+    {
+      "name": "Resolve release context",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Load service matrix",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Release E2E gate / IAM browser matrix (real owners)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Release E2E gate / Routing v2 acceptance (sqlite3)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Release E2E gate / Routing v2 acceptance (mysql)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Release E2E gate / Compose E2E suite",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Release E2E gate / Playwright admin smoke",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push identity-service (amd64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push relay-gateway (amd64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push relay-gateway (arm64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push channel-service (arm64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push notify-worker (amd64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push identity-service (arm64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push log-service (arm64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push monitor-worker (amd64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push billing-service (amd64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push config-service (amd64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push config-service (arm64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push admin-api (amd64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push billing-service (arm64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push channel-service (amd64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push log-service (amd64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push notify-worker (arm64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push monitor-worker (arm64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build and Push admin-api (arm64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Publish manifest admin-api",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Publish manifest notify-worker",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Publish manifest log-service",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Publish manifest relay-gateway",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Publish manifest billing-service",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Publish manifest identity-service",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Publish manifest channel-service",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Publish manifest config-service",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Publish manifest monitor-worker",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Publish GitHub Release",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "branch_checks": [
+    {
+      "conclusion": "success",
+      "databaseId": 39529667522,
+      "headBranch": "develop",
+      "headSha": "946f25a09df15fb2bef4dcd99de7b12800eb4484",
+      "status": "completed",
+      "url": "https://github.com/mengbin92/micro-one-api/actions/runs/39529667522",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 39529667646,
+      "headBranch": "develop",
+      "headSha": "946f25a09df15fb2bef4dcd99de7b12800eb4484",
+      "status": "completed",
+      "url": "https://github.com/mengbin92/micro-one-api/actions/runs/39529667646",
+      "workflowName": "Security Pipeline"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 39529680593,
+      "headBranch": "main",
+      "headSha": "946f25a09df15fb2bef4dcd99de7b12800eb4484",
+      "status": "completed",
+      "url": "https://github.com/mengbin92/micro-one-api/actions/runs/39529680593",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 39529680701,
+      "headBranch": "main",
+      "headSha": "946f25a09df15fb2bef4dcd99de7b12800eb4484",
+      "status": "completed",
+      "url": "https://github.com/mengbin92/micro-one-api/actions/runs/39529680701",
+      "workflowName": "Security Pipeline"
+    }
+  ],
+  "remote_refs": {
+    "refs/heads/develop": "946f25a09df15fb2bef4dcd99de7b12800eb4484",
+    "refs/heads/main": "946f25a09df15fb2bef4dcd99de7b12800eb4484",
+    "refs/tags/v0.36.3": "946f25a09df15fb2bef4dcd99de7b12800eb4484"
+  },
+  "business_source_digest": "5e78a87315f4ed72566915a87f3ad1e985e1b5bb3e8a2c51e01534c281d481e3",
+  "production_redeployed": false,
+  "unrelated_observation_files_included": false
+}
