@@ -30,3 +30,8 @@ a133642efe4e238250f4c5d82865b823de984587:internal/integration/iam_resource_test.
 14cfe9fca2780429f97309cb7304ce1e40935280:docs/runbooks/evidence/billing-upstream-p2-external-2026-10-13.json:generic-api-key:33
 14cfe9fca2780429f97309cb7304ce1e40935280:docs/runbooks/evidence/billing-upstream-p2-completion-2026-10-14.json:generic-api-key:40
 14cfe9fca2780429f97309cb7304ce1e40935280:docs/runbooks/evidence/billing-upstream-p2-completion-2026-10-14.json:generic-api-key:95
+# Historical P1 deployment: reviewed SHA256 asset checksums, not credentials.
+# Exact commit/file/rule/line fingerprints keep new content fully scanned.
+77f7ffb3c950f9c8baaa094ece14972944e4a3e2:docs/runbooks/evidence/p1-memory-vendor-2026-10-20/production-deployment.json:generic-api-key:303
+77f7ffb3c950f9c8baaa094ece14972944e4a3e2:docs/runbooks/evidence/p1-memory-vendor-2026-10-20/production-deployment.json:generic-api-key:312
+77f7ffb3c950f9c8baaa094ece14972944e4a3e2:docs/runbooks/evidence/p1-memory-vendor-2026-10-20/production-deployment.json:generic-api-key:319
