@@ -14,9 +14,9 @@ multi-channel API distribution and [sub2api](https://github.com/Wei-Shaw/sub2api
 for subscription windows, account pools, rate limits and usage management.
 You provide your own authorized upstream accounts and API keys.
 
-> Latest release: [v0.36.2](./docs/releases/release-v0.36.2.md) — timing SQL capacity,
-> pagination fixes and Q3 benchmark recovery.
-> [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.36.2)
+> Latest release: [v0.36.3](./docs/releases/release-v0.36.3.md) — bounded SQL memory
+> for maximum timing summaries, supplier evidence details and Jaeger 768 MiB.
+> [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.36.3)
 
 ## Features
 
@@ -142,6 +142,9 @@ and [repository development rules](./AGENTS.md). Both are currently maintained i
 
 ## Releases and upgrades
 
+- [v0.36.3](./docs/releases/release-v0.36.3.md): bounded SQL memory for maximum timing
+  summaries, supplier evidence details and Jaeger 768 MiB. No new migrations;
+  already deployed, with long-term production acceptance tracked separately.
 - [v0.36.2](./docs/releases/release-v0.36.2.md): grouped timing writes, pagination
   fixes, Q3 benchmark recovery and native builds. Adds Log index migration 139;
   upgrade Log before Relay and preserve the production observation window.

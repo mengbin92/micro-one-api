@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.36.3] - 2026-10-21
+
+v0.36.3 是 v0.36.2 之后的 **PATCH 修复版本**：限制最大合法计时摘要的 SQL 语句内存，补齐供应商费用核验页证据详情与撤权清理，同步 Jaeger 768 MiB 配置。无新增迁移或 API 变更；本批代码已于 2026-10-20 部署生产，本次发版不重复部署，长期验收独立保留。详见 [release-v0.36.3.md](docs/releases/release-v0.36.3.md)。
+
 ### Added
 
 - 供应商费用核验页展示完整性、水位、来源映射、差异归因和更正证据；金额保持原始精度，授权变化时清除已选详情。
