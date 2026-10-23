@@ -1,0 +1,14 @@
+{
+  "captured_at": "2026-10-23T02:28:56.511520+00:00",
+  "method": "Post-action owner table verification; consistent read-only transaction, max 10s per statement",
+  "sections": {
+    "report": [],
+    "runs": [],
+    "owner_counts": [
+      {
+        "runs": 0,
+        "reports": 0
+      }
+    ]
+  }
+}

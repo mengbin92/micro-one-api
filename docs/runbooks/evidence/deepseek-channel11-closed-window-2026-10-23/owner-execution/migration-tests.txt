@@ -1,0 +1,88 @@
+=== RUN   TestIAMVendorImportMigrationNeverReopensMySQLTemporaryGuard
+=== RUN   TestIAMVendorImportMigrationNeverReopensMySQLTemporaryGuard/#00
+=== RUN   TestIAMVendorImportMigrationNeverReopensMySQLTemporaryGuard/postgres
+=== RUN   TestIAMVendorImportMigrationNeverReopensMySQLTemporaryGuard/sqlite
+--- PASS: TestIAMVendorImportMigrationNeverReopensMySQLTemporaryGuard (0.00s)
+    --- PASS: TestIAMVendorImportMigrationNeverReopensMySQLTemporaryGuard/#00 (0.00s)
+    --- PASS: TestIAMVendorImportMigrationNeverReopensMySQLTemporaryGuard/postgres (0.00s)
+    --- PASS: TestIAMVendorImportMigrationNeverReopensMySQLTemporaryGuard/sqlite (0.00s)
+=== RUN   TestIAMVendorImportUpgradeDialects
+=== RUN   TestIAMVendorImportUpgradeDialects/sqlite3
+=== RUN   TestIAMVendorImportUpgradeDialects/sqlite3/root_only_and_replay_safe
+=== RUN   TestIAMVendorImportUpgradeDialects/sqlite3/preserves_existing_deny
+=== RUN   TestIAMVendorImportUpgradeDialects/sqlite3/preserves_existing_allow
+=== RUN   TestIAMVendorImportUpgradeDialects/sqlite3/blocks_disabled_permission
+=== RUN   TestIAMVendorImportUpgradeDialects/sqlite3/blocks_archived_permission
+=== RUN   TestIAMVendorImportUpgradeDialects/sqlite3/blocks_wrong_owner
+=== RUN   TestIAMVendorImportUpgradeDialects/sqlite3/blocks_disabled_resource
+=== RUN   TestIAMVendorImportUpgradeDialects/sqlite3/blocks_wrong_action
+=== RUN   TestIAMVendorImportUpgradeDialects/sqlite3/blocks_disabled_root
+=== RUN   TestIAMVendorImportUpgradeDialects/sqlite3/blocks_nonbuiltin_root
+=== RUN   TestIAMVendorImportUpgradeDialects/sqlite3/blocks_missing_root
+=== RUN   TestIAMVendorImportUpgradeDialects/mysql
+=== RUN   TestIAMVendorImportUpgradeDialects/mysql/root_only_and_replay_safe
+=== RUN   TestIAMVendorImportUpgradeDialects/mysql/preserves_existing_deny
+=== RUN   TestIAMVendorImportUpgradeDialects/mysql/preserves_existing_allow
+=== RUN   TestIAMVendorImportUpgradeDialects/mysql/blocks_disabled_permission
+=== RUN   TestIAMVendorImportUpgradeDialects/mysql/blocks_archived_permission
+=== RUN   TestIAMVendorImportUpgradeDialects/mysql/blocks_wrong_owner
+=== RUN   TestIAMVendorImportUpgradeDialects/mysql/blocks_disabled_resource
+=== RUN   TestIAMVendorImportUpgradeDialects/mysql/blocks_wrong_action
+=== RUN   TestIAMVendorImportUpgradeDialects/mysql/blocks_disabled_root
+=== RUN   TestIAMVendorImportUpgradeDialects/mysql/blocks_nonbuiltin_root
+=== RUN   TestIAMVendorImportUpgradeDialects/mysql/blocks_missing_root
+=== RUN   TestIAMVendorImportUpgradeDialects/postgres
+=== RUN   TestIAMVendorImportUpgradeDialects/postgres/root_only_and_replay_safe
+=== RUN   TestIAMVendorImportUpgradeDialects/postgres/preserves_existing_deny
+=== RUN   TestIAMVendorImportUpgradeDialects/postgres/preserves_existing_allow
+=== RUN   TestIAMVendorImportUpgradeDialects/postgres/blocks_disabled_permission
+=== RUN   TestIAMVendorImportUpgradeDialects/postgres/blocks_archived_permission
+=== RUN   TestIAMVendorImportUpgradeDialects/postgres/blocks_wrong_owner
+=== RUN   TestIAMVendorImportUpgradeDialects/postgres/blocks_disabled_resource
+=== RUN   TestIAMVendorImportUpgradeDialects/postgres/blocks_wrong_action
+=== RUN   TestIAMVendorImportUpgradeDialects/postgres/blocks_disabled_root
+=== RUN   TestIAMVendorImportUpgradeDialects/postgres/blocks_nonbuiltin_root
+=== RUN   TestIAMVendorImportUpgradeDialects/postgres/blocks_missing_root
+--- PASS: TestIAMVendorImportUpgradeDialects (34.85s)
+    --- PASS: TestIAMVendorImportUpgradeDialects/sqlite3 (1.12s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/sqlite3/root_only_and_replay_safe (0.12s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/sqlite3/preserves_existing_deny (0.10s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/sqlite3/preserves_existing_allow (0.10s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/sqlite3/blocks_disabled_permission (0.11s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/sqlite3/blocks_archived_permission (0.10s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/sqlite3/blocks_wrong_owner (0.10s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/sqlite3/blocks_disabled_resource (0.10s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/sqlite3/blocks_wrong_action (0.10s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/sqlite3/blocks_disabled_root (0.10s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/sqlite3/blocks_nonbuiltin_root (0.10s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/sqlite3/blocks_missing_root (0.10s)
+    --- PASS: TestIAMVendorImportUpgradeDialects/mysql (29.33s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/mysql/root_only_and_replay_safe (4.03s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/mysql/preserves_existing_deny (3.07s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/mysql/preserves_existing_allow (2.86s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/mysql/blocks_disabled_permission (2.98s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/mysql/blocks_archived_permission (2.79s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/mysql/blocks_wrong_owner (2.69s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/mysql/blocks_disabled_resource (2.33s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/mysql/blocks_wrong_action (2.12s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/mysql/blocks_disabled_root (2.14s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/mysql/blocks_nonbuiltin_root (2.16s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/mysql/blocks_missing_root (2.13s)
+    --- PASS: TestIAMVendorImportUpgradeDialects/postgres (4.40s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/postgres/root_only_and_replay_safe (0.49s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/postgres/preserves_existing_deny (0.42s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/postgres/preserves_existing_allow (0.39s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/postgres/blocks_disabled_permission (0.39s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/postgres/blocks_archived_permission (0.38s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/postgres/blocks_wrong_owner (0.41s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/postgres/blocks_disabled_resource (0.38s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/postgres/blocks_wrong_action (0.38s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/postgres/blocks_disabled_root (0.39s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/postgres/blocks_nonbuiltin_root (0.38s)
+        --- PASS: TestIAMVendorImportUpgradeDialects/postgres/blocks_missing_root (0.39s)
+=== RUN   TestIAMVendorImportUpgradeRollsBackWhenAuditCannotBeRecorded
+--- PASS: TestIAMVendorImportUpgradeRollsBackWhenAuditCannotBeRecorded (0.11s)
+=== RUN   TestIAMVendorImportUpgradeMySQLMetadataFailureRollsBackPublication
+--- PASS: TestIAMVendorImportUpgradeMySQLMetadataFailureRollsBackPublication (2.52s)
+PASS
+ok  	micro-one-api/platform/database/migrate	37.695s

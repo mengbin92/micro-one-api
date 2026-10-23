@@ -23,7 +23,22 @@ func TestIAMReadPagesReleaseManifestIsRootOnly(t *testing.T) {
 		}
 	}
 	for _, grant := range grants["root"] {
-		require.NotContains(t, []string{"billing.vendor_report.import", "billing.vendor_report.attribute", "channel.upstream_contract.create", "channel.upstream_contract.publish", "channel.upstream_contract.quarantine"}, grant.Operation)
+		// Migration 140 separately releases report import; other writes stay absent.
+		require.NotContains(t, []string{"billing.vendor_report.attribute", "channel.upstream_contract.create", "channel.upstream_contract.publish", "channel.upstream_contract.quarantine"}, grant.Operation)
+	}
+}
+
+func TestIAMVendorImportReleaseManifestIsRootOnly(t *testing.T) {
+	require.True(t, IAMExecutionBound("billing.vendor_report.import"))
+	for role, grants := range IAMMigrationBuiltinGrants() {
+		found := false
+		for _, grant := range grants {
+			if grant.Operation == "billing.vendor_report.import" && grant.Effect == authorization.Allow {
+				found = true
+				require.Equal(t, authorization.Scope{Clauses: []authorization.Clause{{All: true}}}, grant.Scope)
+			}
+		}
+		require.Equal(t, role == "root", found, "unexpected import authority for %s", role)
 	}
 }
 

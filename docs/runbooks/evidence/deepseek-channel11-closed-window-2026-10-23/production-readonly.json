@@ -1,0 +1,154 @@
+{
+  "captured_at": "2026-10-23T00:17:06.500674+00:00",
+  "window": {
+    "start": "2026-10-21T00:00:00+08:00",
+    "end_exclusive": "2026-10-23T00:00:00+08:00",
+    "timezone": "Asia/Shanghai",
+    "duration_hours": 48
+  },
+  "method": "owner schema aggregate SQL, consistent read-only transaction, max 10s per statement; no credentials, user text or request IDs collected",
+  "counts": {
+    "source": [
+      {
+        "id": 11,
+        "type": 6,
+        "status": 1,
+        "base_url": "https://api.deepseek.com/",
+        "health_status": "healthy",
+        "has_credential": true,
+        "authorization_revision": 4,
+        "last_health_failure_epoch": 0,
+        "last_health_success_epoch": 1792633152,
+        "last_balance_success_epoch": 1792550265,
+        "health_consecutive_failures": 0,
+        "balance_refresh_failure_count": 0
+      }
+    ],
+    "models": [
+      {
+        "model": "deepseek-flash",
+        "enabled": 1,
+        "created_at_epoch": 1791953021,
+        "updated_at_epoch": 1792051660
+      },
+      {
+        "model": "deepseek-v4-pro",
+        "enabled": 0,
+        "created_at_epoch": 1791953021,
+        "updated_at_epoch": 1791953021
+      }
+    ],
+    "ledger": [
+      {
+        "rows": 201,
+        "type": "consume",
+        "prompt_tokens": 30739962,
+        "cache_read_tokens": 30420736,
+        "completion_tokens": 92726,
+        "max_created_at_utc": "2026-10-22 01:39:12.605000",
+        "min_created_at_utc": "2026-10-21 05:23:37.606000"
+      }
+    ],
+    "logs": [
+      {
+        "rows": 402,
+        "level": "audit",
+        "model": "deepseek-flash",
+        "max_epoch": 1792633152,
+        "min_epoch": 1792560210,
+        "prompt_tokens": 0,
+        "completion_tokens": 0
+      },
+      {
+        "rows": 201,
+        "level": "consume",
+        "model": "deepseek-flash",
+        "max_epoch": 1792633152,
+        "min_epoch": 1792560216,
+        "prompt_tokens": 30739962,
+        "completion_tokens": 92726
+      }
+    ],
+    "send_window_events": [],
+    "received_window_events": [
+      {
+        "rows": 595,
+        "model": "",
+        "intents": 595,
+        "purpose": "health_probe",
+        "category": "checkpoint",
+        "missing_send_time": 595,
+        "inventory_endpoint": 595,
+        "max_received_epoch": 1792684605,
+        "min_received_epoch": 1792512037
+      },
+      {
+        "rows": 598,
+        "model": "",
+        "intents": 598,
+        "purpose": "health_probe",
+        "category": "intent",
+        "missing_send_time": 598,
+        "inventory_endpoint": 0,
+        "max_received_epoch": 1792684604,
+        "min_received_epoch": 1792512036
+      },
+      {
+        "rows": 595,
+        "model": "",
+        "intents": 595,
+        "purpose": "health_probe",
+        "category": "terminal",
+        "missing_send_time": 595,
+        "inventory_endpoint": 595,
+        "max_received_epoch": 1792684604,
+        "min_received_epoch": 1792512036
+      }
+    ],
+    "owner_report_counts": [
+      {
+        "runs": 0,
+        "reports": 0
+      }
+    ],
+    "since_window_end": [
+      {
+        "channel11_log_rows": 0,
+        "channel11_ledger_rows": 0
+      }
+    ],
+    "daily_ledger": [
+      {
+        "rows": 185,
+        "date_cst": "2026-10-21",
+        "cost_basis": "subscription",
+        "prompt_tokens": 27822906,
+        "usage_semantics": "openai_subset",
+        "cache_read_tokens": 27676928,
+        "canonical_present": 1,
+        "completion_tokens": 79456,
+        "cost_audit_status": "priced",
+        "upstream_cost_units": 18016,
+        "reported_total_tokens": 27902362,
+        "uncached_input_tokens": 145978
+      },
+      {
+        "rows": 16,
+        "date_cst": "2026-10-22",
+        "cost_basis": "subscription",
+        "prompt_tokens": 2917056,
+        "usage_semantics": "openai_subset",
+        "cache_read_tokens": 2743808,
+        "canonical_present": 1,
+        "completion_tokens": 13270,
+        "cost_audit_status": "priced",
+        "upstream_cost_units": 2323,
+        "reported_total_tokens": 2930326,
+        "uncached_input_tokens": 173248
+      }
+    ]
+  },
+  "production_changes": false,
+  "new_provider_inference_requests": 0,
+  "other_computer_automation_modified": false
+}

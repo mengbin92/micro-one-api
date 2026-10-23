@@ -1,0 +1,18 @@
+{
+  "first_failing_command": "Run the fixed import-in-current-console.js in the real authenticated owner page",
+  "first_failure_observed": "POST /api/admin/vendor-reports HTTP 500; Admin upstream Billing RPC DeadlineExceeded (2026-10-23 02:54:09 UTC)",
+  "specific_repo_regression": "go test ./app/billing/internal/data -run ^TestVendorAttemptBatch -count=1 -v",
+  "before_query_count_for_64_intents": 65,
+  "after_query_count_for_64_intents": 2,
+  "after_query_count_for_513_intents": 4,
+  "real_snapshot_report_byte_equal": true,
+  "same_original_owner_request_replayed": true,
+  "replay_result": "Successful authenticated owner import + subsequent owner listing + persisted report/run + IAM success audit",
+  "replay_report_id": "2bc6d3dd046db8ee94ef5f576a1482fca3815cb9bc9e4d198f2e1a0ea5f419db",
+  "current_backend_deadline_seconds": 10,
+  "deadline_widened": false,
+  "production_migration": "141_add_execution_intent_event_index",
+  "production_service_fix": "billing-deploy-result.json",
+  "status": "ORIGINAL_500_NO_LONGER_REPRODUCED_ON_SAME_REQUEST",
+  "remaining_n3_evidence_status": "pending; not promoted to matched"
+}

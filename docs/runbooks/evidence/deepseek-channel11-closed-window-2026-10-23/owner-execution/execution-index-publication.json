@@ -1,0 +1,29 @@
+{
+  "captured_at": "2026-10-23T03:13:37.234049+00:00",
+  "method": "Existing prebuilt linux/amd64 migration runner, isolated Billing ownership staging",
+  "migration": "141_add_execution_intent_event_index",
+  "sql_sha256": "3384b82b483c3e7ceaf974e41f8ea77e81a3ea41e4c1b48018abe6c5879b0276",
+  "runner_sha256": "57571ac3bd7d830a9b68c7f020edbadad5e33080b11858c6495afbf55aa1c874",
+  "before": {
+    "events": 7667,
+    "index_unique": null,
+    "index_columns": null,
+    "migration_rows": 0
+  },
+  "after": {
+    "events": 7667,
+    "index_unique": 0,
+    "index_columns": "intent_id,id",
+    "migration_rows": 1
+  },
+  "explain_before": [
+    "1\tSIMPLE\tupstream_execution_evidence\tNULL\tindex\tNULL\tPRIMARY\t1022\tNULL\t1001\t10.00\tUsing where"
+  ],
+  "explain_after": [
+    "1\tSIMPLE\tupstream_execution_evidence\tNULL\tref\tidx_execution_intent_event\tidx_execution_intent_event\t802\tconst\t3\t100.00\tNULL"
+  ],
+  "repeat_result": "nothing to apply",
+  "private_metadata_backup": "/opt/micro-one-api/docker-compose/backups/vendor-owner-index-141-20261023T031335Z",
+  "mysql_ddl_atomicity_note": "MySQL CREATE INDEX implicitly commits; physical index and migration metadata were separately verified, not claimed to roll back together.",
+  "permission_price_or_financial_row_changes": false
+}

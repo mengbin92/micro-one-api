@@ -43,6 +43,7 @@ services:
     - 123_add_iam_permission_metadata
     - 134_p2_permission_catalog
     - 136_publish_read_only_evidence_pages
+    - 140_publish_vendor_report_import
 
   channel:
     - 133_upstream_contracts
@@ -92,6 +93,7 @@ services:
     - 135_vendor_reconciliation_run_sequence
     - 132_vendor_reconciliation
     - 131_match_execution_reservation_collation
+    - 141_add_execution_intent_event_index
     - 126_upstream_execution_evidence
     # billing_reservations / billing_ledgers / billing_redeem_* / payment_orders /
     # reconciliation_runs / account_receivables / user_subscriptions / subscription_groups /

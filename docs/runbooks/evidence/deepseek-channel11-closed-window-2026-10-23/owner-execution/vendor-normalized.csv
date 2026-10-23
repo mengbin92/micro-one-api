@@ -1,0 +1,2 @@
+provider,account,project,upstream_model_id,currency,unit,request_id,amount,uncached_input_tokens,cache_read_tokens,cache_creation_5m_tokens,cache_creation_1h_tokens,output_tokens
+deepseek,sha256:d6cea0bf519c646c07a5d5199a0420c3cb4d0edadc572a1c676f7f2345a7bbc6/key:micro-one-api,,deepseek-flash,CNY,currency,,2.0470089600000000,,,,,

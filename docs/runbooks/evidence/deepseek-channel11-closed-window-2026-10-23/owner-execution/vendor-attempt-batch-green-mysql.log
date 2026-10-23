@@ -1,0 +1,28 @@
+=== RUN   TestVendorAttemptBatchQueryBoundPreservesUnknownTimeAndSourceIsolation
+    vendor_reconciliation_batch_test.go:176: 64 mapped intents: 2 database queries, 1 event queries
+--- PASS: TestVendorAttemptBatchQueryBoundPreservesUnknownTimeAndSourceIsolation (3.27s)
+=== RUN   TestVendorAttemptBatchRejectsTamperedDigestAndWrongIntent
+=== RUN   TestVendorAttemptBatchRejectsTamperedDigestAndWrongIntent/digest
+=== RUN   TestVendorAttemptBatchRejectsTamperedDigestAndWrongIntent/intent_identity
+--- PASS: TestVendorAttemptBatchRejectsTamperedDigestAndWrongIntent (5.61s)
+    --- PASS: TestVendorAttemptBatchRejectsTamperedDigestAndWrongIntent/digest (2.90s)
+    --- PASS: TestVendorAttemptBatchRejectsTamperedDigestAndWrongIntent/intent_identity (2.71s)
+=== RUN   TestVendorAttemptBatchEnforcesEventLimitPerIntent
+=== RUN   TestVendorAttemptBatchEnforcesEventLimitPerIntent/multiple_valid_attempts_over_1000_total
+=== RUN   TestVendorAttemptBatchEnforcesEventLimitPerIntent/one_attempt_over_1000
+--- PASS: TestVendorAttemptBatchEnforcesEventLimitPerIntent (5.47s)
+    --- PASS: TestVendorAttemptBatchEnforcesEventLimitPerIntent/multiple_valid_attempts_over_1000_total (2.79s)
+    --- PASS: TestVendorAttemptBatchEnforcesEventLimitPerIntent/one_attempt_over_1000 (2.68s)
+=== RUN   TestVendorAttemptBatchCrossPagePreservesCacheEstimateAndUnknownTime
+--- PASS: TestVendorAttemptBatchCrossPagePreservesCacheEstimateAndUnknownTime (2.99s)
+=== RUN   TestVendorAttemptBatchCrossPageEvidenceStillFailsClosed
+=== RUN   TestVendorAttemptBatchCrossPageEvidenceStillFailsClosed/digest
+=== RUN   TestVendorAttemptBatchCrossPageEvidenceStillFailsClosed/conflicting_send_time
+--- PASS: TestVendorAttemptBatchCrossPageEvidenceStillFailsClosed (6.05s)
+    --- PASS: TestVendorAttemptBatchCrossPageEvidenceStillFailsClosed/digest (3.23s)
+    --- PASS: TestVendorAttemptBatchCrossPageEvidenceStillFailsClosed/conflicting_send_time (2.82s)
+=== RUN   TestVendorAttemptBatchAcrossIntentFlushesPreservesOrderAndUnknownTime
+    vendor_reconciliation_batch_test.go:365: 513 mapped intents across batch boundaries: 4 database queries
+--- PASS: TestVendorAttemptBatchAcrossIntentFlushesPreservesOrderAndUnknownTime (2.92s)
+PASS
+ok  	micro-one-api/app/billing/internal/data	26.665s

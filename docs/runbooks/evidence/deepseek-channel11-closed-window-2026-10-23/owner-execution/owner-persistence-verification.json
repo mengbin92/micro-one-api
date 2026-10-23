@@ -1,0 +1,48 @@
+{
+  "captured_at": "2026-10-23T03:18:04.937476+00:00",
+  "method": "Post-action owner table and write-audit verification; consistent read-only transaction, max 10s per statement",
+  "sections": {
+    "report": [
+      {
+        "id": "2bc6d3dd046db8ee94ef5f576a1482fca3815cb9bc9e4d198f2e1a0ea5f419db",
+        "actor": "iam-user:1",
+        "status": "pending",
+        "version": "deepseek-key11-20261021-22-export-20261023-v1",
+        "cost_basis": "provider_reported",
+        "imported_at": 1792725424,
+        "amount_status": "unknown",
+        "payload_sha256": "6b74a1c12409e0321f31688c18228d7e265a07a1ccc8987f5c5217a3445be45a",
+        "comparison_status": "missing_local",
+        "vendor_amount_cny": "2.0470089600000000",
+        "verification_scope": "none",
+        "unknown_time_attempts": 2476
+      }
+    ],
+    "runs": [
+      {
+        "id": "6b74a1c12409e0321f31688c18228d7e265a07a1ccc8987f5c5217a3445be45a",
+        "actor": "iam-user:1",
+        "status": "pending",
+        "sequence": 1,
+        "report_id": "2bc6d3dd046db8ee94ef5f576a1482fca3815cb9bc9e4d198f2e1a0ea5f419db",
+        "created_at": 1792725425,
+        "payload_sha256": "6b74a1c12409e0321f31688c18228d7e265a07a1ccc8987f5c5217a3445be45a"
+      }
+    ],
+    "owner_counts": [
+      {
+        "runs": 1,
+        "reports": 1
+      }
+    ],
+    "write_audit": [
+      {
+        "result": "success",
+        "operation": "billing.vendor_report.import",
+        "occurred_at": 1792725425360,
+        "actor_user_id": 1,
+        "reason_mentions_fixed_window": true
+      }
+    ]
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "captured_at": "2026-10-23T00:17:47.167197+00:00",
+  "services": {
+    "relay-gateway": {
+      "running": true,
+      "flags": {
+        "RELAY_EXECUTION_DELIVERY_V1": "true",
+        "BILLING_EXECUTION_DELIVERY_V1": "unset",
+        "RELAY_UPSTREAM_EXECUTION_TIME_V1": "unset",
+        "BILLING_VENDOR_REPORT_MONITOR_V1": "unset",
+        "UPSTREAM_CONTRACTS_V1_ENABLED": "false",
+        "UPSTREAM_PROBES_ENABLED": "true"
+      }
+    },
+    "billing-service": {
+      "running": true,
+      "flags": {
+        "RELAY_EXECUTION_DELIVERY_V1": "unset",
+        "BILLING_EXECUTION_DELIVERY_V1": "true",
+        "RELAY_UPSTREAM_EXECUTION_TIME_V1": "unset",
+        "BILLING_VENDOR_REPORT_MONITOR_V1": "false",
+        "UPSTREAM_CONTRACTS_V1_ENABLED": "unset",
+        "UPSTREAM_PROBES_ENABLED": "unset"
+      }
+    },
+    "channel-service": {
+      "running": true,
+      "flags": {
+        "RELAY_EXECUTION_DELIVERY_V1": "unset",
+        "BILLING_EXECUTION_DELIVERY_V1": "unset",
+        "RELAY_UPSTREAM_EXECUTION_TIME_V1": "unset",
+        "BILLING_VENDOR_REPORT_MONITOR_V1": "unset",
+        "UPSTREAM_CONTRACTS_V1_ENABLED": "false",
+        "UPSTREAM_PROBES_ENABLED": "true"
+      }
+    }
+  },
+  "channel11_execution_admission": {
+    "captured_at": "2026-10-23T00:21:07.436028+00:00",
+    "source": "current relay container environment, exact membership only",
+    "channel11_deepseek_flash_execution_pilot_allowed": false,
+    "allowlist_configured": false,
+    "historical_membership_proven": false
+  }
+}

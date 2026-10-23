@@ -1,0 +1,31 @@
+=== RUN   TestVendorAttemptBatchQueryBoundPreservesUnknownTimeAndSourceIsolation
+    vendor_reconciliation_batch_test.go:159: 64 mapped intents: 65 database queries, 64 event queries
+    vendor_reconciliation_batch_test.go:160:
+            Error Trace:    /Users/mengbin/vscode/neo/micro-one-api/app/billing/internal/data/vendor_reconciliation_batch_test.go:160
+            Error:          "65" is not less than or equal to "6"
+            Test:           TestVendorAttemptBatchQueryBoundPreservesUnknownTimeAndSourceIsolation
+            Messages:       batch event loading must have a fixed query bound for this scope; one event query per intent causes the owner RPC deadline regression
+--- FAIL: TestVendorAttemptBatchQueryBoundPreservesUnknownTimeAndSourceIsolation (0.11s)
+=== RUN   TestVendorAttemptBatchRejectsTamperedDigestAndWrongIntent
+=== RUN   TestVendorAttemptBatchRejectsTamperedDigestAndWrongIntent/digest
+=== RUN   TestVendorAttemptBatchRejectsTamperedDigestAndWrongIntent/intent_identity
+--- PASS: TestVendorAttemptBatchRejectsTamperedDigestAndWrongIntent (0.14s)
+    --- PASS: TestVendorAttemptBatchRejectsTamperedDigestAndWrongIntent/digest (0.07s)
+    --- PASS: TestVendorAttemptBatchRejectsTamperedDigestAndWrongIntent/intent_identity (0.07s)
+=== RUN   TestVendorAttemptBatchEnforcesEventLimitPerIntent
+=== RUN   TestVendorAttemptBatchEnforcesEventLimitPerIntent/multiple_valid_attempts_over_1000_total
+=== RUN   TestVendorAttemptBatchEnforcesEventLimitPerIntent/one_attempt_over_1000
+--- PASS: TestVendorAttemptBatchEnforcesEventLimitPerIntent (0.18s)
+    --- PASS: TestVendorAttemptBatchEnforcesEventLimitPerIntent/multiple_valid_attempts_over_1000_total (0.10s)
+    --- PASS: TestVendorAttemptBatchEnforcesEventLimitPerIntent/one_attempt_over_1000 (0.09s)
+=== RUN   TestVendorAttemptBatchCrossPagePreservesCacheEstimateAndUnknownTime
+--- PASS: TestVendorAttemptBatchCrossPagePreservesCacheEstimateAndUnknownTime (0.11s)
+=== RUN   TestVendorAttemptBatchCrossPageEvidenceStillFailsClosed
+=== RUN   TestVendorAttemptBatchCrossPageEvidenceStillFailsClosed/digest
+=== RUN   TestVendorAttemptBatchCrossPageEvidenceStillFailsClosed/conflicting_send_time
+--- PASS: TestVendorAttemptBatchCrossPageEvidenceStillFailsClosed (0.20s)
+    --- PASS: TestVendorAttemptBatchCrossPageEvidenceStillFailsClosed/digest (0.10s)
+    --- PASS: TestVendorAttemptBatchCrossPageEvidenceStillFailsClosed/conflicting_send_time (0.10s)
+FAIL
+FAIL    micro-one-api/app/billing/internal/data 1.422s
+FAIL

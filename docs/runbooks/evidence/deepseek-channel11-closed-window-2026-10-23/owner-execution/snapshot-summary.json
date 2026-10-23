@@ -1,0 +1,29 @@
+{
+  "captured_at": "2026-10-23T00:35:25.457189+00:00",
+  "source_kind": "channel",
+  "source_id": 11,
+  "collection_started_at": "2026-10-23T00:35:24.670231+00:00",
+  "global_owner_intents": 2511,
+  "snapshot_intents": 2442,
+  "snapshot_events": 7316,
+  "method": "Billing owner configured MySQL account over SSH; a single REPEATABLE READ, READ ONLY consistent snapshot; global intent count gate <=100000 before source export; source restricted by authentic intent payload to channel/11; all matching intents and their events preserved without time filtering; MAX_EXECUTION_TIME=10000 per SELECT; original PK/payload/digest and nullable amounts unchanged in private SQLite; no production writes; no local-attempts fixtures",
+  "snapshot_sqlite_sha256": "4d8db8519bcaefde252ce8ca381a7543917f03be987ed69c497e4f779b298847",
+  "snapshot_raw_sha256": "7489ada329418f47b53990c7f2ddc45a3dafa08a5d67d62678a8b9f71dc35c18",
+  "private_files_mode": "0600",
+  "private_directory_mode": "0700",
+  "credentials_exported": false,
+  "production_changes": false,
+  "snapshot_has_vendor_report_write_tables": false,
+  "purpose_counts": {
+    "health_probe": 2442
+  },
+  "event_category_counts": {
+    "checkpoint": 2437,
+    "intent": 2442,
+    "terminal": 2437
+  },
+  "snapshot_database_is_not_live_production": true,
+  "owner_import_executed": false,
+  "snapshot_sqlite_sha256_before_local_wal_preparation": "36128635508a80eb38a10d3a8ac8611b8dc30c07935af5bd9769c89b28093f26",
+  "local_preparation": "Private local SQLite only: preset PRAGMA journal_mode=WAL, wal_checkpoint(TRUNCATE)=(0,0,0), integrity_check=ok, then close all connections; required because existing xdb Open applies WAL unconditionally; table rows/PK/payload/digest unchanged; production untouched. Preview must use SQLite URI mode=ro and verify main DB hash before/after."
+}

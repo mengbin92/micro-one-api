@@ -2,6 +2,8 @@
 
 > **当前执行入口**。制定：2026-10-20（Asia/Shanghai），规划基线 `develop@10054011`，已合入验证后的 v0.36.2。接替 [10 月 18 日计划](next-stage-plan-2026-10-18.md)。N1/N2 实现及最大输入/前端隔离验收已交付，完整原生三库 SQL 容量 CI 已通过；见 [实施与证据](../runbooks/p1-memory-vendor-evidence-2026-10-20.md)。2026-10-20 已完成 [生产部署](../runbooks/p1-production-deployment-2026-10-20.md)并合入 develop，2026-10-21 已正式发布 [v0.36.3](../releases/release-v0.36.3.md)，完整 Release、CI 与安全检查通过。剩余 N3/N4 材料条件见 [发布核验与后续记录](../runbooks/post-v0.36.3-followups-2026-10-21.md)，不扩大灰度。
 
+> **N3 更新：2026-10-23**。DeepSeek 渠道 11 已取得 10/21–22 官方闭窗报告，用量合计相符；已通过原 owner 留存 **1 份报告 / 1 条 run，状态 pending**。当前下一步为覆盖/水位等补证，以本文 N3 为准。
+
 ## 1. 阶段目标与范围
 
 本阶段先交付两项无需生产模型调用的工程：验证计时摘要在最大合法输入下的内存与恢复边界，让供应商核验页直接展示现有证据与补证依据。真实供应商账期、契约晋级和 executor 准入继续按条件办理，不阻塞两项工程交付。
@@ -21,10 +23,10 @@
 | --- | --- | --- | --- | --- |
 | N1 / P1 | 最大合法摘要内存预算；Relay / Log owner | 无生产资料依赖；先确定各进程测试预算 | 最大输入夹具、受限容器峰值/恢复证据、必要时最小修复 | 2–3 个工程日 |
 | N2 / P1 | 供应商核验只读详情；Web / Billing owner | 现有报告响应与权限；不等 N1 | 完整性、水位、来源映射、差异与更正证据展示及回归 | 1–2 个工程日 |
-| N3 / 条件 P1 | 首个生产来源费用闭环；运营 / Billing owner | 已授权来源、完整已结束账期与真实报告 | 一个可重放的核验 run；按实际证据给结论 | 材料齐备后评估 |
+| N3 / 条件 P1 | 首个生产来源费用闭环；运营 / Billing owner | DeepSeek 11 已取得闭窗报告，原 owner report/run 已留存 pending；仍缺执行覆盖、可比原币证据与最终水位 | 真实归档及首条核验 run 已交付；后续补证再重放，不升级未知结论 | 按下列 N3 剩余补证项推进 |
 | N4 / 条件项 | 一个上游契约候选的现场准入；运营 / Channel owner | 已审候选、独立签名权限、凭据与预算 | 一次候选到晋级或隔离/回滚的完整记录 | 不承诺采样等待时长 |
 
-**原执行估算：N1 与 N2 可并行，随后汇总验收与交付；N3/N4 单独判断条件。** 两项工程按一轮约 3–5 个工程日估算，不含现场等待。N1/N2 现已发布；2026-10-21 后续维护者选择 DeepSeek 渠道 11、两天核验周期，来源与当前凭据掩码已核对，10/19–20 零推理基线及两次授权小额调用已留证。N3 等待已结束窗口报告与覆盖审查，N4 仍待 reviewer/候选/预算；见 [DeepSeek 记录](../runbooks/deepseek-channel11-two-day-2026-10-21.md)及 [现场材料条件](../runbooks/post-v0.36.3-followups-2026-10-21.md#下一步所需材料与通过条件)。
+**原执行估算：N1 与 N2 可并行，随后汇总验收与交付；N3/N4 单独判断条件。** 两项工程按一轮约 3–5 个工程日估算，不含现场等待。N1/N2 现已发布；N3 已取得 DeepSeek 渠道 11 的 10/21–22 官方闭窗 CSV，请求数/token 合计可由 201 条生产消费和两次已归档测试解释，正式 owner 核验仍待补证。当前下一步见下文 N3 及 [10 月 23 日核验记录](../runbooks/deepseek-channel11-closed-window-2026-10-23.md)。N4 仍待 [reviewer/候选/预算](../runbooks/post-v0.36.3-followups-2026-10-21.md#下一步所需材料与通过条件)。
 
 ## 3. N1：最大合法摘要内存与恢复预算
 
@@ -80,9 +82,25 @@
 
 制定本计划时证据为 [DeepSeek 六次手工调用的完整日窗](../runbooks/deepseek-closed-day-2026-10-16.md)，不能代替生产来源绑定和最终水位。[费用 API](../../app/billing/internal/biz/vendor_cost_api.go)当前只接受 OpenAI/Anthropic 的 USD、UTC 整日 account_period 范围；不能套用于 DeepSeek 或捏造 API/CSV 对照。不具备供应商材料的部分继续记 unknown/INSUFFICIENT，付费样本须有单独授权。
 
-**2026-10-21 后续授权**：维护者明确选择 DeepSeek 渠道 11、两天周期，并允许小额测试。已核对官方地址、当前 revision 4、启用的 `deepseek-flash` 及当前凭据/官方 micro-one-api Key 的相同掩码；最近 10/19–20 为官方空 CSV、本地无消费的零推理窗口。随后以总上限 0.10 CNY、最多两次、关闭思考和 16 输出 token 上限完成两次直连测试，18 token 合计费率估价 0.000048 CNY，标记外部归档 `internal_test`，没有合成 Relay/owner 用户账本。新两天核验切片为 10/21–22，结束后仍需官方完整报告及覆盖审查；不以当前日快照、直连测试或 CNY/USD 估价混算认定 N3 通过。详见 [执行记录](../runbooks/deepseek-channel11-two-day-2026-10-21.md)。
+**2026-10-23 当前状态：闭窗用量合计相符，N3 尚未通过。** 维护者已在另一台电脑安排固定 **`[2026-10-21 00:00, 2026-10-23 00:00)` Asia/Shanghai** 的 48 小时任务。本轮只读取线上和官方报告，不重建、顺延或修改该任务。
 
-官方当前日导出随后回补 2 请求、18 token、0.0000480000000000 CNY，与原生 usage 和原币估价精确相符，当前受控来源费用快照核对通过；完整两天窗口、最终水位与 owner 覆盖仍待验收。
+渠道 11 当前仍为官方地址、启用 healthy、revision 4，启用模型为 `deepseek-flash`。官方页面筛选 `micro-one-api` Key、10/21–10/22，导出的报告为 **203 请求、30,832,706 token、2.0470089600000000 CNY**。线上 201 条消费账本加上 [10 月 21 日两次直连 `internal_test`](../runbooks/deepseek-channel11-two-day-2026-10-21.md)，请求数、未缓存输入、缓存读取和输出合计均精确相符；费用 CSV 合计与 token CSV 的十进制单价延展差额为 0。这里的费用自洽不等于本地采购估价与供应商金额已匹配，页面显示的 `2.04` 也不替代 CSV 精度。原始报告、脱敏归档和复核命令见 [闭窗记录](../runbooks/deepseek-channel11-closed-window-2026-10-23.md)。
+
+正式闭环仍有三个缺口：owner 中没有带可靠 upstream send 时间的渠道 11 窗口事件，接收时间窗仅查到 `/models` 健康探针；现有 [owner 估价加载](../../app/billing/internal/data/vendor_reconciliation.go)输出 USD，不能直接与 CNY 比较；官方报告没有显式最终水位。CSV 没有逐请求 ID，因此保持 `account_period` 粒度，缺 ID 本身不阻塞该粒度核验。08:17 初次采样时生产 report/run 均为 0。账本 `priced`、203 次合计相符和窗口已结束，都不能代替这些条件。
+
+**维护者后续明确使用现有 owner，并说明线上采用 OpenRouter 的 DeepSeek 计价。** 已查实该窗口 201 条客户价格快照为每百万未缓存输入 / 缓存读取 / 输出 `0.30 / 0.06 / 1.20 USD`，当前 `ModelPrice` 与 bare-model `UpstreamModelPrice` 相同；官方 CSV 忙时 `1.49688048 CNY`、闲时 `0.55012848 CNY` 分别按其历史逐行单价保留。两种价目口径不同不作为计费错误或自动改价理由。按明确授权通过 140 仅发布 import 给既有 root，随后以批量读取及 141 索引修复 owner 导入超时，保留原 RPC 期限和全部校验。**11:17 已通过原 owner 导入**，report ID 为 `2bc6d3dd046db8ee94ef5f576a1482fca3815cb9bc9e4d198f2e1a0ea5f419db`；独立核对 **1 report / 1 run、sequence 1、actor iam-user:1、pending / missing_local / amount unknown** 及成功审计。详见 [价目、修复与 owner 执行记录](../runbooks/deepseek-channel11-closed-window-2026-10-23.md#真实-owner-导入已完成)。
+
+**N3.2 预览与 N3.5 真实留存已完成。** 下一步优先完成 N3.1 的窗口产物关联，N3.3/N3.4 继续并行补证；先收口现有窗口，再决定是否需要新采样。
+
+| 顺序 | 工作 / owner | 完成条件 |
+| --- | --- | --- |
+| N3.1 | 合并另一台电脑的最终产物；运营 / Billing | 将固定窗口任务结果、来源映射生效区间、覆盖与迟到更正证据关联到本次原始 CSV 哈希；缺失项明确保留未知。导出时间、CSV 桶 end_time 不充当供应商最终水位。 |
+| N3.2 | 整理可导入材料并做只读预览；Billing | **已完成**固定 13 列 cost-only `account_period` 归集和现有 owner 命令的真实快照预览；CNY、Asia/Shanghai、request_id 留空，五桶留空并保留三个已提供 token 类型旁证。实际结果 pending / missing_local / amount unknown，未传合成 attempts 或执行 import。 |
+| N3.3 | 核对真实消费与 owner 执行证据的覆盖条件；Relay / Billing | 当前投递开关为 true，但精确 `channel:11:deepseek-flash` 不在当前 V2 allowlist，发送时间开关也未设置。先结合已有请求的入口/协议/准入与自然流量侧证建立能捕获缺口的反馈环，不据当前快照推断历史根因或自行扩大收费准入。不能把账本时间或探针 received_at 补成历史 send 时间；若历史原始证据无法补齐，保留本窗缺口，新采样另定窗口与授权。 |
+| N3.4 | 核对既有价目与差异口径；Billing | 现有 OpenRouter 参考 USD 价与 DeepSeek 官方忙闲时 CNY 实报分别保留。当前采购价仅有 bare-model fallback，durable owner 不据此伪造历史精确来源的冻结估价。后续如需可比原币采购证据，另评审历史费率/币种/版本；不改标签、不换汇或回填历史，不将开发新计价引擎作为本次 pending 留存前提。 |
+| N3.5 | 通过既有 owner 入口留存真实 report/run；运营 / Billing | **已完成**唯一 import 权限发布、原 owner 超时修复、同一真实请求导入及独立落库/审计核对：1 report / 1 run、sequence=1、pending。后续本地补证追加 run，供应商更正使用新 version/supersedes，继续保持用户账本、价格与灰度不变。 |
+
+N3 的完成标准仍是一个能重放、解释内部调用/缺行/unknown/差额、满足完整性与覆盖条件的真实生产核验 run。当前 CSV 只支持账户账期级 `provider_reported` 证据；不授予逐请求实扣或 invoice 结论。现阶段无需新增模型调用来重复证明已有的 203 次合计，也不将 N3 补证变成 N4 契约晋级。
 
 ### N4：上游契约现场准入
 

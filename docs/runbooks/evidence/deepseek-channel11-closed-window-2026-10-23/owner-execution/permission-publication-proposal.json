@@ -1,0 +1,37 @@
+{
+  "prepared_at": "2026-10-23T02:35:25.427795+00:00",
+  "status": "PUBLISHED",
+  "reason": "Existing owner import is denied. Migration 134 registered the import permission as draft; migration 136 published only read permissions. The built-in root role has frozen explicit grants and cannot be edited or assigned through ordinary IAM role APIs.",
+  "existing_permission": {
+    "id": 239,
+    "code": "billing.vendor_report.import",
+    "status": "draft",
+    "revision": 1,
+    "supported_scopes": [
+      "all"
+    ],
+    "context": "platform"
+  },
+  "existing_role": {
+    "id": 4,
+    "code": "root",
+    "revision": 3,
+    "active_members": 1,
+    "import_grant_present": false
+  },
+  "proposed_change": "Prepare, validate and publish a new identity-owned permission release migration using migration 136 pattern: enable this one registered import operation and append only its allow/all grant to the existing built-in root, preserving explicit denies, existing disabled/archived governance and replay receipts. Advance relevant policy/catalog/role revisions and keep an audit receipt.",
+  "access_effect": "The existing root member would gain platform-wide supplier report import through the existing Admin/Billing/IAM owner. This is an access expansion, not merely saving the current report.",
+  "excluded_changes": [
+    "billing.vendor_report.attribute",
+    "customer prices",
+    "upstream prices",
+    "customer ledgers or wallets",
+    "execution/canary allowlists",
+    "other roles or user assignments"
+  ],
+  "then_execute": "Replay the existing fixed report request through the existing owner API, retain actual pending, verify owner report/run and management page.",
+  "production_change_executed": true,
+  "approval_recorded_at": "2026-10-23T02:45:28.259761+00:00",
+  "user_reply": "授权发布这一项权限并继续导入",
+  "publication_result": "permission-publication-result.json"
+}

@@ -1,0 +1,29 @@
+{
+  "captured_at": "2026-10-23T03:15:08.699952+00:00",
+  "service": "billing-service",
+  "running": true,
+  "started_at": "2026-10-23T03:13:24.904429964Z",
+  "restart_count": 0,
+  "image": "sha256:498e818116057e3b94ddd4f30a6d22a25103dccc04b629ec7dcc1b0813bc7235",
+  "image_tag": "docker-compose-billing-service:deploy-20261023-111149-f599e4b9",
+  "platform": "linux/amd64",
+  "source_digest": "c4d9f13123c300e5c76d4a636c895afd556569215e1253a91c94a8c325bb069b",
+  "health": {
+    "status": 200,
+    "body": {
+      "status": "ok"
+    }
+  },
+  "flags": {
+    "BILLING_EXECUTION_DELIVERY_V1": "true",
+    "BILLING_VENDOR_REPORT_MONITOR_V1": "false",
+    "UPSTREAM_CONTRACTS_V1_ENABLED": "unset",
+    "UPSTREAM_PROBES_ENABLED": "unset",
+    "GRPC_TIMEOUT": "unset",
+    "HTTP_TIMEOUT": "unset",
+    "DB_QUERY_TIMEOUT": "unset"
+  },
+  "existing_gate_flags_unchanged": true,
+  "existing_timeout_environment_unchanged": true,
+  "rollback_tag": "rollback-20261023-111149"
+}

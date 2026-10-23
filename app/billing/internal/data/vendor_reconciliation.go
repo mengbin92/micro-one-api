@@ -14,7 +14,6 @@ import (
 	"micro-one-api/app/billing/internal/biz"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/execution"
-	"micro-one-api/domain/upstream/evidence"
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/database/authzquery"
 	"micro-one-api/platform/database/xdb"
@@ -85,6 +84,27 @@ func (r *vendorReconciliationRepo) LoadVendorAttempts(ctx context.Context, m biz
 		if len(intents) > 100000 {
 			return fmt.Errorf("intent scan exceeds limit; archive/partition the trial evidence before reconciliation")
 		}
+		batch := make([]vendorAttemptReader, 0, vendorIntentBatchSize)
+		flush := func() error {
+			if len(batch) == 0 {
+				return nil
+			}
+			if err := loadVendorEventBatch(tx, batch); err != nil {
+				return err
+			}
+			for i := range batch {
+				attempt, include, err := batch[i].finish(m)
+				if err != nil {
+					return err
+				}
+				if include {
+					out = append(out, attempt)
+				}
+			}
+			clear(batch)
+			batch = batch[:0]
+			return nil
+		}
 		for _, row := range intents {
 			var intent execution.Intent
 			if err := jsonx.Unmarshal([]byte(row.Payload), &intent); err != nil {
@@ -93,81 +113,15 @@ func (r *vendorReconciliationRepo) LoadVendorAttempts(ctx context.Context, m biz
 			if _, ok := sources[fmt.Sprintf("%s:%d", intent.SourceKind, intent.SourceID)]; !ok {
 				continue
 			}
-			a := biz.VendorLocalAttempt{ID: row.ID, RootRequestID: intent.RootRequestID, ParserRevision: intent.ParserRevision, ContractRevision: intent.ContractRevision, TariffSnapshotID: intent.TariffSnapshotID, CostAlgorithmVersion: intent.CostAlgorithmVersion, SettlementPolicy: intent.Policy, ReservationID: intent.ReservationID, SourceKind: intent.SourceKind, SourceID: intent.SourceID, Model: intent.Model, Purpose: intent.Purpose}
-			var events []executionEventModel
-			if err := tx.Where("intent_id = ?", row.ID).Order("id ASC").Limit(1001).Find(&events).Error; err != nil {
-				return err
-			}
-			if len(events) > 1000 {
-				return fmt.Errorf("attempt event limit exceeded")
-			}
-			var selected *execution.Event
-			var selectedRow *executionEventModel
-			headerRequestID := ""
-			for i := range events {
-				evRow := &events[i]
-				var ev execution.Event
-				if jsonx.Unmarshal([]byte(evRow.Payload), &ev) != nil {
-					return fmt.Errorf("corrupt execution event %s", evRow.ID)
-				}
-				_, digest, err := ev.Encode()
-				if err != nil || digest != evRow.Digest || ev.Intent.Key() != row.ID || string(mustIntentJSON(ev.Intent)) != row.Payload {
-					return fmt.Errorf("execution evidence digest mismatch %s", evRow.ID)
-				}
-				a.EvidenceIDs = append(a.EvidenceIDs, evRow.ID)
-				if ev.Category == "checkpoint" && ev.Record != nil && ev.Record.Observation.Reason == "response_headers_only" {
-					headerRequestID = ev.Record.Observation.ProviderRequestID
-				}
-				if ev.Record != nil && ev.Record.StartedAtUnixNano > 0 {
-					sent := time.Unix(0, ev.Record.StartedAtUnixNano).UTC()
-					if !a.ExecutedAt.IsZero() && !a.ExecutedAt.Equal(sent) {
-						return fmt.Errorf("multiple upstream sends share one intent %s", row.ID)
-					}
-					a.ExecutedAt = sent
-				}
-				if ev.Record != nil && (ev.Category == "terminal" || ev.Category == "final") && (selected == nil || ev.ObservedAt > selected.ObservedAt || ev.ObservedAt == selected.ObservedAt && ev.Sequence > selected.Sequence) {
-					copy := ev
-					selected = &copy
-					selectedRow = evRow
+			batch = append(batch, newVendorAttemptReader(row, intent))
+			if len(batch) == vendorIntentBatchSize {
+				if err := flush(); err != nil {
+					return err
 				}
 			}
-			if !a.ExecutedAt.IsZero() && (a.ExecutedAt.Before(m.Scope.Start) || !a.ExecutedAt.Before(m.Scope.End)) {
-				continue
-			}
-			if selected != nil {
-				a.BuildRevision = selected.BuildRevision
-				a.ResponseID = selected.Record.Observation.ProviderRequestID
-				a.RequestID = headerRequestID
-				if m.RequestIDKind == "response" {
-					a.RequestID = a.ResponseID
-				}
-				a.Complete = selected.Record.Complete
-				if selected.Record.Observation.Status == "verified" {
-					field := "usage"
-					if selected.Record.Observation.Protocol == "gemini" {
-						field = "usageMetadata"
-					}
-					body, _ := jsonx.Marshal(map[string]any{field: selected.Record.Observation.Usage})
-					parsed := evidence.Parse(body, selected.Record.Observation.Protocol)
-					if parsed.Status != "verified" || parsed.Buckets == nil || selected.Record.Observation.Buckets == nil || *parsed.Buckets != *selected.Record.Observation.Buckets {
-						return fmt.Errorf("native usage proof mismatch %s", selected.ID)
-					}
-					a.Buckets = parsed.Buckets
-				}
-				// Existing tariffs are USD/AmountScale. Keep that explicit; never
-				// compare them to another currency, cents or supplier credits.
-				if selectedRow.EstimatedCost != nil {
-					computed := biz.SupplierEstimate(intent, selected.Record)
-					if computed == nil || *computed != *selectedRow.EstimatedCost {
-						return fmt.Errorf("frozen tariff estimate mismatch %s", selected.ID)
-					}
-					v := new(big.Rat).SetFrac64(*selectedRow.EstimatedCost, 10000).FloatString(4)
-					a.EstimatedAmount = &v
-					a.Currency = "USD"
-					a.Unit = "currency"
-				}
-			}
-			out = append(out, a)
+		}
+		if err := flush(); err != nil {
+			return err
 		}
 		return nil
 	}, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})

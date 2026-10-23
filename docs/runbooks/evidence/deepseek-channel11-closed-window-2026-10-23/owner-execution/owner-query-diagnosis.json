@@ -1,0 +1,128 @@
+{
+  "captured_at": "2026-10-23T02:59:05.738565+00:00",
+  "source_kind": "channel",
+  "source_id": 11,
+  "purpose": "Read-only diagnosis of the authentic vendor-report import DeadlineExceeded failure",
+  "observed_failure": {
+    "admin_log_time_utc": "2026-10-23T02:54:09Z",
+    "rpc_code": "DeadlineExceeded",
+    "message": "context deadline exceeded",
+    "http_status": 500,
+    "origin": "Main agent's already-captured authenticated console import and production Admin log; this diagnostic did not retry a write"
+  },
+  "method": {
+    "transport": "SSH; credentials remained inside the remote process environment",
+    "database": "oneapi_billing",
+    "isolation": "REPEATABLE READ",
+    "consistent_snapshot": true,
+    "transaction_read_only": true,
+    "max_select_execution_time_ms": 10000,
+    "operations": [
+      "Aggregate intent/event counts",
+      "SHOW INDEX FROM upstream_execution_evidence",
+      "EXPLAIN SELECT * FROM upstream_execution_evidence WHERE intent_id = <internally selected channel/11 intent> ORDER BY id ASC LIMIT 1001",
+      "Read only the allowlisted log-level and timeout environment fields from existing service containers"
+    ],
+    "sample_intent_value_exported": false,
+    "driver_diagnostics_exported": false,
+    "production_changes": false,
+    "inference_requests": 0,
+    "import_retried": false
+  },
+  "live_owner_counts": {
+    "global_intents": 2541,
+    "global_events": 7658,
+    "channel11_intents": 2472
+  },
+  "physical_indexes": [
+    {
+      "name": "PRIMARY",
+      "unique": true,
+      "type": "BTREE",
+      "visible": true,
+      "columns": ["id"]
+    },
+    {
+      "name": "idx_execution_source",
+      "unique": false,
+      "type": "BTREE",
+      "visible": true,
+      "columns": [
+        "source_kind",
+        "source_id",
+        "upstream_model_id",
+        "purpose",
+        "received_at"
+      ]
+    }
+  ],
+  "intent_id_leading_index_present": false,
+  "query_plan": {
+    "select_type": "SIMPLE",
+    "table": "upstream_execution_evidence",
+    "access_type": "index",
+    "possible_keys": null,
+    "chosen_key": "PRIMARY",
+    "key_len": 1022,
+    "ref": null,
+    "estimated_rows": 1001,
+    "estimated_filtered_percent": "10.00",
+    "extra": "Using where",
+    "interpretation": "The query scans in primary-key order and filters intent_id; there is no leading intent_id index. LIMIT bounds returned rows, not the rows that must be scanned to find this intent's evidence. EXPLAIN estimates do not measure actual runtime or actual rows scanned."
+  },
+  "service_runtime_fields": {
+    "admin-api": {
+      "LOG_LEVEL": "info",
+      "GRPC_TIMEOUT_present": false,
+      "HTTP_TIMEOUT_present": false,
+      "DB_QUERY_TIMEOUT_present": false
+    },
+    "billing-service": {
+      "LOG_LEVEL": "info",
+      "GRPC_TIMEOUT_present": false,
+      "HTTP_TIMEOUT_present": false,
+      "DB_QUERY_TIMEOUT_present": false
+    },
+    "identity-service": {
+      "LOG_LEVEL": "info",
+      "GRPC_TIMEOUT_present": false,
+      "HTTP_TIMEOUT_present": false,
+      "DB_QUERY_TIMEOUT_present": false
+    }
+  },
+  "source_configuration_interpretation": {
+    "pkg_timeout_default_grpc_seconds": 10,
+    "pkg_timeout_default_http_seconds": 30,
+    "pkg_timeout_default_db_seconds": 5,
+    "billing_grpc_server_seconds": 10,
+    "identity_grpc_server_seconds": 10,
+    "admin_http_server_hardcoded_seconds": 30,
+    "admin_to_billing_client": "google.golang.org/grpc.NewClient with no additional client timeout in the constructor; the Kratos client's default timeout does not apply",
+    "owner_loader": "Inherits the RPC context; LoadVendorAttempts does not install a separate DBQueryTimeout or the offline CLI's one-minute deadline",
+    "source_references": [
+      "pkg/timeout/timeout.go",
+      "app/billing/internal/server/grpc.go",
+      "app/identity/internal/server/grpc.go",
+      "app/admin/cmd/admin/admin_helpers.go",
+      "app/admin/internal/server/http.go",
+      "app/billing/internal/data/vendor_reconciliation.go"
+    ]
+  },
+  "authentic_private_snapshot_comparison": {
+    "snapshot_captured_at": "2026-10-23T00:35:25.457189+00:00",
+    "intents": 2442,
+    "events": 7316,
+    "events_per_intent_histogram": [
+      {"events": 1, "intents": 5},
+      {"events": 3, "intents": 2437}
+    ],
+    "existing_loader_select_count_excluding_authorization_and_transaction_control": 2443,
+    "private_pretty_printed_preview_bytes": 2506917,
+    "preview_status": "pending",
+    "unknown_time_attempts": 2442,
+    "unresolved_attempts": 2442,
+    "raw_payloads_or_identifiers_in_this_file": false
+  },
+  "conclusion": "The production schema lacks an intent_id lookup index, and the existing owner loader issues one evidence query for each mapped intent. These findings support a costly N+1 query path within the ten-second server RPC budget. They do not establish exclusive causality or verify a fix; the original authenticated failing import must be replayed after a bounded query-path change. Missing Billing/Identity error logs at info level do not prove successful completion. Increasing a timeout alone does not resolve the finding.",
+  "implementation_or_deployment_performed_by_this_diagnostic": false
+}

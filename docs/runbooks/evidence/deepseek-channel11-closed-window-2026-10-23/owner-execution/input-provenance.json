@@ -1,0 +1,32 @@
+{
+  "created_at": "2026-10-23T00:34:36.545914+00:00",
+  "supplier_price_scope": "historical per-row CNY unit prices from the original official CSV, split peak/off-peak; no current-price backfill",
+  "supplier_tariff_details_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+  "openrouter_price_semantics_url": "https://openrouter.ai/docs/guides/overview/models",
+  "maintainer_statement": "online DeepSeek pricing uses OpenRouter DeepSeek prices",
+  "official_csv_price_groups": {
+    "off_peak": {
+      "tokens": {
+        "input_cache_hit_tokens": 12708224,
+        "output_tokens": 44020,
+        "input_cache_miss_tokens": 119884
+      },
+      "cost_cny": "0.55012848"
+    },
+    "peak": {
+      "tokens": {
+        "input_cache_miss_tokens": 199358,
+        "input_cache_hit_tokens": 17712512,
+        "output_tokens": 48708
+      },
+      "cost_cny": "1.49688048"
+    }
+  },
+  "owner_price_context": "pricing-context.json",
+  "manifest_scope_note": "Account is a stable SHA256 pseudonym qualified by the exact selected micro-one-api Key name; it does not claim the provider account is otherwise unused. No supplier project is invented. Key mask and account fingerprint provenance remain in provider-export.json.",
+  "mapping_note": "Bounds use the existing credential observation and the later production revision-4 observation. They are an observed span only; no full-period source coverage is asserted, and complete=false with empty coverage evidence remains.",
+  "usage_import_note": "All five normalized bucket columns are empty because the official CSV explicitly supplies only three token types; unproven cache creation buckets are not invented as zeros. Exact three-bucket/day agreement remains independently archived.",
+  "preflight_boundary": "A CLI preview over an exact private owner DB snapshot validates real stored event digests; it is not a live production import and uses no synthetic local-attempts.",
+  "production_write_authorized": true,
+  "production_write_scope": "Existing authenticated IAM Billing owner report/run append only; no user ledger, price, gate, credential or permission mutation."
+}

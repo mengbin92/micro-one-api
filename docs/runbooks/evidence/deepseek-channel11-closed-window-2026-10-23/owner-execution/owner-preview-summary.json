@@ -1,0 +1,38 @@
+{
+  "captured_at": "2026-10-23T02:20:11.275534+00:00",
+  "method": "current existing vendor-reconcile CLI, native local build, real owner snapshot loaded using mode=ro; no -local-attempts and no -import",
+  "report_id": "2bc6d3dd046db8ee94ef5f576a1482fca3815cb9bc9e4d198f2e1a0ea5f419db",
+  "status": "pending",
+  "verification_scope": "none",
+  "cost_basis": "provider_reported",
+  "unknown_time_attempts": 2442,
+  "unmapped_attempts": 0,
+  "internal_attempts": 0,
+  "user_reservations": 0,
+  "attempt_evidence_count": 0,
+  "unresolved_attempt_evidence_count": 2442,
+  "comparisons": [
+    {
+      "key": "account_period",
+      "status": "missing_local",
+      "usage_status": "not_applicable",
+      "amount_status": "unknown",
+      "vendor_amount": "2.0470089600000000",
+      "estimated_amount": null,
+      "difference": null,
+      "relative_difference": null,
+      "vendor_buckets": null,
+      "local_buckets": null,
+      "unknown_amounts": 0,
+      "purpose_counts": {},
+      "unexplained": null
+    }
+  ],
+  "snapshot_sqlite_sha256_before_after": "4d8db8519bcaefde252ce8ca381a7543917f03be987ed69c497e4f779b298847",
+  "snapshot_database_unchanged": true,
+  "private_preview_path": "/tmp/micro-one-deepseek-owner-20261023/owner-preview.json",
+  "private_preview_sha256": "ad1f9d74817f3afedaeccd1511a594670b0876a5a404c8eea8a72a83cd8c9e10",
+  "existing_cli_sha256": "51873583ca44be2e90086b83aec14bd53e660e72341077f060365c8b30952c96",
+  "exit_code": 1,
+  "production_import_executed": false
+}

@@ -1,0 +1,60 @@
+{
+  "captured_at": "2026-10-23T02:31:50.385824+00:00",
+  "method": "read-only IAM catalog and role-grant metadata; no session or credential material collected",
+  "sections": {
+    "permissions": [
+      {
+        "id": 240,
+        "code": "billing.vendor_report.attribute",
+        "status": "draft",
+        "revision": 1,
+        "binding_state": "unbound",
+        "supported_scopes": "[\"all\"]",
+        "supported_context_types": "[\"platform\"]"
+      },
+      {
+        "id": 239,
+        "code": "billing.vendor_report.import",
+        "status": "draft",
+        "revision": 1,
+        "binding_state": "unbound",
+        "supported_scopes": "[\"all\"]",
+        "supported_context_types": "[\"platform\"]"
+      },
+      {
+        "id": 238,
+        "code": "billing.vendor_report.read",
+        "status": "enabled",
+        "revision": 2,
+        "binding_state": "bound",
+        "supported_scopes": "[\"all\"]",
+        "supported_context_types": "[\"platform\"]"
+      }
+    ],
+    "granted_roles": [
+      {
+        "effect": "allow",
+        "role_id": 4,
+        "role_code": "root",
+        "role_name": "root",
+        "permission": "billing.vendor_report.read",
+        "role_status": "enabled",
+        "role_revision": 3,
+        "active_members": 1,
+        "scope_descriptor": "{\"clauses\":[{\"all\":true}]}"
+      }
+    ],
+    "maintainer_roles": [
+      {
+        "status": "active",
+        "role_id": 4,
+        "role_code": "root",
+        "role_name": "root",
+        "role_status": "enabled",
+        "role_revision": 3,
+        "allow_boundary": "{\"clauses\":[{\"all\":true}]}",
+        "other_active_members": 0
+      }
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "captured_at": "2026-10-23T03:10:38.594809+00:00",
+  "method": "Original and batched existing owner CLI over the same real private production snapshot, mode=ro, identical manifest/CSV; no fixture attempts or import",
+  "full_report_structurally_equal": true,
+  "full_report_byte_equal": true,
+  "original_report_sha256": "ad1f9d74817f3afedaeccd1511a594670b0876a5a404c8eea8a72a83cd8c9e10",
+  "batched_report_sha256": "ad1f9d74817f3afedaeccd1511a594670b0876a5a404c8eea8a72a83cd8c9e10",
+  "bytes": 2506917,
+  "unknown_time_attempts": 2442,
+  "status": "pending",
+  "source_snapshot_unchanged": true
+}

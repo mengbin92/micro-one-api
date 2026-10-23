@@ -1,0 +1,8 @@
+{
+  "started_at": "2026-10-23T03:11:47.307175+00:00",
+  "service": "billing-service",
+  "platform": "linux/amd64",
+  "source_digest": "c4d9f13123c300e5c76d4a636c895afd556569215e1253a91c94a8c325bb069b",
+  "scope": "Owner evidence query batching fix only; standard deploy script with rollback tags; no timeout/price/ledger/gate/permission changes in this deploy",
+  "log_path": "/tmp/deepseek-owner-billing-deploy-20261023.log"
+}

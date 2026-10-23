@@ -1,0 +1,62 @@
+{
+  "captured_at": "2026-10-23T00:16:19.266364+00:00",
+  "provider_url": "https://platform.deepseek.com/usage",
+  "selected_key_name": "micro-one-api",
+  "selected_key_mask": "sk-7e117**a6fc",
+  "account_sha256": "d6cea0bf519c646c07a5d5199a0420c3cb4d0edadc572a1c676f7f2345a7bbc6",
+  "window": {
+    "start": "2026-10-21T00:00:00+08:00",
+    "end_exclusive": "2026-10-23T00:00:00+08:00",
+    "timezone": "Asia/Shanghai",
+    "duration_hours": 48
+  },
+  "ui": {
+    "date_selection": "10/21 - 10/22",
+    "timezone": "GMT+8",
+    "requests": 203,
+    "tokens": 30832706,
+    "cost_display_cny": "2.04",
+    "delay_notice_minutes": 5
+  },
+  "provider_reported_cost_cny": "2.0470089600000000",
+  "token_rows_extended_cny": "2.04700896",
+  "decimal_difference_cny": "0E-16",
+  "usage_by_type": {
+    "input_cache_hit_tokens": "30420736",
+    "output_tokens": "92728",
+    "input_cache_miss_tokens": "319242",
+    "request_count": "203"
+  },
+  "daily_cost_cny": {
+    "2026-10-21": "1.4846006400000000",
+    "2026-10-22": "0.5624083200000000"
+  },
+  "wallet_type_cost_cny": {
+    "Granted": "0.8109963200000000",
+    "Paid": "1.2360126400000000"
+  },
+  "csv_files": {
+    "cost-2026-10-21_2026-10-22.csv": {
+      "sha256": "a75af224d5fd77180eb05ea487813744f5abf89681bbc548a0166216ec0e5df0",
+      "raw_sha256": "11f21abde8811c2232671e8513651a486cc5de0ec74a335651a26e8c08d08a9d",
+      "rows": 3,
+      "redaction": "user_id -> SHA256; api_key -> [REDACTED] when present"
+    },
+    "amount-2026-10-21_2026-10-22.csv": {
+      "sha256": "bd1ca12d9c01f89d29b5c886c1e4604106955fe8f6d6901fe89c7c2c24374f85",
+      "raw_sha256": "7e8d05b73ae461e56e3599499211acc583984b6c9b93d2cec07b0eb71e4baee8",
+      "rows": 11,
+      "redaction": "user_id -> SHA256; api_key -> [REDACTED] when present"
+    }
+  },
+  "raw_zip": {
+    "private_path": "/Users/mengbin/Downloads/usage_data_2026-10-21_2026-10-22.zip",
+    "sha256": "e16d939853dc35fd591d69ad5aa0a272d4ac87edf5c8eb96cc64d73ac31c399b",
+    "bytes": 3251
+  },
+  "report_period_has_ended": true,
+  "supplier_explicit_final_watermark": null,
+  "individual_request_ids_in_csv": false,
+  "status": "CLOSED_WINDOW_PROVIDER_EXPORT_COLLECTED; OWNER_COVERAGE_REVIEW_PENDING",
+  "new_provider_inference_requests": 0
+}

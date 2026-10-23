@@ -1,0 +1,11 @@
+{
+  "status": "INPUT_VALIDATION_PASSED_NOT_A_PRODUCTION_PREVIEW",
+  "expected_report_id": "2bc6d3dd046db8ee94ef5f576a1482fca3815cb9bc9e4d198f2e1a0ea5f419db",
+  "cost_basis": "provider_reported",
+  "supplier_amount_cny": "2.0470089600000000",
+  "schema_validation_exit_code": 1,
+  "schema_validation_note": "Existing native owner CLI validates the real manifest and normalized CSV with an explicitly empty schema-only fixture. It is not real owner evidence and will never be imported. A separate preview over the exact private real owner DB snapshot is required.",
+  "manifest_sha256": "7d11474329c8ed2598b1a1a55efb3c97ae9941017e38552ff8a5b8145f5f1a8d",
+  "normalized_csv_sha256": "48a81a8158dc72a2790b65974052fceb6c0014b91fde97da20948035967d4274",
+  "production_import_executed": false
+}

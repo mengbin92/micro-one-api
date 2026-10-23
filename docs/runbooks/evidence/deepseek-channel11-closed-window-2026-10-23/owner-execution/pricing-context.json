@@ -1,0 +1,44 @@
+{
+  "captured_at": "2026-10-23T00:30:58.389931+00:00",
+  "method": "owner price option fields and historical customer pricing snapshot aggregate, consistent read-only transaction; no config changes",
+  "maintainer_price_source_statement": "current online DeepSeek pricing uses OpenRouter pricing; official DeepSeek uses peak/off-peak pricing",
+  "sections": {
+    "current_prices": [
+      {
+        "option": "ModelPrice",
+        "model_fallback": {
+          "input_price": 3e-07,
+          "output_price": 1.2e-06,
+          "cache_read_price": 6e-08
+        },
+        "channel11_exact": null,
+        "channel11_legacy": null
+      },
+      {
+        "option": "UpstreamModelPrice",
+        "model_fallback": {
+          "input_price": 3e-07,
+          "output_price": 1.2e-06,
+          "cache_read_price": 6e-08
+        },
+        "channel11_exact": null,
+        "channel11_legacy": null
+      }
+    ],
+    "historical_customer_price_snapshots": [
+      {
+        "rows": 201,
+        "model": "deepseek-flash",
+        "group_ratio": "1.00000000000000000",
+        "last_charge_utc": "2026-10-22 01:39:12.605000",
+        "first_charge_utc": "2026-10-21 05:23:37.606000",
+        "snapshot_version": 1,
+        "pricing_config_hash": "92e317f9f913c3d01ea97c1d14073b453bef018bc6c8d0d0f6aaf8b3023f1d0f",
+        "upstream_cost_units": 20339,
+        "input_price_per_token": "0.00000030000000000",
+        "output_price_per_token": "0.00000120000000000",
+        "cache_read_price_per_token": "0.00000006000000000"
+      }
+    ]
+  }
+}
