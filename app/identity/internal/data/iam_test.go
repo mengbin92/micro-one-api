@@ -77,11 +77,13 @@ func TestIAMStorageDialects(t *testing.T) {
 					return nil
 				}))
 				require.Equal(t, int64(len(authorization.Catalog())), iamCount(t, db, "iam_permissions"))
-				var bound int64
-				require.NoError(t, db.Table("iam_permissions").Where("binding_state <> 'unbound'").Count(&bound).Error)
-				require.EqualValues(t, 2, bound, "only the two reviewed read-page operations are published before D0")
-				require.NoError(t, db.Table("iam_permissions").Where("binding_state <> 'unbound' AND code NOT IN ?", []string{"billing.vendor_report.read", "channel.upstream_contract.read"}).Count(&bound).Error)
-				require.Zero(t, bound)
+				var bound []string
+				require.NoError(t, db.Table("iam_permissions").Where("binding_state <> 'unbound'").Pluck("code", &bound).Error)
+				require.ElementsMatch(t, []string{
+					"billing.vendor_report.read",
+					"channel.upstream_contract.read",
+					"billing.vendor_report.import",
+				}, bound, "only the reviewed read-page operations and vendor-report import are published before D0")
 				for _, op := range authorization.Catalog() {
 					var row struct {
 						SupportedScopes, SupportedContextTypes string
