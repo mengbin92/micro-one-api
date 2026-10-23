@@ -1,6 +1,6 @@
 # DeepSeek 渠道 11：10/21–22 闭窗核验与 N3 下一步
 
-日期：2026-10-23（Asia/Shanghai）。承接 [N3 计划](../design/next-stage-plan-2026-10-20.md#n3首个生产来源费用闭环)及 [10 月 21 日记录](deepseek-channel11-two-day-2026-10-21.md)。维护者已在另一台电脑安排固定 48 小时任务。初次只读核对生产 owner 数据与官方 CSV，随后按维护者明确授权发布唯一的报告导入权限、修复 owner 导入超时，已通过原 owner 接口留存 **1 份真实报告 / 1 条 run，状态 pending**。该观察任务、价格与用户账本保留，未新增推理调用；各执行阶段见下文。
+日期：2026-10-23（Asia/Shanghai）。承接 [N3 计划](../design/next-stage-plan-2026-10-20.md#n3首个生产来源费用闭环)及 [10 月 21 日记录](deepseek-channel11-two-day-2026-10-21.md)。维护者澄清另一台电脑只安排了定时任务、没有实际执行，本窗不等待该任务产物。初次只读核对生产 owner 数据与官方 CSV，随后按明确授权发布唯一的报告导入权限、修复 owner 导入超时，已通过原 owner 接口留存 **1 份真实报告 / 1 条 run，状态 pending**。16:25 CST 补充实际调用时间分组与独立 CNY 重算，合计及逐日/费率组用量精确相符；未改价格、用户账本或追加推理调用，各阶段见下文。
 
 ## 固定范围与来源
 
@@ -44,7 +44,7 @@
 
 10 月 23 日 08:30:58 CST 只读核对实际配置：`ModelPrice.deepseek-flash`（客户售价）与 `UpstreamModelPrice.deepseek-flash`（来源采购估价）均为每百万 token **未缓存输入 0.30 / 缓存读取 0.06 / 输出 1.20 USD**。该窗口 201 条消费关联同一份客户价格快照，group_ratio=1；当前 exact `channel:11:deepseek-flash` 与 legacy `11:deepseek-flash` 采购价项均未配置。普通账本路径可以使用 bare-model fallback，durable execution 只冻结精确来源价，二者不能混同。见 [价格上下文](evidence/deepseek-channel11-closed-window-2026-10-23/owner-execution/pricing-context.json)。价目来源按维护者说明记录，不声称已证明与 OpenRouter 当前全部时段/模型变体的报价完全相同。
 
-依据官方 CSV 自带的历史逐行单价分类：
+依据官方 CSV 自带的历史逐行单价对照费率分组；CSV 本身没有逐请求发送时间或忙闲标签，下文另用真实调用时间独立核对：
 
 | 官方价格组 | 未缓存输入 token | 缓存读取 token | 输出 token | 费用（CNY） |
 | --- | ---: | ---: | ---: | ---: |
@@ -53,6 +53,28 @@
 | 合计 | 319,242 | 30,420,736 | 92,728 | 2.04700896 |
 
 [DeepSeek 官方价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)在本次读取时列出北京时间工作日（不含中国法定节假日）09:00–12:00、14:00–18:00 为忙时。历史金额仍取 CSV 中实际单价，不用当前规则反推缺失的请求发送时间。[OpenRouter 模型价格文档](https://openrouter.ai/docs/guides/overview/models)将报价单位定义为 USD，并提供分时 overrides 语义；现有静态配置值与官方 CNY 实报分别保留。
+
+### 按真实调用时间区分忙闲并重算 CNY
+
+维护者补充：**线上记录的价格统一采用忙时基准**，并要求按调用记录时间比较。这是既有配置口径，不表示所有实际调用均发生在忙时，也不要求先为当前计价增加自动忙闲切换。
+
+**16:25:13 CST** 再次以一致性只读事务取得 201 条 consume、201 条对应请求计时摘要及 201 条 ledger。先按 root 关联计时，逐项验证唯一成功 attempt 的 request/reservation、`channel/11` 和 `deepseek-flash`，再按 reservation 对应 ledger；201 条三类用量完全一致，均为 legacy `/v1/responses` 成功 SSE 路径。私有源文件 SHA256、关联检查和聚合结果见 [时间重算摘要](evidence/deepseek-channel11-closed-window-2026-10-23/time-pricing-analysis.json)。公开 [203 条分组记录](evidence/deepseek-channel11-closed-window-2026-10-23/time-pricing-records.csv)只含序号、时间、purpose、三类 token 与 CNY 重算，不含账号、凭据或原始请求 ID；其中两条外部测试仍保持 `internal_test` 来源。
+
+分类先使用独立的本地时间，再核对官方 CSV。请求入口至 handler 完成覆盖本次单 attempt 的上游交互；异步结算可以晚于 handler。保守比较区间为 `[request.started_at_ms, max(handler_finished_at_ms+1ms, ledger.created_at+1ms, consume.created_at+1s))`，覆盖毫秒/秒截断及记账延迟。检查整个区间内所有 09:00、12:00、14:00、18:00 切换点，**201 条均未跨计价边界**，因此可唯一确定忙闲组，无需捏造精确 upstream send 时间。尤其 13:59:59 的日志只给出 `<14:00:00` 的上界，不应被误算成发生在 14:00。
+
+本窗两天为普通周三、周四；按 CST 半开区间 `[09:00,12:00)`、`[14:00,18:00)` 为忙时，其余闲时。采用与原始 CSV 一致的 CNY/百万 token 历史费率：未缓存输入 / 缓存读取 / 输出，忙时 `2 / 0.04 / 8`、闲时 `1 / 0.02 / 4`。以 Decimal 独立计算，无逐条金额舍入：
+
+| 日期 / 时段 / 来源 | 调用数 | 未缓存输入 | 缓存读取 | 输出 | 重算 CNY |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 10/21 闲时生产 | 106 | 119,884 | 12,708,224 | 44,020 | 0.55012848 |
+| 10/21 忙时生产 | 79 | 26,094 | 14,968,704 | 35,436 | 0.93442416 |
+| 10/22 忙时生产 | 16 | 173,248 | 2,743,808 | 13,270 | 0.56240832 |
+| 10/21 10:47 忙时外部测试 | 2 | 16 | 0 | 2 | 0.00004800 |
+| 合计 | **203** | **319,242** | **30,420,736** | **92,728** | **2.04700896** |
+
+生产 201 条合计 **2.04696096 CNY**；加入原有两次直连测试后，逐日、费率组、三类 token 及总 CNY 与官方 CSV 精确相符，差额 **0**。忙时 97（含测试 2）/ 闲时 106 是本地时间分类条数；官方 CSV 只提供每日总请求数，未单独提供分时请求数。独立复算没有使用官方 token 数量或金额反推本地分类。
+
+新增结论为 **TIME_BAND_CNY_RECOMPUTATION_MATCHED**。这是事后、独立、同币种的采购费率重算，不是请求执行时已冻结的 CNY 估价，也不是 invoice/逐请求实扣证明。正式 owner 的 USD 加载逻辑和原 pending run 未改写，仍需评审这份证据的正式承载方式并补来源覆盖、未知探针及供应商最终性。
 
 ### 现有 owner 命令预览
 
@@ -131,15 +153,15 @@ SQLite、MySQL 8.4、PostgreSQL 18 的真实 repo 回归均通过：64 intent **
 
 1. **执行覆盖不足。** 查询所有当前持久化的渠道 11 事件，没有 record.started_at_unix_nano 落在固定窗口内的事件。按 received_at 另查到 598 个 health_probe intent、595 个 checkpoint、595 个 terminal，均缺 send 时间，后两类 endpoint 为 `/models`。它们不能替代付费模型请求。采样只覆盖查询时已持久化的数据，不保证不存在迟到或外部证据。
 2. **投递开关不等于路径覆盖。** 当前 Relay/Billing 的 execution delivery 均为 true；08:21 CST 另只读确认当前 V2 allowlist 未配置，精确 `channel:11:deepseek-flash` 不在准入名单，仅保存成员布尔值。Relay 的 `RELAY_UPSTREAM_EXECUTION_TIME_V1` 未设置，契约开关为 false。此为当前运行快照，尚未建立驱动实际消费入口的故障复现，也未证明历史配置，不断言缺口根因或直接扩大准入。后续先定位实际入口、协议、准入和采集路径。
-3. **原币金额不可比。** 现有 [owner loader](../../app/billing/internal/data/vendor_reconciliation.go)从冻结采购估价构造 USD/currency，不能直接与 CNY CSV 比较。账本 priced 只说明既有定价状态，不能授予供应商实扣结论。
-4. **最终性未证明。** 两天窗口已经结束，官方报告没有显式最终水位。导出时点和 CSV end_time 不是最终水位，另一台电脑任务的最终产物、报告覆盖与迟到更正证据仍需关联。CSV 没有逐请求 ID，仅限制核验到 account_period 粒度，不是该粒度核验的额外失败条件。
+3. **独立原币重算已相符，owner 尚未承载。** 16:25 CST 补证已按实际请求时间区间确定忙闲组，本地三类 usage 乘历史 CNY 费率后与官方逐日/费率组及总额精确相符。现有 [owner loader](../../app/billing/internal/data/vendor_attempt_reader.go)仍仅从冻结采购估价构造 USD/currency，不能把本次事后重算伪称历史冻结 CNY 或直接改写原 run。账本 priced 和重算相符均不授予供应商实扣结论。
+4. **最终性未证明。** 两天窗口已经结束，官方报告没有显式最终水位。导出时点和 CSV end_time 不是最终水位，仍需已有生产投递完整性、官方报告覆盖与迟到更正证据。另一台电脑任务未实际执行，不期待其提供产物。CSV 没有逐请求 ID，仅限制核验到 account_period 粒度，不是该粒度核验的额外失败条件。
 5. **真实 run 已留存。** 初次只读采样时报告/run 为 0/0；后续通过真实 owner 已形成 1/1、sequence=1、status=pending。该进展不补造执行覆盖、最终水位或可比采购金额。
 
-当前结论为 **CLOSED_WINDOW_USAGE_AGGREGATES_MATCHED**、**PROVIDER_COST_EXPORT_SELF_CONSISTENT**；**N3_NOT_ACCEPTED**。本次后续执行范围为唯一 import 权限发布和原 owner 报告留存；N4、收费扩面和新增付费采样继续按各自关卡办理。
+当前结论为 **CLOSED_WINDOW_USAGE_AGGREGATES_MATCHED**、**PROVIDER_COST_EXPORT_SELF_CONSISTENT**、**TIME_BAND_CNY_RECOMPUTATION_MATCHED**；**N3_NOT_ACCEPTED**。本次已完成唯一 import 权限发布、原 owner 报告留存及调用时间/CNY 补证；N4、收费扩面和新增付费采样继续按各自关卡办理。
 
 ## 后续执行顺序
 
-具体责任与完成条件已写回 [N3.1–N3.5](../design/next-stage-plan-2026-10-20.md#n3首个生产来源费用闭环)。N3.2 预览与 N3.5 真实 owner 留存已经完成；下一步先关联另一台电脑的固定窗口产物、来源覆盖与迟到更正材料，再补执行覆盖、最终水位及可比原币证据。同一报告补本地证据可追加不可变 run；供应商报告内容更正走新 version/supersedes，不以重试导入代替补证。
+具体责任与完成条件已写回 [N3.1–N3.5](../design/next-stage-plan-2026-10-20.md#n3首个生产来源费用闭环)。N3.2 预览与 N3.5 真实 owner 留存已完成；N3.4 已补独立调用时间分组/CNY 重算。下一步以现有生产计时材料梳理 owner 覆盖和事后原币证据的承载方式，再补最终水位，不等待未执行的定时任务。同一报告补本地证据可追加不可变 run；补供应商 complete/vendor_watermark 也改变报告身份，须新 version/supersedes，即使金额不变，不以重试导入代替补证。
 
 现有 [vendor-reconcile](../../app/billing/cmd/vendor-reconcile/main.go)的 `-vendor-bill` 接收固定 13 列 normalized CSV，不能直接传官方 cost/amount CSV。固定 `account_period` 范围后归集一行，request_id 留空；五个 token 桶全部有据或全部留空，原始 token 另存旁证，不能为通过校验擅自补零。
 
@@ -153,4 +175,4 @@ SQLite、MySQL 8.4、PostgreSQL 18 的真实 repo 回归均通过：64 intent **
 python3 docs/runbooks/evidence/deepseek-channel11-closed-window-2026-10-23/check.py
 ```
 
-此命令仅复核已保存文件哈希、固定窗口、来源、每日请求/token 合计、十进制费用延展，以及已归档的权限发布、修复重放、部署和真实 report/run/审计结果；仍保留 N3 待补证条件，不访问生产或供应商。
+此命令仅复核已保存文件哈希、固定窗口、来源、每日请求/token 合计、完整时间区间的忙闲分类与独立 CNY 重算，以及已归档的权限发布、修复重放、部署和真实 report/run/审计结果；仍保留 N3 待补证条件，不访问生产或供应商。

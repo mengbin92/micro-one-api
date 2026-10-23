@@ -4,7 +4,7 @@ import csv
 import hashlib
 import json
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -185,5 +185,119 @@ if owner.exists():
         assert indexed["repeat_result"] == "nothing to apply"
         migration = ROOT.parents[3] / "migrations/141_add_execution_intent_event_index.sql"
         assert hashlib.sha256(migration.read_bytes()).hexdigest() == indexed["sql_sha256"]
+time_pricing = read_json("time-pricing-analysis.json")
+timed_rows = read_csv("time-pricing-records.csv")
+assert time_pricing["window"] == window
+assert time_pricing["production_consume_rows"] == time_pricing["timing_rows"] == time_pricing["ledger_rows"] == 201
+assert time_pricing["ledger_join_methods"] == {"reservation_sha256": 201}
+assert time_pricing["request_execution_paths"] == {"legacy": 201}
+assert not time_pricing["production_changes"] and not time_pricing["owner_import_or_run_appended"]
+assert time_pricing["new_provider_inference_requests"] == 0 and time_pricing["supplier_final_watermark"] is None
+assert time_pricing["status"] == "TIME_BAND_CNY_RECOMPUTATION_MATCHED"
+assert len(timed_rows) == 203
+
+rates = {
+    "peak": {"uncached_input_tokens": Decimal("2"), "cache_read_tokens": Decimal(".04"), "output_tokens": Decimal("8")},
+    "off_peak": {"uncached_input_tokens": Decimal("1"), "cache_read_tokens": Decimal(".02"), "output_tokens": Decimal("4")},
+}
+
+
+def clock_band(point):
+    # Deliberately scoped to the two ordinary Wed/Thu dates in this archive.
+    assert point.utcoffset() == timedelta(hours=8)
+    assert point.date().isoformat() in ("2026-10-21", "2026-10-22") and point.weekday() in (2, 3)
+    minute = point.hour * 60 + point.minute
+    return "peak" if 9 * 60 <= minute < 12 * 60 or 14 * 60 <= minute < 18 * 60 else "off_peak"
+
+
+def interval_band(begin, stop):
+    assert begin < stop
+    points = [begin, stop - timedelta(microseconds=1)]
+    day = begin.replace(hour=0, minute=0, second=0, microsecond=0)
+    while day < stop:
+        for hour in (0, 9, 12, 14, 18):
+            cut = day.replace(hour=hour)
+            if begin <= cut < stop:
+                points.append(cut)
+                if cut > begin:
+                    points.append(cut - timedelta(microseconds=1))
+        day += timedelta(days=1)
+    bands = {clock_band(point) for point in points}
+    return bands.pop() if len(bands) == 1 else "boundary_ambiguous"
+
+
+# Preserve the exclusive upper bound of a Unix-second log just before 14:00.
+before = datetime.fromisoformat("2026-10-21T13:59:53.664+08:00")
+edge = datetime.fromisoformat("2026-10-21T14:00:00+08:00")
+assert interval_band(before, edge) == "off_peak"
+assert interval_band(before, edge + timedelta(milliseconds=1)) == "boundary_ambiguous"
+for hour, expected in ((9, "peak"), (12, "off_peak"), (14, "peak"), (18, "off_peak")):
+    assert clock_band(edge.replace(hour=hour)) == expected
+
+by_group = defaultdict(lambda: defaultdict(int))
+local_by_group = defaultdict(lambda: defaultdict(int))
+by_day_group = defaultdict(lambda: defaultdict(int))
+costs_by_group = defaultdict(Decimal)
+local_costs = defaultdict(Decimal)
+costs_by_day_group = defaultdict(Decimal)
+purposes = defaultdict(int)
+for ordinal, row in enumerate(timed_rows, 1):
+    assert int(row["record_no"]) == ordinal
+    begin, finish, stop = (datetime.fromisoformat(row[key]) for key in ("started_at_cst", "finished_at_cst", "comparison_end_exclusive_cst"))
+    assert start <= begin <= finish < stop <= end
+    label = interval_band(begin, stop)
+    assert label == row["band"] and label != "boundary_ambiguous"
+    assert row["purpose"] in ("user", "internal_test")
+    purposes[row["purpose"]] += 1
+    values = {key: int(row[key]) for key in rates[label]}
+    assert all(value >= 0 for value in values.values())
+    cost = sum((Decimal(value) * rates[label][key] / Decimal(1000000) for key, value in values.items()), Decimal(0))
+    assert cost == Decimal(row["cost_cny"])
+    group, day_group = by_group[label], by_day_group[(begin.date().isoformat(), label)]
+    for target in (group, day_group):
+        target["requests"] += 1
+        for key, value in values.items():
+            target[key] += value
+    costs_by_group[label] += cost
+    costs_by_day_group[(begin.date().isoformat(), label)] += cost
+    if row["purpose"] == "user":
+        assert row["time_basis"] == "request_handler_and_settlement_interval"
+        local_by_group[label]["requests"] += 1
+        for key, value in values.items():
+            local_by_group[label][key] += value
+        local_costs[label] += cost
+    else:
+        assert row["time_basis"] == "external_direct_call_interval"
+        call = test["calls"][purposes["internal_test"] - 1]
+        assert begin == datetime.fromisoformat(call["started_at"].replace("Z", "+00:00"))
+        assert finish == datetime.fromisoformat(call["completed_at"].replace("Z", "+00:00"))
+        assert values == {"uncached_input_tokens": call["native_usage"]["prompt_cache_miss_tokens"], "cache_read_tokens": call["native_usage"]["prompt_cache_hit_tokens"], "output_tokens": call["native_usage"]["completion_tokens"]}
+
+assert purposes == {"user": 201, "internal_test": 2}
+for label in rates:
+    for field, value in by_group[label].items():
+        assert time_pricing["combined_groups"][label][field] == value
+    assert Decimal(time_pricing["combined_groups"][label]["cost_cny"]) == costs_by_group[label]
+    for field, value in local_by_group[label].items():
+        assert time_pricing["groups"][label][field] == value
+    assert Decimal(time_pricing["groups"][label]["cost_cny"]) == local_costs[label]
+
+type_to_field = {"input_cache_miss_tokens": "uncached_input_tokens", "input_cache_hit_tokens": "cache_read_tokens", "output_tokens": "output_tokens"}
+for row in token_rows:
+    day = row["start_time_iso"][:10]
+    if row["type"] == "request_count":
+        assert sum(value["requests"] for (date, _), value in by_day_group.items() if date == day) == int(row["amount"])
+        continue
+    field = type_to_field[row["type"]]
+    matching = [label for label in rates if rates[label][field] / Decimal(1000000) == Decimal(row["price"])]
+    assert len(matching) == 1
+    assert by_day_group[(day, matching[0])][field] == int(row["amount"])
+for day in ("2026-10-21", "2026-10-22"):
+    vendor_cost = sum((Decimal(row["cost"]) for row in cost_rows if row["start_time_iso"][:10] == day), Decimal(0))
+    assert sum((value for (date, _), value in costs_by_day_group.items() if date == day), Decimal(0)) == vendor_cost
+assert sum(local_costs.values(), Decimal(0)) == Decimal(time_pricing["local_recomputed_total_cny"]) == Decimal("2.04696096")
+assert sum(costs_by_group.values(), Decimal(0)) == Decimal(time_pricing["combined_recomputed_total_cny"]) == reported
+assert Decimal(time_pricing["difference_cny"]) == 0
+
 imported = "real owner 1 report / 1 run pending; " if index.get("production_import_executed") else ""
-print(f"PASS: 201 ledger + 2 archived tests = 203 requests / {total_tokens} tokens; provider CNY {reported} equals CSV price extension; {imported}N3 owner coverage, comparable currency and finality remain pending")
+print(f"PASS: 201 ledger + 2 archived tests = 203 requests / {total_tokens} tokens; independent time bands, daily three-bucket usage and CNY {reported} match the supplier CSV; {imported}N3 owner evidence integration and finality remain pending")

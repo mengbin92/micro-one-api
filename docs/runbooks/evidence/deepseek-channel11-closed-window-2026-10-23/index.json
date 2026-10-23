@@ -15,14 +15,14 @@
   "formal_reconciliation_executed": true,
   "production_import_executed": true,
   "supplier_final_watermark": null,
-  "owner_source_currency_comparison": "unknown; supplier CNY, existing owner tariff estimates USD",
+  "owner_source_currency_comparison": "unknown in the existing owner run; independent retrospective CNY comparison now matches, but owner still only loads frozen USD",
   "request_count": 203,
   "total_tokens": 30832706,
   "provider_reported_cost_cny": "2.0470089600000000",
   "raw_zip_sha256": "e16d939853dc35fd591d69ad5aa0a272d4ac87edf5c8eb96cc64d73ac31c399b",
   "files": {
     "amount-2026-10-21_2026-10-22.csv": "bd1ca12d9c01f89d29b5c886c1e4604106955fe8f6d6901fe89c7c2c24374f85",
-    "check.py": "c9e55c8090fc8f7ed19adbe35b8aeb1ae537c2c5b38944bd1e423c6c8171fc9a",
+    "check.py": "cd21f830880351799e008ebc040ff18af903f0d3790ba5534168fe2a64baaf38",
     "cost-2026-10-21_2026-10-22.csv": "a75af224d5fd77180eb05ea487813744f5abf89681bbc548a0166216ec0e5df0",
     "owner-execution/billing-deploy-result.json": "bb2357de7e01e8ee58472f3a1e92e579b8652fa538c00cc1175be08864816a96",
     "owner-execution/billing-deploy-start.json": "7d36161793607e771c44ff6a41960a937d4c6f46cbcb7593f78b698be1dbef61",
@@ -53,9 +53,11 @@
     "owner-execution/vendor-normalized.csv": "48a81a8158dc72a2790b65974052fceb6c0014b91fde97da20948035967d4274",
     "production-readonly.json": "364dd54e36cdab585e34c73c5dce409f75f98adadcd8bf602f47919da4b677e7",
     "provider-export.json": "8983c236bfe280b3d0fb39c6f6228fbc9cf3ec91ac11a787a9580a579c21b86f",
-    "service-flags.json": "e2827819d25df72398e366dc58d1bb0da09e73125bc50fd5608293db9852e19d"
+    "service-flags.json": "e2827819d25df72398e366dc58d1bb0da09e73125bc50fd5608293db9852e19d",
+    "time-pricing-analysis.json": "d04d9379de33931b09b4dd84d26114671ac2da07d364ec5beefb1fb5a7e82ea0",
+    "time-pricing-records.csv": "f212b9df5134c4e1c904cfaa3b22b35773bc51180e4733ca5b022beae5c942a6"
   },
-  "updated_at": "2026-10-23T03:24:31.875097+00:00",
+  "updated_at": "2026-10-23T08:36:54.387716+00:00",
   "owner_preview_executed": true,
   "permission_publication_executed": true,
   "price_ledger_or_gate_changes": false,
@@ -71,5 +73,17 @@
       "source_sha256": "3a528a28521b7067399686d6244416ae59d5020280b0e8f1c09942f47fac5305",
       "normalization": "Expand tabs to four spaces and remove trailing whitespace; diagnostic content unchanged; original retained privately."
     }
-  }
+  },
+  "other_computer_task_execution": "not_executed_per_maintainer; no task output dependency",
+  "independent_cny_tariff_recomputation": "TIME_BAND_CNY_RECOMPUTATION_MATCHED",
+  "time_pricing_production_calls": {
+    "peak": 95,
+    "off_peak": 106,
+    "boundary_ambiguous": 0
+  },
+  "time_pricing_external_calls": {
+    "peak": 2,
+    "off_peak": 0
+  },
+  "time_pricing_difference_cny": "0"
 }

@@ -1,0 +1,135 @@
+{
+  "captured_at": "2026-10-23T08:25:13.472188+00:00",
+  "production_consume_rows": 201,
+  "timing_rows": 201,
+  "ledger_rows": 201,
+  "ledger_join_methods": {
+    "reservation_sha256": 201
+  },
+  "request_execution_paths": {
+    "legacy": 201
+  },
+  "boundary_ambiguous_rows": 0,
+  "groups": {
+    "off_peak": {
+      "requests": 106,
+      "uncached_input_tokens": 119884,
+      "cache_read_tokens": 12708224,
+      "output_tokens": 44020,
+      "cost_cny": "0.55012848"
+    },
+    "peak": {
+      "requests": 95,
+      "uncached_input_tokens": 199342,
+      "cache_read_tokens": 17712512,
+      "output_tokens": 48706,
+      "cost_cny": "1.49683248"
+    }
+  },
+  "daily_groups": [
+    {
+      "day": "2026-10-21",
+      "band": "off_peak",
+      "requests": 106,
+      "uncached_input_tokens": 119884,
+      "cache_read_tokens": 12708224,
+      "output_tokens": 44020,
+      "cost_cny": "0.55012848"
+    },
+    {
+      "day": "2026-10-21",
+      "band": "peak",
+      "requests": 79,
+      "uncached_input_tokens": 26094,
+      "cache_read_tokens": 14968704,
+      "output_tokens": 35436,
+      "cost_cny": "0.93442416"
+    },
+    {
+      "day": "2026-10-22",
+      "band": "peak",
+      "requests": 16,
+      "uncached_input_tokens": 173248,
+      "cache_read_tokens": 2743808,
+      "output_tokens": 13270,
+      "cost_cny": "0.56240832"
+    }
+  ],
+  "all_peak_counterfactual_cny": "2.59708944",
+  "ingest_classification_differs": 0,
+  "private_source_sha256": "170259a34cfac9fb90ee437dd5a890242df7a101d3ca0cd74174380434b6ab81",
+  "window": {
+    "start": "2026-10-21T00:00:00+08:00",
+    "end_exclusive": "2026-10-23T00:00:00+08:00",
+    "timezone": "Asia/Shanghai",
+    "duration_hours": 48
+  },
+  "pricing_rule": {
+    "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+    "verified_date": "2026-10-23",
+    "scope": "Only the ordinary Wednesday/Thursday dates 2026-10-21 and 2026-10-22; not a general holiday calendar or pricing engine",
+    "peak_intervals_cst": [
+      "[09:00,12:00)",
+      "[14:00,18:00)"
+    ],
+    "cny_per_million_tokens": {
+      "peak": {
+        "uncached_input_tokens": "2",
+        "cache_read_tokens": "0.04",
+        "output_tokens": "8"
+      },
+      "off_peak": {
+        "uncached_input_tokens": "1",
+        "cache_read_tokens": "0.02",
+        "output_tokens": "4"
+      }
+    },
+    "historical_rate_check": "Both rate tuples occur in the original supplier CSV. No current-rate rewrite of supplier rows."
+  },
+  "classification_method": "Join consume and timing by root hash, verify the sole successful attempt request/reservation/source/model, and join the corresponding consume ledger by reservation hash; usage agrees across both stores. Classify the entire half-open interval from request entry to max(handler finish + 1ms, ledger insertion + 1ms, consume-log Unix second + 1 second), checking every tariff transition, not just the two endpoints. The exclusive upper bound includes settlement/logging delay and timestamp truncation; a 13:59:59 log yields <14:00:00, not an event at 14:00. No request crosses a transition. This fixes the tariff band without inventing an exact upstream send timestamp.",
+  "maintainer_clarifications": {
+    "other_computer": "Timer was only scheduled and never actually executed; no execution, coverage or final-watermark artifacts are expected from it.",
+    "online_recorded_prices": "Maintainer confirms recorded online prices uniformly use a peak-price baseline; this is a configuration basis, not a claim that all actual calls occurred at peak time."
+  },
+  "production_changes": false,
+  "new_provider_inference_requests": 0,
+  "owner_import_or_run_appended": false,
+  "owner_report_status": "pending; no owner facts rewritten",
+  "supplier_final_watermark": null,
+  "cost_basis": "independent retrospective CNY tariff recomputation against provider_reported CSV; not a frozen-at-execution CNY estimate or invoice",
+  "external_test_source": {
+    "path": "../deepseek-channel11-two-day-2026-10-21/live-test.json",
+    "sha256": "14c0c2ccb8b2911740c7806f9518f6a8ac189fcc5e6a9643e835497d33da476e",
+    "no_owner_attempts_created": true
+  },
+  "external_test_groups": {
+    "peak": {
+      "requests": 2,
+      "uncached_input_tokens": 16,
+      "cache_read_tokens": 0,
+      "output_tokens": 2,
+      "cost_cny": "0.000048"
+    }
+  },
+  "combined_groups": {
+    "off_peak": {
+      "requests": 106,
+      "uncached_input_tokens": 119884,
+      "cache_read_tokens": 12708224,
+      "output_tokens": 44020,
+      "cost_cny": "0.55012848"
+    },
+    "peak": {
+      "requests": 97,
+      "uncached_input_tokens": 199358,
+      "cache_read_tokens": 17712512,
+      "output_tokens": 48708,
+      "cost_cny": "1.49688048"
+    }
+  },
+  "local_recomputed_total_cny": "2.04696096",
+  "combined_recomputed_total_cny": "2.04700896",
+  "provider_reported_total_cny": "2.0470089600000000",
+  "difference_cny": "0E-16",
+  "status": "TIME_BAND_CNY_RECOMPUTATION_MATCHED"
+}
