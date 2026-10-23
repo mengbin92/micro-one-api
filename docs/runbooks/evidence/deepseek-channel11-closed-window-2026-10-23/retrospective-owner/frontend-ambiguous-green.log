@@ -1,0 +1,10 @@
+npm notice run web@0.0.0 npx
+npm notice run 'vitest' run src/pages/admin/VendorReportImport.test.tsx -t ambiguous saved draft|transport timeout|known validation rejection
+
+ RUN  v5.0.0 /Users/mengbin/vscode/neo/micro-one-api/web
+
+
+ Test Files  1 passed (1)
+      Tests  4 passed | 17 skipped (21)
+   Start at  22:29:07
+   Duration  1.09s (tests 36%, environment 31%, import 15%, transform 10%, setup 8%)

@@ -1,0 +1,11 @@
+Vendor reports supplementary evidence frontend verification
+Workdir: /Users/mengbin/vscode/neo/micro-one-api/web
+PASS (exit 0): npm run test -- src/pages/admin/VendorReportsPage.test.tsx
+Test Files  1 passed (1)
+Tests  12 passed (12)
+Duration  1.39s (tests 35%, environment 32%, import 14%, transform 11%, setup 8%)
+PASS (exit 0): ./node_modules/.bin/tsc --noEmit --project tsconfig.app.json
+PASS (exit 0): npm run lint
+PASS (exit 0): git diff --check -- owned frontend files
+Covered: optional legacy absence; maintainer finality basis; pending/unknown/coverage preservation; archive provenance and unverified joins; exact high precision money; purpose counts; English copy; revocation clears supplemental evidence.
+No npm build, backend edits or production writes.

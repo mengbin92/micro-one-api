@@ -1,0 +1,46 @@
+{
+  "deployed_at": "2026-10-23T14:15:09.948978+00:00",
+  "billing": {
+    "image_id": "sha256:24f8d57df70f3b946eb238dd6de9e4209a00916d5cd95f8ef5816d6b5c043413",
+    "image_ref": "docker-compose-billing-service:deploy-20261023-221148-4a165c4b",
+    "source_digest": "5c324e059887b9788fb0924a9da3a7010d46c20696235343faaa4a03a8957f53",
+    "architecture": "amd64",
+    "os": "linux",
+    "running": true,
+    "restarts": 0,
+    "health_response": "{\"status\":\"ok\"}"
+  },
+  "frontend": {
+    "archive_sha256": "8480e01945fb1acc3a0f09d77d0c672a4a26ae0922ca77eec14ad5a8e06a65fb",
+    "previous_index_sha256": "6faf736761e4682a495e9340127996b565481638fcd8abb8e92bfe9783ff5f11",
+    "index_sha256": "8ed5e753828240310ecebd7bb1b08e170b3fb8e1e96f77d521aa2711d9e2d912",
+    "source_digest": "f3f9201bad2098bb233074de6b35f1e0e1687789910b3f3da9846e6336160863",
+    "verified_files": 80,
+    "backup": "/opt/web/dist.bak.n3-20261023T143303530226Z",
+    "mount_directory_preserved": true,
+    "previous_hashed_assets_retained": true
+  },
+  "frontend_releases": [
+    {
+      "archive_sha256": "5a3b12dfc0799c3f7ebdc4ee42e5f8757996cf8d149ba479a7f736c4f168c0b0",
+      "previous_index_sha256": "7f16664e860ec0ae957a512111be4558d8fc8733af8091124094e6765d817a98",
+      "index_sha256": "6faf736761e4682a495e9340127996b565481638fcd8abb8e92bfe9783ff5f11",
+      "verified_files": 80,
+      "backup": "/opt/web/dist.bak.n3-20261023T141509734343Z",
+      "mount_directory_preserved": true,
+      "previous_hashed_assets_retained": true
+    },
+    {
+      "archive_sha256": "8480e01945fb1acc3a0f09d77d0c672a4a26ae0922ca77eec14ad5a8e06a65fb",
+      "previous_index_sha256": "6faf736761e4682a495e9340127996b565481638fcd8abb8e92bfe9783ff5f11",
+      "index_sha256": "8ed5e753828240310ecebd7bb1b08e170b3fb8e1e96f77d521aa2711d9e2d912",
+      "source_digest": "f3f9201bad2098bb233074de6b35f1e0e1687789910b3f3da9846e6336160863",
+      "verified_files": 80,
+      "backup": "/opt/web/dist.bak.n3-20261023T143303530226Z",
+      "mount_directory_preserved": true,
+      "previous_hashed_assets_retained": true
+    }
+  ],
+  "final_frontend_deployed_at": "2026-10-23T14:33:03.749383+00:00",
+  "additional_owner_posts": 0
+}

@@ -1,0 +1,682 @@
+npm notice run web@0.0.0 npx
+npm notice run 'vitest' run src/pages/admin/VendorReportImport.test.tsx -t ambiguous saved draft|transport timeout|known validation rejection
+
+ RUN  v5.0.0 /Users/mengbin/vscode/neo/micro-one-api/web
+
+stderr | src/pages/admin/VendorReportImport.test.tsx > supplier report import > consumes an ambiguous saved draft after network failure during authorization refresh and checks the list once
+An update to VendorReportImport inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to VendorReportImport inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/pages/admin/VendorReportImport.test.tsx > supplier report import > consumes an ambiguous saved draft after 503 response during authorization refresh and checks the list once
+An update to VendorReportImport inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to VendorReportImport inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/pages/admin/VendorReportImport.test.tsx > supplier report import > treats a transport timeout as uncertain and does not leave a retryable draft
+An update to VendorReportImport inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to VendorReportImport inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/pages/admin/VendorReportImport.test.tsx > supplier report import > keeps a known validation rejection visible while unchanged authorization is refreshing
+An update to VendorReportImport inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to VendorReportImport inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ❯ src/pages/admin/VendorReportImport.test.tsx (21 tests | 4 failed | 17 skipped) 3350ms
+   ❯ supplier report import (21)
+     × consumes an ambiguous saved draft after network failure during authorization refresh and checks the list once 1139ms
+     × consumes an ambiguous saved draft after 503 response during authorization refresh and checks the list once 1102ms
+     × treats a transport timeout as uncertain and does not leave a retryable draft 25ms
+     × keeps a known validation rejection visible while unchanged authorization is refreshing 1081ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/pages/admin/VendorReportImport.test.tsx > supplier report import > consumes an ambiguous saved draft after network failure during authorization refresh and checks the list once
+TestingLibraryElementError: Unable to find role="alert"
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"space-y-5"[39m
+      [36m>[39m
+        [36m<div>[39m
+          [36m<h2[39m
+            [33mclass[39m=[32m"text-2xl font-bold"[39m
+          [36m>[39m
+            [0m供应商费用核验[0m
+          [36m</h2>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"text-sm text-muted-foreground"[39m
+          [36m>[39m
+            [0m原币金额与用户收费分别核验；未知金额保留未知，账期总额不代表逐请求实扣。[0m
+          [36m</p>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex flex-wrap items-end gap-3"[39m
+        [36m>[39m
+          [36m<label>[39m
+            [0m导入窗口开始（UTC）[0m
+            [36m<input[39m
+              [33maria-label[39m=[32m"导入窗口开始（UTC）"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:disabled:bg-muted dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"[39m
+              [33mdata-slot[39m=[32m"input"[39m
+              [33mid[39m=[32m"base-ui-_r_2_"[39m
+              [33mtype[39m=[32m"date"[39m
+              [33mvalue[39m=[32m"2026-10-16"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<label>[39m
+            [0m导入窗口结束（UTC，不含）[0m
+            [36m<input[39m
+              [33maria-label[39m=[32m"导入窗口结束（UTC，不含）"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:disabled:bg-muted dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"[39m
+              [33mdata-slot[39m=[32m"input"[39m
+              [33mid[39m=[32m"base-ui-_r_3_"[39m
+              [33mtype[39m=[32m"date"[39m
+              [33mvalue[39m=[32m"2026-10-24"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-standard outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-safe:active:not-aria-[haspopup]:translate-y-px motion-safe:active:not-aria-[haspopup]:scale-[0.97] motion-reduce:transition-none disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 bg-primary text-primary-foreground hover:bg-primary-hover h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2"[39m
+            [33mdata-slot[39m=[32m"button"[39m
+            [33mtabindex[39m=[32m"0"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0m刷新[0m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"group/button inline-flex shrink-0 items-center justify-center rounded-lg border bg-clip-padding text-sm font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-standard outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-safe:active:not-aria-[haspopup]:translate-y-px motion-safe:active:not-aria-[haspopup]:scale-[0.97] motion-reduce:transition-none disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2"[39m
+            [33mdata-disabled[39m=[32m""[39m
+            [33mdata-slot[39m=[32m"button"[39m
+            [33mdisabled[39m=[32m""[39m
+            [33mtabindex[39m=[32m"0"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0m导出复盘材料[0m
+          [36m</button>[39m
+        [36m</div>[39m
+        [36m<section[39m
+          [33maria-label[39m=[32m"导入供应商报告"[39m
+          [33mclass[39m=[32m"space-y-3 rounded-lg border p-4"[39m
+        [36m>[39m
+          [36m<h3[39m
+            [33mclass[39m=[32m"font-semibold"[39m
+          [36m>[39m
+            [0m导入供应商报告[0m
+          [36m</h3>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"text-sm text-muted-foreground"[39m
+          [36m>[39m
+            [0m选择已准备的报告请求文件（JSON，最多 2 MiB），核对预览后导入；服务端验证报告并判定核验状态。[0m
+          [36m</p>[39m
+          [36m<label[39m
+            [33mclass[39m=[32m"block text-sm"[39m
+          [36m>[39m
+            [0m报告请求文件[0m
+            [36m<input[39m
+              [33maccept[39m=[32m".json,application/json"[39m
+              [33maria-label[39m=[32m"报告请求文件"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm d...
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"space-y-5"[39m
+      [36m>[39m
+        [36m<div>[39m
+          [36m<h2[39m
+            [33mclass[39m=[32m"text-2xl font-bold"[39m
+          [36m>[39m
+            [0m供应商费用核验[0m
+          [36m</h2>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"text-sm text-muted-foreground"[39m
+          [36m>[39m
+            [0m原币金额与用户收费分别核验；未知金额保留未知，账期总额不代表逐请求实扣。[0m
+          [36m</p>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex flex-wrap items-end gap-3"[39m
+        [36m>[39m
+          [36m<label>[39m
+            [0m导入窗口开始（UTC）[0m
+            [36m<input[39m
+              [33maria-label[39m=[32m"导入窗口开始（UTC）"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:disabled:bg-muted dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"[39m
+              [33mdata-slot[39m=[32m"input"[39m
+              [33mid[39m=[32m"base-ui-_r_2_"[39m
+              [33mtype[39m=[32m"date"[39m
+              [33mvalue[39m=[32m"2026-10-16"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<label>[39m
+            [0m导入窗口结束（UTC，不含）[0m
+            [36m<input[39m
+              [33maria-label[39m=[32m"导入窗口结束（UTC，不含）"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:disabled:bg-muted dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"[39m
+              [33mdata-slot[39m=[32m"input"[39m
+              [33mid[39m=[32m"base-ui-_r_3_"[39m
+              [33mtype[39m=[32m"date"[39m
+              [33mvalue[39m=[32m"2026-10-24"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-standard outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-safe:active:not-aria-[haspopup]:translate-y-px motion-safe:active:not-aria-[haspopup]:scale-[0.97] motion-reduce:transition-none disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 bg-primary text-primary-foreground hover:bg-primary-hover h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2"[39m
+            [33mdata-slot[39m=[32m"button"[39m
+            [33mtabindex[39m=[32m"0"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0m刷新[0m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"group/button inline-flex shrink-0 items-center justify-center rounded-lg border bg-clip-padding text-sm font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-standard outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-safe:active:not-aria-[haspopup]:translate-y-px motion-safe:active:not-aria-[haspopup]:scale-[0.97] motion-reduce:transition-none disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2"[39m
+            [33mdata-disabled[39m=[32m""[39m
+            [33mdata-slot[39m=[32m"button"[39m
+            [33mdisabled[39m=[32m""[39m
+            [33mtabindex[39m=[32m"0"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0m导出复盘材料[0m
+          [36m</button>[39m
+        [36m</div>[39m
+        [36m<section[39m
+          [33maria-label[39m=[32m"导入供应商报告"[39m
+          [33mclass[39m=[32m"space-y-3 rounded-lg border p-4"[39m
+        [36m>[39m
+          [36m<h3[39m
+            [33mclass[39m=[32m"font-semibold"[39m
+          [36m>[39m
+            [0m导入供应商报告[0m
+          [36m</h3>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"text-sm text-muted-foreground"[39m
+          [36m>[39m
+            [0m选择已准备的报告请求文件（JSON，最多 2 MiB），核对预览后导入；服务端验证报告并判定核验状态。[0m
+          [36m</p>[39m
+          [36m<label[39m
+            [33mclass[39m=[32m"block text-sm"[39m
+          [36m>[39m
+            [0m报告请求文件[0m
+            [36m<input[39m
+              [33maccept[39m=[32m".json,application/json"[39m
+              [33maria-label[39m=[32m"报告请求文件"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm d...
+ ❯ waitForWrapper node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ src/pages/admin/VendorReportImport.test.tsx:183:33
+    181|     await waitFor(() => expect(client.getQueryCache().findAll({ queryK…
+    182|     finishPost();
+    183|     const notice = await screen.findByRole('alert');
+       |                                 ^
+    184|     expect(notice).toHaveTextContent('导入结果尚未确认，请先核对列表中的预期报告 ID；系统不会自动重…
+    185|     expect(notice).toHaveTextContent(reportID);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/pages/admin/VendorReportImport.test.tsx > supplier report import > consumes an ambiguous saved draft after 503 response during authorization refresh and checks the list once
+TestingLibraryElementError: Unable to find role="alert"
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"space-y-5"[39m
+      [36m>[39m
+        [36m<div>[39m
+          [36m<h2[39m
+            [33mclass[39m=[32m"text-2xl font-bold"[39m
+          [36m>[39m
+            [0m供应商费用核验[0m
+          [36m</h2>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"text-sm text-muted-foreground"[39m
+          [36m>[39m
+            [0m原币金额与用户收费分别核验；未知金额保留未知，账期总额不代表逐请求实扣。[0m
+          [36m</p>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex flex-wrap items-end gap-3"[39m
+        [36m>[39m
+          [36m<label>[39m
+            [0m导入窗口开始（UTC）[0m
+            [36m<input[39m
+              [33maria-label[39m=[32m"导入窗口开始（UTC）"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:disabled:bg-muted dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"[39m
+              [33mdata-slot[39m=[32m"input"[39m
+              [33mid[39m=[32m"base-ui-_r_7_"[39m
+              [33mtype[39m=[32m"date"[39m
+              [33mvalue[39m=[32m"2026-10-16"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<label>[39m
+            [0m导入窗口结束（UTC，不含）[0m
+            [36m<input[39m
+              [33maria-label[39m=[32m"导入窗口结束（UTC，不含）"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:disabled:bg-muted dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"[39m
+              [33mdata-slot[39m=[32m"input"[39m
+              [33mid[39m=[32m"base-ui-_r_8_"[39m
+              [33mtype[39m=[32m"date"[39m
+              [33mvalue[39m=[32m"2026-10-24"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-standard outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-safe:active:not-aria-[haspopup]:translate-y-px motion-safe:active:not-aria-[haspopup]:scale-[0.97] motion-reduce:transition-none disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 bg-primary text-primary-foreground hover:bg-primary-hover h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2"[39m
+            [33mdata-slot[39m=[32m"button"[39m
+            [33mtabindex[39m=[32m"0"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0m刷新[0m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"group/button inline-flex shrink-0 items-center justify-center rounded-lg border bg-clip-padding text-sm font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-standard outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-safe:active:not-aria-[haspopup]:translate-y-px motion-safe:active:not-aria-[haspopup]:scale-[0.97] motion-reduce:transition-none disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2"[39m
+            [33mdata-disabled[39m=[32m""[39m
+            [33mdata-slot[39m=[32m"button"[39m
+            [33mdisabled[39m=[32m""[39m
+            [33mtabindex[39m=[32m"0"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0m导出复盘材料[0m
+          [36m</button>[39m
+        [36m</div>[39m
+        [36m<section[39m
+          [33maria-label[39m=[32m"导入供应商报告"[39m
+          [33mclass[39m=[32m"space-y-3 rounded-lg border p-4"[39m
+        [36m>[39m
+          [36m<h3[39m
+            [33mclass[39m=[32m"font-semibold"[39m
+          [36m>[39m
+            [0m导入供应商报告[0m
+          [36m</h3>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"text-sm text-muted-foreground"[39m
+          [36m>[39m
+            [0m选择已准备的报告请求文件（JSON，最多 2 MiB），核对预览后导入；服务端验证报告并判定核验状态。[0m
+          [36m</p>[39m
+          [36m<label[39m
+            [33mclass[39m=[32m"block text-sm"[39m
+          [36m>[39m
+            [0m报告请求文件[0m
+            [36m<input[39m
+              [33maccept[39m=[32m".json,application/json"[39m
+              [33maria-label[39m=[32m"报告请求文件"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm d...
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"space-y-5"[39m
+      [36m>[39m
+        [36m<div>[39m
+          [36m<h2[39m
+            [33mclass[39m=[32m"text-2xl font-bold"[39m
+          [36m>[39m
+            [0m供应商费用核验[0m
+          [36m</h2>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"text-sm text-muted-foreground"[39m
+          [36m>[39m
+            [0m原币金额与用户收费分别核验；未知金额保留未知，账期总额不代表逐请求实扣。[0m
+          [36m</p>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex flex-wrap items-end gap-3"[39m
+        [36m>[39m
+          [36m<label>[39m
+            [0m导入窗口开始（UTC）[0m
+            [36m<input[39m
+              [33maria-label[39m=[32m"导入窗口开始（UTC）"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:disabled:bg-muted dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"[39m
+              [33mdata-slot[39m=[32m"input"[39m
+              [33mid[39m=[32m"base-ui-_r_7_"[39m
+              [33mtype[39m=[32m"date"[39m
+              [33mvalue[39m=[32m"2026-10-16"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<label>[39m
+            [0m导入窗口结束（UTC，不含）[0m
+            [36m<input[39m
+              [33maria-label[39m=[32m"导入窗口结束（UTC，不含）"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:disabled:bg-muted dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"[39m
+              [33mdata-slot[39m=[32m"input"[39m
+              [33mid[39m=[32m"base-ui-_r_8_"[39m
+              [33mtype[39m=[32m"date"[39m
+              [33mvalue[39m=[32m"2026-10-24"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-standard outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-safe:active:not-aria-[haspopup]:translate-y-px motion-safe:active:not-aria-[haspopup]:scale-[0.97] motion-reduce:transition-none disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 bg-primary text-primary-foreground hover:bg-primary-hover h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2"[39m
+            [33mdata-slot[39m=[32m"button"[39m
+            [33mtabindex[39m=[32m"0"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0m刷新[0m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"group/button inline-flex shrink-0 items-center justify-center rounded-lg border bg-clip-padding text-sm font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-standard outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-safe:active:not-aria-[haspopup]:translate-y-px motion-safe:active:not-aria-[haspopup]:scale-[0.97] motion-reduce:transition-none disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2"[39m
+            [33mdata-disabled[39m=[32m""[39m
+            [33mdata-slot[39m=[32m"button"[39m
+            [33mdisabled[39m=[32m""[39m
+            [33mtabindex[39m=[32m"0"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0m导出复盘材料[0m
+          [36m</button>[39m
+        [36m</div>[39m
+        [36m<section[39m
+          [33maria-label[39m=[32m"导入供应商报告"[39m
+          [33mclass[39m=[32m"space-y-3 rounded-lg border p-4"[39m
+        [36m>[39m
+          [36m<h3[39m
+            [33mclass[39m=[32m"font-semibold"[39m
+          [36m>[39m
+            [0m导入供应商报告[0m
+          [36m</h3>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"text-sm text-muted-foreground"[39m
+          [36m>[39m
+            [0m选择已准备的报告请求文件（JSON，最多 2 MiB），核对预览后导入；服务端验证报告并判定核验状态。[0m
+          [36m</p>[39m
+          [36m<label[39m
+            [33mclass[39m=[32m"block text-sm"[39m
+          [36m>[39m
+            [0m报告请求文件[0m
+            [36m<input[39m
+              [33maccept[39m=[32m".json,application/json"[39m
+              [33maria-label[39m=[32m"报告请求文件"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm d...
+ ❯ waitForWrapper node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ src/pages/admin/VendorReportImport.test.tsx:183:33
+    181|     await waitFor(() => expect(client.getQueryCache().findAll({ queryK…
+    182|     finishPost();
+    183|     const notice = await screen.findByRole('alert');
+       |                                 ^
+    184|     expect(notice).toHaveTextContent('导入结果尚未确认，请先核对列表中的预期报告 ID；系统不会自动重…
+    185|     expect(notice).toHaveTextContent(reportID);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/pages/admin/VendorReportImport.test.tsx > supplier report import > treats a transport timeout as uncertain and does not leave a retryable draft
+Error: expect(element).toHaveTextContent()
+
+Expected element to have text content:
+  导入结果尚未确认，请先核对列表中的预期报告 ID；系统不会自动重试。
+Received:
+  timeout of 30000ms exceeded
+ ❯ src/pages/admin/VendorReportImport.test.tsx:200:46
+    198|     await select();
+    199|     fireEvent.click(await screen.findByRole('button', { name: '确认导入报告'…
+    200|     expect(await screen.findByRole('alert')).toHaveTextContent('导入结果尚未…
+       |                                              ^
+    201|     expect(screen.queryByLabelText('导入预览')).not.toBeInTheDocument();
+    202|     expect(post).toHaveBeenCalledTimes(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  src/pages/admin/VendorReportImport.test.tsx > supplier report import > keeps a known validation rejection visible while unchanged authorization is refreshing
+TestingLibraryElementError: Unable to find role="alert"
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"space-y-5"[39m
+      [36m>[39m
+        [36m<div>[39m
+          [36m<h2[39m
+            [33mclass[39m=[32m"text-2xl font-bold"[39m
+          [36m>[39m
+            [0m供应商费用核验[0m
+          [36m</h2>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"text-sm text-muted-foreground"[39m
+          [36m>[39m
+            [0m原币金额与用户收费分别核验；未知金额保留未知，账期总额不代表逐请求实扣。[0m
+          [36m</p>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex flex-wrap items-end gap-3"[39m
+        [36m>[39m
+          [36m<label>[39m
+            [0m导入窗口开始（UTC）[0m
+            [36m<input[39m
+              [33maria-label[39m=[32m"导入窗口开始（UTC）"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:disabled:bg-muted dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"[39m
+              [33mdata-slot[39m=[32m"input"[39m
+              [33mid[39m=[32m"base-ui-_r_h_"[39m
+              [33mtype[39m=[32m"date"[39m
+              [33mvalue[39m=[32m"2026-10-16"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<label>[39m
+            [0m导入窗口结束（UTC，不含）[0m
+            [36m<input[39m
+              [33maria-label[39m=[32m"导入窗口结束（UTC，不含）"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:disabled:bg-muted dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"[39m
+              [33mdata-slot[39m=[32m"input"[39m
+              [33mid[39m=[32m"base-ui-_r_i_"[39m
+              [33mtype[39m=[32m"date"[39m
+              [33mvalue[39m=[32m"2026-10-24"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-standard outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-safe:active:not-aria-[haspopup]:translate-y-px motion-safe:active:not-aria-[haspopup]:scale-[0.97] motion-reduce:transition-none disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 bg-primary text-primary-foreground hover:bg-primary-hover h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2"[39m
+            [33mdata-slot[39m=[32m"button"[39m
+            [33mtabindex[39m=[32m"0"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0m刷新[0m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"group/button inline-flex shrink-0 items-center justify-center rounded-lg border bg-clip-padding text-sm font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-standard outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-safe:active:not-aria-[haspopup]:translate-y-px motion-safe:active:not-aria-[haspopup]:scale-[0.97] motion-reduce:transition-none disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2"[39m
+            [33mdata-disabled[39m=[32m""[39m
+            [33mdata-slot[39m=[32m"button"[39m
+            [33mdisabled[39m=[32m""[39m
+            [33mtabindex[39m=[32m"0"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0m导出复盘材料[0m
+          [36m</button>[39m
+        [36m</div>[39m
+        [36m<section[39m
+          [33maria-label[39m=[32m"导入供应商报告"[39m
+          [33mclass[39m=[32m"space-y-3 rounded-lg border p-4"[39m
+        [36m>[39m
+          [36m<h3[39m
+            [33mclass[39m=[32m"font-semibold"[39m
+          [36m>[39m
+            [0m导入供应商报告[0m
+          [36m</h3>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"text-sm text-muted-foreground"[39m
+          [36m>[39m
+            [0m选择已准备的报告请求文件（JSON，最多 2 MiB），核对预览后导入；服务端验证报告并判定核验状态。[0m
+          [36m</p>[39m
+          [36m<label[39m
+            [33mclass[39m=[32m"block text-sm"[39m
+          [36m>[39m
+            [0m报告请求文件[0m
+            [36m<input[39m
+              [33maccept[39m=[32m".json,application/json"[39m
+              [33maria-label[39m=[32m"报告请求文件"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm d...
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"space-y-5"[39m
+      [36m>[39m
+        [36m<div>[39m
+          [36m<h2[39m
+            [33mclass[39m=[32m"text-2xl font-bold"[39m
+          [36m>[39m
+            [0m供应商费用核验[0m
+          [36m</h2>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"text-sm text-muted-foreground"[39m
+          [36m>[39m
+            [0m原币金额与用户收费分别核验；未知金额保留未知，账期总额不代表逐请求实扣。[0m
+          [36m</p>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex flex-wrap items-end gap-3"[39m
+        [36m>[39m
+          [36m<label>[39m
+            [0m导入窗口开始（UTC）[0m
+            [36m<input[39m
+              [33maria-label[39m=[32m"导入窗口开始（UTC）"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:disabled:bg-muted dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"[39m
+              [33mdata-slot[39m=[32m"input"[39m
+              [33mid[39m=[32m"base-ui-_r_h_"[39m
+              [33mtype[39m=[32m"date"[39m
+              [33mvalue[39m=[32m"2026-10-16"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<label>[39m
+            [0m导入窗口结束（UTC，不含）[0m
+            [36m<input[39m
+              [33maria-label[39m=[32m"导入窗口结束（UTC，不含）"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:disabled:bg-muted dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"[39m
+              [33mdata-slot[39m=[32m"input"[39m
+              [33mid[39m=[32m"base-ui-_r_i_"[39m
+              [33mtype[39m=[32m"date"[39m
+              [33mvalue[39m=[32m"2026-10-24"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-standard outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-safe:active:not-aria-[haspopup]:translate-y-px motion-safe:active:not-aria-[haspopup]:scale-[0.97] motion-reduce:transition-none disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 bg-primary text-primary-foreground hover:bg-primary-hover h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2"[39m
+            [33mdata-slot[39m=[32m"button"[39m
+            [33mtabindex[39m=[32m"0"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0m刷新[0m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"group/button inline-flex shrink-0 items-center justify-center rounded-lg border bg-clip-padding text-sm font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-standard outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-safe:active:not-aria-[haspopup]:translate-y-px motion-safe:active:not-aria-[haspopup]:scale-[0.97] motion-reduce:transition-none disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2"[39m
+            [33mdata-disabled[39m=[32m""[39m
+            [33mdata-slot[39m=[32m"button"[39m
+            [33mdisabled[39m=[32m""[39m
+            [33mtabindex[39m=[32m"0"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0m导出复盘材料[0m
+          [36m</button>[39m
+        [36m</div>[39m
+        [36m<section[39m
+          [33maria-label[39m=[32m"导入供应商报告"[39m
+          [33mclass[39m=[32m"space-y-3 rounded-lg border p-4"[39m
+        [36m>[39m
+          [36m<h3[39m
+            [33mclass[39m=[32m"font-semibold"[39m
+          [36m>[39m
+            [0m导入供应商报告[0m
+          [36m</h3>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"text-sm text-muted-foreground"[39m
+          [36m>[39m
+            [0m选择已准备的报告请求文件（JSON，最多 2 MiB），核对预览后导入；服务端验证报告并判定核验状态。[0m
+          [36m</p>[39m
+          [36m<label[39m
+            [33mclass[39m=[32m"block text-sm"[39m
+          [36m>[39m
+            [0m报告请求文件[0m
+            [36m<input[39m
+              [33maccept[39m=[32m".json,application/json"[39m
+              [33maria-label[39m=[32m"报告请求文件"[39m
+              [33mclass[39m=[32m"h-10 w-full min-w-0 rounded-xl border border-input bg-background px-4 py-2.5 text-base transition-[border-color,box-shadow] duration-200 ease-standard outline-none motion-reduce:transition-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm d...
+ ❯ waitForWrapper node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ src/pages/admin/VendorReportImport.test.tsx:218:25
+    216|     await waitFor(() => expect(client.getQueryCache().findAll({ queryK…
+    217|     finishPost();
+    218|     expect(await screen.findByRole('alert')).toHaveTextContent('report…
+       |                         ^
+    219|     expect(screen.getByLabelText('导入预览')).toBeInTheDocument();
+    220|     holdAuthorization = false; finishAuthorization();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 17 skipped (21)
+   Start at  22:28:08
+   Duration  4.09s (tests 83%, environment 8%, import 4%, transform 3%, setup 2%)

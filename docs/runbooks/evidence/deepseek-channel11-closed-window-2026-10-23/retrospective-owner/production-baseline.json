@@ -1,0 +1,26 @@
+{
+  "services": {
+    "billing-service": {
+      "image_id": "sha256:498e818116057e3b94ddd4f30a6d22a25103dccc04b629ec7dcc1b0813bc7235",
+      "image_ref": "docker-compose-billing-service:deploy-20261023-111149-f599e4b9",
+      "running": true,
+      "restarts": 0,
+      "health": null,
+      "started_at": "2026-10-23T03:13:24.904429964Z",
+      "flags": {
+        "BILLING_VENDOR_REPORT_MONITOR_V1": "false",
+        "BILLING_EXECUTION_DELIVERY_V1": "true"
+      }
+    },
+    "admin-api": {
+      "image_id": "sha256:dd80a103e683b893205660b11ba9a7c1980376916c8ecab852bc3377cfb64aec",
+      "image_ref": "docker-compose-admin-api:deploy-20261017-162059-493fd7c2",
+      "running": true,
+      "restarts": 0,
+      "health": null,
+      "started_at": "2026-10-17T08:36:10.921533613Z",
+      "flags": {}
+    }
+  },
+  "frontend_index_sha256": "7f16664e860ec0ae957a512111be4558d8fc8733af8091124094e6765d817a98"
+}

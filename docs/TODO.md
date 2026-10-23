@@ -1,10 +1,10 @@
 # 项目 TODO
 
-> 最后更新：2026-10-21
+> 最后更新：2026-10-23
 >
 > **当前执行入口**：[计时内存预算与供应商证据可读性](./design/next-stage-plan-2026-10-20.md)。N1/N2 原生最大输入、前端隔离及完整三库容量验收通过；2026-10-20 已完成 [生产部署](./runbooks/p1-production-deployment-2026-10-20.md)，2026-10-21 已发布 [v0.36.3](./releases/release-v0.36.3.md)，完整 Release、分支 CI 和安全检查均 SUCCESS。见 [发布核验及剩余任务](./runbooks/post-v0.36.3-followups-2026-10-21.md)。
 >
-> **N3/N4 现场推进**：10:33 CST 只读基线中 vendor report/run、契约版本/绑定/probe/审计均为 0，契约开关关闭且 reviewer 公钥未配置。随后维护者选择 DeepSeek 渠道 11、两天周期并授权小额验证；已核对当前来源/Key 掩码，保存 10/19–20 零推理基线，并完成两次关闭思考的短调用，18 token、费率估价 0.000048 CNY，低于 0.10 CNY 上限。官方当前日 CSV 随后回补相同的 2 请求、18 token 和 0.0000480000000000 CNY，受控费用快照精确相符。N3 等 10/21–22 完整窗口与覆盖审查，N4 仍待独立 reviewer、已审候选和预算。见 [DeepSeek 执行记录](./runbooks/deepseek-channel11-two-day-2026-10-21.md)及 [现场材料清单](./runbooks/post-v0.36.3-followups-2026-10-21.md#下一步所需材料与通过条件)；不签名、开启契约或扩大 executor。
+> **N3/N4 现场推进**：DeepSeek 渠道 11 的 10/21–22 闭窗已核对 203 请求、30,832,706 token、2.04700896 CNY，时间分组原币重算差额为 0；原 owner 已保存 1 report / 1 run、pending。后续按序复现执行准入/发送时间的独立条件，实现 owner 事后补证、不可变 run、最终性来源及页面展示；维护者确认该账期不会再更正，已留存继任版本。已本机跨构建并发布 Billing/前端，经原 IAM owner 导入继任报告；生产共 2 reports / 2 runs、继任 sequence=1、actor iam-user:1、审计成功，原 payload 保留。历史执行覆盖仍不足，N3 保持 pending。见 [owner 补证收口](./runbooks/deepseek-owner-retrospective-2026-10-23.md)。N4 仍待独立 reviewer、已审候选和预算，不自动扩大 executor。
 >
 > **独立生产验收**：原 48h 窗口已结束，结论 FAIL，自动任务 PAUSED；新 Jaeger 实例、TTL 与生产 WS 仍须独立验收。本轮不重开窗口或修改证据，见 [最终记录](./runbooks/post-v0.36.0-acceptance-2026-10-18.md)。
 

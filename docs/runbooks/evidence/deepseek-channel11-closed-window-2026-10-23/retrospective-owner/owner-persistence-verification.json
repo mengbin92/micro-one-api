@@ -1,0 +1,142 @@
+{
+  "captured_at": "2026-10-23T14:21:48.149659+00:00",
+  "method": "consistent read-only owner SQL; max execution 10 seconds; selected metadata only",
+  "sections": [
+    {
+      "runs": 2,
+      "reports": 2,
+      "section": "counts"
+    },
+    {
+      "id": "2bc6d3dd046db8ee94ef5f576a1482fca3815cb9bc9e4d198f2e1a0ea5f419db",
+      "actor": "iam-user:1",
+      "status": "pending",
+      "section": "report",
+      "version": "deepseek-key11-20261021-22-export-20261023-v1",
+      "complete": false,
+      "finality": null,
+      "scope_end": "2026-10-23T00:00:00+08:00",
+      "supersedes": null,
+      "amount_status": "unknown",
+      "vendor_amount": "2.0470089600000000",
+      "payload_sha256": "6b74a1c12409e0321f31688c18228d7e265a07a1ccc8987f5c5217a3445be45a",
+      "correction_delta": null,
+      "vendor_watermark": "0001-01-01T00:00:00Z",
+      "comparison_status": "missing_local",
+      "user_reservations": 0,
+      "verification_scope": "none",
+      "retrospective_result": null,
+      "unknown_time_attempts": 2476,
+      "local_estimated_amount": null
+    },
+    {
+      "id": "aecaa5c09fe36405cd59d59eb1e8e7c4d62e6c72f04e9c67052db5cf045ed9b1",
+      "actor": "iam-user:1",
+      "status": "pending",
+      "section": "report",
+      "version": "deepseek-key11-20261021-22-export-20261023-v1-final-v2",
+      "complete": true,
+      "finality": {
+        "kind": "maintainer_confirmation",
+        "statement": "no_further_corrections",
+        "evidence_id": "sha256:7858cb8aed67968964b776be50fe7e263167508dac07ae2504cdd75a4ee1b20c",
+        "confirmed_at": "2026-10-23T09:48:50.248112Z"
+      },
+      "scope_end": "2026-10-23T00:00:00+08:00",
+      "supersedes": "2bc6d3dd046db8ee94ef5f576a1482fca3815cb9bc9e4d198f2e1a0ea5f419db",
+      "amount_status": "unknown",
+      "vendor_amount": "2.0470089600000000",
+      "payload_sha256": "346bb2e1b9a4ba4582b3a8af79496f4ce57ff617efa7cd0680f41b56e92f4b5d",
+      "correction_delta": "0.000000000000000000",
+      "vendor_watermark": "2026-10-23T00:00:00+08:00",
+      "comparison_status": "missing_local",
+      "user_reservations": 0,
+      "verification_scope": "none",
+      "retrospective_result": {
+        "unit": "currency",
+        "basis": "retrospective_tariff_recomputation",
+        "amount": "2.04700896",
+        "totals": {
+          "amount": "2.04700896",
+          "records": 203,
+          "output_tokens": 92728,
+          "cache_read_tokens": 30420736,
+          "uncached_input_tokens": 319242
+        },
+        "by_band": {
+          "peak": {
+            "amount": "1.49688048",
+            "records": 97,
+            "output_tokens": 48708,
+            "cache_read_tokens": 17712512,
+            "uncached_input_tokens": 199358
+          },
+          "off_peak": {
+            "amount": "0.55012848",
+            "records": 106,
+            "output_tokens": 44020,
+            "cache_read_tokens": 12708224,
+            "uncached_input_tokens": 119884
+          }
+        },
+        "records": 203,
+        "currency": "CNY",
+        "revision": "retrospective-three-bucket-v1",
+        "report_id": "aecaa5c09fe36405cd59d59eb1e8e7c4d62e6c72f04e9c67052db5cf045ed9b1",
+        "by_purpose": {
+          "user": {
+            "amount": "2.04696096",
+            "records": 201,
+            "output_tokens": 92726,
+            "cache_read_tokens": 30420736,
+            "uncached_input_tokens": 319226
+          },
+          "internal_test": {
+            "amount": "0.000048",
+            "records": 2,
+            "output_tokens": 2,
+            "cache_read_tokens": 0,
+            "uncached_input_tokens": 16
+          }
+        },
+        "difference": "0",
+        "provenance": "operator_submitted_archive",
+        "evidence_id": "sha256:69ec220bd7c6e768ca27dc8668f1f3a4c42c463e7b6859d77445b23e259aad45",
+        "supplier_amount": "2.04700896",
+        "arithmetic_status": "arithmetic_agrees",
+        "execution_join_verified": false,
+        "owner_arithmetic_replayed": true
+      },
+      "unknown_time_attempts": 2615,
+      "local_estimated_amount": null
+    },
+    {
+      "id": "6b74a1c12409e0321f31688c18228d7e265a07a1ccc8987f5c5217a3445be45a",
+      "actor": "iam-user:1",
+      "section": "run",
+      "sequence": 1,
+      "report_id": "2bc6d3dd046db8ee94ef5f576a1482fca3815cb9bc9e4d198f2e1a0ea5f419db",
+      "created_at": 1792725425,
+      "payload_sha256": "6b74a1c12409e0321f31688c18228d7e265a07a1ccc8987f5c5217a3445be45a"
+    },
+    {
+      "id": "346bb2e1b9a4ba4582b3a8af79496f4ce57ff617efa7cd0680f41b56e92f4b5d",
+      "actor": "iam-user:1",
+      "section": "run",
+      "sequence": 1,
+      "report_id": "aecaa5c09fe36405cd59d59eb1e8e7c4d62e6c72f04e9c67052db5cf045ed9b1",
+      "created_at": 1792765226,
+      "payload_sha256": "346bb2e1b9a4ba4582b3a8af79496f4ce57ff617efa7cd0680f41b56e92f4b5d"
+    },
+    {
+      "result": "success",
+      "section": "audit",
+      "event_id": "73f5be4feead451ea06a8d6e628608ba",
+      "operation": "billing.vendor_report.import",
+      "occurred_at": 1792765226325,
+      "actor_user_id": 1,
+      "reason_sha256": "1605a94e4c5ffd27212d0669728b5688ba80600a992bd9750d5587c632e95e38",
+      "decision_versions": "{\"User\":2,\"Policy\":9,\"Catalog\":4,\"Session\":1,\"SessionContext\":1,\"Organization\":0,\"Membership\":0,\"Unit\":0}"
+    }
+  ]
+}

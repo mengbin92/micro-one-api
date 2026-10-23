@@ -1,0 +1,10 @@
+npm notice run web@0.0.0 npx
+npm notice run 'vitest' run src/pages/admin/VendorReportsPage.test.tsx src/pages/admin/VendorReportImport.test.tsx scripts/vendor-report-import.fixture.test.ts
+
+ RUN  v5.0.0 /Users/mengbin/vscode/neo/micro-one-api/web
+
+
+ Test Files  3 passed (3)
+      Tests  34 passed (34)
+   Start at  22:29:29
+   Duration  1.98s (tests 36%, environment 34%, import 11%, setup 10%, transform 9%)

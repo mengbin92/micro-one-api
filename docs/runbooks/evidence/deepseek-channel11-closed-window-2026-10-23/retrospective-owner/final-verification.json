@@ -1,0 +1,33 @@
+{
+  "captured_at": "2026-10-23T14:40:22.157587+00:00",
+  "sections": [
+    {
+      "services": {
+        "billing-service": {
+          "image_id": "sha256:24f8d57df70f3b946eb238dd6de9e4209a00916d5cd95f8ef5816d6b5c043413",
+          "running": true,
+          "restarts": 0,
+          "flags": {
+            "BILLING_EXECUTION_DELIVERY_V1": "true",
+            "BILLING_VENDOR_REPORT_MONITOR_V1": "false"
+          },
+          "health_response": "{\"status\":\"ok\"}"
+        },
+        "admin-api": {
+          "image_id": "sha256:dd80a103e683b893205660b11ba9a7c1980376916c8ecab852bc3377cfb64aec",
+          "running": true,
+          "restarts": 0
+        }
+      }
+    },
+    {
+      "runs": 2,
+      "reports": 2,
+      "matching_success_audits": 1,
+      "original_payload_sha256": "6b74a1c12409e0321f31688c18228d7e265a07a1ccc8987f5c5217a3445be45a",
+      "successor_payload_sha256": "346bb2e1b9a4ba4582b3a8af79496f4ce57ff617efa7cd0680f41b56e92f4b5d"
+    }
+  ],
+  "post_retries": 0,
+  "front_end_source_digest": "f3f9201bad2098bb233074de6b35f1e0e1687789910b3f3da9846e6336160863"
+}

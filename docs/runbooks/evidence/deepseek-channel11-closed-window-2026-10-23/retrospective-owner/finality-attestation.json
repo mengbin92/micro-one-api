@@ -1,0 +1,20 @@
+{
+  "recorded_at": "2026-10-23T09:48:50.248112+00:00",
+  "provider": "deepseek",
+  "source_kind": "channel",
+  "source_id": 11,
+  "selected_key_name": "micro-one-api",
+  "window": {
+    "start": "2026-10-21T00:00:00+08:00",
+    "end_exclusive": "2026-10-23T00:00:00+08:00",
+    "timezone": "Asia/Shanghai",
+    "duration_hours": 48
+  },
+  "kind": "maintainer_confirmation",
+  "statement": "no_further_corrections",
+  "confirmation_text": "不会再更正了",
+  "source": "User message in Codex chat 01a16810-d363-7761-8f8e-9c3149f651a8 on 2026-10-23",
+  "accepted_period_end": "2026-10-23T00:00:00+08:00",
+  "provider_published_watermark": false,
+  "scope_limit": "Operational finality for this fixed account/key period, supplied by the maintainer. Not a provider-signed statement, invoice, execution coverage, or authority to rewrite prior reports/runs."
+}

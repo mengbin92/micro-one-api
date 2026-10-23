@@ -1,0 +1,128 @@
+[INFO] ======================================
+[INFO]   Micro-One-API Production Deploy
+[INFO] ======================================
+[INFO] Services: billing-service
+[INFO] Server: <configured production host>
+[INFO] Project root: /Users/mengbin/vscode/neo/micro-one-api/scripts/..
+
+[STEP] Checking prerequisites...
+bash: warning: setlocale: LC_ALL: cannot change locale (zh_CN.UTF-8)
+[INFO] Prerequisites OK
+
+[STEP] ========================================
+[STEP] Building billing-service (linux/amd64)...
+[STEP] ========================================
+#0 building with "amd64builder" instance using docker-container driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 5.18kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/golang:1.27.2-alpine
+#2 DONE 4.7s
+
+#3 [internal] load metadata for docker.io/library/alpine:3.20
+#3 DONE 4.7s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 589B done
+#4 DONE 0.0s
+
+#5 [go-deps 1/6] FROM docker.io/library/golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
+#5 resolve docker.io/library/golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d done
+#5 DONE 0.0s
+
+#6 [stage-2 1/5] FROM docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+#6 resolve docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc done
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 411.30MB 3.3s done
+#7 DONE 3.3s
+
+#8 [builder 4/8] COPY --from=go-deps /go/pkg/mod /go/pkg/mod
+#8 CACHED
+
+#9 [builder 3/8] WORKDIR /app
+#9 CACHED
+
+#10 [go-deps 2/6] RUN apk add --no-cache git ca-certificates
+#10 CACHED
+
+#11 [go-deps 3/6] WORKDIR /deps
+#11 CACHED
+
+#12 [go-deps 5/6] RUN go mod download && go mod verify
+#12 CACHED
+
+#13 [builder 2/8] RUN apk add --no-cache       git ca-certificates make       build-base sqlite-libs sqlite-dev
+#13 CACHED
+
+#14 [go-deps 6/6] RUN go install github.com/bufbuild/buf/cmd/buf@v1.70.0 &&     go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 &&     go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2 &&     go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v3@v3.0.0-20260626125723-668db92c2c00 &&     go install github.com/google/gnostic/cmd/protoc-gen-openapi@v0.7.1
+#14 CACHED
+
+#15 [go-deps 4/6] COPY go.mod go.sum ./
+#15 CACHED
+
+#16 [builder 5/8] COPY --from=go-deps /go/bin/buf /go/bin/protoc-gen-go      /go/bin/protoc-gen-go-grpc /go/bin/protoc-gen-go-http      /go/bin/protoc-gen-openapi /usr/local/bin/
+#16 CACHED
+
+#17 [builder 6/8] COPY . .
+#17 DONE 1.8s
+
+#18 [builder 7/8] RUN make proto
+#18 0.285 buf generate --template buf.gen.yaml
+#18 6.384 buf generate --template buf.gen.config.yaml \
+#18 6.384 	--path internal/conf \
+#18 6.384 	--path app/admin/internal/conf \
+#18 6.384 	--path app/billing/internal/conf \
+#18 6.384 	--path app/channel/internal/conf \
+#18 6.384 	--path app/config/internal/conf \
+#18 6.384 	--path app/identity/internal/conf \
+#18 6.384 	--path app/log/internal/conf \
+#18 6.384 	--path app/monitor/internal/conf \
+#18 6.384 	--path app/notify/internal/conf
+#18 DONE 7.0s
+
+#19 [builder 8/8] RUN --mount=type=cache,id=micro-one-api-gobuild-linux-amd64,target=/root/.cache/go-build     CGO_ENABLED=1 go build       -ldflags='-s -w -extldflags "-static"'       -o /app/bin/service ./app/billing/cmd/billing
+#19 DONE 77.0s
+
+#20 [stage-2 2/5] RUN apk add --no-cache ca-certificates sqlite-libs
+#20 CACHED
+
+#21 [stage-2 3/5] COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+#21 CACHED
+
+#22 [stage-2 4/5] COPY --from=builder /app/bin/service /service
+#22 DONE 0.0s
+
+#23 [stage-2 5/5] COPY --from=builder /app/app/billing/configs /configs
+#23 DONE 0.0s
+
+#24 exporting to oci image format
+#24 exporting layers
+#24 exporting layers 0.7s done
+#24 exporting manifest sha256:24f8d57df70f3b946eb238dd6de9e4209a00916d5cd95f8ef5816d6b5c043413 done
+#24 exporting config sha256:27ebda9e8ac8770d30e677669d8c9468a08ac28a438020335d9673e8029325b0 done
+#24 sending tarball
+#24 sending tarball 0.2s done
+#24 DONE 0.9s
+
+#25 importing to docker
+#25 DONE 0.0s
+[INFO] Saving billing-service image...
+[INFO] Uploading to server...
+[INFO] Deploying on server (rollback tag: rollback-20261023-221148)...
+bash: warning: setlocale: LC_ALL: cannot change locale (zh_CN.UTF-8)
+Loaded image: docker-compose-billing-service:deploy-20261023-221148-4a165c4b
+ Container billing-service Recreate
+ Container billing-service Recreated
+ Container billing-service Starting
+ Container billing-service Started
+billing-service image=sha256:24f8d57df70f3b946eb238dd6de9e4209a00916d5cd95f8ef5816d6b5c043413 state=running none rollback=rollback-20261023-221148
+[INFO] billing-service deployed successfully!
+
+[INFO] Migrations and frontend assets use their separate release steps.
+[INFO] ========================================
+[INFO] Deployment completed!
+[INFO] ========================================

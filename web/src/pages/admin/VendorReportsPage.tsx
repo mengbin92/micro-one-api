@@ -5,15 +5,20 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { t } from '@/lib/i18n';
+import { useQueryClient } from '@tanstack/react-query';
+import { VendorReportImport } from './VendorReportImport';
 
 interface Scope { provider: string; account: string; project?: string; upstream_model_id?: string; currency: string; unit: string; start: string; end: string; timezone?: string; granularity: string }
 interface SourceMapping { source_kind: string; source_id: string | number; provider: string; account: string; project?: string; start: string; end: string; revision: string; evidence_id: string }
 interface Attribution { category: string; amount: string; status: string; evidence_id: string; verification_scope: string }
 interface Comparison { key: string; status: string; usage_status?: string; amount_status?: string; vendor_amount: string | null; estimated_amount: string | null; difference?: string | null; unexplained: string | null; unknown_amounts?: number; purpose_counts?: Record<string, number>; attributions?: Attribution[] }
-interface Report { id: string; manifest: { scope: Scope; version: string; evidence_id: string; supersedes?: string; complete?: boolean; pages_complete?: boolean; vendor_watermark?: string; local_watermark?: string; coverage_evidence_id?: string; mappings?: SourceMapping[]; absolute_tolerance?: string; relative_tolerance?: string; rounding_evidence_id?: string }; status: string; cost_basis: string; verification_scope: string; correction_delta?: string | null; unknown_time_attempts?: number; unmapped_attempts?: number; internal_attempts?: number; user_reservations?: number; comparisons: Comparison[] }
+interface FinalityAttestation { kind: string; evidence_id: string; confirmed_at: string; statement: string }
+interface RetrospectiveTotals { records: number; amount: string }
+interface RetrospectiveResult { revision: string; report_id: string; evidence_id: string; basis: string; provenance: string; execution_join_verified: boolean; owner_arithmetic_replayed: boolean; currency: string; unit: string; records: number; amount: string; supplier_amount: string; difference: string; arithmetic_status: string; by_purpose?: Record<string, RetrospectiveTotals> }
+interface Report { id: string; manifest: { scope: Scope; version: string; evidence_id: string; supersedes?: string; complete?: boolean; pages_complete?: boolean; vendor_watermark?: string; local_watermark?: string; coverage_evidence_id?: string; mappings?: SourceMapping[]; absolute_tolerance?: string; relative_tolerance?: string; rounding_evidence_id?: string; finality_attestation?: FinalityAttestation | null }; retrospective_result?: RetrospectiveResult | null; status: string; cost_basis: string; verification_scope: string; correction_delta?: string | null; unknown_time_attempts?: number; unmapped_attempts?: number; internal_attempts?: number; user_reservations?: number; comparisons: Comparison[] }
 interface ReviewItem { report_id: string; status: string; age_seconds: number; unknown_amounts: number; next_action: string }
 interface Payload { reports?: Report[]; daily_coverage?: unknown[]; weekly_review?: { pending: number; attention: number; unknown_amounts: number; items: ReviewItem[] } }
-function vendorMoney(value: string | null | undefined, scope: Scope) { return value == null ? t('未知') : `${value} ${scope.currency}${scope.unit === 'currency' ? '' : ` (${scope.unit})`}`; }
+function vendorMoney(value: string | null | undefined, scope: Pick<Scope, 'currency' | 'unit'>) { return value == null ? t('未知') : `${value} ${scope.currency}${scope.unit === 'currency' ? '' : ` (${scope.unit})`}`; }
 const statusLabel = (value: string) => ({ pending: t('待补证'), attention: t('需复核'), matched: t('已核对'), variance: t('有差异'), unknown: t('未知'), not_applicable: t('不适用'), not_comparable: t('不可比较'), confirmed: t('已确认'), hypothesis: t('待验证') })[value] ?? value;
 const scopeLabel = (value: string) => ({ none: t('尚未核验'), request: t('按请求核验'), account_period: t('按账号账期核验') })[value] ?? value;
 const basisLabel = (value: string) => ({ provider_reported: t('供应商费用报告'), invoice: t('账单凭据'), tariff_estimate: t('费率估价'), monthly_allocation: t('月费分摊'), unknown: t('未知') })[value] ?? value;
@@ -26,6 +31,7 @@ export function VendorReportsPage() {
 }
 
 function VendorReportsWorkspace({ auth }: { auth: ReturnType<typeof useAuthorization> }) {
+  const client = useQueryClient();
   const [start, setStart] = useState(() => day(Date.now() - 7 * 86400000));
   const [end, setEnd] = useState(() => day(Date.now() + 86400000));
   const [selected, setSelected] = useState<string | null>(null);
@@ -49,6 +55,7 @@ function VendorReportsWorkspace({ auth }: { auth: ReturnType<typeof useAuthoriza
       <Button disabled={!valid || query.isFetching} onClick={() => void query.refetch()}>{t('刷新')}</Button>
       <Button variant="outline" disabled={!auth.can('billing.vendor_report.read') || !query.data} onClick={exportJSON}>{t('导出复盘材料')}</Button>
     </div>
+    <VendorReportImport auth={auth} refresh={async id => { await client.invalidateQueries({ queryKey: ['vendor-reports'] }); setSelected(id); }} />
     {!valid && <p role="alert">{t('请选择最长 31 天的有效固定窗口。')}</p>}
     {query.isError && <p role="alert">{t('读取失败，请检查权限或缩小窗口；当前覆盖不能确认为完整。')}</p>}
     {query.isLoading && <p>{t('加载中')}</p>}
@@ -68,7 +75,7 @@ const provided = (value: string | number | null | undefined) => value == null ||
 const completeLabel = (value: boolean | null | undefined) => value == null ? t('未知') : value ? t('完整') : t('不完整');
 
 function VendorReportEvidence({ report, review, close }: { report: Report; review?: ReviewItem; close: () => void }) {
-  const m = report.manifest, scope = m.scope;
+  const m = report.manifest, scope = m.scope, finality = m.finality_attestation, retrospective = report.retrospective_result;
   const fields = [
     ['报告 ID', report.id], ['版本 / 证据引用', `${m.version} / ${m.evidence_id}`],
     ['核验状态', statusLabel(report.status)], ['核验范围', scopeLabel(report.verification_scope)],
@@ -86,6 +93,29 @@ function VendorReportEvidence({ report, review, close }: { report: Report; revie
     <div className="flex items-center justify-between gap-3"><h3 className="font-semibold">{t('报告证据')}</h3><Button variant="ghost" onClick={close}>{t('关闭')}</Button></div>
     <p className="text-sm text-muted-foreground">{t('状态由服务端判定；证据引用不代表核验通过，账期核验不证明逐请求实扣。')}</p>
     <dl className="grid min-w-0 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">{fields.map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-muted-foreground">{t(label)}</dt><dd className="break-all">{value}</dd></div>)}</dl>
+    {finality && <section aria-label={t('账期最终性依据')} className="min-w-0 space-y-3 rounded border p-3 text-sm">
+      <h4 className="font-medium">{t('账期最终性依据')}</h4>
+      <p className="text-muted-foreground">{t('维护者确认不代表供应商发布或认证，也不补足本地覆盖。')}</p>
+      <dl className="grid min-w-0 gap-3 sm:grid-cols-2">{[
+        ['确认类型', finality.kind === 'maintainer_confirmation' ? t('维护者确认') : provided(finality.kind)],
+        ['确认内容', finality.statement === 'no_further_corrections' ? t('该账期不再更正') : provided(finality.statement)],
+        ['确认时间', provided(finality.confirmed_at)], ['确认证据', provided(finality.evidence_id)],
+      ].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-muted-foreground">{t(label)}</dt><dd className="break-all">{value}</dd></div>)}</dl>
+    </section>}
+    {retrospective && <section aria-label={t('归档补充重算')} className="min-w-0 space-y-3 rounded border p-3 text-sm">
+      <h4 className="font-medium">{t('归档补充重算')}</h4>
+      <p className="text-muted-foreground">{t('金额来自提交的归档材料；算术重放不认证原始文件或执行关联，也不改变主核验结论。')}</p>
+      {retrospective.execution_join_verified === false && <p>{t('归档中的执行关联尚未独立核验。')}</p>}
+      <dl className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">{[
+        ['算术结论', ({ arithmetic_agrees: t('重算金额相符'), arithmetic_differs: t('重算金额有差异') })[retrospective.arithmetic_status] ?? provided(retrospective.arithmetic_status)],
+        ['材料来源', retrospective.provenance === 'operator_submitted_archive' ? t('运营提交的归档') : provided(retrospective.provenance)],
+        ['算术重放', retrospective.owner_arithmetic_replayed ? t('已重放') : t('未确认')],
+        ['重算金额', vendorMoney(retrospective.amount, retrospective)], ['供应商金额', vendorMoney(retrospective.supplier_amount, retrospective)],
+        ['差额（供应商减重算）', vendorMoney(retrospective.difference, retrospective)], ['币种 / 单位', `${retrospective.currency} / ${retrospective.unit}`],
+        ['归档记录数', provided(retrospective.records)], ['重算版本', provided(retrospective.revision)], ['重算结果证据', provided(retrospective.evidence_id)],
+      ].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-muted-foreground">{t(label)}</dt><dd className="break-all">{value}</dd></div>)}</dl>
+      <div>{t('调用用途')}：{retrospective.by_purpose ? <ul>{Object.entries(retrospective.by_purpose).map(([purpose, total]) => <li key={purpose} className="break-all">{purpose}: {total.records} · {vendorMoney(total.amount, retrospective)}</li>)}</ul> : t('未提供')}</div>
+    </section>}
     <h4 className="font-medium">{t('来源映射')}</h4>
     {m.mappings?.length ? <ul className="space-y-3 text-sm">{m.mappings.map((mapping, i) => <li key={i} className="min-w-0 break-all rounded border p-3">
       <div>{mapping.source_kind} / {mapping.source_id} → {mapping.provider} / {mapping.account}{mapping.project ? ` / ${mapping.project}` : ''}</div>

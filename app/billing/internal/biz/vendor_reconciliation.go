@@ -42,28 +42,30 @@ type VendorSourceMapping struct {
 }
 
 type VendorManifest struct {
-	Scope                       VendorScope             `json:"scope"`
-	Version                     string                  `json:"version"`
-	EvidenceID                  string                  `json:"evidence_id"`
-	CostBasis                   string                  `json:"cost_basis"` // invoice or provider_reported
-	Mode                        string                  `json:"mode"`       // tokens, monthly, balance_only, unknown
-	Complete                    bool                    `json:"complete"`
-	PagesComplete               bool                    `json:"pages_complete"`
-	VendorWatermark             time.Time               `json:"vendor_watermark"`
-	LocalWatermark              time.Time               `json:"local_watermark"`
-	CoverageEvidenceID          string                  `json:"coverage_evidence_id"`
-	RequestIDKind               string                  `json:"request_id_kind,omitempty"` // header or response
-	RequestIDContractEvidenceID string                  `json:"request_id_contract_evidence_id,omitempty"`
-	Mappings                    []VendorSourceMapping   `json:"mappings"`
-	AbsoluteTolerance           string                  `json:"absolute_tolerance"`
-	RelativeTolerance           string                  `json:"relative_tolerance"`
-	RoundingEvidenceID          string                  `json:"rounding_evidence_id,omitempty"`
-	Supersedes                  string                  `json:"supersedes,omitempty"` // immutable prior import ID
-	ContractEvidenceID          string                  `json:"contract_evidence_id,omitempty"`
-	OverageEvidenceID           string                  `json:"overage_evidence_id,omitempty"`
-	Actor                       string                  `json:"actor"`
-	Reason                      string                  `json:"reason"`
-	ExcludedAttempts            []VendorExcludedAttempt `json:"excluded_attempts,omitempty"`
+	FinalityAttestation         *VendorFinalityAttestation   `json:"finality_attestation,omitempty"`
+	RetrospectiveEvidence       *VendorRetrospectiveEvidence `json:"retrospective_evidence,omitempty"`
+	Scope                       VendorScope                  `json:"scope"`
+	Version                     string                       `json:"version"`
+	EvidenceID                  string                       `json:"evidence_id"`
+	CostBasis                   string                       `json:"cost_basis"` // invoice or provider_reported
+	Mode                        string                       `json:"mode"`       // tokens, monthly, balance_only, unknown
+	Complete                    bool                         `json:"complete"`
+	PagesComplete               bool                         `json:"pages_complete"`
+	VendorWatermark             time.Time                    `json:"vendor_watermark"`
+	LocalWatermark              time.Time                    `json:"local_watermark"`
+	CoverageEvidenceID          string                       `json:"coverage_evidence_id"`
+	RequestIDKind               string                       `json:"request_id_kind,omitempty"` // header or response
+	RequestIDContractEvidenceID string                       `json:"request_id_contract_evidence_id,omitempty"`
+	Mappings                    []VendorSourceMapping        `json:"mappings"`
+	AbsoluteTolerance           string                       `json:"absolute_tolerance"`
+	RelativeTolerance           string                       `json:"relative_tolerance"`
+	RoundingEvidenceID          string                       `json:"rounding_evidence_id,omitempty"`
+	Supersedes                  string                       `json:"supersedes,omitempty"` // immutable prior import ID
+	ContractEvidenceID          string                       `json:"contract_evidence_id,omitempty"`
+	OverageEvidenceID           string                       `json:"overage_evidence_id,omitempty"`
+	Actor                       string                       `json:"actor"`
+	Reason                      string                       `json:"reason"`
+	ExcludedAttempts            []VendorExcludedAttempt      `json:"excluded_attempts,omitempty"`
 }
 
 type VendorExcludedAttempt struct {
@@ -130,21 +132,22 @@ type VendorComparison struct {
 }
 
 type VendorReconciliation struct {
-	CostAPIEvidence     *VendorCostEvidence  `json:"cost_api_evidence,omitempty"`
-	ID                  string               `json:"id"`
-	Manifest            VendorManifest       `json:"manifest"`
-	Rows                []VendorBillRow      `json:"rows"`
-	Comparisons         []VendorComparison   `json:"comparisons"`
-	Status              string               `json:"status"`
-	VerificationScope   string               `json:"verification_scope"`
-	CostBasis           string               `json:"cost_basis"`
-	UnknownTimeAttempts int                  `json:"unknown_time_attempts"`
-	UnmappedAttempts    int                  `json:"unmapped_attempts"`
-	InternalAttempts    int                  `json:"internal_attempts"`
-	UserReservations    int                  `json:"user_reservations"`
-	CorrectionDelta     *string              `json:"correction_delta,omitempty"`
-	Attempts            []VendorLocalAttempt `json:"attempt_evidence"`
-	UnresolvedAttempts  []VendorLocalAttempt `json:"unresolved_attempt_evidence,omitempty"`
+	RetrospectiveResult *VendorRetrospectiveResult `json:"retrospective_result,omitempty"`
+	CostAPIEvidence     *VendorCostEvidence        `json:"cost_api_evidence,omitempty"`
+	ID                  string                     `json:"id"`
+	Manifest            VendorManifest             `json:"manifest"`
+	Rows                []VendorBillRow            `json:"rows"`
+	Comparisons         []VendorComparison         `json:"comparisons"`
+	Status              string                     `json:"status"`
+	VerificationScope   string                     `json:"verification_scope"`
+	CostBasis           string                     `json:"cost_basis"`
+	UnknownTimeAttempts int                        `json:"unknown_time_attempts"`
+	UnmappedAttempts    int                        `json:"unmapped_attempts"`
+	InternalAttempts    int                        `json:"internal_attempts"`
+	UserReservations    int                        `json:"user_reservations"`
+	CorrectionDelta     *string                    `json:"correction_delta,omitempty"`
+	Attempts            []VendorLocalAttempt       `json:"attempt_evidence"`
+	UnresolvedAttempts  []VendorLocalAttempt       `json:"unresolved_attempt_evidence,omitempty"`
 }
 
 type VendorReconciliationRepo interface {
@@ -234,7 +237,7 @@ func ValidateVendorManifest(m VendorManifest) error {
 		}
 		seenExcluded[v.ID] = true
 	}
-	return nil
+	return ValidateVendorFinalityAttestation(m)
 }
 
 func VendorReportID(m VendorManifest, rows []VendorBillRow) string {
@@ -248,7 +251,8 @@ func VendorReportID(m VendorManifest, rows []VendorBillRow) string {
 		VendorWatermark                                   time.Time
 		Supersedes, ContractEvidenceID, OverageEvidenceID string
 		RequestIDKind, RequestIDContractEvidenceID        string
-	}{CanonicalVendorScope(m.Scope), m.Version, m.EvidenceID, m.CostBasis, m.Mode, rows, m.Complete, m.PagesComplete, m.VendorWatermark.UTC(), m.Supersedes, m.ContractEvidenceID, m.OverageEvidenceID, m.RequestIDKind, m.RequestIDContractEvidenceID})
+		FinalityAttestation                               *VendorFinalityAttestation `json:"FinalityAttestation,omitempty"`
+	}{CanonicalVendorScope(m.Scope), m.Version, m.EvidenceID, m.CostBasis, m.Mode, rows, m.Complete, m.PagesComplete, m.VendorWatermark.UTC(), m.Supersedes, m.ContractEvidenceID, m.OverageEvidenceID, m.RequestIDKind, m.RequestIDContractEvidenceID, CanonicalVendorFinalityAttestation(m.FinalityAttestation)})
 	return fmt.Sprintf("%x", sha256.Sum256(b))
 }
 
@@ -508,7 +512,11 @@ func ReconcileVendor(m VendorManifest, rows []VendorBillRow, local []VendorLocal
 			out.VerificationScope = m.Scope.Granularity
 		}
 	}
-	return out, nil
+	// Archive arithmetic is supplemental. It never supplies authoritative
+	// execution attempts, frozen estimates, coverage or supplier finality.
+	var err error
+	out.RetrospectiveResult, err = ReplayVendorRetrospective(m, rows)
+	return out, err
 }
 
 func AttributeVendorDifference(c *VendorComparison, items []VendorAttribution) error {

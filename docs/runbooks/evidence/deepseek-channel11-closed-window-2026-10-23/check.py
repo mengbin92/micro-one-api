@@ -300,4 +300,10 @@ assert sum(costs_by_group.values(), Decimal(0)) == Decimal(time_pricing["combine
 assert Decimal(time_pricing["difference_cny"]) == 0
 
 imported = "real owner 1 report / 1 run pending; " if index.get("production_import_executed") else ""
-print(f"PASS: 201 ledger + 2 archived tests = 203 requests / {total_tokens} tokens; independent time bands, daily three-bucket usage and CNY {reported} match the supplier CSV; {imported}N3 owner evidence integration and finality remain pending")
+remaining = "N3 owner evidence integration and finality remain pending"
+if index.get("retrospective_owner_followup"):
+    remaining = "supplement and maintainer-confirmed finality successor prepared locally; production candidate import and authoritative local coverage remain pending"
+    if index["retrospective_owner_followup"].get("production_candidate_import_executed"):
+        imported = "real owner 2 reports / 2 runs, successor retained with successful IAM audit; "
+        remaining = "supplement and maintainer-confirmed finality imported; authoritative local coverage remains pending"
+print(f"PASS: 201 ledger + 2 archived tests = 203 requests / {total_tokens} tokens; independent time bands, daily three-bucket usage and CNY {reported} match the supplier CSV; {imported}{remaining}")

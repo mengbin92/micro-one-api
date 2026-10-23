@@ -1,0 +1,29 @@
+--- FAIL: TestAlipayProviderQueryOrderPaid (0.01s)
+panic: httptest: failed to listen on a port: listen tcp6 [::1]:0: bind: operation not permitted [recovered, repanicked]
+
+goroutine 395 [running]:
+testing.tRunner.func1.2({0x10182de10, 0x2dbe4fc48b50})
+	/opt/homebrew/Cellar/go/1.27.3/libexec/src/testing/testing.go:2125 +0x1a0
+testing.tRunner.func1()
+	/opt/homebrew/Cellar/go/1.27.3/libexec/src/testing/testing.go:2128 +0x2c8
+panic({0x10182de10?, 0x2dbe4fc48b50?})
+	/opt/homebrew/Cellar/go/1.27.3/libexec/src/runtime/panic.go:859 +0x120
+net/http/httptest.newLocalListener()
+	/opt/homebrew/Cellar/go/1.27.3/libexec/src/net/http/httptest/server.go:226 +0xd4
+net/http/httptest.NewUnstartedServer(...)
+	/opt/homebrew/Cellar/go/1.27.3/libexec/src/net/http/httptest/server.go:284
+net/http/httptest.NewServer({0x10195a5d0, 0x2dbe4fc48b10})
+	/opt/homebrew/Cellar/go/1.27.3/libexec/src/net/http/httptest/server.go:267 +0x28
+micro-one-api/app/billing/internal/biz.TestAlipayProviderQueryOrderPaid(0x2dbe4fcc2908)
+	/Users/mengbin/vscode/neo/micro-one-api/app/billing/internal/biz/payment_alipay_test.go:81 +0x8c
+testing.tRunner(0x2dbe4fcc2908, 0x10196bf68)
+	/opt/homebrew/Cellar/go/1.27.3/libexec/src/testing/testing.go:2195 +0xc4
+created by testing.(*T).Run in goroutine 1
+	/opt/homebrew/Cellar/go/1.27.3/libexec/src/testing/testing.go:2260 +0x3b8
+FAIL	micro-one-api/app/billing/internal/biz	0.567s
+ok  	micro-one-api/app/billing/internal/data	6.080s
+ok  	micro-one-api/app/billing/internal/service	0.428s
+?   	micro-one-api/app/billing/cmd/vendor-reconcile	[no test files]
+ok  	micro-one-api/app/admin/internal/server	(cached)
+ok  	micro-one-api/internal/server	(cached)
+FAIL

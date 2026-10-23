@@ -1,0 +1,79 @@
+{
+  "captured_at": "2026-10-23T09:42:03.694692+00:00",
+  "provider_url": "https://platform.deepseek.com/usage",
+  "selected_key_name": "micro-one-api",
+  "window": {
+    "start": "2026-10-21T00:00:00+08:00",
+    "end_exclusive": "2026-10-23T00:00:00+08:00",
+    "timezone": "Asia/Shanghai",
+    "duration_hours": 48
+  },
+  "ui": {
+    "date_selection": "10/21 - 10/22",
+    "timezone": "GMT+8",
+    "requests": 203,
+    "tokens": 30832706,
+    "cost_display_cny": "2.04",
+    "delay_notice_minutes": 5
+  },
+  "raw_zip_sha256": "50654b3726e4b1729020d7ba962c2a48648fd0d158262e61eef94ee1b859f7ae",
+  "prior_raw_zip_sha256": "e16d939853dc35fd591d69ad5aa0a272d4ac87edf5c8eb96cc64d73ac31c399b",
+  "csv_files": {
+    "cost-2026-10-21_2026-10-22.csv": {
+      "raw_sha256": "42fc580ccf1a0e5001ef3f0892d4784662cf5755882a9e1eac6629cfc8067aff",
+      "prior_raw_sha256": "11f21abde8811c2232671e8513651a486cc5de0ec74a335651a26e8c08d08a9d",
+      "canonical_rows_sha256": "83ec6580d09e9ad2744e35023d2580e5d44efedeb3ae923bb5eef27c518ef8df",
+      "canonical_rows_equal_initial_export": true,
+      "rows": 3,
+      "fields": [
+        "user_id",
+        "start_time_iso",
+        "end_time_iso",
+        "model",
+        "name",
+        "wallet_type",
+        "cost",
+        "currency"
+      ],
+      "redaction": "user_id -> SHA256; api_key -> [REDACTED] when present",
+      "sanitized_file": "reexport-cost-2026-10-21_2026-10-22.csv",
+      "sanitized_sha256": "2c03107b297f34e197901532adee65e31100d7940546c18452b9f004d6dc1938"
+    },
+    "amount-2026-10-21_2026-10-22.csv": {
+      "raw_sha256": "44fa1cbd4a823a98f542e735cd7e1b83048027eb825415c58fbc091880f57331",
+      "prior_raw_sha256": "7e8d05b73ae461e56e3599499211acc583984b6c9b93d2cec07b0eb71e4baee8",
+      "canonical_rows_sha256": "c613f3ed7f2b76f12a2ba41a26f279c293e6d79529a1a20cfac1d5e02e4abec3",
+      "canonical_rows_equal_initial_export": true,
+      "rows": 11,
+      "fields": [
+        "user_id",
+        "start_time_iso",
+        "end_time_iso",
+        "model",
+        "name",
+        "api_key_name",
+        "api_key",
+        "type",
+        "price",
+        "amount"
+      ],
+      "redaction": "user_id -> SHA256; api_key -> [REDACTED] when present",
+      "sanitized_file": "reexport-amount-2026-10-21_2026-10-22.csv",
+      "sanitized_sha256": "c1ed04882d44703bb8ee720e3914cefb9e81fa944f4ead9831daaa64bce0c950"
+    }
+  },
+  "supplier_final_watermark": null,
+  "new_provider_inference_requests": 0,
+  "owner_import_executed": false,
+  "billing_page_observation": "Recharge and gift transaction tabs, not a supplier usage-period closure receipt. No transaction or invoice action performed.",
+  "conclusion": "REEXPORT_SEMANTICALLY_UNCHANGED; SUPPLIER_FINALITY_NOT_PROVEN",
+  "limits": "An unchanged later export and the UI 5-minute delay notice do not establish a final-watermark guarantee or late-correction completeness. ZIP/CSV raw byte digests differ; parsed rows match after the same documented redaction and order-insensitive canonicalization. The original ZIP digest remains a historical capture; its old download path now contains the later export.",
+  "provider_reported_cost_cny": "2.0470089600000000",
+  "usage_by_type": {
+    "request_count": "203",
+    "input_cache_miss_tokens": "319242",
+    "output_tokens": "92728",
+    "input_cache_hit_tokens": "30420736"
+  },
+  "elapsed_since_initial_export_seconds": 33944.428
+}

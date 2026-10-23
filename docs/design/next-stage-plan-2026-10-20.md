@@ -86,18 +86,18 @@
 
 渠道 11 当前仍为官方地址、启用 healthy、revision 4，启用模型为 `deepseek-flash`。官方页面筛选 `micro-one-api` Key、10/21–10/22，导出的报告为 **203 请求、30,832,706 token、2.0470089600000000 CNY**。线上 201 条消费账本加上 [10 月 21 日两次直连 `internal_test`](../runbooks/deepseek-channel11-two-day-2026-10-21.md)，请求数、未缓存输入、缓存读取和输出合计均精确相符；费用 CSV 合计与 token CSV 的十进制单价延展差额为 0。这里的费用自洽不等于本地采购估价与供应商金额已匹配，页面显示的 `2.04` 也不替代 CSV 精度。原始报告、脱敏归档和复核命令见 [闭窗记录](../runbooks/deepseek-channel11-closed-window-2026-10-23.md)。
 
-正式 owner 闭环仍有三个缺口：owner 中没有带可靠 upstream send 时间的渠道 11 窗口事件，接收时间窗仅查到 `/models` 健康探针；现有 [owner 估价加载](../../app/billing/internal/data/vendor_attempt_reader.go)只承载冻结 USD，尚未承载本次独立 CNY 重算；官方报告没有显式最终水位。16:25 CST 的补证已另找到 201 条请求计时摘要，足以确定本窗调用费率组，但没有补造 owner execution 事件或历史冻结 CNY 估价。CSV 没有逐请求 ID，因此保持 `account_period` 粒度，缺 ID 本身不阻塞该粒度核验。08:17 初次采样时生产 report/run 均为 0。
+初次 owner 核对存在三个缺口：owner 没有带可靠 upstream send 时间的渠道 11 窗口事件；[估价加载](../../app/billing/internal/data/vendor_attempt_reader.go)仅承载冻结 USD；官方报告没有显式最终水位。16:25 CST 补得 201 条请求计时摘要，足以确定费率组，但未补造执行事件或冻结 CNY。后续维护者确认本账期不会再更正，并完成下述补证实现；生产最新继任报告仍 pending，本地覆盖缺口保留。CSV 没有逐请求 ID，只限制到 `account_period` 粒度。08:17 初次采样时 report/run 为 0，不代表后续状态。
 
 **维护者明确使用现有 owner，并说明线上采用 OpenRouter 的 DeepSeek 计价、记录价统一按忙时基准。** 已查实该窗口 201 条客户价格快照为每百万未缓存输入 / 缓存读取 / 输出 `0.30 / 0.06 / 1.20 USD`，当前 `ModelPrice` 与 bare-model `UpstreamModelPrice` 相同；固定价目不表示实际调用都在忙时。按请求入口至处理完成及记账上界的完整时间区间独立分类，本地为忙时 95 条 / `1.49683248 CNY`、闲时 106 条 / `0.55012848 CNY`；加上两次外部忙时测试 `0.000048 CNY`，与官方逐日、费率组、三类 token 及总额精确相符，无跨忙闲边界的歧义记录。这是事后原币重算，不修改既有价目或声称已有历史冻结 CNY。按明确授权通过 140 仅发布 import 给既有 root，随后以批量读取及 141 索引修复 owner 导入超时，保留原 RPC 期限和全部校验。**11:17 已通过原 owner 导入**，report ID 为 `2bc6d3dd046db8ee94ef5f576a1482fca3815cb9bc9e4d198f2e1a0ea5f419db`；独立核对 **1 report / 1 run、sequence 1、actor iam-user:1、pending / missing_local / amount unknown** 及成功审计。详见 [完整核验记录](../runbooks/deepseek-channel11-closed-window-2026-10-23.md)。
 
-**N3.2 预览与 N3.5 真实留存已完成；N3.4 已取得独立的按时段 CNY 重算证据。** 下一步使用已取得的生产计时材料梳理 owner 覆盖/重放承载方式，并补官方最终性；不等待未执行的定时任务，也不先要求现有计价增加自动忙闲切换。
+**N3.2 预览与 N3.5 首次真实留存已完成；N3.3 路径复现、N3.4 owner 补证及最终性来源模型已实现并上线。** 原生/回退 legacy 入口验证精确来源准入和发送时间的独立门槛；203 条公开归档由 owner 精确重放为 2.04700896 CNY、差额 0，不进入权威 attempts 或冻结价格。维护者确认“不会再更正了”，以 `maintainer_confirmation` 留存新 version/supersedes，原报告保持。管理页分别展示确认来源、事后算术和主核验状态。已本机跨构建并发布 Billing/前端，由原 IAM owner 导入继任报告，生产 2 reports / 2 runs、继任 sequence=1、actor iam-user:1、成功审计 1 条，原 payload 不变；见 [补证收口记录](../runbooks/deepseek-owner-retrospective-2026-10-23.md)办理，N3 仍保留历史执行覆盖边界。
 
 | 顺序 | 工作 / owner | 完成条件 |
 | --- | --- | --- |
-| N3.1 | 关联现有生产与官方材料；运营 / Billing | 另一台电脑任务未执行，无产物依赖。将本窗计时摘要、来源映射生效区间、覆盖与迟到更正证据关联到原始 CSV 哈希；缺失项保留未知。导出时间、CSV 桶 end_time 不充当供应商最终水位。 |
+| N3.1 | 关联现有生产与官方材料；运营 / Billing | 另一台电脑任务未执行，无产物依赖。原 CSV 与后续重导出的规范化行相符；维护者确认不再更正，确认文件哈希及 `maintainer_confirmation` 纳入继任报告身份。导出时间、5 分钟延迟提示和 CSV end_time 不替代该确认来源；历史绑定/覆盖缺失仍未知。 |
 | N3.2 | 整理可导入材料并做只读预览；Billing | **已完成**固定 13 列 cost-only `account_period` 归集和现有 owner 命令的真实快照预览；CNY、Asia/Shanghai、request_id 留空，五桶留空并保留三个已提供 token 类型旁证。实际结果 pending / missing_local / amount unknown，未传合成 attempts 或执行 import。 |
-| N3.3 | 核对真实消费与 owner 执行证据的覆盖条件；Relay / Billing | 已一一关联 201 consume、201 计时摘要及 201 ledger，均为 legacy `/v1/responses`、单次成功 attempt；完整时间区间可确定费率组。该材料仍不等于 owner execution inbox 已覆盖。当前 delivery 为 true，但精确来源不在当前 V2 allowlist、发送时间开关未设置；不据当前快照推断历史根因或扩大准入，不用账本/received_at 补写 send 时间。 |
-| N3.4 | 核对既有价目与差异口径；Billing | **独立 CNY 时间分组重算已完成，差额为 0。** 线上固定忙时基准价的说明与实际调用时段分开记录。历史 CNY 费率与官方 CSV 单价一致；本地 usage 先按真实时间区间分组，再与官方比较，没有反推分组。正式 owner 仍只加载冻结 USD，后续评审如何承载这份事后原币证据；不修改客户价、不换汇、不伪造历史冻结价，不先要求自动分时计价引擎。 |
+| N3.3 | 核对真实消费与 owner 执行证据的覆盖条件；Relay / Billing | 已关联 201 consume/计时/ledger，均为 legacy Responses SSE；隔离注册入口复现 delivery=true 而精确名单为空时不协商 execution，名单和发送时间分别决定事件及 send 时间。原生正控不代表真实协议回退已获 durable 准入，不据当前快照倒推历史配置或扩大灰度。公开补证不含私有 ID，不能由 owner 重验已省略的关联，不用账本/received_at 补写 send 时间。 |
+| N3.4 | 核对既有价目与差异口径；Billing | **独立 CNY 重算及 owner 补证模型本地验收完成，差额为 0。** 完整半开区间、历史三类费率及 token 用 `big.Rat` 重放，结果独立保存、落库前再次验证；固定为运营提交归档、算术已重放、执行关联未独立核验。不进入冻结 USD/普通 comparisons/权威 attempts，不改客户价、换汇或实现自动分时定价。已发布并通过原 IAM owner 留存继任报告，owner 算术 203 条 / 2.04700896 CNY / 差额 0，正式核验仍 pending。 |
 | N3.5 | 通过既有 owner 入口留存真实 report/run；运营 / Billing | **已完成**唯一 import 权限发布、原 owner 超时修复、同一真实请求导入及独立落库/审计核对：1 report / 1 run、sequence=1、pending。后续本地补证追加 run，供应商更正使用新 version/supersedes，继续保持用户账本、价格与灰度不变。 |
 
 N3 的完成标准仍是一个能重放、解释内部调用/缺行/unknown/差额、满足完整性与覆盖条件的真实生产核验 run。当前 CSV 只支持账户账期级 `provider_reported` 证据；不授予逐请求实扣或 invoice 结论。现阶段无需新增模型调用来重复证明已有的 203 次合计，也不将 N3 补证变成 N4 契约晋级。

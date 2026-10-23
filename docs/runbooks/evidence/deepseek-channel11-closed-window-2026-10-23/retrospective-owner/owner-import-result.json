@@ -1,0 +1,17 @@
+{
+  "method": "one UI submission through the existing IAM owner, followed by independent read-only persistence/audit check and page reload/readback",
+  "browser_success_receipt_observed": false,
+  "automatic_or_manual_post_retries": 0,
+  "write_audits": 1,
+  "report_id": "aecaa5c09fe36405cd59d59eb1e8e7c4d62e6c72f04e9c67052db5cf045ed9b1",
+  "run_id": "346bb2e1b9a4ba4582b3a8af79496f4ce57ff617efa7cd0680f41b56e92f4b5d",
+  "sequence": 1,
+  "actor": "iam-user:1",
+  "status": "pending",
+  "retrospective_amount_cny": "2.04700896",
+  "retrospective_difference_cny": "0",
+  "production_reports": 2,
+  "production_runs": 2,
+  "original_payload_preserved": true,
+  "ui_followup": "Actual save without visible receipt motivated ambiguous-outcome draft consumption and readback regression; no timeout cause asserted."
+}

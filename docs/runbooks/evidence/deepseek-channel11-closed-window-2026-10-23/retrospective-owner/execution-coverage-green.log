@@ -1,0 +1,24 @@
+=== RUN   TestResponsesExecutionCoverageAdmissionAndSendTime
+=== RUN   TestResponsesExecutionCoverageAdmissionAndSendTime/production_flags
+    execution_coverage_test.go:188: path=legacy reserve_delivery=0 reserve_usage=0 outbox_events=0
+=== RUN   TestResponsesExecutionCoverageAdmissionAndSendTime/production_flags_legacy_chat_fallback
+    execution_coverage_test.go:188: path=legacy reserve_delivery=0 reserve_usage=0 outbox_events=0
+=== RUN   TestResponsesExecutionCoverageAdmissionAndSendTime/empty_allowlist_time_on
+    execution_coverage_test.go:188: path=legacy reserve_delivery=0 reserve_usage=0 outbox_events=0
+=== RUN   TestResponsesExecutionCoverageAdmissionAndSendTime/other_source_time_on
+    execution_coverage_test.go:188: path=legacy reserve_delivery=0 reserve_usage=0 outbox_events=0
+=== RUN   TestResponsesExecutionCoverageAdmissionAndSendTime/exact_allowlist_time_off
+    execution_coverage_test.go:188: path=legacy reserve_delivery=1 reserve_usage=2 outbox_events=4
+    execution_coverage_test.go:228: categories=map[checkpoint:1 final:1 intent:1 terminal:1] send_timestamp_present=false acknowledged=1
+=== RUN   TestResponsesExecutionCoverageAdmissionAndSendTime/exact_allowlist_time_on
+    execution_coverage_test.go:188: path=legacy reserve_delivery=1 reserve_usage=2 outbox_events=4
+    execution_coverage_test.go:228: categories=map[checkpoint:1 final:1 intent:1 terminal:1] send_timestamp_present=true acknowledged=1
+--- PASS: TestResponsesExecutionCoverageAdmissionAndSendTime (0.05s)
+    --- PASS: TestResponsesExecutionCoverageAdmissionAndSendTime/production_flags (0.01s)
+    --- PASS: TestResponsesExecutionCoverageAdmissionAndSendTime/production_flags_legacy_chat_fallback (0.01s)
+    --- PASS: TestResponsesExecutionCoverageAdmissionAndSendTime/empty_allowlist_time_on (0.01s)
+    --- PASS: TestResponsesExecutionCoverageAdmissionAndSendTime/other_source_time_on (0.00s)
+    --- PASS: TestResponsesExecutionCoverageAdmissionAndSendTime/exact_allowlist_time_off (0.01s)
+    --- PASS: TestResponsesExecutionCoverageAdmissionAndSendTime/exact_allowlist_time_on (0.01s)
+PASS
+ok  	micro-one-api/internal/server	2.535s

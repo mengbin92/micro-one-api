@@ -154,14 +154,14 @@ SQLite、MySQL 8.4、PostgreSQL 18 的真实 repo 回归均通过：64 intent **
 1. **执行覆盖不足。** 查询所有当前持久化的渠道 11 事件，没有 record.started_at_unix_nano 落在固定窗口内的事件。按 received_at 另查到 598 个 health_probe intent、595 个 checkpoint、595 个 terminal，均缺 send 时间，后两类 endpoint 为 `/models`。它们不能替代付费模型请求。采样只覆盖查询时已持久化的数据，不保证不存在迟到或外部证据。
 2. **投递开关不等于路径覆盖。** 当前 Relay/Billing 的 execution delivery 均为 true；08:21 CST 另只读确认当前 V2 allowlist 未配置，精确 `channel:11:deepseek-flash` 不在准入名单，仅保存成员布尔值。Relay 的 `RELAY_UPSTREAM_EXECUTION_TIME_V1` 未设置，契约开关为 false。此为当前运行快照，尚未建立驱动实际消费入口的故障复现，也未证明历史配置，不断言缺口根因或直接扩大准入。后续先定位实际入口、协议、准入和采集路径。
 3. **独立原币重算已相符，owner 尚未承载。** 16:25 CST 补证已按实际请求时间区间确定忙闲组，本地三类 usage 乘历史 CNY 费率后与官方逐日/费率组及总额精确相符。现有 [owner loader](../../app/billing/internal/data/vendor_attempt_reader.go)仍仅从冻结采购估价构造 USD/currency，不能把本次事后重算伪称历史冻结 CNY 或直接改写原 run。账本 priced 和重算相符均不授予供应商实扣结论。
-4. **最终性未证明。** 两天窗口已经结束，官方报告没有显式最终水位。导出时点和 CSV end_time 不是最终水位，仍需已有生产投递完整性、官方报告覆盖与迟到更正证据。另一台电脑任务未实际执行，不期待其提供产物。CSV 没有逐请求 ID，仅限制核验到 account_period 粒度，不是该粒度核验的额外失败条件。
+4. **最终性后续已按维护者确认登记。** 初次及后续重导出均没有供应商显式最终水位，规范化费用/用量行保持相符。维护者随后明确确认“不会再更正了”，本账期以 `maintainer_confirmation` 保存来源，并准备完整性/期末水位的新 version/supersedes；原 v1 不改写。见 [owner 补证收口](deepseek-owner-retrospective-2026-10-23.md)。这不补足历史执行覆盖，也不授予 request/invoice 结论。
 5. **真实 run 已留存。** 初次只读采样时报告/run 为 0/0；后续通过真实 owner 已形成 1/1、sequence=1、status=pending。该进展不补造执行覆盖、最终水位或可比采购金额。
 
 当前结论为 **CLOSED_WINDOW_USAGE_AGGREGATES_MATCHED**、**PROVIDER_COST_EXPORT_SELF_CONSISTENT**、**TIME_BAND_CNY_RECOMPUTATION_MATCHED**；**N3_NOT_ACCEPTED**。本次已完成唯一 import 权限发布、原 owner 报告留存及调用时间/CNY 补证；N4、收费扩面和新增付费采样继续按各自关卡办理。
 
 ## 后续执行顺序
 
-具体责任与完成条件已写回 [N3.1–N3.5](../design/next-stage-plan-2026-10-20.md#n3首个生产来源费用闭环)。N3.2 预览与 N3.5 真实 owner 留存已完成；N3.4 已补独立调用时间分组/CNY 重算。下一步以现有生产计时材料梳理 owner 覆盖和事后原币证据的承载方式，再补最终水位，不等待未执行的定时任务。同一报告补本地证据可追加不可变 run；补供应商 complete/vendor_watermark 也改变报告身份，须新 version/supersedes，即使金额不变，不以重试导入代替补证。
+具体责任与完成条件已写回 [N3.1–N3.5](../design/next-stage-plan-2026-10-20.md#n3首个生产来源费用闭环)。N3.2 预览与 N3.5 首次真实 owner 留存已完成；后续路径复现、事后补证/最终性来源模型、页面展示和继任候选见 [本轮收口](deepseek-owner-retrospective-2026-10-23.md)，已完成本机跨构建、Billing/前端发布及原 IAM owner 的继任导入；生产 2 reports / 2 runs、继任 sequence=1、actor iam-user:1、审计成功，原 payload/run 哈希不变。原报告的本地补证可追加不可变 run；维护者最终性确认引起 complete/vendor_watermark/确认身份变化，已准备新 version/supersedes，即使金额不变也不重写原报告。历史本地覆盖缺口保留。
 
 现有 [vendor-reconcile](../../app/billing/cmd/vendor-reconcile/main.go)的 `-vendor-bill` 接收固定 13 列 normalized CSV，不能直接传官方 cost/amount CSV。固定 `account_period` 范围后归集一行，request_id 留空；五个 token 桶全部有据或全部留空，原始 token 另存旁证，不能为通过校验擅自补零。
 

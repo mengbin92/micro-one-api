@@ -1,0 +1,176 @@
+=== RUN   TestVendorFinalityAttestationExplicitPeriodConfirmation
+--- PASS: TestVendorFinalityAttestationExplicitPeriodConfirmation (0.00s)
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/provider_claim
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/signed_claim
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/missing_statement
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/different_statement
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/missing_digest
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/unqualified_digest
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/uppercase_digest
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/zero_confirmation
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/early_confirmation
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/incomplete_report
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/incomplete_pages
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/missing_watermark
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/early_watermark
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/later_watermark
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/zero_period_end
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/reversed_period
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/request_scope
+=== RUN   TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/invoice_basis
+--- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/provider_claim (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/signed_claim (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/missing_statement (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/different_statement (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/missing_digest (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/unqualified_digest (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/uppercase_digest (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/zero_confirmation (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/early_confirmation (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/incomplete_report (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/incomplete_pages (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/missing_watermark (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/early_watermark (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/later_watermark (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/zero_period_end (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/reversed_period (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/request_scope (0.00s)
+    --- PASS: TestVendorFinalityAttestationRejectsUnboundedOrStrongerClaims/invoice_basis (0.00s)
+=== RUN   TestVendorFinalityCanonicalIdentityPreservesUTCInstantAndInput
+--- PASS: TestVendorFinalityCanonicalIdentityPreservesUTCInstantAndInput (0.00s)
+=== RUN   TestVendorFinalityDoesNotGrantLocalCoverageOrInvoiceVerification
+--- PASS: TestVendorFinalityDoesNotGrantLocalCoverageOrInvoiceVerification (0.00s)
+=== RUN   TestVendorRetrospectiveExactArithmeticAndProvenance
+--- PASS: TestVendorRetrospectiveExactArithmeticAndProvenance (0.00s)
+=== RUN   TestVendorRetrospectiveDoesNotPromoteOwnerFacts
+--- PASS: TestVendorRetrospectiveDoesNotPromoteOwnerFacts (0.00s)
+=== RUN   TestVendorRetrospectiveOmittedUsageIsNotAnObservedZero
+=== RUN   TestVendorRetrospectiveOmittedUsageIsNotAnObservedZero/uncached
+=== RUN   TestVendorRetrospectiveOmittedUsageIsNotAnObservedZero/cache
+=== RUN   TestVendorRetrospectiveOmittedUsageIsNotAnObservedZero/output
+--- PASS: TestVendorRetrospectiveOmittedUsageIsNotAnObservedZero (0.00s)
+    --- PASS: TestVendorRetrospectiveOmittedUsageIsNotAnObservedZero/uncached (0.00s)
+    --- PASS: TestVendorRetrospectiveOmittedUsageIsNotAnObservedZero/cache (0.00s)
+    --- PASS: TestVendorRetrospectiveOmittedUsageIsNotAnObservedZero/output (0.00s)
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/report
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/supplier_evidence
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/scope_account
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/scope_currency
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/scope_window
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/model
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/source_id
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/source_kind
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/mapping_revision
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/mapping_evidence
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/mapping_binding
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/mapping_span
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/snapshot_digest
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/records_digest
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/tariff_digest
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/analysis_digest
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/external_digest
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/external_provenance
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/duplicate_record
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/missing_record_id
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/purpose
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/time_basis
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/external_user
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/negative_usage
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/finish_before_start
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/empty_exclusive_tail
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/outside_scope
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/empty_records
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/too_many_records
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/too_many_windows
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/no_windows
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/tariff_gap
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/tariff_overlap
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/tariff_missing_head
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/tariff_missing_tail
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/negative_rate
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/missing_rate
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/float_exponent
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/precision_over_12
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/inconsistent_band
+=== RUN   TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/unknown_supplier_amount
+--- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs (0.01s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/report (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/supplier_evidence (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/scope_account (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/scope_currency (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/scope_window (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/model (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/source_id (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/source_kind (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/mapping_revision (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/mapping_evidence (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/mapping_binding (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/mapping_span (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/snapshot_digest (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/records_digest (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/tariff_digest (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/analysis_digest (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/external_digest (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/external_provenance (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/duplicate_record (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/missing_record_id (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/purpose (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/time_basis (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/external_user (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/negative_usage (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/finish_before_start (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/empty_exclusive_tail (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/outside_scope (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/empty_records (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/too_many_records (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/too_many_windows (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/no_windows (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/tariff_gap (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/tariff_overlap (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/tariff_missing_head (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/tariff_missing_tail (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/negative_rate (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/missing_rate (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/float_exponent (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/precision_over_12 (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/inconsistent_band (0.00s)
+    --- PASS: TestVendorRetrospectiveRejectsUnboundAndMalformedInputs/unknown_supplier_amount (0.00s)
+=== RUN   TestVendorRetrospectiveHalfOpenBoundaryAndAmbiguity
+--- PASS: TestVendorRetrospectiveHalfOpenBoundaryAndAmbiguity (0.00s)
+=== RUN   TestVendorRetrospectiveDirectReplayDocumentBound
+--- PASS: TestVendorRetrospectiveDirectReplayDocumentBound (0.02s)
+=== RUN   TestVendorRetrospectiveOverflowAndExactSmallestSupportedDecimal
+--- PASS: TestVendorRetrospectiveOverflowAndExactSmallestSupportedDecimal (0.00s)
+=== RUN   TestValidateVendorRetrospectiveResultRejectsForgedDerivedFacts
+=== RUN   TestValidateVendorRetrospectiveResultRejectsForgedDerivedFacts/amount
+=== RUN   TestValidateVendorRetrospectiveResultRejectsForgedDerivedFacts/difference
+=== RUN   TestValidateVendorRetrospectiveResultRejectsForgedDerivedFacts/status
+=== RUN   TestValidateVendorRetrospectiveResultRejectsForgedDerivedFacts/join_verified
+=== RUN   TestValidateVendorRetrospectiveResultRejectsForgedDerivedFacts/provenance
+=== RUN   TestValidateVendorRetrospectiveResultRejectsForgedDerivedFacts/purpose_total
+--- PASS: TestValidateVendorRetrospectiveResultRejectsForgedDerivedFacts (0.01s)
+    --- PASS: TestValidateVendorRetrospectiveResultRejectsForgedDerivedFacts/amount (0.00s)
+    --- PASS: TestValidateVendorRetrospectiveResultRejectsForgedDerivedFacts/difference (0.00s)
+    --- PASS: TestValidateVendorRetrospectiveResultRejectsForgedDerivedFacts/status (0.00s)
+    --- PASS: TestValidateVendorRetrospectiveResultRejectsForgedDerivedFacts/join_verified (0.00s)
+    --- PASS: TestValidateVendorRetrospectiveResultRejectsForgedDerivedFacts/provenance (0.00s)
+    --- PASS: TestValidateVendorRetrospectiveResultRejectsForgedDerivedFacts/purpose_total (0.00s)
+PASS
+ok  	micro-one-api/app/billing/internal/biz	1.414s
+=== RUN   TestVendorRetrospectiveArchiveAppendsImmutableRun
+=== RUN   TestVendorRetrospectiveArchiveAppendsImmutableRun/sqlite
+    vendor_retrospective_test.go:121: report=2bc6d3dd046db8ee94ef5f576a1482fca3815cb9bc9e4d198f2e1a0ea5f419db reports=1 runs=2 archive_records=203 CNY=2.04700896 difference=0 status=pending bytes=69124
+    vendor_retrospective_test.go:149: successor=aecaa5c09fe36405cd59d59eb1e8e7c4d62e6c72f04e9c67052db5cf045ed9b1 reports=2 runs=3 finality=maintainer_confirmation correction_delta=0.000000000000000000 status=pending
+=== RUN   TestVendorRetrospectiveArchiveAppendsImmutableRun/mysql
+    vendor_retrospective_test.go:36: disposable local database DSN not supplied
+=== RUN   TestVendorRetrospectiveArchiveAppendsImmutableRun/postgres
+    vendor_retrospective_test.go:36: disposable local database DSN not supplied
+--- PASS: TestVendorRetrospectiveArchiveAppendsImmutableRun (0.22s)
+    --- PASS: TestVendorRetrospectiveArchiveAppendsImmutableRun/sqlite (0.21s)
+    --- SKIP: TestVendorRetrospectiveArchiveAppendsImmutableRun/mysql (0.00s)
+    --- SKIP: TestVendorRetrospectiveArchiveAppendsImmutableRun/postgres (0.00s)
+PASS
+ok  	micro-one-api/app/billing/internal/data	1.894s

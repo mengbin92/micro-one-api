@@ -141,6 +141,9 @@ func (r *vendorReconciliationRepo) StoreVendorReconciliation(ctx context.Context
 	if report.ID != biz.VendorReportID(report.Manifest, report.Rows) {
 		return fmt.Errorf("report identity mismatch")
 	}
+	if err := biz.ValidateVendorRetrospectiveResult(report); err != nil {
+		return err
+	}
 	if report.CostAPIEvidence != nil {
 		e, err := r.ValidateCostEvidence(ctx, *report.CostAPIEvidence)
 		if err != nil {

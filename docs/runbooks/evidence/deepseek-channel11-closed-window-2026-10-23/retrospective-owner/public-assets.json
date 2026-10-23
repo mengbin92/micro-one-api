@@ -1,0 +1,14 @@
+[
+  {
+    "path": "/",
+    "status": 200,
+    "sha256": "8ed5e753828240310ecebd7bb1b08e170b3fb8e1e96f77d521aa2711d9e2d912",
+    "bytes": 854
+  },
+  {
+    "path": "/assets/VendorReportsPage-CcCk6jf7.js",
+    "status": 200,
+    "sha256": "70d1e91b595d1d0939b917c03bb18e62d39880f95d181874fda820b5f31647c2",
+    "bytes": 17318
+  }
+]

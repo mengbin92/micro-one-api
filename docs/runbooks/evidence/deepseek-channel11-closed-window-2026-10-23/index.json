@@ -15,14 +15,14 @@
   "formal_reconciliation_executed": true,
   "production_import_executed": true,
   "supplier_final_watermark": null,
-  "owner_source_currency_comparison": "unknown in the existing owner run; independent retrospective CNY comparison now matches, but owner still only loads frozen USD",
+  "owner_source_currency_comparison": "authoritative comparison remains unknown; retained owner retrospective CNY arithmetic agrees at 2.04700896, difference 0",
   "request_count": 203,
   "total_tokens": 30832706,
   "provider_reported_cost_cny": "2.0470089600000000",
   "raw_zip_sha256": "e16d939853dc35fd591d69ad5aa0a272d4ac87edf5c8eb96cc64d73ac31c399b",
   "files": {
     "amount-2026-10-21_2026-10-22.csv": "bd1ca12d9c01f89d29b5c886c1e4604106955fe8f6d6901fe89c7c2c24374f85",
-    "check.py": "cd21f830880351799e008ebc040ff18af903f0d3790ba5534168fe2a64baaf38",
+    "check.py": "378e19004cd7aa30c2067cbf292846051bb7847fc6312abed7f868fe5b118e25",
     "cost-2026-10-21_2026-10-22.csv": "a75af224d5fd77180eb05ea487813744f5abf89681bbc548a0166216ec0e5df0",
     "owner-execution/billing-deploy-result.json": "bb2357de7e01e8ee58472f3a1e92e579b8652fa538c00cc1175be08864816a96",
     "owner-execution/billing-deploy-start.json": "7d36161793607e771c44ff6a41960a937d4c6f46cbcb7593f78b698be1dbef61",
@@ -53,25 +53,74 @@
     "owner-execution/vendor-normalized.csv": "48a81a8158dc72a2790b65974052fceb6c0014b91fde97da20948035967d4274",
     "production-readonly.json": "364dd54e36cdab585e34c73c5dce409f75f98adadcd8bf602f47919da4b677e7",
     "provider-export.json": "8983c236bfe280b3d0fb39c6f6228fbc9cf3ec91ac11a787a9580a579c21b86f",
+    "retrospective-owner/billing-deploy.log": "76fcee6362516959d043c7d7f3fe7030fde2cf0f5f8f91cf8464b26b38b36a72",
+    "retrospective-owner/check.py": "65b6ff42742371f6128e017f18c4bb384f15ac5e4b4d25509b8c7abf565fb7fc",
+    "retrospective-owner/deployment-result.json": "76d038adf01d95c6aebd23a8d238e08d99041c1709231eaef9dfaadac040361c",
+    "retrospective-owner/execution-coverage-green.log": "32c24e98b76380976d20cb3c5110388452a9d9d5b234d24a9b9c8b42de33b359",
+    "retrospective-owner/final-manifest.json": "9d7cac18b9590a125ce2d836e4484eb40e2f7e21b134c5daf1e71fd7f4a305ab",
+    "retrospective-owner/final-verification.json": "8840c34cbab9a725f066ff930ef58f36422301e23b3ecc4918d6f43d679df1a3",
+    "retrospective-owner/finality-attestation.json": "7858cb8aed67968964b776be50fe7e263167508dac07ae2504cdd75a4ee1b20c",
+    "retrospective-owner/finality-recheck.json": "6731cd510468573343185e54e32b311f8f46652ad3659d8124d73586d18c22eb",
+    "retrospective-owner/frontend-ambiguous-green.log": "02101045bb9a87a28530af3d7cb5d29b473373b6f9637dd9e598a3438f85312e",
+    "retrospective-owner/frontend-ambiguous-red.log": "cb9bb76e12d8efb9b4a2268a5f018457abae9e05cb274e687b31f6c8fad6e1dd",
+    "retrospective-owner/frontend-artifact.json": "43aa94f322d87d3c4417094ed041598ebfd790b3e5ba32202c385c0f3eb382ff",
+    "retrospective-owner/frontend-build.log": "65ff90b53a01728823686b150bd347cb3b49fad5371b5f17a531742029efb174",
+    "retrospective-owner/frontend-checks.log": "0b53d65c8c91f9b78672af0c7b03bdee30f609877f1b3b3b8c5df3b767db5aca",
+    "retrospective-owner/frontend-import-tests.log": "b197aa00ab86c9608ebcbb46b4cba8f21501e91de904b865340925797387ae79",
+    "retrospective-owner/frontend-lint.log": "0ec999f5778233b434858c0ced5b547ce1191b91875310693853430c27fefc1c",
+    "retrospective-owner/frontend-tsc.log": "77c20821ff2462d67df4c99fa678c480ee05194c729c128cd804a37b71024d9d",
+    "retrospective-owner/manifest.json": "1207f12b3229c19b74a8a2b91000c71a08c71f905b79256092df6c5ce5767051",
+    "retrospective-owner/owner-baseline.json": "efd5f8b4098b44d9612e7e3eea9cf5b5360d9816fb6d6b156f6b7c8d8373284e",
+    "retrospective-owner/owner-import-result.json": "ef893f681c76e4d5e0c4d7ea5d17d7c5f98d5d7a016cc8d1f42389378756f8d8",
+    "retrospective-owner/owner-persistence-verification.json": "130cc8f554a894cd5c0bb844a056a6a1317cb066734f74ee52c89fce1cefca9b",
+    "retrospective-owner/owner-production.jpg": "16eb3ddfaf9e6b2168dcefb756d9fa44255eb7267441e7e65c219d94ba6bbad9",
+    "retrospective-owner/owner-replay-tests.log": "a6ed71b43625cb6ce1b23eba049167f8c80a7199b620a4e912087df5ac5c02d1",
+    "retrospective-owner/package-tests-sandbox-blocked.log": "079240297ed05f800f0dc28d8e3980409d072f94a75a19ff7e29c9746cadf6e0",
+    "retrospective-owner/package-tests.log": "9098ddccbd47a45618fdae94b62e8580e2a0543f0c821eb037ffd4b8bf19197b",
+    "retrospective-owner/prepare.py": "6ff25c3cdab9bdbfc19d5961f2e2644028940cf5d01a0b677c54808d8bb1adfb",
+    "retrospective-owner/production-baseline.json": "3ba5c9bb5ad05148e95c5f9a2ada9e34d9169cb4db4ae039ad4fb0634d9e7a11",
+    "retrospective-owner/public-assets.json": "29b130f184a5bca03097fbf08ff9d03b6b6181bf28a46d236d8870f5124ff75b",
+    "retrospective-owner/reexport-amount-2026-10-21_2026-10-22.csv": "c1ed04882d44703bb8ee720e3914cefb9e81fa944f4ead9831daaa64bce0c950",
+    "retrospective-owner/reexport-cost-2026-10-21_2026-10-22.csv": "2c03107b297f34e197901532adee65e31100d7940546c18452b9f004d6dc1938",
     "service-flags.json": "e2827819d25df72398e366dc58d1bb0da09e73125bc50fd5608293db9852e19d",
     "time-pricing-analysis.json": "d04d9379de33931b09b4dd84d26114671ac2da07d364ec5beefb1fb5a7e82ea0",
     "time-pricing-records.csv": "f212b9df5134c4e1c904cfaa3b22b35773bc51180e4733ca5b022beae5c942a6"
   },
-  "updated_at": "2026-10-23T08:36:54.387716+00:00",
+  "updated_at": "2026-10-23T14:42:27.124864+00:00",
   "owner_preview_executed": true,
   "permission_publication_executed": true,
   "price_ledger_or_gate_changes": false,
   "owner_query_fix_deployed": true,
   "owner_query_index_published": true,
-  "owner_report_id": "2bc6d3dd046db8ee94ef5f576a1482fca3815cb9bc9e4d198f2e1a0ea5f419db",
+  "owner_report_id": "aecaa5c09fe36405cd59d59eb1e8e7c4d62e6c72f04e9c67052db5cf045ed9b1",
   "owner_report_status": "pending",
-  "owner_report_count": 1,
-  "owner_run_count": 1,
+  "owner_report_count": 2,
+  "owner_run_count": 2,
   "owner_run_sequence": 1,
   "artifact_transformations": {
     "owner-execution/vendor-attempt-batch-red.log": {
       "source_sha256": "3a528a28521b7067399686d6244416ae59d5020280b0e8f1c09942f47fac5305",
       "normalization": "Expand tabs to four spaces and remove trailing whitespace; diagnostic content unchanged; original retained privately."
+    },
+    "retrospective-owner/billing-deploy.log": {
+      "source_sha256": "a1ab155e75b5b7fbd942b0a4e79047b457e99b4f093b836a4da7aac4e66bd0d2",
+      "normalization": "Remove trailing whitespace and trailing blank lines; diagnostic content unchanged. Original runtime output retained privately."
+    },
+    "retrospective-owner/frontend-ambiguous-green.log": {
+      "source_sha256": "394b11778fcbef07b4260f37897716a4ba53c91cf8ed5c22a598dd2b608f7bb9",
+      "normalization": "Remove trailing whitespace and trailing blank lines; diagnostic content unchanged. Original runtime output retained privately."
+    },
+    "retrospective-owner/frontend-ambiguous-red.log": {
+      "source_sha256": "db9ade83a64a7476f1b169bfae1be60b52daa49be77c45cbba5187c0ad91e3f3",
+      "normalization": "Remove trailing whitespace and trailing blank lines; diagnostic content unchanged. Original runtime output retained privately."
+    },
+    "retrospective-owner/frontend-build.log": {
+      "source_sha256": "3c07664fb1a290c3f1f139a401501a727d28b70cfc412ae72f0bd8fbf6c7a70e",
+      "normalization": "Remove trailing whitespace and trailing blank lines; diagnostic content unchanged. Original runtime output retained privately."
+    },
+    "retrospective-owner/frontend-import-tests.log": {
+      "source_sha256": "cfc742b27ad65f319e9f88133b8c0b1223fb7ffc0b09bb7c46e0d1bff5b0e21c",
+      "normalization": "Remove trailing whitespace and trailing blank lines; diagnostic content unchanged. Original runtime output retained privately."
     }
   },
   "other_computer_task_execution": "not_executed_per_maintainer; no task output dependency",
@@ -85,5 +134,76 @@
     "peak": 2,
     "off_peak": 0
   },
-  "time_pricing_difference_cny": "0"
+  "time_pricing_difference_cny": "0",
+  "retrospective_owner_followup": {
+    "code_baseline": "develop@4a165c4b",
+    "delivery_status": "built_deployed_and_imported",
+    "owner_arithmetic_records": 203,
+    "owner_arithmetic_cny": "2.04700896",
+    "owner_arithmetic_difference_cny": "0",
+    "provenance": "operator_submitted_archive",
+    "execution_join_verified": false,
+    "period_finality_basis": "maintainer_confirmation",
+    "statement": "no_further_corrections",
+    "provider_published_watermark": false,
+    "candidate_report_id": "aecaa5c09fe36405cd59d59eb1e8e7c4d62e6c72f04e9c67052db5cf045ed9b1",
+    "supersedes": "2bc6d3dd046db8ee94ef5f576a1482fca3815cb9bc9e4d198f2e1a0ea5f419db",
+    "candidate_status": "pending; authoritative local coverage remains missing",
+    "isolated_storage_counts": {
+      "original_with_supplement": {
+        "reports": 1,
+        "runs": 2
+      },
+      "after_successor": {
+        "reports": 2,
+        "runs": 3
+      }
+    },
+    "storage_dialects_passed": [
+      "sqlite"
+    ],
+    "storage_dialects_skipped": [
+      "mysql",
+      "postgres"
+    ],
+    "source_files_sha256": {
+      "app/billing/internal/biz/vendor_finality.go": "f98f3d39422b242230d61d5c0ae7e395243b1f1202fe20bb2c0a919e22e702fc",
+      "app/billing/internal/biz/vendor_finality_test.go": "893cb01873bc75231c1fca8dd49e8de7aec0000353700c844d72488e9675c7b2",
+      "app/billing/internal/biz/vendor_reconciliation.go": "f628009af975abe84dd9f5f2e9b864c47f1f393afba8a0fa0a94a958c27eeb02",
+      "app/billing/internal/biz/vendor_retrospective.go": "8c4c2217f97155900c121d81f148a18f6482b0290d2ceb148fed444f7df5e0dc",
+      "app/billing/internal/biz/vendor_retrospective_test.go": "aba28bd570da1f9da5a6e83bdccdc8fc771317ebdb4c40fb668dec327cc7cb60",
+      "app/billing/internal/data/vendor_reconciliation.go": "a085d397cc331b42996725378983613f08b5f772ea727904276b6b7e0e6c4f96",
+      "app/billing/internal/data/vendor_retrospective_test.go": "f43abd3dca5565db5f206041b88d99c3e7aede1b4963b46e2693f54bb82e8315",
+      "internal/server/execution_coverage_test.go": "c990decdc0561cefb45257512c918bbc6810cb25084816036219f8ad9407d251",
+      "web/scripts/vendor-report-import.fixture.test.ts": "dfcee8276e106037c64ac911818cd0ae063e4183133a134256a459c320a908af",
+      "web/src/lib/vendor-report-import.ts": "0da1941399e46724924cee19fa7cbeb6c5f5d8dc57d55e6f828fb9df618e1b60",
+      "web/src/locales/en-US.ts": "2f5012b8cd86d8c8ff53d261076f5ed75c3d9da8ce230184ead3ebdadaac277d",
+      "web/src/pages/admin/VendorReportImport.test.tsx": "a15b275456907a35ca34ce12f0f247d1d207d1d2336182899b2e5ed5175d1625",
+      "web/src/pages/admin/VendorReportImport.tsx": "9736f24eab535f77d1add60bd439c0ed91f681a162e51a5dfeed51ad77119b6f",
+      "web/src/pages/admin/VendorReportsPage.test.tsx": "ddb919cd812b11d7419e86ee0d095f97ca9ce41917b823229439053174f9728c",
+      "web/src/pages/admin/VendorReportsPage.tsx": "9e535f4a752bd1f37e308d20d53d323cc79cfb9b2dc762b0661414429c389219"
+    },
+    "production_candidate_import_executed": true,
+    "production_counts_before_import": {
+      "reports": 1,
+      "runs": 1
+    },
+    "production_counts_after_import": {
+      "reports": 2,
+      "runs": 2
+    },
+    "production_successor_run_id": "346bb2e1b9a4ba4582b3a8af79496f4ce57ff617efa7cd0680f41b56e92f4b5d",
+    "production_successor_sequence": 1,
+    "successful_owner_write_audits": 1,
+    "post_retries": 0,
+    "billing_source_digest": "5c324e059887b9788fb0924a9da3a7010d46c20696235343faaa4a03a8957f53",
+    "frontend_source_digest": "f3f9201bad2098bb233074de6b35f1e0e1687789910b3f3da9846e6336160863",
+    "go_inputs_unchanged_after_billing_build": true
+  },
+  "initial_owner_import": {
+    "report_id": "2bc6d3dd046db8ee94ef5f576a1482fca3815cb9bc9e4d198f2e1a0ea5f419db",
+    "reports": 1,
+    "runs": 1,
+    "payload_sha256": "6b74a1c12409e0321f31688c18228d7e265a07a1ccc8987f5c5217a3445be45a"
+  }
 }
