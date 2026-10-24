@@ -15,6 +15,7 @@ import (
 // Record is observation evidence, never a receipt for financial settlement.
 type Record struct {
 	ParameterContract *contract.Trace `json:"parameter_contract,omitempty"`
+	ContractProof     *ContractProof  `json:"contract_proof,omitempty"`
 	StartedAtUnixNano int64           `json:"started_at_unix_nano,omitempty"`
 	Observation       Observation     `json:"observation"`
 	Execution         string          `json:"execution"`
@@ -146,7 +147,8 @@ func Do(client *http.Client, req *http.Request, protocol string) (*http.Response
 			return nil, err
 		}
 	}
-	resp.Body = &observedBody{contractReporter: contractReporter, parameterTrace: parameterTrace, startedAt: startedAt, ReadCloser: resp.Body, recorder: recorder, durable: durable.Record, protocol: protocol, status: resp.StatusCode, stream: stream, tracker: NewTracker(protocol), providerID: providerRequestID(resp.Header), endpoint: req.URL.EscapedPath(), apiVersion: apiVersion(req)}
+	proofParse, proofTracker := selectedProof(req.Context(), parameterTrace)
+	resp.Body = &observedBody{contractReporter: contractReporter, parameterTrace: parameterTrace, proofParse: proofParse, proofTracker: proofTracker, startedAt: startedAt, ReadCloser: resp.Body, recorder: recorder, durable: durable.Record, protocol: protocol, status: resp.StatusCode, stream: stream, tracker: NewTracker(protocol), providerID: providerRequestID(resp.Header), endpoint: req.URL.EscapedPath(), apiVersion: apiVersion(req)}
 	return resp, nil
 }
 
@@ -188,6 +190,8 @@ type observedBody struct {
 	status               int
 	stream               bool
 	tracker              *Tracker
+	proofParse           func([]byte) Observation
+	proofTracker         *Tracker
 	body                 []byte
 	tooLarge             bool
 	eof                  bool
@@ -209,6 +213,9 @@ func (b *observedBody) Read(p []byte) (int, error) {
 	if n > 0 {
 		if b.stream {
 			_, _ = b.tracker.Write(p[:n])
+			if b.proofTracker != nil {
+				_, _ = b.proofTracker.Write(p[:n])
+			}
 		} else if !b.tooLarge {
 			if len(b.body)+n > MaxFrameBytes {
 				b.tooLarge = true
@@ -227,6 +234,9 @@ func (b *observedBody) Read(p []byte) (int, error) {
 	if b.durable != nil && b.stream && b.tracker.EventCount > b.checkpointEvents && b.checkpointEvents < MaxEvents && err == nil {
 		b.checkpointEvents = b.tracker.EventCount
 		checkpoint = &Record{ParameterContract: b.parameterTrace, StartedAtUnixNano: b.startedAt, Observation: b.tracker.Snapshot(), Execution: "checkpoint", HTTPStatus: b.status, Stream: true, Events: append([]Observation(nil), b.tracker.Events...), EventCount: b.tracker.EventCount, DroppedEvents: b.tracker.DroppedEvents, UpstreamEndpoint: b.endpoint, APIVersion: b.apiVersion}
+		if b.proofTracker != nil {
+			checkpoint.ContractProof = &ContractProof{Observation: b.proofTracker.Snapshot()}
+		}
 	}
 	b.mu.Unlock()
 	if checkpoint != nil {
@@ -272,6 +282,25 @@ func (b *observedBody) finish() {
 		}
 		if r.Observation.ProviderRequestID == "" {
 			r.Observation.ProviderRequestID = b.providerID
+		}
+		if b.proofParse != nil {
+			proof := &ContractProof{Complete: b.eof && !b.readFailed}
+			if b.stream {
+				proof.Observation, _ = b.proofTracker.Finish()
+				proof.Complete = proof.Complete && b.proofTracker.ProtocolComplete()
+			} else if b.tooLarge {
+				proof.Observation = b.proofParse(nil)
+				proof.Observation.Status, proof.Observation.Reason = "unobserved", "frame_limit"
+			} else {
+				proof.Observation = b.proofParse(b.body)
+			}
+			if proof.Observation.Terminal == "failed" {
+				proof.Complete = false
+			}
+			if proof.Observation.ProviderRequestID == "" {
+				proof.Observation.ProviderRequestID = b.providerID
+			}
+			r.ContractProof = proof
 		}
 		if !r.Complete {
 			r.Execution = "incomplete"

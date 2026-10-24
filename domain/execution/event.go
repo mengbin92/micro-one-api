@@ -127,16 +127,25 @@ func (e Event) Validate() error {
 		return fmt.Errorf("invalid category")
 	}
 	if r := e.Record; r != nil {
-		if len(r.Events) > evidence.MaxEvents || len(r.Observation.Usage) > evidence.MaxUsageBytes || len(r.Observation.Fingerprint) > 2048 || len(r.Observation.ProviderRequestID) > 256 {
+		if len(r.Events) > evidence.MaxEvents {
 			return fmt.Errorf("native evidence exceeds limits")
 		}
-		if b := r.Observation.Buckets; b != nil {
-			sum := int64(0)
-			for _, v := range b {
-				if v < 0 || v > math.MaxInt64-sum {
-					return fmt.Errorf("invalid native buckets")
+		observations := []evidence.Observation{r.Observation}
+		if r.ContractProof != nil {
+			observations = append(observations, r.ContractProof.Observation)
+		}
+		for _, observation := range observations {
+			if len(observation.Usage) > evidence.MaxUsageBytes || len(observation.Fingerprint) > 2048 || len(observation.ProviderRequestID) > 256 {
+				return fmt.Errorf("native evidence exceeds limits")
+			}
+			if b := observation.Buckets; b != nil {
+				sum := int64(0)
+				for _, v := range b {
+					if v < 0 || v > math.MaxInt64-sum {
+						return fmt.Errorf("invalid native buckets")
+					}
+					sum += v
 				}
-				sum += v
 			}
 		}
 	}

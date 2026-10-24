@@ -7,7 +7,7 @@
       "protocol": "openai_chat"
     },
     "provider": "fixture",
-    "adapter_build": "finite-contract-runtime-2026-10-14.1",
+    "adapter_build": "finite-contract-runtime-2026-10-24.1",
     "parser_revision": "native-shadow-2026-10-13.1",
     "usage_revision": "native-static-2026-10-13.1",
     "inbound_protocols": [
@@ -22,6 +22,7 @@
             "kind": "rename",
             "path": "old_option",
             "target": "new_option",
+            "type": "number",
             "evidence_id": "fixture-equivalence"
           }
         ]

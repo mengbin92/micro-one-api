@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"github.com/stretchr/testify/require"
+	"io"
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/domain/authorization"
 	authzt "micro-one-api/domain/authorization/testutil"
 	"micro-one-api/domain/upstream/contract"
 	"micro-one-api/domain/upstream/evidence"
 	dbt "micro-one-api/platform/database/testutil"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -19,6 +22,78 @@ func contractDoc(kind string, id int64) contract.Document {
 }
 func verifiedContractRecord() *evidence.Record {
 	return &evidence.Record{Complete: true, HTTPStatus: 200, Observation: evidence.Parse([]byte(`{"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`), "openai_chat")}
+}
+
+type contractProofTestTransport func(*http.Request) (*http.Response, error)
+
+func (f contractProofTestTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestDeepSeekIndependentProofPublishesAndQuarantinesCurrentSSE(t *testing.T) {
+	db := dbt.RoutingContextDB(t, "sqlite")
+	r := &Repository{db: db}
+	ctx := authorization.WithWriteReason(context.Background(), "reviewed independent DeepSeek proof")
+	now := time.Now().UTC()
+	empty := ""
+	require.NoError(t, db.Create(&channelModel{ModelMapping: &empty, SystemPrompt: &empty, Config: "{}", ID: 11, Name: "fixture", Type: 1, Status: 1, Key: "fixture-only", Models: "deepseek-flash"}).Error)
+	doc := contractDoc("channel", 11)
+	doc.Provider, doc.Scope.Model = "deepseek", "deepseek-flash"
+	doc.ParserRevision, doc.UsageRevision = contract.DeepSeekProofParserID, contract.DeepSeekProofUsageID
+	require.NoError(t, r.CreateContract(ctx, biz.UpstreamContract{Document: doc, Revision: doc.Revision()}, now))
+	source, err := r.sourceContractRevision(db, doc.Scope)
+	require.NoError(t, err)
+	record := func(binding, incident int64, bad bool) *evidence.Record {
+		usage := `{"prompt_tokens":8,"completion_tokens":1,"total_tokens":9,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":8}`
+		if bad {
+			usage = strings.ReplaceAll(usage, `"prompt_tokens":8`, `"prompt_tokens":"8"`)
+		}
+		snapshot, err := contract.Compile(doc)
+		require.NoError(t, err)
+		snapshot.BindingRevision, snapshot.IncidentRevision = binding, incident
+		var observed evidence.Record
+		call := contract.WithSelection(ctx, contract.Selection{Snapshots: []contract.Snapshot{snapshot}, Inbound: "openai_chat"})
+		call = evidence.WithRecorder(call, func(r evidence.Record) { observed = r })
+		client := &http.Client{Transport: contractProofTestTransport(func(*http.Request) (*http.Response, error) {
+			body := "data: {\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: {\"object\":\"chat.completion.chunk\",\"choices\":[{\"finish_reason\":\"stop\"}],\"usage\":" + usage + "}\n\ndata: [DONE]\n\n"
+			return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+		})}
+		request, err := http.NewRequestWithContext(call, http.MethodPost, "https://fixture.invalid/chat/completions", strings.NewReader(`{}`))
+		require.NoError(t, err)
+		response, err := evidence.Do(client, request, "openai_chat")
+		require.NoError(t, err)
+		_, err = io.Copy(io.Discard, response.Body)
+		require.NoError(t, err)
+		require.NoError(t, response.Body.Close())
+		return &observed
+	}
+	lease, err := r.AcquireContractProbe(ctx, doc.Scope, doc.Revision(), "independent-first-proof", source, now)
+	require.NoError(t, err)
+	valid := record(lease.Snapshot.BindingRevision, lease.Snapshot.IncidentRevision, false)
+	accepted, err := r.RecordContractResult(ctx, biz.ContractResult{Scope: doc.Scope, Revision: doc.Revision(), AttemptID: "independent-first-proof", LeaseID: lease.ID, Record: valid, CapabilityValid: true}, now)
+	require.NoError(t, err)
+	require.True(t, accepted)
+	binding, err := r.TransitionContract(ctx, biz.ContractTransition{Scope: doc.Scope, Revision: doc.Revision(), Action: "publish", Reason: "independent raw usage proof passed", GrayPercent: 5}, now)
+	require.NoError(t, err)
+	require.Equal(t, "gray", binding.Status)
+	valid = record(binding.Revision, binding.IncidentRevision, false)
+	accepted, err = r.RecordContractResult(ctx, biz.ContractResult{Scope: doc.Scope, Revision: doc.Revision(), BindingRevision: binding.Revision, IncidentRevision: binding.IncidentRevision, AttemptID: "independent-user-proof", Record: valid, CapabilityValid: true}, now.Add(time.Second))
+	require.NoError(t, err)
+	require.True(t, accepted)
+	_, actual, err := r.ListContracts(ctx, doc.Scope, 20)
+	require.NoError(t, err)
+	require.Equal(t, "gray", actual.Status, "old native unsupported/incomplete status must not quarantine a verified independent proof")
+	require.EqualValues(t, 1, actual.CompleteAttempts)
+	require.Equal(t, "unsupported", valid.Observation.Status)
+	lease, err = r.AcquireContractProbe(ctx, doc.Scope, doc.Revision(), "independent-bad-current", source, now.Add(2*time.Second))
+	require.NoError(t, err)
+	bad := record(lease.Snapshot.BindingRevision, lease.Snapshot.IncidentRevision, true)
+	require.False(t, bad.Complete, "the original native tracker still reports its metering fault as incomplete")
+	require.True(t, bad.ContractProof.Complete, "the independent proof records that the same SSE reached DONE")
+	accepted, err = r.RecordContractResult(ctx, biz.ContractResult{Scope: doc.Scope, Revision: doc.Revision(), BindingRevision: lease.Snapshot.BindingRevision, IncidentRevision: lease.Snapshot.IncidentRevision, AttemptID: "independent-bad-current", LeaseID: lease.ID, Record: bad, CapabilityValid: true}, now.Add(2*time.Second))
+	require.NoError(t, err)
+	require.True(t, accepted)
+	_, actual, err = r.ListContracts(ctx, doc.Scope, 20)
+	require.NoError(t, err)
+	require.Equal(t, "quarantined", actual.Status, "a complete current SSE proof with invalid metering must isolate the contract even when native Complete is false")
 }
 func TestContractCASGrayIncidentAndRollbackDialects(t *testing.T) {
 	for _, driver := range []string{"sqlite", "mysql", "postgres"} {

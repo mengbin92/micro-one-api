@@ -19,7 +19,7 @@ func (f transport) RoundTrip(r *http.Request) (*http.Response, error) { return f
 func contextFixture(t *testing.T) repair.AgentContext {
 	t.Helper()
 	var p repair.Proposal
-	b, err := io.ReadAll(strings.NewReader(`{"candidate":{"scope":{"source_kind":"channel","source_id":1,"upstream_model_id":"vendor/Exact","protocol":"openai_chat"},"provider":"fixture","adapter_build":"finite-contract-runtime-2026-10-14.1","parser_revision":"native-shadow-2026-10-13.1","usage_revision":"native-static-2026-10-13.1","inbound_protocols":["openai_chat"],"rule_sets":[],"fixture_evidence_id":"independent","basis_revision":"schema-v2"},"classification":"protocol_drift","contract_probe_failed":true,"source_revision":"source-1","incident_id":"incident-1","evidence_ids":["redacted"]}`))
+	b, err := io.ReadAll(strings.NewReader(`{"candidate":{"scope":{"source_kind":"channel","source_id":1,"upstream_model_id":"vendor/Exact","protocol":"openai_chat"},"provider":"fixture","adapter_build":"finite-contract-runtime-2026-10-24.1","parser_revision":"native-shadow-2026-10-13.1","usage_revision":"native-static-2026-10-13.1","inbound_protocols":["openai_chat"],"rule_sets":[],"fixture_evidence_id":"independent","basis_revision":"schema-v2"},"classification":"protocol_drift","contract_probe_failed":true,"source_revision":"source-1","incident_id":"incident-1","evidence_ids":["redacted"]}`))
 	require.NoError(t, err)
 	require.NoError(t, jsonx.Unmarshal(b, &p))
 	schema := "trusted fixed official schema"

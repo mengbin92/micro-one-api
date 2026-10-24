@@ -22,7 +22,7 @@ func (f contractMatrixTransport) RoundTrip(r *http.Request) (*http.Response, err
 
 func TestUpstreamContractEvidenceAcrossTransports(t *testing.T) {
 	t.Setenv("RELAY_UPSTREAM_EXECUTION_TIME_V1", "true")
-	doc := contract.Document{Scope: contract.Scope{Kind: "channel", ID: 1, Model: "exact", Protocol: "responses"}, Provider: "fixture", AdapterBuild: contract.BuildID, ParserRevision: evidence.ParserRevision, UsageRevision: evidence.ContractRevision, Inbound: []string{"responses"}, FixtureEvidence: "independent-transport-matrix", BasisRevision: "fixture-v1", Sets: []contract.RuleSet{{Level: "model", Rules: []contract.Rule{{ID: "default", Kind: "default", Path: "temperature", Value: jsonx.RawMessage(`0`), Evidence: "fixture"}}}}}
+	doc := contract.Document{Scope: contract.Scope{Kind: "channel", ID: 1, Model: "exact", Protocol: "responses"}, Provider: "fixture", AdapterBuild: contract.BuildID, ParserRevision: evidence.ParserRevision, UsageRevision: evidence.ContractRevision, Inbound: []string{"responses"}, FixtureEvidence: "independent-transport-matrix", BasisRevision: "fixture-v1", Sets: []contract.RuleSet{{Level: "model", Rules: []contract.Rule{{ID: "default", Kind: "default", Path: "temperature", Type: "number", Value: jsonx.RawMessage(`0`), Evidence: "fixture"}}}}}
 	snapshot, err := contract.Compile(doc)
 	require.NoError(t, err)
 	snapshot.BindingRevision, snapshot.IncidentRevision = 4, 2
@@ -125,6 +125,65 @@ func TestUpstreamContractEvidenceAcrossTransports(t *testing.T) {
 					require.Equal(t, "incomplete", record.Execution)
 				}
 			})
+		}
+	}
+}
+
+func TestUpstreamContractTypeMismatchRejectsBeforeTransport(t *testing.T) {
+	for _, kind := range []string{"rename", "default"} {
+		rule := contract.Rule{ID: "typed-option", Kind: kind, Path: "option", Type: "number", Evidence: "independent-type-fixture"}
+		if kind == "rename" {
+			rule.Target = "new_option"
+		} else {
+			rule.Value = jsonx.RawMessage(`0`)
+		}
+		doc := contract.Document{Scope: contract.Scope{Kind: "channel", ID: 1, Model: "exact", Protocol: "responses"}, Provider: "fixture", AdapterBuild: contract.BuildID, ParserRevision: evidence.ParserRevision, UsageRevision: evidence.ContractRevision, Inbound: []string{"responses"}, FixtureEvidence: "independent-transport-type-matrix", BasisRevision: "fixture-types-v1", Sets: []contract.RuleSet{{Level: "model", Rules: []contract.Rule{rule}}}}
+		snapshot, err := contract.Compile(doc)
+		require.NoError(t, err)
+		selection := contract.Selection{Snapshots: []contract.Snapshot{snapshot}, Inbound: "responses"}
+		for _, transport := range []string{"http", "sse", "websocket"} {
+			for _, value := range []string{`"0"`, `null`, `false`, `{}`, `[]`} {
+				paths := []string{"option"}
+				if kind == "rename" {
+					paths = append(paths, "new_option")
+				}
+				for _, path := range paths {
+					t.Run(kind+"/"+transport+"/"+path+"/"+value, func(t *testing.T) {
+						ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+						defer cancel()
+						ctx = contract.WithSelection(ctx, selection)
+						body := []byte(`{"type":"response.create","model":"exact","` + path + `":` + value + `}`)
+						if transport == "sse" {
+							body = []byte(`{"model":"exact","stream":true,"` + path + `":` + value + `}`)
+						}
+						var sendErr error
+						if transport == "websocket" {
+							client, upstream := newFakeFrameConn(8), newFakeFrameConn(8)
+							_, exit := relayOpenAIWSFrames(ctx, client, upstream, body, openAIWSRelayOptions{contractSelection: func() contract.Selection { return selection }})
+							require.NotNil(t, exit)
+							sendErr = exit.err
+							require.Empty(t, upstream.out, "a rejected request must not write an upstream frame")
+						} else {
+							calls := 0
+							client := &http.Client{Transport: contractMatrixTransport(func(*http.Request) (*http.Response, error) {
+								calls++
+								return nil, io.ErrUnexpectedEOF
+							})}
+							req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://fixture.invalid/v1/responses", strings.NewReader(string(body)))
+							require.NoError(t, err)
+							if transport == "sse" {
+								req.Header.Set("Accept", "text/event-stream")
+							}
+							_, sendErr = evidence.Do(client, req, "responses")
+							require.Zero(t, calls, "a rejected request must not call the upstream transport")
+						}
+						var rejected *contract.Rejection
+						require.ErrorAs(t, sendErr, &rejected)
+						require.True(t, rejected.BeforeUpstream())
+						require.ErrorContains(t, sendErr, path)
+					})
+				}
+			}
 		}
 	}
 }

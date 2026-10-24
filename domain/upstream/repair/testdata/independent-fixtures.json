@@ -9,13 +9,13 @@
   },
   "fixtures": [
     {
-      "id": "null-and-unknown",
+      "id": "zero-and-unknown",
       "request": {
-        "old_option": null,
+        "old_option": 0,
         "unknown": true
       },
       "expected_request": {
-        "new_option": null,
+        "new_option": 0,
         "unknown": true
       },
       "response": {
@@ -34,6 +34,16 @@
         0,
         0
       ]
+    },
+    {
+      "id": "null-type-rejection",
+      "request": { "old_option": null },
+      "reject": true
+    },
+    {
+      "id": "string-type-rejection",
+      "request": { "old_option": "0" },
+      "reject": true
     },
     {
       "id": "conflict-rejection",

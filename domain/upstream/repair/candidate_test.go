@@ -11,13 +11,15 @@ import (
 )
 
 func proposalFixture() (Proposal, FixtureSet) {
-	d := contract.Document{Scope: contract.Scope{Kind: "channel", ID: 1, Model: "vendor/Exact", Protocol: "openai_chat"}, Provider: "fixture", AdapterBuild: contract.BuildID, ParserRevision: contract.ParserID, UsageRevision: contract.UsageID, Inbound: []string{"openai_chat"}, FixtureEvidence: "independent-matrix", BasisRevision: "schema-v2", Sets: []contract.RuleSet{{Level: "model", Rules: []contract.Rule{{ID: "rename", Kind: "rename", Path: "old_option", Target: "new_option", Evidence: "equivalence"}}}}}
+	d := contract.Document{Scope: contract.Scope{Kind: "channel", ID: 1, Model: "vendor/Exact", Protocol: "openai_chat"}, Provider: "fixture", AdapterBuild: contract.BuildID, ParserRevision: contract.ParserID, UsageRevision: contract.UsageID, Inbound: []string{"openai_chat"}, FixtureEvidence: "independent-matrix", BasisRevision: "schema-v2", Sets: []contract.RuleSet{{Level: "model", Rules: []contract.Rule{{ID: "rename", Kind: "rename", Path: "old_option", Target: "new_option", Type: "number", Evidence: "equivalence"}}}}}
 	p := Proposal{Candidate: d, IncidentID: "incident", Classification: "protocol_drift", ContractProbeFailed: true, SourceRevision: "source", EvidenceIDs: []string{"redacted-usage"}, BasisDigest: strings.Repeat("a", 64)}
 	fixtures := FixtureSet{Authority: "independent-regression", BasisDigest: p.BasisDigest, Scope: d.Scope, Fixtures: []Fixture{
 		{ID: "zero-preserved", Request: jsonx.RawMessage(`{"old_option":0,"unknown":true}`), ExpectedRequest: jsonx.RawMessage(`{"new_option":0,"unknown":true}`), Response: jsonx.RawMessage(`{"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`), Status: "verified", Buckets: &[5]int64{}},
 		{ID: "conflict-rejected", Request: jsonx.RawMessage(`{"old_option":1,"new_option":2}`), Reject: true},
-		{ID: "stream-duplicate-terminal", Request: jsonx.RawMessage(`{"old_option":null}`), ExpectedRequest: jsonx.RawMessage(`{"new_option":null}`), Frames: []jsonx.RawMessage{jsonx.RawMessage(`{"choices":[{"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`), jsonx.RawMessage(`{"choices":[{"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`), jsonx.RawMessage(`"[DONE]"`)}, Status: "verified", Complete: true, Buckets: &[5]int64{1, 0, 0, 0, 1}},
+		{ID: "stream-duplicate-terminal", Request: jsonx.RawMessage(`{"old_option":0}`), ExpectedRequest: jsonx.RawMessage(`{"new_option":0}`), Frames: []jsonx.RawMessage{jsonx.RawMessage(`{"choices":[{"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`), jsonx.RawMessage(`{"choices":[{"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`), jsonx.RawMessage(`"[DONE]"`)}, Status: "verified", Complete: true, Buckets: &[5]int64{1, 0, 0, 0, 1}},
 		{ID: "unsupported-dimension", Request: jsonx.RawMessage(`{}`), ExpectedRequest: jsonx.RawMessage(`{}`), Response: jsonx.RawMessage(`{"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2,"extra_billable_tokens":10}}`), Status: "unsupported"},
+		{ID: "null-type-rejected", Request: jsonx.RawMessage(`{"old_option":null}`), Reject: true},
+		{ID: "string-type-rejected", Request: jsonx.RawMessage(`{"old_option":"0"}`), Reject: true},
 	}}
 	return p, fixtures
 }

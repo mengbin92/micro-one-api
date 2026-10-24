@@ -25,7 +25,11 @@ func (s *HTTPServer) reportContractResult(ctx context.Context, attempt string, r
 	raw, _ := jsonx.Marshal(r)
 	call, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer cancel()
-	_, _ = s.channelClient.RecordContractResult(call, &v.RecordContractResultRequest{Scope: contractdto.ScopeProto(tag.Scope), Revision: tag.Revision, BindingRevision: tag.BindingRevision, IncidentRevision: tag.IncidentRevision, AttemptId: attempt, RecordJson: raw, CapabilityValid: r.Complete})
+	complete := r.Complete
+	if r.ContractProof != nil {
+		complete = r.ContractProof.Complete
+	}
+	_, _ = s.channelClient.RecordContractResult(call, &v.RecordContractResultRequest{Scope: contractdto.ScopeProto(tag.Scope), Revision: tag.Revision, BindingRevision: tag.BindingRevision, IncidentRevision: tag.IncidentRevision, AttemptId: attempt, RecordJson: raw, CapabilityValid: complete})
 }
 func (s *HTTPServer) withContractResults(ctx context.Context, attempt string) context.Context {
 	return evidence.WithContractReporter(ctx, func(r evidence.Record) { s.reportContractResult(ctx, attempt, r) })

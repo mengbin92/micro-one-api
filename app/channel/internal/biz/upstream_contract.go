@@ -55,6 +55,7 @@ type ContractResult struct {
 }
 type UpstreamContractRepo interface {
 	CreateContract(context.Context, UpstreamContract, time.Time) error
+	GetContract(context.Context, contract.Scope, string) (contract.Snapshot, error)
 	ListContracts(context.Context, contract.Scope, int) ([]contract.Snapshot, ContractBinding, error)
 	TransitionContract(context.Context, ContractTransition, time.Time) (ContractBinding, error)
 	ResolveContracts(context.Context, string, int64, string, string) ([]contract.Snapshot, []string, string, error)
@@ -185,22 +186,24 @@ func (uc *ChannelUsecase) RecordContractResult(ctx context.Context, r ContractRe
 	if r.Scope.Validate() != nil || len(r.Revision) != 64 || r.AttemptID == "" || len(r.AttemptID) > 128 || r.Record == nil || r.Record.Observation.Protocol != r.Scope.Protocol {
 		return false, ErrContractInvalid
 	}
-	// A successful producer description alone is insufficient. Re-parse the
-	// exact native usage and ensure unknown dimensions cannot promote a parser.
-	if r.Record.Observation.Status == "verified" {
-		field := "usage"
-		if r.Scope.Protocol == "gemini" {
-			field = "usageMetadata"
-		}
-		raw := []byte(`{"` + field + `":` + string(r.Record.Observation.Usage) + `}`)
-		parsed := evidence.Parse(raw, r.Scope.Protocol)
-		if parsed.Status != "verified" || parsed.Buckets == nil || r.Record.Observation.Buckets == nil || *parsed.Buckets != *r.Record.Observation.Buckets {
-			return false, ErrContractInvalid
-		}
-	}
 	repo, err := uc.contracts()
 	if err != nil {
 		return false, err
+	}
+	snapshot, err := repo.GetContract(ctx, r.Scope, r.Revision)
+	if err != nil {
+		return false, err
+	}
+	// Select the proof parser from the stored contract, never a producer-supplied
+	// revision. Re-parse raw usage independently before accepting claimed success.
+	if proof := r.Record.ContractProof; proof != nil {
+		trace := r.Record.ParameterContract
+		if trace == nil || trace.BindingRevision != r.BindingRevision || trace.IncidentRevision != r.IncidentRevision {
+			return false, ErrContractInvalid
+		}
+	}
+	if evidence.ContractObservation(r.Record, snapshot.Document).Status == "verified" && evidence.ValidateContractObservation(r.Record, snapshot.Document) != nil {
+		return false, ErrContractInvalid
 	}
 	return repo.RecordContractResult(ctx, r, uc.now())
 }
