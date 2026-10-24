@@ -1,0 +1,174 @@
+[
+  {
+    "phase": "before",
+    "snapshot": [
+      {
+        "kind": "wallet",
+        "users": 8,
+        "fingerprint": "5733a39c0dd8027792cf1717eaaa52ec2c10b19bd24a29628d7f61006f775f7a"
+      },
+      {
+        "kind": "ch11_user_ledgers",
+        "rows": 201
+      },
+      {
+        "gray": 0,
+        "kind": "binding",
+        "status": "candidate",
+        "current": "",
+        "failures": 0,
+        "revision": 0,
+        "complete_attempts": 0,
+        "incident_revision": 0
+      },
+      {
+        "id": "channel:11:2026-10-24",
+        "kind": "budget",
+        "calls": 80,
+        "paused": 0,
+        "unknown_calls": 0
+      },
+      {
+        "kind": "durable",
+        "rows": 80,
+        "purpose": "health_probe",
+        "category": "intent"
+      },
+      {
+        "kind": "durable",
+        "rows": 80,
+        "purpose": "health_probe",
+        "category": "terminal"
+      },
+      {
+        "kind": "durable",
+        "rows": 80,
+        "purpose": "health_probe",
+        "category": "checkpoint"
+      }
+    ]
+  },
+  {
+    "phase": "configured",
+    "revision": "49170c393d038e263c2544fb170b614f5b3455c6925389cae6c0f24e2e2b185a",
+    "expiry": 1792824022,
+    "backup": "/opt/micro-one-api/docker-compose/backups/contract-pilot-start-20261024T062522Z",
+    "max_paid_calls": 4,
+    "budget_cny": "0.10",
+    "targets": [
+      {
+        "source_kind": "channel",
+        "source_id": 1,
+        "calls_per_day": 6,
+        "input_tokens_per_day": 768,
+        "output_tokens_per_day": 96,
+        "max_output_tokens": 16,
+        "cost_per_day": 0,
+        "unknown_cost_calls_per_day": 6,
+        "protocol": "openai_chat",
+        "id": "ch1-inventory",
+        "inventory": true,
+        "model": ""
+      },
+      {
+        "source_kind": "channel",
+        "source_id": 1,
+        "calls_per_day": 6,
+        "input_tokens_per_day": 768,
+        "output_tokens_per_day": 96,
+        "max_output_tokens": 16,
+        "cost_per_day": 0,
+        "unknown_cost_calls_per_day": 6,
+        "protocol": "openai_chat",
+        "id": "ch1-qwen-json",
+        "model": "qwen3.8-flash",
+        "capability": "text",
+        "stream": false
+      },
+      {
+        "source_kind": "channel",
+        "source_id": 1,
+        "calls_per_day": 6,
+        "input_tokens_per_day": 768,
+        "output_tokens_per_day": 96,
+        "max_output_tokens": 16,
+        "cost_per_day": 0,
+        "unknown_cost_calls_per_day": 6,
+        "protocol": "openai_chat",
+        "id": "ch1-qwen-sse",
+        "model": "qwen3.8-flash",
+        "capability": "text",
+        "stream": true
+      },
+      {
+        "id": "ch11-inventory-bodyless",
+        "source_kind": "channel",
+        "source_id": 11,
+        "inventory": true,
+        "protocol": "openai_chat",
+        "calls_per_day": 304,
+        "input_tokens_per_day": 38912,
+        "output_tokens_per_day": 364,
+        "max_output_tokens": 1,
+        "cost_upper_bound": 0,
+        "cost_per_day": 0,
+        "unknown_cost_calls_per_day": 4
+      },
+      {
+        "calls_per_day": 304,
+        "input_tokens_per_day": 38912,
+        "output_tokens_per_day": 364,
+        "cost_per_day": 0,
+        "unknown_cost_calls_per_day": 4,
+        "id": "ch11-contract-pilot-json20261024",
+        "source_kind": "channel",
+        "source_id": 11,
+        "model": "deepseek-flash",
+        "protocol": "openai_chat",
+        "capability": "text",
+        "stream": false,
+        "inventory": false,
+        "contract_revision": "49170c393d038e263c2544fb170b614f5b3455c6925389cae6c0f24e2e2b185a",
+        "expires_at": 1792824022,
+        "max_output_tokens": 16
+      },
+      {
+        "calls_per_day": 304,
+        "input_tokens_per_day": 38912,
+        "output_tokens_per_day": 364,
+        "cost_per_day": 0,
+        "unknown_cost_calls_per_day": 4,
+        "id": "ch11-contract-pilot-sse20261024",
+        "source_kind": "channel",
+        "source_id": 11,
+        "model": "deepseek-flash",
+        "protocol": "openai_chat",
+        "capability": "text",
+        "stream": true,
+        "inventory": false,
+        "contract_revision": "49170c393d038e263c2544fb170b614f5b3455c6925389cae6c0f24e2e2b185a",
+        "expires_at": 1792824022,
+        "max_output_tokens": 16
+      }
+    ]
+  },
+  {
+    "phase": "started",
+    "services": [
+      {
+        "service": "relay-gateway",
+        "running": true,
+        "health": 200,
+        "image_id": "sha256:b90a5ec566b2e8e6e5d4f52b9e70f366705f260c4a045e335e17466ec432740a",
+        "restart_count": 0
+      },
+      {
+        "service": "monitor-worker",
+        "running": true,
+        "health": 200,
+        "image_id": "sha256:87ce8266df3724c642addbfb7f04d32dbbedfb41a570eaa24698d6ab88fd8f77",
+        "restart_count": 0
+      }
+    ]
+  }
+]

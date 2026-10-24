@@ -1,0 +1,107 @@
+Migration 142 local dialect validation 2026-10-24T06:30:22.219151+00:00
+Production access: none. Checkout source and migration files are not modified. Ports bind only 127.0.0.1.
+Disposable engines: mysql  Ver 8.4.11 for Linux on aarch64 (MySQL Community Server - GPL) / postgres (PostgreSQL) 16.15 (Debian 16.15-1.pgdg13+2)
+Opt-in DSNs are set for both engines; each formal helper creates and drops its own scratch schema.
+Formal command: go test ./platform/database/migrate -run ^TestIAMUpstreamContractWrite -count=1 -v
+=== RUN   TestIAMUpstreamContractWriteMigrationNeverReopensTemporaryGuard
+=== RUN   TestIAMUpstreamContractWriteMigrationNeverReopensTemporaryGuard/#00
+=== RUN   TestIAMUpstreamContractWriteMigrationNeverReopensTemporaryGuard/postgres
+=== RUN   TestIAMUpstreamContractWriteMigrationNeverReopensTemporaryGuard/sqlite
+--- PASS: TestIAMUpstreamContractWriteMigrationNeverReopensTemporaryGuard (0.00s)
+    --- PASS: TestIAMUpstreamContractWriteMigrationNeverReopensTemporaryGuard/#00 (0.00s)
+    --- PASS: TestIAMUpstreamContractWriteMigrationNeverReopensTemporaryGuard/postgres (0.00s)
+    --- PASS: TestIAMUpstreamContractWriteMigrationNeverReopensTemporaryGuard/sqlite (0.00s)
+=== RUN   TestIAMUpstreamContractWriteUpgradeDialects
+=== RUN   TestIAMUpstreamContractWriteUpgradeDialects/sqlite3
+=== RUN   TestIAMUpstreamContractWriteUpgradeDialects/sqlite3/root_only_and_replay_safe
+=== RUN   TestIAMUpstreamContractWriteUpgradeDialects/mysql
+=== RUN   TestIAMUpstreamContractWriteUpgradeDialects/mysql/root_only_and_replay_safe
+=== RUN   TestIAMUpstreamContractWriteUpgradeDialects/postgres
+=== RUN   TestIAMUpstreamContractWriteUpgradeDialects/postgres/root_only_and_replay_safe
+--- PASS: TestIAMUpstreamContractWriteUpgradeDialects (3.38s)
+    --- PASS: TestIAMUpstreamContractWriteUpgradeDialects/sqlite3 (0.12s)
+        --- PASS: TestIAMUpstreamContractWriteUpgradeDialects/sqlite3/root_only_and_replay_safe (0.12s)
+    --- PASS: TestIAMUpstreamContractWriteUpgradeDialects/mysql (2.73s)
+        --- PASS: TestIAMUpstreamContractWriteUpgradeDialects/mysql/root_only_and_replay_safe (2.73s)
+    --- PASS: TestIAMUpstreamContractWriteUpgradeDialects/postgres (0.53s)
+        --- PASS: TestIAMUpstreamContractWriteUpgradeDialects/postgres/root_only_and_replay_safe (0.53s)
+PASS
+ok  	micro-one-api/platform/database/migrate	4.056s
+Formal tests exit=0
+Additional negative cases use a temporary Go -overlay; formal SQL/runner/check-out files remain unchanged.
+Overlay SHA256=b118eededc21e8836412e952d1a4373a0280ac026f4a8c7e1e6df1b61baaac33
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/preserves_existing_deny_and_narrow_scope
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/preserves_existing_allow_and_narrow_scope
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/blocks_disabled_permission_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/blocks_archived_permission_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/blocks_wrong_owner_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/blocks_disabled_resource_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/blocks_disabled_root_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/blocks_nonbuiltin_root_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/blocks_missing_root_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/receipt_replay_keeps_later_disable
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/preserves_existing_deny_and_narrow_scope
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/preserves_existing_allow_and_narrow_scope
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/blocks_disabled_permission_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/blocks_archived_permission_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/blocks_wrong_owner_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/blocks_disabled_resource_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/blocks_disabled_root_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/blocks_nonbuiltin_root_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/blocks_missing_root_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/receipt_replay_keeps_later_disable
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/preserves_existing_deny_and_narrow_scope
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/preserves_existing_allow_and_narrow_scope
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/blocks_disabled_permission_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/blocks_archived_permission_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/blocks_wrong_owner_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/blocks_disabled_resource_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/blocks_disabled_root_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/blocks_nonbuiltin_root_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/blocks_missing_root_without_persistent_changes
+=== RUN   TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/receipt_replay_keeps_later_disable
+--- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay (28.05s)
+    --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3 (0.92s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/preserves_existing_deny_and_narrow_scope (0.11s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/preserves_existing_allow_and_narrow_scope (0.09s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/blocks_disabled_permission_without_persistent_changes (0.09s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/blocks_archived_permission_without_persistent_changes (0.09s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/blocks_wrong_owner_without_persistent_changes (0.09s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/blocks_disabled_resource_without_persistent_changes (0.09s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/blocks_disabled_root_without_persistent_changes (0.09s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/blocks_nonbuiltin_root_without_persistent_changes (0.09s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/blocks_missing_root_without_persistent_changes (0.09s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/sqlite3/receipt_replay_keeps_later_disable (0.09s)
+    --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql (22.95s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/preserves_existing_deny_and_narrow_scope (2.71s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/preserves_existing_allow_and_narrow_scope (2.61s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/blocks_disabled_permission_without_persistent_changes (2.66s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/blocks_archived_permission_without_persistent_changes (2.71s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/blocks_wrong_owner_without_persistent_changes (2.40s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/blocks_disabled_resource_without_persistent_changes (1.95s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/blocks_disabled_root_without_persistent_changes (1.95s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/blocks_nonbuiltin_root_without_persistent_changes (1.99s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/blocks_missing_root_without_persistent_changes (2.00s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/mysql/receipt_replay_keeps_later_disable (1.96s)
+    --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres (4.18s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/preserves_existing_deny_and_narrow_scope (0.42s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/preserves_existing_allow_and_narrow_scope (0.43s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/blocks_disabled_permission_without_persistent_changes (0.43s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/blocks_archived_permission_without_persistent_changes (0.41s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/blocks_wrong_owner_without_persistent_changes (0.41s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/blocks_disabled_resource_without_persistent_changes (0.41s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/blocks_disabled_root_without_persistent_changes (0.41s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/blocks_nonbuiltin_root_without_persistent_changes (0.44s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/blocks_missing_root_without_persistent_changes (0.41s)
+        --- PASS: TestIAMUpstreamContractWriteNegativeDialectsOverlay/postgres/receipt_replay_keeps_later_disable (0.41s)
+PASS
+ok  	micro-one-api/platform/database/migrate	28.541s
+Negative overlay tests exit=0
+Result: formal SQLite/MySQL/Postgres migration142 tests and all additional deny/narrow/disabled/archive/root/resource/receipt cases PASS; skipped=0.
+Cleanup disposable postgres: removed
+Cleanup disposable mysql: removed
+Validation finished 2026-10-24T06:31:00.540003+00:00

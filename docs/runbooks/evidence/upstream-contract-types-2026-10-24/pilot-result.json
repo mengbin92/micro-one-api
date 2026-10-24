@@ -1,0 +1,96 @@
+{
+  "date": "2026-10-24",
+  "timezone": "Asia/Shanghai",
+  "scope": {
+    "source_kind": "channel",
+    "source_id": 11,
+    "model": "deepseek-flash",
+    "protocol": "openai_chat"
+  },
+  "contract_revision": "49170c393d038e263c2544fb170b614f5b3455c6925389cae6c0f24e2e2b185a",
+  "binding": {
+    "gray": 1,
+    "kind": "binding",
+    "status": "gray",
+    "current": "49170c393d038e263c2544fb170b614f5b3455c6925389cae6c0f24e2e2b185a",
+    "failures": 0,
+    "revision": 1,
+    "complete_attempts": 0,
+    "incident_revision": 0
+  },
+  "actual_inference_calls": 2,
+  "limit_inference_calls": 4,
+  "budget_cny": "0.10",
+  "supplier_actual_charge": "unknown; no invoice or granular provider charge for these calls was obtained",
+  "tariff_estimate_cny": "0.000030",
+  "peak_tariff_estimate_bound_cny": "0.00006",
+  "estimate_basis": "official peak/off-peak tariff archived in official-basis.json; Saturday is off-peak; estimate is not a provider receipt",
+  "json_and_sse_verified": true,
+  "proofs": [
+    {
+      "kind": "proof",
+      "passed": 1,
+      "attempt_id": "canary_72ea72f5-2d5c-415c-af92-729eb144b8c3",
+      "completed_at": 1792823401,
+      "binding_revision": 0,
+      "incident_revision": 0
+    },
+    {
+      "kind": "proof",
+      "passed": 1,
+      "attempt_id": "canary_f5c0056c-e6bd-42a0-ae2b-94c504d35fe7",
+      "completed_at": 1792823407,
+      "binding_revision": 0,
+      "incident_revision": 0
+    }
+  ],
+  "attempts": [
+    {
+      "id": "canary_72ea72f5-2d5c-415c-af92-729eb144b8c3",
+      "kind": "attempt",
+      "permit": 1,
+      "stream": false,
+      "target": "ch11-contract-pilot-json20261024",
+      "buckets": [
+        7,
+        0,
+        0,
+        0,
+        2
+      ],
+      "outcome": "contract_verified",
+      "proof_status": "verified",
+      "native_status": "unsupported",
+      "proof_complete": true
+    },
+    {
+      "id": "canary_f5c0056c-e6bd-42a0-ae2b-94c504d35fe7",
+      "kind": "attempt",
+      "permit": 1,
+      "stream": true,
+      "target": "ch11-contract-pilot-sse20261024",
+      "buckets": [
+        7,
+        0,
+        0,
+        0,
+        2
+      ],
+      "outcome": "contract_verified",
+      "proof_status": "verified",
+      "native_status": "unsupported",
+      "proof_complete": true
+    }
+  ],
+  "paid_targets_removed": true,
+  "candidate_expires_at": 1792824022,
+  "wallet_fingerprint_unchanged": true,
+  "channel11_user_ledger_rows_before": 201,
+  "channel11_user_ledger_rows_after": 201,
+  "user_final_events": 0,
+  "native_billing_parser": "unchanged; native evidence remains unsupported while independent proof is verified",
+  "promoted_to_100_percent": false,
+  "promotion_pending": "30-minute/100-complete-verified-user-attempt/fresh-proof gate is not met",
+  "inventory_target_retained": true,
+  "inventory_source_budget_note": "Retains the 304-call source accounting ceiling including the four-call pilot allowance, with cost_upper_bound=0 on the remaining inventory target. No paid channel-11 target remains; historical counters are preserved."
+}

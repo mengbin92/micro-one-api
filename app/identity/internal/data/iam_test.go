@@ -83,7 +83,10 @@ func TestIAMStorageDialects(t *testing.T) {
 					"billing.vendor_report.read",
 					"channel.upstream_contract.read",
 					"billing.vendor_report.import",
-				}, bound, "only the reviewed read-page operations and vendor-report import are published before D0")
+					"channel.upstream_contract.create",
+					"channel.upstream_contract.publish",
+					"channel.upstream_contract.quarantine",
+				}, bound, "only the reviewed read-page, report-import and contract-pilot operations are published before D0")
 				for _, op := range authorization.Catalog() {
 					var row struct {
 						SupportedScopes, SupportedContextTypes string

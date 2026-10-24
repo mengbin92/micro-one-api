@@ -1,0 +1,58 @@
+{
+  "started_at": "2026-10-24T06:30:22.219151+00:00",
+  "finished_at": "2026-10-24T06:31:00.540003+00:00",
+  "scope": "Local disposable scratch schema validation only; no production access or mutations",
+  "result": "pass",
+  "skip_count": 0,
+  "engines": {
+    "sqlite3": "repository Go SQLite driver",
+    "mysql": "8.4.11 Linux aarch64 official mysql:8.4 image",
+    "postgres": "16.15 official postgres:16 image"
+  },
+  "opt_in_env_names": [
+    "IAM_VENDOR_IMPORT_TEST_MYSQL_DSN",
+    "IAM_VENDOR_IMPORT_TEST_POSTGRES_DSN"
+  ],
+  "credential_policy": "Existing repository local E2E fixture password; values are not recorded in this evidence",
+  "network": "Two newly created disposable containers; only dynamic 127.0.0.1 host ports; no production containers reused",
+  "formal_command": "go test ./platform/database/migrate -run ^TestIAMUpstreamContractWrite -count=1 -v",
+  "formal_exit_code": 0,
+  "database_scenarios_per_dialect": 11,
+  "database_scenarios_total": 33,
+  "formal_database_scenarios": [
+    "root_only_and_replay_safe: exact three grants, permission states, revision increments, audit, unrelated relations/users/sessions preserved, ordinary replay no-op"
+  ],
+  "supplemental_method": "Ephemeral Go -overlay appends test-only scenarios to the existing migration142 test file. Formal migration SQL, runner, helpers and checkout code remain unchanged. Supplementary cases are not claimed to be committed repository tests.",
+  "supplemental_overlay_sha256": "b118eededc21e8836412e952d1a4373a0280ac026f4a8c7e1e6df1b61baaac33",
+  "supplemental_exit_code": 0,
+  "supplemental_database_scenarios": [
+    "preserves_existing_deny_and_narrow_scope",
+    "preserves_existing_allow_and_narrow_scope",
+    "blocks_disabled_permission_without_persistent_changes",
+    "blocks_archived_permission_without_persistent_changes",
+    "blocks_wrong_owner_without_persistent_changes",
+    "blocks_disabled_resource_without_persistent_changes",
+    "blocks_disabled_root_without_persistent_changes",
+    "blocks_nonbuiltin_root_without_persistent_changes",
+    "blocks_missing_root_without_persistent_changes",
+    "receipt_replay_keeps_later_disable_after_runner_metadata_loss"
+  ],
+  "source_sha256": {
+    "migrations/142_publish_upstream_contract_write_permissions.sql": "b4e80be0afb7c035f0ab802b9e94b94a8c9ed50e81df2ac8df4a67cd3d114401",
+    "migrations/postgres/142_publish_upstream_contract_write_permissions.sql": "0737e716b7fc6e5de5acb547f2f52237a190e2ac60dc157111e5548b12c169c4",
+    "migrations/sqlite/142_publish_upstream_contract_write_permissions.sql": "deb77e7e06f9f544d787f3fa0eb6f10f2846b044c2128e44b490a1b002a58611",
+    "platform/database/migrate/iam_upstream_contract_write_test.go": "eadf46708c4bd6641dbd0bb46854d2640b2165cdb276c600243b5b8ba8aded4d",
+    "platform/database/migrate/iam_vendor_import_test.go": "dccfbd6cded886efaf62a423b3db2ba02910163a7a75abfaec90e6c2b43d63e0"
+  },
+  "log": "migration142-dialects.log",
+  "log_sha256": "81ae624b4b6172f56fccff6e85a4333ca576a7be97c66af4dc7cac69e67e4b00",
+  "cleanup": {
+    "mysql": "removed",
+    "postgres": "removed",
+    "remaining_containers_with_validation_label": 0
+  },
+  "limitations": [
+    "This is migration/schema validation, not production contract canary or financial coverage acceptance.",
+    "The supplemental test overlay remains in /private/tmp/upstream-contract-migration142-local for local review; it did not modify or add repository executable code."
+  ]
+}
