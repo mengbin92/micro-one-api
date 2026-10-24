@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-24",
+  "timezone": "Asia/Shanghai",
+  "local_verify": "passed",
+  "command": "make verify",
+  "raw_log_sha256": "bc8c36280e24d0d08344fe034c463178084ed629b7530e113f5070dac8c0c1f0",
+  "phases": [
+    "== make verify: format ==",
+    "== make verify: unit ==",
+    "== make verify: race ==",
+    "== make verify: architecture ==",
+    "== make verify: migration-check ==",
+    "== make verify: rbac-contract-check ==",
+    "== make verify: IAM browser acceptance checker ==",
+    "== make verify: generated frontend API types ==",
+    "== make verify: frontend (lint/test/critical coverage/build) ==",
+    "== make verify: all gates passed =="
+  ],
+  "frontend_test_counts": [
+    "Test Files  88 passed (88)",
+    "Tests  599 passed (599)",
+    "Test Files  16 passed (16)",
+    "Tests  191 passed (191)"
+  ],
+  "focused_race": "passed",
+  "permission142_sqlite_regression": "passed",
+  "permission142_production_mysql_runner": "passed",
+  "code_commit": "0a72f30747fb6d78e43876238d5ae4fa05f4cc1e",
+  "integration": "passed",
+  "integration_command": "go test ./internal/integration -count=1",
+  "permission142_dialects": "33 database scenarios passed across SQLite/MySQL/Postgres; zero skips",
+  "production_pilot": "two verified JSON/SSE calls, 1% gray, paid targets removed"
+}

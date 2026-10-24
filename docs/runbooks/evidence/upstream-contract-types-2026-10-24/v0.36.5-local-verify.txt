@@ -1,0 +1,14 @@
+== make verify: format ==
+== make verify: unit ==
+== make verify: race ==
+== make verify: architecture ==
+== make verify: migration-check ==
+== make verify: rbac-contract-check ==
+== make verify: IAM browser acceptance checker ==
+== make verify: generated frontend API types ==
+== make verify: frontend (lint/test/critical coverage/build) ==
+== make verify: all gates passed ==
+Test Files  88 passed (88)
+Tests  599 passed (599)
+Test Files  16 passed (16)
+Tests  191 passed (191)

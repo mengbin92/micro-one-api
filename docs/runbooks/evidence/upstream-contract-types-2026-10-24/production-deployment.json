@@ -1,0 +1,66 @@
+{
+  "at": "2026-10-24T06:35:01.390077+00:00",
+  "services": [
+    {
+      "service": "billing-service",
+      "image_id": "sha256:cbd44bece7d901101aa3d5fc7872b660822aa1b0d98c1ce7b0280a374450d587",
+      "source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "running": true,
+      "oom": false,
+      "restart_count": 0,
+      "http_port": 8004,
+      "http_health": 200,
+      "gate": "not-applicable",
+      "new_ch11_paid_targets": 0
+    },
+    {
+      "service": "channel-service",
+      "image_id": "sha256:5ff6c140d165ec0a34ab9d8d415c4156a2930a049228c693573d7c486f2db9c7",
+      "source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "running": true,
+      "oom": false,
+      "restart_count": 0,
+      "http_port": 8002,
+      "http_health": 200,
+      "gate": "true",
+      "new_ch11_paid_targets": 0
+    },
+    {
+      "service": "identity-service",
+      "image_id": "sha256:dd6ab6c049c07f562f28c26a856b2b8247e7b1445ea7141b740160f1215f393f",
+      "source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "running": true,
+      "oom": false,
+      "restart_count": 0,
+      "http_port": 8001,
+      "http_health": 200,
+      "gate": "not-applicable",
+      "new_ch11_paid_targets": 0
+    },
+    {
+      "service": "monitor-worker",
+      "image_id": "sha256:87ce8266df3724c642addbfb7f04d32dbbedfb41a570eaa24698d6ab88fd8f77",
+      "source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "running": true,
+      "oom": false,
+      "restart_count": 0,
+      "http_port": 8007,
+      "http_health": 200,
+      "gate": "true",
+      "new_ch11_paid_targets": 0
+    },
+    {
+      "service": "relay-gateway",
+      "image_id": "sha256:b90a5ec566b2e8e6e5d4f52b9e70f366705f260c4a045e335e17466ec432740a",
+      "source_digest": "51c83086f4370c0ab9b1a666707efc7871ad883deb71c9a9e44f91c4316a3088",
+      "running": true,
+      "oom": false,
+      "restart_count": 0,
+      "http_port": 8080,
+      "http_health": 200,
+      "gate": "true",
+      "new_ch11_paid_targets": 0
+    }
+  ],
+  "rollback": "rollback-20261024-140822"
+}

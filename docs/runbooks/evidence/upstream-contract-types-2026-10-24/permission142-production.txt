@@ -1,0 +1,8 @@
+applied 1 migration(s):
+  - 142_publish_upstream_contract_write_permissions
+migration142	1
+permissions	channel.upstream_contract.create	enabled	bound
+permissions	channel.upstream_contract.publish	enabled	bound
+permissions	channel.upstream_contract.quarantine	enabled	bound
+audit_receipt	1
+{"backup": "/opt/micro-one-api/docker-compose/backups/upstream-contract-142-20261024T061919Z", "backup_bytes": 141606, "migration_sha256": "b4e80be0afb7c035f0ab802b9e94b94a8c9ed50e81df2ac8df4a67cd3d114401", "financial_tables_touched": false}

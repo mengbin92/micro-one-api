@@ -1,0 +1,202 @@
+[
+  {
+    "phase": "removed",
+    "paid_targets_removed": 2,
+    "backup": "/opt/micro-one-api/docker-compose/backups/contract-pilot-stop-20261024T063128Z",
+    "remaining_targets": [
+      {
+        "source_kind": "channel",
+        "source_id": 1,
+        "calls_per_day": 6,
+        "input_tokens_per_day": 768,
+        "output_tokens_per_day": 96,
+        "max_output_tokens": 16,
+        "cost_per_day": 0,
+        "unknown_cost_calls_per_day": 6,
+        "protocol": "openai_chat",
+        "id": "ch1-inventory",
+        "inventory": true,
+        "model": ""
+      },
+      {
+        "source_kind": "channel",
+        "source_id": 1,
+        "calls_per_day": 6,
+        "input_tokens_per_day": 768,
+        "output_tokens_per_day": 96,
+        "max_output_tokens": 16,
+        "cost_per_day": 0,
+        "unknown_cost_calls_per_day": 6,
+        "protocol": "openai_chat",
+        "id": "ch1-qwen-json",
+        "model": "qwen3.8-flash",
+        "capability": "text",
+        "stream": false
+      },
+      {
+        "source_kind": "channel",
+        "source_id": 1,
+        "calls_per_day": 6,
+        "input_tokens_per_day": 768,
+        "output_tokens_per_day": 96,
+        "max_output_tokens": 16,
+        "cost_per_day": 0,
+        "unknown_cost_calls_per_day": 6,
+        "protocol": "openai_chat",
+        "id": "ch1-qwen-sse",
+        "model": "qwen3.8-flash",
+        "capability": "text",
+        "stream": true
+      },
+      {
+        "id": "ch11-inventory-bodyless",
+        "source_kind": "channel",
+        "source_id": 11,
+        "inventory": true,
+        "protocol": "openai_chat",
+        "calls_per_day": 304,
+        "input_tokens_per_day": 38912,
+        "output_tokens_per_day": 364,
+        "max_output_tokens": 1,
+        "cost_upper_bound": 0,
+        "cost_per_day": 0,
+        "unknown_cost_calls_per_day": 4
+      }
+    ]
+  },
+  {
+    "phase": "stopped",
+    "services": [
+      {
+        "service": "monitor-worker",
+        "running": true,
+        "health": 200,
+        "image_id": "sha256:87ce8266df3724c642addbfb7f04d32dbbedfb41a570eaa24698d6ab88fd8f77",
+        "restart_count": 0
+      },
+      {
+        "service": "relay-gateway",
+        "running": true,
+        "health": 200,
+        "image_id": "sha256:b90a5ec566b2e8e6e5d4f52b9e70f366705f260c4a045e335e17466ec432740a",
+        "restart_count": 0
+      }
+    ],
+    "snapshot": [
+      {
+        "kind": "wallet",
+        "users": 8,
+        "fingerprint": "5733a39c0dd8027792cf1717eaaa52ec2c10b19bd24a29628d7f61006f775f7a"
+      },
+      {
+        "kind": "ch11_user_ledgers",
+        "rows": 201
+      },
+      {
+        "gray": 1,
+        "kind": "binding",
+        "status": "gray",
+        "current": "49170c393d038e263c2544fb170b614f5b3455c6925389cae6c0f24e2e2b185a",
+        "failures": 0,
+        "revision": 1,
+        "complete_attempts": 0,
+        "incident_revision": 0
+      },
+      {
+        "kind": "proof",
+        "passed": 1,
+        "attempt_id": "canary_72ea72f5-2d5c-415c-af92-729eb144b8c3",
+        "completed_at": 1792823401,
+        "binding_revision": 0,
+        "incident_revision": 0
+      },
+      {
+        "kind": "proof",
+        "passed": 1,
+        "attempt_id": "canary_f5c0056c-e6bd-42a0-ae2b-94c504d35fe7",
+        "completed_at": 1792823407,
+        "binding_revision": 0,
+        "incident_revision": 0
+      },
+      {
+        "id": "canary_72ea72f5-2d5c-415c-af92-729eb144b8c3",
+        "kind": "attempt",
+        "permit": 1,
+        "stream": false,
+        "target": "ch11-contract-pilot-json20261024",
+        "buckets": [
+          7,
+          0,
+          0,
+          0,
+          2
+        ],
+        "outcome": "contract_verified",
+        "proof_status": "verified",
+        "native_status": "unsupported",
+        "proof_complete": true
+      },
+      {
+        "id": "canary_f5c0056c-e6bd-42a0-ae2b-94c504d35fe7",
+        "kind": "attempt",
+        "permit": 1,
+        "stream": true,
+        "target": "ch11-contract-pilot-sse20261024",
+        "buckets": [
+          7,
+          0,
+          0,
+          0,
+          2
+        ],
+        "outcome": "contract_verified",
+        "proof_status": "verified",
+        "native_status": "unsupported",
+        "proof_complete": true
+      },
+      {
+        "id": "channel:11:2026-10-24",
+        "kind": "budget",
+        "calls": 83,
+        "paused": 0,
+        "unknown_calls": 2
+      },
+      {
+        "kind": "durable",
+        "rows": 81,
+        "purpose": "health_probe",
+        "category": "intent"
+      },
+      {
+        "kind": "durable",
+        "rows": 81,
+        "purpose": "health_probe",
+        "category": "terminal"
+      },
+      {
+        "kind": "durable",
+        "rows": 81,
+        "purpose": "health_probe",
+        "category": "checkpoint"
+      },
+      {
+        "kind": "durable",
+        "rows": 2,
+        "purpose": "canary",
+        "category": "intent"
+      },
+      {
+        "kind": "durable",
+        "rows": 3,
+        "purpose": "canary",
+        "category": "checkpoint"
+      },
+      {
+        "kind": "durable",
+        "rows": 2,
+        "purpose": "canary",
+        "category": "terminal"
+      }
+    ]
+  }
+]

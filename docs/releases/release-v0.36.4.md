@@ -2,9 +2,9 @@
 
 > 2026-10-24 · 上一版：[v0.36.3](./release-v0.36.3.md)（2026-10-21）· [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.36.4)
 
-v0.36.4 是 v0.36.3 之后的 **PATCH 修复版本**：上游有限契约在转换前校验字段类型，类型漂移明确失败；修复首次契约灰度对未选中请求的阻断，补齐有到期时间的 DeepSeek 独立契约证明试点。同时收录供应商报告导入、历史费用证据、安全依赖及 CI 修复。新增 Identity 140、142 与 Billing 141 迁移；上游契约证明与用户收费口径分别验证。
+v0.36.4 是 v0.36.3 之后的 **PATCH 修复版本**：上游有限契约在转换前校验字段类型，类型漂移明确失败；修复首次契约灰度对未选中请求的阻断，补齐有到期时间的 DeepSeek 独立契约证明能力与试点计划。同时收录供应商报告导入、历史费用证据、安全依赖及 CI 修复。相对 v0.36.3 新增 Identity 140、Billing 141 迁移；上游契约证明与用户收费口径分别验证。
 
-**发布准备状态**：本文件为待最终验证的发布制品初稿。此次修复的完整测试、生产部署、契约试点及标签 workflow 结果由下方“验证”补齐；不能将候选资料或历史验收写成本次上线成功。
+**发布状态**：`v0.36.4` 已发布，tag 指向 `f64304c45a830dd27f3de8526f758535ad0912ec`，[Release workflow](https://github.com/mengbin92/micro-one-api/actions/runs/40054191408) 全部成功。本页随后按实际发布结果更正初稿状态；tag 保持不变。后续 Identity 142、生产契约启用与渠道 11 实际试点属于 [v0.36.5](./release-v0.36.5.md)，不计入 v0.36.4 tag 的交付范围。
 
 ## 修复与改进
 
@@ -30,13 +30,13 @@ v0.36.4 是 v0.36.3 之后的 **PATCH 修复版本**：上游有限契约在转�
 
 **修复**：为精确 DeepSeek Flash / Chat profile 安装独立 proof parser/usage pair，由冻结的权威契约选择并在 owner 重新解析原生证据；JSON/SSE 证明独立保存。参数契约验证不更换原生结算 parser、算法、收费名单或历史账本。候选资料固定来源 11、精确模型 `deepseek-flash`、`/chat/completions`、Chat inbound、官方依据与独立 fixture SHA-256，只约束 `stream` 与 `stream_options.include_usage` 的 boolean 类型。
 
-**影响服务**：`relay-gateway`、`channel-service` 及承载原生证据的消费者；具体部署顺序以本次验证记录为准。
+**影响服务**：`relay-gateway`、`channel-service` 及承载原生证据的消费者。生产部署与实际试点结果另随 v0.36.5 记录。
 
 ### 4. 有界探测到期停止，保留库存额度
 
 **根因**：既有预算按来源和 UTC 日计数，缺少 target 到期时间；把每日四次写成“一次试点最多四次”，会在跨日或进程重启后重复执行。DeepSeek 受控文本探测还需要明确关闭 thinking，并为 SSE 请求完整 usage。
 
-**修复**：探测目标增加可选 `expires_at`，Monitor 与 Relay 在准入前检查。此次试点最多四次推理、0.10 CNY 授权上限，到期早于当前 UTC 日切换，结束后撤去付费目标；保留库存原有 300 次额度，并将同来源总预算明确增加四次、512 输入和 64 输出 token。按当前官方高峰单价、每次最多 128 输入/16 输出估计，四次保守上界为 **0.001536 CNY**，该估计不冒充供应商实扣。具体到期值及真实调用结果仍待落盘。
+**修复**：探测目标增加可选 `expires_at`，Monitor 与 Relay 在准入前检查。版本附带的试点计划限定最多四次推理、0.10 CNY 授权上限，到期早于当前 UTC 日切换，结束后撤去付费目标；保留库存原有 300 次额度，并将同来源总预算明确增加四次、512 输入和 64 输出 token。按 2026-10-24 官方高峰单价、每次最多 128 输入/16 输出估计，四次保守上界为 **0.001536 CNY**，该估计不冒充供应商实扣。计划、运行时能力和真实调用结果分别留证，生产试点不由本版 Release 成功代替验收。
 
 **影响服务**：`monitor-worker`、`relay-gateway`；运维探测配置。
 
@@ -58,29 +58,28 @@ v0.36.4 是 v0.36.3 之后的 **PATCH 修复版本**：上游有限契约在转�
 
 ## 兼容性说明
 
-- 从 v0.36.3 升级需确认 Identity 140、142 与 Billing 141；这两项迁移已随 10 月 23 日供应商修复部署的环境无需重复执行。更早环境先完成对应历史迁移。
+- 从 v0.36.3 升级需确认 Identity 140、Billing 141；这两项迁移已随 10 月 23 日供应商修复部署的环境无需重复执行。更早环境先完成对应历史迁移。Identity 142 不在 v0.36.4 tag 中，由 v0.36.5 发布。
 - `rename/default` 新增显式类型要求，运行时 build 已变化；契约内容 hash、绑定 revision 与事故 revision 继续分别记录，旧契约不能用修改原记录的方式升级。
 - `expires_at` 为可选探测配置，只有安装了到期检查的 Monitor/Relay 才能执行本次一次性付费试点；新消费者应先于生产者升级。
 - DeepSeek 新 profile 仅用于契约证明。用户价格、钱包、结算 parser、收费 allowlist 与财务覆盖结论不因证明成功而改变。
+- v0.36.4 没有为既有冻结 builtin root 增加契约 create/publish/quarantine grant；需要这些写入能力的环境先完成 v0.36.5 的经授权发布步骤。
 - 前端继续由宿主机 `/opt/web/dist` 提供，后端镜像升级不能替代前端发布。
 
 ## 升级步骤
 
-1. 备份生产 Compose、环境、当前镜像及数据库；核对已有 140/141/142 迁移和权限状态。备份中含秘密的文件只保留在生产、使用最小文件权限。
+1. 备份生产 Compose、环境、当前镜像及数据库；核对已有 140/141 迁移和权限状态。备份中含秘密的文件只保留在生产、使用最小文件权限。
 2. 在本机或 CI 跨构建 linux/amd64 镜像，先升级证据消费者与 Channel，再更新 Relay/Monitor；生产主机只加载镜像。按实际版本差异更新 Billing/Identity 和独立前端。
 3. 先确认服务健康与专用服务凭据信任链，再按审核配置启用 Channel/Relay/Monitor 的契约 gate。gate 开启与精确来源绑定发布分别验收。
-4. 通过正常 IAM 会话执行明确的权限生命周期与 owner 契约 API，保存不可变候选 revision。按[试点计划](../runbooks/evidence/upstream-contract-types-2026-10-24/pilot-plan.json)配置相同 source 预算、短到期时间与最多四次推理；不得伪造成功证明或扩大收费范围。
+4. 契约写入须使用已授权的正常 IAM 会话和 owner API；既有冻结 builtin root 的三项写权限需要后续 v0.36.5 / Identity 142，不能仅凭本版启动成功认为已经可写。按[试点计划](../runbooks/evidence/upstream-contract-types-2026-10-24/pilot-plan.json)另行核对精确 revision、相同 source 预算、短到期时间与最多四次推理。
 5. 独立 canary 通过后才按当前 binding CAS 发布 1–5% 灰度。晋级仍要求至少 30 分钟、100 个完整 verified attempt、零失败与 fresh proof；四次试点不能替代该门槛。完成或失败后移除付费探测目标并记录对账与用户账本无变更检查。
 6. 回退使用备份的兼容应用、配置与前端；保留数据库、证据、审计、outbox 和不可变历史。已有绑定来源不能靠关闭 gate 绕过持久隔离。
 
 ## 验证
 
-- **待填**：类型漂移 red/green、rename/default/null/零值/嵌套路径与发送前拒绝回归，当前变更的完整单元、竞态、分层及生成检查。
-- **待填**：首次灰度基线与 quarantine 回归、独立 DeepSeek JSON/SSE proof/owner 重验/收费隔离、目标到期与共享预算回归。
-- **待填**：本次 linux/amd64 制品、部署源码摘要、实际镜像、健康、gate 状态、不可变候选及真实最多四次调用的脱敏证据。不得将计划状态写成已通过。
-- **待填**：试点实际 CNY 费用或明确的未知状态、钱包/用户 ledger/用户价格无变更检查、付费目标撤销与到期验证。
-- 历史供应商修复的核验、生产制品与原始材料保留于上述 10 月 23 日记录；这些材料不能代替本次契约试点验收。
-- **待填**：最终 develop/main CI、Release workflow 与双架构制品结果；只有对应实际 workflow 成功后更新结论。
+- 发布前本地完整 `make verify` 通过，包含 Go 单元与竞态、分层、迁移治理、876 项 RBAC 入口契约、IAM 浏览器结果检查器和生成检查；前端 88 文件 / 599 项测试及关键覆盖 16 文件 / 191 项测试通过，lint、生产构建和六项资产预算通过。关键覆盖测试与全量测试有重叠，不累计为额外独立用例。原始[验收日志](../runbooks/evidence/upstream-contract-types-2026-10-24/v0.36.4-local-verify.log)已保留。
+- [Release workflow 40054191408](https://github.com/mengbin92/micro-one-api/actions/runs/40054191408) 的 head 与 tag 一致，最终 `completed/success`：Compose E2E、真实 Owner IAM 浏览器矩阵、管理端 Playwright smoke、MySQL/SQLite Routing v2 验收、九服务 amd64/arm64 构建与 manifest 校验、GitHub Release 发布均成功。公开[任务结论索引](../runbooks/evidence/upstream-contract-types-2026-10-24/v0.36.4-release-workflow.json)随本页更正保留。
+- 历史供应商修复的核验、生产制品与原始材料保留于上述 10 月 23 日记录；这部分证据不等同于新契约的生产试点。
+- v0.36.4 发布证明代码与制品已通过对应关卡。Identity 142、生产 gate/绑定发布、真实付费调用及财务无副作用检查属于 v0.36.5 的后续部署与验收记录；本页不追记为 v0.36.4 tag 自带结果。
 
 ## 完整变更日志
 
@@ -92,4 +91,6 @@ v0.36.4 是 v0.36.3 之后的 **PATCH 修复版本**：上游有限契约在转�
 - `docs(billing): verify DeepSeek costs by request time`
 - `fix(ci): align migration test expectations with releases`
 - `feat(billing): retain retrospective vendor cost evidence`
-- **待填**：本轮类型契约、独立证明、到期探测修复及 `docs(release): v0.36.4` 的最终 Conventional Commit subjects。
+- `fix(upstream): reject type drift and verify contract proofs independently`
+- `fix(monitor): expire bounded probes and guard contract-proof budgets`
+- `docs(release): v0.36.4`

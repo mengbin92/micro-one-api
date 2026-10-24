@@ -1,0 +1,8 @@
+ok  	micro-one-api/domain/upstream/contract	1.653s
+ok  	micro-one-api/domain/upstream/evidence	1.691s
+ok  	micro-one-api/domain/execution	1.578s
+ok  	micro-one-api/app/channel/internal/biz	1.803s
+ok  	micro-one-api/app/channel/internal/data	6.704s
+ok  	micro-one-api/internal/data	3.885s
+ok  	micro-one-api/app/monitor/internal/biz	1.508s
+ok  	micro-one-api/app/monitor/internal/data	1.960s
