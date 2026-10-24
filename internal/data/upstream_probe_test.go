@@ -5,6 +5,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"io"
 	"micro-one-api/domain/execution"
+	"micro-one-api/domain/upstream/contract"
+	"micro-one-api/domain/upstream/evidence"
 	"micro-one-api/domain/upstream/provider"
 	"micro-one-api/internal/adaptor"
 	"micro-one-api/internal/biz"
@@ -19,6 +21,78 @@ import (
 type probeBillingFixture struct {
 	mu     sync.Mutex
 	events []execution.Event
+}
+
+type proofProbeChannelFixture struct {
+	probeChannelFixture
+	snapshot   contract.Snapshot
+	reported   *evidence.Record
+	capability bool
+}
+
+func (f *proofProbeChannelFixture) GetProbeSource(context.Context, string, int64) (biz.ProbeSource, error) {
+	return biz.ProbeSource{Revision: "fixed-source", Channel: &biz.Channel{ID: 11, Type: provider.ChannelTypeDeepSeek, BaseURL: f.url, Key: "fixture-only"}}, nil
+}
+func (f *proofProbeChannelFixture) AcquireContractProbe(context.Context, contract.Scope, string, string) (contract.ProbeLease, error) {
+	return contract.ProbeLease{ID: "fixed-lease", Snapshot: f.snapshot, SourceRevision: "fixed-source"}, nil
+}
+func (f *proofProbeChannelFixture) ReportContractProbe(_ context.Context, _ contract.Scope, _ contract.ProbeLease, _ string, raw []byte, capability bool) error {
+	var record evidence.Record
+	if err := jsonx.Unmarshal(raw, &record); err != nil {
+		return err
+	}
+	f.reported, f.capability = &record, capability
+	return nil
+}
+
+func TestDeepSeekCanaryKeepsNativeIntentAndPersistsIndependentProof(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+	for _, stream := range []bool{false, true} {
+		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				var body map[string]any
+				require.NoError(t, jsonx.NewDecoder(request.Body).Decode(&body))
+				require.Equal(t, map[string]any{"type": "disabled"}, body["thinking"])
+				if stream {
+					require.Equal(t, map[string]any{"include_usage": true}, body["stream_options"])
+				}
+				payload := `{"id":"fixed-upstream","object":"chat.completion","choices":[{"finish_reason":"stop","message":{"content":"OK"}}],"usage":{"prompt_tokens":8,"completion_tokens":1,"total_tokens":9,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":8}}`
+				if stream {
+					w.Header().Set("Content-Type", "text/event-stream")
+					_, _ = io.WriteString(w, "data: {\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: "+payload+"\n\ndata: [DONE]\n\n")
+				} else {
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = io.WriteString(w, payload)
+				}
+			}))
+			defer upstream.Close()
+			doc := contract.Document{Scope: contract.Scope{Kind: "channel", ID: 11, Model: "deepseek-flash", Protocol: "openai_chat"}, Provider: "deepseek", AdapterBuild: contract.BuildID, ParserRevision: contract.DeepSeekProofParserID, UsageRevision: contract.DeepSeekProofUsageID, Inbound: []string{"openai_chat"}, FixtureEvidence: "official-pilot", BasisRevision: "official-schema"}
+			snapshot, err := contract.Compile(doc)
+			require.NoError(t, err)
+			channels := &proofProbeChannelFixture{probeChannelFixture: probeChannelFixture{url: upstream.URL}, snapshot: snapshot}
+			billing := &probeBillingFixture{}
+			path := filepath.Join(t.TempDir(), "proof-outbox.db")
+			data, cleanup, err := NewExecutionData(path, billing)
+			require.NoError(t, err)
+			defer cleanup()
+			factory := provider.NewProviderFactory(0)
+			adaptor.SetProviderFactory(factory)
+			repo := NewUpstreamProbeRepo(channels, biz.NewExecutionDelivery(NewExecutionOutboxRepo(data, path)), factory)
+			result, err := repo.Probe(context.Background(), execution.ProbeTarget{ID: "deepseek-proof", SourceKind: "channel", SourceID: 11, Model: "deepseek-flash", Protocol: "openai_chat", Stream: stream, MaxOutputTokens: 16, ContractRevision: snapshot.Revision}, "deepseek-proof-attempt")
+			require.NoError(t, err)
+			require.Equal(t, "contract_verified", result.Outcome)
+			require.True(t, channels.capability)
+			require.NotNil(t, channels.reported)
+			require.Equal(t, "unsupported", channels.reported.Observation.Status)
+			require.True(t, evidence.ContractVerified(channels.reported, doc))
+			for _, event := range billing.events {
+				require.Equal(t, evidence.ParserRevision, event.Intent.ParserRevision)
+				require.Equal(t, evidence.ContractRevision, event.Intent.ContractRevision)
+				require.Empty(t, event.Final)
+			}
+			require.NotNil(t, billing.events[len(billing.events)-1].Record.ContractProof)
+		})
+	}
 }
 
 func TestInventoryProbeUsesBodylessGET(t *testing.T) {

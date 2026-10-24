@@ -11,12 +11,14 @@ import (
 
 type schedulerFixture struct {
 	at       []time.Time
+	targets  []string
 	outcome  string
 	complete func()
 }
 
-func (f *schedulerFixture) ReserveProbe(_ context.Context, _ execution.ProbeTarget, _ string, now time.Time) (bool, error) {
+func (f *schedulerFixture) ReserveProbe(_ context.Context, target execution.ProbeTarget, _ string, now time.Time) (bool, error) {
 	f.at = append(f.at, now)
+	f.targets = append(f.targets, target.ID)
 	return true, nil
 }
 func (f *schedulerFixture) CompleteProbe(context.Context, execution.ProbeTarget, execution.ProbeResult) error {
@@ -50,4 +52,55 @@ func TestSuccessfulProbeRepeatsWithinConfiguredPeriod(t *testing.T) {
 	s.Run(ctx, func(err error) { require.NoError(t, err) })
 	require.Len(t, f.at, 2)
 	require.LessOrEqual(t, f.at[1].Sub(f.at[0]), time.Minute, "success must not skip the next ticker and silently double the configured period")
+}
+
+func TestExpiredProbeNeverReservesBudget(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	now := time.Date(2026, 10, 24, 1, 0, 0, 0, time.UTC)
+	f := &schedulerFixture{outcome: "success", complete: cancel}
+	s, err := NewUpstreamProbeScheduler(f, f, []execution.ProbeTarget{{ID: "expired", Protocol: "openai_chat", ExpiresAt: now.Add(-time.Second).Unix()}}, time.Minute)
+	require.NoError(t, err)
+	s.now = func() time.Time { return now }
+	s.wait = func(ctx context.Context, delay time.Duration) bool {
+		now = now.Add(delay)
+		return ctx.Err() == nil
+	}
+	s.Run(ctx, func(err error) { require.NoError(t, err) })
+	require.Empty(t, f.at, "expired configuration must not reserve budget or reach the relay")
+}
+
+func TestProbeExpirationDuringSchedulerWaitPreventsReservation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	now := time.Date(2026, 10, 24, 1, 0, 0, 0, time.UTC)
+	f := &schedulerFixture{outcome: "success", complete: cancel}
+	s, err := NewUpstreamProbeScheduler(f, f, []execution.ProbeTarget{{ID: "expires-soon", Protocol: "openai_chat", ExpiresAt: now.Add(time.Second).Unix()}}, time.Minute)
+	require.NoError(t, err)
+	s.now = func() time.Time { return now }
+	s.wait = func(ctx context.Context, delay time.Duration) bool {
+		now = now.Add(delay)
+		return ctx.Err() == nil
+	}
+	s.Run(ctx, func(err error) { require.NoError(t, err) })
+	require.Empty(t, f.at, "expiration must be checked after waiting, before reserving budget")
+}
+
+func TestExpiredProbeDoesNotPreventExistingOngoingTarget(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	now := time.Date(2026, 10, 24, 1, 0, 0, 0, time.UTC)
+	f := &schedulerFixture{outcome: "success", complete: cancel}
+	s, err := NewUpstreamProbeScheduler(f, f, []execution.ProbeTarget{
+		{ID: "expired", Protocol: "openai_chat", ExpiresAt: now.Add(-time.Second).Unix()},
+		{ID: "ongoing", Protocol: "openai_chat"},
+	}, time.Minute)
+	require.NoError(t, err)
+	s.now = func() time.Time { return now }
+	s.wait = func(ctx context.Context, delay time.Duration) bool {
+		now = now.Add(delay)
+		return ctx.Err() == nil
+	}
+	s.Run(ctx, func(err error) { require.NoError(t, err) })
+	require.Equal(t, []string{"ongoing"}, f.targets)
 }

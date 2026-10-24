@@ -6,6 +6,7 @@ import (
 	"micro-one-api/domain/execution"
 	"micro-one-api/platform/security/serviceidentity"
 	"testing"
+	"time"
 )
 
 type probeRepoFixture struct{ calls int }
@@ -37,4 +38,24 @@ type probePermitFixture bool
 
 func (p probePermitFixture) ClaimProbePermit(context.Context, string, string, string) (bool, error) {
 	return bool(p), nil
+}
+
+type countingProbePermit struct{ calls int }
+
+func (p *countingProbePermit) ClaimProbePermit(context.Context, string, string, string) (bool, error) {
+	p.calls++
+	return true, nil
+}
+
+func TestExpiredProbeStopsBeforePermitAndSupplier(t *testing.T) {
+	r := &probeRepoFixture{}
+	p := &countingProbePermit{}
+	u := NewUpstreamProbeUsecase(r, []execution.ProbeTarget{{ID: "expired", ExpiresAt: time.Now().Add(-time.Second).Unix()}})
+	u.SetProbePermitClient(p)
+	method := "/api.relay.v1.RelayService/ProbeUpstream"
+	ctx := serviceidentity.WithRPCMethod(serviceidentity.WithPrincipal(context.Background(), serviceidentity.Principal{Name: "monitor", Dedicated: true}), method)
+	_, err := u.Probe(ctx, "expired", "attempt")
+	require.ErrorContains(t, err, "expired")
+	require.Zero(t, p.calls, "an expired target cannot consume a one-shot permit")
+	require.Zero(t, r.calls, "an expired target cannot call the supplier")
 }
