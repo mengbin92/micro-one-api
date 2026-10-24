@@ -7,10 +7,24 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.36.4] - 2026-10-24
+
+v0.36.4 是 v0.36.3 之后的 **PATCH 修复版本**：上游参数契约在转换前严格检查类型，修复首次灰度基线，补齐独立 DeepSeek 契约证明与到期探测；同时收录供应商报告导入、历史费用证据、安全依赖与 CI 修复。新增 Identity 140、Billing 141；契约试点与用户收费分别验收。当前发布验证和部署结果待最终填写，详见 [release-v0.36.4.md](docs/releases/release-v0.36.4.md)。
+
 ### Fixed
 
+- 上游 `rename/default` 规则必须声明显式类型，转换前校验消费路径；类型漂移返回契约 revision、rule ID、字段路径与预期/实际类型，保留 null、零值和未知普通 JSON。
+- 首次契约灰度在没有 previous revision 时为未选中请求保留既有基线，事故 quarantine 继续阻断对应协议。
+- 供应商报告导入使用有界事件批次与 Billing 141 intent 索引；Identity 140 增量发布经批准的导入权限，前端补齐预览、重复提交保护和不确定结果回读。
 - 内存验收工具通过 `os.Root` 读取固定 cgroup 目录并限制报告写入目录，拒绝越界符号链接；补齐报告写入边界回归，消除 G304/G703 告警。
 - 更新 `follow-redirects` 至 1.16.1，修复跨域重定向凭据泄漏 CVE-2026-111755 / CVE-2026-111756；Vite 保持 8.1 分支并更新至 8.1.6，修复开发服务器 launch-editor 参数处理漏洞。
+- 同步 CI 迁移期望与经审查的历史资产校验记录。
+
+### Added
+
+- DeepSeek Flash / Chat 安装独立契约 proof parser/usage pair，owner 重新验证原生 usage；固定精确来源、模型、协议与官方/fixture 摘要，原生结算 parser 和用户收费门禁保持。
+- 探测目标增加可选 `expires_at`，Monitor/Relay 在准入前检查；渠道 11 试点计划明确最多四次推理、到期早于 UTC 日切换及 0.10 CNY 预算，真实结果独立记录。
+- 供应商历史费用使用精确十进制回放、显式归档来源与独立终结证据，以不可变后继版本保存，正式覆盖和未知状态保持。
 
 ## [0.36.3] - 2026-10-21
 

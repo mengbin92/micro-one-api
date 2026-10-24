@@ -1,0 +1,45 @@
+{
+  "date": "2026-10-24",
+  "timezone": "Asia/Shanghai",
+  "status": "planned; production writes and paid pilot results are not recorded by this plan",
+  "scope": {"source_kind": "channel", "source_id": 11, "upstream_model_id": "deepseek-flash", "protocol": "openai_chat"},
+  "candidate_file": "channel11-candidate.json",
+  "basis_file": "official-basis.json",
+  "installed_identity": {"adapter_build": "finite-contract-runtime-2026-10-24.1", "parser_revision": "deepseek-contract-proof-2026-10-24.1", "usage_revision": "deepseek-official-cache-proof-2026-10-24.1"},
+  "maximum_lifetime_inference_calls": 4,
+  "budget_currency": "CNY",
+  "maximum_lifetime_supplier_spend": "0.10",
+  "tariff_upper_bound_estimate": {
+    "basis": "Official peak tariff retrieved 2026-10-24; conservative estimate rather than provider-reported actual charge",
+    "max_input_tokens_per_call": 128,
+    "max_output_tokens_per_call": 16,
+    "uncached_input_cny_per_million": "2",
+    "output_cny_per_million": "8",
+    "per_call_cny": "0.000384",
+    "four_call_cny": "0.001536",
+    "remaining_below_authorized_budget_cny": "0.098464"
+  },
+  "fixed_probe_request": {"messages": [{"role": "user", "content": "Reply OK."}], "model": "deepseek-flash", "max_tokens": 16, "thinking": {"type": "disabled"}, "tools": "absent", "stream": "false for JSON; true for SSE", "stream_options": "include_usage=true only for SSE", "automatic_supplier_retries": 0},
+  "expiry": {
+    "field": "expires_at",
+    "unit": "Unix UTC seconds",
+    "expression_at_configuration": "min(now_utc + 3600, end_of_current_utc_day - 1)",
+    "required_guards": ["Monitor checks expiry before reserving budget", "Relay checks expiry before permit admission or supplier send", "Both paid targets expire strictly before the same UTC-day budget resets", "Remove the paid targets immediately after completion or failure; expiry remains a restart-safe fallback"],
+    "configured_expiry": null,
+    "note": "No future-day renewal or recurring paid pilot authorization"
+  },
+  "inventory_allowance_preserved": {"target_id": "ch11-inventory-bodyless", "calls_per_day": 300, "input_tokens_per_day": 38400, "output_tokens_per_day": 300, "max_output_tokens": 1, "cost_upper_bound": 0},
+  "additional_inference_allowance": {"calls": 4, "input_tokens": 512, "output_tokens": 64, "unknown_cost_calls": 4},
+  "shared_source_daily_budget_during_pilot": {"calls_per_day": 304, "input_tokens_per_day": 38912, "output_tokens_per_day": 364, "cost_per_day": 0, "unknown_cost_calls_per_day": 4},
+  "source_budget_notes": ["All channel 11 targets must carry identical source daily budgets", "Keep inventory cost_upper_bound=0 and its one-token placeholder allocation", "Paid JSON/SSE targets omit cost_upper_bound and share at most four explicit unknown-cost exposures before expiry", "The zero integer cost budget does not mean inference is free", "All channel 1 targets remain unchanged"],
+  "candidate_lifecycle": {
+    "create": "Normal authenticated IAM session and owner CreateUpstreamContract API",
+    "probe": "Monitor durable reserve -> relay exact target permit -> owner candidate lease -> one supplier send -> independent installed proof -> owner result",
+    "publish": "Only after a passing exact revision/source/binding/incident proof within five minutes; CAS expected binding revision and 1-5 percent gray",
+    "first_binding_baseline": "Requests outside the first gray selection retain the existing unbound adapter path; quarantine still blocks the affected protocol",
+    "promotion": "At least 30 minutes, 100 complete verified attempts, zero failures, and fresh proof; four pilot calls cannot establish this gate"
+  },
+  "required_financial_non_effect_assertions": {"new_user_billing_ledger_entries": 0, "wallet_mutations": 0, "customer_price_changes": 0, "supplier_price_changes": 0, "billing_profile_or_charge_allowlist_changes": 0, "historical_report_or_ledger_overwrites": 0},
+  "proof_boundary": "DeepSeek contract proof validates the parameter-contract pilot only. The installed native settlement parser, canonical charge status, billing algorithm, customer prices and ledgers keep their independent gates.",
+  "production_results": {"deployment": "pending", "runtime_gates_enabled": "pending", "candidate_created": "pending", "probe_calls": "pending", "supplier_actual_cost": "pending", "binding_publication": "pending", "promotion": "not authorized by four-call evidence alone", "financial_non_effect_verification": "pending"}
+}

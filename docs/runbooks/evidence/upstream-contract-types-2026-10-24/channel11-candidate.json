@@ -1,0 +1,20 @@
+{
+  "document": {
+    "scope": {"source_kind": "channel", "source_id": 11, "upstream_model_id": "deepseek-flash", "protocol": "openai_chat"},
+    "provider": "deepseek",
+    "adapter_build": "finite-contract-runtime-2026-10-24.1",
+    "parser_revision": "deepseek-contract-proof-2026-10-24.1",
+    "usage_revision": "deepseek-official-cache-proof-2026-10-24.1",
+    "endpoint": "/chat/completions",
+    "inbound_protocols": ["openai_chat"],
+    "rule_sets": [
+      {"level": "model", "rules": [
+        {"id": "deepseek-flash-stream-boolean-20261024", "kind": "reject", "path": "stream", "type": "boolean", "evidence_id": "official-basis.json:2026-10-24:chat-schema:stream"},
+        {"id": "deepseek-flash-include-usage-boolean-20261024", "kind": "reject", "path": "stream_options.include_usage", "type": "boolean", "evidence_id": "official-basis.json:2026-10-24:chat-schema:include_usage"}
+      ]}
+    ],
+    "fixture_evidence_id": "sha256:d74fc566f772749c9308c78637aba9703731b9cadd63ff89dfcb65b273d5280f",
+    "basis_revision": "https://api-docs.deepseek.com/api/create-chat-completion/@2026-10-24#sha256=5f89e4bafbec8808896d7890ad23ca4caaa8a19ff226d881efae63a61a12d169"
+  },
+  "reason": "Reviewed channel 11 DeepSeek Flash parameter-contract pilot: explicit boolean types, immutable version and independent proof; billing policy unchanged"
+}
