@@ -1,0 +1,37 @@
+{
+  "date": "2026-10-24",
+  "timezone": "Asia/Shanghai",
+  "purpose": "Public documentation identity and archived native fixture references for an exact DeepSeek Flash parameter-contract pilot",
+  "official_sources": [
+    {
+      "url": "https://api-docs.deepseek.com/api/create-chat-completion/",
+      "retrieved_at": "2026-10-24T01:31:18.236532+00:00",
+      "sha256": "5f89e4bafbec8808896d7890ad23ca4caaa8a19ff226d881efae63a61a12d169",
+      "body_bytes": 144485,
+      "digest_scope": "HTTP decoded response body; document body is not copied into this repository",
+      "supported_pilot_facts": ["POST /chat/completions", "stream has a boolean schema with nullable support; this pilot explicitly accepts boolean values when present", "stream_options.include_usage has a boolean schema", "thinking can be explicitly disabled", "max_tokens is an integer; this pilot does not claim the finite number rule enforces integers"]
+    },
+    {
+      "url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+      "retrieved_at": "2026-10-24T01:31:18.352514+00:00",
+      "sha256": "556097caba8adfeeed6455714bffd731c7f60db520fcee06a922eba5840663a3",
+      "body_bytes": 26182,
+      "digest_scope": "HTTP decoded response body; document body is not copied into this repository",
+      "currency": "CNY",
+      "conservative_peak_rates_per_million_tokens": {"uncached_input": "2", "output": "8"},
+      "pricing_scope": "Tariff-based pilot upper-bound estimate; does not replace an actual provider charge or historical price snapshot"
+    }
+  ],
+  "independent_native_fixtures": {
+    "captured_on": "2026-10-14",
+    "path": "docs/runbooks/evidence/deepseek-official-pilot-2026-10-14/redacted-native-fixtures.json",
+    "sha256": "d74fc566f772749c9308c78637aba9703731b9cadd63ff89dfcb65b273d5280f",
+    "bytes": 2547,
+    "matching_runtime_test_fixture": "domain/upstream/evidence/testdata/deepseek-official-pilot.json",
+    "scope": "Archived JSON/SSE native usage, cache partition and alias consistency; redacted output does not independently prove text/tool capability"
+  },
+  "archived_pilot_report": {
+    "path": "docs/runbooks/deepseek-official-pilot-2026-10-14.md",
+    "sha256": "9138d34f6ae4e1804b807a238383c079a34e9f885edd298c4cd0a6f6c48ebdac"
+  }
+}

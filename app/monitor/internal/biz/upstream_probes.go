@@ -37,6 +37,9 @@ func NewUpstreamProbeScheduler(r ProbeBudgetRepo, c UpstreamProbeClient, targets
 	}
 	seen := map[string]bool{}
 	for _, target := range targets {
+		if target.ExpiresAt < 0 {
+			return nil, fmt.Errorf("probe expiration must be nonnegative")
+		}
 		if target.ID == "" || seen[target.ID] {
 			return nil, fmt.Errorf("probe target identities must be unique")
 		}
@@ -62,16 +65,21 @@ func (s *UpstreamProbeScheduler) Run(ctx context.Context, onError func(error)) {
 		return s.interval - time.Duration(rand.Int64N(int64(s.interval/10)))
 	}
 	for _, target := range s.targets {
-		due[target.ID] = s.now().Add(nextInterval())
+		if !target.Expired(s.now()) {
+			due[target.ID] = s.now().Add(nextInterval())
+		}
 	}
 	for {
+		if len(due) == 0 {
+			return
+		}
 		// Sleep until the earliest target due time. A separate ticker that
 		// fires just before next_due skips a healthy target for a whole extra
 		// period, violating the configured detection coverage.
-		next := due[s.targets[0].ID]
-		for _, target := range s.targets[1:] {
-			if due[target.ID].Before(next) {
-				next = due[target.ID]
+		var next time.Time
+		for _, at := range due {
+			if next.IsZero() || at.Before(next) {
+				next = at
 			}
 		}
 		if !s.wait(ctx, max(time.Duration(0), next.Sub(s.now()))) {
@@ -80,6 +88,17 @@ func (s *UpstreamProbeScheduler) Run(ctx context.Context, onError func(error)) {
 		for _, t := range s.targets {
 			if ctx.Err() != nil {
 				return
+			}
+			if _, scheduled := due[t.ID]; !scheduled {
+				continue
+			}
+			if t.Expired(s.now()) {
+				delete(due, t.ID)
+				metrics.UpstreamProbeCoverage.WithLabelValues("expired").Inc()
+				if err := s.repo.RecordProbeCoverage(ctx, t.ID, "expired", s.now().Unix(), 0); err != nil {
+					onError(err)
+				}
+				continue
 			}
 			if next := due[t.ID]; s.now().Before(next) {
 				continue

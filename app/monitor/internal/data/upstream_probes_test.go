@@ -5,6 +5,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"math"
 	"micro-one-api/domain/execution"
 	"micro-one-api/domain/upstream/evidence"
 	"micro-one-api/pkg/jsonx"
@@ -47,6 +48,20 @@ func TestProbeBudgetIsPersistentAndSeparatesUnknown(t *testing.T) {
 	require.EqualValues(t, 2, b.UnknownCostCalls)
 	require.Zero(t, b.Cost)
 }
+
+func TestExpiredProbeCannotReservePersistentBudget(t *testing.T) {
+	r, target := probeFixture(t)
+	now := time.Now()
+	target.ExpiresAt = now.Unix()
+	ok, err := r.ReserveProbe(context.Background(), target, "expired", now)
+	require.NoError(t, err)
+	require.False(t, ok)
+	var count int64
+	require.NoError(t, r.db.Model(&probeBudgetModel{}).Count(&count).Error)
+	require.Zero(t, count, "expired targets must not create or consume a daily budget")
+	require.NoError(t, r.db.Model(&probeAttemptModel{}).Count(&count).Error)
+	require.Zero(t, count)
+}
 func TestLateProbeCompletionDoesNotClearNewLease(t *testing.T) {
 	r, target := probeFixture(t)
 	now := time.Now()
@@ -84,6 +99,80 @@ func TestLateProbeOverrunPausesSourceWithoutClearingNewLease(t *testing.T) {
 	ok, err = r.ReserveProbe(ctx, target, "next-day", now.Add(24*time.Hour))
 	require.NoError(t, err)
 	require.False(t, ok, "a new daily bucket must not silently restore a source whose bound was breached")
+}
+
+func TestIndependentProofCannotBypassProbeTokenBounds(t *testing.T) {
+	for name, buckets := range map[string][5]int64{
+		"input":           {129, 0, 0, 0, 1},
+		"output":          {1, 0, 0, 0, 17},
+		"negative_input":  {-1, 0, 0, 0, 1},
+		"negative_output": {1, 0, 0, 0, -1},
+		"overflow_input":  {math.MaxInt64, math.MaxInt64, 0, 0, 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r, target := probeFixture(t)
+			ctx, now := context.Background(), time.Now()
+			ok, err := r.ReserveProbe(ctx, target, "bounded", now)
+			require.NoError(t, err)
+			require.True(t, ok)
+			record, err := jsonx.Marshal(evidence.Record{
+				Observation:   evidence.Observation{Status: "unsupported"},
+				ContractProof: &evidence.ContractProof{Observation: evidence.Observation{Buckets: &buckets}},
+			})
+			require.NoError(t, err)
+			require.NoError(t, r.CompleteProbe(ctx, target, execution.ProbeResult{AttemptID: "bounded", TargetID: target.ID, ObservedAt: now.Unix(), Outcome: "success", RecordJSON: record}))
+			var budget probeBudgetModel
+			require.NoError(t, r.db.First(&budget).Error)
+			require.True(t, budget.Paused, "independent proof is also evidence that a reserved token bound was breached")
+			require.EqualValues(t, 1, budget.UnknownCostCalls)
+			require.Zero(t, budget.Cost, "proof token counts never manufacture a supplier cost")
+			ok, err = r.ReserveProbe(ctx, target, "after-overrun", now.Add(2*time.Minute))
+			require.NoError(t, err)
+			require.False(t, ok)
+		})
+	}
+}
+
+func TestNativeOverrunCannotBeHiddenBySmallerIndependentProof(t *testing.T) {
+	r, target := probeFixture(t)
+	ctx, now := context.Background(), time.Now()
+	ok, err := r.ReserveProbe(ctx, target, "bounded", now)
+	require.NoError(t, err)
+	require.True(t, ok)
+	record, err := jsonx.Marshal(evidence.Record{
+		Observation:   evidence.Observation{Buckets: &[5]int64{129, 0, 0, 0, 1}},
+		ContractProof: &evidence.ContractProof{Observation: evidence.Observation{Buckets: &[5]int64{1, 0, 0, 0, 1}}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, r.CompleteProbe(ctx, target, execution.ProbeResult{AttemptID: "bounded", TargetID: target.ID, ObservedAt: now.Unix(), Outcome: "success", RecordJSON: record}))
+	var budget probeBudgetModel
+	require.NoError(t, r.db.First(&budget).Error)
+	require.True(t, budget.Paused, "both observations must be checked independently")
+}
+
+func TestBoundedIndependentProofPreservesUnknownCostReservation(t *testing.T) {
+	r, target := probeFixture(t)
+	ctx, now := context.Background(), time.Now()
+	ok, err := r.ReserveProbe(ctx, target, "bounded", now)
+	require.NoError(t, err)
+	require.True(t, ok)
+	record, err := jsonx.Marshal(evidence.Record{
+		Observation:   evidence.Observation{Status: "unsupported"},
+		ContractProof: &evidence.ContractProof{Observation: evidence.Observation{Buckets: &[5]int64{1, 0, 0, 0, 1}}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, r.CompleteProbe(ctx, target, execution.ProbeResult{AttemptID: "bounded", TargetID: target.ID, ObservedAt: now.Unix(), Outcome: "success", RecordJSON: record}))
+	var budget probeBudgetModel
+	require.NoError(t, r.db.First(&budget).Error)
+	require.False(t, budget.Paused)
+	require.EqualValues(t, 1, budget.UnknownCostCalls)
+	require.Zero(t, budget.Cost)
+	ok, err = r.ReserveProbe(ctx, target, "second-unknown", now.Add(2*time.Minute))
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NoError(t, r.db.First(&budget).Error)
+	require.EqualValues(t, 2, budget.UnknownCostCalls, "proof does not reimburse or convert an unknown-cost permit")
+	require.Zero(t, budget.Cost)
 }
 
 func TestProbeCompletionRemainsBoundToFrozenTarget(t *testing.T) {

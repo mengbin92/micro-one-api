@@ -310,7 +310,7 @@ func TestDurableEvidenceFailurePreventsForwardAndFinalSuccess(t *testing.T) {
 }
 
 func TestP2ContractPinsSnapshotAndRejectsBeforeSupplierIO(t *testing.T) {
-	d := contract.Document{Scope: contract.Scope{Kind: "channel", ID: 1, Model: "exact", Protocol: "openai_chat"}, Provider: "fixture", AdapterBuild: contract.BuildID, ParserRevision: ParserRevision, UsageRevision: ContractRevision, Inbound: []string{"openai_chat"}, FixtureEvidence: "independent", BasisRevision: "schema", Sets: []contract.RuleSet{{Level: "model", Rules: []contract.Rule{{ID: "rename", Kind: "rename", Path: "old_option", Target: "new_option", Evidence: "equivalence"}}}}}
+	d := contract.Document{Scope: contract.Scope{Kind: "channel", ID: 1, Model: "exact", Protocol: "openai_chat"}, Provider: "fixture", AdapterBuild: contract.BuildID, ParserRevision: ParserRevision, UsageRevision: ContractRevision, Inbound: []string{"openai_chat"}, FixtureEvidence: "independent", BasisRevision: "schema", Sets: []contract.RuleSet{{Level: "model", Rules: []contract.Rule{{ID: "rename", Kind: "rename", Path: "old_option", Target: "new_option", Type: "number", Evidence: "equivalence"}}}}}
 	snap, err := contract.Compile(d)
 	require.NoError(t, err)
 	snap.BindingRevision = 4
@@ -340,4 +340,13 @@ func TestP2ContractPinsSnapshotAndRejectsBeforeSupplierIO(t *testing.T) {
 	_, err = Do(client, bad, "openai_chat")
 	require.Error(t, err)
 	require.Equal(t, 1, calls)
+	for _, value := range []string{`"0"`, `null`, `false`, `{}`, `[]`} {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://fixture.invalid/chat/completions", strings.NewReader(`{"old_option":`+value+`}`))
+		require.NoError(t, err)
+		_, err = Do(client, req, "openai_chat")
+		var rejected *contract.Rejection
+		require.ErrorAs(t, err, &rejected)
+		require.True(t, rejected.BeforeUpstream())
+		require.Equal(t, 1, calls, "unexpected types must never reach the supplier")
+	}
 }

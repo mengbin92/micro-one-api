@@ -180,6 +180,13 @@ func (t *Tracker) Finish() (Observation, bool) {
 	return t.latest, t.success && !t.failed
 }
 
+// ProtocolComplete reports only the received protocol terminator and framing.
+// A metering fault remains a separate observation and cannot hide completion.
+// Finish retains its native billing semantics, including fault => incomplete.
+func (t *Tracker) ProtocolComplete() bool {
+	return len(t.pending) == 0 && len(t.data) == 0 && t.success && !t.failed
+}
+
 func (t *Tracker) Snapshot() Observation {
 	if t.fault != nil {
 		return *t.fault

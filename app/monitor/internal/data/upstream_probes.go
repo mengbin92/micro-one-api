@@ -52,6 +52,9 @@ type driftReportModel struct {
 
 func (driftReportModel) TableName() string { return "upstream_drift_reports" }
 func (r *Repository) ReserveProbe(ctx context.Context, t execution.ProbeTarget, id string, now time.Time) (ok bool, err error) {
+	if t.Expired(now) {
+		return false, nil
+	}
 	if r.db == nil || !r.db.Migrator().HasTable(&probeBudgetModel{}) || !r.db.Migrator().HasTable(&probeAttemptModel{}) || !r.db.Migrator().HasTable(&driftReportModel{}) {
 		return false, fmt.Errorf("persistent probe budget/report schema unavailable")
 	}
@@ -123,9 +126,20 @@ func (r *Repository) CompleteProbe(ctx context.Context, t execution.ProbeTarget,
 		if len(result.RecordJSON) > 0 && jsonx.Unmarshal(result.RecordJSON, &record) != nil {
 			return fmt.Errorf("invalid native probe result")
 		}
-		if record.Observation.Buckets != nil {
-			b := record.Observation.Buckets
-			input, overrun := int64(0), b[4] < 0 || b[4] > t.MaxOutputTokens
+		observations := []evidence.Observation{record.Observation}
+		if record.ContractProof != nil {
+			observations = append(observations, record.ContractProof.Observation)
+		}
+		overrun := false
+		for _, observation := range observations {
+			b := observation.Buckets
+			if b == nil {
+				continue
+			}
+			// Either independently observed bucket set can revoke a breached
+			// bound. This does not verify a proof or derive any supplier cost.
+			overrun = overrun || b[4] < 0 || b[4] > t.MaxOutputTokens
+			input := int64(0)
 			for _, amount := range b[:4] {
 				// A corrupt or overflow-sized bucket cannot wrap the total
 				// back below the reserved input bound.
@@ -135,12 +149,12 @@ func (r *Repository) CompleteProbe(ctx context.Context, t execution.ProbeTarget,
 				}
 				input += amount
 			}
-			if overrun {
-				// Revocation applies to the source even when this result is
-				// late; releasing a lease is a separate owner-bound action.
-				if err := tx.Model(&probeBudgetModel{}).Where("id = ?", attempt.SourceDay).Update("paused", true).Error; err != nil {
-					return err
-				}
+		}
+		if overrun {
+			// Revocation applies to the source even when this result is
+			// late; releasing a lease is a separate owner-bound action.
+			if err := tx.Model(&probeBudgetModel{}).Where("id = ?", attempt.SourceDay).Update("paused", true).Error; err != nil {
+				return err
 			}
 		}
 		if err := tx.Model(&probeBudgetModel{}).Where("id = ? AND lease_owner = ?", attempt.SourceDay, result.AttemptID).Update("lease_until", int64(0)).Error; err != nil {

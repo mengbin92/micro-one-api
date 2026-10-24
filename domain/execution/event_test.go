@@ -4,10 +4,50 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/require"
 	"micro-one-api/domain/upstream/evidence"
+	"micro-one-api/pkg/jsonx"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestExecutionContractProofRoundTripAndBounds(t *testing.T) {
+	intent := Freeze(Intent{RequestID: "proof", RootRequestID: "proof", AttemptNumber: 1, Purpose: "canary", SourceKind: "channel", SourceID: 11, Model: "deepseek-flash", Policy: Policy, LeaseUntil: 10, EvidenceDeadline: 20, CostBasis: "unknown"})
+	event := NewIntentEvent(intent, time.Unix(1, 0))
+	event.Category, event.Sequence = "terminal", 1
+	event.ID = event.Key()
+	event.Record = &evidence.Record{Observation: evidence.Observation{Protocol: "openai_chat", Status: "unsupported"}}
+	legacy, digest, err := event.Encode()
+	require.NoError(t, err)
+	require.NotContains(t, string(legacy), "contract_proof")
+	var restored Event
+	require.NoError(t, jsonx.Unmarshal(legacy, &restored))
+	_, roundTripDigest, err := restored.Encode()
+	require.NoError(t, err)
+	require.Equal(t, digest, roundTripDigest, "old inflight events keep the exact digest")
+	event.Record.ContractProof = &evidence.ContractProof{Complete: true, Observation: evidence.Observation{Protocol: "openai_chat", ParserRevision: "installed-proof", ContractRevision: "installed-usage", Status: "verified", Usage: jsonx.RawMessage(`{"tokens":1}`), Buckets: &[5]int64{1}}}
+	encoded, digest, err := event.Encode()
+	require.NoError(t, err)
+	require.NoError(t, jsonx.Unmarshal(encoded, &restored))
+	_, roundTripDigest, err = restored.Encode()
+	require.NoError(t, err)
+	require.Equal(t, digest, roundTripDigest)
+	require.NotNil(t, restored.Record.ContractProof)
+	for _, tc := range []struct {
+		name        string
+		observation evidence.Observation
+	}{
+		{"usage", evidence.Observation{Usage: jsonx.RawMessage(strings.Repeat("x", evidence.MaxUsageBytes+1))}},
+		{"fingerprint", evidence.Observation{Fingerprint: make([]string, 2049)}},
+		{"provider_id", evidence.Observation{ProviderRequestID: strings.Repeat("x", 257)}},
+		{"negative_bucket", evidence.Observation{Buckets: &[5]int64{-1}}},
+		{"overflow", evidence.Observation{Buckets: &[5]int64{9223372036854775807, 1}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			event.Record.ContractProof.Observation = tc.observation
+			require.Error(t, event.Validate(), "proof evidence uses the same bounds as native evidence")
+		})
+	}
+}
 
 func TestExecutionEventIdentityPurposeAndDigest(t *testing.T) {
 	i := Intent{ReservationID: "res", RequestID: "attempt", RootRequestID: "root", AttemptNumber: 1, Purpose: "user", SourceKind: "channel", SourceID: 1, Model: "vendor/ExactModel", UsageContractVersion: 2, ParserRevision: evidence.ParserRevision, ContractRevision: evidence.ContractRevision, CostAlgorithmVersion: AlgorithmVersion, Policy: Policy, LeaseUntil: 10, EvidenceDeadline: 20, CostBasis: "unknown"}

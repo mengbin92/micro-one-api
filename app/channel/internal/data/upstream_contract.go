@@ -14,6 +14,7 @@ import (
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/upstream/contract"
+	"micro-one-api/domain/upstream/evidence"
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/database/authzquery"
 )
@@ -171,6 +172,14 @@ func (r *Repository) CreateContract(ctx context.Context, c biz.UpstreamContract,
 		return contractAudit(ctx, tx, b, "create", "", authorization.WriteReason(ctx), c.Document.FixtureEvidence, now)
 	})
 }
+func (r *Repository) GetContract(ctx context.Context, s contract.Scope, revision string) (contract.Snapshot, error) {
+	db, err := r.contractDB(ctx)
+	if err != nil {
+		return contract.Snapshot{}, err
+	}
+	return contractVersion(db, s, revision)
+}
+
 func (r *Repository) ListContracts(ctx context.Context, s contract.Scope, limit int) ([]contract.Snapshot, biz.ContractBinding, error) {
 	db, err := r.contractDB(ctx)
 	if err != nil {
@@ -442,7 +451,9 @@ func (r *Repository) ResolveContracts(ctx context.Context, kind string, id int64
 				if int32(hash[0])*100/256 >= b.GrayPercent {
 					target = b.Previous
 					if target == "" {
-						blocked = append(blocked, b.Protocol)
+						// The first gray publication has no prior contract. Requests
+						// outside the gray cohort keep their existing unbound path.
+						// Quarantine is handled above and never takes this fallback.
 						continue
 					}
 				}
@@ -530,7 +541,20 @@ func (r *Repository) RecordContractResult(ctx context.Context, result biz.Contra
 			return nil
 		}
 		native := result.Record
-		pass := result.CapabilityValid && native.Complete && (native.HTTPStatus == 0 || native.HTTPStatus >= 200 && native.HTTPStatus < 300) && native.Observation.Status == "verified"
+		snapshot, err := contractVersion(tx, result.Scope, result.Revision)
+		if err != nil {
+			return err
+		}
+		if native == nil {
+			return biz.ErrContractInvalid
+		}
+		if native.ContractProof != nil {
+			trace := native.ParameterContract
+			if trace == nil || trace.BindingRevision != result.BindingRevision || trace.IncidentRevision != result.IncidentRevision {
+				return biz.ErrContractInvalid
+			}
+		}
+		pass := result.CapabilityValid && evidence.ContractVerified(native, snapshot.Document)
 		if result.LeaseID != "" {
 			var lease contractProbeModel
 			if tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", result.LeaseID).First(&lease).Error != nil {
@@ -579,7 +603,7 @@ func (r *Repository) RecordContractResult(ctx context.Context, result biz.Contra
 					}
 				}
 			}
-			if !pass && b.Current == result.Revision && (native.Complete || native.HTTPStatus == 400 || native.HTTPStatus == 415 || native.HTTPStatus == 422) {
+			if !pass && b.Current == result.Revision && (evidence.ContractComplete(native, snapshot.Document) || native.HTTPStatus == 400 || native.HTTPStatus == 415 || native.HTTPStatus == 422) {
 				before := b.Current
 				b.Status = "quarantined"
 				b.IncidentRevision++
@@ -612,7 +636,7 @@ func (r *Repository) RecordContractResult(ctx context.Context, result biz.Contra
 					}
 				}
 			}
-			if b.Status != "quarantined" && native.Complete && (native.HTTPStatus == 0 || native.HTTPStatus >= 200 && native.HTTPStatus < 300) && native.Observation.Status != "verified" {
+			if b.Status != "quarantined" && evidence.ContractComplete(native, snapshot.Document) && (native.HTTPStatus == 0 || native.HTTPStatus >= 200 && native.HTTPStatus < 300) && !evidence.ContractVerified(native, snapshot.Document) {
 				before := b.Current
 				b.Status = "quarantined"
 				b.IncidentRevision++

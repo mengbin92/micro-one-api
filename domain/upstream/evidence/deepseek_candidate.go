@@ -10,8 +10,8 @@ import (
 const DeepSeekCandidateParser = "candidate-deepseek-chat-2026-10-14.1"
 const DeepSeekCandidateContract = "candidate-deepseek-official-cache-alias-2026-10-14.1"
 
-// ParseDeepSeekCandidate is an offline, explicitly vendor-bound candidate. It
-// is NOT selected by Parse, execution.Freeze or any charging/contract registry.
+// ParseDeepSeekCandidate is an explicitly vendor-bound parser algorithm used by
+// offline replay and independent contract proof. Parse and charging stay unchanged.
 // The official API defines flat cache hit/miss as a partition of prompt_tokens
 // and cached_tokens as the same hit count. Unknown dimensions stay unsupported.
 func ParseDeepSeekCandidate(body []byte) Observation {

@@ -144,6 +144,12 @@ func (r *upstreamProbeRepo) Probe(ctx context.Context, t execution.ProbeTarget, 
 	if t.Capability == "tools" && !t.Inventory {
 		execution.AddProbeTool(body, t.Protocol)
 	}
+	if !t.Inventory && typ == provider.ChannelTypeDeepSeek {
+		body["thinking"] = map[string]any{"type": "disabled"}
+		if t.Stream {
+			body["stream_options"] = map[string]any{"include_usage": true}
+		}
+	}
 	var raw []byte
 	if body != nil {
 		raw, err = jsonx.Marshal(body)
@@ -260,7 +266,11 @@ func (r *upstreamProbeRepo) Probe(ctx context.Context, t execution.ProbeTarget, 
 	}
 	result.ValidContractProbe = true
 	result.Outcome = "contract_drift"
-	if native != nil && native.Complete && native.Observation.Status == "verified" && native.Stream == t.Stream && capabilityErr == nil {
+	verified := native != nil && native.Complete && native.Observation.Status == "verified"
+	if native != nil && contractClient != nil {
+		verified = evidence.ContractVerified(native, contractLease.Snapshot.Document)
+	}
+	if verified && native.Stream == t.Stream && capabilityErr == nil {
 		result.Outcome = "contract_verified"
 	}
 	return result, nil

@@ -21,9 +21,20 @@ import (
 
 var ErrQuarantined = errors.New("protocol incident is quarantined")
 
-const BuildID = "finite-contract-runtime-2026-10-14.1"
+const BuildID = "finite-contract-runtime-2026-10-24.1"
 const ParserID = "native-shadow-2026-10-13.1"
 const UsageID = "native-static-2026-10-13.1"
+const DeepSeekProofParserID = "deepseek-contract-proof-2026-10-24.1"
+const DeepSeekProofUsageID = "deepseek-official-cache-proof-2026-10-24.1"
+
+// InstalledProfile limits proof selection to code-reviewed parser/usage pairs.
+// The DeepSeek profile validates contracts; it does not authorize settlement.
+func InstalledProfile(d Document) bool {
+	if d.ParserRevision == ParserID && d.UsageRevision == UsageID {
+		return true
+	}
+	return d.Provider == "deepseek" && d.Scope.Protocol == "openai_chat" && d.Scope.Model == "deepseek-flash" && d.ParserRevision == DeepSeekProofParserID && d.UsageRevision == DeepSeekProofUsageID
+}
 
 type Scope struct {
 	Kind     string `json:"source_kind"`
@@ -91,6 +102,75 @@ type Trace struct {
 	Paths            []string `json:"paths,omitempty"`
 }
 
+// TypeMismatchError identifies contract drift without recording parameter values.
+type TypeMismatchError struct {
+	Revision string
+	RuleID   string
+	Path     string
+	Expected string
+	Actual   string
+}
+
+func (e *TypeMismatchError) Error() string {
+	return fmt.Sprintf("contract type mismatch: revision=%s rule=%s path=%s expected=%s actual=%s", e.Revision, e.RuleID, e.Path, e.Expected, e.Actual)
+}
+
+func knownType(kind string) bool {
+	switch kind {
+	case "number", "string", "boolean", "object", "array", "null":
+		return true
+	}
+	return false
+}
+
+// jsonType inspects a validated raw value, preserving numbers and nested JSON.
+// Object/array rules describe the container only; their contents are not coerced.
+func jsonType(raw jsonx.RawMessage) string {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return "invalid"
+	}
+	switch raw[0] {
+	case '"':
+		return "string"
+	case '{':
+		return "object"
+	case '[':
+		return "array"
+	case 't', 'f':
+		return "boolean"
+	case 'n':
+		return "null"
+	default:
+		return "number"
+	}
+}
+
+func validateValue(s Snapshot, r Rule, path string, raw jsonx.RawMessage) error {
+	actual := jsonType(raw)
+	if actual != r.Type {
+		return &TypeMismatchError{Revision: s.Revision, RuleID: r.ID, Path: path, Expected: r.Type, Actual: actual}
+	}
+	if r.Type == "number" {
+		value, valid := boundedNumber(jsonx.Number(strings.TrimSpace(string(raw))))
+		for _, bound := range []struct {
+			limit *float64
+			min   bool
+		}{{r.Min, true}, {r.Max, false}} {
+			if !valid || bound.limit == nil {
+				continue
+			}
+			limit, _ := new(big.Rat).SetString(strconv.FormatFloat(*bound.limit, 'g', -1, 64))
+			comparison := value.Cmp(limit)
+			valid = (bound.min && comparison >= 0) || (!bound.min && comparison <= 0)
+		}
+		if !valid {
+			return fmt.Errorf("unsupported number/range: revision=%s rule=%s path=%s", s.Revision, r.ID, path)
+		}
+	}
+	return nil
+}
+
 func (d Document) Revision() string {
 	b, _ := jsonx.Marshal(d)
 	return fmt.Sprintf("%x", sha256.Sum256(b))
@@ -125,7 +205,7 @@ func Compile(d Document) (Snapshot, error) {
 	if err := d.Scope.Validate(); err != nil {
 		return out, err
 	}
-	if d.AdapterBuild != BuildID || d.ParserRevision != ParserID || d.UsageRevision != UsageID || d.FixtureEvidence == "" || d.BasisRevision == "" || d.Provider == "" || len(d.Sets) > 3 || len(d.Inbound) == 0 {
+	if d.AdapterBuild != BuildID || !InstalledProfile(d) || d.FixtureEvidence == "" || d.BasisRevision == "" || d.Provider == "" || len(d.Sets) > 3 || len(d.Inbound) == 0 {
 		return out, fmt.Errorf("installed build/parser and independent fixture/basis required")
 	}
 	if len(d.Endpoint) > 256 || strings.ContainsAny(d.Endpoint, "?#\r\n") || d.Endpoint != "" && (!strings.HasPrefix(d.Endpoint, "/") || strings.HasPrefix(d.Endpoint, "//")) {
@@ -178,12 +258,15 @@ func Compile(d Document) (Snapshot, error) {
 				if _, err := pathParts(r.Target); err != nil {
 					return out, err
 				}
-				if protected(r.Target) || r.Target == r.Path || len(r.Value) > 0 || r.Type != "" || r.Min != nil || r.Max != nil {
+				if protected(r.Target) || r.Target == r.Path || len(r.Value) > 0 || !knownType(r.Type) || r.Min != nil || r.Max != nil {
 					return out, fmt.Errorf("invalid rename")
 				}
 			case "default":
-				if len(r.Value) == 0 || len(r.Value) > 1024 || jsonx.ValidateUnique(r.Value) != nil || r.Target != "" || r.Min != nil || r.Max != nil || r.Type != "" {
+				if len(r.Value) == 0 || len(r.Value) > 1024 || jsonx.ValidateUnique(r.Value) != nil || r.Target != "" || r.Min != nil || r.Max != nil || !knownType(r.Type) {
 					return out, fmt.Errorf("invalid default")
+				}
+				if err := validateValue(out, r, r.Path, r.Value); err != nil {
+					return out, err
 				}
 			case "reject":
 				if r.Min != nil && (math.IsNaN(*r.Min) || math.IsInf(*r.Min, 0)) || r.Max != nil && (math.IsNaN(*r.Max) || math.IsInf(*r.Max, 0)) {
@@ -192,9 +275,7 @@ func Compile(d Document) (Snapshot, error) {
 				if r.Target != "" || len(r.Value) > 0 {
 					return out, fmt.Errorf("invalid reject")
 				}
-				switch r.Type {
-				case "", "number", "string", "boolean", "object", "array":
-				default:
+				if r.Type != "" && !knownType(r.Type) {
 					return out, fmt.Errorf("unsupported parameter type")
 				}
 				if (r.Min != nil || r.Max != nil) && r.Type != "number" || r.Min != nil && r.Max != nil && *r.Min > *r.Max {
@@ -327,6 +408,29 @@ func Apply(s Snapshot, body []byte) ([]byte, Trace, error) {
 	if err != nil || s.Revision != compiled.Revision {
 		return nil, trace, fmt.Errorf("snapshot integrity/build mismatch")
 	}
+	// Validate all consumed paths before changing the request. A rename target
+	// is consumed even when its legacy source is absent.
+	for _, r := range compiled.Rules {
+		paths := []string{r.Path}
+		if r.Kind == "rename" {
+			paths = append(paths, r.Target)
+		}
+		for _, path := range paths {
+			value, present, err := get(obj, path)
+			if err != nil {
+				return nil, trace, fmt.Errorf("contract lookup: revision=%s rule=%s path=%s: %w", s.Revision, r.ID, path, err)
+			}
+			if !present {
+				continue
+			}
+			if r.Type == "" {
+				return nil, trace, fmt.Errorf("unsupported field %s", path)
+			}
+			if err := validateValue(s, r, path, value); err != nil {
+				return nil, trace, err
+			}
+		}
+	}
 	for _, r := range compiled.Rules {
 		value, present, err := get(obj, r.Path)
 		if err != nil {
@@ -372,48 +476,6 @@ func Apply(s Snapshot, body []byte) ([]byte, Trace, error) {
 					return nil, trace, err
 				}
 				changed = true
-			}
-		case "reject":
-			var v any
-			d := jsonx.NewDecoder(bytes.NewReader(value))
-			d.UseNumber()
-			if d.Decode(&v) != nil {
-				return nil, trace, fmt.Errorf("invalid field %s", r.Path)
-			}
-			valid := false
-			switch r.Type {
-			case "":
-				return nil, trace, fmt.Errorf("unsupported field %s", r.Path)
-			case "number":
-				n, ok := v.(jsonx.Number)
-				if ok {
-					// Compare the original decimal value before float64 rounding;
-					// otherwise an integer immediately beyond a limit can pass.
-					value, parsed := boundedNumber(n)
-					valid = parsed
-					for _, bound := range []struct {
-						limit *float64
-						min   bool
-					}{{r.Min, true}, {r.Max, false}} {
-						if !valid || bound.limit == nil {
-							continue
-						}
-						limit, _ := new(big.Rat).SetString(strconv.FormatFloat(*bound.limit, 'g', -1, 64))
-						comparison := value.Cmp(limit)
-						valid = (bound.min && comparison >= 0) || (!bound.min && comparison <= 0)
-					}
-				}
-			case "string":
-				_, valid = v.(string)
-			case "boolean":
-				_, valid = v.(bool)
-			case "object":
-				_, valid = v.(map[string]any)
-			case "array":
-				_, valid = v.([]any)
-			}
-			if !valid {
-				return nil, trace, fmt.Errorf("unsupported type/range for %s", r.Path)
 			}
 		}
 		trace.RuleIDs = append(trace.RuleIDs, r.ID)

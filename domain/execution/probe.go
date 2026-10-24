@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"micro-one-api/pkg/jsonx"
 	"strings"
+	"time"
 )
 
 // ProbeTarget is operator configuration, never a public request field.
 type ProbeTarget struct {
+	ExpiresAt              int64    `json:"expires_at,omitempty"`
 	ContractRevision       string   `json:"contract_revision,omitempty"`
 	Capability             string   `json:"capability,omitempty"`
 	ManualModelIDs         []string `json:"manual_model_ids,omitempty"`
@@ -45,6 +47,9 @@ func DecodeProbeTargets(raw string) ([]ProbeTarget, error) {
 	seen := map[string]bool{}
 	budgets := map[string]ProbeTarget{}
 	for _, t := range targets {
+		if t.ExpiresAt < 0 {
+			return nil, fmt.Errorf("probe expiration must be a nonnegative UTC timestamp")
+		}
 		if t.ContractRevision != "" && (len(t.ContractRevision) != 64 || t.Inventory) {
 			return nil, fmt.Errorf("contract canary requires exact candidate revision")
 		}
@@ -89,4 +94,10 @@ type ProbeResult struct {
 func (t ProbeTarget) Digest() string {
 	b, _ := jsonx.Marshal(t)
 	return fmt.Sprintf("%x", sha256.Sum256(b))
+}
+
+// Expired only limits new admissions; an already admitted attempt may finish.
+// Zero preserves the existing ongoing probe configuration.
+func (t ProbeTarget) Expired(at time.Time) bool {
+	return t.ExpiresAt != 0 && t.ExpiresAt <= at.Unix()
 }

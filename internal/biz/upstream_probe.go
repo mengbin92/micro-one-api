@@ -48,6 +48,9 @@ func (u *UpstreamProbeUsecase) Probe(ctx context.Context, targetID, attemptID st
 	if !ok || attemptID == "" || len(attemptID) > 128 {
 		return execution.ProbeResult{}, fmt.Errorf("probe target or attempt invalid")
 	}
+	if t.Expired(time.Now()) {
+		return execution.ProbeResult{}, fmt.Errorf("probe target expired")
+	}
 	if u.permit == nil {
 		return execution.ProbeResult{}, fmt.Errorf("persistent probe permit unavailable")
 	}
