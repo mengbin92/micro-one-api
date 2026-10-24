@@ -8,7 +8,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.36.4 发布公告](./docs/releases/release-v0.36.4.md)（上游契约类型边界、到期试点与供应商证据修复；发布验证待填） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.36.4)
+> 📣 **最新发布**：[v0.36.5 发布公告](./docs/releases/release-v0.36.5.md)（契约权限 142 上线、渠道 11 双协议验证与 1% 灰度） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.36.5)
 
 ## 功能概览
 
@@ -184,7 +184,8 @@ make web-dist
 
 ## 发布与升级
 
-- [v0.36.4](./docs/releases/release-v0.36.4.md)：上游契约类型检查、首次灰度基线、DeepSeek 独立证明与到期试点，供应商导入/历史费用和安全修复。新增 Identity 140／Billing 141；发布与生产验证待填。
+- [v0.36.5](./docs/releases/release-v0.36.5.md)：Identity 142 持久发布 builtin root 三项契约写权限，修正 IAM 验收期望；渠道 11 两次真实探测通过并进入 1% 灰度，付费目标已撤销。
+- [v0.36.4](./docs/releases/release-v0.36.4.md)：上游契约类型检查、首次灰度基线、DeepSeek 独立证明与到期能力，供应商导入/历史费用和安全修复。新增 Identity 140／Billing 141；本地验证及 Release workflow 已通过，实际契约试点另随 v0.36.5 留证。
 - [v0.36.3](./docs/releases/release-v0.36.3.md)：最大计时摘要 SQL 内存修复、供应商证据详情与 Jaeger 768 MiB 配置。无新增迁移；已部署生产，发版不重复重启，长期验收独立保留。
 - [v0.36.2](./docs/releases/release-v0.36.2.md)：计时 SQL 分组写入、分页修复、Q3 基准恢复与原生构建。新增 Log 139 索引迁移；上线先 Log、后 Relay，生产观察保持原窗口。
 - [v0.36.1](./docs/releases/release-v0.36.1.md)：普通 WS 长连接、Lite 首请求与导出告警修复；原生性能和空卷恢复验收。无新增迁移；生产 48 小时观察保持原窗口。

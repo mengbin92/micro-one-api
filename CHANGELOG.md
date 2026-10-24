@@ -7,9 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.36.5] - 2026-10-24
+
+v0.36.5 是 v0.36.4 之后的 **PATCH 修复版本**：Identity 142 按维护者授权向现有 builtin root 持久发布三项上游契约写权限，修正 IAM 存储验收清单，并独立记录渠道 11 DeepSeek Flash 的生产部署与有界试点。v0.36.4 已发布 tag 保持不变；142 及后续现场结果归入本版；渠道 11 的 JSON/SSE 两次验证通过并进入 1% 灰度，新增付费目标已撤销。详见 [release-v0.36.5.md](docs/releases/release-v0.36.5.md)。
+
+### Fixed
+
+- Identity 142 为冻结的现有 builtin root 增量发布 `channel.upstream_contract.create/publish/quarantine`，保留既有 deny/窄授权、禁用/归档治理、用户分配及会话，固定 receipt 审计与重放无变更。
+- IAM 存储测试精确纳入 142 已发布的三项操作，保留其他操作逐项检查，修复完整 `make verify` 的旧期望失败。
+- 更正 v0.36.4 发布说明的初稿状态和迁移归属，记录其成功 Release workflow 与本地完整验证；不把 142 或后续生产试点归给旧 tag。
+
+### Added
+
+- 渠道 11 精确 scope、不可变候选及正式 IAM owner 生产交付记录；在四次/0.10 CNY 上限内完成两次 JSON/SSE 验证和 1% 灰度，撤去付费目标，钱包及用户账本核对无变化。
+
 ## [0.36.4] - 2026-10-24
 
-v0.36.4 是 v0.36.3 之后的 **PATCH 修复版本**：上游参数契约在转换前严格检查类型，修复首次灰度基线，补齐独立 DeepSeek 契约证明与到期探测；同时收录供应商报告导入、历史费用证据、安全依赖与 CI 修复。新增 Identity 140、142 与 Billing 141；契约试点与用户收费分别验收。当前发布验证和部署结果待最终填写，详见 [release-v0.36.4.md](docs/releases/release-v0.36.4.md)。
+v0.36.4 是 v0.36.3 之后的 **PATCH 修复版本**：上游参数契约在转换前严格检查类型，修复首次灰度基线，补齐独立 DeepSeek 契约证明与到期探测；同时收录供应商报告导入、历史费用证据、安全依赖与 CI 修复。新增 Identity 140 与 Billing 141；本地完整验证与 Release workflow 已成功。Identity 142 和实际生产契约试点另随 v0.36.5 留证，详见 [release-v0.36.4.md](docs/releases/release-v0.36.4.md)。
 
 ### Fixed
 
