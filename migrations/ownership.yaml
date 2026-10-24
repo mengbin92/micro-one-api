@@ -44,6 +44,7 @@ services:
     - 134_p2_permission_catalog
     - 136_publish_read_only_evidence_pages
     - 140_publish_vendor_report_import
+    - 142_publish_upstream_contract_write_permissions
 
   channel:
     - 133_upstream_contracts

@@ -9,7 +9,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [0.36.4] - 2026-10-24
 
-v0.36.4 是 v0.36.3 之后的 **PATCH 修复版本**：上游参数契约在转换前严格检查类型，修复首次灰度基线，补齐独立 DeepSeek 契约证明与到期探测；同时收录供应商报告导入、历史费用证据、安全依赖与 CI 修复。新增 Identity 140、Billing 141；契约试点与用户收费分别验收。当前发布验证和部署结果待最终填写，详见 [release-v0.36.4.md](docs/releases/release-v0.36.4.md)。
+v0.36.4 是 v0.36.3 之后的 **PATCH 修复版本**：上游参数契约在转换前严格检查类型，修复首次灰度基线，补齐独立 DeepSeek 契约证明与到期探测；同时收录供应商报告导入、历史费用证据、安全依赖与 CI 修复。新增 Identity 140、142 与 Billing 141；契约试点与用户收费分别验收。当前发布验证和部署结果待最终填写，详见 [release-v0.36.4.md](docs/releases/release-v0.36.4.md)。
 
 ### Fixed
 
