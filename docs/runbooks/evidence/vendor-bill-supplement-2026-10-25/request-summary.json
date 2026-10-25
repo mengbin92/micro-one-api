@@ -1,0 +1,17 @@
+{
+  "report_id": "aecaa5c09fe36405cd59d59eb1e8e7c4d62e6c72f04e9c67052db5cf045ed9b1",
+  "existing_sequence": 1,
+  "snapshot_evidence_id": "sha256:50034ac00b058de19f619c63f9f1341a539b778f9cdcf85027dc4b93ce77653e",
+  "analysis_evidence_id": "sha256:1971642f2e4d175ce26eae4d007f3070bc921984cfa83654b7be8ae25cadea88",
+  "request_sha256": "e26061c42435f4024e1c4cd6fb424e4045d295c33e4d8f2fb5eff09cc1de335d",
+  "request_bytes": 121163,
+  "records": 203,
+  "changed_manifest_fields": [
+    "retrospective_evidence.snapshot_evidence_id",
+    "retrospective_evidence.analysis_evidence_id",
+    "reason"
+  ],
+  "watermarks_and_coverage_unchanged": true,
+  "expected_primary_status": "pending",
+  "authoritative_execution_coverage_not_claimed": true
+}

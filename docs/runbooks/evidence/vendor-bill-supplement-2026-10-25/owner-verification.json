@@ -1,0 +1,32 @@
+{
+  "captured_at": "2026-10-25T06:20:47.206623+00:00",
+  "report_id": "aecaa5c09fe36405cd59d59eb1e8e7c4d62e6c72f04e9c67052db5cf045ed9b1",
+  "report_count": 2,
+  "run_count": 3,
+  "new_run_id": "0cef5ba9b6e4aea942cd4cad92e1d14cc3e75dae4a1e70c57dbaee0398648ed0",
+  "new_sequence": 2,
+  "actor": "iam-user:1",
+  "matching_success_audits": 1,
+  "old_reports_and_runs_unchanged": true,
+  "captured_legacy_rows_unchanged": true,
+  "joined_user_records": 201,
+  "retrospective_records": 203,
+  "retrospective_amount_cny": "2.04700896",
+  "retrospective_difference_cny": "0",
+  "legacy_store_join_verified_by_private_replay": true,
+  "owner_execution_join_verified": false,
+  "status": "pending",
+  "comparison_status": "missing_local",
+  "amount_status": "unknown",
+  "verification_scope": "none",
+  "unknown_time_attempts": 3115,
+  "local_watermark": "0001-01-01T00:00:00Z",
+  "coverage_evidence_id": "",
+  "snapshot_evidence_id": "sha256:50034ac00b058de19f619c63f9f1341a539b778f9cdcf85027dc4b93ce77653e",
+  "analysis_evidence_id": "sha256:1971642f2e4d175ce26eae4d007f3070bc921984cfa83654b7be8ae25cadea88",
+  "after_private_snapshot_sha256": "2bc20b525126ff85b5b429afe5b2ee3a55f1a2d7edf87adfff256a49796ebc0e",
+  "health": {
+    "status": "ok"
+  },
+  "request_submissions": 1
+}

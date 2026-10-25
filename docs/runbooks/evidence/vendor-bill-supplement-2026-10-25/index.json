@@ -1,0 +1,24 @@
+{
+  "scope": "Existing fixed upstream-supplier account period; legacy binding evidence supplement only.",
+  "files_sha256": {
+    "check-verification.json": "9f727dcad858d3c3d7e26c84cd942c73be765fe1cb6588423179430815be103b",
+    "check.py": "50027b5956760ff3b234e6ffec7391b69af6ba7a572ae10969b36deb3d6b4f74",
+    "legacy-bindings.json": "1971642f2e4d175ce26eae4d007f3070bc921984cfa83654b7be8ae25cadea88",
+    "owner-verification.json": "4a45b9378918b5fa5db9b4d38b5ede3f7fc21c89c51e592aa0d072cfa75f6852",
+    "request-summary.json": "37c298fe0e35f7ec6b8ddbc00af85cfed0dc75a9b534cb92625e012ab55a2126"
+  },
+  "private_source_retention": {
+    "directory_mode": "0700",
+    "file_mode": "0600",
+    "local_and_owner_host_copies": true,
+    "customer_identifiers_excluded_from_public_files": true
+  },
+  "production_import": {
+    "request_submissions": 1,
+    "new_sequence": 2,
+    "reports": 2,
+    "runs": 3,
+    "status": "pending",
+    "owner_execution_coverage_verified": false
+  }
+}

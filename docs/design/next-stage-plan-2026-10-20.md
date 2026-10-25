@@ -2,6 +2,8 @@
 
 > **监控补齐：2026-10-25**。生产已开启上游供应商证据监控并修复告警认证；预期账号/账期清单、清单失效与检查冻结检测已验证并上线，`expected=1 / missing=0 / pending=1 / unavailable=0`，Prometheus 抓取与规则正常。见[监控与漏导检测记录](../runbooks/vendor-report-monitoring-2026-10-25.md)。这不改变 N3 的历史执行覆盖或财务核验结论。
 
+> **账单补证：2026-10-25**。已恢复并私有留存 201 条 legacy 消费/timing/reservation/ledger 原始关联，逐条与归档区间及用量核验；经现有 IAM owner 追加同报告 sequence=2，生产 2 reports / 3 runs、成功审计 1 条，原记录不变。主核验仍为 pending，历史 owner execution 覆盖未补造。见[补证与验收记录](../runbooks/vendor-bill-supplement-2026-10-25.md)。
+
 > **当前执行入口**。制定：2026-10-20（Asia/Shanghai），规划基线 `develop@10054011`，已合入验证后的 v0.36.2。接替 [10 月 18 日计划](next-stage-plan-2026-10-18.md)。N1/N2 实现及最大输入/前端隔离验收已交付，完整原生三库 SQL 容量 CI 已通过；见 [实施与证据](../runbooks/p1-memory-vendor-evidence-2026-10-20.md)。2026-10-20 已完成 [生产部署](../runbooks/p1-production-deployment-2026-10-20.md)并合入 develop，2026-10-21 已正式发布 [v0.36.3](../releases/release-v0.36.3.md)，完整 Release、CI 与安全检查通过。剩余 N3/N4 材料条件见 [发布核验与后续记录](../runbooks/post-v0.36.3-followups-2026-10-21.md)，不扩大灰度。
 
 > **N3 更新：2026-10-23**。DeepSeek 渠道 11 已取得 10/21–22 官方闭窗报告；201 条生产调用已按真实请求时间区间分为忙时 95 / 闲时 106，加入两次忙时直连测试后，逐日/费率组的三类 token 与 **2.04700896 CNY** 均精确相符。原 owner 留存 **1 份报告 / 1 条 run，仍为 pending**。另一台电脑的定时任务未实际执行，不再作为补证依赖；剩余 owner 覆盖/最终水位等条件以本文 N3 为准。

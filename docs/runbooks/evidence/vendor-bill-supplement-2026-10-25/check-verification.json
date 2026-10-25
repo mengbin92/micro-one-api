@@ -1,0 +1,12 @@
+{
+  "actual_private_replay": "passed",
+  "joined_records": 201,
+  "json_object_and_text_storage": "passed",
+  "corrupt_evidence_rejected": [
+    "consume.reservation_id",
+    "ledger.uncached_input_tokens",
+    "reservation.actual_cost",
+    "missing timing record"
+  ],
+  "owner_execution_coverage_verified": false
+}

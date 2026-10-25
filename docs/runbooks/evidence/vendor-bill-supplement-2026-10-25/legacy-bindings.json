@@ -1,0 +1,47 @@
+{
+  "revision": "legacy-store-binding-audit-v1",
+  "private_snapshot_sha256": "50034ac00b058de19f619c63f9f1341a539b778f9cdcf85027dc4b93ce77653e",
+  "archive_records_sha256": "f212b9df5134c4e1c904cfaa3b22b35773bc51180e4733ca5b022beae5c942a6",
+  "window": {
+    "start": "2026-10-21T00:00:00+08:00",
+    "end": "2026-10-23T00:00:00+08:00",
+    "timezone": "Asia/Shanghai"
+  },
+  "joined_user_records": 201,
+  "unique_roots": 201,
+  "unique_reservations": 201,
+  "joined_ledger_dimension_rows": 201,
+  "ledger_dimension_counts": {
+    "1": 201
+  },
+  "execution_paths": {
+    "legacy": 201
+  },
+  "local_three_bucket_tokens": {
+    "uncached_input_tokens": 319226,
+    "cache_read_tokens": 30420736,
+    "completion_tokens": 92726
+  },
+  "timing_records_scanned": 201,
+  "extra_timing_records": 0,
+  "timing_outcomes": {
+    "success": 201
+  },
+  "source_matching_attempt_outcomes": {
+    "success": 201
+  },
+  "extra_reservations": 0,
+  "unmatched_ledger_rows": 0,
+  "archive_user_recomputation_cny": "2.04696096",
+  "external_archive_records": 2,
+  "external_archive_recomputation_cny": "0.000048",
+  "combined_archive_records": 203,
+  "combined_archive_recomputation_cny": "2.04700896",
+  "external_evidence_source": "existing public archive; not local user requests",
+  "legacy_store_join_verified": true,
+  "owner_execution_coverage_verified": false,
+  "all_account_execution_coverage_verified": false,
+  "supplier_authenticity_or_finality_certified": false,
+  "cache_creation_supplier_observation": "not provided; local values are not supplier-observed zeroes",
+  "financial_boundary": "Private store bindings and archived arithmetic only; no execution events, frozen estimates, customer ledgers or supplier verification states are changed."
+}
