@@ -13,13 +13,14 @@ import (
 
 // ReconciliationJob runs periodic billing reconciliation tasks.
 type ReconciliationJob struct {
-	vendorReports VendorReconciliationRepo
-	uc            *ReconciliationUsecase
-	notifier      Notifier
-	recipients    []string
-	notifyType    string
-	checkInterval time.Duration
-	stopChan      chan struct{}
+	vendorReports      VendorReconciliationRepo
+	vendorExpectations VendorReportExpectations
+	uc                 *ReconciliationUsecase
+	notifier           Notifier
+	recipients         []string
+	notifyType         string
+	checkInterval      time.Duration
+	stopChan           chan struct{}
 }
 
 // JobOption customizes ReconciliationJob construction.

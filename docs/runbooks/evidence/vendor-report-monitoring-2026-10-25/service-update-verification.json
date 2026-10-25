@@ -1,0 +1,59 @@
+{
+  "captured_at_beijing": "2026-10-25 10:58:23 北京时间",
+  "update": "Billing Compose source label synchronized and service recreated; runtime image already matched reviewed source.",
+  "billing": {
+    "image": "sha256:da9b4ad977d3ca2bd852a6642f391e6735908b66f59ea24ef704a216bab45840",
+    "image_source_digest": "aa044112492ff01a4ae94d5a1b3250efacd4fa95b7ce96a2083d68bc2b2dbc81",
+    "container_source_label": "aa044112492ff01a4ae94d5a1b3250efacd4fa95b7ce96a2083d68bc2b2dbc81",
+    "architecture": "amd64",
+    "os": "linux",
+    "running": true,
+    "restarts": 0,
+    "oom_killed": false,
+    "health": {
+      "status": "ok"
+    }
+  },
+  "inventory": {
+    "registered_scopes": 1,
+    "due_at": "2026-10-26T00:00:00+08:00",
+    "valid_until": "2026-10-27T00:00:00+08:00",
+    "scope_identities_omitted": true
+  },
+  "metrics": {
+    "attention": 0.0,
+    "empty": 0.0,
+    "expectations_expired": 0.0,
+    "expectations_unconfigured": 0.0,
+    "expected": 1.0,
+    "missing": 0.0,
+    "missing_overdue": 0.0,
+    "notification_failed": 0.0,
+    "overdue": 0.0,
+    "pending": 1.0,
+    "unavailable": 0.0,
+    "unknown": 0.0
+  },
+  "next_scan_deadline_beijing": "2026-10-25 12:02:31 北京时间",
+  "prometheus": {
+    "fresh_coverage_and_heartbeat_scraped": true,
+    "rules": [
+      {
+        "name": "VendorEvidenceMonitorUnavailable",
+        "health": "ok",
+        "state": "inactive"
+      },
+      {
+        "name": "VendorEvidenceNeedsReview",
+        "health": "ok",
+        "state": "inactive"
+      }
+    ],
+    "active_vendor_alerts": 0
+  },
+  "alertmanager": {
+    "credential_file_configured": true,
+    "no_test_notification_created": true
+  },
+  "configuration_backup": "docker-compose.yml.bak.source-label-20261025T025731Z"
+}

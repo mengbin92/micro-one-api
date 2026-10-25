@@ -267,6 +267,13 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	reconJobOpts := []biz.JobOption{biz.WithRecipients(recipients)}
 	if os.Getenv("BILLING_VENDOR_REPORT_MONITOR_V1") == "true" {
 		reconJobOpts = append(reconJobOpts, biz.WithVendorReportMonitoring(data.NewVendorReconciliationRepo(d)))
+		expectations, err := biz.DecodeVendorReportExpectations([]byte(os.Getenv("BILLING_VENDOR_REPORT_EXPECTATIONS_JSON")))
+		if err != nil {
+			logger.Log.
+				Error("vendor report expectations are missing or invalid")
+		} else {
+			reconJobOpts = append(reconJobOpts, biz.WithVendorReportExpectations(expectations))
+		}
 	}
 	if notifier != nil {
 		reconJobOpts = append(reconJobOpts, biz.WithNotifier(notifier))

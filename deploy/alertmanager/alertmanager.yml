@@ -11,3 +11,8 @@ receivers:
     webhook_configs:
       - url: http://notify-worker:8008/v1/alerts/alertmanager
         send_resolved: true
+        http_config:
+          authorization:
+            type: Bearer
+            # Provision the existing monitor caller credential in the data volume.
+            credentials_file: /alertmanager/notify-monitor.token

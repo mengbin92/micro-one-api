@@ -109,7 +109,14 @@ groups:
     interval: 30s
     rules:
       - alert: VendorEvidenceMonitorUnavailable
-        expr: micro_one_api_billing_vendor_report_monitor{state=~"unavailable|notification_failed|empty"} > 0
+        expr: |
+          micro_one_api_billing_vendor_report_monitor{state=~"unavailable|notification_failed|empty|expectations_unconfigured|expectations_expired"} > 0
+          or
+          (up{job="micro-one-api",instance="billing-service:8004"} == 1
+            unless on(instance) micro_one_api_billing_vendor_report_monitor{state="unavailable"})
+          or
+          ((micro_one_api_billing_vendor_report_next_scan_deadline_seconds < time())
+            and on(instance) (up{job="micro-one-api",instance="billing-service:8004"} == 1))
         for: 5m
         labels:
           severity: warning
@@ -118,7 +125,7 @@ groups:
           description: "Restore bounded report coverage and notification delivery. Unknown costs do not authorize expansion. See docs/runbooks/billing-upstream-p3-2026-10-14.md."
 
       - alert: VendorEvidenceNeedsReview
-        expr: micro_one_api_billing_vendor_report_monitor{state=~"attention|overdue"} > 0
+        expr: micro_one_api_billing_vendor_report_monitor{state=~"attention|overdue|missing_overdue"} > 0
         for: 5m
         labels:
           severity: warning

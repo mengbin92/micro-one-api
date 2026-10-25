@@ -34,3 +34,137 @@ tests:
             exp_annotations:
               summary: Supplier cost reports need review
               description: 'Investigate unexplained differences and overdue evidence; keep customer ledgers and frozen policies unchanged. See docs/runbooks/billing-upstream-p3-2026-10-14.md.'
+  - name: disabled monitor on a healthy billing target fires and recovery clears alert
+    interval: 1m
+    input_series:
+      - series: 'up{job="micro-one-api",instance="billing-service:8004"}'
+        values: '1+0x9'
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing-service:8004",state="unavailable"}'
+        values: '_ _ _ _ _ _ 0+0x3'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: VendorEvidenceMonitorUnavailable
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: VendorEvidenceMonitorUnavailable
+        exp_alerts:
+          - exp_labels: {job: micro-one-api, instance: 'billing-service:8004', severity: warning}
+            exp_annotations:
+              summary: Supplier cost evidence monitoring needs attention
+              description: 'Restore bounded report coverage and notification delivery. Unknown costs do not authorize expansion. See docs/runbooks/billing-upstream-p3-2026-10-14.md.'
+      - eval_time: 6m
+        alertname: VendorEvidenceMonitorUnavailable
+        exp_alerts: []
+  - name: another instance cannot hide a disabled billing monitor
+    interval: 1m
+    input_series:
+      - series: 'up{job="micro-one-api",instance="billing-service:8004"}'
+        values: '1+0x5'
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="other-billing:8004",state="unavailable"}'
+        values: '0+0x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VendorEvidenceMonitorUnavailable
+        exp_alerts:
+          - exp_labels: {job: micro-one-api, instance: 'billing-service:8004', severity: warning}
+            exp_annotations:
+              summary: Supplier cost evidence monitoring needs attention
+              description: 'Restore bounded report coverage and notification delivery. Unknown costs do not authorize expansion. See docs/runbooks/billing-upstream-p3-2026-10-14.md.'
+  - name: an unavailable target does not masquerade as a disabled monitor
+    interval: 1m
+    input_series:
+      - series: 'up{job="micro-one-api",instance="billing-service:8004"}'
+        values: '0+0x6'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: VendorEvidenceMonitorUnavailable
+        exp_alerts: []
+  - name: missing expectation configuration is observable and recovery clears alert
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",state="expectations_unconfigured"}'
+        values: '1+0x5 0+0x2'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VendorEvidenceMonitorUnavailable
+        exp_alerts:
+          - exp_labels: {instance: billing, state: expectations_unconfigured, severity: warning}
+            exp_annotations:
+              summary: Supplier cost evidence monitoring needs attention
+              description: 'Restore bounded report coverage and notification delivery. Unknown costs do not authorize expansion. See docs/runbooks/billing-upstream-p3-2026-10-14.md.'
+      - eval_time: 6m
+        alertname: VendorEvidenceMonitorUnavailable
+        exp_alerts: []
+  - name: expired expectation inventory cannot silently declare coverage healthy
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",state="expectations_expired"}'
+        values: '1+0x5 0+0x2'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VendorEvidenceMonitorUnavailable
+        exp_alerts:
+          - exp_labels: {instance: billing, state: expectations_expired, severity: warning}
+            exp_annotations:
+              summary: Supplier cost evidence monitoring needs attention
+              description: 'Restore bounded report coverage and notification delivery. Unknown costs do not authorize expansion. See docs/runbooks/billing-upstream-p3-2026-10-14.md.'
+      - eval_time: 6m
+        alertname: VendorEvidenceMonitorUnavailable
+        exp_alerts: []
+  - name: an entirely unimported account period alerts only after its deadline
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",state="missing"}'
+        values: '1+0x11'
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",state="missing_overdue"}'
+        values: '0+0x4 1+0x6 0'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: VendorEvidenceNeedsReview
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: VendorEvidenceNeedsReview
+        exp_alerts:
+          - exp_labels: {instance: billing, state: missing_overdue, severity: warning}
+            exp_annotations:
+              summary: Supplier cost reports need review
+              description: 'Investigate unexplained differences and overdue evidence; keep customer ledgers and frozen policies unchanged. See docs/runbooks/billing-upstream-p3-2026-10-14.md.'
+      - eval_time: 12m
+        alertname: VendorEvidenceNeedsReview
+        exp_alerts: []
+  - name: frozen healthy monitor results expire and advancing the deadline clears alert
+    interval: 1m
+    input_series:
+      - series: 'up{job="micro-one-api",instance="billing-service:8004"}'
+        values: '1+0x15'
+      - series: 'micro_one_api_billing_vendor_report_monitor{job="micro-one-api",instance="billing-service:8004",state="unavailable"}'
+        values: '0+0x15'
+      - series: 'micro_one_api_billing_vendor_report_next_scan_deadline_seconds{job="micro-one-api",instance="billing-service:8004"}'
+        values: '300+0x11 1800+0x3'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: VendorEvidenceMonitorUnavailable
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: VendorEvidenceMonitorUnavailable
+        exp_alerts:
+          - exp_labels: {job: micro-one-api, instance: 'billing-service:8004', severity: warning}
+            exp_annotations:
+              summary: Supplier cost evidence monitoring needs attention
+              description: 'Restore bounded report coverage and notification delivery. Unknown costs do not authorize expansion. See docs/runbooks/billing-upstream-p3-2026-10-14.md.'
+      - eval_time: 12m
+        alertname: VendorEvidenceMonitorUnavailable
+        exp_alerts: []
+  - name: scrape failures do not duplicate a frozen monitor deadline alert
+    interval: 1m
+    input_series:
+      - series: 'up{job="micro-one-api",instance="billing-service:8004"}'
+        values: '0+0x11'
+      - series: 'micro_one_api_billing_vendor_report_monitor{job="micro-one-api",instance="billing-service:8004",state="unavailable"}'
+        values: '0+0x11'
+      - series: 'micro_one_api_billing_vendor_report_next_scan_deadline_seconds{job="micro-one-api",instance="billing-service:8004"}'
+        values: '0+0x11'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: VendorEvidenceMonitorUnavailable
+        exp_alerts: []
