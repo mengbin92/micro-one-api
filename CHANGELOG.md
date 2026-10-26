@@ -7,10 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.36.6] - 2026-10-26
+
+v0.36.6 是 v0.36.5 之后的 **PATCH 修复版本**：补齐上游供应商账单漏导与扫描停滞检测、绑定不可变报告/run 的有期限复核例外，保留历史 legacy 关联补证，并更新前端开发测试依赖。无新增迁移或公开 API 变更；生产已按维护者决定关闭证据扫描并撤下两条对应告警，本次发布继续保持停用。详见 [release-v0.36.6.md](docs/releases/release-v0.36.6.md)。
+
 ### Fixed
 
+- 上游供应商报告监控使用独立、可过期的账号账期清单检测漏导，覆盖清单失效、指标缺失和扫描停滞；修复 Alertmanager 到通知服务的文件凭据认证。
+- 历史证据复核例外精确绑定 report/run、复核人与依据并限制期限；保留原 pending/overdue 与未知金额，新 run、到期、差异及其他目标继续独立告警。
 - 前端开发测试依赖 Vitest 与 coverage-v8 升级至 5.0.3，同步修复 `@vitest/mocker` 的未认证 mock 代码注入及 Windows 路径遍历漏洞（GHSA-qxg6-89mg-rqv8、GHSA-xp26-3454-mjgp）。
 - 更新 jsdom 间接依赖 `undici` 至 7.30.1、ESLint 间接依赖 `zod` 至 4.6.7，修复额外发现的拒绝服务与完整性校验漏洞；不改变生产运行依赖。
+
+### Changed
+
+- 恢复并私有留存 201 条历史消费/timing/reservation/ledger 关联，通过既有 IAM owner 追加 sequence=2 并保留审计；主核验仍为 pending，不补造历史 execution 或冻结成本。
+- 记录生产证据监控停用与数据不变性验收；普通部署不得自动恢复扫描和两条对应规则，重新启用须另行核实采购清单及例外期限。
 
 ## [0.36.5] - 2026-10-24
 
