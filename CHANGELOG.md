@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- 前端开发测试依赖 Vitest 与 coverage-v8 升级至 5.0.3，同步修复 `@vitest/mocker` 的未认证 mock 代码注入及 Windows 路径遍历漏洞（GHSA-qxg6-89mg-rqv8、GHSA-xp26-3454-mjgp）。
+- 更新 jsdom 间接依赖 `undici` 至 7.30.1、ESLint 间接依赖 `zod` 至 4.6.7，修复额外发现的拒绝服务与完整性校验漏洞；不改变生产运行依赖。
+
 ## [0.36.5] - 2026-10-24
 
 v0.36.5 是 v0.36.4 之后的 **PATCH 修复版本**：Identity 142 按维护者授权向现有 builtin root 持久发布三项上游契约写权限，修正 IAM 存储验收清单，并独立记录渠道 11 DeepSeek Flash 的生产部署与有界试点。v0.36.4 已发布 tag 保持不变；142 及后续现场结果归入本版；渠道 11 的 JSON/SSE 两次验证通过并进入 1% 灰度，新增付费目标已撤销。详见 [release-v0.36.5.md](docs/releases/release-v0.36.5.md)。
