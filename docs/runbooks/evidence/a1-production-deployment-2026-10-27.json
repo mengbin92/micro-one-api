@@ -1,0 +1,242 @@
+{
+  "status": "deployed_verified",
+  "tag": "a1-20261027-072232-4cae2d8e1ff2",
+  "source_digest": "4cae2d8e1ff2ac7e3fe6727ca47af031f6e3ef3d8bb26548310f42f3ab06f046",
+  "completed_at_utc": "2026-10-26T23:28:51.529101+00:00",
+  "images": {
+    "identity-service": {
+      "name": "docker-compose-identity-service:a1-20261027-072232-4cae2d8e1ff2",
+      "id": "sha256:984fb56240458eadd40fa7ce285c119a2b9daa10158b68c610e9b83f138a6569",
+      "architecture": "amd64"
+    },
+    "admin-api": {
+      "name": "docker-compose-admin-api:a1-20261027-072232-4cae2d8e1ff2",
+      "id": "sha256:8022c2606e0caee6c5860d3a82a04bfdd863819f42c4085c5b01510715778f79",
+      "architecture": "amd64"
+    }
+  },
+  "rollback_tag": "rollback-a1-20261027-072232-4cae2d8e1ff2",
+  "backup_directory": "/opt/micro-one-api/docker-compose/backups/a1-20261027-072232-4cae2d8e1ff2",
+  "web_backup": "/opt/web/dist.bak.a1-20261027-072232-4cae2d8e1ff2",
+  "web_index_sha256": "24b135a79df2dc5f7ccda9f48844ac6cd9832ec6aae1c552a88a1c53bf67a150",
+  "public_url": "https://console.mengbin.top",
+  "safe_public_policy": {
+    "registration_enabled": true,
+    "email_verification": false,
+    "email_delivery_configured": true,
+    "registration_policy_available": true,
+    "turnstile_check": false
+  },
+  "unrelated_containers_unchanged": true,
+  "frontend_old_assets_retained": true,
+  "sql_migration_run": false,
+  "verification": {
+    "services": {
+      "admin-api": {
+        "running": true,
+        "image_id": "sha256:8022c2606e0caee6c5860d3a82a04bfdd863819f42c4085c5b01510715778f79",
+        "restart_count": 0,
+        "unchanged": false,
+        "recent_log_lines": 5,
+        "fatal_errors": 0
+      },
+      "alertmanager": {
+        "running": true,
+        "image_id": "sha256:220da6995a919b9ee6e0d3da7ca5f09802f3088007af56be22160314d2485b54",
+        "restart_count": 0,
+        "unchanged": true
+      },
+      "billing-service": {
+        "running": true,
+        "image_id": "sha256:7f7cc3cf2e09c056ea9b7e8a01f73d3675f67563174d6a78d6553da1abb7b102",
+        "restart_count": 0,
+        "unchanged": true
+      },
+      "channel-service": {
+        "running": true,
+        "image_id": "sha256:5ff6c140d165ec0a34ab9d8d415c4156a2930a049228c693573d7c486f2db9c7",
+        "restart_count": 0,
+        "unchanged": true
+      },
+      "config-service": {
+        "running": true,
+        "image_id": "sha256:e648c9bcf591b593640debf4d78bf8b3288cfcd05bff2dcef40004f4e3abc7e1",
+        "restart_count": 0,
+        "unchanged": true
+      },
+      "grafana": {
+        "running": true,
+        "image_id": "sha256:2e986801428cd689c2358605289c90ab37d2b39e24808874971f54c99bcdc412",
+        "restart_count": 0,
+        "unchanged": true
+      },
+      "identity-service": {
+        "running": true,
+        "image_id": "sha256:984fb56240458eadd40fa7ce285c119a2b9daa10158b68c610e9b83f138a6569",
+        "restart_count": 0,
+        "unchanged": false,
+        "recent_log_lines": 3,
+        "fatal_errors": 0
+      },
+      "jaeger": {
+        "running": true,
+        "image_id": "sha256:4a130978c31a30d9baadd9fd902eeb779ed7bf2efd53e8b17bd79069e689da1b",
+        "restart_count": 0,
+        "unchanged": true
+      },
+      "log-service": {
+        "running": true,
+        "image_id": "sha256:5b2c2097c1cb9a7453af60bdca51276085d8ac7255dd53e0f9b15d0fd45ca753",
+        "restart_count": 0,
+        "unchanged": true
+      },
+      "monitor-worker": {
+        "running": true,
+        "image_id": "sha256:87ce8266df3724c642addbfb7f04d32dbbedfb41a570eaa24698d6ab88fd8f77",
+        "restart_count": 0,
+        "unchanged": true
+      },
+      "mysql": {
+        "running": true,
+        "image_id": "sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b",
+        "restart_count": 0,
+        "unchanged": true
+      },
+      "notify-worker": {
+        "running": true,
+        "image_id": "sha256:6cdecd0a038ccd34ae1969ada672c5f30311203f6a1e4565de504d2f341f7bc2",
+        "restart_count": 0,
+        "unchanged": true
+      },
+      "prometheus": {
+        "running": true,
+        "image_id": "sha256:76947e7ef22f8a698fc638f706685909be425dbe09bd7a2cd7aca849f79b5f64",
+        "restart_count": 0,
+        "unchanged": true
+      },
+      "redis": {
+        "running": true,
+        "image_id": "sha256:0cf7723388c29e8a936a9a1502f3fdfc8fec0688ffca8875d8e87940bec045eb",
+        "restart_count": 0,
+        "unchanged": true
+      },
+      "relay-gateway": {
+        "running": true,
+        "image_id": "sha256:b90a5ec566b2e8e6e5d4f52b9e70f366705f260c4a045e335e17466ec432740a",
+        "restart_count": 0,
+        "unchanged": true
+      }
+    },
+    "vendor_monitor_enabled": "false",
+    "/api/status": {
+      "status": 200,
+      "content_type": "application/json",
+      "sha256": "86fec5ea5ba21a4b3024bdd02bef62abfc59ae5bc9a86f4dc1a47789a6955656",
+      "cache_control": "no-store",
+      "safe_policy": {
+        "registration_enabled": true,
+        "email_verification": false,
+        "email_delivery_configured": true,
+        "registration_policy_available": true,
+        "turnstile_check": false
+      }
+    },
+    "/login": {
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "sha256": "24b135a79df2dc5f7ccda9f48844ac6cd9832ec6aae1c552a88a1c53bf67a150",
+      "cache_control": "no-cache, no-store, must-revalidate"
+    },
+    "/forgot-password": {
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "sha256": "24b135a79df2dc5f7ccda9f48844ac6cd9832ec6aae1c552a88a1c53bf67a150",
+      "cache_control": "no-cache, no-store, must-revalidate"
+    },
+    "/reset-password": {
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "sha256": "24b135a79df2dc5f7ccda9f48844ac6cd9832ec6aae1c552a88a1c53bf67a150",
+      "cache_control": "no-cache, no-store, must-revalidate"
+    }
+  },
+  "completed_at_local": "2026-10-27T07:28:51.529101+08:00",
+  "browser_smoke": {
+    "origin": "https://console.mengbin.top",
+    "cases": [
+      {
+        "route": "/register",
+        "invitation_verification_visible": true,
+        "passed": true
+      },
+      {
+        "route": "/forgot-password",
+        "passed": true
+      },
+      {
+        "route": "/reset-password",
+        "language_switch_preserves_token": true,
+        "leaving_clears_token": true,
+        "passed": true
+      }
+    ],
+    "page_errors": [],
+    "asset_errors": [],
+    "mutating_requests": [],
+    "started_at": "2026-10-26T23:29:37.186Z",
+    "safe_policy": {
+      "registration_enabled": true,
+      "email_verification": false,
+      "email_delivery_configured": true,
+      "turnstile_check": false
+    },
+    "status": "passed",
+    "completed_at": "2026-10-26T23:29:48.270Z"
+  },
+  "public_http_smoke": {
+    "origin": "https://console.mengbin.top",
+    "checks": [
+      {
+        "method": "GET",
+        "path": "/login",
+        "status": 200,
+        "cache_control": "no-cache, no-store, must-revalidate",
+        "index_sha256": "24b135a79df2dc5f7ccda9f48844ac6cd9832ec6aae1c552a88a1c53bf67a150"
+      },
+      {
+        "method": "GET",
+        "path": "/api/status",
+        "status": 200,
+        "cache_control": "no-store"
+      },
+      {
+        "method": "GET",
+        "path": "/api/verification?email=invalid",
+        "status": 200,
+        "cache_control": "no-store",
+        "validation_rejected": true
+      },
+      {
+        "method": "GET",
+        "path": "/api/reset_password?email=invalid",
+        "status": 200,
+        "cache_control": "no-store",
+        "validation_rejected": true
+      },
+      {
+        "method": "POST",
+        "path": "/api/user/reset",
+        "status": 200,
+        "cache_control": "no-store",
+        "validation_rejected": true
+      }
+    ],
+    "status": "passed",
+    "real_email_sent": false,
+    "account_created": false,
+    "password_changed": false
+  },
+  "git_branch": "develop",
+  "release_tag_created": false,
+  "source_binding": "source_digest labels identify the deployed source snapshot; deployment precedes the develop commit"
+}

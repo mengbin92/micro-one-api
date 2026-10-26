@@ -88,6 +88,8 @@ message Registration {
   repeated string email_domain_whitelist = 4 [json_name = "email_domain_whitelist"];
   bool turnstile_check_enabled = 5 [json_name = "turnstile_check_enabled"];
   string turnstile_secret = 6 [json_name = "turnstile_secret"];
+  bool email_verification_enabled = 7 [json_name = "email_verification_enabled"];
+  string turnstile_site_key = 8 [json_name = "turnstile_site_key"];
 }
 
 // Registry holds the service registry configuration.

@@ -104,6 +104,11 @@ Default endpoints:
 For MySQL, PostgreSQL and production operations, see the
 [deployment guide](./docs/deployment.md) (Chinese).
 
+Registration verification and password recovery can reuse the existing
+`NOTIFY_SMTP_*` account. Set `IDENTITY_PUBLIC_BASE_URL` to the public console
+URL as well; SMTP and shared Redis are required. Configuration and acceptance
+status are recorded in the [A1 implementation record](./docs/runbooks/a1-self-service-acceptance-2026-10-27.md) (Chinese).
+
 ## API example
 
 After completing the Quickstart, set `API_TOKEN` to your Relay token and `MODEL`

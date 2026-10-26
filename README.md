@@ -285,7 +285,11 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 | `RECON_ALERT_RECIPIENTS` | 对账告警目标，JSON 数组；webhook/event 可填 URL 或留空走 `NOTIFY_WEBHOOK_URL`，email 填邮箱，IM 通道留空走对应配置 |
 | `RECON_ALERT_INTERVAL` | 对账任务执行间隔，例如 `1h`、`30m` |
 | `NOTIFY_WEBHOOK_URL` | notify-worker 默认 webhook 投递地址 |
-| `NOTIFY_SMTP_HOST` / `NOTIFY_SMTP_PORT` / `NOTIFY_SMTP_USER` / `NOTIFY_SMTP_PASS` / `NOTIFY_SMTP_FROM` | notify-worker 邮件投递配置 |
+| `NOTIFY_SMTP_HOST` / `NOTIFY_SMTP_PORT` / `NOTIFY_SMTP_USER` / `NOTIFY_SMTP_PASS` / `NOTIFY_SMTP_FROM` | notify-worker 邮件配置；Identity 注册/恢复可整组复用 |
+| `IDENTITY_PUBLIC_BASE_URL` | 注册/恢复邮件必填的控制台公网 URL，用于生成重置链接 |
+| `IDENTITY_SMTP_HOST` / `PORT` / `USER` / `PASS` / `FROM` / `MODE` | 可选独立 Identity SMTP 组；设置 HOST 后整组使用，不混用 Notify 凭据 |
+| `REGISTRATION_EMAIL_VERIFICATION_ENABLED` | 是否强制邮箱验证，默认 `false`；邀请奖励始终要求邮箱证明 |
+| `TURNSTILE_CHECK_ENABLED` / `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET` | 可选注册安全验证；启用时 site key 与 secret 均须配置 |
 
 Prometheus 指标通过各服务 `/metrics` 暴露。订阅系统新增 `micro_one_api_subscription_quota_checks_total`、`micro_one_api_subscription_usage_records_total`，relay 订阅账号路径新增 `micro_one_api_relay_subscription_adaptor_requests_total`、`micro_one_api_relay_subscription_failover_total`、`micro_one_api_relay_runtime_blocks_total`、`micro_one_api_relay_upstream_passthrough_total`、`micro_one_api_relay_codex_quota_snapshots_total`、`micro_one_api_relay_codex_quota_used_percent`。v0.6.0 起，订阅账号治理还暴露额度重置、账号恢复和额度告警相关指标，详见 [docs/runbooks/subscription-account-ops-runbook.md](./docs/runbooks/subscription-account-ops-runbook.md)。
 

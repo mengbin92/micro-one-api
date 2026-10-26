@@ -9,11 +9,14 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { apiClient, clearUserSession } from '@/lib/api';
-import { getApiErrorMessage } from '@/lib/api-error';
+import { getAuthErrorMessage } from '@/lib/auth-error';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { oauthProviders, redirectToApiPath } from '@/lib/oauth';
 import { t } from '@/lib/i18n';
 import { useI18n } from '@/hooks/useI18n';
+import { useRegistrationPolicy } from '@/hooks/useRegistrationPolicy';
+import { TurnstileChallenge } from '@/components/TurnstileChallenge';
+import { useResendCooldown } from '@/hooks/useResendCooldown';
 
 export function LoginPage() {
   const location = useLocation();
@@ -21,14 +24,36 @@ export function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [affCode, setAffCode] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('aff') ?? params.get('aff_code') ?? '';
+  });
+  const [verificationCode, setVerificationCode] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileAttempt, setTurnstileAttempt] = useState(0);
+  const [sending, setSending] = useState(false);
+  const cooldown = useResendCooldown();
+  const [deliveryMessage, setDeliveryMessage] = useState('');
   const [acceptedLegal, setAcceptedLegal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const loginTabRef = useRef<HTMLButtonElement>(null);
   const registerTabRef = useRef<HTMLButtonElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const submitLock = useRef(false);
+  const sendLock = useRef(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { language } = useI18n();
+  const policyQuery = useRegistrationPolicy(mode === 'register');
+  const policy = policyQuery.data;
+  const invitationVerification = !!affCode.trim();
+  const verificationRequired = policy?.email_verification || invitationVerification;
+  const registrationBlocked = !policy || policyQuery.isError || !policy.registration_enabled
+    || (verificationRequired && !policy.email_delivery_configured)
+    || (policy.turnstile_check && !policy.turnstile_site_key);
+  const emailRequired = verificationRequired || policy?.email_domain_restriction_enabled;
   const userAgreementLabel = language === 'en-US' ? t("用户协议") : `《${t("用户协议")}》`;
   const privacyPolicyLabel = language === 'en-US' ? t("隐私政策") : `《${t("隐私政策")}》`;
 
@@ -39,6 +64,31 @@ export function LoginPage() {
     setError('');
     setConfirmPassword('');
     setAcceptedLegal(false);
+    setTurnstileToken('');
+  };
+
+  const sendVerification = async () => {
+    if (sendLock.current || cooldown.seconds > 0 || !policy?.email_delivery_configured) return;
+    if (!email.trim() || !emailRef.current?.reportValidity()) {
+      setError(t('请输入邮箱'));
+      return;
+    }
+    sendLock.current = true;
+    setSending(true);
+    setError('');
+    setDeliveryMessage('');
+    try {
+      const response = await apiClient.get('/verification', { params: { email: email.trim() } });
+      ensureApiSuccess(response.data, t('发送验证码失败'));
+      setVerificationCode('');
+      setDeliveryMessage(t('验证码已发送，请查收邮件。'));
+      cooldown.start();
+    } catch (err) {
+      setError(getAuthErrorMessage(err, t('发送验证码失败')));
+    } finally {
+      sendLock.current = false;
+      setSending(false);
+    }
   };
 
   const signIn = async (nextUsername: string) => {
@@ -60,6 +110,7 @@ export function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitLock.current) return;
     setError('');
     const nextUsername = username.trim();
 
@@ -75,7 +126,14 @@ export function LoginPage() {
       setError(t("请先阅读并同意用户协议和隐私政策"));
       return;
     }
+    if (mode === 'register') {
+      if (registrationBlocked) return;
+      if (emailRequired && !email.trim()) { setError(t('请输入邮箱')); return; }
+      if (verificationRequired && !verificationCode.trim()) { setError(t('请输入邮箱验证码')); return; }
+      if (policy?.turnstile_check && !turnstileToken) { setError(t('请完成安全验证')); return; }
+    }
 
+    submitLock.current = true;
     setLoading(true);
 
     try {
@@ -83,27 +141,37 @@ export function LoginPage() {
         const response = await apiClient.post('/user/register', {
           username: nextUsername,
           password,
+          email: email.trim(),
+          aff_code: affCode.trim(),
+          verification_code: verificationCode.trim(),
+          turnstile_token: turnstileToken,
         });
         ensureApiSuccess(response.data, t("注册失败"));
-        await signIn(nextUsername);
-        toast.success(t("账号创建成功"));
+        setPassword('');
+        setConfirmPassword('');
+        setVerificationCode('');
+        toast.success(t('注册成功，请使用新账号登录。'));
+        navigate('/login', { replace: true });
       } else {
         await signIn(nextUsername);
         toast.success(t("登录成功"));
+        navigate('/dashboard');
       }
-      navigate('/dashboard');
     } catch (err: unknown) {
-      const message = getApiErrorMessage(err, t("网络错误"));
+      const message = getAuthErrorMessage(err, t("网络错误"));
       setError(message);
       toast.error(message);
     } finally {
+      submitLock.current = false;
       setLoading(false);
+      setTurnstileToken('');
+      setTurnstileAttempt(attempt => attempt + 1);
     }
   };
 
   return (
     <main className="grid min-h-screen bg-background lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
-      <div className="fixed right-4 top-4 z-10 sm:right-6 sm:top-6">
+      <div className="absolute right-4 top-4 z-10 sm:right-6 sm:top-6">
         <LanguageToggle className="gap-2 bg-background/90 backdrop-blur" />
       </div>
       <section
@@ -156,7 +224,7 @@ export function LoginPage() {
                   {mode === 'login' ? t("欢迎回来") : t("创建账号")}
                 </CardTitle>
                 <CardDescription className="mt-2">
-                  {mode === 'login' ? t("登录后继续管理您的 API 服务。") : t("使用用户名和密码注册，开始使用控制台。")}
+                  {mode === 'login' ? t("登录后继续管理您的 API 服务。") : t('填写账号信息，完成验证后开始使用控制台。')}
                 </CardDescription>
               </div>
 
@@ -196,6 +264,13 @@ export function LoginPage() {
 
             <CardContent id="auth-panel" role="tabpanel" aria-labelledby={`auth-tab-${mode}`}>
               <form onSubmit={handleSubmit} className="space-y-4" aria-describedby={error ? 'auth-error' : undefined}>
+                {mode === 'register' && <>
+                  {policyQuery.isPending && <p role="status" className="text-sm text-muted-foreground">{t('正在读取注册策略…')}</p>}
+                  {policyQuery.isError && <div className="space-y-2"><p role="alert" className="text-sm text-destructive">{t('注册策略暂不可用，请重试。')}</p><Button type="button" variant="outline" onClick={() => void policyQuery.refetch()}>{t('重试')}</Button></div>}
+                  {policy && !policy.registration_enabled && <p role="status" className="text-sm text-muted-foreground">{t('当前暂不开放注册。')}</p>}
+                  {policy?.email_verification && !policy.email_delivery_configured && <p role="alert" className="text-sm text-destructive">{t('邮件服务暂不可用，请联系管理员。')}</p>}
+                  {policy && invitationVerification && !policy.email_verification && !policy.email_delivery_configured && <p role="alert" className="text-sm text-destructive">{t('邀请奖励需要验证邮箱；邮件服务不可用，请移除邀请码后注册。')}</p>}
+                </>}
                 <div className="space-y-2">
                   <Label htmlFor="username">{t("用户名")}</Label>
                   <Input
@@ -234,6 +309,28 @@ export function LoginPage() {
                     />
                   </div>
                 )}
+                {mode === 'register' && <>
+                  <div className="space-y-2">
+                    <Label htmlFor="registration-email">{emailRequired ? t('邮箱') : t('邮箱（可选）')}</Label>
+                    <Input id="registration-email" ref={emailRef} type="email" autoComplete="email" value={email} required={!!emailRequired} disabled={sending || loading} onChange={event => { setEmail(event.target.value); setVerificationCode(''); setDeliveryMessage(''); }} />
+                    {policy?.email_domain_restriction_enabled && <p className="text-xs text-muted-foreground">{t('允许的邮箱域名：{domains}', { domains: policy.email_domain_whitelist.join(', ') })}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="aff-code">{t('邀请码（可选）')}</Label>
+                    <Input id="aff-code" value={affCode} onChange={event => setAffCode(event.target.value)} autoComplete="off" />
+                  </div>
+                  {policy && verificationRequired && <div className="space-y-2">
+                    <Label htmlFor="verification-code">{t('邮箱验证码')}</Label>
+                    <div className="flex gap-2">
+                      <Input id="verification-code" value={verificationCode} onChange={event => setVerificationCode(event.target.value)} required autoComplete="one-time-code" />
+                      <Button type="button" variant="outline" disabled={sending || loading || !email.trim() || !policy.email_delivery_configured || cooldown.seconds > 0} onClick={() => void sendVerification()}>{sending ? t('发送中…') : cooldown.seconds > 0 ? t('{seconds} 秒后可重发', { seconds: cooldown.seconds }) : t('发送验证码')}</Button>
+                    </div>
+                    {deliveryMessage && <p role="status" className="text-sm text-muted-foreground">{deliveryMessage}</p>}
+                  </div>}
+                  {policy?.turnstile_check && (policy.turnstile_site_key
+                    ? <TurnstileChallenge key={turnstileAttempt} siteKey={policy.turnstile_site_key} onToken={setTurnstileToken} />
+                    : <p role="alert" className="text-sm text-destructive">{t('安全验证尚未配置，请联系管理员。')}</p>)}
+                </>}
                 {error && (
                   <p id="auth-error" role="alert" className="text-sm font-medium text-destructive">
                     {error}
@@ -254,11 +351,12 @@ export function LoginPage() {
                     </label>
                   </div>
                 )}
-                <Button type="submit" className="w-full" disabled={loading}>
+                <Button type="submit" className="w-full" disabled={loading || (mode === 'register' && registrationBlocked)}>
                   {loading ? (mode === 'login' ? t("登录中…") : t("创建中…")) : mode === 'login' ? t("登录") : t("注册账号")}
                 </Button>
                 {mode === 'login' && (
                   <>
+                    <div className="text-right"><Link to="/forgot-password" className="text-sm text-primary hover:underline">{t('忘记密码？')}</Link></div>
                     <div className="flex items-center gap-3 py-1">
                       <div className="h-px flex-1 bg-border" />
                       <span className="text-xs font-semibold text-muted-foreground">{t("或使用第三方账号")}</span>

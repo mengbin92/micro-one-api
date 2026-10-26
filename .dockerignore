@@ -28,6 +28,7 @@ web/node_modules
 web/dist
 web/test-results
 web/iam-test-results
+web/a1-test-results
 web/playwright-report
 
 test/e2e/e2e-test

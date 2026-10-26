@@ -5,13 +5,16 @@ import { router } from './router';
 import { queryClient } from '@/lib/query-client';
 import { I18nProvider } from '@/components/I18nProvider';
 import { useI18n } from '@/hooks/useI18n';
+import { PasswordRecoveryFlowProvider } from '@/components/PasswordRecoveryFlowProvider';
 
 function LocalizedApp() {
   const { language } = useI18n();
 
   return (
     <QueryClientProvider client={queryClient}>
-      <RouterProvider key={language} router={router} />
+      <PasswordRecoveryFlowProvider router={router}>
+        <RouterProvider key={language} router={router} />
+      </PasswordRecoveryFlowProvider>
       <Toaster richColors closeButton position="top-right" />
     </QueryClientProvider>
   );

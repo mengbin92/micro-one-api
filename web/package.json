@@ -15,6 +15,7 @@
     "test": "vitest run",
     "test:critical": "vitest run --config vitest.critical.config.ts --coverage",
     "test:e2e:d7": "playwright test --config playwright.d7.config.ts",
+    "test:e2e:a1": "npm run build && playwright test --config playwright.a1.config.ts",
     "test:e2e": "playwright test",
     "test:watch": "vitest",
     "i18n:generate": "node scripts/i18n-tools.mjs generate",

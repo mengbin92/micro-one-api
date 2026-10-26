@@ -160,6 +160,18 @@ func (r *iamRepo) UpdateAccount(ctx context.Context, handle biz.IAMTx, u biz.Use
 		case "display_name":
 			updates["display_name"] = u.DisplayName
 		case "email":
+			var current userModel
+			if err := tx.db.Select("email").Where("id = ?", u.ID).First(&current).Error; err != nil {
+				return iamStorageError(tx, err)
+			}
+			if current.Email != u.Email {
+				if err := checkEmailBinding(tx.db, u.Email, u.ID); err != nil {
+					if errors.Is(err, biz.ErrUserExists) {
+						return err
+					}
+					return iamStorageError(tx, err)
+				}
+			}
 			updates["email"] = u.Email
 		case "group":
 			updates["group"] = u.Group

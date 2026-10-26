@@ -49,7 +49,9 @@ oauth:
     client_secret: ${OAUTH_WECHAT_CLIENT_SECRET:-}
 registration:
   disabled: ${REGISTRATION_DISABLED:-false}
+  email_verification_enabled: ${REGISTRATION_EMAIL_VERIFICATION_ENABLED:-false}
   email_domain_restriction_enabled: ${REGISTRATION_EMAIL_DOMAIN_RESTRICTION_ENABLED:-false}
   email_domain_whitelist: ${REGISTRATION_EMAIL_DOMAIN_WHITELIST:-[]}
   turnstile_check_enabled: ${TURNSTILE_CHECK_ENABLED:-false}
   turnstile_secret: ${TURNSTILE_SECRET:-}
+  turnstile_site_key: ${TURNSTILE_SITE_KEY:-}

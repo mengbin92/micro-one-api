@@ -14,6 +14,7 @@ func publicIdentityRateLimit(uc *biz.IdentityUsecase) func(http.Handler) http.Ha
 			path := r.URL.Path
 			public := path == "/api/user/register" || path == "/api/user/reset" || path == "/api/reset_password" || path == "/api/verification" || strings.HasPrefix(path, "/api/oauth/") || strings.HasPrefix(path, "/v1/oauth/")
 			if public {
+				w.Header().Set("Cache-Control", "no-store")
 				allowed := uc.AllowPublicRequest(r.Context(), "ip:"+requestRemoteIP(r), 30, 10*time.Minute)
 				if email := r.URL.Query().Get("email"); allowed && email != "" && (path == "/api/reset_password" || path == "/api/verification") {
 					allowed = uc.AllowPublicRequest(r.Context(), "mail:"+strings.ToLower(strings.TrimSpace(email)), 3, 10*time.Minute)

@@ -8,6 +8,7 @@ import { RouteErrorFallback } from '@/components/RouteErrorFallback';
 import { routeLoaders } from '@/route-loaders';
 
 const LoginPage = lazy(() => routeLoaders['/login']().then((m) => ({ default: m.LoginPage })));
+const PasswordRecoveryPage = lazy(() => routeLoaders['/forgot-password']().then(m => ({ default: m.PasswordRecoveryPage })));
 const UserAgreementPage = lazy(() => routeLoaders['/terms']().then((m) => ({ default: m.UserAgreementPage })));
 const PrivacyPolicyPage = lazy(() => routeLoaders['/privacy']().then((m) => ({ default: m.PrivacyPolicyPage })));
 const DashboardPage = lazy(() => routeLoaders['/dashboard']().then((m) => ({ default: m.DashboardPage })));
@@ -105,6 +106,16 @@ export const router = createBrowserRouter([
   {
     path: '/register',
     element: withSuspense(<LoginPage />),
+    errorElement: <RouteErrorFallback />,
+  },
+  {
+    path: '/forgot-password',
+    element: withSuspense(<PasswordRecoveryPage key="forgot" />),
+    errorElement: <RouteErrorFallback />,
+  },
+  {
+    path: '/reset-password',
+    element: withSuspense(<PasswordRecoveryPage key="reset" />),
     errorElement: <RouteErrorFallback />,
   },
   {

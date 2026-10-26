@@ -551,6 +551,21 @@ RECON_ALERT_RECIPIENTS=[""]
 NOTIFY_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/xxx
 ```
 
+### 6.2 注册验证与密码恢复邮件
+
+Identity 可直接复用上方已有的整组 `NOTIFY_SMTP_*` 凭据；三个 Compose 模板已接线。另设控制台公网地址及注册策略：
+
+```dotenv
+IDENTITY_PUBLIC_BASE_URL=https://console.example.com
+REGISTRATION_EMAIL_VERIFICATION_ENABLED=true
+```
+
+地址必须替换为用户实际访问的控制台 URL。未配置公网地址、SMTP 或共享 Redis 时，页面明确显示邮件服务不可用；配置齐全后由 Identity 公开策略驱动页面，Admin 系统选项不替代 Owner 策略。
+
+如设置 `IDENTITY_SMTP_HOST`，需提供完整的独立 `IDENTITY_SMTP_*` 组。SMTP 默认在 465 使用隐式 TLS、其他端口使用 STARTTLS，不降级明文。开启 `TURNSTILE_CHECK_ENABLED` 时同时配置 `TURNSTILE_SITE_KEY` 和 `TURNSTILE_SECRET`。
+
+升级顺序为 Identity → Admin API → Web 静态目录；旧进程内验证码需重新申请，历史重复邮箱不自动选账号恢复。配置、跨实例/三库验收及回滚说明见 [A1 实施记录](./runbooks/a1-self-service-acceptance-2026-10-27.md)。
+
 ## 7. 故障排查
 
 ### 7.1 服务无法启动

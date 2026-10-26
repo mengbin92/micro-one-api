@@ -117,7 +117,7 @@ func newApp(
 	billingClient, billingConn, _ := newBillingClient(cfg)
 	httpSrv := server.NewHTTPServerWithRegistrationPolicy(
 		cfg.Bootstrap.Server.Http.Addr, uc, oauthRegistry,
-		registrationPolicyFromConfig(cfg), billingClient,
+		emailAuthenticationPolicy(cfg, repo), billingClient,
 	)
 	opts := []kratos.Option{
 		kratos.Name("identity-service"),

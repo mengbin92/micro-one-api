@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- 补齐 A1 注册、邮箱验证与密码恢复：Identity 公开策略、BFF 代理、中英文页面和 Turnstile，支持复用现有 Notify SMTP；共享 Redis challenge 实现限次、冷却、单次消费与投递失败撤销。配置和验收范围见 [A1 实施记录](docs/runbooks/a1-self-service-acceptance-2026-10-27.md)。
+
+### Fixed
+
+- 恢复请求在账号查询和 SMTP 前统一有界异步接受，避免公开响应暴露邮箱存在性；新邮箱绑定在 Owner 写锁下检查占用，历史重复邮箱恢复失败关闭；注册与邀请奖励补稳定幂等键，重置后旧会话继续失效。
+
 ## [0.36.6] - 2026-10-26
 
 v0.36.6 是 v0.36.5 之后的 **PATCH 修复版本**：补齐上游供应商账单漏导与扫描停滞检测、绑定不可变报告/run 的有期限复核例外，保留历史 legacy 关联补证，并更新前端开发测试依赖。无新增迁移或公开 API 变更；生产已按维护者决定关闭证据扫描并撤下两条对应告警，本次发布继续保持停用。详见 [release-v0.36.6.md](docs/releases/release-v0.36.6.md)。

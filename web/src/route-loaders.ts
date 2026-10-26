@@ -1,6 +1,8 @@
 export const routeLoaders = {
   '/login': () => import('@/pages/LoginPage'),
   '/register': () => import('@/pages/LoginPage'),
+  '/forgot-password': () => import('@/pages/PasswordRecoveryPage'),
+  '/reset-password': () => import('@/pages/PasswordRecoveryPage'),
   '/terms': () => import('@/pages/LegalPage'),
   '/privacy': () => import('@/pages/LegalPage'),
   '/dashboard': () => import('@/pages/DashboardPage'),

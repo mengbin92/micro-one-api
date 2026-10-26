@@ -1234,7 +1234,7 @@ func (uc *IdentityUsecase) ResetPasswordByEmail(ctx context.Context, email, pass
 		return err
 	}
 	return uc.mutateLegacyAccount(ctx, user.ID, "account.password.reset", []string{"password"}, func(u *User) error {
-		if u.ID != proof.UserID || u.Email != email || u.PasswordChangedAt != proof.PasswordEpoch {
+		if u.ID != proof.UserID || !strings.EqualFold(strings.TrimSpace(u.Email), email) || u.PasswordChangedAt != proof.PasswordEpoch {
 			return ErrIAMRevisionConflict
 		}
 		if u.Status != UserStatusEnabled {

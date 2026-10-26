@@ -7,15 +7,20 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"micro-one-api/app/identity/internal/biz"
 	identitydata "micro-one-api/app/identity/internal/data"
 )
 
-type failingResetDeliverer struct{ noopCodeDeliverer }
+type failingResetDeliverer struct {
+	*capturingCodeDeliverer
+	called chan struct{}
+}
 
-func (failingResetDeliverer) DeliverResetToken(context.Context, string, string) error {
+func (f failingResetDeliverer) DeliverResetToken(context.Context, string, string) error {
+	close(f.called)
 	return errors.New("mail unavailable")
 }
 
@@ -26,13 +31,19 @@ func TestResetIssuanceDoesNotRevealUnknownEmailOrMailFailure(t *testing.T) {
 	for _, email := range []string{"known-review@example.com", "unknown-review@example.com"} {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/reset_password?email="+email, nil)
-		handleResetPasswordRequest(w, r, failingResetDeliverer{}, uc)
+		repo := newHTTPChallengeRepo()
+		mail := failingResetDeliverer{newCapturingCodeDeliverer(), make(chan struct{})}
+		handleResetPasswordRequest(w, r, biz.NewEmailChallengeUsecase(repo, mail), uc)
 		require.Equal(t, http.StatusOK, w.Code)
 		require.Contains(t, w.Body.String(), `"success":true`)
-		verificationStore.Lock()
-		_, exists := verificationStore.items["r:"+email]
-		verificationStore.Unlock()
-		require.False(t, exists)
+		if email == "known-review@example.com" {
+			select {
+			case <-mail.called:
+			case <-time.After(time.Second):
+				t.Fatal("known recovery never attempted mail")
+			}
+		}
+		require.Eventually(t, func() bool { repo.Lock(); defer repo.Unlock(); return len(repo.records) == 0 }, time.Second, time.Millisecond)
 	}
 }
 

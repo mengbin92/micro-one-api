@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -159,11 +160,8 @@ func TestIdentityHTTPRegisterAcceptsAffCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := NewHTTPServer(":0", uc, nil)
+	srv := newHTTPServerWithVerifiedEmail(":0", uc)
 
-	verificationStore.Lock()
-	verificationStore.items["v:bob@example.com"] = verificationRecord{Code: "verified", At: time.Now()}
-	verificationStore.Unlock()
 	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","verification_code":"verified","aff_code":"`+inviter.AffCode+`"}`))
 	registerRec := httptest.NewRecorder()
 	srv.ServeHTTP(registerRec, registerReq)
@@ -193,11 +191,8 @@ func TestIdentityHTTPRegisterWithAffCodeCreditsInvitationBonusViaBilling(t *test
 		t.Fatal(err)
 	}
 	billingClient := &identityHTTPBillingClient{}
-	srv := NewHTTPServer(":0", uc, nil, billingClient)
+	srv := newHTTPServerWithVerifiedEmail(":0", uc, billingClient)
 
-	verificationStore.Lock()
-	verificationStore.items["v:bob@example.com"] = verificationRecord{Code: "verified", At: time.Now()}
-	verificationStore.Unlock()
 	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","verification_code":"verified","aff_code":"`+inviter.AffCode+`"}`))
 	registerRec := httptest.NewRecorder()
 	srv.ServeHTTP(registerRec, registerReq)
@@ -289,11 +284,8 @@ func TestIdentityHTTPRegisterWithAffCodeCreditsAllRewardsFromSystemOptions(t *te
 		t.Fatal(err)
 	}
 	billingClient := &identityHTTPBillingClient{}
-	srv := NewHTTPServer(":0", uc, nil, billingClient)
+	srv := newHTTPServerWithVerifiedEmail(":0", uc, billingClient)
 
-	verificationStore.Lock()
-	verificationStore.items["v:bob@example.com"] = verificationRecord{Code: "verified", At: time.Now()}
-	verificationStore.Unlock()
 	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","verification_code":"verified","aff_code":"`+inviter.AffCode+`"}`))
 	registerRec := httptest.NewRecorder()
 	srv.ServeHTTP(registerRec, registerReq)
@@ -334,11 +326,8 @@ func TestIdentityHTTPRegisterOptionZeroDisablesEnvFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	billingClient := &identityHTTPBillingClient{}
-	srv := NewHTTPServer(":0", uc, nil, billingClient)
+	srv := newHTTPServerWithVerifiedEmail(":0", uc, billingClient)
 
-	verificationStore.Lock()
-	verificationStore.items["v:bob@example.com"] = verificationRecord{Code: "verified", At: time.Now()}
-	verificationStore.Unlock()
 	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","verification_code":"verified","aff_code":"`+inviter.AffCode+`"}`))
 	registerRec := httptest.NewRecorder()
 	srv.ServeHTTP(registerRec, registerReq)
@@ -361,11 +350,8 @@ func TestIdentityHTTPRegisterWithAffCodeCreditsLegacyInvitationBonusEnv(t *testi
 		t.Fatal(err)
 	}
 	billingClient := &identityHTTPBillingClient{}
-	srv := NewHTTPServer(":0", uc, nil, billingClient)
+	srv := newHTTPServerWithVerifiedEmail(":0", uc, billingClient)
 
-	verificationStore.Lock()
-	verificationStore.items["v:bob@example.com"] = verificationRecord{Code: "verified", At: time.Now()}
-	verificationStore.Unlock()
 	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","verification_code":"verified","aff_code":"`+inviter.AffCode+`"}`))
 	registerRec := httptest.NewRecorder()
 	srv.ServeHTTP(registerRec, registerReq)
@@ -391,11 +377,8 @@ func TestIdentityHTTPRegisterWithAffCodeSkipsCreditWhenBonusesZero(t *testing.T)
 		t.Fatal(err)
 	}
 	billingClient := &identityHTTPBillingClient{}
-	srv := NewHTTPServer(":0", uc, nil, billingClient)
+	srv := newHTTPServerWithVerifiedEmail(":0", uc, billingClient)
 
-	verificationStore.Lock()
-	verificationStore.items["v:bob@example.com"] = verificationRecord{Code: "verified", At: time.Now()}
-	verificationStore.Unlock()
 	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","verification_code":"verified","aff_code":"`+inviter.AffCode+`"}`))
 	registerRec := httptest.NewRecorder()
 	srv.ServeHTTP(registerRec, registerReq)
@@ -1648,7 +1631,7 @@ func TestIdentityHTTPPasswordReset(t *testing.T) {
 	if extractJSONField(resetRec.Body.String(), "token") != "" {
 		t.Fatalf("reset token must not be echoed in response: %s", resetRec.Body.String())
 	}
-	resetToken := deliverer.resetTokens["alice@example.com"]
+	resetToken := waitForResetToken(t, deliverer, "alice@example.com")
 	if resetToken == "" {
 		t.Fatalf("reset token not delivered: %s", resetRec.Body.String())
 	}
@@ -2136,6 +2119,8 @@ func registerAndLoginForHTTPTest(t *testing.T, uc *biz.IdentityUsecase) (*biz.Us
 // tests can complete a verification/reset flow without the code being
 // present in the HTTP response (C1/C2 fix).
 type capturingCodeDeliverer struct {
+	mu                sync.Mutex
+	challenges        *httpChallengeRepo
 	verificationCodes map[string]string
 	resetTokens       map[string]string
 }
@@ -2148,11 +2133,15 @@ func newCapturingCodeDeliverer() *capturingCodeDeliverer {
 }
 
 func (c *capturingCodeDeliverer) DeliverVerificationCode(_ context.Context, email, code string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.verificationCodes[email] = code
 	return nil
 }
 
 func (c *capturingCodeDeliverer) DeliverResetToken(_ context.Context, email, token string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.resetTokens[email] = token
 	return nil
 }
@@ -2160,7 +2149,11 @@ func (c *capturingCodeDeliverer) DeliverResetToken(_ context.Context, email, tok
 // newHTTPServerWithDeliverer builds a server whose registration policy wires
 // the capturing deliverer, so tests can read codes out-of-band.
 func newHTTPServerWithDeliverer(addr string, uc *biz.IdentityUsecase, d CodeDeliverer) *khttp.Server {
-	return NewHTTPServerWithRegistrationPolicy(addr, uc, nil, RegistrationPolicy{Enabled: true, CodeDeliverer: d})
+	repo := newHTTPChallengeRepo()
+	if mail, ok := d.(*capturingCodeDeliverer); ok {
+		mail.challenges = repo
+	}
+	return NewHTTPServerWithRegistrationPolicy(addr, uc, nil, RegistrationPolicy{Enabled: true, Challenges: biz.NewEmailChallengeUsecase(repo, d)})
 }
 
 func extractJSONField(body, key string) string {

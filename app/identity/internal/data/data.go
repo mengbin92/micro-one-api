@@ -212,11 +212,18 @@ func (r *Repository) FindUserByEmail(ctx context.Context, email string) (*biz.Us
 	}
 	r.identityLock.RLock()
 	defer r.identityLock.RUnlock()
+	var match *biz.User
 	for _, u := range r.usersByID {
-		if u.Email == email {
+		if email != "" && strings.EqualFold(strings.TrimSpace(u.Email), strings.TrimSpace(email)) {
+			if match != nil {
+				return nil, biz.ErrInvalidToken
+			}
 			cloned := *u
-			return &cloned, nil
+			match = &cloned
 		}
+	}
+	if match != nil {
+		return match, nil
 	}
 	return nil, biz.ErrUserNotFound
 }
@@ -315,6 +322,11 @@ func (r *Repository) CreateUser(ctx context.Context, user *biz.User) error {
 	} // Persistent writes require the policy-locked account usecase.
 	r.identityLock.Lock()
 	defer r.identityLock.Unlock()
+	for _, existing := range r.usersByID {
+		if existing.Username == user.Username || emailConflicts(existing.Email, user.Email) {
+			return biz.ErrUserExists
+		}
+	}
 	if r.nextUserID <= 0 {
 		r.nextUserID = 1
 		for id := range r.usersByID {
@@ -337,6 +349,13 @@ func (r *Repository) UpdateUser(ctx context.Context, user *biz.User) error {
 	defer r.identityLock.Unlock()
 	if _, ok := r.usersByID[user.ID]; !ok {
 		return biz.ErrUserNotFound
+	}
+	if r.usersByID[user.ID].Email != user.Email {
+		for id, existing := range r.usersByID {
+			if id != user.ID && emailConflicts(existing.Email, user.Email) {
+				return biz.ErrUserExists
+			}
+		}
 	}
 	r.usersByID[user.ID] = user
 	return nil
@@ -711,14 +730,20 @@ func (r *Repository) findUserByUsernameDB(ctx context.Context, username string) 
 }
 
 func (r *Repository) findUserByEmailDB(ctx context.Context, email string) (*biz.User, error) {
-	var model userModel
-	if err := r.db.WithContext(ctx).Where("email = ?", email).First(&model).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, biz.ErrUserNotFound
-		}
+	if strings.TrimSpace(email) == "" {
+		return nil, biz.ErrUserNotFound
+	}
+	var models []userModel
+	if err := r.db.WithContext(ctx).Where("LOWER(TRIM(email)) = ?", strings.ToLower(strings.TrimSpace(email))).Limit(2).Find(&models).Error; err != nil {
 		return nil, err
 	}
-	return userModelToBiz(model), nil
+	if len(models) == 0 {
+		return nil, biz.ErrUserNotFound
+	}
+	if len(models) != 1 {
+		return nil, biz.ErrInvalidToken
+	}
+	return userModelToBiz(models[0]), nil
 }
 
 func (r *Repository) findUserByAffCodeDB(ctx context.Context, affCode string) (*biz.User, error) {

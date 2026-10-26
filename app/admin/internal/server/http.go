@@ -208,6 +208,7 @@ func adminOperatorUserID(r *http.Request) int64 {
 func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Auditor, options ...string) *khttp.Server {
 	SetAdminAuditor(auditor)
 	identityProxy := newServiceReverseProxy(optionString(options, 0))
+	registrationPolicy := newRegistrationPolicyReader(optionString(options, 0))
 	billingHTTPProxy := newBillingHTTPProxy()
 	notifyWorkerProxy := newNotifyWorkerProxy()
 	channelHTTPProxy := newChannelHTTPProxy()
@@ -299,22 +300,29 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 			legalOperatorAddress, _ = svc.GetOneAPIOption(r.Context(), "LegalOperatorAddress")
 			legalContactEmail, _ = svc.GetOneAPIOption(r.Context(), "LegalContactEmail")
 		}
+		policy, policyAvailable := registrationPolicy.read(r.Context())
+		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, http.StatusOK, map[string]any{
 			"success": true,
 			"message": "",
 			"data": map[string]any{
-				"version":                "micro-one-api",
-				"system_name":            systemName,
-				"server_address":         serverAddress,
-				"legal_operator_name":    legalOperatorName,
-				"legal_operator_address": legalOperatorAddress,
-				"legal_contact_email":    legalContactEmail,
-				"registration_enabled":   true,
-				"email_verification":     false,
-				"github_oauth":           false,
-				"wechat_login":           false,
-				"turnstile_check":        false,
-				"display_in_currency":    false,
+				"version":                          "micro-one-api",
+				"system_name":                      systemName,
+				"server_address":                   serverAddress,
+				"legal_operator_name":              legalOperatorName,
+				"legal_operator_address":           legalOperatorAddress,
+				"legal_contact_email":              legalContactEmail,
+				"registration_enabled":             policy.RegistrationEnabled,
+				"email_verification":               policy.EmailVerification,
+				"email_domain_restriction_enabled": policy.EmailDomainRestrictionEnabled,
+				"email_domain_whitelist":           policy.EmailDomainWhitelist,
+				"turnstile_site_key":               policy.TurnstileSiteKey,
+				"email_delivery_configured":        policy.EmailDeliveryConfigured,
+				"registration_policy_available":    policyAvailable,
+				"github_oauth":                     false,
+				"wechat_login":                     false,
+				"turnstile_check":                  policy.TurnstileCheck,
+				"display_in_currency":              false,
 			},
 		})
 	})
@@ -437,6 +445,9 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 	srv.HandleFunc("/api/home_page_content", handleContentRoute(adminAuth, svc, "HomePageContent"))
 	if identityProxy != nil {
 		srv.HandleFunc("/api/user/register", identityProxy.ServeHTTP)
+		srv.HandleFunc("/api/verification", identityProxy.ServeHTTP)
+		srv.HandleFunc("/api/reset_password", identityProxy.ServeHTTP)
+		srv.HandleFunc("/api/user/reset", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/user/login", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/user/logout", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/user/self", identityProxy.ServeHTTP)
@@ -1789,11 +1800,13 @@ func adminWebContentSecurityPolicy(ctx context.Context, svc *service.AdminServic
 	if origin := adminWebRelayOrigin(address); origin != "" {
 		connectSources += " " + origin
 	}
-	// Charts and progress bars set inline style attributes; scripts remain self-only.
+	// SPA navigation can reach registration from any shell route. Allow only
+	// Cloudflare's Turnstile script/frame origin so its configured widget also
+	// works after client-side navigation; no inline scripts are enabled.
 	return "default-src 'self'; base-uri 'self'; object-src 'none'; " +
-		"script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+		"script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; " +
 		"img-src 'self' data: https:; font-src 'self' data:; " +
-		"connect-src " + connectSources + "; frame-ancestors 'none';"
+		"connect-src " + connectSources + "; frame-src 'self' https://challenges.cloudflare.com; frame-ancestors 'none';"
 }
 
 func adminWebRelayOrigin(address string) string {

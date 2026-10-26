@@ -47,6 +47,15 @@ spec:
             - ALL
           privileged: false
           readOnlyRootFilesystem: true
+        # Optional A1 configuration: registration/public URL in the ConfigMap;
+        # existing NOTIFY_SMTP_* (or IDENTITY_SMTP_* overrides) in the Secret.
+        envFrom:
+        - configMapRef:
+            name: identity-registration
+            optional: true
+        - secretRef:
+            name: identity-email
+            optional: true
         env:
         - name: CHANNEL_GRPC_ENDPOINT
           valueFrom:

@@ -1,0 +1,185 @@
+{
+  "work_package": "A1",
+  "date": "2026-10-27",
+  "timezone": "Asia/Shanghai",
+  "base_commit": "14293365",
+  "source_state": "deployed source snapshot; bound to develop by source digest",
+  "status": "deployed",
+  "checks": {
+    "make_verify": {
+      "result": "passed",
+      "frontend_test_files": 91,
+      "frontend_tests": 616,
+      "frontend_critical_tests": 191,
+      "includes": [
+        "Go unit",
+        "Go race",
+        "architecture",
+        "migration governance",
+        "RBAC contract",
+        "IAM browser result checker",
+        "generated API types",
+        "frontend lint",
+        "frontend critical coverage",
+        "frontend build and asset budget"
+      ]
+    },
+    "generation": {
+      "result": "passed",
+      "commands": [
+        "make api",
+        "make config",
+        "make wire"
+      ]
+    },
+    "email_binding_dialects": {
+      "result": "passed",
+      "dialects": [
+        "SQLite",
+        "MySQL 8.4",
+        "PostgreSQL 16"
+      ],
+      "modes": [
+        "legacy",
+        "iam"
+      ],
+      "race": true,
+      "database_containers_removed": true
+    },
+    "shared_challenge_smtp": {
+      "result": "passed",
+      "redis": [
+        "miniredis",
+        "isolated Redis 7"
+      ],
+      "race": true,
+      "checks": [
+        "cross client single consume",
+        "concurrent consume",
+        "TTL",
+        "attempt limit",
+        "resend cooldown and replacement",
+        "stale issuance CAS",
+        "pending state cannot consume",
+        "failed delivery revoke and retry",
+        "SMTP TCP receipt",
+        "SMTP 451 failure",
+        "TLS downgrade rejection"
+      ]
+    },
+    "bff_identity_chain": {
+      "result": "passed",
+      "modes": [
+        "legacy",
+        "iam"
+      ],
+      "bff_instances": 2,
+      "identity_instances": 2,
+      "independent_sql_and_redis_clients": true,
+      "database": "fully migrated isolated SQLite",
+      "redis": [
+        "miniredis",
+        "isolated Redis 7"
+      ],
+      "smtp": "loopback TCP mail sink",
+      "race": true,
+      "command": "go test ./app/identity/cmd/identity -run '^TestEmailAuthenticationOwnerIntegration$' -race -count=1 -v",
+      "checks": [
+        "owner policy through BFF status",
+        "A issues B consumes registration code",
+        "registration and invitation rewards once",
+        "known and unknown recovery acceptance equal",
+        "A requests B resets password",
+        "reset token replay rejected",
+        "old session rejected across replicas",
+        "new password login",
+        "451 failure revoke then retry through other replica"
+      ],
+      "billing": "recording Billing client stub; verifies grant count and distinct nonempty idempotency keys; existing Billing tests cover ledger deduplication"
+    },
+    "browser": {
+      "result": "passed",
+      "engine": "Chrome 156.0.8078.48",
+      "tests_passed": 16,
+      "locales": [
+        "zh-CN",
+        "en-US"
+      ],
+      "surfaces": [
+        "desktop",
+        "mobile"
+      ],
+      "api": "local fixtures",
+      "external_calls": false,
+      "language_switch_regression": "passed",
+      "stale_response_new_flow_and_session_regression": "passed",
+      "runtime_secret_storage": "React memory only; no localStorage/sessionStorage/history state",
+      "unit_tests": 616,
+      "test_files": 91,
+      "skipped": 0,
+      "flaky": 0,
+      "page_errors": 0,
+      "external_requests": 0,
+      "started_at": "2026-10-26T21:20:18.124Z",
+      "local_artifact_directory": "web/a1-test-results/ (gitignored)",
+      "screenshot_count": 24
+    },
+    "typed_domain_errors": {
+      "result": "passed",
+      "source": "api/identity/v1/error_reason.proto",
+      "regenerated": true,
+      "validation": "go test -race ./app/identity/... ./app/admin/internal/server",
+      "legacy_http_response_shape": "unchanged"
+    },
+    "compose_templates": {
+      "result": "passed",
+      "templates": [
+        "docker-compose.yml",
+        "docker-compose.lite.yml",
+        "docker-compose.postgres.yml"
+      ],
+      "validation": "docker compose config --no-interpolate --quiet",
+      "scope": "structural validation; no production deployment"
+    }
+  },
+  "external": {
+    "smtp": {
+      "result": "recipient_confirmed",
+      "messages": 1,
+      "recipient_masked": "526***@qq.com",
+      "submitted_at": "2026-10-26T21:10:31Z",
+      "submitted_at_local": "2026-10-27 05:10:31 CST",
+      "transport": "new Identity SMTP implementation using existing production NOTIFY_SMTP_* environment",
+      "kind": "verification delivery probe",
+      "production_account_created": false,
+      "production_password_reset": false,
+      "reset_link_sent": false,
+      "secrets_in_evidence": false,
+      "recipient_confirmation": "confirmed",
+      "smtp_submission": "accepted",
+      "confirmation_date_local": "2026-10-27",
+      "confirmation_source": "user reply: 已收到"
+    },
+    "turnstile": {
+      "real_challenge_result": "pending_enabled_environment",
+      "component_and_owner_failure_branches": "passed"
+    }
+  },
+  "production": {
+    "deployed": true,
+    "released": false,
+    "tagged": false,
+    "sql_migration_added": false,
+    "monitoring_and_canary_boundaries_changed": false,
+    "deployed_at": "2026-10-26T23:28:51.529101+00:00",
+    "public_url": "https://console.mengbin.top",
+    "source_digest": "4cae2d8e1ff2ac7e3fe6727ca47af031f6e3ef3d8bb26548310f42f3ab06f046",
+    "deployment_tag": "a1-20261027-072232-4cae2d8e1ff2",
+    "evidence": "a1-production-deployment-2026-10-27.json",
+    "browser_smoke": "passed",
+    "turnstile_enabled": false
+  },
+  "remaining_external_validations": [
+    "real Turnstile challenge in an enabled environment"
+  ]
+}

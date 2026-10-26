@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -58,7 +59,7 @@ func (uc *IdentityUsecase) resetIAMPasswordByEmail(ctx context.Context, email, p
 		}
 		// A challenge sent before the address/account changed cannot reset the new
 		// binding, including a change away and back while bcrypt was running.
-		if user.ID != proof.UserID || user.Email != email || user.PasswordChangedAt != proof.PasswordEpoch {
+		if user.ID != proof.UserID || !strings.EqualFold(strings.TrimSpace(user.Email), email) || user.PasswordChangedAt != proof.PasswordEpoch {
 			return ErrIAMRevisionConflict
 		}
 		state, err := uc.iam.ConstraintState(ctx, tx, authorization.Platform())

@@ -1137,7 +1137,14 @@ func TestAdminHTTPPageSecurityHeadersAllowConfiguredRelay(t *testing.T) {
 			t.Fatalf("GET %s X-Content-Type-Options = %q", path, got)
 		}
 		policy := rec.Header().Get("Content-Security-Policy")
-		if !strings.Contains(policy, "script-src 'self';") || !strings.Contains(policy, "frame-ancestors 'none';") {
+		wantScript := "script-src 'self';"
+		if path != "/assets/app.js" {
+			wantScript = "script-src 'self' https://challenges.cloudflare.com;"
+			if !strings.Contains(policy, "frame-src 'self' https://challenges.cloudflare.com;") {
+				t.Fatalf("GET %s missing Turnstile frame policy = %q", path, policy)
+			}
+		}
+		if !strings.Contains(policy, wantScript) || !strings.Contains(policy, "frame-ancestors 'none';") {
 			t.Fatalf("GET %s incomplete CSP = %q", path, policy)
 		}
 		wantConnect := "connect-src 'self';"

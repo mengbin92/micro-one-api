@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"google.golang.org/grpc/metadata"
 	"math"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"os"
 	"strconv"
@@ -21,15 +23,12 @@ import (
 	"micro-one-api/platform/authz"
 	"micro-one-api/platform/iamdto"
 
-	"go.uber.org/zap"
-
 	billingv1 "micro-one-api/api/billing/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/app/identity/internal/biz"
 	"micro-one-api/app/identity/internal/service"
 	xhttp "micro-one-api/platform/http"
-	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
 	appmiddleware "micro-one-api/platform/middleware"
 	oauth "micro-one-api/platform/security"
@@ -44,40 +43,19 @@ type TurnstileVerifier interface {
 
 type RegistrationPolicy struct {
 	Enabled                       bool
+	EmailVerificationEnabled      bool
 	EmailDomainRestrictionEnabled bool
 	EmailDomainWhitelist          []string
 	TurnstileCheckEnabled         bool
 	TurnstileSecret               string
+	TurnstileSiteKey              string
 	TurnstileVerifyHandler        TurnstileVerifier
-	// CodeDeliverer delivers verification and password-reset codes to the
-	// user out-of-band (e.g. via email). It must never expose the code to
-	// the HTTP caller. When nil a no-op deliverer is used that logs a
-	// warning and swallows the code, so the endpoints stay reachable for
-	// future SMTP wiring without leaking secrets.
+	Challenges                    *biz.EmailChallengeUsecase
+	// Deprecated: inject Challenges with its shared repo and mail deliverer.
 	CodeDeliverer CodeDeliverer
 }
 
-// CodeDeliverer delivers verification/reset codes out-of-band. The code is
-// treated as a secret and must never be returned in an HTTP response body.
-type CodeDeliverer interface {
-	DeliverVerificationCode(ctx context.Context, email, code string) error
-	DeliverResetToken(ctx context.Context, email, token string) error
-}
-
-// noopCodeDeliverer is the default deliverer: it logs a warning and discards
-// the code. It exists so the verification/reset endpoints remain wired while
-// no real mail transport is configured, without leaking the secret in the
-// response.
-type noopCodeDeliverer struct{}
-
-func (noopCodeDeliverer) DeliverVerificationCode(ctx context.Context, email, code string) error {
-	applogger.Log.Warn("verification code generated but no mail deliverer configured; code not delivered", zap.String("email", email))
-	return nil
-}
-func (noopCodeDeliverer) DeliverResetToken(ctx context.Context, email, token string) error {
-	applogger.Log.Warn("reset token generated but no mail deliverer configured; token not delivered", zap.String("email", email))
-	return nil
-}
+type CodeDeliverer = biz.CodeDeliverer
 
 type defaultTurnstileVerifier struct {
 	client *http.Client
@@ -91,9 +69,6 @@ func NewHTTPServer(addr string, uc *biz.IdentityUsecase, oauthRegistry *oauth.Pr
 func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, oauthRegistry *oauth.ProviderRegistry, registrationPolicy RegistrationPolicy, billingClients ...billingv1.BillingServiceClient) *khttp.Server {
 	if registrationPolicy.TurnstileCheckEnabled && registrationPolicy.TurnstileVerifyHandler == nil {
 		registrationPolicy.TurnstileVerifyHandler = &defaultTurnstileVerifier{client: &http.Client{Timeout: 10 * time.Second}}
-	}
-	if registrationPolicy.CodeDeliverer == nil {
-		registrationPolicy.CodeDeliverer = noopCodeDeliverer{}
 	}
 	// khttp.Filter applies an http.Handler middleware to every route on the
 	// server's mux. The RequestID filter stamps a sanitized request ID into
@@ -167,6 +142,9 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 	srv.HandleFunc("/api/user/register", func(w http.ResponseWriter, r *http.Request) {
 		handleRegister(w, r, uc, registrationPolicy, billingClient)
 	})
+	srv.HandleFunc("/api/registration/policy", func(w http.ResponseWriter, r *http.Request) {
+		handleRegistrationPolicy(w, r, registrationPolicy)
+	})
 	srv.HandleFunc("/api/user/login", func(w http.ResponseWriter, r *http.Request) {
 		handleLogin(w, r, uc)
 	})
@@ -192,7 +170,7 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 		handleAffTransferDisabled(w, r, uc)
 	})
 	srv.HandleFunc("/api/oauth/email/bind", func(w http.ResponseWriter, r *http.Request) {
-		handleEmailBind(w, r, uc)
+		handleEmailBind(w, r, uc, registrationPolicy.Challenges)
 	})
 	srv.HandleFunc("/api/user/dashboard", func(w http.ResponseWriter, r *http.Request) {
 		handleUserDashboard(w, r, uc, billingClient)
@@ -231,13 +209,13 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 		handleCreatePaymentOrder(w, r, uc, billingClient)
 	})
 	srv.HandleFunc("/api/verification", func(w http.ResponseWriter, r *http.Request) {
-		handleEmailVerification(w, r, registrationPolicy.CodeDeliverer)
+		handleEmailVerification(w, r, registrationPolicy)
 	})
 	srv.HandleFunc("/api/reset_password", func(w http.ResponseWriter, r *http.Request) {
-		handleResetPasswordRequest(w, r, registrationPolicy.CodeDeliverer, uc)
+		handleResetPasswordRequest(w, r, registrationPolicy.Challenges, uc)
 	})
 	srv.HandleFunc("/api/user/reset", func(w http.ResponseWriter, r *http.Request) {
-		handleResetPassword(w, r, uc, registrationPolicy.CodeDeliverer)
+		handleResetPassword(w, r, uc, registrationPolicy.Challenges)
 	})
 	srv.HandleFunc("/api/user/token", func(w http.ResponseWriter, r *http.Request) {
 		handleCreateUserToken(w, r, uc)
@@ -255,88 +233,6 @@ type apiResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 	Data    any    `json:"data,omitempty"`
-}
-
-const (
-	// verificationTTL bounds how long a verification/reset code stays valid.
-	verificationTTL = 10 * time.Minute
-	// maxVerificationAttempts caps wrong-code attempts before the record is
-	// deleted, preventing brute force.
-	maxVerificationAttempts = 5
-)
-
-type verificationRecord struct {
-	Code          string
-	At            time.Time
-	Attempts      int
-	UserID        int64
-	PasswordEpoch int64
-}
-
-var verificationStore = struct {
-	sync.Mutex
-	items map[string]verificationRecord
-}{
-	items: make(map[string]verificationRecord),
-}
-
-// takeVerificationRecord atomically retrieves a verification record and
-// enforces TTL + attempt limits. On a matching code the record is deleted
-// (one-time use). On a mismatch the attempt counter is incremented and the
-// record is deleted once the limit is reached. Returns the record and true
-// only when the code is valid.
-func takeVerificationRecord(prefix, email, code string) (verificationRecord, bool) {
-	key := prefix + email
-	verificationStore.Lock()
-	defer verificationStore.Unlock()
-	record, ok := verificationStore.items[key]
-	if !ok {
-		return verificationRecord{}, false
-	}
-	if time.Since(record.At) > verificationTTL {
-		delete(verificationStore.items, key)
-		return verificationRecord{}, false
-	}
-	if record.Code != code {
-		record.Attempts++
-		if record.Attempts >= maxVerificationAttempts {
-			delete(verificationStore.items, key)
-			return verificationRecord{}, false
-		}
-		verificationStore.items[key] = record
-		return verificationRecord{}, false
-	}
-	delete(verificationStore.items, key)
-	return record, true
-}
-
-// generateVerificationCode returns a 128-bit random code.
-func generateVerificationCode() (string, error) {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
-}
-
-// gcVerificationStores sweeps expired verification/bind records. Called on
-// each access path to bound unbounded growth (review L10).
-func gcVerificationStores() {
-	now := time.Now()
-	verificationStore.Lock()
-	for k, v := range verificationStore.items {
-		if now.Sub(v.At) > verificationTTL {
-			delete(verificationStore.items, k)
-		}
-	}
-	verificationStore.Unlock()
-	oauthBindStore.Lock()
-	for k, v := range oauthBindStore.items {
-		if now.Sub(v.At) > 5*time.Minute {
-			delete(oauthBindStore.items, k)
-		}
-	}
-	oauthBindStore.Unlock()
 }
 
 type oauthBindRecord struct {
@@ -374,6 +270,15 @@ func handleRegister(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "registration disabled"})
 		return
 	}
+	req.Email = strings.TrimSpace(req.Email)
+	if strings.TrimSpace(req.Username) == "" || len(req.Username) > 128 || len(req.Password) < 8 || len(req.Password) > 72 {
+		writeJSON(w, http.StatusOK, apiResponse{Message: "invalid parameter"})
+		return
+	}
+	if (req.Email != "" || policy.EmailVerificationEnabled || policy.EmailDomainRestrictionEnabled) && !validEmail(req.Email) {
+		writeJSON(w, http.StatusOK, apiResponse{Message: "invalid email"})
+		return
+	}
 	if policy.EmailDomainRestrictionEnabled && !emailDomainAllowed(req.Email, policy.EmailDomainWhitelist) {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "email domain is not allowed"})
 		return
@@ -393,9 +298,13 @@ func handleRegister(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 		}
 	}
 	verifiedEmail := false
+	if policy.EmailVerificationEnabled && req.VerificationCode == "" {
+		writeJSON(w, http.StatusOK, apiResponse{Message: "email verification code is required"})
+		return
+	}
 	if req.VerificationCode != "" {
-		if _, ok := takeVerificationRecord("v:", req.Email, req.VerificationCode); !ok {
-			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "invalid email verification code"})
+		if _, err := policy.Challenges.Consume(r.Context(), biz.ChallengeVerification, req.Email, req.VerificationCode); err != nil {
+			writeChallengeError(w, err)
 			return
 		}
 		verifiedEmail = true
@@ -436,6 +345,7 @@ func creditRegistrationRewards(ctx context.Context, user *biz.User, uc *biz.Iden
 			Amount:     rewards.NewUser,
 			OperatorId: "system_register",
 			Remark:     "new user registration reward",
+			RequestId:  "registration:new-user:" + strconv.FormatInt(user.ID, 10),
 		})
 	}
 	// Invitation payouts require ownership proof instead of a freely supplied address.
@@ -456,6 +366,7 @@ func creditRegistrationRewards(ctx context.Context, user *biz.User, uc *biz.Iden
 			Amount:     inviteeAmount,
 			OperatorId: "system_invitation",
 			Remark:     "invitation invitee bonus",
+			RequestId:  "registration:invitee:" + strconv.FormatInt(user.ID, 10),
 		})
 	}
 	if inviterAmount > 0 {
@@ -464,6 +375,7 @@ func creditRegistrationRewards(ctx context.Context, user *biz.User, uc *biz.Iden
 			Amount:     inviterAmount,
 			OperatorId: "system_invitation",
 			Remark:     fmt.Sprintf("invitation inviter bonus, invitee=%d", user.ID),
+			RequestId:  "registration:inviter:" + strconv.FormatInt(user.ID, 10),
 		})
 	}
 }
@@ -569,7 +481,7 @@ func handleAffTransferDisabled(w http.ResponseWriter, r *http.Request, uc *biz.I
 	writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "aff transfer is not supported"})
 }
 
-func handleEmailBind(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
+func handleEmailBind(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase, challenges *biz.EmailChallengeUsecase) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
 		return
@@ -585,8 +497,7 @@ func handleEmailBind(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUse
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "invalid parameter"})
 		return
 	}
-	gcVerificationStores()
-	if _, ok := takeVerificationRecord("v:", email, code); !ok {
+	if _, err := challenges.Consume(r.Context(), biz.ChallengeVerification, email, code); err != nil {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "验证码错误或已过期"})
 		return
 	}
@@ -1249,82 +1160,96 @@ func defaultAvailableModels() []string {
 	}
 }
 
-func handleEmailVerification(w http.ResponseWriter, r *http.Request, deliverer CodeDeliverer) {
+// Public policy is owned here so the BFF and direct Identity callers use the
+// same registration and mail requirements. Secrets never cross this boundary.
+func handleRegistrationPolicy(w http.ResponseWriter, r *http.Request, policy RegistrationPolicy) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Message: "method not allowed"})
 		return
 	}
-	email := r.URL.Query().Get("email")
-	if email == "" {
-		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "email is required"})
-		return
-	}
-	code, err := generateVerificationCode()
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, apiResponse{Success: false, Message: "failed to generate verification code"})
-		return
-	}
-	gcVerificationStores()
-	verificationStore.Lock()
-	verificationStore.items["v:"+email] = verificationRecord{Code: code, At: time.Now()}
-	verificationStore.Unlock()
-	if deliverer == nil {
-		deliverer = noopCodeDeliverer{}
-	}
-	if err := deliverer.DeliverVerificationCode(r.Context(), email, code); err != nil {
-		applogger.Log.Warn("verification code delivery failed", zap.String("email", email), zap.Error(err))
-		writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "failed to deliver verification code"})
-		return
-	}
-	// Never return the code in the response; it is delivered out-of-band.
-	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "verification code sent", Data: map[string]any{"email": email}})
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{
+		"registration_enabled":             policy.Enabled,
+		"email_verification":               policy.EmailVerificationEnabled,
+		"email_domain_restriction_enabled": policy.EmailDomainRestrictionEnabled,
+		"email_domain_whitelist":           policy.EmailDomainWhitelist,
+		"turnstile_check":                  policy.TurnstileCheckEnabled,
+		"turnstile_site_key":               policy.TurnstileSiteKey,
+		"email_delivery_configured":        policy.Challenges.Available(),
+	}})
 }
 
-func handleResetPasswordRequest(w http.ResponseWriter, r *http.Request, deliverer CodeDeliverer, usecases ...*biz.IdentityUsecase) {
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
-		return
+// Accept only a mailbox, without display names or header/control characters.
+// Preserve case for compatibility with existing case-sensitive stored bindings.
+func validEmail(email string) bool {
+	if len(email) > 254 || strings.ContainsAny(email, "\r\n\t ") {
+		return false
 	}
-	email := r.URL.Query().Get("email")
-	if email == "" {
-		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "email is required"})
-		return
-	}
-	token, err := generateVerificationCode()
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, apiResponse{Success: false, Message: "failed to generate reset token"})
-		return
-	}
-	gcVerificationStores()
-	record := verificationRecord{Code: token, At: time.Now()}
-	if len(usecases) > 0 && usecases[0] != nil {
-		record.UserID, record.PasswordEpoch, err = usecases[0].PrepareEmailRecovery(r.Context(), email)
-		if err != nil {
-			writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "reset token sent", Data: map[string]any{"email": email}})
-			return
-		}
-	}
-	verificationStore.Lock()
-	verificationStore.items["r:"+email] = record
-	verificationStore.Unlock()
-	if deliverer == nil {
-		deliverer = noopCodeDeliverer{}
-	}
-	if err := deliverer.DeliverResetToken(r.Context(), email, token); err != nil {
-		applogger.Log.Warn("reset token delivery failed", zap.String("email", email), zap.Error(err))
-		verificationStore.Lock()
-		if current := verificationStore.items["r:"+email]; current.Code == token {
-			delete(verificationStore.items, "r:"+email)
-		}
-		verificationStore.Unlock()
-	}
-	// Never return the token in the response; it is delivered out-of-band.
-	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "reset token sent", Data: map[string]any{"email": email}})
+	address, err := mail.ParseAddress(email)
+	return err == nil && address.Address == email && strings.Contains(email, "@")
 }
 
-func handleResetPassword(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase, deliverer CodeDeliverer) {
+func writeChallengeError(w http.ResponseWriter, err error) {
+	status, message := http.StatusServiceUnavailable, "email service unavailable"
+	if errors.Is(err, biz.ErrChallengeRateLimited) {
+		status, message = http.StatusTooManyRequests, "too many requests"
+		w.Header().Set("Retry-After", "60")
+	} else if errors.Is(err, biz.ErrChallengeInvalid) {
+		status, message = http.StatusOK, "invalid or expired verification code"
+	}
+	writeJSON(w, status, apiResponse{Message: message})
+}
+
+func handleEmailVerification(w http.ResponseWriter, r *http.Request, policy RegistrationPolicy) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Message: "method not allowed"})
+		return
+	}
+	email := strings.TrimSpace(r.URL.Query().Get("email"))
+	if !validEmail(email) {
+		writeJSON(w, http.StatusOK, apiResponse{Message: "invalid email"})
+		return
+	}
+	if policy.EmailDomainRestrictionEnabled && !emailDomainAllowed(email, policy.EmailDomainWhitelist) {
+		writeJSON(w, http.StatusOK, apiResponse{Message: "email domain is not allowed"})
+		return
+	}
+	if err := policy.Challenges.IssueVerification(r.Context(), email); err != nil {
+		writeChallengeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "verification code sent"})
+}
+
+const recoveryAcceptedMessage = "If the account is eligible, password reset instructions will be sent. Please try again later if no email arrives."
+
+func handleResetPasswordRequest(w http.ResponseWriter, r *http.Request, challenges *biz.EmailChallengeUsecase, uc *biz.IdentityUsecase) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Message: "method not allowed"})
+		return
+	}
+	email := strings.TrimSpace(r.URL.Query().Get("email"))
+	if !validEmail(email) {
+		writeJSON(w, http.StatusOK, apiResponse{Message: "invalid email"})
+		return
+	}
+	// Check process-wide configuration before account lookup; a missing service
+	// yields the same result for every address. Per-account errors below always
+	// use a neutral acknowledgement, including delivery failures and cooldowns.
+	if !challenges.Available() {
+		writeChallengeError(w, biz.ErrMailUnavailable)
+		return
+	}
+	if err := challenges.RequestRecovery(r.Context(), email, uc.PrepareEmailRecovery); err != nil {
+		writeChallengeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: recoveryAcceptedMessage})
+}
+
+func handleResetPassword(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase, challenges *biz.EmailChallengeUsecase) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Message: "method not allowed"})
 		return
 	}
 	var req struct {
@@ -1335,21 +1260,21 @@ func handleResetPassword(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if req.Email == "" || req.Token == "" || req.Password == "" {
-		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "invalid parameter"})
+	req.Email = strings.TrimSpace(req.Email)
+	if !validEmail(req.Email) || req.Token == "" || len(req.Password) < 8 || len(req.Password) > 72 {
+		writeJSON(w, http.StatusOK, apiResponse{Message: "invalid parameter"})
 		return
 	}
-	gcVerificationStores()
-	record, ok := takeVerificationRecord("r:", req.Email, req.Token)
-	if !ok {
-		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "重置链接非法或已过期"})
+	record, err := challenges.Consume(r.Context(), biz.ChallengePasswordReset, req.Email, req.Token)
+	if err != nil {
+		writeChallengeError(w, err)
 		return
 	}
 	if err := uc.ResetPasswordByEmail(biz.WithVerifiedEmailRecovery(r.Context(), req.Email, time.Now(), record.UserID, record.PasswordEpoch), req.Email, req.Password); err != nil {
-		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
+		// Do not leak account state or database details through a recovery link.
+		writeJSON(w, http.StatusOK, apiResponse{Message: "invalid or expired verification code"})
 		return
 	}
-	// Never echo the new password in the response.
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "password reset"})
 }
 
@@ -1420,6 +1345,16 @@ func handleOneAPIOAuthBind(w http.ResponseWriter, r *http.Request, registry *oau
 			return
 		}
 		oauthBindStore.Lock()
+		for key, record := range oauthBindStore.items {
+			if time.Since(record.At) > 5*time.Minute {
+				delete(oauthBindStore.items, key)
+			}
+		}
+		if len(oauthBindStore.items) >= 4096 {
+			oauthBindStore.Unlock()
+			writeJSON(w, http.StatusServiceUnavailable, apiResponse{Message: "oauth binding temporarily unavailable"})
+			return
+		}
 		oauthBindStore.items[state] = oauthBindRecord{Token: token, At: time.Now(), Provider: providerName}
 		oauthBindStore.Unlock()
 		setOAuthStateCookie(w, state)

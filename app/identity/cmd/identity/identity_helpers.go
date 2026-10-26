@@ -108,10 +108,12 @@ func registrationPolicyFromConfig(cfg *Config) server.RegistrationPolicy {
 	}
 	return server.RegistrationPolicy{
 		Enabled:                       enabled,
+		EmailVerificationEnabled:      reg.EmailVerificationEnabled,
 		EmailDomainRestrictionEnabled: reg.EmailDomainRestrictionEnabled,
 		EmailDomainWhitelist:          reg.EmailDomainWhitelist,
 		TurnstileCheckEnabled:         reg.TurnstileCheckEnabled,
 		TurnstileSecret:               reg.TurnstileSecret,
+		TurnstileSiteKey:              reg.TurnstileSiteKey,
 	}
 }
 

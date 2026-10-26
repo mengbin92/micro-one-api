@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { t } from '@/lib/i18n';
 import { useI18n } from '@/hooks/useI18n';
 
-export function LanguageToggle({ className }: { className?: string }) {
+export function LanguageToggle({ className, disabled }: { className?: string; disabled?: boolean }) {
   const { language, toggleLanguage } = useI18n();
   const label = language === 'zh-CN' ? 'English' : '中文';
   const accessibleLabel = language === 'zh-CN' ? t('切换至英文') : t('切换至中文');
@@ -14,6 +14,7 @@ export function LanguageToggle({ className }: { className?: string }) {
       variant="outline"
       size="sm"
       className={className}
+      disabled={disabled}
       aria-label={accessibleLabel}
       title={accessibleLabel}
       onClick={toggleLanguage}

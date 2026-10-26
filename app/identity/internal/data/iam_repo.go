@@ -399,6 +399,12 @@ func (r *iamRepo) CreateUser(ctx context.Context, handle biz.IAMTx, user biz.Use
 	if existing > 0 {
 		return biz.User{}, biz.ErrUserExists
 	}
+	if err := checkEmailBinding(tx.db, user.Email, 0); err != nil {
+		if errors.Is(err, biz.ErrUserExists) {
+			return biz.User{}, err
+		}
+		return biz.User{}, iamStorageError(tx, err)
+	}
 	bound := NewRepository(&Data{db: tx.db, redis: r.data.redis})
 	if err := bound.createUserDB(ctx, &user); err != nil {
 		return biz.User{}, iamRelationError(tx, err)
