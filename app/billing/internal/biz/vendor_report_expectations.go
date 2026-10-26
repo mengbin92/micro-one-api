@@ -2,6 +2,7 @@ package biz
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -9,14 +10,28 @@ import (
 // Expectations declare coverage independently of imported supplier reports.
 // ValidUntil keeps a fixed inventory from silently expiring into healthy zeroes.
 type VendorReportExpectations struct {
-	ValidUntil time.Time              `json:"valid_until"`
-	Reports    []VendorExpectedReport `json:"reports"`
+	ValidUntil       time.Time                     `json:"valid_until"`
+	Reports          []VendorExpectedReport        `json:"reports"`
+	ReviewExceptions []VendorReportReviewException `json:"review_exceptions,omitempty"`
 }
 
 type VendorExpectedReport struct {
 	Scope VendorScope `json:"scope"`
 	DueAt time.Time   `json:"due_at"`
 }
+
+// Review exceptions acknowledge one immutable run without confirming its costs.
+type VendorReportReviewException struct {
+	ReportID   string    `json:"report_id"`
+	RunID      string    `json:"run_id"`
+	ReviewedBy string    `json:"reviewed_by"`
+	Reason     string    `json:"reason"`
+	EvidenceID string    `json:"evidence_id"`
+	ReviewedAt time.Time `json:"reviewed_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
+}
+
+var vendorReviewDigest = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func DecodeVendorReportExpectations(raw []byte) (VendorReportExpectations, error) {
 	var out VendorReportExpectations
@@ -56,6 +71,25 @@ func ValidateVendorReportExpectations(e VendorReportExpectations) error {
 			return fmt.Errorf("duplicate vendor report expectation scope at index %d", i)
 		}
 		seen[key] = true
+	}
+	if len(e.ReviewExceptions) > 100 {
+		return fmt.Errorf("vendor report expectations allow at most 100 review exceptions")
+	}
+	reviewed := make(map[string]bool, len(e.ReviewExceptions))
+	for i, review := range e.ReviewExceptions {
+		if !vendorReviewDigest.MatchString(review.ReportID) || !vendorReviewDigest.MatchString(review.RunID) || !strings.HasPrefix(review.EvidenceID, "sha256:") || !vendorReviewDigest.MatchString(strings.TrimPrefix(review.EvidenceID, "sha256:")) {
+			return fmt.Errorf("invalid vendor report review identity at index %d", i)
+		}
+		if strings.TrimSpace(review.ReviewedBy) == "" || len(review.ReviewedBy) > 128 || strings.TrimSpace(review.Reason) == "" || len(review.Reason) > 1024 {
+			return fmt.Errorf("vendor report review requires a bounded reviewer and reason at index %d", i)
+		}
+		if review.ReviewedAt.Unix() <= 0 || !review.ExpiresAt.After(review.ReviewedAt) || review.ExpiresAt.After(e.ValidUntil) {
+			return fmt.Errorf("vendor report review must expire after review and no later than inventory at index %d", i)
+		}
+		if reviewed[review.ReportID] {
+			return fmt.Errorf("duplicate vendor report review at index %d", i)
+		}
+		reviewed[review.ReportID] = true
 	}
 	return nil
 }

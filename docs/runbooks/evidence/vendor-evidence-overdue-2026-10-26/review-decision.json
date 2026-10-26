@@ -1,0 +1,26 @@
+{
+  "revision": "vendor-evidence-review-v1",
+  "decision": "接受已知历史缺口，登记复核例外",
+  "authorization_source": "maintainer reply in the current chat",
+  "reviewed_by": "maintainer:mengbin92",
+  "reviewed_at": "2026-10-26T09:20:48+08:00",
+  "expires_at": "2026-10-27T00:00:00+08:00",
+  "report_id": "aecaa5c09fe36405cd59d59eb1e8e7c4d62e6c72f04e9c67052db5cf045ed9b1",
+  "run_id": "0cef5ba9b6e4aea942cd4cad92e1d14cc3e75dae4a1e70c57dbaee0398648ed0",
+  "reason": "Maintainer accepted the documented historical owner execution, local watermark and frozen cost evidence gaps; suppress only duplicate overdue review for this exact immutable run until inventory expiry.",
+  "preserve": [
+    "pending",
+    "missing_local",
+    "amount_unknown",
+    "verification_scope_none",
+    "customer_ledgers",
+    "frozen_policies",
+    "supplier_amounts"
+  ],
+  "accepted_gaps": [
+    "historical user owner execution intents were not recorded",
+    "local delivery watermark and complete account coverage are unverified",
+    "execution-time CNY cost evidence is unavailable"
+  ],
+  "not_a_financial_verification": true
+}

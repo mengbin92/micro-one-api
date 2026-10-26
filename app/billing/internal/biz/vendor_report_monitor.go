@@ -2,11 +2,13 @@ package biz
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
+	"micro-one-api/pkg/jsonx"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
 )
@@ -19,6 +21,7 @@ func WithVendorReportExpectations(expectations VendorReportExpectations) JobOpti
 	return func(j *ReconciliationJob) {
 		j.vendorExpectations = expectations
 		j.vendorExpectations.Reports = append([]VendorExpectedReport(nil), expectations.Reports...)
+		j.vendorExpectations.ReviewExceptions = append([]VendorReportReviewException(nil), expectations.ReviewExceptions...)
 	}
 }
 
@@ -34,7 +37,7 @@ func (j *ReconciliationJob) monitorVendorReports(ctx context.Context, now time.T
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	metrics.VendorReportMonitor.WithLabelValues("unavailable").Set(1)
-	for _, state := range []string{"empty", "pending", "attention", "unknown", "overdue", "notification_failed", "expected", "missing", "missing_overdue", "expectations_unconfigured", "expectations_expired"} {
+	for _, state := range []string{"empty", "pending", "attention", "unknown", "overdue", "reviewed_overdue", "notification_failed", "expected", "missing", "missing_overdue", "expectations_unconfigured", "expectations_expired"} {
 		metrics.VendorReportMonitor.WithLabelValues(state).Set(0)
 	}
 	var details strings.Builder
@@ -63,7 +66,27 @@ func (j *ReconciliationJob) monitorVendorReports(ctx context.Context, now time.T
 		details.WriteString("Vendor report coverage unavailable; inspect persistence or narrow the fixed window. No cost confirmation or expansion is permitted from this result.\n")
 	} else {
 		review := SummarizeVendorWeekly(rows, now)
-		overdue := 0
+		reviewedReports := make(map[string]bool)
+		if expectationsValid && now.Before(j.vendorExpectations.ValidUntil) {
+			for _, row := range rows {
+				if row.Status != "pending" || now.Sub(row.Manifest.Scope.End) < 72*time.Hour {
+					continue
+				}
+				for _, exception := range j.vendorExpectations.ReviewExceptions {
+					if exception.ReportID != row.ID || now.Before(exception.ReviewedAt) || !now.Before(exception.ExpiresAt) {
+						continue
+					}
+					// Persistence identifies immutable runs by the canonical report payload SHA.
+					raw, err := jsonx.Marshal(row)
+					if err != nil || fmt.Sprintf("%x", sha256.Sum256(raw)) != exception.RunID {
+						continue
+					}
+					reviewedReports[row.ID] = true
+					applogger.Log.Info("vendor evidence review exception applied", zap.String("report_id", row.ID), zap.String("run_id", exception.RunID), zap.String("reviewed_by", exception.ReviewedBy), zap.String("reason", exception.Reason), zap.String("evidence_id", exception.EvidenceID), zap.Time("reviewed_at", exception.ReviewedAt), zap.Time("expires_at", exception.ExpiresAt))
+				}
+			}
+		}
+		overdue, reviewedOverdue := 0, 0
 		if len(rows) == 0 {
 			metrics.VendorReportMonitor.WithLabelValues("empty").Set(1)
 			details.WriteString("No imported vendor reports in the bounded monitor window; supplier cost coverage is unknown.\n")
@@ -74,12 +97,17 @@ func (j *ReconciliationJob) monitorVendorReports(ctx context.Context, now time.T
 		for _, item := range review.Items {
 			if item.Status == "pending" && item.AgeSeconds >= int64(72*time.Hour/time.Second) {
 				overdue++
+				if reviewedReports[item.ReportID] {
+					reviewedOverdue++
+					continue
+				}
 			}
 			if item.Status == "attention" || item.Status == "pending" && item.AgeSeconds >= int64(72*time.Hour/time.Second) {
 				fmt.Fprintf(&details, "report=%s status=%s age_seconds=%d action=%s\n", item.ReportID, item.Status, item.AgeSeconds, item.NextAction)
 			}
 		}
 		metrics.VendorReportMonitor.WithLabelValues("overdue").Set(float64(overdue))
+		metrics.VendorReportMonitor.WithLabelValues("reviewed_overdue").Set(float64(reviewedOverdue))
 		if expectationsValid {
 			metrics.VendorReportMonitor.WithLabelValues("unavailable").Set(0)
 			missing := MissingVendorReports(j.vendorExpectations, rows)

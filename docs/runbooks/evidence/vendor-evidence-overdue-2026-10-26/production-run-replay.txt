@@ -1,0 +1,1 @@
+PASS: actual production run survives typed JSON roundtrip with identical run hash

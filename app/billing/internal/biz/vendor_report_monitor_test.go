@@ -2,7 +2,10 @@ package biz
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,9 +13,78 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
+	"micro-one-api/pkg/jsonx"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
 )
+
+func TestVendorMonitorReviewExceptionIsBoundToOnePendingRunAndExpiry(t *testing.T) {
+	for _, scenario := range []string{"approved", "changed_run", "other_report", "expired", "future_review", "attention", "invalid_inventory", "expired_inventory", "missing_report"} {
+		t.Run(scenario, func(t *testing.T) {
+			core, logs := observer.New(zap.InfoLevel)
+			applogger.SetLoggerForTest(t, zap.New(core))
+			m, _, _ := vendorFixture()
+			now := m.Scope.End.Add(96 * time.Hour)
+			row := VendorReconciliation{ID: strings.Repeat("a", 64), Manifest: m, Status: "pending", VerificationScope: "none", Comparisons: []VendorComparison{{AmountStatus: "unknown"}}}
+			raw, err := jsonx.Marshal(row)
+			require.NoError(t, err)
+			review := VendorReportReviewException{
+				ReportID: row.ID, RunID: fmt.Sprintf("%x", sha256.Sum256(raw)),
+				ReviewedBy: "maintainer", Reason: "accepted historical execution evidence gap",
+				EvidenceID: "sha256:" + strings.Repeat("e", 64),
+				ReviewedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour),
+			}
+			expectations := VendorReportExpectations{ValidUntil: now.Add(24 * time.Hour), Reports: []VendorExpectedReport{{Scope: m.Scope, DueAt: m.Scope.End.Add(72 * time.Hour)}}, ReviewExceptions: []VendorReportReviewException{review}}
+			switch scenario {
+			case "changed_run":
+				row.Manifest.Reason += " new evidence"
+			case "other_report":
+				row.ID = strings.Repeat("b", 64)
+			case "expired":
+				expectations.ReviewExceptions[0].ExpiresAt = now
+			case "future_review":
+				expectations.ReviewExceptions[0].ReviewedAt = now.Add(time.Second)
+			case "attention":
+				row.Status = "attention"
+				raw, err = jsonx.Marshal(row)
+				require.NoError(t, err)
+				expectations.ReviewExceptions[0].RunID = fmt.Sprintf("%x", sha256.Sum256(raw))
+			case "invalid_inventory":
+				expectations.Reports[0].Scope.Timezone = "invalid"
+			case "expired_inventory":
+				expectations.ValidUntil = now
+				expectations.ReviewExceptions[0].ExpiresAt = now
+			}
+			repo := &vendorMonitorRepo{rows: []VendorReconciliation{row}}
+			if scenario == "missing_report" {
+				repo.rows = nil
+			}
+			notifier := &recordingNotifier{}
+			j := newJobHarness(t, &mockReconRepo{}, notifier, nil, "")
+			WithVendorReportMonitoring(repo)(j)
+			WithVendorReportExpectations(expectations)(j)
+			expectations.ReviewExceptions[0].RunID = strings.Repeat("c", 64)
+			j.monitorVendorReports(context.Background(), now)
+			if scenario == "approved" {
+				require.Empty(t, notifier.calls)
+				require.Equal(t, float64(1), testutil.ToFloat64(metrics.VendorReportMonitor.WithLabelValues("reviewed_overdue")))
+				audit := logs.FilterMessage("vendor evidence review exception applied").All()
+				require.Len(t, audit, 1)
+				require.Equal(t, review.RunID, audit[0].ContextMap()["run_id"])
+				require.Equal(t, review.ReviewedBy, audit[0].ContextMap()["reviewed_by"])
+			} else {
+				require.Len(t, notifier.calls, 1)
+				require.Zero(t, testutil.ToFloat64(metrics.VendorReportMonitor.WithLabelValues("reviewed_overdue")))
+			}
+			if scenario != "attention" && scenario != "missing_report" {
+				require.Equal(t, float64(1), testutil.ToFloat64(metrics.VendorReportMonitor.WithLabelValues("pending")))
+				require.Equal(t, float64(1), testutil.ToFloat64(metrics.VendorReportMonitor.WithLabelValues("overdue")))
+			}
+			require.Equal(t, "unknown", row.Comparisons[0].AmountStatus)
+			require.Equal(t, "none", row.VerificationScope)
+		})
+	}
+}
 
 func TestVendorMonitorMissingAccountDeadlineAndLateImport(t *testing.T) {
 	m, _, _ := vendorFixture()

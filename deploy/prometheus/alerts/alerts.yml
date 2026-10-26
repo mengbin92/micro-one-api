@@ -125,7 +125,13 @@ groups:
           description: "Restore bounded report coverage and notification delivery. Unknown costs do not authorize expansion. See docs/runbooks/billing-upstream-p3-2026-10-14.md."
 
       - alert: VendorEvidenceNeedsReview
-        expr: micro_one_api_billing_vendor_report_monitor{state=~"attention|overdue|missing_overdue"} > 0
+        expr: |
+          micro_one_api_billing_vendor_report_monitor{state=~"attention|missing_overdue"} > 0
+          or
+          (micro_one_api_billing_vendor_report_monitor{state="overdue"} > 0
+            unless ignoring(state)
+            (micro_one_api_billing_vendor_report_monitor{state="overdue"}
+              <= ignoring(state) micro_one_api_billing_vendor_report_monitor{state="reviewed_overdue"}))
         for: 5m
         labels:
           severity: warning

@@ -1,0 +1,13 @@
+{
+  "read_only_consistent_snapshots": true,
+  "all_captured_rows_unchanged": true,
+  "captured_counts": {
+    "report": 2,
+    "run": 3,
+    "ledger": 201,
+    "reservation": 201
+  },
+  "canonical_before_sha256": "656490163aab0aae864b251551d128b0a04f48ec74200c15700f2585dfe3aaf9",
+  "canonical_after_sha256": "656490163aab0aae864b251551d128b0a04f48ec74200c15700f2585dfe3aaf9",
+  "financial_comparison_scope": "201 historical ledger rows and 201 reservation rows including frozen request snapshot hashes; no assertion about unrelated concurrent business"
+}

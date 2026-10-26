@@ -1,0 +1,48 @@
+{
+  "captured_at_beijing": "2026-10-26 09:39:42 北京时间",
+  "maintainer_decision": "生产暂不启用已验证的供应商证据监控；撤下相关告警，保留代码与历史证据",
+  "billing": {
+    "image": "sha256:7f7cc3cf2e09c056ea9b7e8a01f73d3675f67563174d6a78d6553da1abb7b102",
+    "source_digest": "213dc7803a67f44b45416f63d38bf5a00bff5576af951f3aa328f63de6a579b9",
+    "current_source_already_deployed": true,
+    "binary_rebuild_needed": false,
+    "monitor_enabled": false,
+    "shared_recon_alert_enabled_unchanged": "false",
+    "health": {
+      "status": "ok"
+    },
+    "restarts": 0,
+    "oom_killed": false
+  },
+  "prometheus": {
+    "rules_before": 53,
+    "rules_after": 51,
+    "removed_rules": [
+      "VendorEvidenceMonitorUnavailable",
+      "VendorEvidenceNeedsReview"
+    ],
+    "other_rules_unchanged": true,
+    "all_remaining_rules_healthy": true,
+    "fresh_billing_scrape": true,
+    "last_billing_scrape": "2026-10-26T01:39:40.090797098Z",
+    "monitor_scan_series_present": false,
+    "reload_successful": true,
+    "vendor_alerts": 0
+  },
+  "alertmanager": {
+    "vendor_alerts": 0,
+    "test_notification_created": false
+  },
+  "deployment": {
+    "only_billing_recreated": true,
+    "unrelated_containers_unchanged": 20,
+    "backup_directory": "/opt/micro-one-api/audit-evidence/vendor-monitor-disabled-20261026T013840Z",
+    "backup_directory_mode": "0700",
+    "configuration_backup_mode": "0600",
+    "rollback_image": "docker-compose-billing-service:rollback-monitor-off-20261026T013840Z",
+    "rules_bind_inode_preserved": true,
+    "effective_compose_only_monitor_flag_changed": true
+  },
+  "historical_pending_is_not_verified": true,
+  "reenable_requires_fresh_inventory_and_review_expiry": true
+}

@@ -1,0 +1,74 @@
+{
+  "captured_at_beijing": "2026-10-26 09:31:04 北京时间",
+  "billing": {
+    "health": {
+      "status": "ok"
+    },
+    "image": "sha256:7f7cc3cf2e09c056ea9b7e8a01f73d3675f67563174d6a78d6553da1abb7b102",
+    "source_digest": "213dc7803a67f44b45416f63d38bf5a00bff5576af951f3aa328f63de6a579b9",
+    "binary_sha256": "4dffdeca78810bf52a088d6fd099c32201fa415f698b90c5853c865f4724b0a2",
+    "running": true,
+    "restarts": 0,
+    "oom_killed": false
+  },
+  "inventory": {
+    "registered_scopes": 1,
+    "valid_until": "2026-10-27T00:00:00+08:00",
+    "existing_scope_and_deadline_unchanged": true
+  },
+  "review_exception": {
+    "report_id": "aecaa5c09fe36405cd59d59eb1e8e7c4d62e6c72f04e9c67052db5cf045ed9b1",
+    "run_id": "0cef5ba9b6e4aea942cd4cad92e1d14cc3e75dae4a1e70c57dbaee0398648ed0",
+    "reviewed_by": "maintainer:mengbin92",
+    "reviewed_at": "2026-10-26T09:20:48+08:00",
+    "expires_at": "2026-10-27T00:00:00+08:00",
+    "reason": "Maintainer accepted the documented historical owner execution, local watermark and frozen cost evidence gaps; suppress only duplicate overdue review for this exact immutable run until inventory expiry.",
+    "evidence_id": "sha256:80fd5413505f5f61431e1c0b628619539b2655aedfcc1d7cdeb8e4597cf28679",
+    "financial_verification": false,
+    "audit_log_verified": true
+  },
+  "metrics": {
+    "attention": 0.0,
+    "empty": 0.0,
+    "overdue": 1.0,
+    "pending": 1.0,
+    "unavailable": 0.0,
+    "unknown": 0.0,
+    "expectations_expired": 0.0,
+    "expectations_unconfigured": 0.0,
+    "expected": 1.0,
+    "missing": 0.0,
+    "missing_overdue": 0.0,
+    "notification_failed": 0.0,
+    "reviewed_overdue": 1.0
+  },
+  "prometheus": {
+    "active_vendor_alerts": 0,
+    "rules": [
+      {
+        "name": "VendorEvidenceMonitorUnavailable",
+        "health": "ok",
+        "state": "inactive"
+      },
+      {
+        "name": "VendorEvidenceNeedsReview",
+        "health": "ok",
+        "state": "inactive"
+      }
+    ],
+    "reload_successful": true
+  },
+  "alertmanager": {
+    "active_vendor_alerts": 0,
+    "test_notification_created": false
+  },
+  "deployment": {
+    "only_billing_recreated": true,
+    "unrelated_containers_unchanged": 20,
+    "backup_directory": "/opt/micro-one-api/audit-evidence/vendor-overdue-review-20261026T012452Z",
+    "rollback_image": "docker-compose-billing-service:rollback-review-20261026T012452Z",
+    "first_attempt_rolled_back": true,
+    "startup_metric_observations": 2,
+    "rules_bind_inode_preserved": true
+  }
+}

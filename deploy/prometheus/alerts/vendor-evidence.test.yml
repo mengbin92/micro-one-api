@@ -168,3 +168,113 @@ tests:
       - eval_time: 11m
         alertname: VendorEvidenceMonitorUnavailable
         exp_alerts: []
+  - name: reviewed overdue stays visible and review expiry restores alert
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",state="overdue"}'
+        values: '1+0x13'
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",state="reviewed_overdue"}'
+        values: '1+0x5 0+0x5 1+0x1'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VendorEvidenceNeedsReview
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: VendorEvidenceNeedsReview
+        exp_alerts:
+          - exp_labels: {instance: billing, state: overdue, severity: warning}
+            exp_annotations:
+              summary: Supplier cost reports need review
+              description: 'Investigate unexplained differences and overdue evidence; keep customer ledgers and frozen policies unchanged. See docs/runbooks/billing-upstream-p3-2026-10-14.md.'
+      - eval_time: 12m
+        alertname: VendorEvidenceNeedsReview
+        exp_alerts: []
+    promql_expr_test:
+      - expr: micro_one_api_billing_vendor_report_monitor{state="overdue"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'micro_one_api_billing_vendor_report_monitor{instance="billing",state="overdue"}'
+            value: 1
+  - name: reviewing one report does not hide another overdue report
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",state="overdue"}'
+        values: '2+0x5'
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",state="reviewed_overdue"}'
+        values: '1+0x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VendorEvidenceNeedsReview
+        exp_alerts:
+          - exp_labels: {instance: billing, state: overdue, severity: warning}
+            exp_annotations:
+              summary: Supplier cost reports need review
+              description: 'Investigate unexplained differences and overdue evidence; keep customer ledgers and frozen policies unchanged. See docs/runbooks/billing-upstream-p3-2026-10-14.md.'
+  - name: overdue review cannot suppress differences or missing reports
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",state="overdue"}'
+        values: '1+0x5'
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",state="reviewed_overdue"}'
+        values: '1+0x5'
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",state="attention"}'
+        values: '1+0x5'
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",state="missing_overdue"}'
+        values: '1+0x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VendorEvidenceNeedsReview
+        exp_alerts:
+          - exp_labels: {instance: billing, state: attention, severity: warning}
+            exp_annotations:
+              summary: Supplier cost reports need review
+              description: 'Investigate unexplained differences and overdue evidence; keep customer ledgers and frozen policies unchanged. See docs/runbooks/billing-upstream-p3-2026-10-14.md.'
+          - exp_labels: {instance: billing, state: missing_overdue, severity: warning}
+            exp_annotations:
+              summary: Supplier cost reports need review
+              description: 'Investigate unexplained differences and overdue evidence; keep customer ledgers and frozen policies unchanged. See docs/runbooks/billing-upstream-p3-2026-10-14.md.'
+  - name: another instance cannot suppress overdue review
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",job="micro-one-api",stack="production",state="overdue"}'
+        values: '1+0x5'
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="other",job="micro-one-api",stack="production",state="reviewed_overdue"}'
+        values: '1+0x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VendorEvidenceNeedsReview
+        exp_alerts:
+          - exp_labels: {instance: billing, job: micro-one-api, stack: production, state: overdue, severity: warning}
+            exp_annotations:
+              summary: Supplier cost reports need review
+              description: 'Investigate unexplained differences and overdue evidence; keep customer ledgers and frozen policies unchanged. See docs/runbooks/billing-upstream-p3-2026-10-14.md.'
+  - name: another job cannot suppress overdue review
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",job="micro-one-api",stack="production",state="overdue"}'
+        values: '1+0x5'
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",job="other",stack="production",state="reviewed_overdue"}'
+        values: '1+0x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VendorEvidenceNeedsReview
+        exp_alerts:
+          - exp_labels: {instance: billing, job: micro-one-api, stack: production, state: overdue, severity: warning}
+            exp_annotations:
+              summary: Supplier cost reports need review
+              description: 'Investigate unexplained differences and overdue evidence; keep customer ledgers and frozen policies unchanged. See docs/runbooks/billing-upstream-p3-2026-10-14.md.'
+  - name: another stack cannot suppress overdue review
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",job="micro-one-api",stack="production",state="overdue"}'
+        values: '1+0x5'
+      - series: 'micro_one_api_billing_vendor_report_monitor{instance="billing",job="micro-one-api",stack="other",state="reviewed_overdue"}'
+        values: '1+0x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VendorEvidenceNeedsReview
+        exp_alerts:
+          - exp_labels: {instance: billing, job: micro-one-api, stack: production, state: overdue, severity: warning}
+            exp_annotations:
+              summary: Supplier cost reports need review
+              description: 'Investigate unexplained differences and overdue evidence; keep customer ledgers and frozen policies unchanged. See docs/runbooks/billing-upstream-p3-2026-10-14.md.'
