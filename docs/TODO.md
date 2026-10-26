@@ -1,8 +1,16 @@
 # 项目 TODO
 
-> 最后更新：2026-10-23
+> 最后更新：2026-10-26
 >
-> **当前执行入口**：[计时内存预算与供应商证据可读性](./design/next-stage-plan-2026-10-20.md)。N1/N2 原生最大输入、前端隔离及完整三库容量验收通过；2026-10-20 已完成 [生产部署](./runbooks/p1-production-deployment-2026-10-20.md)，2026-10-21 已发布 [v0.36.3](./releases/release-v0.36.3.md)，完整 Release、分支 CI 和安全检查均 SUCCESS。见 [发布核验及剩余任务](./runbooks/post-v0.36.3-followups-2026-10-21.md)。
+> **当前执行入口**：[用户自助、安全认证与计价补齐排期](./design/next-stage-plan-2026-10-26.md)。按 1 名主工程师 + AI 辅助，首轮目标为 2026-10-27—2027-01-18：A1 注册/恢复 2 周 → A2 TOTP/step-up 4 周 → A3 service_tier 计价 4 周 → A4 第二支付 2 周；合计 34–49 工程日，60 个工作日窗口含共享余量，节假日/外部等待另计。新工作包均未开始。
+>
+> **后续滚动项**：长上下文、原生 Gemini、管理化备份合计约 6–9 个工程周，按需求及条件在首轮 W10 重估；Passkey、云厂商/订阅平台、排队、返佣、多模态与插件进入按需扩展池。
+>
+> **既有条件承接**：以 [v0.36.6](./releases/release-v0.36.6.md) 为当前登记基线：供应商证据监控保持停用；历史 2 reports / 3 runs 仍为 pending；契约保持既有 1% 试点边界，付费目标已撤销。executor 七天及 Jaeger/TTL/WS 独立验收继续保留，原 FAIL/PAUSED 不变。本次只交付规划文档。
+
+## 历史进度（2026-10-20—23）
+
+> **阶段执行入口（已归档）**：[计时内存预算与供应商证据可读性](./design/next-stage-plan-2026-10-20.md)。N1/N2 原生最大输入、前端隔离及完整三库容量验收通过；2026-10-20 已完成 [生产部署](./runbooks/p1-production-deployment-2026-10-20.md)，2026-10-21 已发布 [v0.36.3](./releases/release-v0.36.3.md)，完整 Release、分支 CI 和安全检查均 SUCCESS。见 [发布核验及剩余任务](./runbooks/post-v0.36.3-followups-2026-10-21.md)。以下为当时记录，后续状态见当前排期及 v0.36.6。
 >
 > **N3/N4 现场推进**：DeepSeek 渠道 11 的 10/21–22 闭窗已核对 203 请求、30,832,706 token、2.04700896 CNY，时间分组原币重算差额为 0；原 owner 已保存 1 report / 1 run、pending。后续按序复现执行准入/发送时间的独立条件，实现 owner 事后补证、不可变 run、最终性来源及页面展示；维护者确认该账期不会再更正，已留存继任版本。已本机跨构建并发布 Billing/前端，经原 IAM owner 导入继任报告；生产共 2 reports / 2 runs、继任 sequence=1、actor iam-user:1、审计成功，原 payload 保留。历史执行覆盖仍不足，N3 保持 pending。见 [owner 补证收口](./runbooks/deepseek-owner-retrospective-2026-10-23.md)。N4 仍待独立 reviewer、已审候选和预算，不自动扩大 executor。
 >

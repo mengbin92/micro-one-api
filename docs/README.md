@@ -22,7 +22,7 @@ docs/
 |---------|--------|
 | 个人单机，创建首个渠道和 Token | [quickstart-lite.md](./quickstart-lite.md) |
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
-| 查看下一阶段执行路线与条件保留项 | [design/next-stage-plan-2026-10-20.md](./design/next-stage-plan-2026-10-20.md) |
+| 查看用户自助、安全认证、计价补齐排期与条件保留项 | [design/next-stage-plan-2026-10-26.md](./design/next-stage-plan-2026-10-26.md) |
 | 查看告警修复、生产容量基线与 executor 同窗复核 | [runbooks/post-v0.36.0-acceptance-2026-10-18.md](./runbooks/post-v0.36.0-acceptance-2026-10-18.md) |
 | 查看原生镜像提速与真实 Log RPC/SQL 容量边界 | [构建与 SQL 链路验收](./runbooks/build-timing-sql-acceptance-2026-10-18.md) |
 | 查看计时 SQL 分组写入优化与三库复验 | [容量定位与改进](./runbooks/request-timing-capacity-improvement-2026-10-18.md) |
@@ -49,9 +49,13 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——本表明确指向且头部标注「当前执行入口」的计划。未定发布版本时使用 `design/next-stage-plan-YYYY-MM-DD.md`，已定版本时使用 `design/vX.Y-roadmap.md`。新阶段立项时：新建计划 → 旧路线图标为「已归档」并指回新入口 → 同步本表、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-最新发布登记：[v0.36.3](./releases/release-v0.36.3.md)（2026-10-21），最大计时摘要内存修复、供应商证据详情与 Jaeger 768 MiB；无新增迁移，已部署生产。版本验证见 [发布记录](./releases/release-v0.36.3.md#验证)。
+最新发布登记：[v0.36.6](./releases/release-v0.36.6.md)（2026-10-26），账单证据监控修复、历史补证与开发依赖安全更新；生产供应商证据监控保持停用，历史费用核验仍 pending。版本范围与验证见 [发布记录](./releases/release-v0.36.6.md#验证)。
 
-**当前实施（2026-10-21）**：N1 最大输入/恢复与 SQL 语句预算、N2 供应商核验只读详情已完成验收并于 2026-10-20 [部署生产](./runbooks/p1-production-deployment-2026-10-20.md)。v0.36.3 完整 Release、分支 CI 与安全检查全部通过；后续 N3/N4 已完成生产只读条件核对，等待真实来源/账期与已审候选/reviewer/预算。见 [当前计划](./design/next-stage-plan-2026-10-20.md)、[实施记录](./runbooks/p1-memory-vendor-evidence-2026-10-20.md)和 [发布及剩余材料记录](./runbooks/post-v0.36.3-followups-2026-10-21.md)。
+**当前排期（2026-10-26）**：按 1 名主工程师 + AI 辅助，安排注册/恢复 2 周、TOTP/step-up 4 周、service_tier 计价 4 周、第二支付 2 周；目标窗口为 2026-10-27—2027-01-18，节假日、外部验证等待及增量需求另计。长上下文、原生 Gemini 和备份后台滚动排入后续。新功能均未开始，既有监控停用、1% 契约试点及独立生产验收继续按各自记录管理。见 [当前计划](./design/next-stage-plan-2026-10-26.md)。
+
+**以下为前阶段历史记录**，其中“待验证/已开启/当前”等表述仅对应各条登记时间；最新状态见上方发布记录与当前排期。
+
+**历史实施（2026-10-21）**：N1 最大输入/恢复与 SQL 语句预算、N2 供应商核验只读详情已完成验收并于 2026-10-20 [部署生产](./runbooks/p1-production-deployment-2026-10-20.md)。v0.36.3 完整 Release、分支 CI 与安全检查全部通过；当时 N3/N4 已完成生产只读条件核对，等待真实来源/账期与已审候选/reviewer/预算。见 [归档计划](./design/next-stage-plan-2026-10-20.md)、[实施记录](./runbooks/p1-memory-vendor-evidence-2026-10-20.md)和 [发布及剩余材料记录](./runbooks/post-v0.36.3-followups-2026-10-21.md)。
 
 **N3 后续授权与实测（2026-10-21）**：选定 DeepSeek 渠道 11、两天核验周期，来源和当前 Key 掩码已确认，10/19–20 官方/本地无推理；两次授权短调用成功，18 token 合计费率估价 0.000048 CNY，与官方当前日 CSV 精确相符。10/21–22 窗口结束后再核对完整报告、内部测试与 owner 覆盖；见 [执行与证据](./runbooks/deepseek-channel11-two-day-2026-10-21.md)。
 
@@ -109,7 +113,7 @@ docs/
 - [v0.30.0](./releases/release-v0.30.0.md) · [v0.30.1](./releases/release-v0.30.1.md) · [v0.31.0](./releases/release-v0.31.0.md) · [v0.31.1](./releases/release-v0.31.1.md)
 - [v0.32.0](./releases/release-v0.32.0.md) · [v0.32.1](./releases/release-v0.32.1.md) · [v0.32.2](./releases/release-v0.32.2.md)
 - [v0.33.0](./releases/release-v0.33.0.md) · [v0.33.1](./releases/release-v0.33.1.md) · [v0.33.2](./releases/release-v0.33.2.md) · [v0.33.3](./releases/release-v0.33.3.md) · [v0.33.4](./releases/release-v0.33.4.md) · [v0.33.5](./releases/release-v0.33.5.md) · [v0.33.6](./releases/release-v0.33.6.md)
-- [v0.34.0](./releases/release-v0.34.0.md) · [v0.34.1](./releases/release-v0.34.1.md) · [v0.34.2](./releases/release-v0.34.2.md) · [v0.34.3](./releases/release-v0.34.3.md) · [v0.34.4](./releases/release-v0.34.4.md) · [v0.34.5 中止候选](./releases/release-v0.34.5.md) · [v0.34.6](./releases/release-v0.34.6.md) · [v0.34.7](./releases/release-v0.34.7.md) · [v0.34.8 中止候选](./releases/release-v0.34.8.md) · [v0.34.9](./releases/release-v0.34.9.md) · [v0.34.10](./releases/release-v0.34.10.md) · [v0.34.11](./releases/release-v0.34.11.md) · [v0.34.12 中止候选](./releases/release-v0.34.12.md) · [v0.34.13 中止候选](./releases/release-v0.34.13.md) · [v0.34.14 中止候选](./releases/release-v0.34.14.md) · [v0.34.15](./releases/release-v0.34.15.md) · [v0.34.16](./releases/release-v0.34.16.md) · [v0.34.17](./releases/release-v0.34.17.md) · [v0.34.18](./releases/release-v0.34.18.md) · [v0.35.0](./releases/release-v0.35.0.md) · [v0.35.1](./releases/release-v0.35.1.md) · [v0.35.2](./releases/release-v0.35.2.md) · [v0.36.0](./releases/release-v0.36.0.md) · [v0.36.1](./releases/release-v0.36.1.md) · [v0.36.2](./releases/release-v0.36.2.md) · [v0.36.3](./releases/release-v0.36.3.md)（最新）
+- [v0.34.0](./releases/release-v0.34.0.md) · [v0.34.1](./releases/release-v0.34.1.md) · [v0.34.2](./releases/release-v0.34.2.md) · [v0.34.3](./releases/release-v0.34.3.md) · [v0.34.4](./releases/release-v0.34.4.md) · [v0.34.5 中止候选](./releases/release-v0.34.5.md) · [v0.34.6](./releases/release-v0.34.6.md) · [v0.34.7](./releases/release-v0.34.7.md) · [v0.34.8 中止候选](./releases/release-v0.34.8.md) · [v0.34.9](./releases/release-v0.34.9.md) · [v0.34.10](./releases/release-v0.34.10.md) · [v0.34.11](./releases/release-v0.34.11.md) · [v0.34.12 中止候选](./releases/release-v0.34.12.md) · [v0.34.13 中止候选](./releases/release-v0.34.13.md) · [v0.34.14 中止候选](./releases/release-v0.34.14.md) · [v0.34.15](./releases/release-v0.34.15.md) · [v0.34.16](./releases/release-v0.34.16.md) · [v0.34.17](./releases/release-v0.34.17.md) · [v0.34.18](./releases/release-v0.34.18.md) · [v0.35.0](./releases/release-v0.35.0.md) · [v0.35.1](./releases/release-v0.35.1.md) · [v0.35.2](./releases/release-v0.35.2.md) · [v0.36.0](./releases/release-v0.36.0.md) · [v0.36.1](./releases/release-v0.36.1.md) · [v0.36.2](./releases/release-v0.36.2.md) · [v0.36.3](./releases/release-v0.36.3.md) · [v0.36.4](./releases/release-v0.36.4.md) · [v0.36.5](./releases/release-v0.36.5.md) · [v0.36.6](./releases/release-v0.36.6.md)（最新）
 
 ### runbooks/ — 运维操作手册
 
@@ -148,7 +152,8 @@ docs/
 | [v0.23-roadmap.md](./design/v0.23-roadmap.md) | v0.23 路线图：上线观察与 Relay executor 首切片（已归档） |
 | [v0.23-executor-observation.md](./design/v0.23-executor-observation.md) | executor 新旧路径 7 天生产观察与回滚事实源 |
 | [v0.24-web-release-readiness.md](./design/v0.24-web-release-readiness.md) | v0.24 双语 Web、中国法律协议与发布隔离准备清单 |
-| [next-stage-plan-2026-10-20.md](./design/next-stage-plan-2026-10-20.md) | 当前计划：计时内存预算与供应商证据可读性 |
+| [next-stage-plan-2026-10-26.md](./design/next-stage-plan-2026-10-26.md) | 当前计划：用户自助、安全认证与计价补齐；12 周主线、滚动扩展及既有条件承接 |
+| [next-stage-plan-2026-10-20.md](./design/next-stage-plan-2026-10-20.md) | 已归档：计时内存预算与供应商证据可读性；保留 N3/N4 历史证据 |
 | [next-stage-plan-2026-10-18.md](./design/next-stage-plan-2026-10-18.md) | 已归档：v0.36.0 运行验收、证据收口与双语入口；保留独立生产结论 |
 | [next-stage-plan-2026-10-16.md](./design/next-stage-plan-2026-10-16.md) | 已归档：审查修复交付、定价原子保存与真实证据验收 |
 | [next-stage-plan-2026-10-12.md](./design/next-stage-plan-2026-10-12.md) | 已归档：发布与生产收口、当前代码长流复验及 N5 准入 |
