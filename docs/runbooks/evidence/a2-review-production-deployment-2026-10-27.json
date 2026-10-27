@@ -1,0 +1,132 @@
+{
+  "completed_at_cst": "2026-10-27 14:01",
+  "revision": "e56fd37d",
+  "source_digest": "93889d0168abfe9447cbfae95d7d4a1b4fdf89c33490fb344240d74ef72af984",
+  "tag": "deploy-20261027-135901-e56fd37d",
+  "rollback_tag": "rollback-20261027-135901",
+  "images": {
+    "identity-service": {
+      "name": "docker-compose-identity-service:deploy-20261027-135901-e56fd37d",
+      "id": "sha256:34d8e7da59f6e05d22685929ebb8d32cf94c6bcb23900b985440d4efa079523e",
+      "architecture": "linux/amd64"
+    },
+    "admin-api": {
+      "name": "docker-compose-admin-api:deploy-20261027-135901-e56fd37d",
+      "id": "sha256:53362dd37c0563c62ffcc472d1756bdd7515402b1b807f2eca54fbf993b3881a",
+      "architecture": "linux/amd64"
+    }
+  },
+  "backup": {
+    "backup_directory": "backups/backup-20261027_135752-a2-review",
+    "files": {
+      "identity-admin.sql.gz": {
+        "bytes": 32214,
+        "sha256": "244900101bc6332bca63b7783444223159066357dba7cd906a83a1be1f0ff801"
+      },
+      "redis.rdb": {
+        "bytes": 21852,
+        "sha256": "9d36afa8717c50e2f2303010ae2dc8779ece0366a261dbb3c547d74a05244e0e"
+      }
+    },
+    "migration_143_present": true,
+    "mfa_rows_before": 0,
+    "iam_mode": "iam/complete",
+    "mfa_key_unchanged": true,
+    "forced_policies_enabled": false
+  },
+  "web": {
+    "files_verified": 82,
+    "index_sha256": "87a600234e536db5d53a73fe96fd08e8eb748d417007692f1d760ee2285447fb",
+    "old_assets_retained": true,
+    "mount_inode_preserved": true,
+    "public_index_matches": true
+  },
+  "sql_migration": {
+    "new_migrations_applied": 0,
+    "migration_143_receipt_present": true,
+    "identity_mfa_rows": 0,
+    "iam_mode": "iam/complete"
+  },
+  "mfa_config": {
+    "encryption_key_present": true,
+    "key_bytes": 32,
+    "key_unchanged": true,
+    "step_up_enabled": false,
+    "require_admin": false
+  },
+  "verification": {
+    "image_ids_match_local_manifest": true,
+    "healthz": {
+      "identity-service": "ok",
+      "admin-api": "ok"
+    },
+    "restart_counts": {
+      "identity-service": 0,
+      "admin-api": 0
+    },
+    "unrelated_containers_unchanged": true,
+    "unrelated_container_count": 14,
+    "unrelated_compose_config_unchanged": true,
+    "anonymous_http_statuses": {
+      "GET /api/user/security": 401,
+      "POST /api/user/security/verify": 401,
+      "POST /api/user/security/setup": 401,
+      "POST /api/user/security/oauth": 401,
+      "POST /api/user/security/login": 400
+    },
+    "registration_policy_unchanged": true,
+    "registration_policy": {
+      "registration_enabled": true,
+      "email_verification": false,
+      "turnstile_check": false,
+      "email_delivery_configured": true,
+      "registration_policy_available": true
+    },
+    "browser": [
+      {
+        "device": "desktop",
+        "login_page": "ok",
+        "assets": "ok",
+        "invalid_mfa_rejected": true,
+        "challenge_memory_only": true,
+        "language_locked_during_mfa": true,
+        "language_restored_after_exit": true,
+        "token_not_created": true,
+        "no_horizontal_overflow": true,
+        "page_errors": 0
+      },
+      {
+        "device": "mobile",
+        "login_page": "ok",
+        "assets": "ok",
+        "invalid_mfa_rejected": true,
+        "challenge_memory_only": true,
+        "language_locked_during_mfa": true,
+        "language_restored_after_exit": true,
+        "token_not_created": true,
+        "no_horizontal_overflow": true,
+        "page_errors": 0
+      }
+    ]
+  },
+  "public_origin_redacted": true,
+  "status": "deployed_verified",
+  "verified_at_cst": "2026-10-27 14:04",
+  "pre_deployment_validation": {
+    "go_build": "passed",
+    "go_vet": "passed",
+    "make_verify": "passed",
+    "web_tests": 630,
+    "critical_tests": 191,
+    "rbac_entries": 906,
+    "authentication_race": "passed",
+    "local_full_a2_desktop_mobile_browser": "passed"
+  },
+  "not_covered": [
+    "real external OAuth account",
+    "real mobile authenticator and production enrollment",
+    "forced step-up / administrator MFA enablement (left off)",
+    "fresh MySQL/PostgreSQL regression run during this deployment (no new migrations)"
+  ],
+  "rollback_boundary": "Rollback images/Web only to the retained A2-aware images; retain the MFA table and encryption key. SQL/Redis backups are disaster-recovery material, not a routine binary rollback; restoring live data can revive used credentials or revert business writes. Never return to pre-A2 Identity after enrollment."
+}

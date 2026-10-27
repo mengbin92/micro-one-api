@@ -1,6 +1,6 @@
 # 下一阶段排期：用户自助、安全认证与计价补齐
 
-> **当前执行入口**。制定：2026-10-26（Asia/Shanghai）。源码基线：`develop@918b56c9` / v0.36.6；比较基线为本地 `new-api@34003e9c2`、`sub2api@ba81c7fd7`。接替 [10 月 20 日计划](next-stage-plan-2026-10-20.md)。本文为研发排期；2026-10-27 A1 已部署生产并验证，真实邮件收件通过；Turnstile 保持关闭，启用时另验。A2 已部署生产并通过线上验证，强制策略开关关闭，真实外部因子验收保留（见 [A2 验收](../runbooks/a2-security-acceptance-2026-10-27.md)），A3–A4 未开始，既有生产条件继续按原记录保留。
+> **当前执行入口**。制定：2026-10-26（Asia/Shanghai）。源码基线：`develop@918b56c9` / v0.36.6；比较基线为本地 `new-api@34003e9c2`、`sub2api@ba81c7fd7`。接替 [10 月 20 日计划](next-stage-plan-2026-10-20.md)。本文为研发排期；2026-10-27 A1 已部署生产并验证，真实邮件收件通过；Turnstile 保持关闭，启用时另验。A2（含 14:01 CST 复核修复）已部署生产并通过线上验证，强制策略开关关闭，真实外部因子验收保留（见 [A2 验收](../runbooks/a2-security-acceptance-2026-10-27.md)），A3–A4 未开始，既有生产条件继续按原记录保留。
 
 ## 1. 目标、投入假设与时间口径
 
@@ -31,7 +31,7 @@
 | ID / 优先级 | 目标时间（Asia/Shanghai） | 工作与 owner | 工程量 | 依赖 / 交付物 | 状态 |
 | --- | --- | --- | --- | --- | --- |
 | A1 / P1 | W1–W2：2026-10-27—11-09 | 注册、邮件验证与密码恢复；Web / Admin / Identity | 5–8 日 | 实际邮件投递、共享 challenge、完整页面和 BFF 路由；验证记录与配置说明 | 已部署（Turnstile 未启用） |
-| A2 / P1 | W3–W6：2026-11-10—12-07 | TOTP、恢复码与首批 step-up；Identity / IAM / Web | 11–16 日 | 复用 A1 challenge 与现有 IAM 会话；三库迁移、登录状态机、安全中心、首批 owner 校验 | 已部署生产并通过线上验证；强制策略关闭，真实外部因子验收保留 |
+| A2 / P1 | W3–W6：2026-11-10—12-07 | TOTP、恢复码与首批 step-up；Identity / IAM / Web | 11–16 日 | 复用 A1 challenge 与现有 IAM 会话；三库迁移、登录状态机、安全中心、首批 owner 校验 | 已部署（含复核修复）；强制策略关闭，真实外部因子验收保留 |
 | A3 / P1 | W7–W10：2026-12-08—2027-01-04 | service_tier 计价 MVP；Relay / Billing / Log / Admin / Web | 11–15 日 | 一个来源/模型，HTTP/SSE 的请求与实际档位、预扣/结算、版本快照及账单解释 | 未开始 |
 | A4 / P2 | W11–W12：2027-01-05—01-18 | 第二支付 provider；Billing / Identity / Admin / Web | 7–10 日 | 默认候选微信 Native；单商户、单币种，下单/查单/回调/发放，配置驱动前端 | 未开始 |
 
@@ -59,7 +59,7 @@
 
 ### A2：TOTP 与首批敏感操作 step-up
 
-**2026-10-27 状态：已部署生产并通过线上验证；强制策略开关关闭；真实外部因子验收保留。** TOTP/恢复码、密码与 OAuth 统一 MFA challenge、五分钟会话证明、安全中心、首批 owner 校验和三库迁移已完成，迁移 143 已落 `oneapi_identity`。完整 `make verify`、认证专项 race、真实三库、BFF/owner HTTP/gRPC、Chrome 工程验收与 2026-10-27 11:30 CST 生产部署验证通过（镜像 ID 与本机构建清单一致，restart_count=0，healthz 通过，公网拿到新 Web index，其余服务未重建）。真实外部 OAuth、实际验证器与生产用户 enrollment、强制 step-up/管理员 MFA 分阶段启用仍保留待办。配置、首批范围及不可回滚至忽略 MFA 的旧 Identity 等限制见 [实施验收记录](../runbooks/a2-security-acceptance-2026-10-27.md) / [冻结契约](a2-security-contract-2026-10-27.md)。未发布新版本/tag、未 push。
+**2026-10-27 状态：已部署生产并通过线上验证；强制策略开关关闭；真实外部因子验收保留。** TOTP/恢复码、密码与 OAuth 统一 MFA challenge、五分钟会话证明、安全中心、首批 owner 校验和三库迁移已完成，迁移 143 已落 `oneapi_identity`。完整 `make verify`、认证专项 race、真实三库、BFF/owner HTTP/gRPC、Chrome 工程验收与 2026-10-27 11:30 CST 首次部署、14:01 CST 复核修复部署验证通过（镜像 ID 与本机构建清单一致，restart_count=0，healthz 通过，公网拿到新 Web index，其余服务未重建）。本轮源码 `e56fd37d`，无新增迁移；沿用 MFA 密钥和关闭的强制策略，公网桌面/移动页面通过。真实外部 OAuth、实际验证器与生产用户 enrollment、强制 step-up/管理员 MFA 分阶段启用仍保留待办。配置、首批范围及不可回滚至忽略 MFA 的旧 Identity 等限制见 [实施验收记录](../runbooks/a2-security-acceptance-2026-10-27.md) / [冻结契约](a2-security-contract-2026-10-27.md)。未发布新版本/tag、未 push。
 
 TOTP 登录与恢复估 7–10 日；step-up 估 4–6 日。复用 [IAM 会话](../../api/identity/v1/iam.proto)及 A1 的共享 challenge，不新增一套独立登录会话系统。
 
@@ -141,7 +141,7 @@ B3 的完成条件包含数据库、Redis、版本/配置和密钥引用清单�
 - **分层**：service 转 DTO/DO，biz 定义模型/用例/repo，data 实现存储与外部客户端；长期客户端共享，BFF 聚合不能接管身份或资金 owner。跨服务复用沿用现有 domain 边界。
 - **契约与迁移**：proto/config/Wire 按 `make api`、`make config`、`make all` 生成；新增迁移覆盖 MySQL/PostgreSQL/SQLite，并同步 IAM/RBAC 契约与前端类型。工时包含这些工作。
 - **验证**：每个切片运行受影响层的有意义测试；认证重放/会话、资金快照/幂等、跨服务 HTTP/gRPC、涉及的真实三库迁移和浏览器关键流程列入验收。形成发布候选时执行适用 `make verify` 与相关 E2E；已有通过结果不无故重复长测。
-- **部署候选**：记录受影响服务、迁移顺序、兼容窗口与回滚限制。生产 Linux/amd64 镜像在本机/CI 构建；前端按宿主机 `web/dist` 单独发布。制定计划时只交付文档；后续 A1 已完成工程、本地构建和生产部署验收；未发布新版本、打 tag 或创建自动任务。
+- **部署候选**：记录受影响服务、迁移顺序、兼容窗口与回滚限制。生产 Linux/amd64 镜像在本机/CI 构建；前端按宿主机 `web/dist` 单独发布。制定计划时只交付文档；后续 A1/A2 已完成工程、本地构建和生产部署验收，A2 复核修复已于 2026-10-27 14:01 CST 部署；未发布新版本、打 tag 或创建自动任务。
 - **状态**：统一使用“未开始 / 进行中 / 工程验收通过、待外部验证 / 可发布候选 / 已发布 / 已部署 / 暂缓”，分别登记证据。不将本地通过、实际收费与生产验收合并为一个完成勾选。
 
 ## 7. 前两周执行清单与排期调整
@@ -156,6 +156,7 @@ B3 的完成条件包含数据库、Redis、版本/配置和密钥引用清单�
 - [ ] A1 条件验证：Turnstile 保持关闭，启用时完成真实挑战验收，不以本地 mock 替代。
 - [x] A2：冻结入口清单、状态机/三库迁移、安全中心与首批 step-up；工程验收和文档完成。
 - [x] A2 生产部署：2026-10-27 11:30 CST 更新 Identity/Admin/Web，迁移 143 落库，公网验证通过；其余服务未重建。
+- [x] A2 复核修复部署：`e56fd37d` 更新 Identity/Admin/Web，密钥及关闭的强制开关保留，公网桌面/移动拒绝与页面验证通过（[证据](../runbooks/evidence/a2-review-production-deployment-2026-10-27.json)）。
 - [ ] A2 外部验证：真实 OAuth/实际验证器、生产用户 enrollment 未执行；强制 step-up/管理员 MFA 策略本次明确保持关闭。
 - [ ] A4 商户资料准备：未随 A1/A2 启动，仍按自身条件推进。
 

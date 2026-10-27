@@ -1,6 +1,6 @@
 # A2：MFA 与 step-up 实施契约
 
-2026-10-27（北京时间）。关联 [执行计划](next-stage-plan-2026-10-26.md)。状态：已部署生产并通过线上验证；强制策略开关关闭；真实外部因子验收保留；见 [验收记录](../runbooks/a2-security-acceptance-2026-10-27.md) 与 [生产证据](../runbooks/evidence/a2-production-deployment-2026-10-27.json)。
+2026-10-27（北京时间）。关联 [执行计划](next-stage-plan-2026-10-26.md)。状态：已部署生产（含 14:01 CST 复核修复 `e56fd37d`）并通过线上验证；强制策略开关关闭；真实外部因子验收保留；见 [验收记录](../runbooks/a2-security-acceptance-2026-10-27.md)、[首次生产证据](../runbooks/evidence/a2-production-deployment-2026-10-27.json)与[复核部署证据](../runbooks/evidence/a2-review-production-deployment-2026-10-27.json)。
 
 ## 冻结的首批入口
 
@@ -43,5 +43,6 @@ step-up 证明保存于共享 Redis，绑定现有 JWT 的 JTI、用户、密码
 - [x] BFF / owner HTTP / gRPC、密码/OAuth 登录与 Web 安全中心。
 - [x] 适用构建、契约、前端与验收门禁。
 - [x] 生产部署：2026-10-27 11:30 CST 更新 Identity/Admin/Web，迁移 143 落 `oneapi_identity`，公网验证通过；其余服务未重建。
+- [x] 复核修复部署：2026-10-27 14:01 CST，Identity/Admin/Web 更新至 `e56fd37d`；无新增迁移，原 MFA 密钥及两个关闭的强制策略保留。
 - [ ] 真实外部 OAuth、实际手机验证器、生产用户 enrollment（不以本地验证替代）。
 - [ ] 强制 step-up / 管理员 MFA 策略分阶段启用（本次明确保持关闭）。

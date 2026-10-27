@@ -2,7 +2,7 @@
 
 2026-10-27（北京时间）。审查范围固定为 `512a0a9f`、`6f5cb293`、`b4c787a4`，包含调用方、存储、HTTP/gRPC、Web 会话状态与部署配置。按生产多副本、共享 SQL/Redis、浏览器多标签页的实际运行方式审查。
 
-**结论：发现并修复 8 项问题，无未修复的已确认问题。** 本轮修复为本地候选，未部署、未 push、未发布版本/tag；[此前生产证据](evidence/a2-production-deployment-2026-10-27.json)仍对应 `6f5cb293`，不代表本轮修复已经上线。
+**结论：发现并修复 8 项问题，无未修复的已确认问题。** 本轮修复已于 2026-10-27 14:01 CST 部署 Identity/Admin/Web，源码 `e56fd37d`，见[复核部署证据](evidence/a2-review-production-deployment-2026-10-27.json)；未 push、未发布版本/tag。[首次生产证据](evidence/a2-production-deployment-2026-10-27.json)保留对应 `6f5cb293` 的历史记录。
 
 修复提交：`9e66d6fe`（部署配置）、`35384d2c`（MFA 状态机）、`fdb760d0`（BFF 错误透传）、`241e1b66`（Web 会话隔离）。
 
@@ -55,5 +55,6 @@ challenge 的 `Check` 不改变次数或消费状态；最终 `Consume` 仍由 R
 | ✅ | `make verify` | 全部通过；630 项 Web 测试、191 项 critical、仓库 race、906 条 RBAC 契约、迁移/架构/生成类型与构建门禁 |
 | ✅ | `scripts/check-deployment-docs.sh` | 四组 Compose、42 个 K8s 对象、85 个引用及本地文档链接通过 |
 | ✅ | 真实桌面/移动 Chrome A2 | 两端均通过：设置、恢复码保存、MFA 登录、step-up、创建 Token、换码和禁用；实际 Web 构建产物 → BFF → Identity HTTP/gRPC → 隔离 SQL/Redis |
+| ✅ | 复核修复生产部署 | Identity/Admin 镜像与本机清单一致、healthz 通过、重启 0；82 个 Web 文件及公网 index 匹配；桌面/移动登录页、无效 MFA 拒绝、语言切换保护和恢复通过；14 个非目标运行容器未变 |
 
-本轮未重新执行外部 MySQL/PostgreSQL 用例（未提供本机一次性 DSN），未使用真实外部 OAuth/手机验证器或生产账号 enrollment。现有生产两个强制开关仍为关闭；上线本轮修复后再安排真实外部因子及分阶段策略验收。已有用户启用 MFA 时仍禁止回滚到忽略 MFA 的旧 Identity。
+本轮未重新执行外部 MySQL/PostgreSQL 用例（未提供本机一次性 DSN），未使用真实外部 OAuth/手机验证器或生产账号 enrollment。生产两个强制开关仍为关闭；后续安排真实外部因子及分阶段策略验收。已有用户启用 MFA 时仍禁止回滚到忽略 MFA 的旧 Identity。
