@@ -59,6 +59,7 @@ app/**/*.pb.go
 .env
 .env.local
 .env.*.local
+identity-email.env
 
 # Config files with sensitive data (use .env instead)
 configs/*.yaml

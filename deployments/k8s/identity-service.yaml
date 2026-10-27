@@ -47,15 +47,12 @@ spec:
             - ALL
           privileged: false
           readOnlyRootFilesystem: true
-        # Optional A1 configuration: registration/public URL in the ConfigMap;
-        # existing NOTIFY_SMTP_* (or IDENTITY_SMTP_* overrides) in the Secret.
+        # Both resources must exist; identity-email may be empty when mail is disabled.
         envFrom:
         - configMapRef:
             name: identity-registration
-            optional: true
         - secretRef:
             name: identity-email
-            optional: true
         env:
         - name: CHANNEL_GRPC_ENDPOINT
           valueFrom:
@@ -146,6 +143,20 @@ spec:
       volumes:
       - name: tmp
         emptyDir: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: identity-registration
+  namespace: one-api
+data:
+  REGISTRATION_DISABLED: "false"
+  REGISTRATION_EMAIL_VERIFICATION_ENABLED: "false"
+  REGISTRATION_EMAIL_DOMAIN_RESTRICTION_ENABLED: "false"
+  REGISTRATION_EMAIL_DOMAIN_WHITELIST: "[]"
+  IDENTITY_PUBLIC_BASE_URL: ""
+  TURNSTILE_CHECK_ENABLED: "false"
+  TURNSTILE_SITE_KEY: ""
 ---
 apiVersion: v1
 kind: Service

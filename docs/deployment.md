@@ -185,11 +185,21 @@ kubectl create secret tls admin-tls-secret \
 kubectl create secret generic service-token-secret \
   --from-literal=token='replace-with-a-long-random-token' \
   -n one-api --dry-run=client -o yaml | kubectl apply -f -
+
+# Identity 邮件/认证秘密。预先准备权限为 0600 的本地 identity-email.env；
+# 暂不启用邮件和验证码时，该文件可以为空，不要提交到仓库。
+kubectl create secret generic identity-email \
+  --from-env-file=identity-email.env \
+  -n one-api --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 示例中的 `channel-encryption-key` 恰好为 32 字节，仅用于展示格式。生产环境必须替换为独立随机值；已有加密数据时必须沿用原密钥，否则历史凭证无法解密。
 
 所有上述 Secret 都是生产必需项，清单不会以 `optional: true` 忽略缺失值。不要把 Secret 内容写入 YAML 或提交到仓库。
+
+`identity-registration` ConfigMap 已在 `identity-service.yaml` 中定义，默认允许注册、关闭邮件验证与 Turnstile，公网 URL 为空。按实际策略修改该 ConfigMap；启用邮件前必须设置 `IDENTITY_PUBLIC_BASE_URL`，并在本地 `identity-email.env` 中填写 `IDENTITY_SMTP_HOST / PORT / USER / PASS / FROM / MODE`，或已有的 `NOTIFY_SMTP_*` 配置。启用 Turnstile 时，公开 site key 放在 ConfigMap，`TURNSTILE_SECRET` 放在该 Secret。完整配置与投递条件见 [A1 实施验收记录](runbooks/a1-self-service-acceptance-2026-10-27.md)。
+
+首次部署和从旧清单升级都须先创建 `identity-email`，即使暂时不配置邮件也应创建空 Secret；未配置投递器时，发送验证码/恢复邮件仍明确不可用。更新 Secret 时沿用并维护已有环境文件，不要用空文件覆盖已配置的值。
 
 ### 3.4 构建并替换镜像
 

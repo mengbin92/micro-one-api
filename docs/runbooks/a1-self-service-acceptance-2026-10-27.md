@@ -40,7 +40,7 @@ TURNSTILE_SECRET=
 - 如需独立身份邮件账号，配置 `IDENTITY_SMTP_HOST / PORT / USER / PASS / FROM / MODE`。一旦设置 Identity HOST，即使用完整 Identity 组，避免混入 Notify 的另一套凭据。
 - MODE 留空时，465 自动采用隐式 TLS，其余端口采用 STARTTLS；生产验证证书且禁止降级。`plain` 仅允许本机回环 SMTP 测试收件器。
 - Turnstile 开启时同时配置 site key 和 secret；浏览器只收到 site key。未配置完整时注册失败关闭，默认关闭保持兼容。
-- Kubernetes 可通过可选 `identity-registration` ConfigMap 注入开关/公网 URL，以及 `identity-email` Secret 注入上述 SMTP 环境变量。模板不包含真实密钥。
+- Kubernetes 通过清单内定义的 `identity-registration` ConfigMap 注入开关/公网 URL，以及部署前创建的 `identity-email` Secret 注入上述 SMTP 环境变量。两个资源必须存在；暂不配置邮件时 Secret 可为空，邮件验证与 Turnstile 默认关闭。创建步骤见 [部署文档](../deployment.md#33-创建-secrets)，模板不包含真实密钥。
 
 配置源见 [Identity config](../../app/identity/configs/config.yaml)、[环境变量示例](../../.env.example)、[Compose](../../deployments/docker-compose/docker-compose.yml)和 [Kubernetes](../../deployments/k8s/identity-service.yaml)。
 
