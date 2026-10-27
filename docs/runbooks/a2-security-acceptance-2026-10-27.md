@@ -6,6 +6,8 @@
 
 **代码复核补充（2026-10-27）**：最近三次提交发现的 8 项问题已修复并于 14:01 CST 部署，源码 `e56fd37d`，见[复核记录](a2-code-review-2026-10-27.md) / [复核部署证据](evidence/a2-review-production-deployment-2026-10-27.json)。首次生产证据保留对应 `6f5cb293` 的历史记录。
 
+**登录故障补记**：后续管理员登录暴露迁移 143 的运行账号逐表权限遗漏，已于 14:25 CST 补齐该表最小权限，14:29 CST 部署 Identity `e1da0017` 区分存储故障与凭据错误；真实管理员登录、dashboard 与管理员只读访问已通过。Admin/Web 保持 `e56fd37d`，两个强制策略仍关闭，详见[故障修复记录](a2-login-permission-hotfix-2026-10-27.md)。
+
 ## 1. 交付范围
 
 | 项目 | 实现与证据 |
@@ -68,7 +70,7 @@ A2_PLAYWRIGHT=1 go test ./app/identity/cmd/identity \
 两个开关仅接受 `true` / `false`，不将大小写或误填值静默解释为关闭。普通、Lite、PostgreSQL 环境模板与 Compose 均已注入 Identity 三个 MFA 变量，部署门禁用非默认值检查配置透传。
 
 1. 备份目标 SQL 和 Redis，使用带北京时间时间戳的备份目录；安全保存对应加密密钥引用，**不要把密钥写进文档**。
-2. 应用 `143_create_identity_mfa.sql`：MySQL 主目录、PostgreSQL/SQLite 对应镜像目录。该迁移仅新增 Identity-owned 表，不重算资金，不自动发布 IAM 权限。
+2. 应用 `143_create_identity_mfa.sql`：MySQL 主目录、PostgreSQL/SQLite 对应镜像目录。该迁移仅新增 Identity-owned 表，不重算资金，不自动发布 IAM 权限。采用逐表授权时，必须为实际 Identity 运行账号补齐 `identity_mfa` 的 `SELECT / INSERT / UPDATE`，并使用运行凭据完成只读/零行写探测；步骤见[登录故障修复记录](a2-login-permission-hotfix-2026-10-27.md#后续部署约束)。
 3. 配置统一独立加密密钥；部署 Identity、Admin BFF 和 Web。镜像仍须本机构建 Linux/amd64，Web 仍单独更新宿主机 dist。两个强制开关先保持关闭。
 4. 用指定测试账号/实际验证器完成 enrollment、恢复码离线保存、密码/OAuth 登录和敏感操作验证；未通过时不启用管理员强制策略。
 5. 逐步启用 step-up，再按维护者决定启用管理员 MFA。重新创建时只操作 Identity，不重建无关服务；复查 BFF 和直接 owner 拒绝分支。
@@ -110,5 +112,6 @@ A2_PLAYWRIGHT=1 go test ./app/identity/cmd/identity \
 - 首批之外的 owner 写操作、Passkey、支付回调、worker/system 专用凭据、全部因子丢失后的线下恢复均保留既有边界；不能据本项声称“所有管理操作均完成 step-up”。
 - [x] 生产备份、迁移 143、Identity/Admin/Web 部署及线上验证（2026-10-27 11:30 CST）。
 - [x] 复核修复部署：`e56fd37d`、Identity/Admin/Web（2026-10-27 14:01 CST），不重复执行迁移。
+- [x] 登录故障修复：MFA 新表最小权限补齐、Identity `e1da0017` 已部署，真实管理员登录与只读访问通过；未改密码。
 - [ ] 真实外部 OAuth、实际手机验证器、生产用户 enrollment 验收。
 - [ ] 强制 step-up / 管理员 MFA 策略分阶段启用（本次明确保持关闭）。

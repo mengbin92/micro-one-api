@@ -128,5 +128,10 @@
     "forced step-up / administrator MFA enablement (left off)",
     "fresh MySQL/PostgreSQL regression run during this deployment (no new migrations)"
   ],
-  "rollback_boundary": "Rollback images/Web only to the retained A2-aware images; retain the MFA table and encryption key. SQL/Redis backups are disaster-recovery material, not a routine binary rollback; restoring live data can revive used credentials or revert business writes. Never return to pre-A2 Identity after enrollment."
+  "rollback_boundary": "Rollback images/Web only to the retained A2-aware images; retain the MFA table and encryption key. SQL/Redis backups are disaster-recovery material, not a routine binary rollback; restoring live data can revive used credentials or revert business writes. Never return to pre-A2 Identity after enrollment.",
+  "follow_up_incident": {
+    "issue": "Authenticated login later failed because runtime grants for migration 143 were omitted; prior verification covered anonymous routes only.",
+    "resolved": true,
+    "evidence": "a2-login-permission-hotfix-2026-10-27.json"
+  }
 }

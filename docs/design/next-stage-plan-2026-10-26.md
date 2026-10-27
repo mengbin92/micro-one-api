@@ -1,6 +1,6 @@
 # 下一阶段排期：用户自助、安全认证与计价补齐
 
-> **当前执行入口**。制定：2026-10-26（Asia/Shanghai）。源码基线：`develop@918b56c9` / v0.36.6；比较基线为本地 `new-api@34003e9c2`、`sub2api@ba81c7fd7`。接替 [10 月 20 日计划](next-stage-plan-2026-10-20.md)。本文为研发排期；2026-10-27 A1 已部署生产并验证，真实邮件收件通过；Turnstile 保持关闭，启用时另验。A2（含 14:01 CST 复核修复）已部署生产并通过线上验证，强制策略开关关闭，真实外部因子验收保留（见 [A2 验收](../runbooks/a2-security-acceptance-2026-10-27.md)），A3–A4 未开始，既有生产条件继续按原记录保留。
+> **当前执行入口**。制定：2026-10-26（Asia/Shanghai）。源码基线：`develop@918b56c9` / v0.36.6；比较基线为本地 `new-api@34003e9c2`、`sub2api@ba81c7fd7`。接替 [10 月 20 日计划](next-stage-plan-2026-10-20.md)。本文为研发排期；2026-10-27 A1 已部署生产并验证，真实邮件收件通过；Turnstile 保持关闭，启用时另验。A2（含复核修复及登录权限修复）已部署生产并通过线上验证，强制策略开关关闭，真实外部因子验收保留（见 [A2 验收](../runbooks/a2-security-acceptance-2026-10-27.md)），A3–A4 未开始，既有生产条件继续按原记录保留。
 
 ## 1. 目标、投入假设与时间口径
 
@@ -59,7 +59,7 @@
 
 ### A2：TOTP 与首批敏感操作 step-up
 
-**2026-10-27 状态：已部署生产并通过线上验证；强制策略开关关闭；真实外部因子验收保留。** TOTP/恢复码、密码与 OAuth 统一 MFA challenge、五分钟会话证明、安全中心、首批 owner 校验和三库迁移已完成，迁移 143 已落 `oneapi_identity`。完整 `make verify`、认证专项 race、真实三库、BFF/owner HTTP/gRPC、Chrome 工程验收与 2026-10-27 11:30 CST 首次部署、14:01 CST 复核修复部署验证通过（镜像 ID 与本机构建清单一致，restart_count=0，healthz 通过，公网拿到新 Web index，其余服务未重建）。本轮源码 `e56fd37d`，无新增迁移；沿用 MFA 密钥和关闭的强制策略，公网桌面/移动页面通过。真实外部 OAuth、实际验证器与生产用户 enrollment、强制 step-up/管理员 MFA 分阶段启用仍保留待办。配置、首批范围及不可回滚至忽略 MFA 的旧 Identity 等限制见 [实施验收记录](../runbooks/a2-security-acceptance-2026-10-27.md) / [冻结契约](a2-security-contract-2026-10-27.md)。未发布新版本/tag、未 push。
+**2026-10-27 状态：已部署生产并通过线上验证；强制策略开关关闭；真实外部因子验收保留。** TOTP/恢复码、密码与 OAuth 统一 MFA challenge、五分钟会话证明、安全中心、首批 owner 校验和三库迁移已完成，迁移 143 已落 `oneapi_identity`。完整 `make verify`、认证专项 race、真实三库、BFF/owner HTTP/gRPC、Chrome 工程验收与 2026-10-27 11:30 CST 首次部署、14:01 CST 复核修复部署验证通过（镜像 ID 与本机构建清单一致，restart_count=0，healthz 通过，公网拿到新 Web index，其余服务未重建）。复核部署为 `e56fd37d`；后续 MFA 新表运行权限遗漏已修复，Identity 更新至 `e1da0017`，真实管理员登录通过（[记录](../runbooks/a2-login-permission-hotfix-2026-10-27.md)）。无新增迁移；沿用 MFA 密钥和关闭的强制策略，公网桌面/移动页面通过。真实外部 OAuth、实际验证器与生产用户 enrollment、强制 step-up/管理员 MFA 分阶段启用仍保留待办。配置、首批范围及不可回滚至忽略 MFA 的旧 Identity 等限制见 [实施验收记录](../runbooks/a2-security-acceptance-2026-10-27.md) / [冻结契约](a2-security-contract-2026-10-27.md)。未发布新版本/tag、未 push。
 
 TOTP 登录与恢复估 7–10 日；step-up 估 4–6 日。复用 [IAM 会话](../../api/identity/v1/iam.proto)及 A1 的共享 challenge，不新增一套独立登录会话系统。
 

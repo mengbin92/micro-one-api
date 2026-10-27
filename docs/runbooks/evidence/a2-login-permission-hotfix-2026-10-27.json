@@ -1,0 +1,84 @@
+{
+  "status": "resolved",
+  "resolved_at_cst": "2026-10-27 14:32",
+  "root_cause": "Migration 143 created identity_mfa without the Identity runtime principal table DML grants; HTTP login masked dependency error 1142 as invalid credentials.",
+  "before": {
+    "http_status": 200,
+    "success": false,
+    "message": "invalid credentials",
+    "mfa_required": null
+  },
+  "permission_fix": {
+    "fixed_at_cst": "2026-10-27 14:25",
+    "root_cause": "Identity runtime principal lacked DML grants on migration 143 table",
+    "mysql_error_before": 1142,
+    "schema": "oneapi_identity",
+    "table": "identity_mfa",
+    "permissions_added": [
+      "SELECT",
+      "INSERT",
+      "UPDATE"
+    ],
+    "runtime_select_insert_update_probe": "passed (zero-row transaction rolled back)",
+    "existing_grants_preserved": true,
+    "global_or_schema_grants_added": false,
+    "accounts_unlocked": false,
+    "password_changed": false,
+    "row_changes": 0
+  },
+  "after": {
+    "http_status": 200,
+    "success": true,
+    "message": "",
+    "session_issued": true,
+    "authenticated_self_http_status": 200,
+    "authenticated_self_success": true,
+    "admin_access_http_status": 200,
+    "admin_access_success": true
+  },
+  "browser": {
+    "browser_login_success": true,
+    "dashboard_loaded": true,
+    "admin_access_status": 200,
+    "admin_access_success": true,
+    "page_errors": 0,
+    "password_changed": false
+  },
+  "deployment": {
+    "verified_at_cst": "2026-10-27 14:32",
+    "identity": {
+      "revision": "e1da0017",
+      "source_digest": "4d8ebe5226f9151adb67ecadfa9434cb6be046178cd6ee1d8752f1d81967c4f2",
+      "tag": "deploy-20261027-142840-e1da0017",
+      "image": "docker-compose-identity-service:deploy-20261027-142840-e1da0017",
+      "image_id": "sha256:78e7d5a5d1e640eeec8102b8e72090d80af5c35f0971ba8152a5e4116c50aa86",
+      "architecture": "linux/amd64",
+      "rollback_tag": "rollback-20261027-142840"
+    },
+    "source_verified_from_image": true,
+    "healthz": "ok",
+    "restart_count": 0,
+    "admin_image_unchanged": true,
+    "web_index_unchanged": true,
+    "mfa_key_unchanged": true,
+    "forced_policies_enabled": false,
+    "identity_started_at_cst": "2026-10-27 14:29"
+  },
+  "tests": {
+    "typed_dependency_error_503_regression": "red then green",
+    "wrong_password_and_unknown_user_generic_response": "passed",
+    "identity_all_packages": "passed",
+    "identity_go_vet": "passed",
+    "rbac_reviewed_entries": 906
+  },
+  "credential_handling": {
+    "password_changed": false,
+    "temporary_credential_file_deleted": true,
+    "credentials_or_tokens_in_evidence": false
+  },
+  "not_covered": [
+    "production MFA enrollment / real mobile authenticator",
+    "real external OAuth account",
+    "deliberate production dependency failure injection (local regression only)"
+  ]
+}

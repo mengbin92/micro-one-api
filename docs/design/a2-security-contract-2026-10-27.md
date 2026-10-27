@@ -1,6 +1,8 @@
 # A2：MFA 与 step-up 实施契约
 
-2026-10-27（北京时间）。关联 [执行计划](next-stage-plan-2026-10-26.md)。状态：已部署生产（含 14:01 CST 复核修复 `e56fd37d`）并通过线上验证；强制策略开关关闭；真实外部因子验收保留；见 [验收记录](../runbooks/a2-security-acceptance-2026-10-27.md)、[首次生产证据](../runbooks/evidence/a2-production-deployment-2026-10-27.json)与[复核部署证据](../runbooks/evidence/a2-review-production-deployment-2026-10-27.json)。
+2026-10-27（北京时间）。关联 [执行计划](next-stage-plan-2026-10-26.md)。状态：已部署生产（复核修复 `e56fd37d`，Identity 登录修复 `e1da0017`）并通过线上验证；强制策略开关关闭；真实外部因子验收保留；见 [验收记录](../runbooks/a2-security-acceptance-2026-10-27.md)、[首次生产证据](../runbooks/evidence/a2-production-deployment-2026-10-27.json)与[复核部署证据](../runbooks/evidence/a2-review-production-deployment-2026-10-27.json)。
+
+后续登录权限故障已修复：Identity 为 `e1da0017`，Admin/Web 保持复核版本；新表逐表权限与真实登录核验见[故障记录](../runbooks/a2-login-permission-hotfix-2026-10-27.md)。
 
 ## 冻结的首批入口
 
