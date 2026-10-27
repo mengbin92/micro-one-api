@@ -86,6 +86,11 @@ func (uc *IdentityUsecase) GetResourceAuthorization(ctx context.Context, raw str
 	if err != nil {
 		return authorization.ResourceAuthorization{}, err
 	}
+	if authorization.StepUpOperation(req.Operation) {
+		if err := uc.RequireStepUp(ctx, raw, true); err != nil {
+			return authorization.ResourceAuthorization{}, err
+		}
+	}
 	if mode == "legacy" {
 		return authorization.ResourceAuthorization{Mode: mode}, nil
 	}

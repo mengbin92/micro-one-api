@@ -76,6 +76,7 @@ func (uc *IdentityUsecase) runtimeWriteEvent(ctx context.Context, action, target
 		changed = false
 		e.OccurredAt = uc.now().UTC()
 		e.Target = target
+		e.Action = action
 		e.Before, e.After, e.Diff = "{}", "{}", "{}"
 		e.Versions = authorization.Versions{}
 		if err := fn(ctx, tx, &e); err != nil {
@@ -126,7 +127,7 @@ func (uc *IdentityUsecase) runtimeWriteEvent(ctx context.Context, action, target
 		return nil
 	}
 	// A retried callback contains no external side effects; log only after commit.
-	uc.auditor.Log(ctx, audit.AuditEvent{EventType: audit.EventTypePermission, Actor: audit.ActorInfo{UserID: actor.UserID, ServiceName: actor.ServiceID, SessionID: actor.SessionID}, Action: action, Result: "success", Resource: audit.ResourceInfo{Type: "authorization", ID: e.Target}, Details: map[string]any{"event_id": e.EventID, "reason": reason, "versions": e.Versions}})
+	uc.auditor.Log(ctx, audit.AuditEvent{EventType: audit.EventTypePermission, Actor: audit.ActorInfo{UserID: actor.UserID, ServiceName: actor.ServiceID, SessionID: actor.SessionID}, Action: e.Action, Result: e.Result, Resource: audit.ResourceInfo{Type: "authorization", ID: e.Target}, Details: map[string]any{"event_id": e.EventID, "reason": reason, "versions": e.Versions}})
 	return nil
 }
 
@@ -302,6 +303,11 @@ func (uc *IdentityUsecase) mutateLegacyAccountChecked(ctx context.Context, id in
 		event.Before = string(before)
 		if err = change(&u); err != nil {
 			return err
+		}
+		if strings.HasPrefix(action, "account.self.") {
+			if err := uc.checkSelfSecurityChange(ctx, tx, old, u); err != nil {
+				return err
+			}
 		}
 		writeFields := slices.Clone(fields)
 		if old.Email != u.Email {

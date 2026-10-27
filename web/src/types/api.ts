@@ -20,6 +20,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/user/security": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["IdentityService_GetSecurityStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/user/security/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IdentityService_ConfirmMFA"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/user/security/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IdentityService_DisableMFA"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/user/security/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IdentityService_CompleteMFALogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/user/security/recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IdentityService_RotateRecoveryCodes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/user/security/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IdentityService_SetupMFA"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/user/security/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IdentityService_VerifyStepUp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/user/session": {
         parameters: {
             query?: never;
@@ -1754,6 +1866,26 @@ export interface components {
             sessionRevision?: string;
             revision?: string;
         };
+        "api.identity.v1.SecurityReply": {
+            enabled?: boolean;
+            configured?: boolean;
+            /** Format: int32 */
+            recovery_codes_remaining?: number;
+            secret?: string;
+            otpauth_uri?: string;
+            recovery_codes?: string[];
+            token?: string;
+            user_id?: string;
+            step_up_required?: boolean;
+            admin_mfa_required?: boolean;
+            password_available?: boolean;
+        };
+        /** @description No request may select a user/session. The transport supplies the credential. */
+        "api.identity.v1.SecurityRequest": {
+            password?: string;
+            code?: string;
+            challenge?: string;
+        };
         "api.log.v1.GetLogResponse": {
             id?: string;
             level?: string;
@@ -2246,6 +2378,174 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    IdentityService_GetSecurityStatus: {
+        parameters: {
+            query?: {
+                password?: string;
+                code?: string;
+                challenge?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.SecurityReply"];
+                };
+            };
+        };
+    };
+    IdentityService_ConfirmMFA: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.SecurityRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.SecurityReply"];
+                };
+            };
+        };
+    };
+    IdentityService_DisableMFA: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.SecurityRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.SecurityReply"];
+                };
+            };
+        };
+    };
+    IdentityService_CompleteMFALogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.SecurityRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.SecurityReply"];
+                };
+            };
+        };
+    };
+    IdentityService_RotateRecoveryCodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.SecurityRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.SecurityReply"];
+                };
+            };
+        };
+    };
+    IdentityService_SetupMFA: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.SecurityRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.SecurityReply"];
+                };
+            };
+        };
+    };
+    IdentityService_VerifyStepUp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.SecurityRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.SecurityReply"];
                 };
             };
         };

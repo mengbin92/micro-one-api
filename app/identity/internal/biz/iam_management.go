@@ -87,6 +87,11 @@ func (uc *IAMGovernanceUsecase) Execute(ctx context.Context, raw, method string,
 			return e
 		}
 		attempted = v.policy
+		if write && !preview {
+			if e = uc.identity.requireStepUpTx(ctx, tx, actor, true); e != nil {
+				return e
+			}
+		}
 		if write && req.ExpectedPolicyRevision != v.policy.PolicyRevision {
 			return ErrIAMRevisionConflict
 		}

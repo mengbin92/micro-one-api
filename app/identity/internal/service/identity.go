@@ -141,6 +141,10 @@ func (s *IdentityService) GetUser(ctx context.Context, req *identityv1.GetUserRe
 
 func (s *IdentityService) Login(ctx context.Context, req *identityv1.LoginRequest) (*identityv1.LoginResponse, error) {
 	user, token, err := s.uc.Login(ctx, req.Username, req.Password, clientIPFromGRPC(ctx))
+	var mfa *biz.MFARequired
+	if stderrors.As(err, &mfa) {
+		return &identityv1.LoginResponse{Success: true, MfaRequired: true, Challenge: mfa.Challenge}, nil
+	}
 	if err != nil {
 		return &identityv1.LoginResponse{
 			Success: false,
@@ -200,6 +204,10 @@ func (s *IdentityService) CreateAccessToken(ctx context.Context, req *identityv1
 	}
 	token, err := s.uc.CreateAccessToken(ctx, req.UserId, req.Name, req.Models, req.ExpireAt, biz.CreateAccessTokenOptions{UnlimitedQuota: true, RoutingMode: req.RoutingMode, RoutingGroupID: req.RoutingGroupId, RoutingGroupIDs: req.RoutingGroupIds})
 	if err != nil {
+		var domainErr *kerrors.Error
+		if stderrors.As(err, &domainErr) {
+			return nil, mapIdentityErrorToGRPC(err)
+		}
 		return &identityv1.CreateAccessTokenResponse{
 			Success: false,
 			Message: "failed to create access token",

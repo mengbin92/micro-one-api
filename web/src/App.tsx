@@ -1,3 +1,4 @@
+import { SecurityVerificationDialog } from '@/components/SecurityVerificationDialog';
 import { RouterProvider } from 'react-router';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
@@ -15,6 +16,7 @@ function LocalizedApp() {
       <PasswordRecoveryFlowProvider router={router}>
         <RouterProvider key={language} router={router} />
       </PasswordRecoveryFlowProvider>
+      <SecurityVerificationDialog />
       <Toaster richColors closeButton position="top-right" />
     </QueryClientProvider>
   );

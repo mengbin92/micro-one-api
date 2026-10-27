@@ -207,6 +207,9 @@ type LoginRateLimiter interface {
 }
 
 type IdentityUsecase struct {
+	security                SecurityRepo
+	securityChallenges      ChallengeRepo
+	stepUp                  StepUpRepo
 	iam                     IAMRuntimeRepo
 	iamRunner               IAMTxRunner
 	routingGroups           RoutingGroupReader
@@ -593,7 +596,7 @@ func (uc *IdentityUsecase) Login(ctx context.Context, username, password, client
 	uc.clearLoginAttempts(userKey)
 	uc.clearDistributedLoginAttempts(ctx, ipKey, userKey)
 
-	token, err := uc.generateSessionToken(user)
+	token, err := uc.completePrimaryAuthentication(ctx, user)
 	if err != nil {
 		return nil, "", err
 	}
@@ -770,6 +773,9 @@ type UpdateAccessTokenOptions struct {
 }
 
 func (uc *IdentityUsecase) CreateAccessToken(ctx context.Context, userID int64, name string, models []string, expireAt int64, opts ...CreateAccessTokenOptions) (*Token, error) {
+	if err := uc.RequireStepUp(ctx, authorization.Credential(ctx), false); err != nil {
+		return nil, err
+	}
 	user, err := uc.repo.FindUserByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -827,6 +833,29 @@ func (uc *IdentityUsecase) CreateAccessToken(ctx context.Context, userID int64, 
 		Models:         models,
 		CreatedAt:      now,
 		AccessedAt:     now,
+	}
+	if uc.security != nil && os.Getenv("IDENTITY_STEP_UP_ENABLED") == "true" {
+		actor, err := uc.authenticateSession(authorization.Credential(ctx))
+		if err != nil {
+			return nil, err
+		}
+		err = uc.runtimeWrite(ctx, "credential.token.create", strconv.FormatInt(userID, 10), "verified self token creation", actor, func(ctx context.Context, tx IAMTx) error {
+			current, e := uc.iam.User(ctx, tx, userID)
+			if e != nil {
+				return e
+			}
+			if e = uc.checkSecuritySession(ctx, tx, actor, current); e != nil {
+				return e
+			}
+			if e = uc.requireStepUpTx(ctx, tx, actor, false); e != nil {
+				return e
+			}
+			return uc.security.CreateToken(ctx, tx, token)
+		})
+		if err != nil {
+			return nil, err
+		}
+		return token, nil
 	}
 	if err := uc.repo.CreateToken(ctx, token); err != nil {
 		return nil, err
@@ -1009,6 +1038,11 @@ func (uc *IdentityUsecase) CreateUser(ctx context.Context, username, displayName
 }
 
 func (uc *IdentityUsecase) UpdateUser(ctx context.Context, userID int64, displayName, email, group string, status int32) error {
+	if email != "" {
+		if err := uc.RequireStepUp(ctx, authorization.Credential(ctx), true); err != nil {
+			return err
+		}
+	}
 	// Owner facts for a routing change are resolved before the replayable callback.
 	target := User{Group: group}
 	if group != "" {
@@ -1124,6 +1158,11 @@ func (uc *IdentityUsecase) SetRole(ctx context.Context, operator *User, userID i
 var ErrCurrentPasswordRequired = errors.New("current password is required to change username or password")
 
 func (uc *IdentityUsecase) UpdateSelf(ctx context.Context, userID int64, username, displayName, password, currentPassword string, updateDisplayName bool) error {
+	if password != "" || username != "" {
+		if err := uc.RequireStepUp(ctx, authorization.Credential(ctx), false); err != nil {
+			return err
+		}
+	}
 	var passwordHash string
 	if password != "" {
 		h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -1179,6 +1218,9 @@ func (uc *IdentityUsecase) UpdateSelf(ctx context.Context, userID int64, usernam
 }
 
 func (uc *IdentityUsecase) UpdateSelfEmail(ctx context.Context, userID int64, email string) error {
+	if err := uc.RequireStepUp(ctx, authorization.Credential(ctx), false); err != nil {
+		return err
+	}
 	if strings.TrimSpace(email) == "" {
 		return fmt.Errorf("email is required")
 	}
@@ -1408,8 +1450,11 @@ func (uc *IdentityUsecase) OAuthLogin(ctx context.Context, provider, oauthID, us
 		return nil, "", false, ErrUserDisabled
 	}
 
-	token, err = uc.generateSessionToken(user)
+	token, err = uc.completePrimaryAuthentication(ctx, user)
 	if err != nil {
+		return nil, "", false, err
+	}
+	if err = uc.attestOAuthSession(ctx, user, token); err != nil {
 		return nil, "", false, err
 	}
 

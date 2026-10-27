@@ -2,6 +2,7 @@ import { EN_US_MESSAGES as GENERATED_MESSAGES } from '@/locales/en-US.generated'
 import { EN_US_RBAC_MESSAGES } from '@/locales/en-US.rbac';
 import { EN_US_REQUEST_TIMING_MESSAGES } from '@/locales/en-US.request-timing';
 import { EN_US_LEGAL_MESSAGES } from '@/locales/en-US.legal';
+import { EN_US_SECURITY_MESSAGES } from '@/locales/en-US.security';
 import { EN_US_AUTH_MESSAGES } from '@/locales/en-US.auth';
 
 // Product terminology overrides. Keep these concise and consistent across
@@ -37,6 +38,7 @@ export const EN_US_MESSAGES: Record<string, string> = {
   ...GENERATED_MESSAGES,
   ...EN_US_LEGAL_MESSAGES,
   ...EN_US_AUTH_MESSAGES,
+  ...EN_US_SECURITY_MESSAGES,
   ...EN_US_RBAC_MESSAGES,
   ...EN_US_REQUEST_TIMING_MESSAGES,
   '上游契约与修复': 'Upstream contracts and repairs',

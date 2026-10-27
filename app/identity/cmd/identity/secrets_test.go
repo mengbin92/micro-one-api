@@ -62,3 +62,21 @@ func TestExplicitMemoryModeDoesNotBypassSecretsForPersistentRepository(t *testin
 		t.Fatalf("newRepo() error = %v, want persistent repository secret validation", err)
 	}
 }
+
+func TestSecurityConfigFailsClosed(t *testing.T) {
+	t.Setenv("JWT_SECRET_KEY", "test-secret")
+	t.Setenv("IDENTITY_MFA_ENCRYPTION_KEY", "short")
+	if requireIdentitySecrets() == nil {
+		t.Fatal("invalid MFA key accepted")
+	}
+	t.Setenv("IDENTITY_MFA_ENCRYPTION_KEY", "")
+	t.Setenv("IDENTITY_STEP_UP_ENABLED", "TRUE")
+	if requireIdentitySecrets() == nil {
+		t.Fatal("ambiguous rollout flag accepted")
+	}
+	t.Setenv("IDENTITY_STEP_UP_ENABLED", "false")
+	t.Setenv("IDENTITY_MFA_REQUIRE_ADMIN", "true")
+	if requireIdentitySecrets() == nil {
+		t.Fatal("mandatory administrator MFA without enrollment key accepted")
+	}
+}

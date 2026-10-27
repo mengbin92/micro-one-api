@@ -1,3 +1,4 @@
+import { SecurityCenter } from '@/components/SecurityCenter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -31,6 +32,7 @@ export function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
   const { data: user, isLoading } = useQuery(userSelfQueryOptions);
@@ -51,6 +53,7 @@ export function ProfilePage() {
           throw new Error(t("密码长度不能少于8位"));
         }
         payload.password = password;
+        payload.current_password = currentPassword;
       }
       if (Object.keys(payload).length === 0) {
         throw new Error(t("没有需要更新的内容"));
@@ -62,6 +65,7 @@ export function ProfilePage() {
       toast.success(t("个人资料已更新"));
       setEditing(false);
       setPassword('');
+      setCurrentPassword('');
       setConfirmPassword('');
       queryClient.invalidateQueries({ queryKey: ['user-self'] });
     },
@@ -125,6 +129,7 @@ export function ProfilePage() {
                 setEditing(false);
                 setDisplayName(user.display_name || '');
                 setPassword('');
+      setCurrentPassword('');
                 setConfirmPassword('');
               }}
             >
@@ -140,6 +145,7 @@ export function ProfilePage() {
         )}
       </div>
 
+      <SecurityCenter />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
         <Card>
           <CardHeader className="border-b border-slate-100 p-6 dark:border-white/10">
@@ -228,6 +234,7 @@ export function ProfilePage() {
             {editing && (
               <div className="pt-4 border-t border-slate-100 dark:border-white/10 space-y-4">
                 <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400">{t("修改密码（可选）")}</h3>
+                <div className="space-y-2"><Label htmlFor="profile-current-password">{t("当前密码")}</Label><Input id="profile-current-password" type="password" autoComplete="current-password" value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} /></div>
                 <div>
                   <Label className="text-xs font-bold text-slate-400">{t("新密码")}</Label>
                   <Input

@@ -12,7 +12,7 @@ func publicIdentityRateLimit(uc *biz.IdentityUsecase) func(http.Handler) http.Ha
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
-			public := path == "/api/user/register" || path == "/api/user/reset" || path == "/api/reset_password" || path == "/api/verification" || strings.HasPrefix(path, "/api/oauth/") || strings.HasPrefix(path, "/v1/oauth/")
+			public := path == "/api/user/security/login" || path == "/api/user/register" || path == "/api/user/reset" || path == "/api/reset_password" || path == "/api/verification" || strings.HasPrefix(path, "/api/oauth/") || strings.HasPrefix(path, "/v1/oauth/")
 			if public {
 				w.Header().Set("Cache-Control", "no-store")
 				allowed := uc.AllowPublicRequest(r.Context(), "ip:"+requestRemoteIP(r), 30, 10*time.Minute)

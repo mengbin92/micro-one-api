@@ -449,6 +449,8 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 		srv.HandleFunc("/api/reset_password", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/user/reset", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/user/login", identityProxy.ServeHTTP)
+		srv.HandleFunc("/api/user/security", identityProxy.ServeHTTP)
+		srv.HandlePrefix("/api/user/security/", identityProxy)
 		srv.HandleFunc("/api/user/logout", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/user/self", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/user/dashboard", identityProxy.ServeHTTP)

@@ -160,3 +160,8 @@ var completedResourceOperations = func() map[string]bool {
 	}
 	return out
 }()
+
+// StepUpOperation is the frozen A2 owner list; additions require contract review.
+func StepUpOperation(op string) bool {
+	return slices.Contains([]string{"channel.channel.secret.read", "channel.channel.secret.rotate", "channel.channel.export", "billing.redemption.read", "billing.redemption.list", "billing.redemption.export", "identity.user.credential.update", "identity.user.email_binding.update"}, op)
+}

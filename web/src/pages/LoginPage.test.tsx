@@ -295,3 +295,25 @@ describe('LoginPage', () => {
     expect(screen.getByRole('button', { name: '注册账号' })).toBeEnabled();
   });
 });
+
+
+it('keeps the first factor challenge out of session storage until MFA succeeds', async () => {
+  const user = userEvent.setup();
+  server.use(
+    http.post('/api/user/login', () => HttpResponse.json({ success: true, data: { mfa_required: true, challenge: 'mfa-only-challenge' } })),
+    http.post('/api/user/security/login', async ({ request }) => {
+      expect(await request.json()).toEqual({ challenge: 'mfa-only-challenge', code: 'recovery-code' });
+      return HttpResponse.json({ token: 'complete-session' });
+    }),
+  );
+  renderWithQuery(<MemoryRouter initialEntries={['/login']}><LoginPage /></MemoryRouter>);
+  await user.type(screen.getByLabelText('用户名'), 'alice');
+  await user.type(screen.getByLabelText('密码'), 'password123');
+  await user.click(screen.getByRole('button', { name: '登录' }));
+  const input = await screen.findByLabelText('验证码或恢复码');
+  expect(localStorage.getItem('token')).toBeNull();
+  expect(screen.queryByLabelText('密码')).not.toBeInTheDocument();
+  await user.type(input, 'recovery-code');
+  await user.click(screen.getByRole('button', { name: '登录' }));
+  await waitFor(() => expect(localStorage.getItem('token')).toBe('complete-session'));
+});

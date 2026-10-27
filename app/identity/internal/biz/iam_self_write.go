@@ -49,6 +49,9 @@ func (uc *IdentityUsecase) mutateIAMSelfAccount(ctx context.Context, id int64, a
 		if err := change(&u); err != nil {
 			return err
 		}
+		if err := uc.checkSelfSecurityChange(ctx, tx, old, u); err != nil {
+			return err
+		}
 		writeFields := slices.Clone(fields)
 		if old.Email != u.Email {
 			u.PasswordChangedAt = nextPasswordEpoch(u.PasswordChangedAt, uc.now())

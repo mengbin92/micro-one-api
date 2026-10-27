@@ -21,6 +21,7 @@ shared:
 
 services:
   identity:
+    - 143_create_identity_mfa
     # users / tokens / user_oauth_identities
     - 000_create_core_tables          # users, tokens (subset owned by identity)
     - 007_create_system_options       # also admin-owned; running on identity schema is harmless

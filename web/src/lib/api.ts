@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { requestSecurityVerification } from '@/lib/security-verification';
 import { clearPlaygroundCredential } from '@/lib/playground-credential';
 import { toast } from 'sonner';
 import { protectedSignal, refreshAuthorization, prepareAdminRequest } from '@/lib/authorization-events';
@@ -13,6 +14,11 @@ function requestPath(error: unknown): string {
 
 export function isSessionAuthPath(path: string) {
   return path.startsWith('/user/') || path === '/token' || path.startsWith('/token/');
+}
+
+function matchesCurrentSession(config: { headers?: { Authorization?: unknown } } | undefined) {
+  const token = localStorage.getItem('token');
+  return !!token && config?.headers?.Authorization === `Bearer ${token}`;
 }
 
 export function clearUserSession() {
@@ -50,8 +56,16 @@ apiClient.interceptors.request.use(
 // Response interceptor: handle 401 and redirect to login
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401 && isSessionAuthPath(requestPath(error))) {
+  async (error) => {
+    const currentSession = matchesCurrentSession(error.config);
+    if (currentSession && error.response?.status === 403 && error.response.data?.reason === 'STEP_UP_REQUIRED' && !error.config.url?.startsWith('/user/security') && !error.config.securityRetried) {
+      error.config.securityRetried = true;
+      const originalToken = localStorage.getItem('token');
+      await requestSecurityVerification();
+      if (localStorage.getItem('token') !== originalToken) throw new Error('Session changed during verification');
+      return apiClient.request(error.config);
+    }
+    if (currentSession && error.response?.status === 401 && isSessionAuthPath(requestPath(error))) {
       clearUserSession();
       refreshAuthorization();
       toast.error('Session expired. Please sign in again.');
@@ -84,11 +98,19 @@ adminApiClient.interceptors.request.use(
 
 adminApiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const currentSession = matchesCurrentSession(error.config);
+    if (currentSession && error.response?.status === 403 && error.response.data?.reason === 'STEP_UP_REQUIRED' && !error.config.securityRetried) {
+      error.config.securityRetried = true;
+      const originalToken = localStorage.getItem('token');
+      await requestSecurityVerification();
+      if (localStorage.getItem('token') !== originalToken) throw new Error('Session changed during verification');
+      return adminApiClient.request(error.config);
+    }
     if (error.response?.status === 403) {
       refreshAuthorization();
     }
-    if (error.response?.status === 401) {
+    if (currentSession && error.response?.status === 401) {
       clearUserSession();
       clearAdminSession();
       refreshAuthorization();

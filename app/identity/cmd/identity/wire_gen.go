@@ -60,6 +60,8 @@ func newIdentityUsecase(repo *data.Repository, auditor *audit.Auditor) *biz.Iden
 	uc := biz.NewIdentityUsecase(repo, auditor)
 	if repo.HasPersistentStorage() {
 		uc.SetIAMRuntime(data.NewIAMRuntimeRepo(repo.Data), data.NewIAMTxRunner(repo.Data))
+		challenges := data.NewChallengeRepo(repo.Data)
+		uc.SetSecurity(data.NewSecurityRepo(repo.Data, []byte(os.Getenv("IDENTITY_MFA_ENCRYPTION_KEY"))), challenges, challenges.(biz.StepUpRepo))
 	}
 	return uc
 }

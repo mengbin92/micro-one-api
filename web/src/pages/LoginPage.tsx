@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Network, ShieldCheck } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router';
@@ -22,6 +22,8 @@ export function LoginPage() {
   const location = useLocation();
   const mode = location.pathname === '/register' ? 'register' : 'login';
   const [username, setUsername] = useState('');
+  const [mfaChallenge, setMfaChallenge] = useState(() => new URLSearchParams(location.hash.slice(1)).get('mfa') ?? '');
+  const [mfaCode, setMfaCode] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [email, setEmail] = useState('');
@@ -54,6 +56,17 @@ export function LoginPage() {
     || (verificationRequired && !policy.email_delivery_configured)
     || (policy.turnstile_check && !policy.turnstile_site_key);
   const emailRequired = verificationRequired || policy?.email_domain_restriction_enabled;
+  useEffect(() => {
+    if (location.hash === '#oauth=1') {
+      navigate('/login', { replace: true });
+      apiClient.post('/user/security/oauth', {}).then(response => {
+        const data = unwrapApiData<{ token: string }>(response.data, t('登录失败'));
+        if (!data.token) throw new Error(t('登录失败'));
+        clearUserSession(); queryClient.clear(); localStorage.setItem('token', data.token);
+        navigate('/dashboard', { replace: true });
+      }).catch(error => setError(getAuthErrorMessage(error, t('登录失败'))));
+    } else if (location.hash.startsWith('#mfa=')) navigate('/login', { replace: true });
+  }, [location.hash, navigate, queryClient]);
   const userAgreementLabel = language === 'en-US' ? t("用户协议") : `《${t("用户协议")}》`;
   const privacyPolicyLabel = language === 'en-US' ? t("隐私政策") : `《${t("隐私政策")}》`;
 
@@ -62,6 +75,7 @@ export function LoginPage() {
       navigate(nextMode === 'register' ? '/register' : '/login', { replace: true });
     }
     setError('');
+    setMfaChallenge(''); setMfaCode('');
     setConfirmPassword('');
     setAcceptedLegal(false);
     setTurnstileToken('');
@@ -97,7 +111,8 @@ export function LoginPage() {
       password,
     });
 
-    const data = unwrapApiData<string | { token?: string }>(response.data, t("登录失败"));
+    const data = unwrapApiData<string | { token?: string; mfa_required?: boolean; challenge?: string }>(response.data, t("登录失败"));
+    if (typeof data !== 'string' && data.mfa_required && data.challenge) { setMfaChallenge(data.challenge); setPassword(''); return false; }
     const token = typeof data === 'string' ? data : data?.token;
     if (!token) {
       throw new Error(t("登录失败"));
@@ -106,6 +121,7 @@ export function LoginPage() {
     clearUserSession();
     queryClient.clear();
     localStorage.setItem('token', token);
+    return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -114,7 +130,7 @@ export function LoginPage() {
     setError('');
     const nextUsername = username.trim();
 
-    if (!nextUsername) {
+    if (!mfaChallenge && !nextUsername) {
       setError(t("请输入用户名"));
       return;
     }
@@ -137,7 +153,13 @@ export function LoginPage() {
     setLoading(true);
 
     try {
-      if (mode === 'register') {
+      if (mfaChallenge) {
+        const response = await apiClient.post('/user/security/login', { challenge: mfaChallenge, code: mfaCode });
+        if (!response.data.token) throw new Error(t('登录失败'));
+        clearUserSession(); queryClient.clear(); localStorage.setItem('token', response.data.token);
+        setMfaChallenge(''); setMfaCode('');
+        toast.success(t('登录成功')); navigate('/dashboard');
+      } else if (mode === 'register') {
         const response = await apiClient.post('/user/register', {
           username: nextUsername,
           password,
@@ -153,7 +175,7 @@ export function LoginPage() {
         toast.success(t('注册成功，请使用新账号登录。'));
         navigate('/login', { replace: true });
       } else {
-        await signIn(nextUsername);
+        if (!await signIn(nextUsername)) return;
         toast.success(t("登录成功"));
         navigate('/dashboard');
       }
@@ -271,7 +293,7 @@ export function LoginPage() {
                   {policy?.email_verification && !policy.email_delivery_configured && <p role="alert" className="text-sm text-destructive">{t('邮件服务暂不可用，请联系管理员。')}</p>}
                   {policy && invitationVerification && !policy.email_verification && !policy.email_delivery_configured && <p role="alert" className="text-sm text-destructive">{t('邀请奖励需要验证邮箱；邮件服务不可用，请移除邀请码后注册。')}</p>}
                 </>}
-                <div className="space-y-2">
+                {!mfaChallenge && <><div className="space-y-2">
                   <Label htmlFor="username">{t("用户名")}</Label>
                   <Input
                     id="username"
@@ -295,6 +317,8 @@ export function LoginPage() {
                     autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                   />
                 </div>
+                </>}
+                {mfaChallenge && <div className="space-y-3"><p className="text-sm text-muted-foreground">{t('请输入验证器的六位验证码，或使用一个恢复码。')}</p><Label htmlFor="mfa-login-code">{t('验证码或恢复码')}</Label><Input id="mfa-login-code" value={mfaCode} onChange={event => setMfaCode(event.target.value)} autoComplete="one-time-code" maxLength={32} required autoFocus /><Button type="button" variant="ghost" onClick={() => { setMfaChallenge(''); setMfaCode(''); setError(''); }}>{t('返回登录')}</Button></div>}
                 {mode === 'register' && (
                   <div className="space-y-2">
                     <Label htmlFor="confirm-password">{t("确认密码")}</Label>
@@ -354,7 +378,7 @@ export function LoginPage() {
                 <Button type="submit" className="w-full" disabled={loading || (mode === 'register' && registrationBlocked)}>
                   {loading ? (mode === 'login' ? t("登录中…") : t("创建中…")) : mode === 'login' ? t("登录") : t("注册账号")}
                 </Button>
-                {mode === 'login' && (
+                {mode === 'login' && !mfaChallenge && (
                   <>
                     <div className="text-right"><Link to="/forgot-password" className="text-sm text-primary hover:underline">{t('忘记密码？')}</Link></div>
                     <div className="flex items-center gap-3 py-1">

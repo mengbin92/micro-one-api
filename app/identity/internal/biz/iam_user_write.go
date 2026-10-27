@@ -65,6 +65,11 @@ func (v iamManagementView) permitCredentialTarget(uid int64, operation string) e
 }
 
 func (uc *IdentityUsecase) UpdateManagedUser(ctx context.Context, id int64, patch ManagedUserPatch) error {
+	if slices.Contains(patch.Fields, "email") || slices.Contains(patch.Fields, "password") {
+		if err := uc.RequireStepUp(ctx, authorization.Credential(ctx), true); err != nil {
+			return err
+		}
+	}
 	mode, err := uc.AuthorizationMode(ctx)
 	if err != nil {
 		return err
@@ -118,6 +123,11 @@ func (uc *IdentityUsecase) UpdateManagedUser(ctx context.Context, id int64, patc
 		v, err := governance.view(ctx, tx, snapshot.Actor, authorization.Platform())
 		if err != nil {
 			return err
+		}
+		if seen["email"] || seen["password"] {
+			if err := uc.requireStepUpTx(ctx, tx, snapshot.Actor, true); err != nil {
+				return err
+			}
 		}
 		rev, err := uc.iam.UserRevision(ctx, tx, id)
 		if err != nil {

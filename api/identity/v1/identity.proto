@@ -3,11 +3,20 @@ syntax = "proto3";
 package api.identity.v1;
 
 import "api/common/v1/common.proto";
+import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 
 option go_package = "micro-one-api/api/identity/v1;identityv1";
 
 service IdentityService {
+  rpc GetSecurityStatus(SecurityRequest) returns (SecurityReply) { option (google.api.http) = { get: "/api/user/security" }; }
+  rpc SetupMFA(SecurityRequest) returns (SecurityReply) { option (google.api.http) = { post: "/api/user/security/setup" body: "*" }; }
+  rpc ConfirmMFA(SecurityRequest) returns (SecurityReply) { option (google.api.http) = { post: "/api/user/security/confirm" body: "*" }; }
+  rpc DisableMFA(SecurityRequest) returns (SecurityReply) { option (google.api.http) = { post: "/api/user/security/disable" body: "*" }; }
+  rpc RotateRecoveryCodes(SecurityRequest) returns (SecurityReply) { option (google.api.http) = { post: "/api/user/security/recovery" body: "*" }; }
+  rpc VerifyStepUp(SecurityRequest) returns (SecurityReply) { option (google.api.http) = { post: "/api/user/security/verify" body: "*" }; }
+  rpc CompleteMFALogin(SecurityRequest) returns (SecurityReply) { option (google.api.http) = { post: "/api/user/security/login" body: "*" }; }
+
   rpc GetUserRoutingFacts(GetUserRoutingFactsRequest) returns (GetUserRoutingFactsReply);
   rpc UpdateUserRoutingAccess(UpdateUserRoutingAccessRequest) returns (GetUserRoutingFactsReply);
   rpc SetTokenRouting(SetTokenRoutingRequest) returns (SetTokenRoutingReply);
@@ -75,6 +84,8 @@ message LoginRequest {
 }
 
 message LoginResponse {
+  bool mfa_required = 5;
+  string challenge = 6;
   bool success = 1;
   string message = 2;
   string token = 3;
@@ -239,3 +250,23 @@ message SetTokenRoutingReply { int64 revision = 1; }
 
 message ExportUsersRequest { ListUsersRequest query = 1; }
 message ExportUsersReply { string content_type = 1; string file_name = 2; bytes body = 3; }
+
+// No request may select a user/session. The transport supplies the credential.
+message SecurityRequest {
+  string password = 1;
+  string code = 2;
+  string challenge = 3;
+}
+message SecurityReply {
+  bool enabled = 1;
+  bool configured = 2;
+  int32 recovery_codes_remaining = 3 [json_name = "recovery_codes_remaining"];
+  string secret = 4;
+  string otpauth_uri = 5 [json_name = "otpauth_uri"];
+  repeated string recovery_codes = 6 [json_name = "recovery_codes"];
+  string token = 7;
+  int64 user_id = 8 [json_name = "user_id"];
+  bool step_up_required = 9 [json_name = "step_up_required"];
+  bool admin_mfa_required = 10 [json_name = "admin_mfa_required"];
+  bool password_available = 11 [json_name = "password_available"];
+}

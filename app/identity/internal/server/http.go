@@ -139,6 +139,8 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 	})
 
 	identityv1.RegisterIAMServiceHTTPServer(srv, service.NewIAMService(nil, uc))
+	identityv1.RegisterIdentityServiceHTTPServer(srv, service.NewIdentityService(uc))
+	srv.HandleFunc("/api/user/security/oauth", func(w http.ResponseWriter, r *http.Request) { handleOAuthSession(w, r, uc) })
 	srv.HandleFunc("/api/user/register", func(w http.ResponseWriter, r *http.Request) {
 		handleRegister(w, r, uc, registrationPolicy, billingClient)
 	})
@@ -497,11 +499,19 @@ func handleEmailBind(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUse
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "invalid parameter"})
 		return
 	}
+	if err := uc.RequireStepUp(r.Context(), authorization.Credential(r.Context()), false); err != nil {
+		authz.WriteHTTPError(w, err)
+		return
+	}
 	if _, err := challenges.Consume(r.Context(), biz.ChallengeVerification, email, code); err != nil {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "验证码错误或已过期"})
 		return
 	}
 	if err := uc.UpdateSelfEmail(r.Context(), snapshot.UserID, email); err != nil {
+		if authz.IsAuthorizationError(err) {
+			authz.WriteHTTPError(w, err)
+			return
+		}
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
 	}
@@ -1040,6 +1050,12 @@ func handleLogin(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase
 		return
 	}
 	user, token, err := uc.Login(r.Context(), req.Username, req.Password, requestRemoteIP(r))
+	var mfa *biz.MFARequired
+	if errors.As(err, &mfa) {
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"mfa_required": true, "challenge": mfa.Challenge}})
+		return
+	}
 	if err != nil {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "invalid credentials"})
 		return
@@ -1102,6 +1118,10 @@ func handleSelf(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase)
 			displayName = *req.DisplayName
 		}
 		if err := uc.UpdateSelf(r.Context(), snapshot.UserID, req.Username, displayName, req.Password, req.CurrentPassword, req.DisplayName != nil); err != nil {
+			if authz.IsAuthorizationError(err) {
+				authz.WriteHTTPError(w, err)
+				return
+			}
 			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 			return
 		}
@@ -1525,6 +1545,10 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 			Subnet:         req.Subnet,
 		})
 		if err != nil {
+			if authz.IsAuthorizationError(err) {
+				authz.WriteHTTPError(w, err)
+				return
+			}
 			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 			return
 		}
@@ -1844,6 +1868,13 @@ func handleOAuthCallback(w http.ResponseWriter, r *http.Request, provider oauth.
 		userInfo.Email = ""
 	}
 	user, token, created, err := uc.OAuthLogin(r.Context(), userInfo.Provider, userInfo.ProviderID, userInfo.Username, userInfo.Email, userInfo.DisplayName)
+	var mfa *biz.MFARequired
+	if errors.As(err, &mfa) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		http.Redirect(w, r, "/login#mfa="+url.QueryEscape(mfa.Challenge), http.StatusFound)
+		return
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
@@ -1852,6 +1883,13 @@ func handleOAuthCallback(w http.ResponseWriter, r *http.Request, provider oauth.
 		creditRegistrationRewards(r.Context(), user, uc, billingClient, userInfo.EmailVerified)
 	}
 
+	if strings.Contains(r.Header.Get("Accept"), "text/html") {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		http.SetCookie(w, &http.Cookie{Name: "oauth_login", Value: token, Path: "/api/user/security/oauth", MaxAge: 60, HttpOnly: true, Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https", SameSite: http.SameSiteStrictMode})
+		http.Redirect(w, r, "/login#oauth=1", http.StatusFound)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success":  true,
 		"token":    token,
@@ -1885,4 +1923,25 @@ func billingSelfContext(ctx context.Context) context.Context {
 	md = md.Copy()
 	md.Set("x-operator-authorization", "Bearer "+raw)
 	return metadata.NewOutgoingContext(ctx, md)
+}
+
+// The callback hands a session to the SPA through a short-lived HttpOnly
+// SameSite cookie, keeping complete session credentials out of redirect URLs.
+func handleOAuthSession(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method != http.MethodPost {
+		writeJSON(w, 405, apiResponse{Message: "method not allowed"})
+		return
+	}
+	cookie, err := r.Cookie("oauth_login")
+	http.SetCookie(w, &http.Cookie{Name: "oauth_login", Value: "", Path: "/api/user/security/oauth", MaxAge: -1, HttpOnly: true, Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https", SameSite: http.SameSiteStrictMode})
+	if err != nil {
+		writeJSON(w, 401, apiResponse{Message: "OAuth login expired"})
+		return
+	}
+	if _, err = uc.ValidateSessionToken(r.Context(), cookie.Value); err != nil {
+		writeJSON(w, 401, apiResponse{Message: "OAuth login expired"})
+		return
+	}
+	writeJSON(w, 200, apiResponse{Success: true, Data: map[string]any{"token": cookie.Value}})
 }

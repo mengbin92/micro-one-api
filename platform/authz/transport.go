@@ -3,6 +3,7 @@ package authz
 import (
 	"context"
 	"errors"
+	kerrors "github.com/go-kratos/kratos/v3/errors"
 	"net/http"
 	"os"
 	"slices"
@@ -106,7 +107,11 @@ func WriteHTTPError(w http.ResponseWriter, err error) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = jsonx.NewEncoder(w).Encode(map[string]string{"error": http.StatusText(code)})
+	payload := map[string]string{"error": http.StatusText(code)}
+	if reason := kerrors.FromError(err).Reason; reason == "STEP_UP_REQUIRED" || reason == "MFA_ENROLLMENT_REQUIRED" {
+		payload["reason"] = reason
+	}
+	_ = jsonx.NewEncoder(w).Encode(payload)
 }
 
 func IsAuthorizationError(err error) bool {
