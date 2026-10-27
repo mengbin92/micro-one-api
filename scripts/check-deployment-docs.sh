@@ -24,9 +24,13 @@ validate_compose() {
     echo "==> docker compose config: $*"
     (
         cd "$COMPOSE_DIR"
+        # Exercise non-default MFA settings so omitted container env entries fail.
+        export IDENTITY_MFA_ENCRYPTION_KEY=01234567890123456789012345678901
+        export IDENTITY_STEP_UP_ENABLED=true IDENTITY_MFA_REQUIRE_ADMIN=true
         docker compose --env-file "$env_file" "$@" config --quiet
         docker compose --env-file "$env_file" "$@" config --format json | python3 -c '
 import json
+import os
 import sys
 
 config = json.load(sys.stdin)
@@ -38,6 +42,9 @@ if len(key.encode()) not in (16, 24, 32):
     raise SystemExit("channel-service CHANNEL_ENCRYPTION_KEY must be 16, 24, or 32 bytes")
 if "CHANNEL_ENCRYPTION_KEY" in identity_env:
     raise SystemExit("CHANNEL_ENCRYPTION_KEY must not be injected into identity-service")
+for name in ("IDENTITY_MFA_ENCRYPTION_KEY", "IDENTITY_STEP_UP_ENABLED", "IDENTITY_MFA_REQUIRE_ADMIN"):
+    if identity_env.get(name) != os.environ[name]:
+        raise SystemExit(f"identity-service must receive {name}")
 for service_name in (
     "identity-service", "channel-service", "billing-service", "config-service",
     "log-service", "monitor-worker", "notify-worker", "relay-gateway", "admin-api",
