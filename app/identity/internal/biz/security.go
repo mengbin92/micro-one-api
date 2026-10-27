@@ -142,6 +142,17 @@ func (uc *IdentityUsecase) CompleteMFALogin(ctx context.Context, challenge, code
 		if user.Status != UserStatusEnabled || user.PasswordChangedAt != claims.PwdEpoch {
 			return ErrMFAInvalid
 		}
+		hash := securityHash(challenge)
+		record, e := uc.securityChallenges.Check(ctx, "mfa_login", hash, hash)
+		if e != nil {
+			if errors.Is(e, ErrChallengeInvalid) {
+				return ErrMFAInvalid
+			}
+			return ErrMFAUnavailable
+		}
+		if record.UserID != user.ID || record.PasswordEpoch != user.PasswordChangedAt {
+			return ErrMFAInvalid
+		}
 		state, e := uc.security.State(ctx, tx, user.ID)
 		if e != nil {
 			return e
@@ -150,7 +161,6 @@ func (uc *IdentityUsecase) CompleteMFALogin(ctx context.Context, challenge, code
 			return ErrMFAInvalid
 		}
 		outcome = uc.consumeMFA(&state, code)
-		hash := securityHash(challenge)
 		if outcome != nil {
 			event.Action += ".failed_attempt"
 			event.Diff = `{ "verified": false }`
@@ -159,7 +169,7 @@ func (uc *IdentityUsecase) CompleteMFALogin(ctx context.Context, challenge, code
 			}
 			return uc.security.Save(ctx, tx, state)
 		}
-		record, e := uc.securityChallenges.Consume(ctx, "mfa_login", hash, hash, 5)
+		record, e = uc.securityChallenges.Consume(ctx, "mfa_login", hash, hash, 5)
 		if e != nil || record.UserID != user.ID || record.PasswordEpoch != user.PasswordChangedAt {
 			return ErrMFAInvalid
 		}
@@ -416,6 +426,7 @@ func (uc *IdentityUsecase) ManageMFA(ctx context.Context, raw, action, code stri
 				return e
 			}
 			s.PendingSecret = secret
+			s.LastStep = -1 // Replay steps belong to this secret, not a previous enrollment.
 			s.PendingSession = a.SessionID
 			s.PendingEpoch = a.PasswordEpoch
 			s.PendingUntil = uc.now().Add(securityTTL).UnixMilli()

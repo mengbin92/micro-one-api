@@ -76,6 +76,15 @@ func (s *httpChallengeRepo) Cancel(_ context.Context, purpose, email, hash strin
 	}
 	return nil
 }
+func (s *httpChallengeRepo) Check(_ context.Context, purpose, email, hash string) (*biz.EmailChallenge, error) {
+	s.Lock()
+	defer s.Unlock()
+	r, ok := s.records[purpose+email]
+	if !ok || !r.active || r.hash != hash {
+		return nil, biz.ErrChallengeInvalid
+	}
+	return &r.record, nil
+}
 func (s *httpChallengeRepo) Consume(_ context.Context, purpose, email, hash string, _ int) (*biz.EmailChallenge, error) {
 	s.Lock()
 	defer s.Unlock()

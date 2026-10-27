@@ -48,6 +48,7 @@ type ChallengeRepo interface {
 	Reserve(context.Context, string, string, string, EmailChallenge, time.Duration, time.Duration) error
 	Activate(context.Context, string, string, string) error
 	Cancel(context.Context, string, string, string) error
+	Check(context.Context, string, string, string) (*EmailChallenge, error)
 	Consume(context.Context, string, string, string, int) (*EmailChallenge, error)
 }
 

@@ -90,6 +90,18 @@ return 0`, []string{challengeKey(purpose, email)}, hash).Err()
 	return nil
 }
 
+func (r *challengeRepo) Check(ctx context.Context, purpose, email, hash string) (*biz.EmailChallenge, error) {
+	client := r.client()
+	if client == nil {
+		return nil, biz.ErrChallengeUnavailable
+	}
+	result, err := client.Eval(ctx, `
+if redis.call('HGET', KEYS[1], 'ready') ~= '1' or redis.call('HGET', KEYS[1], 'hash') ~= ARGV[1] then return {} end
+return {redis.call('HGET', KEYS[1], 'user_id'), redis.call('HGET', KEYS[1], 'epoch')}
+`, []string{challengeKey(purpose, email)}, hash).StringSlice()
+	return challengeRecord(result, err)
+}
+
 func (r *challengeRepo) Consume(ctx context.Context, purpose, email, hash string, attempts int) (*biz.EmailChallenge, error) {
 	client := r.client()
 	if client == nil {
@@ -105,6 +117,10 @@ end
 local result = {redis.call('HGET', KEYS[1], 'user_id'), redis.call('HGET', KEYS[1], 'epoch')}
 redis.call('HSET', KEYS[1], 'ready', 0, 'hash', '')
 return result`, []string{challengeKey(purpose, email)}, hash, attempts).StringSlice()
+	return challengeRecord(result, err)
+}
+
+func challengeRecord(result []string, err error) (*biz.EmailChallenge, error) {
 	if err != nil {
 		return nil, biz.ErrChallengeUnavailable
 	}

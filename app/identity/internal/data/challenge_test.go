@@ -35,11 +35,22 @@ func TestChallengeCrossReplicaAtomicConsumption(t *testing.T) {
 	if err := first.Reserve(ctx, biz.ChallengePasswordReset, "test@example.com", "hash", record, time.Minute, time.Second); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := second.Check(ctx, biz.ChallengePasswordReset, "test@example.com", "hash"); !errors.Is(err, biz.ErrChallengeInvalid) {
+		t.Fatalf("pending check = %v", err)
+	}
 	if _, err := second.Consume(ctx, biz.ChallengePasswordReset, "test@example.com", "hash", 5); !errors.Is(err, biz.ErrChallengeInvalid) {
 		t.Fatalf("pending consumption = %v", err)
 	}
 	if err := first.Activate(ctx, biz.ChallengePasswordReset, "test@example.com", "hash"); err != nil {
 		t.Fatal(err)
+	}
+	for range 6 {
+		if _, err := second.Check(ctx, biz.ChallengePasswordReset, "test@example.com", "wrong"); !errors.Is(err, biz.ErrChallengeInvalid) {
+			t.Fatalf("wrong hash check = %v", err)
+		}
+	}
+	if got, err := second.Check(ctx, biz.ChallengePasswordReset, "test@example.com", "hash"); err != nil || *got != record {
+		t.Fatalf("active check = %+v, %v", got, err)
 	}
 	var winners atomic.Int32
 	var wg sync.WaitGroup
@@ -59,6 +70,9 @@ func TestChallengeCrossReplicaAtomicConsumption(t *testing.T) {
 	wg.Wait()
 	if got := winners.Load(); got != 1 {
 		t.Fatalf("successful consumes = %d", got)
+	}
+	if _, err := first.Check(ctx, biz.ChallengePasswordReset, "test@example.com", "hash"); !errors.Is(err, biz.ErrChallengeInvalid) {
+		t.Fatalf("consumed check = %v", err)
 	}
 }
 
@@ -104,6 +118,9 @@ func TestChallengeExpiryAttemptsAndReplacement(t *testing.T) {
 	srv.SetTime(time.Date(2026, 10, 26, 0, 0, 22, 0, time.UTC))
 	reserve("third")
 	srv.FastForward(time.Minute)
+	if _, err := second.Check(ctx, biz.ChallengeVerification, "test@example.com", "third"); !errors.Is(err, biz.ErrChallengeInvalid) {
+		t.Fatalf("expired check = %v", err)
+	}
 	if _, err := second.Consume(ctx, biz.ChallengeVerification, "test@example.com", "third", 5); !errors.Is(err, biz.ErrChallengeInvalid) {
 		t.Fatalf("expired = %v", err)
 	}
@@ -166,6 +183,9 @@ func TestChallengeDeliveryFailureRevokesSecretAndAllowsRetry(t *testing.T) {
 }
 
 func TestChallengeAvailabilityAndValidation(t *testing.T) {
+	if _, err := NewChallengeRepo(nil).Check(context.Background(), "mfa_login", "hash", "hash"); !errors.Is(err, biz.ErrChallengeUnavailable) {
+		t.Fatalf("missing Redis check = %v", err)
+	}
 	uc := biz.NewEmailChallengeUsecase(NewChallengeRepo(nil), &challengeMailCapture{})
 	if uc.Available() {
 		t.Fatal("missing Redis reported available")

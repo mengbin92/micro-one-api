@@ -22,6 +22,9 @@ func (r *recoveryTestRepo) Activate(context.Context, string, string, string) err
 	return nil
 }
 func (*recoveryTestRepo) Cancel(context.Context, string, string, string) error { return nil }
+func (*recoveryTestRepo) Check(context.Context, string, string, string) (*EmailChallenge, error) {
+	return nil, ErrChallengeInvalid
+}
 func (*recoveryTestRepo) Consume(context.Context, string, string, string, int) (*EmailChallenge, error) {
 	return nil, ErrChallengeInvalid
 }

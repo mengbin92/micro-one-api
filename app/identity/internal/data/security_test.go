@@ -210,3 +210,70 @@ func TestOAuthOnlyEnrollmentAndEncryptionFailures(t *testing.T) {
 	require.ErrorIs(t, err, biz.ErrMFAUnavailable)
 	require.Empty(t, token)
 }
+
+func TestSecurityReenrollmentUsesFreshTOTPWatermark(t *testing.T) {
+	f := newIAMA4Fixture(t, "sqlite")
+	f.register("security-user")
+	srv := miniredis.RunT(t)
+	a := securityReplica(t, f, srv)
+	_, raw, err := a.Login(f.ctx, "security-user", "password123", "")
+	require.NoError(t, err)
+	require.NoError(t, a.VerifyStepUp(f.ctx, raw, "password123", ""))
+	secret, _, _, err := a.ManageMFA(f.ctx, raw, "setup", "")
+	require.NoError(t, err)
+	code, err := totp.Code(secret, time.Now().Unix()/30-1, 6)
+	require.NoError(t, err)
+	_, _, codes, err := a.ManageMFA(f.ctx, raw, "confirm", code)
+	require.NoError(t, err)
+	_, raw, err = a.CompleteMFALogin(f.ctx, loginChallenge(t, a), codes[0])
+	require.NoError(t, err)
+	// An authenticator one step ahead is valid for the old secret.
+	code, err = totp.Code(secret, time.Now().Unix()/30+1, 6)
+	require.NoError(t, err)
+	require.NoError(t, a.VerifyStepUp(f.ctx, raw, "", code))
+	_, _, _, err = a.ManageMFA(f.ctx, raw, "disable", "")
+	require.NoError(t, err)
+	_, raw, err = a.Login(f.ctx, "security-user", "password123", "")
+	require.NoError(t, err)
+	require.NoError(t, a.VerifyStepUp(f.ctx, raw, "password123", ""))
+	secret, _, _, err = a.ManageMFA(f.ctx, raw, "setup", "")
+	require.NoError(t, err)
+	var state mfaModel
+	require.NoError(t, f.db.First(&state).Error)
+	require.EqualValues(t, -1, state.LastStep)
+	code, err = totp.Code(secret, time.Now().Unix()/30, 6)
+	require.NoError(t, err)
+	_, _, codes, err = a.ManageMFA(f.ctx, raw, "confirm", code)
+	require.NoError(t, err, "a new secret must not inherit the old secret's consumed time steps")
+	require.Len(t, codes, 10)
+}
+
+func TestSecurityConsumedChallengeCannotLockAccount(t *testing.T) {
+	f := newIAMA4Fixture(t, "sqlite")
+	f.register("security-user")
+	srv := miniredis.RunT(t)
+	a := securityReplica(t, f, srv)
+	_, raw, err := a.Login(f.ctx, "security-user", "password123", "")
+	require.NoError(t, err)
+	require.NoError(t, a.VerifyStepUp(f.ctx, raw, "password123", ""))
+	secret, _, _, err := a.ManageMFA(f.ctx, raw, "setup", "")
+	require.NoError(t, err)
+	code, err := totp.Code(secret, time.Now().Unix()/30-1, 6)
+	require.NoError(t, err)
+	_, _, recovery, err := a.ManageMFA(f.ctx, raw, "confirm", code)
+	require.NoError(t, err)
+	challenge := loginChallenge(t, a)
+	_, _, err = a.CompleteMFALogin(f.ctx, challenge, recovery[0])
+	require.NoError(t, err)
+	// A stolen or retried consumed challenge no longer grants any factor attempts.
+	for i := 0; i < 5; i++ {
+		_, _, err = a.CompleteMFALogin(f.ctx, challenge, "invalid")
+		require.Error(t, err)
+	}
+	var state mfaModel
+	require.NoError(t, f.db.First(&state).Error)
+	require.Zero(t, state.Failures)
+	require.Zero(t, state.LockedUntil)
+	_, _, err = a.CompleteMFALogin(f.ctx, loginChallenge(t, a), recovery[1])
+	require.NoError(t, err)
+}
