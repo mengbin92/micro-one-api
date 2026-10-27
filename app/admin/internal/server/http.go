@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	kerrors "github.com/go-kratos/kratos/v3/errors"
+
 	"micro-one-api/domain/authorization"
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/iamdto"
@@ -4400,7 +4402,11 @@ type successErrorMessage interface {
 func writeServiceResponse(w http.ResponseWriter, resp any, err error) {
 	if err != nil {
 		if code, ok := resourceHTTPErrorCode(err); ok {
-			writeJSON(w, code, apiResponse(false, sanitizeAdminError(err), nil))
+			payload := apiResponse(false, sanitizeAdminError(err), nil)
+			if reason := kerrors.FromError(err).Reason; reason == "STEP_UP_REQUIRED" || reason == "MFA_ENROLLMENT_REQUIRED" {
+				payload["reason"] = reason
+			}
+			writeJSON(w, code, payload)
 			return
 		}
 		// A gRPC AlreadyExists from a downstream service is an idempotency
