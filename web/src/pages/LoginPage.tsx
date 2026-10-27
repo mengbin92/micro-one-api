@@ -41,8 +41,8 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const hashHandoff = location.hash === '#oauth=1';
-  const [oauthHandoff, setOauthHandoff] = useState(hashHandoff);
-  if (oauthHandoff !== hashHandoff) setOauthHandoff(hashHandoff);
+  const [oauthFailed, setOauthFailed] = useState(false);
+  const oauthHandoff = hashHandoff && !oauthFailed;
   const loginTabRef = useRef<HTMLButtonElement>(null);
   const registerTabRef = useRef<HTMLButtonElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -78,7 +78,7 @@ export function LoginPage() {
         navigate('/dashboard', { replace: true });
       }).catch(error => {
         if (controller.signal.aborted || generation !== flowGeneration.current) return;
-        if (isCurrent()) { setOauthHandoff(false); setError(getAuthErrorMessage(error, t('登录失败'))); }
+        if (isCurrent()) { setOauthFailed(true); setError(getAuthErrorMessage(error, t('登录失败'))); }
         navigate('/login', { replace: true });
       });
       return () => controller.abort();
