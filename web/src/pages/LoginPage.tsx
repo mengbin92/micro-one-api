@@ -40,6 +40,9 @@ export function LoginPage() {
   const [acceptedLegal, setAcceptedLegal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const hashHandoff = location.hash === '#oauth=1';
+  const [oauthHandoff, setOauthHandoff] = useState(hashHandoff);
+  if (oauthHandoff !== hashHandoff) setOauthHandoff(hashHandoff);
   const loginTabRef = useRef<HTMLButtonElement>(null);
   const registerTabRef = useRef<HTMLButtonElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -59,7 +62,7 @@ export function LoginPage() {
     || (policy.turnstile_check && !policy.turnstile_site_key);
   const emailRequired = verificationRequired || policy?.email_domain_restriction_enabled;
   useEffect(() => {
-    if (location.hash === '#oauth=1') {
+    if (hashHandoff) {
       const controller = new AbortController();
       const generation = flowGeneration.current;
       const originalToken = localStorage.getItem('token');
@@ -75,12 +78,12 @@ export function LoginPage() {
         navigate('/dashboard', { replace: true });
       }).catch(error => {
         if (controller.signal.aborted || generation !== flowGeneration.current) return;
-        if (isCurrent()) setError(getAuthErrorMessage(error, t('登录失败')));
+        if (isCurrent()) { setOauthHandoff(false); setError(getAuthErrorMessage(error, t('登录失败'))); }
         navigate('/login', { replace: true });
       });
       return () => controller.abort();
     } else if (location.hash.startsWith('#mfa=')) navigate('/login', { replace: true });
-  }, [location.hash, navigate, queryClient]);
+  }, [hashHandoff, location.hash, navigate, queryClient]);
   const userAgreementLabel = language === 'en-US' ? t("用户协议") : `《${t("用户协议")}》`;
   const privacyPolicyLabel = language === 'en-US' ? t("隐私政策") : `《${t("隐私政策")}》`;
 
@@ -142,7 +145,7 @@ export function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submitLock.current || location.hash === '#oauth=1') return;
+    if (submitLock.current || oauthHandoff) return;
     const generation = flowGeneration.current;
     const originalToken = localStorage.getItem('token');
     const isCurrent = () => generation === flowGeneration.current && localStorage.getItem('token') === originalToken;
@@ -218,7 +221,7 @@ export function LoginPage() {
   return (
     <main className="grid min-h-screen bg-background lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
       <div className="absolute right-4 top-4 z-10 sm:right-6 sm:top-6">
-        <LanguageToggle disabled={loading || !!mfaChallenge || location.hash === '#oauth=1'} className="gap-2 bg-background/90 backdrop-blur" />
+        <LanguageToggle disabled={loading || !!mfaChallenge || oauthHandoff} className="gap-2 bg-background/90 backdrop-blur" />
       </div>
       <section
         aria-hidden="true"
@@ -285,7 +288,7 @@ export function LoginPage() {
                       id={`auth-tab-${item}`}
                       type="button"
                       role="tab"
-                      disabled={loading || location.hash === '#oauth=1'}
+                      disabled={loading || oauthHandoff}
                       aria-controls="auth-panel"
                       aria-selected={selected}
                       tabIndex={selected ? 0 : -1}
@@ -400,7 +403,7 @@ export function LoginPage() {
                     </label>
                   </div>
                 )}
-                <Button type="submit" className="w-full" disabled={loading || location.hash === '#oauth=1' || (mode === 'register' && registrationBlocked)}>
+                <Button type="submit" className="w-full" disabled={loading || oauthHandoff || (mode === 'register' && registrationBlocked)}>
                   {loading ? (mode === 'login' ? t("登录中…") : t("创建中…")) : mode === 'login' ? t("登录") : t("注册账号")}
                 </Button>
                 {mode === 'login' && !mfaChallenge && (
