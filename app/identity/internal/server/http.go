@@ -1057,6 +1057,10 @@ func handleLogin(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase
 		return
 	}
 	if err != nil {
+		if errors.Is(err, biz.ErrIAMDependencyUnavailable) || errors.Is(err, biz.ErrMFAUnavailable) || errors.Is(err, biz.ErrChallengeUnavailable) {
+			writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "login temporarily unavailable"})
+			return
+		}
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "invalid credentials"})
 		return
 	}
