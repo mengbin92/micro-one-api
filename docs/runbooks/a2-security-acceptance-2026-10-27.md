@@ -4,6 +4,8 @@
 
 **状态：已部署生产并通过线上验证；强制策略开关保持关闭；真实外部因子验收保留。** 本次完成代码、迁移、契约、页面、本地验收与生产部署（Identity、Admin BFF、Web + 迁移 143）；未 push、未发布版本/tag。实际投入按验证证据登记。详见[生产证据](evidence/a2-production-deployment-2026-10-27.json)。
 
+**代码复核补充（2026-10-27）**：最近三次提交发现的 8 项问题已在本地修复，见[复核记录](a2-code-review-2026-10-27.md)。本轮修复尚未部署，上述生产证据仍对应 `6f5cb293`。
+
 ## 1. 交付范围
 
 | 项目 | 实现与证据 |
@@ -81,8 +83,8 @@ A2_PLAYWRIGHT=1 go test ./app/identity/cmd/identity \
 - **迁移 143**：经服务器已有 MySQL 管理 Unix-socket 通道（root@localhost）落 `oneapi_identity.identity_mfa`，首跑 applied=1、重复执行为 no-op；未解锁专用迁移账号、未扩大 DB 权限。回执与 IAM mode（iam/complete）保持不变。
 - **镜像**：identity-service / admin-api 切换至 a2 镜像，运行镜像 ID 与本机构建清单一致；restart_count=0，healthz 通过。
 - **Web**：宿主机 `/opt/web/dist` 先发资源、最后原子替换 index（sha256 `98b02e81…`）；旧 hash 资源保留。经 admin-api（挂载 `/web`）验证公网拿到新 index。
-- **策略开关**：`IDENTITY_STEP_UP_ENABLED=false`、`IDENTITY_MFA_REQUIRE_ADMIN=false`；MFA 加密密钥已注入（32 字节，仅存于 `.env`，未写入文档）。
-- **边界**：匿名访问 `security` 接口被 401/405 拒绝；注册/Turnstile 策略与部署前一致；仅 Identity/Admin 两容器被重建，其余服务未动。
+- **策略开关**：`IDENTITY_STEP_UP_ENABLED=false`、`IDENTITY_MFA_REQUIRE_ADMIN=false`；MFA 加密密钥已注入（32 字节，仅存于受限运行配置及备份，未写入文档）。
+- **边界**：匿名访问安全状态、验证、设置及 OAuth 交接接口均返回 401，无效 MFA 登录 challenge 返回 400；注册/Turnstile 策略与部署前一致；仅 Identity/Admin 两容器被重建，其余服务未动。
 
 ## 4. 回滚与保留项
 

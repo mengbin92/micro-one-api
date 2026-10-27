@@ -19,14 +19,14 @@
   "image_ids_match_local_manifest": true,
   "rollback_tag": "rollback-a2-20261027-103739-final",
   "backup_directory": "/opt/micro-one-api/docker-compose/backups/backup-20261027_103739-a2",
-  "web_backup": "/opt/web/dist.bak.a2-<timestamp>",
+  "web_backup": "/opt/web/dist.bak.a2-20261027_112215",
   "web_index_sha256": "98b02e81c8ec0bbfae1f0fd3f2e0effbb9963523b2617698afc27b8eb191d08b",
-  "public_url": "https://console.mengbin.top",
+  "public_origin_redacted": true,
   "sql_migration": {
     "run": true,
     "version": "143_create_identity_mfa",
     "target_schema": "oneapi_identity",
-    "method": "existing MySQL administrative Unix-socket channel (root@localhost); dedicated DSN account iamd_migrate_7ff6fec0 and root@% are locked by policy and were NOT unlocked / granted",
+    "method": "existing MySQL administrative Unix-socket channel; locked TCP accounts were not unlocked or granted permissions",
     "account_permissions_changed": false,
     "identity_mfa_rows": 0,
     "migration_receipt_present": true,
@@ -44,6 +44,13 @@
     "admin_restart_count": 0,
     "healthz": {"identity-service": "ok", "admin-api": "ok"},
     "anonymous_security_endpoints_rejected": true,
+    "anonymous_http_statuses": {
+      "GET /api/user/security": 401,
+      "POST /api/user/security/verify": 401,
+      "POST /api/user/security/setup": 401,
+      "POST /api/user/security/oauth": 401,
+      "POST /api/user/security/login (invalid challenge)": 400
+    },
     "registration_policy_unchanged": true,
     "unrelated_containers_unchanged": true,
     "frontend_old_assets_retained": true
