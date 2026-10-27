@@ -1,0 +1,57 @@
+{
+  "status": "deployed_verified",
+  "tag": "a2-20261027-103739-7f5edfa8b57b",
+  "source_digest": "7f5edfa8b57b5d5c4596b1fdebe6b25a0ba29cb9fecc74e6744240b5490d6af7",
+  "revision": "6f5cb293",
+  "completed_at_cst": "2026-10-27 11:30",
+  "images": {
+    "identity-service": {
+      "name": "docker-compose-identity-service:a2-20261027-103739-7f5edfa8b57b",
+      "id": "sha256:e31dd8d98a3d5538da3843097d8c8375d9f5d34c206e656370dddc85c901ba49",
+      "architecture": "linux/amd64"
+    },
+    "admin-api": {
+      "name": "docker-compose-admin-api:a2-20261027-103739-7f5edfa8b57b",
+      "id": "sha256:e6d21a04a3eec9d0925080a75158c4da6044ec0f6bac86dbe5cb845799591b84",
+      "architecture": "linux/amd64"
+    }
+  },
+  "image_ids_match_local_manifest": true,
+  "rollback_tag": "rollback-a2-20261027-103739-final",
+  "backup_directory": "/opt/micro-one-api/docker-compose/backups/backup-20261027_103739-a2",
+  "web_backup": "/opt/web/dist.bak.a2-<timestamp>",
+  "web_index_sha256": "98b02e81c8ec0bbfae1f0fd3f2e0effbb9963523b2617698afc27b8eb191d08b",
+  "public_url": "https://console.mengbin.top",
+  "sql_migration": {
+    "run": true,
+    "version": "143_create_identity_mfa",
+    "target_schema": "oneapi_identity",
+    "method": "existing MySQL administrative Unix-socket channel (root@localhost); dedicated DSN account iamd_migrate_7ff6fec0 and root@% are locked by policy and were NOT unlocked / granted",
+    "account_permissions_changed": false,
+    "identity_mfa_rows": 0,
+    "migration_receipt_present": true,
+    "repeat_apply_noop": true,
+    "iam_mode_unchanged": "iam/complete"
+  },
+  "mfa_config": {
+    "IDENTITY_MFA_ENCRYPTION_KEY": "present (32 bytes, redacted)",
+    "IDENTITY_STEP_UP_ENABLED": "false",
+    "IDENTITY_MFA_REQUIRE_ADMIN": "false",
+    "forced_policies_enabled": false
+  },
+  "verification": {
+    "identity_restart_count": 0,
+    "admin_restart_count": 0,
+    "healthz": {"identity-service": "ok", "admin-api": "ok"},
+    "anonymous_security_endpoints_rejected": true,
+    "registration_policy_unchanged": true,
+    "unrelated_containers_unchanged": true,
+    "frontend_old_assets_retained": true
+  },
+  "rollback_boundary": "identity_mfa table and MFA encryption key are retained. Do NOT roll back to a pre-A2 Identity once any user has enabled MFA, or MFA-bound accounts lose their second factor.",
+  "not_covered": [
+    "real external OAuth account enrollment",
+    "real mobile authenticator TOTP verification",
+    "forced step-up / admin-MFA policy enablement (intentionally left off)"
+  ]
+}

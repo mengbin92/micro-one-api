@@ -2,7 +2,7 @@
 
 2026-10-27（北京时间）。关联 [排期](../design/next-stage-plan-2026-10-26.md) / [首批入口契约](../design/a2-security-contract-2026-10-27.md)。
 
-**状态：工程验收通过、待外部验证。** 本次完成代码、迁移、契约、页面和本地验收；未部署生产、未 push、未发布版本/tag。实际投入按验证证据登记，不将原排期的 11–16 工程日视作已发生工时。
+**状态：已部署生产并通过线上验证；强制策略开关保持关闭；真实外部因子验收保留。** 本次完成代码、迁移、契约、页面、本地验收与生产部署（Identity、Admin BFF、Web + 迁移 143）；未 push、未发布版本/tag。实际投入按验证证据登记。详见[生产证据](evidence/a2-production-deployment-2026-10-27.json)。
 
 ## 1. 交付范围
 
@@ -36,7 +36,7 @@
 | ✅ | 真实桌面/移动 Chrome | 实际构建产物、BFF、Identity HTTP/gRPC、SQL/Redis；设置→保存恢复码→错误因子拒绝→MFA 登录→step-up→新 API Token→换码/旧码拒绝→禁用；两端通过，页面无横向溢出 |
 | ✅ | Web 自动化 | 新增首步不存 token、安全中心验证/一次展示、二次认证后重试且不无限重试；旧凭据的 401/403 不触发换会话后的 step-up 重试或清理新会话；旧 401 不打断恢复码展示；原登录/资料页及完整前端套件通过 |
 | ⚠️ | 真实外部 OAuth / 手机验证器 | 尚未使用真实外部 OAuth 账号、实际手机 App 验证；本地 callback 替身和 RFC 向量不替代这些条件 |
-| ⚠️ | 生产部署/开关启用 | 未执行；生产数据、既有监控停用、契约灰度和自动任务均未修改 |
+| ✅ | 生产部署/开关启用 | 2026-10-27 11:30 CST 已部署 Identity/Admin/Web；迁移 143 落 `oneapi_identity`；`IDENTITY_STEP_UP_ENABLED=false`、`IDENTITY_MFA_REQUIRE_ADMIN=false`；生产数据、监控停用、契约灰度和自动任务均未修改 |
 
 复现命令（外部数据库环境变量必须指向**本机一次性数据库**，不要使用部署 DSN）：
 
@@ -73,10 +73,22 @@ A2_PLAYWRIGHT=1 go test ./app/identity/cmd/identity \
 
 这是新增认证能力，后续若独立发版应判为 **MINOR**；本次不预定版本号，实际发布仍执行完整七步流程。
 
+
+## 3.1 生产部署（2026-10-27 11:30 CST）
+
+按维护者要求先部署、再提交 `develop`。部署清单为 `a2-20261027-103739-7f5edfa8b57b`，源码 `develop@6f5cb293`、摘要 `7f5edfa8b57b…`，两镜像本机交叉构建 Linux/amd64，生产仅加载、未构建镜像。详见[生产证据](evidence/a2-production-deployment-2026-10-27.json)。
+
+- **迁移 143**：经服务器已有 MySQL 管理 Unix-socket 通道（root@localhost）落 `oneapi_identity.identity_mfa`，首跑 applied=1、重复执行为 no-op；未解锁专用迁移账号、未扩大 DB 权限。回执与 IAM mode（iam/complete）保持不变。
+- **镜像**：identity-service / admin-api 切换至 a2 镜像，运行镜像 ID 与本机构建清单一致；restart_count=0，healthz 通过。
+- **Web**：宿主机 `/opt/web/dist` 先发资源、最后原子替换 index（sha256 `98b02e81…`）；旧 hash 资源保留。经 admin-api（挂载 `/web`）验证公网拿到新 index。
+- **策略开关**：`IDENTITY_STEP_UP_ENABLED=false`、`IDENTITY_MFA_REQUIRE_ADMIN=false`；MFA 加密密钥已注入（32 字节，仅存于 `.env`，未写入文档）。
+- **边界**：匿名访问 `security` 接口被 401/405 拒绝；注册/Turnstile 策略与部署前一致；仅 Identity/Admin 两容器被重建，其余服务未动。
+
 ## 4. 回滚与保留项
 
 - 已有用户启用 MFA 后，不能回滚到忽略 MFA 的旧 Identity；也不能丢弃表或加密密钥。允许关闭两个强制策略开关，但必须保留 MFA 登录校验及数据。
 - SQL 事务和 Redis challenge 跨存储失败采用 fail-closed：可能消费 challenge 后 SQL 未提交，用户需重新发起首步；不会签发第二个成功会话。该可用性边界不扩大为分布式事务系统。
 - 首批之外的 owner 写操作、Passkey、支付回调、worker/system 专用凭据、全部因子丢失后的线下恢复均保留既有边界；不能据本项声称“所有管理操作均完成 step-up”。
-- [ ] 真实外部 OAuth 与实际验证器验收。
-- [ ] 生产备份、迁移、部署、分阶段策略启用及线上验证。
+- [x] 生产备份、迁移 143、Identity/Admin/Web 部署及线上验证（2026-10-27 11:30 CST）。
+- [ ] 真实外部 OAuth、实际手机验证器、生产用户 enrollment 验收。
+- [ ] 强制 step-up / 管理员 MFA 策略分阶段启用（本次明确保持关闭）。
