@@ -4,7 +4,9 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { StrictMode, useEffect } from 'react';
+import type { AxiosResponse } from 'axios';
+import { apiClient } from '@/lib/api';
 import { LoginPage } from './LoginPage';
 import { renderWithQuery } from '@/test/render';
 import { redirectToApiPath } from '@/lib/oauth';
@@ -316,4 +318,52 @@ it('keeps the first factor challenge out of session storage until MFA succeeds',
   await user.type(input, 'recovery-code');
   await user.click(screen.getByRole('button', { name: '登录' }));
   await waitFor(() => expect(localStorage.getItem('token')).toBe('complete-session'));
+});
+
+
+it('keeps the MFA challenge available by blocking locale remounts until the user returns to login', async () => {
+  const user = userEvent.setup();
+  renderWithQuery(<MemoryRouter initialEntries={['/login#mfa=memory-only-challenge']}><LoginPage /></MemoryRouter>);
+  await screen.findByLabelText('验证码或恢复码');
+  expect(screen.getByRole('button', { name: '切换至英文' })).toBeDisabled();
+  await user.click(screen.getByRole('button', { name: '返回登录' }));
+  expect(screen.getByRole('button', { name: '切换至英文' })).toBeEnabled();
+});
+
+it.each([{ kind: 'mfa', unmount: true }, { kind: 'oauth', unmount: true }, { kind: 'mfa', unmount: false }, { kind: 'oauth', unmount: false }])('ignores a late $kind response when its session changes (unmount=$unmount)', async ({ kind, unmount }) => {
+  const user = userEvent.setup();
+  let finish!: (response: AxiosResponse) => void;
+  const reply = new Promise<AxiosResponse>(resolve => { finish = resolve; });
+  const post = vi.spyOn(apiClient, 'post').mockReturnValue(reply);
+  const view = renderWithQuery(<MemoryRouter initialEntries={[kind === 'mfa' ? '/login#mfa=old-challenge' : '/login#oauth=1']}><LoginPage /></MemoryRouter>);
+  if (kind === 'mfa') {
+    await user.type(await screen.findByLabelText('验证码或恢复码'), '123456');
+    await user.click(screen.getByRole('button', { name: '登录' }));
+  }
+  await waitFor(() => expect(post).toHaveBeenCalledOnce());
+  if (unmount) view.unmount();
+  localStorage.setItem('token', 'later-session');
+  await act(async () => { finish({ data: kind === 'oauth' ? { success: true, data: { token: 'stale-session' } } : { token: 'stale-session' } } as AxiosResponse); await reply; });
+  expect(localStorage.getItem('token')).toBe('later-session');
+  if (!unmount && kind === 'oauth') expect(screen.getByRole('button', { name: '登录' })).toBeEnabled();
+});
+
+
+it('recovers the login controls after an OAuth handoff error', async () => {
+  vi.spyOn(apiClient, 'post').mockRejectedValue(new Error('OAuth handoff expired'));
+  renderWithQuery(<MemoryRouter initialEntries={['/login#oauth=1']}><LoginPage /></MemoryRouter>);
+  expect(await screen.findByRole('alert')).toHaveTextContent('OAuth handoff expired');
+  expect(screen.getByRole('button', { name: '登录' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: '切换至英文' })).toBeEnabled();
+});
+
+it('exchanges an OAuth handoff once through StrictMode effect cleanup', async () => {
+  const exchange = vi.fn();
+  server.use(http.post('/api/user/security/oauth', () => {
+    exchange();
+    return HttpResponse.json({ success: true, data: { token: 'oauth-session' } });
+  }));
+  renderWithQuery(<StrictMode><MemoryRouter initialEntries={['/login#oauth=1']}><LoginPage /></MemoryRouter></StrictMode>);
+  await waitFor(() => expect(localStorage.getItem('token')).toBe('oauth-session'));
+  expect(exchange).toHaveBeenCalledOnce();
 });

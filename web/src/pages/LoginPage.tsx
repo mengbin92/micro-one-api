@@ -45,6 +45,8 @@ export function LoginPage() {
   const emailRef = useRef<HTMLInputElement>(null);
   const submitLock = useRef(false);
   const sendLock = useRef(false);
+  const flowGeneration = useRef(0);
+  useEffect(() => () => { flowGeneration.current++; }, []);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { language } = useI18n();
@@ -58,19 +60,32 @@ export function LoginPage() {
   const emailRequired = verificationRequired || policy?.email_domain_restriction_enabled;
   useEffect(() => {
     if (location.hash === '#oauth=1') {
-      navigate('/login', { replace: true });
-      apiClient.post('/user/security/oauth', {}).then(response => {
+      const controller = new AbortController();
+      const generation = flowGeneration.current;
+      const originalToken = localStorage.getItem('token');
+      const isCurrent = () => !controller.signal.aborted && generation === flowGeneration.current && localStorage.getItem('token') === originalToken;
+      apiClient.post('/user/security/oauth', {}, { signal: controller.signal }).then(response => {
+        if (!isCurrent()) {
+          if (!controller.signal.aborted && generation === flowGeneration.current) navigate('/login', { replace: true });
+          return;
+        }
         const data = unwrapApiData<{ token: string }>(response.data, t('登录失败'));
         if (!data.token) throw new Error(t('登录失败'));
         clearUserSession(); queryClient.clear(); localStorage.setItem('token', data.token);
         navigate('/dashboard', { replace: true });
-      }).catch(error => setError(getAuthErrorMessage(error, t('登录失败'))));
+      }).catch(error => {
+        if (controller.signal.aborted || generation !== flowGeneration.current) return;
+        if (isCurrent()) setError(getAuthErrorMessage(error, t('登录失败')));
+        navigate('/login', { replace: true });
+      });
+      return () => controller.abort();
     } else if (location.hash.startsWith('#mfa=')) navigate('/login', { replace: true });
   }, [location.hash, navigate, queryClient]);
   const userAgreementLabel = language === 'en-US' ? t("用户协议") : `《${t("用户协议")}》`;
   const privacyPolicyLabel = language === 'en-US' ? t("隐私政策") : `《${t("隐私政策")}》`;
 
   const selectMode = (nextMode: 'login' | 'register') => {
+    flowGeneration.current++;
     if (nextMode !== mode) {
       navigate(nextMode === 'register' ? '/register' : '/login', { replace: true });
     }
@@ -105,12 +120,13 @@ export function LoginPage() {
     }
   };
 
-  const signIn = async (nextUsername: string) => {
+  const signIn = async (nextUsername: string, isCurrent: () => boolean) => {
     const response = await apiClient.post('/user/login', {
       username: nextUsername,
       password,
     });
 
+    if (!isCurrent()) return false;
     const data = unwrapApiData<string | { token?: string; mfa_required?: boolean; challenge?: string }>(response.data, t("登录失败"));
     if (typeof data !== 'string' && data.mfa_required && data.challenge) { setMfaChallenge(data.challenge); setPassword(''); return false; }
     const token = typeof data === 'string' ? data : data?.token;
@@ -126,7 +142,10 @@ export function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submitLock.current) return;
+    if (submitLock.current || location.hash === '#oauth=1') return;
+    const generation = flowGeneration.current;
+    const originalToken = localStorage.getItem('token');
+    const isCurrent = () => generation === flowGeneration.current && localStorage.getItem('token') === originalToken;
     setError('');
     const nextUsername = username.trim();
 
@@ -155,6 +174,7 @@ export function LoginPage() {
     try {
       if (mfaChallenge) {
         const response = await apiClient.post('/user/security/login', { challenge: mfaChallenge, code: mfaCode });
+        if (!isCurrent()) return;
         if (!response.data.token) throw new Error(t('登录失败'));
         clearUserSession(); queryClient.clear(); localStorage.setItem('token', response.data.token);
         setMfaChallenge(''); setMfaCode('');
@@ -168,6 +188,7 @@ export function LoginPage() {
           verification_code: verificationCode.trim(),
           turnstile_token: turnstileToken,
         });
+        if (!isCurrent()) return;
         ensureApiSuccess(response.data, t("注册失败"));
         setPassword('');
         setConfirmPassword('');
@@ -175,26 +196,29 @@ export function LoginPage() {
         toast.success(t('注册成功，请使用新账号登录。'));
         navigate('/login', { replace: true });
       } else {
-        if (!await signIn(nextUsername)) return;
+        if (!await signIn(nextUsername, isCurrent)) return;
         toast.success(t("登录成功"));
         navigate('/dashboard');
       }
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       const message = getAuthErrorMessage(err, t("网络错误"));
       setError(message);
       toast.error(message);
     } finally {
       submitLock.current = false;
-      setLoading(false);
-      setTurnstileToken('');
-      setTurnstileAttempt(attempt => attempt + 1);
+      if (generation === flowGeneration.current) {
+        setLoading(false);
+        setTurnstileToken('');
+        setTurnstileAttempt(attempt => attempt + 1);
+      }
     }
   };
 
   return (
     <main className="grid min-h-screen bg-background lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
       <div className="absolute right-4 top-4 z-10 sm:right-6 sm:top-6">
-        <LanguageToggle className="gap-2 bg-background/90 backdrop-blur" />
+        <LanguageToggle disabled={loading || !!mfaChallenge || location.hash === '#oauth=1'} className="gap-2 bg-background/90 backdrop-blur" />
       </div>
       <section
         aria-hidden="true"
@@ -261,6 +285,7 @@ export function LoginPage() {
                       id={`auth-tab-${item}`}
                       type="button"
                       role="tab"
+                      disabled={loading || location.hash === '#oauth=1'}
                       aria-controls="auth-panel"
                       aria-selected={selected}
                       tabIndex={selected ? 0 : -1}
@@ -318,7 +343,7 @@ export function LoginPage() {
                   />
                 </div>
                 </>}
-                {mfaChallenge && <div className="space-y-3"><p className="text-sm text-muted-foreground">{t('请输入验证器的六位验证码，或使用一个恢复码。')}</p><Label htmlFor="mfa-login-code">{t('验证码或恢复码')}</Label><Input id="mfa-login-code" value={mfaCode} onChange={event => setMfaCode(event.target.value)} autoComplete="one-time-code" maxLength={32} required autoFocus /><Button type="button" variant="ghost" onClick={() => { setMfaChallenge(''); setMfaCode(''); setError(''); }}>{t('返回登录')}</Button></div>}
+                {mfaChallenge && <div className="space-y-3"><p className="text-sm text-muted-foreground">{t('请输入验证器的六位验证码，或使用一个恢复码。')}</p><Label htmlFor="mfa-login-code">{t('验证码或恢复码')}</Label><Input id="mfa-login-code" value={mfaCode} onChange={event => setMfaCode(event.target.value)} autoComplete="one-time-code" maxLength={32} required autoFocus /><Button type="button" variant="ghost" disabled={loading} onClick={() => { flowGeneration.current++; setMfaChallenge(''); setMfaCode(''); setError(''); }}>{t('返回登录')}</Button></div>}
                 {mode === 'register' && (
                   <div className="space-y-2">
                     <Label htmlFor="confirm-password">{t("确认密码")}</Label>
@@ -375,7 +400,7 @@ export function LoginPage() {
                     </label>
                   </div>
                 )}
-                <Button type="submit" className="w-full" disabled={loading || (mode === 'register' && registrationBlocked)}>
+                <Button type="submit" className="w-full" disabled={loading || location.hash === '#oauth=1' || (mode === 'register' && registrationBlocked)}>
                   {loading ? (mode === 'login' ? t("登录中…") : t("创建中…")) : mode === 'login' ? t("登录") : t("注册账号")}
                 </Button>
                 {mode === 'login' && !mfaChallenge && (

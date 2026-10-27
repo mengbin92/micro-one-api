@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { apiClient, adminApiClient, isSessionAuthPath } from './api';
 
 describe('api auth path handling', () => {
@@ -33,5 +33,17 @@ it('ignores late authorization errors from an old or cleared session', async () 
       } })).rejects.toBeDefined();
       expect(localStorage.getItem('token')).toBeNull();
     }
+  }
+});
+
+
+it('rejects a bound request before dispatch if its session was replaced', async () => {
+  localStorage.setItem('token', 'replacement-session');
+  for (const client of [apiClient, adminApiClient]) {
+    const adapter = vi.fn();
+    await expect(client.post('/user/security/verify', { password: 'old-factor' }, {
+      headers: { Authorization: 'Bearer old-session' }, adapter,
+    })).rejects.toThrow('Session changed before request');
+    expect(adapter).not.toHaveBeenCalled();
   }
 });

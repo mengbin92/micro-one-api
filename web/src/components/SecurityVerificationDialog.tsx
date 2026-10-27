@@ -28,22 +28,28 @@ export function SecurityVerificationDialog() {
   useEffect(() => {
     if (!request) return;
     const controller = new AbortController();
-    apiClient.get('/user/security', { signal: controller.signal }).then(response => { setEnabled(response.data.enabled === true); setPasswordAvailable(response.data.password_available !== false); })
+    apiClient.get('/user/security', { signal: controller.signal, headers: { Authorization: `Bearer ${request.token}` } }).then(response => { if (controller.signal.aborted) return; setEnabled(response.data.enabled === true); setPasswordAvailable(response.data.password_available !== false); })
       .catch(error => { if (!controller.signal.aborted) setError(getApiErrorMessage(error, t('安全验证暂不可用'))); });
     return () => controller.abort();
   }, [request]);
 
+  const finish = (current: VerificationRequest, error?: Error) => {
+    if (error) current.reject(error); else current.resolve();
+    if (activeRequest.current !== current) return;
+    activeRequest.current = undefined; setRequest(undefined); setValue('');
+  };
   const cancel = () => { request?.reject(new Error(t('已取消安全验证'))); activeRequest.current = undefined; setRequest(undefined); };
   return <><Dialog open={!!request} onOpenChange={open => { if (!open && !busy) cancel(); }}>
     <DialogContent showCloseButton={!busy}>
       <DialogHeader><DialogTitle>{t('安全验证')}</DialogTitle><DialogDescription>{t('验证仅对当前会话生效，有效期五分钟。')}</DialogDescription></DialogHeader>
       <form className="space-y-4" onSubmit={async event => {
-        event.preventDefault(); if (lock.current || enabled === undefined) return;
+        event.preventDefault(); if (lock.current || enabled === undefined || !request) return;
+        if (request.token !== localStorage.getItem('token')) { finish(request, new Error(t('会话已变化，请重试'))); return; }
         lock.current = true; setBusy(true); setError('');
         try {
-          await apiClient.post('/user/security/verify', enabled ? { code: value } : { password: value });
-          request?.resolve(); activeRequest.current = undefined; setRequest(undefined); setValue('');
-        } catch (error) { setError(getApiErrorMessage(error, t('验证失败，请重试'))); }
+          await apiClient.post('/user/security/verify', enabled ? { code: value } : { password: value }, { headers: { Authorization: `Bearer ${request.token}` } });
+          finish(request, request.token === localStorage.getItem('token') ? undefined : new Error(t('会话已变化，请重试')));
+        } catch (error) { if (activeRequest.current === request) setError(getApiErrorMessage(error, t('验证失败，请重试'))); }
         finally { lock.current = false; setBusy(false); }
       }}>
         {enabled === false && !passwordAvailable && <p role="alert" className="text-sm text-muted-foreground">{t('请重新使用第三方账号登录，并在五分钟内完成此操作。')}</p>}

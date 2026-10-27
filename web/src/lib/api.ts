@@ -45,6 +45,7 @@ apiClient.interceptors.request.use(
   (config) => {
     config.signal ??= protectedSignal();
     const token = localStorage.getItem('token');
+    if (config.headers.Authorization && !matchesCurrentSession(config)) throw new Error('Session changed before request');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -88,6 +89,7 @@ adminApiClient.interceptors.request.use(
   (config) => {
     config.signal ??= protectedSignal();
     const token = localStorage.getItem('token');
+    if (config.headers.Authorization && !matchesCurrentSession(config)) throw new Error('Session changed before request');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

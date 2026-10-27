@@ -1,12 +1,13 @@
 import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { server } from '@/test/msw/server';
 import { renderWithQuery } from '@/test/render';
 import { SecurityCenter } from './SecurityCenter';
 import { SecurityVerificationDialog } from './SecurityVerificationDialog';
 import { apiClient } from '@/lib/api';
+import { requestSecurityVerification } from '@/lib/security-verification';
 
 describe('security center', () => {
   it('verifies before setup and only displays recovery codes after confirmation', async () => {
@@ -63,4 +64,46 @@ describe('security center', () => {
     await waitFor(() => expect(calls).toBe(2));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
+});
+
+
+it('never submits an old dialog factor with the replacement session', async () => {
+  const user = userEvent.setup();
+  const verify = vi.fn();
+  localStorage.setItem('token', 'old-session');
+  server.use(
+    http.get('/api/user/security', () => HttpResponse.json({ enabled: false })),
+    http.post('/api/user/security/verify', ({ request }) => {
+      verify(request.headers.get('Authorization'));
+      return HttpResponse.json({});
+    }),
+  );
+  renderWithQuery(<SecurityVerificationDialog />);
+  let result!: Promise<unknown>;
+  await act(async () => { result = requestSecurityVerification().catch(error => error); });
+  await user.type(await screen.findByLabelText('当前密码'), 'old-session-password');
+  localStorage.setItem('token', 'replacement-session');
+  await user.click(screen.getByRole('button', { name: '验证并继续' }));
+  expect(await result).toBeInstanceOf(Error);
+  expect(verify).not.toHaveBeenCalled();
+});
+
+it('starts a separate verification when the session changes while a dialog is pending', async () => {
+  const user = userEvent.setup();
+  localStorage.setItem('token', 'old-session');
+  server.use(
+    http.get('/api/user/security', ({ request }) => HttpResponse.json({ enabled: request.headers.get('Authorization') === 'Bearer old-session' })),
+    http.post('/api/user/security/verify', () => HttpResponse.json({})),
+  );
+  renderWithQuery(<SecurityVerificationDialog />);
+  let first!: Promise<unknown>;
+  let next!: Promise<unknown>;
+  await act(async () => { first = requestSecurityVerification().catch(error => error); });
+  await screen.findByLabelText('验证码或恢复码');
+  localStorage.setItem('token', 'replacement-session');
+  await act(async () => { next = requestSecurityVerification().catch(error => error); });
+  await user.type(await screen.findByLabelText('当前密码'), 'replacement-password');
+  await user.click(screen.getByRole('button', { name: '验证并继续' }));
+  expect(await first).toBeInstanceOf(Error);
+  expect(await next).toBeUndefined();
 });
