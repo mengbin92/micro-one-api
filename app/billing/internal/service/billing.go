@@ -44,6 +44,7 @@ type BillingService struct {
 	reporter       biz.SettlementSideEffectReporter
 	paymentUc      *biz.PaymentUsecase
 	alipayVerifier biz.PaymentNotifyVerifier
+	wechatVerifier biz.WechatPaymentProvider
 	// expectedAlipayAppID is the locally-configured Alipay merchant app id.
 	// HandleAlipayNotify cross-checks it against the app_id carried in the
 	// signature-verified notify params to catch order-substitution /

@@ -1,0 +1,104 @@
+{
+  "source_digest": "02164878e08487f4da3497806d5fa3d15c22546056dd1a6af5229d059e497d47",
+  "services": {
+    "billing-service": {
+      "image_id": "sha256:d4afc90a20a00a8a3a2a6b762af90fe00edb5b49e0008e3c1db65bccec67af24",
+      "image_matches": true,
+      "source_matches": true,
+      "running": true,
+      "restarts": 0,
+      "runtime_environment_unchanged": true,
+      "wechat_enabled": "false",
+      "startup_error_lines": 0
+    },
+    "identity-service": {
+      "image_id": "sha256:e3eb351a0fe40c5655579f94cf3caa3c3e12a0a531c3f38bb8c6c41666c9fd22",
+      "image_matches": true,
+      "source_matches": true,
+      "running": true,
+      "restarts": 0,
+      "runtime_environment_unchanged": true,
+      "wechat_enabled": "false",
+      "startup_error_lines": 0
+    },
+    "admin-api": {
+      "image_id": "sha256:cced438c69d783a81d2134e165a58036afd0eda659aa6423da2fedfdcd72b5e0",
+      "image_matches": true,
+      "source_matches": true,
+      "running": true,
+      "restarts": 0,
+      "runtime_environment_unchanged": true,
+      "wechat_enabled": "false",
+      "startup_error_lines": 0
+    }
+  },
+  "unaffected_unchanged": true,
+  "unaffected_count": 18,
+  "web_index_sha256": "4f6ce1fbba90074f770068da98c7cda03756e410d2d1d4c902ddd56c61c7698a",
+  "deployment_state": {
+    "backup": "/opt/micro-one-api/backups/rollback-a4-20261028-202555",
+    "rollback": "rollback-a4-20261028-202555",
+    "compose": "docker-compose.yml"
+  },
+  "verified_at": "2026-10-28 20:57:53 CST",
+  "status": "deployed_disabled",
+  "platform": "linux/amd64",
+  "migration": {
+    "version": "144_add_billing_service_tier",
+    "applied": true,
+    "service_tier_columns": 9,
+    "reason": "A3 Billing compatibility required by the A4 build; A4 introduces no schema change"
+  },
+  "public_checks": [
+    {
+      "method": "GET",
+      "path": "/api/user/payment/channels",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/user/payments/wechat/notify",
+      "status": 503
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/payments/alipay/notify",
+      "status": 200,
+      "invalid_notify_rejected": true
+    },
+    {
+      "method": "GET",
+      "path": "/recharge",
+      "status": 200,
+      "matches_built_index": true
+    },
+    {
+      "method": "GET",
+      "path": "/orders",
+      "status": 200,
+      "matches_built_index": true
+    }
+  ],
+  "authenticated_checks": {
+    "login_status": 200,
+    "login_success": true,
+    "channels_status": 200,
+    "channels_success": true,
+    "available_channels": [
+      "alipay"
+    ],
+    "orders_status": 200,
+    "orders_success": true,
+    "logout_status": 200,
+    "credential_values_recorded": false,
+    "payment_created": false
+  },
+  "external_acceptance": {
+    "real_wechat_merchant": false,
+    "real_payment": false,
+    "real_platform_callback": false,
+    "wechat_enabled": false
+  },
+  "build_note": "Official service Dockerfiles with a temporary read-write mount of the pinned public Buf dependency cache; make proto still executed and buf.lock remained unchanged.",
+  "review_note": "Full high OCR completed; final gateway increment was interrupted after timeouts/502 alert investigation. Final critical changes independently reviewed with OCR delegate rules; no blocking P0/P1/P2. No further production-model review requests."
+}

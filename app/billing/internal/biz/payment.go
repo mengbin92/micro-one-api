@@ -29,6 +29,7 @@ const (
 
 	PaymentChannelMock   = "mock"
 	PaymentChannelAlipay = "alipay"
+	PaymentChannelWechat = "wechat"
 )
 
 type PaymentOrder struct {
@@ -43,6 +44,7 @@ type PaymentOrder struct {
 	Status           string
 	ProviderTradeNo  string
 	ProviderPayload  string
+	ProviderClaim    string // Internal fencing token for a bounded Native prepay attempt.
 	PayURL           string
 	AssetIssueStatus string
 	GroupID          int64 // Subscription group ID for auto-assignment after payment
@@ -99,6 +101,7 @@ type PaymentProviderOrder struct {
 }
 
 type PaymentProviderStatus struct {
+	Currency        string
 	TotalAmount     int64
 	TradeNo         string
 	ProviderTradeNo string
@@ -119,6 +122,7 @@ type PaymentReconcileReport struct {
 }
 
 type PaymentNotify struct {
+	Currency        string
 	TradeNo         string
 	ProviderTradeNo string
 	Success         bool
@@ -171,6 +175,10 @@ type PaymentRepo interface {
 	// when THIS call performed the transition; no-op (ok=false) when the order
 	// is absent or already pending.
 	UnmarkOrderAssetIssued(ctx context.Context, tradeNo string) (*PaymentOrder, bool, error)
+}
+
+type PaymentProviderClaimRepo interface {
+	ClaimProviderOrder(context.Context, string) (*PaymentOrder, error)
 }
 
 type PaymentProvider interface {
@@ -276,22 +284,36 @@ func (uc *PaymentUsecase) CreateOrder(ctx context.Context, req CreatePaymentOrde
 	if err := validateCreatePaymentOrderRequest(req); err != nil {
 		return nil, err
 	}
+	if routed, ok := uc.provider.(*routedPaymentProvider); ok {
+		if _, enabled := routed.providers[req.Channel]; !enabled || (req.Channel == PaymentChannelWechat && !routed.wechatEnabled) {
+			return nil, fmt.Errorf("payment channel %q is not configured", req.Channel)
+		}
+	}
+
 	keyed := subscriptionbiz.EntitlementsEnabled() && req.AssetType == PaymentAssetTypeSubscription
 	tradeNo := generatePaymentTradeNo(req.UserID)
+	wechat := req.Channel == PaymentChannelWechat
+	if wechat {
+		sum := sha256.Sum256([]byte(req.UserID + ":" + req.RequestID))
+		tradeNo = fmt.Sprintf("W%x", sum[:15])
+	}
 	if keyed {
 		if req.RequestID == "" || len(req.RequestID) > 128 || req.PlanID <= 0 || uc.snapshotter == nil {
 			return nil, ErrRoutingContextInvalid
 		}
 		sum := sha256.Sum256([]byte(req.UserID + ":" + req.RequestID))
 		tradeNo = fmt.Sprintf("S%x", sum[:20])
+	}
+	if keyed || wechat {
 		existing, err := uc.repo.GetOrderByTradeNo(ctx, tradeNo)
 		if err != nil {
 			return nil, err
 		}
 		if existing != nil {
-			return matchSubscriptionOrder(existing, req)
+			return uc.reusePaymentOrder(ctx, existing, req)
 		}
 	}
+
 	currency := req.Currency
 	if currency == "" {
 		currency = "CNY"
@@ -376,14 +398,39 @@ func (uc *PaymentUsecase) CreateOrder(ctx context.Context, req CreatePaymentOrde
 	created, err := uc.repo.CreateOrder(ctx, order)
 	if err != nil {
 		if existing, lookupErr := uc.repo.GetOrderByTradeNo(ctx, tradeNo); lookupErr == nil && existing != nil {
-			return matchSubscriptionOrder(existing, req)
+			return uc.reusePaymentOrder(ctx, existing, req)
 		}
 		return nil, err
 	}
 	order = created
+	return uc.createProviderOrder(ctx, order)
+}
+
+func (uc *PaymentUsecase) createProviderOrder(ctx context.Context, order *PaymentOrder) (*PaymentOrder, error) {
+	if order.Channel == PaymentChannelWechat {
+		claims, ok := uc.repo.(PaymentProviderClaimRepo)
+		if !ok {
+			return nil, errors.New("payment provider claim storage is unavailable")
+		}
+		var err error
+		order, err = claims.ClaimProviderOrder(ctx, order.TradeNo)
+		if err != nil {
+			return nil, err
+		}
+		if order == nil {
+			return nil, errors.New("payment order not found")
+		}
+		if order.ProviderClaim == "" {
+			return order, nil
+		}
+	}
 	providerOrder, err := uc.provider.CreateOrder(ctx, order)
 	if err != nil {
-		_ = uc.repo.DeletePendingOrder(ctx, tradeNo)
+		// A remote timeout can follow successful acceptance; keep the order for reconciliation.
+		if order.Channel == PaymentChannelWechat {
+			return order, nil
+		}
+		_ = uc.repo.DeletePendingOrder(ctx, order.TradeNo)
 		return nil, err
 	}
 	if providerOrder != nil {
@@ -453,7 +500,7 @@ func (uc *PaymentUsecase) ReconcilePendingOrders(ctx context.Context, limit int3
 	}
 	uc.reconcileMu.Lock()
 	defer uc.reconcileMu.Unlock()
-	orders, _, err := uc.repo.ListOrders(ctx, ListPaymentOrdersRequest{Page: 1, PageSize: limit, Status: PaymentOrderStatusPending, Channel: PaymentChannelAlipay, Reconcile: true, AfterID: uc.reconcileAfterID})
+	orders, _, err := uc.repo.ListOrders(ctx, ListPaymentOrdersRequest{Page: 1, PageSize: limit, Status: PaymentOrderStatusPending, Reconcile: true, AfterID: uc.reconcileAfterID})
 	if err != nil {
 		return PaymentReconcileReport{}, err
 	}
@@ -492,7 +539,8 @@ func (uc *PaymentUsecase) AcceptVerifiedNotify(ctx context.Context, notify *Paym
 	if err != nil {
 		return nil, err
 	}
-	if order == nil || order.Channel != notify.Channel || order.MoneyCents != notify.TotalAmount {
+	if order == nil || order.Channel != notify.Channel || order.MoneyCents != notify.TotalAmount || !notify.Success ||
+		(order.Channel == PaymentChannelWechat && (notify.Currency != order.Currency || notify.ProviderTradeNo == "")) {
 		return nil, errors.New("payment notify does not match local order")
 	}
 	return uc.MarkOrderPaid(ctx, notify.TradeNo, notify.ProviderTradeNo)
@@ -569,7 +617,7 @@ func (uc *PaymentUsecase) UnmarkOrderAssetIssued(ctx context.Context, tradeNo st
 }
 
 func (uc *PaymentUsecase) refreshProviderStatus(ctx context.Context, order *PaymentOrder) (*PaymentOrder, error) {
-	if order.Status != PaymentOrderStatusPending || order.Channel != PaymentChannelAlipay {
+	if order.Status != PaymentOrderStatusPending || (order.Channel != PaymentChannelAlipay && order.Channel != PaymentChannelWechat) {
 		return order, nil
 	}
 	querier, ok := uc.provider.(PaymentStatusQuerier)
@@ -583,9 +631,14 @@ func (uc *PaymentUsecase) refreshProviderStatus(ctx context.Context, order *Paym
 	if status == nil {
 		return order, errors.New("payment provider returned empty status")
 	}
+	return uc.applyProviderStatus(ctx, order, status)
+}
+
+func (uc *PaymentUsecase) applyProviderStatus(ctx context.Context, order *PaymentOrder, status *PaymentProviderStatus) (*PaymentOrder, error) {
 	providerTradeNo := firstNonEmptyString(status.ProviderTradeNo, order.ProviderTradeNo)
 	if status.Paid {
-		if status.TradeNo != order.TradeNo || status.TotalAmount != order.MoneyCents {
+		if status.TradeNo != order.TradeNo || status.TotalAmount != order.MoneyCents ||
+			(order.Channel == PaymentChannelWechat && (status.Currency != order.Currency || status.ProviderTradeNo == "")) {
 			return order, errors.New("payment provider order or amount does not match local order")
 		}
 		paid, err := uc.MarkOrderPaid(ctx, order.TradeNo, providerTradeNo)
@@ -595,6 +648,9 @@ func (uc *PaymentUsecase) refreshProviderStatus(ctx context.Context, order *Paym
 		return paid, nil
 	}
 	if status.Closed {
+		if status.TradeNo != order.TradeNo {
+			return order, errors.New("payment provider order does not match local order")
+		}
 		closed, _, err := uc.repo.MarkOrderClosed(ctx, order.TradeNo, providerTradeNo)
 		if err != nil {
 			return nil, err
@@ -621,6 +677,11 @@ func validateCreatePaymentOrderRequest(req CreatePaymentOrderRequest) error {
 	}
 	switch req.Channel {
 	case PaymentChannelMock, PaymentChannelAlipay:
+		return nil
+	case PaymentChannelWechat:
+		if req.MoneyCents > 100000000 || req.AssetType != PaymentAssetTypeBalance || (req.Currency != "" && req.Currency != "CNY") || req.RequestID == "" || len(req.RequestID) > 128 {
+			return errors.New("wechat requires a CNY balance order and request_id (1..128 characters)")
+		}
 		return nil
 	default:
 		return fmt.Errorf("unsupported payment channel %q", req.Channel)
@@ -677,15 +738,20 @@ func (p *mockPaymentProvider) CreateOrder(ctx context.Context, order *PaymentOrd
 }
 
 type routedPaymentProvider struct {
-	providers map[string]PaymentProvider
+	providers     map[string]PaymentProvider
+	wechatEnabled bool
 }
 
-func NewConfiguredPaymentProvider(cfg PaymentConfig) PaymentProvider {
+func NewConfiguredPaymentProvider(cfg PaymentConfig, wechat WechatPaymentProvider) PaymentProvider {
 	routed := &routedPaymentProvider{providers: map[string]PaymentProvider{
 		PaymentChannelMock: NewMockPaymentProvider(),
 	}}
 	if cfg.Alipay.Enabled {
 		routed.providers[PaymentChannelAlipay] = NewAlipayPaymentProvider(cfg.Alipay)
+	}
+	routed.wechatEnabled = cfg.Wechat.Enabled
+	if wechat != nil {
+		routed.providers[PaymentChannelWechat] = wechat
 	}
 	return routed
 }
@@ -695,7 +761,7 @@ func (p *routedPaymentProvider) CreateOrder(ctx context.Context, order *PaymentO
 		return nil, errors.New("payment provider is not configured")
 	}
 	provider, ok := p.providers[order.Channel]
-	if !ok {
+	if !ok || (order.Channel == PaymentChannelWechat && !p.wechatEnabled) {
 		return nil, fmt.Errorf("payment channel %q is not configured", order.Channel)
 	}
 	return provider.CreateOrder(ctx, order)
@@ -716,7 +782,10 @@ func (p *routedPaymentProvider) QueryOrder(ctx context.Context, order *PaymentOr
 	return querier.QueryOrder(ctx, order)
 }
 
-func matchSubscriptionOrder(order *PaymentOrder, req CreatePaymentOrderRequest) (*PaymentOrder, error) {
+func matchPaymentOrder(order *PaymentOrder, req CreatePaymentOrderRequest) (*PaymentOrder, error) {
+	if req.Channel == PaymentChannelWechat && (order.MoneyCents != req.MoneyCents || order.AssetAmount != req.AssetAmount || order.Currency != firstNonEmptyString(req.Currency, "CNY")) {
+		return nil, ErrRoutingContextConflict
+	}
 	if order.UserID != req.UserID || order.PlanID != req.PlanID || order.Channel != req.Channel || order.AssetType != req.AssetType {
 		return nil, ErrRoutingContextConflict
 	}
@@ -736,4 +805,54 @@ func (uc *PaymentUsecase) SetSubscriptionPurchaseValidator(v interface {
 	ValidateRenewalContract(context.Context, int64, int64, *subscriptionbiz.SubscriptionContract) error
 }) {
 	uc.purchaseValidator = v
+}
+
+// PaymentChannelInfo exposes capabilities without exposing provider credentials.
+type PaymentChannelInfo struct {
+	Channel     string
+	DisplayName string
+	Currency    string
+	AssetTypes  []string
+}
+
+func (uc *PaymentUsecase) ListPaymentChannels() []PaymentChannelInfo {
+	channels := []PaymentChannelInfo{}
+	routed, ok := uc.provider.(*routedPaymentProvider)
+	if !ok {
+		return channels
+	}
+	if _, ok := routed.providers[PaymentChannelAlipay]; ok {
+		channels = append(channels, PaymentChannelInfo{Channel: PaymentChannelAlipay, DisplayName: "Alipay", Currency: "CNY", AssetTypes: []string{PaymentAssetTypeBalance, PaymentAssetTypeSubscription}})
+	}
+	if _, ok := routed.providers[PaymentChannelWechat]; ok && routed.wechatEnabled {
+		channels = append(channels, PaymentChannelInfo{Channel: PaymentChannelWechat, DisplayName: "WeChat Pay", Currency: "CNY", AssetTypes: []string{PaymentAssetTypeBalance}})
+	}
+	return channels
+}
+
+// Re-enter Native prepay with the original order only after a verified unpaid query.
+func (uc *PaymentUsecase) reusePaymentOrder(ctx context.Context, order *PaymentOrder, req CreatePaymentOrderRequest) (*PaymentOrder, error) {
+	order, err := matchPaymentOrder(order, req)
+	if err != nil {
+		return nil, err
+	}
+	if order.Channel != PaymentChannelWechat || order.Status != PaymentOrderStatusPending || order.PayURL != "" {
+		return order, nil
+	}
+	querier, ok := uc.provider.(PaymentStatusQuerier)
+	if !ok {
+		return order, nil
+	}
+	status, err := querier.QueryOrder(ctx, order)
+	if err != nil || status == nil {
+		return order, nil
+	}
+	updated, err := uc.applyProviderStatus(ctx, order, status)
+	if err != nil {
+		return nil, err
+	}
+	if updated.Status == PaymentOrderStatusPending && (status.TradeStatus == "NOTPAY" || status.TradeStatus == "ORDER_NOT_EXIST") {
+		return uc.createProviderOrder(ctx, updated)
+	}
+	return updated, nil
 }

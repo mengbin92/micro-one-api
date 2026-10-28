@@ -1,0 +1,44 @@
+{
+  "date": "2026-10-28",
+  "timezone": "Asia/Shanghai",
+  "status": "passed",
+  "make_all": true,
+  "make_verify": true,
+  "go_vet": true,
+  "gosec_pre_push": true,
+  "web": {
+    "files": 95,
+    "tests": 657,
+    "critical_files": 16,
+    "critical_tests": 194,
+    "a4_focused_tests": 21,
+    "playwright_desktop_mobile": 2,
+    "visual_review": true
+  },
+  "rbac_rows": 915,
+  "payment_three_db_race": {
+    "databases": [
+      "SQLite",
+      "MySQL 8.4",
+      "PostgreSQL 16"
+    ],
+    "suites": [
+      "TestWechatPrepayClaimFencesLateResponses",
+      "TestWechatQueryAndNotifyIssueOnce",
+      "TestConcurrentPaymentNotifyAndRefund"
+    ],
+    "passed_subtests": 9
+  },
+  "fencing_red_green": {
+    "without_token_guard_exit": 1,
+    "with_token_guard_exit": 0
+  },
+  "owner_chain_race": [
+    "TestIAMWechatPaymentThroughRealOwners",
+    "TestIAMSubscriptionPaymentThroughRealOwners"
+  ],
+  "new_shortcut_markers": 0,
+  "review": "a4-review-2026-10-28.json",
+  "deployment": "a4-production-deployment-2026-10-28.json",
+  "external_acceptance": "deferred by maintainer; WeChat remains disabled"
+}

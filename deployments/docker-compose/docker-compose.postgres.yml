@@ -250,6 +250,15 @@ services:
       - IDENTITY_GRPC_ENDPOINT=identity-service:9001
       - RECHARGE_AMOUNT_MULTIPLIER=${RECHARGE_AMOUNT_MULTIPLIER:-10}
       - PAYMENT_AMOUNT_PER_UNIT=${PAYMENT_AMOUNT_PER_UNIT:-${PAYMENT_QUOTA_PER_UNIT:-500000}}
+      - WECHAT_ENABLED=${WECHAT_ENABLED:-false}
+      - WECHAT_APP_ID=${WECHAT_APP_ID:-}
+      - WECHAT_MCH_ID=${WECHAT_MCH_ID:-}
+      - WECHAT_CERTIFICATE_SERIAL=${WECHAT_CERTIFICATE_SERIAL:-}
+      - WECHAT_PRIVATE_KEY_PATH=${WECHAT_PRIVATE_KEY_PATH:-/cert/wechat/apiclient_key.pem}
+      - WECHAT_PUBLIC_KEY_ID=${WECHAT_PUBLIC_KEY_ID:-}
+      - WECHAT_PUBLIC_KEY_PATH=${WECHAT_PUBLIC_KEY_PATH:-/cert/wechat/wechatpay_public_key.pem}
+      - WECHAT_API_V3_KEY=${WECHAT_API_V3_KEY:-}
+      - WECHAT_NOTIFY_URL=${WECHAT_NOTIFY_URL:-}
       - ALIPAY_ENABLED=${ALIPAY_ENABLED:-false}
       - ALIPAY_FORM_URL=${ALIPAY_FORM_URL:-https://openapi-sandbox.dl.alipaydev.com/gateway.do}
       - ALIPAY_APP_ID=${ALIPAY_APP_ID:-9021000164603106}
@@ -281,6 +290,7 @@ services:
     read_only: true
     volumes:
       - ${ALIPAY_CERT_DIR:-../../cert/alipay}:/cert/alipay:ro
+      - ${WECHAT_CERT_DIR:-../../cert/wechat}:/cert/wechat:ro
     tmpfs:
       - /tmp
     cap_drop:

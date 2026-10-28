@@ -23,8 +23,10 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.66.1
 	github.com/redis/go-redis/v9 v9.19.0
+	github.com/shopspring/decimal v1.2.0
 	github.com/sony/gobreaker v1.0.0
 	github.com/stretchr/testify v1.12.1
+	github.com/wechatpay-apiv3/wechatpay-go v0.2.21
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.46.0
 	go.opentelemetry.io/otel/metric v1.46.0

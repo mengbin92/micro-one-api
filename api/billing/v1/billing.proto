@@ -53,6 +53,7 @@ service BillingService {
   rpc ListLedger(ListLedgerRequest) returns (ListLedgerResponse);
   rpc GetLedgerEntry(GetLedgerEntryRequest) returns (GetLedgerEntryResponse);
   rpc BatchGetAccountSnapshots(BatchGetAccountSnapshotsRequest) returns (BatchGetAccountSnapshotsResponse);
+  rpc ListPaymentChannels(ListPaymentChannelsRequest) returns (ListPaymentChannelsResponse);
   rpc CreatePaymentOrder(CreatePaymentOrderRequest) returns (PaymentOrderResponse);
   rpc GetPaymentOrderByTradeNo(GetPaymentOrderByTradeNoRequest) returns (PaymentOrderResponse);
   rpc MarkPaymentOrderPaid(MarkPaymentOrderPaidRequest) returns (PaymentOrderResponse);
@@ -574,6 +575,19 @@ message GetSettlementStatusResponse {
 }
 
 // ========== 支付订单 ==========
+
+message ListPaymentChannelsRequest {}
+
+message PaymentChannel {
+  string channel = 1;
+  string display_name = 2;
+  string currency = 3;
+  repeated string asset_types = 4;
+}
+
+message ListPaymentChannelsResponse {
+  repeated PaymentChannel channels = 1;
+}
 
 message PaymentOrder {
   int64 id = 1;

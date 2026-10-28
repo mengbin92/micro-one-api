@@ -187,6 +187,62 @@ describe('OrdersPage', () => {
     expect(open).not.toHaveBeenCalled();
   });
 
+  it('keeps Native orders in payment filters and refreshes an uncertain order without a QR', async () => {
+    const user = userEvent.setup();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const urls: URL[] = [];
+    let paid = false;
+    const order = () => ({ id: 1, trade_no: 'WECHAT-ORDER', channel: 'wechat', status: paid ? 'paid' : 'pending', money_cents: 100, currency: 'CNY' });
+    server.use(
+      http.get('/api/user/payment/orders', ({ request }) => {
+        urls.push(new URL(request.url));
+        return HttpResponse.json({ success: true, data: { orders: [order()] } });
+      }),
+      http.get('/api/user/payment/orders/WECHAT-ORDER', () => HttpResponse.json({ success: true, data: { order: order() } })),
+      http.get('/api/user/logs', () => HttpResponse.json({ success: true, data: { logs: [] } })),
+    );
+    renderWithQuery(<OrdersPage />);
+    await screen.findByRole('button', { name: '查看订单 WECHAT-ORDER' });
+    await user.selectOptions(screen.getByRole('combobox'), 'payment');
+    await waitFor(() => expect(urls).toHaveLength(2));
+    expect(urls[1].searchParams.has('channel')).toBe(false);
+    await user.selectOptions(screen.getByRole('combobox'), 'recharge');
+    await waitFor(() => expect(urls).toHaveLength(3));
+    expect(urls[2].searchParams.has('channel')).toBe(false);
+    await user.click(await screen.findByRole('button', { name: '查看订单 WECHAT-ORDER' }));
+    const dialog = await screen.findByRole('dialog');
+    const refresh = within(dialog).getByRole('button', { name: '刷新支付状态' });
+    expect(refresh).toBeEnabled();
+    expect(within(dialog).getByText('下单结果暂未确认，请先刷新订单状态。再次尝试将复用本次订单。')).toBeInTheDocument();
+    paid = true;
+    await user.click(refresh);
+    expect(await within(dialog).findByText('订单已支付')).toBeInTheDocument();
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it.each(['alipay', 'wechat'])('disables %s payment actions without a trade number', async channel => {
+    const user = userEvent.setup();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    let detailCalls = 0;
+    const order = { id: 1, channel, status: 'pending', pay_url: 'https://pay.example.test/order', money_cents: 100, currency: 'CNY' };
+    server.use(
+      http.get('/api/user/payment/orders', () => HttpResponse.json({ success: true, data: { orders: [order] } })),
+      http.get('/api/user/payment/orders/:tradeNo', () => {
+        detailCalls++;
+        return HttpResponse.json({ success: true, data: { order } });
+      }),
+      http.get('/api/user/logs', () => HttpResponse.json({ success: true, data: { logs: [] } })),
+    );
+    renderWithQuery(<OrdersPage />);
+    await user.click(await screen.findByRole('button', { name: '查看订单 -' }));
+    const dialog = await screen.findByRole('dialog');
+    const action = within(dialog).getByRole('button', { name: channel === 'wechat' ? '刷新支付状态' : '继续支付' });
+    expect(action).toBeDisabled();
+    await user.click(action);
+    expect(detailCalls).toBe(0);
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it('keeps payment rows when the ledger payload is malformed, and vice versa', async () => {
     const order = { id: 1, trade_no: 'PAY-RESILIENT', channel: 'alipay', status: 'paid', money_cents: 100, asset_amount: 500000, currency: 'CNY' };
     server.use(

@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-28",
+  "timezone": "Asia/Shanghai",
+  "scope": "A4 Native payment query/notify single issuance and existing payment/refund regression",
+  "command": "go test -race ./app/billing/internal/data -run 'Test(WechatQueryAndNotifyIssueOnce|ConcurrentPaymentNotifyAndRefund)$' -count=1 -v",
+  "exit_code": 0,
+  "database_setup": {
+    "sqlite": "scratch file",
+    "mysql": "MySQL 8.4 disposable local container",
+    "postgres": "PostgreSQL 16 disposable local container",
+    "migrations": "full real migrations and second apply no-op",
+    "credentials": "random generated in memory; excluded from logs and evidence",
+    "cleanup": "both created containers removed"
+  },
+  "suites": [
+    {
+      "name": "TestWechatQueryAndNotifyIssueOnce",
+      "dialects": {
+        "sqlite": "PASS",
+        "mysql": "PASS",
+        "postgres": "PASS"
+      }
+    },
+    {
+      "name": "TestConcurrentPaymentNotifyAndRefund",
+      "dialects": {
+        "sqlite": "PASS",
+        "mysql": "PASS",
+        "postgres": "PASS"
+      }
+    }
+  ],
+  "assertions": [
+    "16 concurrent signed-result consumers issue one wallet credit and one recharge ledger",
+    "Wrong notify/query amount and currency rejected before issuance",
+    "Late close preserves paid status; repeated success does not reissue",
+    "Success after closed rejected without wallet credit",
+    "Existing concurrent payment and internal refund each apply once"
+  ],
+  "external_acceptance": {
+    "real_merchant": false,
+    "real_payment": false,
+    "real_platform_callback": false,
+    "production_deployment": false
+  }
+}

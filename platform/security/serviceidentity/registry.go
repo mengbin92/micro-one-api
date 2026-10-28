@@ -201,6 +201,7 @@ var rpcPolicies = map[string]RPCPolicy{
 	"/api.billing.v1.BillingService/ListLedger":                              {Owner: "billing", UserCallers: []string{"admin", "identity"}, SystemCallers: []string{}},
 	"/api.billing.v1.BillingService/GetLedgerEntry":                          {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.billing.v1.BillingService/BatchGetAccountSnapshots":                {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{}},
+	"/api.billing.v1.BillingService/ListPaymentChannels":                     {Owner: "billing", UserCallers: []string{}, SystemCallers: []string{"identity"}},
 	"/api.billing.v1.BillingService/CreatePaymentOrder":                      {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{"identity"}},
 	"/api.billing.v1.BillingService/GetPaymentOrderByTradeNo":                {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{"identity"}},
 	"/api.billing.v1.BillingService/MarkPaymentOrderPaid":                    {Owner: "billing", UserCallers: []string{}, SystemCallers: []string{"identity"}},

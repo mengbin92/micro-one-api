@@ -34,6 +34,7 @@ import (
 type PaymentConfig struct {
 	AmountPerUnit int64        `json:"amount_per_unit"`
 	Alipay        AlipayConfig `json:"alipay"`
+	Wechat        WechatConfig `json:"wechat"`
 }
 
 func (c *PaymentConfig) UnmarshalJSON(data []byte) error {

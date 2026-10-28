@@ -906,3 +906,16 @@ services:
 
 - **配置文件本身的 schema 变化**（端口、DSN、Redis 地址等）不会触发组件重建——这些只在进程启动时读取一次。热更新目前只覆盖"可安全原子替换"的组件（model 映射）。这是有意为之的保守策略：连接池、监听 socket 等重启成本高的资源不做热切换。
 - **环境变量替换** `${VAR:-default}` 在每次重载时都会用最新环境变量重新展开，因此修改 env 后再 touch 一下 config 文件即可生效。
+
+
+### A4：微信 Native 余额充值（默认关闭）
+
+本项只支持单商户 CNY 余额充值，订阅继续使用原支付渠道。Billing 通过官方 Go SDK 的平台公钥 ID 模式签名、验签及解密；配置属于部署秘密，不经控制台或能力接口暴露。完整证据和外部验收清单见 [A4 验收](runbooks/a4-wechat-native-acceptance-2026-10-28.md)。
+
+1. 保持 `WECHAT_ENABLED=false`。通过现有私密配置机制供应 `WECHAT_APP_ID`、`WECHAT_MCH_ID`、`WECHAT_CERTIFICATE_SERIAL`、`WECHAT_API_V3_KEY`；在 `WECHAT_CERT_DIR` 放置商户私钥和平台公钥，Compose 只读挂载到 `/cert/wechat`。设置 `WECHAT_PRIVATE_KEY_PATH`、`WECHAT_PUBLIC_KEY_PATH`、`WECHAT_PUBLIC_KEY_ID`（`PUB_KEY_ID_` 模式）。不支持自动下载平台证书或多商户切换。
+2. `WECHAT_NOTIFY_URL` 必须指向正式 BFF 的 HTTPS `POST /api/v1/user/payments/wechat/notify`；代理保留原始报文和 `Wechatpay-*` 头，Body 上限 64 KiB，Billing 回调限流每实例 20 次/秒、突发 40，超限让平台重试。此入口使用支付签名身份，无控制台会话或 step-up。
+3. 无新增迁移。先升级 Billing，再升级 Identity、Admin 和 Web；Web dist 单独发布。启用配置不完整会启动失败，未配置商户号且关闭时不读取微信密钥文件或发起网络请求；已配置商户号时即使关闭开关仍严格初始化密钥，供存量订单查单及回调排空。渠道清单从 Billing 实际配置生成，依赖不可用时前端禁止下单。
+4. 商户订单有效期固定 30 分钟；充值幂等键映射固定 31 字符订单号，重试不再创建新单。下单超时或响应无法验证时保留 pending；同键重试先主动查单，确认未支付且未到期时用原订单号及原参数重入，恢复二维码；后台补偿继续收敛。只有签名可信的终态，或可信 `ORDER_NOT_EXIST` 且本地已到期，才关闭本地单；关单后再次查单，防止付款与关单竞争。
+5. 先独立完成真实商户、实际付款、真实收款方和平台通知验收，再决定启用。回滚前停止新下单，保留支持微信的 Billing、密钥和回调/查单直至存量 pending 结清；`WECHAT_ENABLED=false` 仅隐藏渠道并拒绝新单；存量查单和回调继续使用已配置的商户材料，排空前不能删除密钥或商户号。历史订单和账本保留。
+
+Native 页面需要另一台设备上的微信扫码，不支持同机长按/相册识别；JSAPI/H5 不在本项范围，不能把 Native 二维码当作同机支付入口。

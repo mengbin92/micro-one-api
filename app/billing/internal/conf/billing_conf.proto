@@ -67,6 +67,7 @@ message AsyncBilling {
 message Payment {
   int64 amount_per_unit = 1 [json_name = "amount_per_unit"];
   Alipay alipay = 2 [json_name = "alipay"];
+  Wechat wechat = 3 [json_name = "wechat"];
 }
 
 message Alipay {
@@ -123,4 +124,17 @@ message Registry {
 message Consul {
   string address = 1 [json_name = "address"];
   int64 health_check_interval = 2 [json_name = "health_check_interval"];
+}
+
+// Wechat configures a single CNY Native merchant using the platform public key.
+message Wechat {
+ bool enabled = 1 [json_name = "enabled"];
+ string app_id = 2 [json_name = "app_id"];
+ string mch_id = 3 [json_name = "mch_id"];
+ string certificate_serial = 4 [json_name = "certificate_serial"];
+ string private_key_path = 5 [json_name = "private_key_path"];
+ string public_key_id = 6 [json_name = "public_key_id"];
+ string public_key_path = 7 [json_name = "public_key_path"];
+ string api_v3_key = 8 [json_name = "api_v3_key"];
+ string notify_url = 9 [json_name = "notify_url"];
 }

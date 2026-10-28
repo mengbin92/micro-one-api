@@ -459,6 +459,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 		srv.HandleFunc("/api/user/quota", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/user/logs", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/user/payment/orders", identityProxy.ServeHTTP)
+		srv.HandleFunc("/api/user/payment/channels", identityProxy.ServeHTTP)
 		srv.HandlePrefix("/api/user/payment/orders/", identityProxy)
 		srv.HandleFunc("/api/user/topup", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/user/amount", identityProxy.ServeHTTP)
@@ -471,6 +472,8 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 	if billingHTTPProxy != nil {
 		srv.HandleFunc("/api/v1/user/payments/alipay/notify", billingHTTPProxy.ServeHTTP)
 		srv.HandleFunc("/api/user/payments/alipay/notify", billingHTTPProxy.ServeHTTP)
+		srv.HandleFunc("/api/v1/user/payments/wechat/notify", billingHTTPProxy.ServeHTTP)
+		srv.HandleFunc("/api/user/payments/wechat/notify", billingHTTPProxy.ServeHTTP)
 	}
 	srv.HandlePrefix("/api/group", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleGroupManagement(w, r, svc)

@@ -16,7 +16,7 @@ import (
 )
 
 func NewIAMStack(db *gorm.DB, resolver *authz.Client) *kgrpc.Server {
-	return server.NewGRPCServer(":0", newIAMService(db, resolver, nil, nil))
+	return server.NewGRPCServer(":0", newIAMService(db, resolver, nil, nil, nil))
 }
 
 type AlipayConfig = biz.AlipayConfig
@@ -24,11 +24,23 @@ type AlipayConfig = biz.AlipayConfig
 // NewIAMAlipayStack uses the same service for owner RPCs and signed HTTP
 // callbacks, with caller-owned scratch storage and temporary test keys.
 func NewIAMAlipayStack(db *gorm.DB, resolver *authz.Client, config AlipayConfig, channel channelv1.ChannelServiceClient) (*kgrpc.Server, *khttp.Server) {
-	svc := newIAMService(db, resolver, &config, channel)
+	svc := newIAMService(db, resolver, &config, channel, nil)
 	return server.NewGRPCServer(":0", svc), server.NewHTTPServer(":0", svc)
 }
 
-func newIAMService(db *gorm.DB, resolver *authz.Client, config *AlipayConfig, channel channelv1.ChannelServiceClient) *service.BillingService {
+type WechatConfig = biz.WechatConfig
+
+// NewIAMWechatStack connects the real Native adapter, owner RPCs and HTTP callback.
+func NewIAMWechatStack(db *gorm.DB, resolver *authz.Client, config WechatConfig) (*kgrpc.Server, *khttp.Server, error) {
+	provider, err := data.NewWechatPaymentProvider(config)
+	if err != nil {
+		return nil, nil, err
+	}
+	svc := newIAMService(db, resolver, nil, nil, provider)
+	return server.NewGRPCServer(":0", svc), server.NewHTTPServer(":0", svc), nil
+}
+
+func newIAMService(db *gorm.DB, resolver *authz.Client, config *AlipayConfig, channel channelv1.ChannelServiceClient, wechat biz.WechatPaymentProvider) *service.BillingService {
 	d := data.NewOwnerDataWithDB(db)
 	uc := biz.NewBillingUsecase(d.AccountRepo(), d.ReservationRepo(), d.LedgerRepo(), d.RedeemRepo(), nil)
 	uc.SetTxRunner(data.NewTxRunner(d))
@@ -46,10 +58,14 @@ func newIAMService(db *gorm.DB, resolver *authz.Client, config *AlipayConfig, ch
 		alipay := biz.NewAlipayPaymentProvider(*config)
 		provider, verifier = alipay, alipay
 	}
-	payment := biz.NewPaymentUsecaseWithAssignerAndSnapshotter(d.PaymentRepo(), provider, nil, biz.NewPaymentSubscriptionAssigner(subscriptionUc, subscriptions, subscriptions), biz.NewPaymentPlanSnapshotter(subscriptions, uc))
+	if wechat != nil {
+		provider = biz.NewConfiguredPaymentProvider(biz.PaymentConfig{Wechat: biz.WechatConfig{Enabled: true}}, wechat)
+	}
+	payment := biz.NewPaymentUsecaseWithAssignerAndSnapshotter(d.PaymentRepo(), provider, biz.NewPaymentAssetIssuer(uc), biz.NewPaymentSubscriptionAssigner(subscriptionUc, subscriptions, subscriptions), biz.NewPaymentPlanSnapshotter(subscriptions, uc))
 	payment.SetSubscriptionPurchaseValidator(subscriptionUc)
 	payment.SetAuthorization(resolver)
 	svc := service.NewBillingService(uc, nil, payment, verifier)
+	svc.SetWechatVerifier(wechat)
 	if config != nil {
 		svc.SetExpectedAlipayAppID(config.AppID)
 	}

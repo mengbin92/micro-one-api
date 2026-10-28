@@ -1,6 +1,6 @@
-import { safePaymentURL } from '@/lib/payment-url';
-import { useMemo, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { safePaymentURL, safeWechatPaymentURL } from '@/lib/payment-url';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronRight, CreditCard, Loader2, ShieldCheck, WalletCards } from 'lucide-react';
 import { toast } from 'sonner';
 import { PurchasablePlansSection } from '@/components/PurchasablePlansSection';
@@ -11,6 +11,8 @@ import { amountUnitsToCurrencyUnits } from '@/lib/amount';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/i18n';
 import { accountDashboardQueryOptions } from '@/lib/account-queries';
+import { WechatPaymentCode } from '@/components/WechatPaymentCode';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const DEFAULT_RECHARGE_AMOUNT_MULTIPLIER = 10;
 const RATE = rechargeAmountMultiplier();
@@ -19,6 +21,15 @@ const PRESET_AMOUNTS = [2, 10, 20, 50, 100];
 interface PaymentOrder {
   trade_no?: string;
   pay_url?: string;
+  channel?: string;
+  status?: string;
+}
+
+interface PaymentChannel {
+  channel: string;
+  display_name?: string;
+  currency: string;
+  asset_types?: string[];
 }
 
 interface CreatePaymentResponse {
@@ -29,6 +40,8 @@ interface CreatePaymentResponse {
 
 interface PaymentMutationVariables {
   paymentWindow: Window | null;
+  channel: string;
+  amount: number;
 }
 
 function formatCny(value: number) {
@@ -55,23 +68,60 @@ function normalizeAmount(value: string) {
 }
 
 export function RechargePage() {
+  const queryClient = useQueryClient();
   const [amountInput, setAmountInput] = useState('20');
   const amount = normalizeAmount(amountInput);
   const receiveAmount = useMemo(() => amount * RATE, [amount]);
 
   const { data: dashboard } = useQuery(accountDashboardQueryOptions);
+  const [selectedChannel, setSelectedChannel] = useState('');
+  const [wechatOrder, setWechatOrder] = useState<PaymentOrder | null>(null);
+  const attempt = useRef<{ scope: string; key: string } | null>(null);
+  const channelsQuery = useQuery({
+    queryKey: ['payment-channels'],
+    queryFn: async () => {
+      const res = await apiClient.get('/user/payment/channels');
+      return unwrapApiData<{ channels?: PaymentChannel[] }>(res.data).channels ?? [];
+    },
+  });
+  const channels = (channelsQuery.data ?? []).filter(value => value.currency === 'CNY'
+    && value.asset_types?.includes('balance') && ['alipay', 'wechat'].includes(value.channel));
+  const channel = channels.find(value => value.channel === selectedChannel)?.channel ?? channels[0]?.channel ?? '';
+  const orderQuery = useQuery({
+    queryKey: ['wechat-payment-order', wechatOrder?.trade_no],
+    enabled: Boolean(wechatOrder?.trade_no),
+    queryFn: async () => {
+      const res = await apiClient.get(`/user/payment/orders/${encodeURIComponent(wechatOrder!.trade_no!)}`);
+      return unwrapApiData<{ order: PaymentOrder }>(res.data).order;
+    },
+    refetchInterval: query => ['paid', 'closed', 'refunded'].includes(query.state.data?.status ?? '') ? false : 3000,
+  });
+  const paymentStatus = orderQuery.data?.status ?? wechatOrder?.status;
+  const wechatPayURL = orderQuery.data?.pay_url || wechatOrder?.pay_url;
+  useEffect(() => {
+    if (paymentStatus === 'paid') void queryClient.invalidateQueries({ queryKey: accountDashboardQueryOptions.queryKey });
+  }, [paymentStatus, queryClient]);
 
   const createPayment = useMutation({
     mutationFn: async (variables: PaymentMutationVariables) => {
-      void variables;
+      const scope = `${variables.channel}:${variables.amount}`;
+      if (attempt.current?.scope !== scope) attempt.current = { scope, key: crypto.randomUUID() };
       const res = await apiClient.post('/user/pay', {
-        amount,
-        payment_method: 'alipay',
-      });
+        amount: variables.amount,
+        payment_method: variables.channel,
+      }, { headers: { 'Idempotency-Key': attempt.current.key } });
       return unwrapApiData<CreatePaymentResponse>(res.data, t("创建支付订单失败"));
     },
     onSuccess: (data, variables) => {
       const payURL = data.pay_url || data.order?.pay_url;
+      if (variables.channel === 'wechat') {
+        variables.paymentWindow?.close();
+        const tradeNo = data.trade_no || data.order?.trade_no;
+        if (!tradeNo) { toast.error(t('创建支付订单失败')); return; }
+        setWechatOrder({ ...data.order, trade_no: tradeNo, pay_url: (payURL && safeWechatPaymentURL(payURL)) || undefined });
+        return;
+      }
+      attempt.current = null;
       if (!payURL) {
         variables.paymentWindow?.close();
         toast.success(t("支付订单已创建，请在我的订单中查看状态"));
@@ -95,16 +145,16 @@ export function RechargePage() {
     },
   });
 
-  const canSubmit = amount > 0 && !createPayment.isPending;
+  const canSubmit = amount > 0 && amount <= 1_000_000 && Boolean(channel) && !channelsQuery.isError && !createPayment.isPending;
 
   const handleCreatePayment = () => {
-    const paymentWindow = window.open('about:blank', '_blank');
+    const paymentWindow = channel === 'wechat' ? null : window.open('about:blank', '_blank');
     if (paymentWindow) {
       paymentWindow.opener = null;
       paymentWindow.document.title = t("正在前往支付");
       paymentWindow.document.body.textContent = t("正在创建支付订单，请稍候...");
     }
-    createPayment.mutate({ paymentWindow });
+    createPayment.mutate({ paymentWindow, channel, amount });
   };
 
   return (
@@ -190,16 +240,22 @@ export function RechargePage() {
 
       <section className="border-b border-border p-5">
         <h2 className="mb-4 text-lg font-semibold text-foreground">{t("支付方式")}</h2>
-        <div className="flex min-h-16 w-full items-center gap-4 rounded-lg border border-primary bg-accent px-4 text-left">
-          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary text-xl font-semibold text-primary-foreground">{t("支")}</span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-base font-semibold text-foreground">{t("支付宝")}</span>
-            <span className="block text-sm text-muted-foreground">{t("推荐使用支付宝扫码支付")}</span>
-          </span>
-          <span className="grid size-8 place-items-center rounded-full bg-primary text-primary-foreground">
-            <Check className="size-5" />
-          </span>
-        </div>
+        {channelsQuery.isPending ? <p role="status">{t('正在加载支付方式')}</p>
+          : channelsQuery.isError ? <p role="alert">{t('支付方式暂不可用，请稍后重试')}</p>
+            : channels.length === 0 ? <p role="status">{t('暂无可用支付方式')}</p> : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {channels.map(value => (
+                  <button key={value.channel} type="button" aria-pressed={channel === value.channel}
+                    disabled={createPayment.isPending} onClick={() => setSelectedChannel(value.channel)}
+                    className={cn('flex min-h-16 items-center gap-4 rounded-lg border px-4 text-left focus-visible:outline-2 focus-visible:outline-ring',
+                      channel === value.channel ? 'border-primary bg-accent' : 'border-border bg-card')}>
+                    <CreditCard className="size-6 text-primary" />
+                    <span className="flex-1 font-semibold">{t(value.channel === 'wechat' ? '微信支付' : '支付宝')}</span>
+                    {channel === value.channel && <Check className="size-5 text-primary" />}
+                  </button>
+                ))}
+              </div>
+            )}
       </section>
 
       <section className="border-b border-border p-5">
@@ -238,6 +294,28 @@ export function RechargePage() {
 
       <div className="flex items-center gap-2 px-1 text-sm text-muted-foreground">
         <CreditCard className="size-4" />{t("支付完成后系统会自动入账，可在我的订单查看订单状态。")}</div>
+      <Dialog open={Boolean(wechatOrder)} onOpenChange={open => {
+        if (!open) {
+          if (['paid', 'closed', 'refunded'].includes(paymentStatus ?? '')) attempt.current = null;
+          setWechatOrder(null);
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('微信支付')}</DialogTitle>
+            <DialogDescription>{t('订单号')}：{wechatOrder?.trade_no}</DialogDescription>
+          </DialogHeader>
+          {paymentStatus === 'paid' ? <p role="status">{t('订单已支付')}</p>
+            : paymentStatus === 'closed' || paymentStatus === 'refunded' ? <p role="status">{t('订单已关闭')}</p>
+              : wechatPayURL ? <WechatPaymentCode value={wechatPayURL} />
+                : <p role="status">{t('下单结果暂未确认，请先刷新订单状态。再次尝试将复用本次订单。')}</p>}
+          {orderQuery.isError && <p role="alert">{t('支付结果暂未确认，请刷新状态或在我的订单中核对。')}</p>}
+          <Button variant="outline" disabled={orderQuery.isFetching} onClick={() => void orderQuery.refetch()}>{t('刷新支付状态')}</Button>
+          {['paid', 'closed', 'refunded'].includes(paymentStatus ?? '') && (
+            <Button onClick={() => { attempt.current = null; setWechatOrder(null); }}>{t('创建新充值订单')}</Button>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

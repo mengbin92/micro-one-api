@@ -1,5 +1,6 @@
 import { toast } from 'sonner';
 import { safePaymentURL } from '@/lib/payment-url';
+import { WechatPaymentCode } from '@/components/WechatPaymentCode';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -225,9 +226,6 @@ export function OrdersPage() {
         page_size: String(pageSize),
       });
       const paymentParams = new URLSearchParams(params);
-      if (type === 'payment' || type === 'recharge') {
-        paymentParams.set('channel', 'alipay');
-      }
       const shouldLoadPayments = !type || type === 'payment' || type === 'recharge';
       const shouldLoadLedger = !type || type !== 'payment';
 
@@ -292,15 +290,22 @@ export function OrdersPage() {
 
   const rows = useMemo(() => data ?? [], [data]);
   const selectedPayURL = selectedOrder ? getPayURL(selectedOrder) : '';
-  const canContinuePayment = selectedOrder?.status === 'pending' && selectedPayURL !== '';
+  const canContinuePayment = selectedOrder?.status === 'pending'
+    && getTradeNo(selectedOrder) !== '-'
+    && (selectedOrder.channel === 'wechat' || selectedPayURL !== '');
 
   const handleOpenPaymentDetail = (row: OrderRow) => {
     if (!row.paymentOrder || (isAdminView && !auth.displayCan('billing.payment.read'))) return;
     setSelectedOrder(row.paymentOrder);
-    paymentOrderDetail.mutate(row.reference);
+    if (row.reference !== '-') paymentOrderDetail.mutate(row.reference);
   };
 
   const handleContinuePayment = () => {
+    if (!selectedOrder || getTradeNo(selectedOrder) === '-') return;
+    if (selectedOrder?.channel === 'wechat') {
+      paymentOrderDetail.mutate(getTradeNo(selectedOrder));
+      return;
+    }
     if (!selectedPayURL) return;
     if (selectedPayURL.startsWith('mock://')) return;
     const url = safePaymentURL(selectedPayURL);
@@ -399,7 +404,7 @@ export function OrdersPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("订单详情")}</DialogTitle>
-            <DialogDescription>{t("查看支付订单状态，未支付订单可继续打开原支付链接。")}</DialogDescription>
+            <DialogDescription>{t("查看支付订单状态，未支付订单可继续支付。")}</DialogDescription>
           </DialogHeader>
 
           {selectedOrder && (
@@ -418,6 +423,11 @@ export function OrdersPage() {
             </div>
           )}
 
+          {selectedOrder?.channel === 'wechat' && selectedOrder.status === 'pending' && (
+            selectedPayURL ? <WechatPaymentCode value={selectedPayURL} />
+              : <p role="status">{t('下单结果暂未确认，请先刷新订单状态。再次尝试将复用本次订单。')}</p>
+          )}
+
           <DialogFooter>
             {selectedOrder?.status === 'pending' ? (
               <Button
@@ -425,7 +435,7 @@ export function OrdersPage() {
                 disabled={!canContinuePayment}
                 onClick={handleContinuePayment}
                 className="bg-blue-600 text-white hover:bg-blue-700"
-              >{t("继续支付")}</Button>
+              >{t(selectedOrder.channel === 'wechat' ? '刷新支付状态' : '继续支付')}</Button>
             ) : selectedOrder?.status === 'paid' ? (
               <div className="rounded-lg bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">{t("订单已支付")}</div>
             ) : selectedOrder?.status === 'closed' ? (

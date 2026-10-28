@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	subscriptiondata "micro-one-api/domain/subscription/data"
+	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/database/authzquery"
 	"strconv"
 	"time"
@@ -114,7 +116,14 @@ func (r *paymentRepo) AttachProviderResult(ctx context.Context, order *biz.Payme
 		"provider_trade_no": order.ProviderTradeNo,
 		"updated_at":        time.Now(),
 	}
-	if err := r.data.db.WithContext(ctx).Model(&PaymentOrder{}).Where("trade_no = ? AND status = ?", order.TradeNo, biz.PaymentOrderStatusPending).Updates(updates).Error; err != nil {
+	query := r.data.db.WithContext(ctx).Model(&PaymentOrder{}).Where("trade_no = ? AND status = ?", order.TradeNo, biz.PaymentOrderStatusPending)
+	if order.Channel == biz.PaymentChannelWechat {
+		if order.ProviderClaim == "" {
+			return nil, errors.New("wechat prepay claim is required")
+		}
+		query = query.Where("provider_payload = ?", order.ProviderClaim)
+	}
+	if err := query.Updates(updates).Error; err != nil {
 		return nil, fmt.Errorf("failed to attach provider result: %w", err)
 	}
 	return r.GetOrderByTradeNo(ctx, order.TradeNo)
@@ -169,6 +178,7 @@ func (r *paymentRepo) ListOrders(ctx context.Context, req biz.ListPaymentOrdersR
 
 	orderBy := "id DESC"
 	if req.Reconcile {
+		query = query.Where("channel IN ?", []string{biz.PaymentChannelAlipay, biz.PaymentChannelWechat})
 		query = query.Where("id > ?", req.AfterID)
 		orderBy = "id ASC"
 	}
@@ -573,4 +583,44 @@ func toBizPaymentOrder(po *PaymentOrder) (*biz.PaymentOrder, error) {
 		CreatedAt:        po.CreatedAt,
 		UpdatedAt:        po.UpdatedAt,
 	}, nil
+}
+
+// ClaimProviderOrder fences concurrent instances without holding a transaction over HTTP.
+func (r *paymentRepo) ClaimProviderOrder(ctx context.Context, tradeNo string) (*biz.PaymentOrder, error) {
+	order, err := r.GetOrderByTradeNo(ctx, tradeNo)
+	if err != nil || order == nil {
+		return order, err
+	}
+	if order.Channel != biz.PaymentChannelWechat || order.Status != biz.PaymentOrderStatusPending || order.PayURL != "" {
+		return order, nil
+	}
+	var previous struct {
+		Until int64 `json:"prepay_until"`
+	}
+	if order.ProviderPayload != "" {
+		if err := jsonx.Unmarshal([]byte(order.ProviderPayload), &previous); err != nil {
+			return nil, err
+		}
+	}
+	if previous.Until > time.Now().UnixMilli() {
+		return order, nil
+	}
+	marker, err := jsonx.Marshal(struct {
+		Token string `json:"prepay_claim"`
+		Until int64  `json:"prepay_until"`
+	}{uuid.NewString(), time.Now().Add(30 * time.Second).UnixMilli()})
+	if err != nil {
+		return nil, err
+	}
+	result := r.data.db.WithContext(ctx).Model(&PaymentOrder{}).
+		Where("trade_no = ? AND status = ? AND COALESCE(pay_url, '') = '' AND COALESCE(provider_payload, '') = ?", tradeNo, biz.PaymentOrderStatusPending, order.ProviderPayload).
+		UpdateColumn("provider_payload", string(marker))
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return r.GetOrderByTradeNo(ctx, tradeNo)
+	}
+	order.ProviderClaim = string(marker)
+	return order, nil
 }

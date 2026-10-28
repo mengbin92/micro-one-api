@@ -72,6 +72,16 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		panic("config bootstrap is nil")
 	}
 
+	paymentCfg := biz.PaymentConfig{}
+	if cfg.Bootstrap.Payment != nil {
+		paymentCfg = cfg.Bootstrap.Payment.ToPaymentConfig()
+	}
+	wechatProvider, err := data.NewWechatPaymentProvider(paymentCfg.Wechat)
+	if err != nil {
+		panic(fmt.Errorf("wechat payment config: %w", err))
+	}
+	paymentProvider := biz.NewConfiguredPaymentProvider(paymentCfg, wechatProvider)
+
 	// Build pricing config with nil-safe defaults.
 	pricing := biz.PricingConfig{
 		PricingStore: d.PricingConfigStore(),
@@ -142,12 +152,6 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		d.ReconciliationRunStore(),
 	)
 
-	var paymentProvider biz.PaymentProvider
-	if cfg.Bootstrap.Payment != nil {
-		paymentProvider = biz.NewConfiguredPaymentProvider(cfg.Bootstrap.Payment.ToPaymentConfig())
-	} else {
-		paymentProvider = biz.NewConfiguredPaymentProvider(biz.PaymentConfig{})
-	}
 	paymentAssetIssuer := biz.NewPaymentAssetIssuer(uc)
 	paymentSubscriptionAssigner := biz.NewPaymentSubscriptionAssigner(subscriptionUc, subscriptionRepo, subscriptionRepo)
 	planSnapshotter := biz.NewPaymentPlanSnapshotter(subscriptionRepo, uc)
@@ -172,6 +176,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	// params before marking a local order paid.
 	svc.SetOwnerAuthorization(ownerAuth)
 	svc.SetExpectedAlipayAppID(configuredAlipayAppID)
+	svc.SetWechatVerifier(wechatProvider)
 
 	// Phase 2: refund/reversal coordinator. The subscription reverter delegates
 	// to the subscription usecase so revoke/shorten mutations land on the same

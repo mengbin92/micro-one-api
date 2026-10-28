@@ -30,3 +30,4 @@ coverage
 *.njsproj
 *.sln
 *.sw?
+a4-test-results
