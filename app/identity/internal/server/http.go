@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"google.golang.org/grpc/metadata"
-	"math"
 	"net/http"
 	"net/mail"
 	"net/url"
@@ -16,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/shopspring/decimal"
 
 	"micro-one-api/domain/authorization"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
@@ -185,6 +186,9 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 	})
 	srv.HandleFunc("/api/user/payment/orders", func(w http.ResponseWriter, r *http.Request) {
 		handleUserPaymentOrders(w, r, uc, billingClient)
+	})
+	srv.HandleFunc("/api/user/payment/channels", func(w http.ResponseWriter, r *http.Request) {
+		handlePaymentChannels(w, r, uc, billingClient)
 	})
 	srv.HandlePrefix("/api/user/payment/orders/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handleUserPaymentOrderByTradeNo(w, r, uc, billingClient)
@@ -876,6 +880,31 @@ func handleUserTopUp(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUse
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: resp.GetAmount()})
 }
 
+func handlePaymentChannels(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase, billingClient billingv1.BillingServiceClient) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
+		return
+	}
+	if _, err := authSnapshotFromRequest(r, uc); err != nil {
+		writeJSON(w, http.StatusUnauthorized, apiResponse{Success: false, Message: "unauthorized"})
+		return
+	}
+	if billingClient == nil {
+		writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "billing service unavailable"})
+		return
+	}
+	resp, err := billingClient.ListPaymentChannels(billingSelfContext(r.Context()), &billingv1.ListPaymentChannelsRequest{})
+	if err != nil {
+		if authz.IsAuthorizationError(err) {
+			authz.WriteHTTPError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "payment channels unavailable"})
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Data: resp})
+}
+
 func handleCreatePaymentOrder(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase, billingClient billingv1.BillingServiceClient) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
@@ -891,13 +920,18 @@ func handleCreatePaymentOrder(w http.ResponseWriter, r *http.Request, uc *biz.Id
 		return
 	}
 	var req struct {
-		Amount        float64 `json:"amount"`
-		PaymentMethod string  `json:"payment_method"`
+		Amount        jsonx.Number `json:"amount"`
+		PaymentMethod string       `json:"payment_method"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) || req.Amount <= 0 || req.Amount > 1e6 {
+	if len(req.Amount.String()) > 32 {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "amount exceeds supported precision"})
+		return
+	}
+	amount, amountErr := decimal.NewFromString(req.Amount.String())
+	if amountErr != nil || amount.Exponent() < -18 || amount.Exponent() > 6 || !amount.IsPositive() || amount.GreaterThan(decimal.NewFromInt(1_000_000)) {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "amount must be positive"})
 		return
 	}
@@ -910,7 +944,7 @@ func handleCreatePaymentOrder(w http.ResponseWriter, r *http.Request, uc *biz.Id
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "invalid payment_method"})
 		return
 	}
-	moneyCents := int64(math.Round(req.Amount * 100))
+	moneyCents := amount.Mul(decimal.NewFromInt(100)).Round(0).IntPart()
 	if moneyCents <= 0 {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "amount too small"})
 		return
@@ -921,6 +955,7 @@ func handleCreatePaymentOrder(w http.ResponseWriter, r *http.Request, uc *biz.Id
 		return
 	}
 	resp, err := billingClient.CreatePaymentOrder(billingSelfContext(r.Context()), &billingv1.CreatePaymentOrderRequest{
+		RequestId:   r.Header.Get("Idempotency-Key"),
 		UserId:      strconv.FormatInt(snapshot.UserID, 10),
 		Channel:     req.PaymentMethod,
 		AssetType:   "balance",

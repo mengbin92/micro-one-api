@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-28",
+  "timezone": "Asia/Shanghai",
+  "command": "go test -race ./internal/integration -run '^TestIAM(WechatPaymentThroughRealOwners|SubscriptionPaymentThroughRealOwners)$' -count=1 -v",
+  "exit_code": 0,
+  "tests": {
+    "TestIAMWechatPaymentThroughRealOwners": "PASS",
+    "TestIAMSubscriptionPaymentThroughRealOwners": "PASS"
+  },
+  "boundaries": {
+    "identity_session": "real IdentityUsecase.Login session",
+    "http": "real Admin BFF handler and network proxies to Identity/Billing HTTP owners",
+    "grpc": "real dedicated-caller and operator-authorized owner gRPC over local TCP",
+    "storage": "real SQLite full migrations, wallet, payment order and recharge ledger",
+    "provider": "real Native SDK with request signing and response verification against local trusted TLS fixture; only official API host redirected",
+    "callback": "real BFF proxy, RSA signature validation, AES-GCM decryption and transactional issuer"
+  },
+  "assertions": [
+    "Unauthenticated channel request rejected",
+    "Dedicated service caller without user credential cannot list payment channels",
+    "Configured channel capabilities exclude secrets",
+    "Same recharge request creates one platform order",
+    "Payment order list and paid-order readback succeed",
+    "Invalid signature causes zero wallet increment and no recharge ledger",
+    "Valid and duplicate callbacks produce one wallet increment and one recharge ledger",
+    "Existing Alipay subscription payment and idempotent wallet renewal pass"
+  ],
+  "cleanup": "Default HTTP transport restored immediately after provider construction; test cleanup also restores it; no parallel tests",
+  "additional_existing_race": {
+    "test": "TestIAMSelfUsageThroughDedicatedIdentityCaller",
+    "baseline_commit": "745096ab",
+    "baseline_command": "go test -race ./internal/integration -run '^TestIAMSelfUsageThroughDedicatedIdentityCaller$' -count=1 -v",
+    "baseline_exit_code": 1,
+    "report": "Existing test writes global time.Local at iam_self_usage_test.go:123 concurrently with gRPC time.Now; unchanged file, no task-external fix",
+    "log": "/tmp/a4-self-usage-baseline-race.log"
+  },
+  "external_acceptance": {
+    "real_merchant": false,
+    "real_payment": false,
+    "real_platform_callback": false,
+    "production_deployment": false
+  }
+}

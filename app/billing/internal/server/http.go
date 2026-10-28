@@ -13,6 +13,7 @@ import (
 	"micro-one-api/app/billing/internal/service"
 	xhttp "micro-one-api/platform/http"
 	"micro-one-api/platform/metrics"
+	"micro-one-api/platform/middleware"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 )
@@ -80,5 +81,15 @@ func NewHTTPServer(addr string, svc *service.BillingService) *khttp.Server {
 		svc.HandleAlipayNotify(w, r)
 	})
 
+	limiter := middleware.NewRateLimiter(&middleware.RateLimitConfig{RequestsPerSecond: 20, Burst: 40, MaxClients: 1})
+	wechatNotify := func(w http.ResponseWriter, r *http.Request) {
+		if allowed, _ := limiter.Allow("wechat-notify"); !allowed {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		svc.HandleWechatNotify(w, r)
+	}
+	srv.HandleFunc("/api/v1/user/payments/wechat/notify", wechatNotify)
+	srv.HandleFunc("/api/user/payments/wechat/notify", wechatNotify)
 	return srv
 }

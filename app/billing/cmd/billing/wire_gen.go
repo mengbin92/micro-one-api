@@ -84,6 +84,16 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		panic("config bootstrap is nil")
 	}
 
+	paymentCfg := biz.PaymentConfig{}
+	if cfg.Bootstrap.Payment != nil {
+		paymentCfg = cfg.Bootstrap.Payment.ToPaymentConfig()
+	}
+	wechatProvider, err := data.NewWechatPaymentProvider(paymentCfg.Wechat)
+	if err != nil {
+		panic(fmt.Errorf("wechat payment config: %w", err))
+	}
+	paymentProvider := biz.NewConfiguredPaymentProvider(paymentCfg, wechatProvider)
+
 	pricing := biz.PricingConfig{
 		PricingStore: d.PricingConfigStore(),
 	}
@@ -151,12 +161,6 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		d.ReconciliationRunStore(),
 	)
 
-	var paymentProvider biz.PaymentProvider
-	if cfg.Bootstrap.Payment != nil {
-		paymentProvider = biz.NewConfiguredPaymentProvider(cfg.Bootstrap.Payment.ToPaymentConfig())
-	} else {
-		paymentProvider = biz.NewConfiguredPaymentProvider(biz.PaymentConfig{})
-	}
 	paymentAssetIssuer := biz.NewPaymentAssetIssuer(uc)
 	paymentSubscriptionAssigner := biz.NewPaymentSubscriptionAssigner(subscriptionUc, subscriptionRepo, subscriptionRepo)
 	planSnapshotter := biz.NewPaymentPlanSnapshotter(subscriptionRepo, uc)
@@ -179,6 +183,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 
 	svc.SetOwnerAuthorization(ownerAuth)
 	svc.SetExpectedAlipayAppID(configuredAlipayAppID)
+	svc.SetWechatVerifier(wechatProvider)
 
 	refundUc := biz.NewRefundUsecase(d.PaymentRepo(), d.AccountRepo(), d.LedgerRepo(), subscriptionUc)
 	refundUc.SetAuthorization(ownerAuth)

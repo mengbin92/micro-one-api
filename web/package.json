@@ -22,7 +22,8 @@
     "i18n:generate": "node scripts/i18n-tools.mjs generate",
     "i18n:codemod": "node scripts/i18n-tools.mjs codemod",
     "preview": "vite preview",
-    "generate:api": "openapi-typescript ../openapi.yaml -o src/types/api.ts"
+    "generate:api": "openapi-typescript ../openapi.yaml -o src/types/api.ts",
+    "test:e2e:a4": "npm run build && playwright test --config playwright.a4.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -31,6 +32,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.16.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-is": "^19.2.8",

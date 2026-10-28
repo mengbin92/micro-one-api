@@ -82,3 +82,12 @@ func TestVendorReportsCoverageRejectsUnreviewedRPC(t *testing.T) {
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 	require.False(t, called)
 }
+
+func TestPaymentChannelsReachesDedicatedIdentity(t *testing.T) {
+	method := "/api.billing.v1.BillingService/ListPaymentChannels"
+	ctx := serviceidentity.WithRPCMethod(serviceidentity.WithPrincipal(authorization.WithExternal(context.Background()), serviceidentity.Principal{Name: "identity", Dedicated: true}), method)
+	called := false
+	_, err := authz.CoverageUnaryInterceptor(authz.NewClient("billing", coverageIAM{}), "billing.accounts.read", billingReadyMethods)(ctx, nil, &grpc.UnaryServerInfo{FullMethod: method}, func(context.Context, any) (any, error) { called = true; return nil, nil })
+	require.NoError(t, err)
+	require.True(t, called)
+}

@@ -57,6 +57,17 @@ payment:
     root_cert_path: "${ALIPAY_ROOT_CERT_PATH:-}"
     alipay_public_cert_path: "${ALIPAY_PUBLIC_CERT_PATH:-}"
 
+  wechat:
+    enabled: ${WECHAT_ENABLED:-false}
+    app_id: "${WECHAT_APP_ID:-}"
+    mch_id: "${WECHAT_MCH_ID:-}"
+    certificate_serial: "${WECHAT_CERTIFICATE_SERIAL:-}"
+    private_key_path: "${WECHAT_PRIVATE_KEY_PATH:-/cert/wechat/apiclient_key.pem}"
+    public_key_id: "${WECHAT_PUBLIC_KEY_ID:-}"
+    public_key_path: "${WECHAT_PUBLIC_KEY_PATH:-/cert/wechat/wechatpay_public_key.pem}"
+    api_v3_key: "${WECHAT_API_V3_KEY:-}"
+    notify_url: "${WECHAT_NOTIFY_URL:-}"
+
 partition:
   enabled: ${PARTITION_ENABLED:-false}
   interval: ${PARTITION_INTERVAL:-24h}

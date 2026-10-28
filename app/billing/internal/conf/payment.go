@@ -25,5 +25,8 @@ func (p *Payment) ToPaymentConfig() biz.PaymentConfig {
 		}
 	}
 
+	if w := p.Wechat; w != nil {
+		cfg.Wechat = biz.WechatConfig{Enabled: w.Enabled, AppID: w.AppId, MchID: w.MchId, CertificateSerial: w.CertificateSerial, PrivateKeyPath: w.PrivateKeyPath, PublicKeyID: w.PublicKeyId, PublicKeyPath: w.PublicKeyPath, APIv3Key: w.ApiV3Key, NotifyURL: w.NotifyUrl}
+	}
 	return cfg
 }

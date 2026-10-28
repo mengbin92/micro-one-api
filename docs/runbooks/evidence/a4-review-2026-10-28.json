@@ -1,0 +1,120 @@
+{
+  "date": "2026-10-28",
+  "timezone": "Asia/Shanghai",
+  "full_review": {
+    "status": "complete",
+    "session_id": "2c006a80-5c73-4d47-93f3-bf0afd5274fe",
+    "comments": 16,
+    "dispositions": [
+      {
+        "index": 0,
+        "path": "web/playwright.a4.config.ts",
+        "severity": "low",
+        "disposition": "generated results ignored"
+      },
+      {
+        "index": 1,
+        "path": "app/identity/internal/server/http.go",
+        "severity": "critical",
+        "disposition": "false positive: Number decoding proved by HTTP decimal test and real gRPC owner chain"
+      },
+      {
+        "index": 2,
+        "path": "app/identity/internal/server/http.go",
+        "severity": "medium",
+        "disposition": "auth statuses fixed"
+      },
+      {
+        "index": 3,
+        "path": "web/src/pages/RechargePage.tsx",
+        "severity": "medium",
+        "disposition": "non-blocking style/scope suggestion"
+      },
+      {
+        "index": 4,
+        "path": "web/src/pages/RechargePage.tsx",
+        "severity": "medium",
+        "disposition": "non-blocking style/scope suggestion"
+      },
+      {
+        "index": 5,
+        "path": "web/src/pages/RechargePage.tsx",
+        "severity": "low",
+        "disposition": "non-blocking style/scope suggestion"
+      },
+      {
+        "index": 6,
+        "path": "web/src/pages/RechargePage.tsx",
+        "severity": "medium",
+        "disposition": "terminal dialog clears attempt"
+      },
+      {
+        "index": 7,
+        "path": "web/src/pages/RechargePage.tsx",
+        "severity": "low",
+        "disposition": "non-blocking style/scope suggestion"
+      },
+      {
+        "index": 8,
+        "path": "web/src/pages/RechargePage.tsx",
+        "severity": "medium",
+        "disposition": "balance invalidation fixed; readability parenthesized"
+      },
+      {
+        "index": 9,
+        "path": "web/src/pages/OrdersPage.tsx",
+        "severity": "low",
+        "disposition": "missing trade number guarded"
+      },
+      {
+        "index": 10,
+        "path": "web/src/lib/payment-url.ts",
+        "severity": "low",
+        "disposition": "non-blocking style/scope suggestion"
+      },
+      {
+        "index": 11,
+        "path": "web/src/pages/RechargePage.tsx",
+        "severity": "medium",
+        "disposition": "non-blocking style/scope suggestion"
+      },
+      {
+        "index": 12,
+        "path": "web/src/pages/RechargePage.tsx",
+        "severity": "low",
+        "disposition": "non-blocking style/scope suggestion"
+      },
+      {
+        "index": 13,
+        "path": "app/billing/internal/service/payment_wechat.go",
+        "severity": "medium",
+        "disposition": "false positive: official Native notification permits HTTP200 or204 without body"
+      },
+      {
+        "index": 14,
+        "path": "app/billing/internal/biz/payment.go",
+        "severity": "medium",
+        "disposition": "same-order QR recovery and CAS fencing implemented"
+      },
+      {
+        "index": 15,
+        "path": "web/src/pages/RechargePage.tsx",
+        "severity": "medium",
+        "disposition": "balance invalidation fixed"
+      }
+    ]
+  },
+  "incremental_external_review": {
+    "status": "incomplete_stopped",
+    "reason": "Timeouts, then stopped OCR gateway traffic during production 502 alert investigation; never counted as passed"
+  },
+  "incremental_delegate_review": {
+    "status": "passed",
+    "rules": "ocr delegate rule app/billing/internal/biz/payment.go app/billing/internal/data/payment_repo.go",
+    "independent_report": "/tmp/a4-final-claim-independent-review.md",
+    "tests": "/tmp/a4-final-claim-review-tests.log",
+    "confirmed_blocking_p0_p1_p2": 0,
+    "low_note": "Owner-readable provider_payload may contain a temporary prepay claim marker; not a credential and no external write-back surface."
+  },
+  "open_confirmed_p0_p1": 0
+}

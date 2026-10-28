@@ -178,3 +178,11 @@ func TestPaymentConfigMatchesBizShape(t *testing.T) {
 		}
 	})
 }
+
+func TestWechatPaymentConfig(t *testing.T) {
+	p := &Payment{Wechat: &Wechat{Enabled: true, AppId: "app", MchId: "merchant", CertificateSerial: "serial", PrivateKeyPath: "private", PublicKeyId: "public-id", PublicKeyPath: "public", ApiV3Key: "api-key", NotifyUrl: "https://example.test/api/v1/user/payments/wechat/notify"}}
+	w := p.ToPaymentConfig().Wechat
+	if !w.Enabled || w.AppID != "app" || w.MchID != "merchant" || w.CertificateSerial != "serial" || w.PrivateKeyPath != "private" || w.PublicKeyID != "public-id" || w.PublicKeyPath != "public" || w.APIv3Key != "api-key" || w.NotifyURL != p.Wechat.NotifyUrl {
+		t.Fatalf("wechat fields not mapped")
+	}
+}
