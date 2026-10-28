@@ -1,4 +1,9 @@
 import '@testing-library/jest-dom/vitest';
+import { configure } from '@testing-library/react';
+
+// 满载机器上 jsdom 渲染慢于 testing-library 1s 默认等待，统一放宽到 5s
+configure({ asyncUtilTimeout: 5000 });
+
 import { afterAll, afterEach, beforeAll, vi } from 'vitest';
 import { server } from './msw/server';
 

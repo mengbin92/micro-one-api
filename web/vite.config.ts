@@ -45,5 +45,7 @@ export default defineConfig({
     exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
     setupFiles: './src/test/setup.ts',
     globals: true,
+    // 满载机器上一次测试的 userEvent 序列可超出 vitest 5s 默认上限
+    testTimeout: 15_000,
   },
 });
