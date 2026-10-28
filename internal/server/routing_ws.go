@@ -90,6 +90,10 @@ func (s *HTTPServer) newRoutingWSTurns(token, clientModel, resolvedModel string,
 	}
 	if plan.Auth.RoutingContext == nil {
 		turns.admit = func(ctx context.Context, payload []byte) (*billingv1.ReserveQuotaResponse, []byte, error) {
+			tier, tierErr := readServiceTierRequest(payload, "unsupported")
+			if tierErr != nil || tier.RequestedServiceTier == "priority" || tier.RequestedServiceTier == "flex" {
+				return nil, nil, errServiceTierRequest
+			}
 			requested := extractOpenAIWSClientModel(payload)
 			if requested != "" && requested != clientModel && requested != resolvedModel {
 				return nil, nil, fmt.Errorf("model changed; open a new websocket")
@@ -123,6 +127,10 @@ func (s *HTTPServer) newRoutingWSTurns(token, clientModel, resolvedModel string,
 		return turns
 	}
 	turns.admit = func(ctx context.Context, payload []byte) (*billingv1.ReserveQuotaResponse, []byte, error) {
+		tier, tierErr := readServiceTierRequest(payload, "unsupported")
+		if tierErr != nil || tier.RequestedServiceTier == "priority" || tier.RequestedServiceTier == "flex" {
+			return nil, nil, errServiceTierRequest
+		}
 		requested := extractOpenAIWSClientModel(payload)
 		if requested != "" && requested != clientModel && requested != resolvedModel {
 			return nil, nil, fmt.Errorf("model changed; open a new websocket")

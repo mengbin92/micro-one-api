@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"micro-one-api/domain/authorization"
+	billingdomain "micro-one-api/domain/billing"
 	"micro-one-api/domain/execution"
 	"micro-one-api/platform/security/serviceidentity"
 	"os"
@@ -115,6 +116,7 @@ func (uc *BillingUsecase) frozenSubscriptionAbsorbUSD(ctx context.Context, tx su
 // readable and unchanged. The legacy_live policy is captured per request, not
 // retroactively applied to the customer's purchased contract.
 type RequestSnapshot struct {
+	ServiceTier          *FrozenServiceTier `json:",omitempty"`
 	Execution            *execution.Intent  `json:",omitempty"`
 	CostBound            *routing.CostBound `json:",omitempty"`
 	MaxCost              int64              `json:",omitempty"`
@@ -264,6 +266,9 @@ func (s *RequestSnapshot) Validate() (err error) {
 			return ErrRequestSnapshotInvalid
 		}
 	}
+	if s.ServiceTier != nil && s.ServiceTier.Validate() != nil {
+		return ErrRequestSnapshotInvalid
+	}
 	p := s.Pricing
 	if (p.Method != "model_price" && p.Method != "ratio") || (p.Method == "model_price") != (p.Price != nil) || !finitePositive(p.GroupRatio) || !finitePositive(p.ModelRatio) || !finitePositive(p.CompletionRatio) {
 		return ErrRequestSnapshotInvalid
@@ -280,7 +285,21 @@ func (s *RequestSnapshot) Validate() (err error) {
 func finitePositive(n float64) bool { return n > 0 && !math.IsInf(n, 0) && !math.IsNaN(n) }
 
 func (uc *BillingUsecase) prepareRequestSnapshot(ctx context.Context, userID, legacyGroup, model string, routingContext *routing.ResolvedRoutingContext) (*RequestSnapshot, error) {
+	// Read the whole option set once. Tier policy and legacy pricing must be
+	// frozen from the same committed configuration revision.
+	pricingUC := *uc
+	if uc.pricingStore != nil {
+		config, err := uc.pricingStore.GetPricingConfig(ctx)
+		if err != nil {
+			return nil, ErrRequestSnapshotUnavailable
+		}
+		pricingUC.pricingStore = capturedPricingStore{config}
+	}
+	config := pricingUC.pricingConfig(ctx)
 	if !RequestSnapshotsEnabled() {
+		if _, err := uc.freezeServiceTier(ctx, config.ServiceTier, 1); err != nil {
+			return nil, err
+		}
 		if routingContext != nil {
 			return nil, ErrRequestSnapshotUnavailable
 		}
@@ -303,17 +322,6 @@ func (uc *BillingUsecase) prepareRequestSnapshot(ctx context.Context, userID, le
 		}
 		group = g.Key
 	}
-	// Do not turn a failed price read into an unreported fallback in v2. Reuse
-	// the existing normalization/precedence rules with this one captured read.
-	pricingUC := *uc
-	if uc.pricingStore != nil {
-		config, err := uc.pricingStore.GetPricingConfig(ctx)
-		if err != nil {
-			return nil, ErrRequestSnapshotUnavailable
-		}
-		pricingUC.pricingStore = capturedPricingStore{config}
-	}
-	config := pricingUC.pricingConfig(ctx)
 	p := FrozenRequestPricing{Method: "ratio", GroupRatio: uc.getGroupRatio(config, group), ModelRatio: uc.getModelRatio(config, model), CompletionRatio: uc.getCompletionRatio(config, model), CacheCreationMode: uc.CacheCreationBillingMode(), CanonicalUsageMode: uc.CanonicalUsageMode(), CanonicalChargeAll: uc.canonicalCharge.all, CanonicalChargeAllowlist: uc.canonicalCharge.allowlist}
 	if price, ok := config.ModelPrices[normalizePricingModelKey(model)]; ok {
 		p.Method = "model_price"
@@ -352,6 +360,21 @@ func (uc *BillingUsecase) prepareRequestSnapshot(ctx context.Context, userID, le
 			return nil, ErrSubscriptionBoundRequired
 		}
 		s.CostBound = &bound
+	}
+	tier, err := uc.freezeServiceTier(ctx, config.ServiceTier, s.Pricing.GroupRatio)
+	if err != nil {
+		return nil, err
+	}
+	s.ServiceTier = tier
+	if tier != nil {
+		price := billingdomain.MaxTierPrice(tier.Config.Prices)
+		s.Pricing.Method = "model_price"
+		s.Pricing.Price = &price
+		// Tier pricing is a new, explicitly admitted canonical contract. Legacy
+		// observe switches must not change the frozen five-bucket tariff.
+		s.Pricing.CanonicalUsageMode = CanonicalUsageModeCharge
+		s.Pricing.CanonicalChargeAll = true
+		s.Pricing.CacheCreationMode = CacheCreationModeCharge
 	}
 	// Own the input values, including optional bucket prices and allowlist.
 	b, err := jsonx.Marshal(s)
@@ -394,6 +417,19 @@ func (uc *BillingUsecase) reservationCostWithPricing(ctx context.Context, pricin
 			return 0, canonicalCostBreakdown{}, ledgerUsageAudit{}, err
 		}
 		calculator := uc.requestCalculator(r.RequestSnapshot)
+		if tier := r.RequestSnapshot.ServiceTier; tier != nil {
+			if err := tierUsageBounds(tier, usage, tokens); err != nil {
+				return 0, canonicalCostBreakdown{}, ledgerUsageAudit{}, err
+			}
+			price, billed, status := tierSelection(tier, usage)
+			calculator.modelPrices = map[string]ModelPrice{normalizePricingModelKey(r.Model): price}
+			cost, breakdown, audit := calculator.calculateCostWithUsage(ctx, r.RequestSnapshot.GroupKey, r.Model, tokens, usage)
+			if cost > tier.MaxCost {
+				return 0, canonicalCostBreakdown{}, ledgerUsageAudit{}, ErrServiceTierBoundExceeded
+			}
+			applyTierAudit(&audit, tier, usage, billed, status)
+			return cost, breakdown, audit, nil
+		}
 		cost, breakdown, audit := calculator.calculateCostWithUsage(ctx, r.RequestSnapshot.GroupKey, r.Model, tokens, usage)
 		return cost, breakdown, audit, nil
 	}

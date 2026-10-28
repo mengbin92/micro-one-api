@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	billingdomain "micro-one-api/domain/billing"
 	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/app/billing/internal/biz"
@@ -22,7 +23,7 @@ func (r *PricingConfigRepo) GetPricingConfig(ctx context.Context) (biz.PricingCo
 	rows, err := r.data.db.WithContext(ctx).
 		Table("system_options").
 		Select("option_key, option_value").
-		Where("option_key IN ?", []string{"GroupRatio", "ModelRatio", "CompletionRatio", "ModelPrice", "UpstreamModelPrice", "AmountPerUnit", "QuotaPerUnit"}).
+		Where("option_key IN ?", []string{"GroupRatio", "ModelRatio", "CompletionRatio", "ModelPrice", "UpstreamModelPrice", "AmountPerUnit", "QuotaPerUnit", "ServiceTierPricing"}).
 		Rows()
 	if err != nil {
 		return biz.PricingConfig{}, fmt.Errorf("list pricing options: %w", err)
@@ -40,7 +41,12 @@ func (r *PricingConfigRepo) GetPricingConfig(ctx context.Context) (biz.PricingCo
 		return biz.PricingConfig{}, err
 	}
 
+	tier, err := billingdomain.ParseServiceTierConfig(values["ServiceTierPricing"])
+	if err != nil {
+		return biz.PricingConfig{}, err
+	}
 	return biz.PricingConfig{
+		ServiceTier:      tier,
 		GroupRatios:      parseRatioOption(values["GroupRatio"]),
 		ModelRatios:      parseRatioOption(values["ModelRatio"]),
 		CompletionRatios: parseRatioOption(values["CompletionRatio"]),

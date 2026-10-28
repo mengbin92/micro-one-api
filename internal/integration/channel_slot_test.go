@@ -115,7 +115,13 @@ func (b *channelSlotGatedBilling) ReserveQuota(ctx context.Context, req *billing
 	b.arrived <- struct{}{}
 	select {
 	case <-b.release:
-		return &billingv1.ReserveQuotaResponse{Success: true, ReservationId: req.RequestId, ReservedAmount: 100}, nil
+		return &billingv1.ReserveQuotaResponse{
+			Success:                    true,
+			ReservationId:              req.RequestId,
+			ReservedAmount:             100,
+			ServiceTierPricingVersion:  req.GetServiceTierPricingVersion(),
+			ServiceTierContractVersion: req.GetServiceTierPricingVersion(),
+		}, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}

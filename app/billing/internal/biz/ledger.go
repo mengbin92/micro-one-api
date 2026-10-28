@@ -33,6 +33,12 @@ const (
 // BalanceCost so a single reservation can be reconciled against both
 // dimensions; legacy entries leave both fields zero.
 type Ledger struct {
+	RequestedServiceTier  string
+	ActualServiceTier     string
+	ServiceTierStatus     string
+	BilledServiceTier     string
+	ServiceTierPolicy     string
+	ServiceTierConfigHash string
 	PricingFieldsVisible  bool
 	CostFieldsVisible     bool
 	ID                    uint

@@ -5,12 +5,20 @@ import (
 	"math"
 
 	"micro-one-api/domain/authorization"
+	billingdomain "micro-one-api/domain/billing"
 	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/routing"
 )
 
 func validateAttemptReplay(ctx context.Context, r *Reservation, model, channelID string, subscriptionAccountID int64, routingContext *routing.ResolvedRoutingContext) error {
 	a := requesttrace.FromContext(ctx)
+	if r.RequestSnapshot != nil && r.RequestSnapshot.ServiceTier != nil {
+		if r.RequestSnapshot.ServiceTier.Request != billingdomain.GetServiceTierRequest(ctx) {
+			return ErrRoutingContextConflict
+		}
+	} else if q := billingdomain.GetServiceTierRequest(ctx); q.RequestedServiceTier == "priority" || q.RequestedServiceTier == "flex" {
+		return ErrRoutingContextConflict
+	}
 	if r.RootRequestID != "" && a.RootRequestID != "" && (r.RootRequestID != a.RootRequestID || r.AttemptNumber != a.Number || r.SourceKind != a.SourceKind || r.UpstreamModelID != a.UpstreamModelID) {
 		return ErrRoutingContextConflict
 	}
@@ -23,12 +31,17 @@ func validateAttemptReplay(ctx context.Context, r *Reservation, model, channelID
 // The reservation freezes the selected source before execution. Task retries
 // use this identity even when the producer omits source fields.
 func usageForReservation(usage LedgerUsage, r *Reservation) LedgerUsage {
+	usage.FrozenServiceTier = nil
 	if r.SourceKind != "" {
 		usage.SourceKind = r.SourceKind
 		usage.SubscriptionAccountID = parseInt64Default(r.SubscriptionAccountID, 0)
 	}
 	if r.UpstreamModelID != "" {
 		usage.UpstreamModelID = r.UpstreamModelID
+	}
+	if r.RequestSnapshot != nil && r.RequestSnapshot.ServiceTier != nil {
+		usage.FrozenServiceTier = &r.RequestSnapshot.ServiceTier.Config
+		usage.UpstreamCost = 0
 	}
 	return usage
 }

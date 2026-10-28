@@ -226,6 +226,9 @@ const (
 // can try a sibling account. Cross-account failover itself is handled by the
 // caller.
 func (s *HTTPServer) runSubscriptionAttempt(r *http.Request, current *relaybiz.RelayPlan, clientModel string, rawBody []byte, inbound relayadaptor.Format, sessionHash string) subscriptionAdaptorResult {
+	if err := rejectUnsupportedServiceTier(r.Context()); err != nil {
+		return subscriptionAdaptorResult{statusCode: http.StatusBadRequest, err: err, write: func(w http.ResponseWriter) { s.writeError(w, http.StatusBadRequest, err.Error()) }}
+	}
 	trace := requesttrace.FromContext(r.Context())
 	attemptCount := int32(1)
 	result := s.executeAndMeter(r.Context(), current, clientModel, r.Header.Clone(), rawBody, inbound, sessionHash)
@@ -657,6 +660,14 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		reservation, reserveErr = s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID,
 			estimateRawTokens(rawBody), billingModel, channelID, subscriptionAccountIDFromPlan(plan), plan.Auth.RoutingContext)
 		if reserveErr != nil {
+			if message, ok := serviceTierAdmissionMessage(reserveErr); ok {
+				result.statusCode = http.StatusBadRequest
+				result.err = fmt.Errorf("reserve quota: %w", reserveErr)
+				result.write = func(w http.ResponseWriter) {
+					s.writeError(w, http.StatusBadRequest, message)
+				}
+				return result
+			}
 			result.statusCode = http.StatusPaymentRequired
 			result.err = fmt.Errorf("reserve quota: %w", reserveErr)
 			result.write = func(w http.ResponseWriter) {

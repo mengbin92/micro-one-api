@@ -38,6 +38,12 @@ export interface UsageAuditLog {
   exclusiveCandidateCost?: number | string;
   pricingConfigHash?: string;
   pricingSnapshot?: PricingSnapshot | null;
+  requestedServiceTier?: string;
+  actualServiceTier?: string;
+  serviceTierStatus?: string;
+  billedServiceTier?: string;
+  serviceTierPolicy?: string;
+  serviceTierConfigHash?: string;
   costSource?: string;
   subscriptionCost?: number | string;
   balanceCost?: number | string;
@@ -53,6 +59,7 @@ interface RequestSnapshotRouting {
 }
 
 interface RequestSnapshot {
+  serviceTier?: { max_cost?: number; policy?: string; config_hash?: string };
   version?: number;
   routing?: RequestSnapshotRouting;
   groupKey?: string;
@@ -76,6 +83,9 @@ interface RequestSnapshot {
 }
 
 export interface PricingSnapshot {
+  serviceTier?: string;
+  serviceTierPolicy?: string;
+  serviceTierConfigHash?: string;
   configHash?: string;
   modelName?: string;
   inputPrice?: number;
@@ -112,10 +122,34 @@ function parseRequestSnapshot(value: string | undefined): RequestSnapshot | null
   if (!value) return null;
   try {
     const parsed: unknown = JSON.parse(value);
-    return parsed && typeof parsed === 'object' ? parsed as RequestSnapshot : null;
+    if (!parsed || typeof parsed !== 'object') return null;
+    // Historical owner snapshots use Go field names; newer projections may
+    // use lower camel case. Normalize only names for display, keeping the
+    // original JSON evidence untouched below.
+    const displayFields = (field: unknown): unknown => {
+      if (Array.isArray(field)) return field.map(displayFields);
+      if (!field || typeof field !== 'object') return field;
+      return Object.fromEntries(Object.entries(field).map(([key, item]) => [key.charAt(0).toLowerCase() + key.slice(1), displayFields(item)]));
+    };
+    return displayFields(parsed) as RequestSnapshot;
   } catch {
     return null;
   }
+}
+
+function ServiceTierAudit({ log, requestSnapshot }: { log: UsageAuditLog; requestSnapshot: RequestSnapshot | null }) {
+  if (!log.serviceTierStatus && !log.requestedServiceTier && !log.actualServiceTier && !log.serviceTierPolicy && !requestSnapshot?.serviceTier) return null;
+  return <section className="space-y-1 rounded-lg border p-3 text-xs">
+    <h4 className="font-semibold">{t('服务档位与计价依据')}</h4>
+    <p>{t('请求档位：')}<span className="font-mono">{log.requestedServiceTier || t('未指定（auto）')}</span></p>
+    <p>{t('上游实际档位：')}<span className="font-mono">{log.actualServiceTier || t('未知')}</span>{log.serviceTierStatus ? ` · ${log.serviceTierStatus}` : ''}</p>
+    <p>{t('结算档位：')}<span className="font-mono">{log.billedServiceTier === 'max' ? t('逐桶最高价') : log.billedServiceTier || '—'}</span></p>
+    {log.billedServiceTier === 'max' && <p className="text-muted-foreground">{t('实际档位缺失、未知或冲突；保留上游原始值，使用预扣时冻结的各桶最高单价。')}</p>}
+    {requestSnapshot?.serviceTier?.max_cost !== undefined && <p>{t('冻结预扣上界：')}{formatUSD(requestSnapshot.serviceTier.max_cost)}</p>}
+    {log.serviceTierPolicy && <p>{t('档位结算策略：')}<span className="font-mono">{log.serviceTierPolicy}</span></p>}
+    {log.serviceTierConfigHash && <p className="break-all">{t('档位配置快照：')}<span className="font-mono">{log.serviceTierConfigHash}</span></p>}
+    <p className="text-muted-foreground">{t('采购成本为冻结规则的估价；供应商实扣需独立账单证据。')}</p>
+  </section>;
 }
 
 function routingModeText(routing: RequestSnapshotRouting | undefined) {
@@ -222,14 +256,15 @@ export function UsageAuditPanel({ log }: { log: UsageAuditLog }) {
     num(log.promptTokens) > 0 || num(log.reportedTotalTokens) > 0;
   if (!hasUsage) {
     return (
-      <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
+      <div className="space-y-3"><ServiceTierAudit log={log} requestSnapshot={requestSnapshot} /><div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
         {t('该记录没有 token 用量数据（非 consume 记录或早期数据）。')}
-      </div>
+      </div></div>
     );
   }
 
   return (
     <div className="space-y-3">
+      <ServiceTierAudit log={log} requestSnapshot={requestSnapshot} />
       <section className="space-y-2 rounded-lg border p-3 text-xs">
         <h4 className="font-semibold">{t('实际路由与扣费解释')}</h4>
         <p>{log.routingGroupKey || requestSnapshot?.groupKey ? `${log.routingGroupKey || requestSnapshot?.groupKey} (#${log.routingGroupId || requestSnapshot?.routing?.groupID || '—'})` : '未记录（历史账单）'}</p>
@@ -352,6 +387,13 @@ export function UsageAuditPanel({ log }: { log: UsageAuditLog }) {
               <span className="text-right font-medium">×{snapshot.groupRatio ?? 1}</span>
               <span className="text-muted-foreground">{t('缓存创建模式')}</span>
               <span className="text-right font-medium">{snapshot.cacheCreationMode || '—'}</span>
+              <span className="text-muted-foreground">{t('快照版本')}</span>
+              <span className="text-right font-medium">v{snapshot.snapshotVersion ?? 1}</span>
+              {snapshot.serviceTier && <>
+                <span className="text-muted-foreground">{t('快照结算档位')}</span>
+                <span className="text-right font-mono">{snapshot.serviceTier === 'max' ? t('逐桶最高价') : snapshot.serviceTier}</span>
+              </>}
+              {snapshot.serviceTierPolicy && <span className="col-span-2 break-all font-mono">{snapshot.serviceTierPolicy}</span>}
               <span className="col-span-2 truncate font-mono text-[10px] text-muted-foreground" title={snapshot.configHash || log.pricingConfigHash}>
                 {snapshot.configHash || log.pricingConfigHash}
               </span>

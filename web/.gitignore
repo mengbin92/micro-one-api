@@ -15,6 +15,7 @@ iam-test-results
 d7-test-results
 a1-test-results
 a2-test-results
+a3-test-results
 playwright-report
 coverage
 *.local

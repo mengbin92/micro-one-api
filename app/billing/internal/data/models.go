@@ -120,7 +120,13 @@ type ledgerModel struct {
 	SubsetCandidateCost    int64  `gorm:"column:subset_candidate_cost"`
 	ExclusiveCandidateCost int64  `gorm:"column:exclusive_candidate_cost"`
 	// Pricing evidence (migration 088): references billing_pricing_snapshots.
-	PricingConfigHash string `gorm:"column:pricing_config_hash"`
+	RequestedServiceTier  string `gorm:"column:requested_service_tier"`
+	ActualServiceTier     string `gorm:"column:actual_service_tier"`
+	ServiceTierStatus     string `gorm:"column:service_tier_status"`
+	BilledServiceTier     string `gorm:"column:billed_service_tier"`
+	ServiceTierPolicy     string `gorm:"column:service_tier_policy"`
+	ServiceTierConfigHash string `gorm:"column:service_tier_config_hash"`
+	PricingConfigHash     string `gorm:"column:pricing_config_hash"`
 	// v0.19 P3 A+M1: after partitioning this is a non-unique lookup index.
 	// Global uniqueness is owned by billing_ledger_dedupe_claims, whose primary
 	// key is claimed in the same transaction before the ledger row is inserted.

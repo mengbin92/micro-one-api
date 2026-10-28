@@ -66,9 +66,10 @@ func operatorCredential(ctx context.Context) string {
 func OperatorCredential(ctx context.Context) string { return operatorCredential(ctx) }
 
 type OneAPIOption struct {
-	Key      string `json:"key"`
-	Value    string `json:"value"`
-	Revision string `json:"revision,omitempty"`
+	Key        string `json:"key"`
+	Value      string `json:"value"`
+	Revision   string `json:"revision,omitempty"`
+	Restricted bool   `json:"restricted,omitempty"`
 }
 
 // GroupConfig is the legacy /api/group pricing DTO, not a routing-group record.
@@ -558,8 +559,14 @@ func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string
 		"subsetCandidateCost":    entry.GetSubsetCandidateCost(),
 		"exclusiveCandidateCost": entry.GetExclusiveCandidateCost(),
 		"routingGroupId":         entry.GetRoutingGroupId(), "routingGroupKey": entry.GetRoutingGroupKey(), "requestSnapshotHash": entry.GetRequestSnapshotHash(), "requestSnapshot": entry.GetRequestSnapshotJson(),
-		"pricingConfigHash": entry.GetPricingConfigHash(),
-		"pricingSnapshot":   pricingSnapshotToMap(entry.GetPricingSnapshot()),
+		"pricingConfigHash":     entry.GetPricingConfigHash(),
+		"pricingSnapshot":       pricingSnapshotToMap(entry.GetPricingSnapshot()),
+		"requestedServiceTier":  entry.GetRequestedServiceTier(),
+		"actualServiceTier":     entry.GetActualServiceTier(),
+		"serviceTierStatus":     entry.GetServiceTierStatus(),
+		"billedServiceTier":     entry.GetBilledServiceTier(),
+		"serviceTierPolicy":     entry.GetServiceTierPolicy(),
+		"serviceTierConfigHash": entry.GetServiceTierConfigHash(),
 	}
 	applyLedgerFieldVisibility(ctx, out, entry)
 	return out, nil
@@ -573,16 +580,19 @@ func pricingSnapshotToMap(snap *commonv1.PricingSnapshot) map[string]any {
 		return nil
 	}
 	return map[string]any{
-		"configHash":           snap.GetConfigHash(),
-		"modelName":            snap.GetModelName(),
-		"inputPrice":           snap.GetInputPrice(),
-		"outputPrice":          snap.GetOutputPrice(),
-		"cacheReadPrice":       snap.GetCacheReadPrice(),
-		"cacheCreation5mPrice": snap.GetCacheCreation_5MPrice(),
-		"cacheCreation1hPrice": snap.GetCacheCreation_1HPrice(),
-		"groupRatio":           snap.GetGroupRatio(),
-		"cacheCreationMode":    snap.GetCacheCreationMode(),
-		"snapshotVersion":      snap.GetSnapshotVersion(),
+		"configHash":            snap.GetConfigHash(),
+		"modelName":             snap.GetModelName(),
+		"inputPrice":            snap.GetInputPrice(),
+		"outputPrice":           snap.GetOutputPrice(),
+		"cacheReadPrice":        snap.GetCacheReadPrice(),
+		"cacheCreation5mPrice":  snap.GetCacheCreation_5MPrice(),
+		"cacheCreation1hPrice":  snap.GetCacheCreation_1HPrice(),
+		"groupRatio":            snap.GetGroupRatio(),
+		"cacheCreationMode":     snap.GetCacheCreationMode(),
+		"snapshotVersion":       snap.GetSnapshotVersion(),
+		"serviceTier":           snap.GetServiceTier(),
+		"serviceTierPolicy":     snap.GetServiceTierPolicy(),
+		"serviceTierConfigHash": snap.GetServiceTierConfigHash(),
 	}
 }
 
@@ -2123,6 +2133,7 @@ var oneAPIOptionDefaults = map[string]string{
 	"PreConsumedQuota":               "0",
 	"ModelRatio":                     "{}",
 	"ModelPrice":                     "{}",
+	"ServiceTierPricing":             "{\"enabled\":false}",
 	"GroupRatio":                     "{}",
 	"CompletionRatio":                "{}",
 	"TopUpLink":                      "",
@@ -2149,12 +2160,22 @@ func (s *AdminService) ListOneAPIOptions(ctx context.Context) ([]OneAPIOption, e
 	sort.Strings(keys)
 	options := make([]OneAPIOption, 0, len(keys))
 	for _, key := range keys {
+		if key == "ServiceTierPricing" && s.systemOptsUc != nil {
+			readable, err := s.systemOptsUc.ServiceTierPricingReadable(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if !readable {
+				options = append(options, OneAPIOption{Key: key, Restricted: true})
+				continue
+			}
+		}
 		value, err := s.GetOneAPIOption(ctx, key)
 		if err != nil {
 			return nil, err
 		}
 		option := OneAPIOption{Key: key, Value: value}
-		if s.systemOptsUc != nil && (authorization.External(ctx) || key == "ModelPrice" || key == "ModelRatio" || key == "CompletionRatio") {
+		if s.systemOptsUc != nil && (authorization.External(ctx) || key == "ModelPrice" || key == "ModelRatio" || key == "CompletionRatio" || key == "ServiceTierPricing") {
 			rev, err := s.systemOptsUc.GetRevision(ctx, key)
 			if err != nil {
 				return nil, err
@@ -2555,6 +2576,12 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 			"exclusiveCandidateCost": entry.GetExclusiveCandidateCost(),
 			"routingGroupId":         entry.GetRoutingGroupId(), "routingGroupKey": entry.GetRoutingGroupKey(), "requestSnapshotHash": entry.GetRequestSnapshotHash(), "requestSnapshot": entry.GetRequestSnapshotJson(),
 			"pricingConfigHash":     entry.GetPricingConfigHash(),
+			"requestedServiceTier":  entry.GetRequestedServiceTier(),
+			"actualServiceTier":     entry.GetActualServiceTier(),
+			"serviceTierStatus":     entry.GetServiceTierStatus(),
+			"billedServiceTier":     entry.GetBilledServiceTier(),
+			"serviceTierPolicy":     entry.GetServiceTierPolicy(),
+			"serviceTierConfigHash": entry.GetServiceTierConfigHash(),
 			"channelId":             entry.GetChannelId(),
 			"channelName":           channelName,
 			"channelType":           channelType,

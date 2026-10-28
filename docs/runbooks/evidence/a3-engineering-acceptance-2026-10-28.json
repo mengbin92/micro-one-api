@@ -1,0 +1,157 @@
+{
+  "workPackage": "A3",
+  "title": "service_tier priced MVP (default disabled)",
+  "recordedAt": "2026-10-28T08:20:00+08:00",
+  "baseCommit": "d4c95572",
+  "branch": "develop",
+  "contract": "docs/design/a3-service-tier-contract-2026-10-27.md",
+  "runbook": "docs/runbooks/a3-service-tier-acceptance-2026-10-27.md",
+  "runtime": {
+    "go": "1.27.3 darwin/arm64 (module requires go 1.27)",
+    "node": "web workspace as pinned by package-lock",
+    "databases": "local disposable containers: MySQL 8.4 @127.0.0.1:23316, PostgreSQL 16 @127.0.0.1:25436",
+    "productionTouched": false,
+    "pricingEnabled": false,
+    "versionOrTagPublished": false
+  },
+  "gates": [
+    {
+      "name": "format",
+      "command": "make format-check",
+      "result": "pass"
+    },
+    {
+      "name": "go-unit",
+      "command": "make test-unit",
+      "result": "pass"
+    },
+    {
+      "name": "go-race",
+      "command": "make test-race",
+      "result": "pass"
+    },
+    {
+      "name": "architecture",
+      "command": "./scripts/check-architecture.sh",
+      "result": "pass"
+    },
+    {
+      "name": "migration-check",
+      "command": "make migration-check",
+      "result": "pass",
+      "notes": "migrations 144 (billing) / 145 (log) plus mysql/postgres/sqlite mirrors; ownership updated"
+    },
+    {
+      "name": "rbac-contract-check",
+      "command": "go run ./cmd/rbac-contract-check",
+      "result": "pass",
+      "rows": 907,
+      "notes": "A3 source digests re-synced; new internal/server/service_tier.go reviewed row added"
+    },
+    {
+      "name": "iam-browser-gate-check",
+      "command": "make iam-browser-gate-check",
+      "result": "pass"
+    },
+    {
+      "name": "generated-frontend-types",
+      "command": "make api && (cd web && npm run generate:api)",
+      "result": "pass",
+      "notes": "regenerated web/src/types/api.ts included in the candidate index"
+    },
+    {
+      "name": "web-lint",
+      "command": "cd web && npm run lint",
+      "result": "pass"
+    },
+    {
+      "name": "web-build-budget",
+      "command": "cd web && npm run build",
+      "result": "pass",
+      "notes": "all six initial-asset budgets pass"
+    },
+    {
+      "name": "web-unit",
+      "command": "cd web && npm test -- --run",
+      "result": "fail",
+      "failures": 4,
+      "passed": 641,
+      "failedFiles": [
+        "src/router.test.tsx (IAM entry route: permissions, roles)",
+        "src/components/AppNavigation.test.tsx (mobile menu)",
+        "src/pages/PlaygroundPage.test.tsx (late deltas after stop)"
+      ],
+      "cause": "pre-existing on this host: default 1s Testing Library wait expires while jsdom per-file init dominates wall time",
+      "baselineComparison": {
+        "commit": "d4c95572 (worktree without any A3 change)",
+        "command": "cd web && npm test -- --run",
+        "result": "fail",
+        "failed": 4,
+        "passed": 626,
+        "sameTests": true
+      },
+      "isolation": "each failing file passes when run alone in the A3 tree"
+    },
+    {
+      "name": "web-critical-coverage",
+      "command": "cd web && npm run test:critical",
+      "result": "fail",
+      "failed": 2,
+      "passed": 189,
+      "failedTests": [
+        "src/pages/PlaygroundPage.test.tsx > ignores late deltas ... after 停止",
+        "src/pages/PlaygroundPage.test.tsx > ignores late deltas ... after 清空"
+      ],
+      "cause": "same pre-existing timeout class as the full-suite run; the same test fails at baseline HEAD"
+    }
+  ],
+  "a3Suites": [
+    {
+      "command": "go test ./domain/billing ./app/billing/internal/biz ./app/billing/internal/data -run 'Test(ServiceTier|MaxTier|LegacySettlementJSON|PricingSnapshotReuse)' -count=1",
+      "result": "pass"
+    },
+    {
+      "command": "go test ./internal/server ./domain/upstream/provider ./app/log/internal/biz ./app/log/internal/data ./app/log/internal/service -count=1",
+      "result": "pass"
+    },
+    {
+      "command": "go test ./app/identity/internal/server -run '^TestSelfLedgerServiceTierExplanation$' -count=1",
+      "result": "pass"
+    },
+    {
+      "command": "go test -race ./internal/server/... -count=1",
+      "result": "pass"
+    },
+    {
+      "command": "go test ./internal/integration -run '^TestServiceTierOwnerChain$' -count=1 -v",
+      "result": "pass",
+      "dialects": ["sqlite", "mysql", "postgres"],
+      "subtestsPerDialect": 15,
+      "skipped": 0,
+      "durationSeconds": 9.69
+    },
+    {
+      "command": "go test ./internal/integration -run 'TestRelayChannelSlot|TestChatCompletions|TestRelaySelectChannel_WeightedDistribution' -count=1",
+      "result": "pass",
+      "notes": "legacy fixtures now advertise and echo service_tier_pricing_version=1"
+    }
+  ],
+  "reviewFixes": [
+    {
+      "id": "tier-admission-status",
+      "change": "Billing service-tier admission rejections map to HTTP 400 with a service_tier message, are non-retryable and do not count against source health; previously 402 insufficient-quota with retry.",
+      "tests": ["internal/server/service_tier_test.go TestServiceTierAdmissionErrorsRemainBadRequest (asserts exactly one reservation)"]
+    },
+    {
+      "id": "rbac-digest-sync",
+      "change": "RBAC source matrix digests and review notes synchronised for the eight touched relay sources, including the new service_tier.go row."
+    }
+  ],
+  "externalAcceptanceRemaining": [
+    "bind a real OpenAI channel/model and verify project tier permissions",
+    "review real default/priority/flex sell and procurement prices, minimum charge and flex timeout",
+    "authorise one paid HTTP JSON/SSE probe and reconcile supplier billing evidence",
+    "production backup, migrations, Billing/Log first, then Relay/Admin/Identity/Web deployment",
+    "decide paid enablement and scope expansion"
+  ]
+}

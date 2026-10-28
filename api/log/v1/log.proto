@@ -132,6 +132,9 @@ message GetLogResponse {
   string source_kind = 33;
   string upstream_model_id = 34;
   RequestTimingSummary request_timing = 35;
+  string requested_service_tier = 36;
+  string actual_service_tier = 37;
+  string service_tier_status = 38;
 }
 
 message ListLogsRequest {
@@ -191,6 +194,9 @@ message IngestLogRequest {
   // Independent observation snapshot. Consumers must support this field and
   // its attempt references before producers are enabled.
   RequestTimingSummary request_timing = 36;
+  string requested_service_tier = 37;
+  string actual_service_tier = 38;
+  string service_tier_status = 39;
 }
 
 // All durations are milliseconds. Optional fields preserve unknown versus zero.

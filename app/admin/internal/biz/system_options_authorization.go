@@ -31,7 +31,7 @@ func SystemOptionWriteOperation(key string) string {
 }
 func IsPricingOption(key string) bool {
 	k := strings.ToLower(key)
-	return strings.Contains(k, "price") || strings.Contains(k, "ratio") || strings.Contains(k, "quota_per_unit") || k == "quotaperunit" || k == "amountperunit"
+	return k == "servicetierpricing" || strings.Contains(k, "price") || strings.Contains(k, "ratio") || strings.Contains(k, "quota_per_unit") || k == "quotaperunit" || k == "amountperunit"
 }
 func SensitiveSystemOption(key string) bool {
 	k := strings.ToLower(key)
@@ -55,10 +55,38 @@ func (uc *SystemOptionsUsecase) prepareRead(ctx context.Context, key string) (co
 	if key == "UpstreamModelPrice" {
 		return authorization.PrepareOptional(ctx, uc.authorization, "admin.upstream_costs", "billing.upstream_cost.read")
 	}
+	if key == "ServiceTierPricing" {
+		ctx, err = authorization.PrepareOptional(ctx, uc.authorization, "admin.pricing", "billing.pricing.read")
+		if err != nil {
+			return ctx, err
+		}
+		return authorization.PrepareOptional(ctx, uc.authorization, "admin.upstream_costs", "billing.upstream_cost.read")
+	}
 	if IsPricingOption(key) {
 		return authorization.PrepareOptional(ctx, uc.authorization, "admin.pricing", "billing.pricing.read")
 	}
 	return ctx, nil
+}
+
+// ServiceTierPricingReadable distinguishes a hidden whole-object tariff from
+// an absent option. A scoped price or procurement grant cannot read this
+// atomic configuration, so callers must not replace it with a disabled value.
+func (uc *SystemOptionsUsecase) ServiceTierPricingReadable(ctx context.Context) (bool, error) {
+	prepared, err := uc.prepareRead(ctx, "ServiceTierPricing")
+	if err != nil {
+		return false, err
+	}
+	return serviceTierOptionReadable(prepared), nil
+}
+
+func serviceTierOptionReadable(ctx context.Context) bool {
+	facts := authorization.ObjectFacts{Context: authorization.Platform()}
+	for _, op := range []string{"billing.pricing.read", "billing.upstream_cost.read"} {
+		if authorization.Require(ctx, op, facts) != nil {
+			return false
+		}
+	}
+	return true
 }
 func (uc *SystemOptionsUsecase) prepareWrite(ctx context.Context, key string) (context.Context, error) {
 	if !authorization.External(ctx) {
@@ -101,6 +129,17 @@ func (uc *SystemOptionsUsecase) prepareWrite(ctx context.Context, key string) (c
 		if err != nil {
 			return ctx, err
 		}
+		if key == "ServiceTierPricing" {
+			ctx, err = authorization.Prepare(ctx, uc.authorization, "admin.upstream_costs", "billing.upstream_cost.update")
+			if err != nil {
+				return ctx, err
+			}
+			for _, permission := range []string{"billing.pricing.update", "billing.upstream_cost.update"} {
+				if err = authorization.Require(ctx, permission, authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+					return ctx, err
+				}
+			}
+		}
 	}
 	return ctx, nil
 }
@@ -127,6 +166,19 @@ type SystemOptionsMutationRepo interface {
 }
 
 func (uc *SystemOptionsUsecase) Mutate(ctx context.Context, key string, fn func(string) (string, error)) error {
+	if key == "ServiceTierPricing" {
+		if _, supplied := ExpectedOptionRevision(ctx); !supplied {
+			return ErrSystemOptionConflict
+		}
+		original := fn
+		fn = func(raw string) (string, error) {
+			value, err := original(raw)
+			if err == nil {
+				err = validateServiceTierOption(value)
+			}
+			return value, err
+		}
+	}
 	var err error
 	ctx, err = uc.prepareWrite(ctx, key)
 	if err != nil {
@@ -134,6 +186,9 @@ func (uc *SystemOptionsUsecase) Mutate(ctx context.Context, key string, fn func(
 	}
 	if repo, ok := uc.repo.(SystemOptionsMutationRepo); ok {
 		return repo.Mutate(ctx, key, fn)
+	}
+	if key == "ServiceTierPricing" {
+		return authorization.ErrWriteStorageUnavailable
 	}
 	if authorization.External(ctx) {
 		for _, op := range []string{"system.option.update", SystemOptionWriteOperation(key)} {
@@ -225,6 +280,14 @@ type SystemOptionsBatchRepo interface {
 }
 
 func (uc *SystemOptionsUsecase) SetMany(ctx context.Context, values map[string]string, revisions map[string]int64) error {
+	if raw, ok := values["ServiceTierPricing"]; ok {
+		if err := validateServiceTierOption(raw); err != nil {
+			return err
+		}
+		if _, supplied := revisions["ServiceTierPricing"]; !supplied {
+			return ErrSystemOptionConflict
+		}
+	}
 	keys := make([]string, 0, len(values))
 	for key := range values {
 		keys = append(keys, key)

@@ -32,6 +32,10 @@ type timingBillingServer struct {
 	billing *rawBillingClient
 }
 
+func (s timingBillingServer) GetRoutingCapabilities(ctx context.Context, req *billingv1.GetRoutingCapabilitiesRequest) (*billingv1.GetRoutingCapabilitiesResponse, error) {
+	return s.billing.GetRoutingCapabilities(ctx, req)
+}
+
 func (s timingBillingServer) ReserveQuota(ctx context.Context, req *billingv1.ReserveQuotaRequest) (*billingv1.ReserveQuotaResponse, error) {
 	return s.billing.ReserveQuota(ctx, req)
 }

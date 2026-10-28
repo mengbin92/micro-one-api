@@ -19,16 +19,25 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// Mock billing service for testing
+// Mock billing service for testing. Relay requires the A3 service-tier
+// capability on every openai_chat/openai_responses reservation, so the stub
+// advertises the same version it echoes back; otherwise every legacy fixture
+// request is refused before reaching the upstream.
 type mockBillingService struct {
 	billingv1.UnimplementedBillingServiceServer
 }
 
+func (m *mockBillingService) GetRoutingCapabilities(context.Context, *billingv1.GetRoutingCapabilitiesRequest) (*billingv1.GetRoutingCapabilitiesResponse, error) {
+	return &billingv1.GetRoutingCapabilitiesResponse{ServiceTierPricingVersion: 1}, nil
+}
+
 func (m *mockBillingService) ReserveQuota(ctx context.Context, req *billingv1.ReserveQuotaRequest) (*billingv1.ReserveQuotaResponse, error) {
 	return &billingv1.ReserveQuotaResponse{
-		Success:        true,
-		ReservationId:  "test-reservation-123",
-		ReservedAmount: 100,
+		Success:                    true,
+		ReservationId:              "test-reservation-123",
+		ReservedAmount:             100,
+		ServiceTierPricingVersion:  req.GetServiceTierPricingVersion(),
+		ServiceTierContractVersion: req.GetServiceTierPricingVersion(),
 	}, nil
 }
 

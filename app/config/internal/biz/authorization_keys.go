@@ -20,6 +20,9 @@ func ConfigWriteOperation(namespace, key string) string {
 		return "system.option.update"
 	}
 	lowered := strings.ToLower(key)
+	if lowered == "servicetierpricing" {
+		return "system.option.pricing.update"
+	}
 	if strings.Contains(lowered, "alipay") || strings.Contains(lowered, "stripe") || strings.Contains(lowered, "payment") || strings.Contains(lowered, "epay") || strings.Contains(lowered, "topup") {
 		return "system.option.payment.update"
 	}

@@ -11,23 +11,27 @@ import (
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // pricingSnapshotModel is the migration 088 billing_pricing_snapshots row:
 // immutable pricing evidence referenced by billing_ledgers.pricing_config_hash.
 type pricingSnapshotModel struct {
-	ID                   uint      `gorm:"primaryKey;column:id"`
-	ConfigHash           string    `gorm:"column:config_hash;uniqueIndex:uk_billing_pricing_snapshots_hash"`
-	ModelName            string    `gorm:"column:model_name"`
-	InputPrice           float64   `gorm:"column:input_price"`
-	OutputPrice          float64   `gorm:"column:output_price"`
-	CacheReadPrice       float64   `gorm:"column:cache_read_price"`
-	CacheCreation5mPrice float64   `gorm:"column:cache_creation_5m_price"`
-	CacheCreation1hPrice float64   `gorm:"column:cache_creation_1h_price"`
-	GroupRatio           float64   `gorm:"column:group_ratio"`
-	CacheCreationMode    string    `gorm:"column:cache_creation_mode"`
-	SnapshotVersion      int32     `gorm:"column:snapshot_version"`
-	CreatedAt            time.Time `gorm:"column:created_at"`
+	ServiceTier           string    `gorm:"column:service_tier"`
+	ServiceTierPolicy     string    `gorm:"column:service_tier_policy"`
+	ServiceTierConfigHash string    `gorm:"column:service_tier_config_hash"`
+	ID                    uint      `gorm:"primaryKey;column:id"`
+	ConfigHash            string    `gorm:"column:config_hash;uniqueIndex:uk_billing_pricing_snapshots_hash"`
+	ModelName             string    `gorm:"column:model_name"`
+	InputPrice            float64   `gorm:"column:input_price"`
+	OutputPrice           float64   `gorm:"column:output_price"`
+	CacheReadPrice        float64   `gorm:"column:cache_read_price"`
+	CacheCreation5mPrice  float64   `gorm:"column:cache_creation_5m_price"`
+	CacheCreation1hPrice  float64   `gorm:"column:cache_creation_1h_price"`
+	GroupRatio            float64   `gorm:"column:group_ratio"`
+	CacheCreationMode     string    `gorm:"column:cache_creation_mode"`
+	SnapshotVersion       int32     `gorm:"column:snapshot_version"`
+	CreatedAt             time.Time `gorm:"column:created_at"`
 }
 
 func (pricingSnapshotModel) TableName() string { return "billing_pricing_snapshots" }
@@ -73,27 +77,34 @@ func (r *pricingSnapshotRepo) ClaimPricingSnapshot(ctx context.Context, snapshot
 
 func claimPricingSnapshot(ctx context.Context, db *gorm.DB, snapshot *biz.PricingSnapshot) error {
 	model := &pricingSnapshotModel{
-		ConfigHash:           snapshot.ConfigHash,
-		ModelName:            snapshot.ModelName,
-		InputPrice:           snapshot.InputPrice,
-		OutputPrice:          snapshot.OutputPrice,
-		CacheReadPrice:       snapshot.CacheReadPrice,
-		CacheCreation5mPrice: snapshot.CacheCreation5mPrice,
-		CacheCreation1hPrice: snapshot.CacheCreation1hPrice,
-		GroupRatio:           snapshot.GroupRatio,
-		CacheCreationMode:    snapshot.CacheCreationMode,
-		SnapshotVersion:      snapshot.SnapshotVersion,
+		ConfigHash:            snapshot.ConfigHash,
+		ServiceTier:           snapshot.ServiceTier,
+		ServiceTierPolicy:     snapshot.ServiceTierPolicy,
+		ServiceTierConfigHash: snapshot.ServiceTierConfigHash,
+		ModelName:             snapshot.ModelName,
+		InputPrice:            snapshot.InputPrice,
+		OutputPrice:           snapshot.OutputPrice,
+		CacheReadPrice:        snapshot.CacheReadPrice,
+		CacheCreation5mPrice:  snapshot.CacheCreation5mPrice,
+		CacheCreation1hPrice:  snapshot.CacheCreation1hPrice,
+		GroupRatio:            snapshot.GroupRatio,
+		CacheCreationMode:     snapshot.CacheCreationMode,
+		SnapshotVersion:       snapshot.SnapshotVersion,
 	}
 	if model.SnapshotVersion == 0 {
 		model.SnapshotVersion = biz.PricingSnapshotVersion
 	}
-	if err := db.WithContext(ctx).Create(model).Error; err != nil {
-		if isUniqueConstraintError(err) {
-			// Identical charge inputs were already frozen; reuse the evidence.
-			return nil
-		}
+	create := db.WithContext(ctx)
+	if snapshot.ServiceTierConfigHash == "" {
+		create = create.Omit("ServiceTier", "ServiceTierPolicy", "ServiceTierConfigHash")
+	}
+	// PostgreSQL marks a transaction failed after a unique violation, even
+	// when Go swallows it. Conflict-free insertion keeps the caller's money
+	// transaction usable when another ledger reuses an immutable snapshot.
+	if err := create.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "config_hash"}}, DoNothing: true}).Create(model).Error; err != nil {
 		return err
 	}
+
 	snapshot.ID = model.ID
 	snapshot.CreatedAt = model.CreatedAt
 	return nil
@@ -126,18 +137,21 @@ func (r *pricingSnapshotRepo) GetPricingSnapshotByHash(ctx context.Context, conf
 		}
 	}
 	return &biz.PricingSnapshot{
-		ID:                   model.ID,
-		ConfigHash:           model.ConfigHash,
-		ModelName:            model.ModelName,
-		InputPrice:           model.InputPrice,
-		OutputPrice:          model.OutputPrice,
-		CacheReadPrice:       model.CacheReadPrice,
-		CacheCreation5mPrice: model.CacheCreation5mPrice,
-		CacheCreation1hPrice: model.CacheCreation1hPrice,
-		GroupRatio:           model.GroupRatio,
-		CacheCreationMode:    model.CacheCreationMode,
-		SnapshotVersion:      model.SnapshotVersion,
-		CreatedAt:            model.CreatedAt,
+		ID:                    model.ID,
+		ConfigHash:            model.ConfigHash,
+		ServiceTier:           model.ServiceTier,
+		ServiceTierPolicy:     model.ServiceTierPolicy,
+		ServiceTierConfigHash: model.ServiceTierConfigHash,
+		ModelName:             model.ModelName,
+		InputPrice:            model.InputPrice,
+		OutputPrice:           model.OutputPrice,
+		CacheReadPrice:        model.CacheReadPrice,
+		CacheCreation5mPrice:  model.CacheCreation5mPrice,
+		CacheCreation1hPrice:  model.CacheCreation1hPrice,
+		GroupRatio:            model.GroupRatio,
+		CacheCreationMode:     model.CacheCreationMode,
+		SnapshotVersion:       model.SnapshotVersion,
+		CreatedAt:             model.CreatedAt,
 	}, nil
 }
 

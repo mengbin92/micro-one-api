@@ -366,6 +366,12 @@ message LedgerEntry {
   string request_snapshot_json = 51;
   bool cost_fields_visible = 52; // false means restricted, not a zero cost.
   bool pricing_fields_visible = 53;
+ string requested_service_tier = 54;
+ string actual_service_tier = 55;
+ string service_tier_status = 56;
+ string billed_service_tier = 57;
+ string service_tier_policy = 58;
+ string service_tier_config_hash = 59;
 }
 
 // PricingSnapshot is the immutable per-request pricing evidence stored in
@@ -384,6 +390,9 @@ message PricingSnapshot {
   string cache_creation_mode = 9;     // charge | observe
   int32 snapshot_version = 10;
   google.protobuf.Timestamp created_at = 11;
+ string service_tier = 12;
+ string service_tier_policy = 13;
+ string service_tier_config_hash = 14;
 }
 
 // ========== 流水信息（管理端视图）==========

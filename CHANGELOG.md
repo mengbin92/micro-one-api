@@ -10,10 +10,12 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ### Added
 
 - 补齐 A1 注册、邮箱验证与密码恢复：Identity 公开策略、BFF 代理、中英文页面和 Turnstile，支持复用现有 Notify SMTP；共享 Redis challenge 实现限次、冷却、单次消费与投递失败撤销。配置和验收范围见 [A1 实施记录](docs/runbooks/a1-self-service-acceptance-2026-10-27.md)。
+- A3 服务档位计价 MVP（默认关闭）：单来源/模型的 default/priority/flex 五桶售价与可选采购估价、预扣成本上界、reserve 时冻结配置、PricingSnapshot v2 与账本六字段解释；HTTP JSON/SSE 分别保存请求与实际档位，缺失/未知/冲突按 `actual_or_max_v1` 结算；executor、WS 与其他协议明确拒绝。契约与验收见 [A3 冻结契约](docs/design/a3-service-tier-contract-2026-10-27.md) / [A3 实施验收](docs/runbooks/a3-service-tier-acceptance-2026-10-27.md)。
 
 ### Fixed
 
 - 恢复请求在账号查询和 SMTP 前统一有界异步接受，避免公开响应暴露邮箱存在性；新邮箱绑定在 Owner 写锁下检查占用，历史重复邮箱恢复失败关闭；注册与邀请奖励补稳定幂等键，重置后旧会话继续失效。
+- Billing 服务档位准入拒绝（`SERVICE_TIER_UNSUPPORTED`、`SERVICE_TIER_BOUND_REQUIRED`）不再被 Relay 当作预扣失败报告为 402「insufficient quota」，也不再重试或计入来源健康；统一返回 400 并在响应中点名 `service_tier`。
 
 ## [0.36.6] - 2026-10-26
 

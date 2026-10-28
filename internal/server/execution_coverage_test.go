@@ -67,7 +67,7 @@ type coverageBillingClient struct {
 
 func (c *coverageBillingClient) GetRoutingCapabilities(context.Context, *billingv1.GetRoutingCapabilitiesRequest, ...grpc.CallOption) (*billingv1.GetRoutingCapabilitiesResponse, error) {
 	c.capabilityRequests++
-	return &billingv1.GetRoutingCapabilitiesResponse{ExecutionDeliveryVersion: 1, UsageContractVersion: 2, SettlementPolicyVersion: execution.Policy}, nil
+	return &billingv1.GetRoutingCapabilitiesResponse{ServiceTierPricingVersion: 1, ExecutionDeliveryVersion: 1, UsageContractVersion: 2, SettlementPolicyVersion: execution.Policy}, nil
 }
 
 func (c *coverageBillingClient) ReserveQuota(ctx context.Context, req *billingv1.ReserveQuotaRequest, opts ...grpc.CallOption) (*billingv1.ReserveQuotaResponse, error) {

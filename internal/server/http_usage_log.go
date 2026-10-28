@@ -54,6 +54,11 @@ func (in *usageLogInput) applyChannelInputs(channel *relaybiz.Channel) {
 }
 
 type usageLogInput struct {
+	SettlementOutcome     string
+	RequestedServiceTier  string
+	ActualServiceTier     string
+	ServiceTierStatus     string
+	TierPricing           bool
 	UserID                int64
 	TokenID               int64
 	TokenName             string
@@ -103,6 +108,7 @@ func (in *usageLogInput) applyReservation(r *billingv1.ReserveQuotaResponse) {
 	if r == nil {
 		return
 	}
+	in.TierPricing = r.ServiceTierPricingVersion == 1
 	in.ReservationID = r.ReservationId
 	in.RootRequestID = r.RootRequestId
 	in.AttemptNumber = r.AttemptNumber
@@ -226,6 +232,9 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 		return
 	}
 	message := applogger.Sanitize(fmt.Sprintf("model=%s quota=%d prompt_tokens=%d completion_tokens=%d cache_read_tokens=%d channel=%d", in.ModelName, in.Quota, in.PromptTokens, in.CompletionTokens, in.CacheReadTokens, in.ChannelID))
+	if in.SettlementOutcome != "" {
+		message += " settlement_outcome=" + in.SettlementOutcome
+	}
 	dedupeKey := ""
 	if in.RequestID != "" {
 		dedupeKey = fmt.Sprintf("consume:%d:%s", in.UserID, in.RequestID)
@@ -240,6 +249,9 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 		ReservationId:          in.ReservationID,
 		SourceKind:             in.SourceKind,
 		UpstreamModelId:        in.UpstreamModelID,
+		RequestedServiceTier:   in.RequestedServiceTier,
+		ActualServiceTier:      in.ActualServiceTier,
+		ServiceTierStatus:      in.ServiceTierStatus,
 		UserId:                 in.UserID,
 		TokenName:              usageTokenName(in),
 		ModelName:              in.ModelName,

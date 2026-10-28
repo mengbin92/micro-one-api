@@ -1932,6 +1932,9 @@ export interface components {
             sourceKind?: string;
             upstreamModelId?: string;
             requestTiming?: components["schemas"]["api.log.v1.RequestTimingSummary"];
+            requestedServiceTier?: string;
+            actualServiceTier?: string;
+            serviceTierStatus?: string;
         };
         "api.log.v1.IngestLogRequest": {
             level?: string;
@@ -1985,6 +1988,9 @@ export interface components {
              *      its attempt references before producers are enabled.
              */
             requestTiming?: components["schemas"]["api.log.v1.RequestTimingSummary"];
+            requestedServiceTier?: string;
+            actualServiceTier?: string;
+            serviceTierStatus?: string;
         };
         "api.log.v1.IngestLogResponse": {
             id?: string;

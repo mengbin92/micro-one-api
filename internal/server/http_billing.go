@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"micro-one-api/domain/execution"
 	"micro-one-api/domain/requesttrace"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
+	billingdomain "micro-one-api/domain/billing"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	relaybiz "micro-one-api/internal/biz"
@@ -134,11 +136,13 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 	if relaybiz.RoutingContextV2Enabled() && routingContext == nil {
 		return nil, fmt.Errorf("missing resolved routing context")
 	}
+	var billingCaps *billingv1.GetRoutingCapabilitiesResponse
 	if routingContext != nil {
 		if err := routingContext.Validate(); err != nil {
 			return nil, err
 		}
 		capability, err := s.billingClient.GetRoutingCapabilities(ctx, &billingv1.GetRoutingCapabilitiesRequest{})
+		billingCaps = capability
 		if err != nil || capability.GetRequestSnapshotVersion() != 2 || (routingContext.TokenMode == "fixed" && !capability.GetFixedRouting()) || (subscriptionbiz.EntitlementsEnabled() && !capability.GetSubscriptionContracts()) {
 			metrics.RoutingAdmissionRejected.WithLabelValues("reserve", "billing_capability").Inc()
 			applogger.Log.Warn("routing admission rejected", zap.String("operation", "reserve"), zap.String("reason", "billing_capability"), zap.String("user_id", userID), zap.Int64("token_id", routingContext.TokenID), zap.String("request_id", requestID), zap.Error(err))
@@ -165,6 +169,26 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 		ChannelId:             channelID,
 		SubscriptionAccountId: subscriptionAccountID,
 	}
+	tier := billingdomain.GetServiceTierRequest(ctx)
+	if tier.Protocol == "" {
+		tier.Protocol = "unsupported"
+	}
+	req.RequestedServiceTier, req.ServiceTierProtocol = tier.RequestedServiceTier, tier.Protocol
+	req.InputTokenBound, req.OutputTokenBound = tier.InputTokenBound, tier.OutputTokenBound
+	req.ServiceTierPricingVersion = billingdomain.ServiceTierPricingVersion
+	expectsTierContract := tier.Protocol == "openai_chat" || tier.Protocol == "openai_responses" || tier.RequestedServiceTier == "priority" || tier.RequestedServiceTier == "flex"
+	if expectsTierContract {
+		if billingCaps == nil {
+			var capabilityErr error
+			billingCaps, capabilityErr = s.billingClient.GetRoutingCapabilities(ctx, &billingv1.GetRoutingCapabilitiesRequest{})
+			if capabilityErr != nil {
+				return nil, fmt.Errorf("billing service_tier capability unavailable: %w", capabilityErr)
+			}
+		}
+		if billingCaps.GetServiceTierPricingVersion() != billingdomain.ServiceTierPricingVersion {
+			return nil, fmt.Errorf("billing service_tier capability unavailable")
+		}
+	}
 	bound := routing.GetCostBound(ctx)
 	if bound.Valid() {
 		req.CostBound = &billingv1.RequestCostBound{Protocol: bound.Protocol, InputTokens: bound.InputTokens, UpstreamModel: bound.UpstreamModel}
@@ -174,9 +198,13 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 		if s.executionDelivery == nil {
 			return nil, fmt.Errorf("durable execution storage unavailable")
 		}
-		caps, err := s.billingClient.GetRoutingCapabilities(ctx, &billingv1.GetRoutingCapabilitiesRequest{})
-		if err != nil {
-			return nil, err
+		caps := billingCaps
+		if caps == nil {
+			var err error
+			caps, err = s.billingClient.GetRoutingCapabilities(ctx, &billingv1.GetRoutingCapabilitiesRequest{})
+			if err != nil {
+				return nil, err
+			}
 		}
 		if caps == nil || caps.ExecutionDeliveryVersion != 1 || caps.UsageContractVersion != 2 || caps.SettlementPolicyVersion != execution.Policy {
 			return nil, fmt.Errorf("billing execution capability unavailable")
@@ -200,6 +228,12 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 	if resp == nil || !resp.GetSuccess() {
 		recordRelayQuotaOutcome(ctx, "reserve_error")
 		return resp, stderrors.New(billingErrorMessage(resp, "reserve quota failed"))
+	}
+	if expectsTierContract && (resp.GetServiceTierContractVersion() != billingdomain.ServiceTierPricingVersion || ((tier.RequestedServiceTier == "priority" || tier.RequestedServiceTier == "flex") && resp.GetServiceTierPricingVersion() != billingdomain.ServiceTierPricingVersion)) {
+		if resp.ReservationId != "" {
+			_ = s.releaseQuota(ctx, resp.ReservationId, "billing service_tier contract mismatch")
+		}
+		return nil, fmt.Errorf("billing service_tier contract mismatch")
 	}
 	if routingContext != nil && (resp.RequestSnapshotVersion != 2 || resp.RoutingContextHash != routingContext.Digest() || len(resp.RequestSnapshotHash) != 64) {
 		if resp.ReservationId != "" {
@@ -278,10 +312,11 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 		req.UpstreamModelId = detail.UpstreamModelID
 		req.SourceKind = detail.SourceKind
 		req.PromptExclusive = detail.PromptExclusive
+		req.ActualServiceTier, req.ServiceTierStatus = detail.ActualServiceTier, detail.ServiceTierStatus
 		// §5.3 dual-write: the v1 envelope is sent only when the producer
 		// feature gate is on; the legacy fields above always keep their old
 		// meanings so old billing consumers are unaffected.
-		if detail.Usage != nil && canonicalUsageProducerEnabled() {
+		if detail.Usage != nil && (canonicalUsageProducerEnabled() || detail.TierPricing) {
 			req.UsageContractVersion = relaybiz.UsageContractVersionV1
 			req.Usage = usageEnvelopeToProto(*detail.Usage)
 		}
@@ -632,6 +667,18 @@ func (s *HTTPServer) releaseQuota(ctx context.Context, reservationID, reason str
 	}
 	recordRelayQuotaOutcome(ctx, "release_success")
 	return nil
+}
+
+// reserveFailure classifies a failed reservation. A service-tier admission
+// rejection is decided before any upstream attempt: report it as the client
+// error it is, do not retry it, and do not count it against a source's health.
+// Every other reservation failure keeps the historical 402 quota semantics.
+func reserveFailure(err error) error {
+	if _, ok := serviceTierAdmissionMessage(err); ok {
+		retryable := false
+		return &relaybiz.RetryableError{Status: http.StatusBadRequest, Err: err, Retryable: &retryable, NoUpstreamAttempt: true}
+	}
+	return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: err}
 }
 
 func billingErrorMessage(resp billingFailure, fallback string) string {

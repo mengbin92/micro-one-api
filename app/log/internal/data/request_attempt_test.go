@@ -21,7 +21,7 @@ func TestExecutionIdentityRoundTripSingleAndBatch(t *testing.T) {
 	repo := &Repository{db: db}
 	ctx := context.Background()
 	for _, batch := range []bool{false, true} {
-		entry := &biz.LogEntry{Level: "consume", UserID: 1, RequestID: "attempt", RootRequestID: "root", AttemptNumber: 2, ReservationID: "reservation", SourceKind: "channel", UpstreamModelID: "Mapped-Model", CreatedAt: time.Now()}
+		entry := &biz.LogEntry{Level: "consume", UserID: 1, RequestID: "attempt", RootRequestID: "root", AttemptNumber: 2, ReservationID: "reservation", SourceKind: "channel", UpstreamModelID: "Mapped-Model", RequestedServiceTier: "priority", ActualServiceTier: "future", ServiceTierStatus: "unknown", CreatedAt: time.Now()}
 		if batch {
 			require.NoError(t, repo.CreateBatch(ctx, []*biz.LogEntry{entry}))
 		} else {
@@ -40,6 +40,9 @@ func TestExecutionIdentityRoundTripSingleAndBatch(t *testing.T) {
 			require.Equal(t, "reservation", e.ReservationID)
 			require.Equal(t, "channel", e.SourceKind)
 			require.Equal(t, "Mapped-Model", e.UpstreamModelID)
+			require.Equal(t, "priority", e.RequestedServiceTier)
+			require.Equal(t, "future", e.ActualServiceTier)
+			require.Equal(t, "unknown", e.ServiceTierStatus)
 		}
 	}
 }

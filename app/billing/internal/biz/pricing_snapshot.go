@@ -29,7 +29,10 @@ const PricingSnapshotVersion int32 = 1
 // per-bucket unit prices to freeze, so their ledger rows keep an empty
 // pricing_config_hash (their prices stay unknown by design, §8.2).
 type PricingSnapshot struct {
-	ID uint
+	ServiceTier           string
+	ServiceTierPolicy     string
+	ServiceTierConfigHash string
+	ID                    uint
 	// ConfigHash is sha256 over the canonical snapshot payload; identical
 	// charge inputs collapse to a single row.
 	ConfigHash string
@@ -161,4 +164,14 @@ func (uc *BillingUsecase) claimPricingSnapshot(ctx context.Context, snapshot *Pr
 		return nil
 	}
 	return uc.pricingSnapshotRepo.ClaimPricingSnapshot(ctx, snapshot)
+}
+
+// Version two extends the immutable v1 pricing hash with the tier decision.
+// The v1 builder and historical hashes deliberately remain unchanged.
+func snapshotTierHash(s *PricingSnapshot) [32]byte {
+	b, _ := jsonx.Marshal(struct {
+		Version                    int32
+		Base, Tier, Policy, Config string
+	}{2, s.ConfigHash, s.ServiceTier, s.ServiceTierPolicy, s.ServiceTierConfigHash})
+	return sha256.Sum256(b)
 }

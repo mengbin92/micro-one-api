@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"io"
+	billingdomain "micro-one-api/domain/billing"
 	"net/http"
 
 	appmiddleware "micro-one-api/platform/middleware"
@@ -36,11 +37,20 @@ func readRouteRequestBody(r *http.Request) ([]byte, error) {
 	body, err := readRequestBody(r, appmiddleware.RequestBodyLimitForPath(r.URL.Path))
 	if err == nil {
 		applyRequestBudget(r, body)
+		tier, tierErr := readServiceTierRequest(body, "unsupported")
+		if tierErr != nil {
+			return nil, tierErr
+		}
+		*r = *r.WithContext(billingdomain.WithServiceTierRequest(r.Context(), tier))
 	}
 	return body, err
 }
 
 func (s *HTTPServer) writeRequestBodyError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, errServiceTierRequest) {
+		s.writeError(w, http.StatusBadRequest, errServiceTierRequest.Error())
+		return
+	}
 	if errors.Is(err, errRequestBodyTooLarge) {
 		appmiddleware.WriteRequestBodyTooLarge(w, r.URL.Path)
 		return

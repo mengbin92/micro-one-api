@@ -49,6 +49,12 @@ interface UsageLog {
   usage_parse_status?: string;
   usage_contract_version?: number;
   usage_decision_reason?: string;
+  requested_service_tier?: string;
+  actual_service_tier?: string;
+  service_tier_status?: string;
+  billed_service_tier?: string;
+  service_tier_policy?: string;
+  service_tier_config_hash?: string;
 }
 
 interface UsageLogData {
@@ -127,8 +133,7 @@ function CostCell({ log }: { log: UsageLog }) {
   const balanceCost = Math.abs(log.balance_cost || 0);
   const total = Math.abs(log.amount ?? 0);
 
-  if (subscriptionCost > 0 || balanceCost > 0) {
-    return (
+  const amount = subscriptionCost > 0 || balanceCost > 0 ? (
       <div className="space-y-1">
         <div className="font-semibold text-slate-900 dark:text-white">{formatQuota(total)}</div>
         {subscriptionCost > 0 ? (
@@ -138,10 +143,19 @@ function CostCell({ log }: { log: UsageLog }) {
           <div className="text-xs font-semibold text-emerald-600 dark:text-emerald-300">{t("余额")}{formatQuota(balanceCost)}</div>
         ) : null}
       </div>
-    );
-  }
-
-  return <span className="font-semibold text-emerald-600">{formatQuota(total)}</span>;
+    ) : <span className="font-semibold text-emerald-600">{formatQuota(total)}</span>;
+  const hasTier = !!(log.service_tier_status || log.requested_service_tier || log.actual_service_tier || log.service_tier_policy);
+  return <div className="space-y-2">{amount}{hasTier && <details className="w-52 whitespace-normal text-xs">
+    <summary className="cursor-pointer text-muted-foreground">{t('服务档位与计价依据')}</summary>
+    <div className="mt-2 space-y-1">
+      <p>{t('请求档位：')}{log.requested_service_tier || t('未指定（auto）')}</p>
+      <p>{t('上游实际档位：')}{log.actual_service_tier || t('未知')}{log.service_tier_status ? ` · ${log.service_tier_status}` : ''}</p>
+      <p>{t('结算档位：')}{log.billed_service_tier === 'max' ? t('逐桶最高价') : log.billed_service_tier || '—'}</p>
+      {log.billed_service_tier === 'max' && <p className="text-muted-foreground">{t('实际档位缺失、未知或冲突；保留上游原始值，使用预扣时冻结的各桶最高单价。')}</p>}
+      {log.service_tier_policy && <p>{t('档位结算策略：')}{log.service_tier_policy}</p>}
+      {log.service_tier_config_hash && <p className="break-all">{t('档位配置快照：')}{log.service_tier_config_hash}</p>}
+    </div>
+  </details>}</div>;
 }
 
 interface TooltipState {

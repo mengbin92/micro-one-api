@@ -121,6 +121,15 @@ func (r *ledgerRepo) CreateLedgerInTx(ctx context.Context, tx subscriptionbiz.Tx
 		SubsetCandidateCost:    ledger.SubsetCandidateCost,
 		ExclusiveCandidateCost: ledger.ExclusiveCandidateCost,
 		PricingConfigHash:      ledger.PricingConfigHash,
+		RequestedServiceTier:   ledger.RequestedServiceTier,
+		ActualServiceTier:      ledger.ActualServiceTier,
+		ServiceTierStatus:      ledger.ServiceTierStatus,
+		BilledServiceTier:      ledger.BilledServiceTier,
+		ServiceTierPolicy:      ledger.ServiceTierPolicy,
+		ServiceTierConfigHash:  ledger.ServiceTierConfigHash,
+	}
+	if ledger.ServiceTierConfigHash == "" {
+		db = db.Omit("RequestedServiceTier", "ActualServiceTier", "ServiceTierStatus", "BilledServiceTier", "ServiceTierPolicy", "ServiceTierConfigHash")
 	}
 	return db.Create(model).Error
 }
@@ -804,6 +813,12 @@ func ledgerFromModel(model *ledgerModel) *biz.Ledger {
 		SubsetCandidateCost:    model.SubsetCandidateCost,
 		ExclusiveCandidateCost: model.ExclusiveCandidateCost,
 		PricingConfigHash:      model.PricingConfigHash,
+		RequestedServiceTier:   model.RequestedServiceTier,
+		ActualServiceTier:      model.ActualServiceTier,
+		ServiceTierStatus:      model.ServiceTierStatus,
+		BilledServiceTier:      model.BilledServiceTier,
+		ServiceTierPolicy:      model.ServiceTierPolicy,
+		ServiceTierConfigHash:  model.ServiceTierConfigHash,
 	}
 }
 

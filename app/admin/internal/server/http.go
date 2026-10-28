@@ -3666,7 +3666,7 @@ func handleOneAPIOptions(w http.ResponseWriter, r *http.Request, svc *service.Ad
 			return
 		}
 		if raw.Key != "" {
-			if isIAMBusinessContext(r.Context()) {
+			if isIAMBusinessContext(r.Context()) || raw.Key == "ServiceTierPricing" {
 				err := svc.UpdateOptionsWithRevisions(authorization.WithWriteReason(r.Context(), raw.Reason), map[string]string{raw.Key: raw.Value}, map[string]string{raw.Key: raw.ExpectedRevision})
 				writeServiceResponse(w, map[string]any{"success": err == nil}, err)
 				return

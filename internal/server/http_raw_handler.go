@@ -90,7 +90,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				plan.Auth.RoutingContext,
 			)
 			if reserveErr != nil {
-				return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
+				return reserveFailure(reserveErr)
 			}
 
 			provider, provErr := s.providerFactory.CreateProviderWithConfig(ch.Type, ch.BaseURL, ch.Key, relayprovider.ProviderConfig{
@@ -159,6 +159,9 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 
 		if result.Err != nil {
 			setErrorChannel(w, result.Channel)
+			if s.writeServiceTierAdmissionError(w, result.Err) {
+				return
+			}
 			s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")
 			return
 		}

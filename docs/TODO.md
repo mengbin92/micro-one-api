@@ -2,7 +2,7 @@
 
 > 最后更新：2026-10-27
 >
-> **当前执行入口**：[用户自助、安全认证与计价补齐排期](./design/next-stage-plan-2026-10-26.md)。按 1 名主工程师 + AI 辅助，首轮目标为 2026-10-27—2027-01-18：A1 注册/恢复 2 周 → A2 TOTP/step-up 4 周 → A3 service_tier 计价 4 周 → A4 第二支付 2 周；合计 34–49 工程日，60 个工作日窗口含共享余量，节假日/外部等待另计。A1 已部署并验证（Turnstile 未启用）；A2（含复核修复及登录权限修复）已部署生产并通过线上验证，强制策略开关关闭，真实外部因子验收保留（[验收记录](./runbooks/a2-security-acceptance-2026-10-27.md)）；A3–A4 未开始。
+> **当前执行入口**：[用户自助、安全认证与计价补齐排期](./design/next-stage-plan-2026-10-26.md)。按 1 名主工程师 + AI 辅助，首轮目标为 2026-10-27—2027-01-18：A1 注册/恢复 2 周 → A2 TOTP/step-up 4 周 → A3 service_tier 计价 4 周 → A4 第二支付 2 周；合计 34–49 工程日，60 个工作日窗口含共享余量，节假日/外部等待另计。A1 已部署并验证（Turnstile 未启用）；A2（含复核修复及登录权限修复）已部署生产并通过线上验证，强制策略开关关闭，真实外部因子验收保留（[验收记录](./runbooks/a2-security-acceptance-2026-10-27.md)）；A3 service_tier 计价已实现并合入 `develop`，默认关闭、未部署，真实来源/价格/付费探测待外部验收（[验收记录](./runbooks/a3-service-tier-acceptance-2026-10-27.md)）；A4 未开始。
 >
 > **后续滚动项**：长上下文、原生 Gemini、管理化备份合计约 6–9 个工程周，按需求及条件在首轮 W10 重估；Passkey、云厂商/订阅平台、排队、返佣、多模态与插件进入按需扩展池。
 >
@@ -17,7 +17,7 @@
 - [x] Identity/Admin/Web 于 07:28 CST 部署生产；公网浏览器、API 和配置核对通过。
 - [ ] Turnstile 保持关闭，启用时另做真实挑战验收；未发布新版本/tag。
 
-配置和证据见 [A1 实施验收记录](./runbooks/a1-self-service-acceptance-2026-10-27.md)。A2 状态见下节，A3–A4 保留原排期。
+配置和证据见 [A1 实施验收记录](./runbooks/a1-self-service-acceptance-2026-10-27.md)。A2 状态见下节；A3 见下方 A3 节，A4 保留原排期。
 
 ## A2 当前交付（2026-10-27）
 
@@ -26,6 +26,15 @@
 - [x] 14:01 CST 更新 Identity/Admin/Web 至 `e56fd37d`，原密钥、策略与 14 个非目标运行容器保持不变（[部署证据](./runbooks/evidence/a2-review-production-deployment-2026-10-27.json)）。
 - [x] 新 MFA 表逐表权限遗漏已修复，Identity `e1da0017` 已部署；原凭据真实登录和管理员只读访问通过（[故障记录](./runbooks/a2-login-permission-hotfix-2026-10-27.md)）。
 - [ ] 真实外部 OAuth/手机验证器、生产 enrollment 与强制策略启用；未发布新版本/tag。
+
+## A3 当前交付（2026-10-28）
+
+- [x] 单来源/模型的 default/priority/flex 五桶售价与可选采购估价、`actual_or_max_v1` 缺失策略、输入/输出成本上界、reserve 时冻结配置；PricingSnapshot v2 与账本六个解释字段。
+- [x] Chat Completions/Responses 的 HTTP JSON/SSE 分别保存请求与实际档位；executor、WS 与其他协议明确拒绝；三库迁移 144/145、所有权与升级顺序。
+- [x] Admin 原子保存与售价/采购双权限、管理端与自助账单中英文解释；Web 专项 47 项、build/budget 与真实 Chrome 桌面/移动验收通过。
+- [x] 复核修复：Billing 档位准入拒绝统一为 400（不再误报 402、不再重试、不计来源健康）；重试策略把 400 视为可重试时仍只预扣一次。
+- [x] 已提交并推送 `develop`；Go 门禁与三库真实 owner 链路通过（[验收记录](./runbooks/a3-service-tier-acceptance-2026-10-27.md)）。
+- [ ] 指定真实渠道/模型并核对项目档位权限、审阅真实三档售价与采购价、授权付费探测、生产备份/迁移/部署与收费启用；未发布版本/tag。
 
 ## 历史进度（2026-10-20—23）
 

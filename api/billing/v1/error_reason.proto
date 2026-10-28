@@ -25,3 +25,6 @@ enum LedgerRequestTraceErrorReason {
  LEDGER_TRACE_NOT_FOUND = 2;
  SETTLEMENT_RESERVATION_NOT_FOUND = 3;
 }
+
+// Stable reasons for the bounded service-tier pricing contract.
+enum ServiceTierErrorReason { SERVICE_TIER_UNSPECIFIED = 0; SERVICE_TIER_UNSUPPORTED = 1; SERVICE_TIER_BOUND_REQUIRED = 2; SERVICE_TIER_BOUND_EXCEEDED = 3; }

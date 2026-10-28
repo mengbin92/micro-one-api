@@ -5,12 +5,19 @@ import (
 
 	"github.com/go-kratos/kratos/v3/errors"
 	v "micro-one-api/api/admin/v1"
+	billingdomain "micro-one-api/domain/billing"
 	"micro-one-api/pkg/jsonx"
 )
 
 var ErrPricingOptionsInvalid = errors.BadRequest(v.AuthorizationErrorReason_AUTHORIZATION_BUSINESS_RULE_VIOLATION.String(), "three complete pricing maps with non-negative numeric prices are required")
 
 func ValidatePricingOptions(values map[string]string) error {
+	if raw, ok := values["ServiceTierPricing"]; ok {
+		if len(values) != 1 {
+			return ErrPricingOptionsInvalid
+		}
+		return validateServiceTierOption(raw)
+	}
 	if len(values) != 3 {
 		return ErrPricingOptionsInvalid
 	}
@@ -40,6 +47,13 @@ func ValidatePricingOptions(values map[string]string) error {
 				}
 			}
 		}
+	}
+	return nil
+}
+
+func validateServiceTierOption(raw string) error {
+	if err := billingdomain.ValidateServiceTierConfig(raw); err != nil {
+		return errors.BadRequest(v.AuthorizationErrorReason_AUTHORIZATION_BUSINESS_RULE_VIOLATION.String(), err.Error())
 	}
 	return nil
 }

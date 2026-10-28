@@ -748,6 +748,12 @@ func ledgerEntryToMap(entry *commonv1.LedgerEntry) map[string]any {
 		"usage_semantics":          entry.GetUsageSemantics(),
 		"usage_parse_status":       entry.GetUsageParseStatus(),
 		"usage_decision_reason":    entry.GetUsageDecisionReason(),
+		"requested_service_tier":   entry.GetRequestedServiceTier(),
+		"actual_service_tier":      entry.GetActualServiceTier(),
+		"service_tier_status":      entry.GetServiceTierStatus(),
+		"billed_service_tier":      entry.GetBilledServiceTier(),
+		"service_tier_policy":      entry.GetServiceTierPolicy(),
+		"service_tier_config_hash": entry.GetServiceTierConfigHash(),
 	}
 }
 

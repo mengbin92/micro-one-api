@@ -113,6 +113,11 @@ func (r *SystemOptionsRepo) requireOptionWrite(ctx context.Context, tx *gorm.DB,
 		return nil
 	}
 	if !biz.IsPricingMapOption(key) {
+		if key == "ServiceTierPricing" {
+			if err := authorization.Require(ctx, "billing.upstream_cost.update", facts); err != nil {
+				return err
+			}
+		}
 		return authorization.Require(ctx, "billing.pricing.update", facts)
 	}
 	return r.eachPriceChange(ctx, tx, key, old, value, false)
@@ -224,6 +229,11 @@ func (r *SystemOptionsRepo) auditPriceChanges(ctx context.Context, tx *gorm.DB, 
 		return nil
 	}
 	if !biz.IsPricingMapOption(key) {
+		if key == "ServiceTierPricing" {
+			if err := authzquery.AppendWriteAudit(ctx, tx, "billing.upstream_cost.update", 0); err != nil {
+				return err
+			}
+		}
 		return authzquery.AppendWriteAudit(ctx, tx, "billing.pricing.update", 0)
 	}
 	return r.eachPriceChange(ctx, tx, key, old, value, true)
@@ -282,6 +292,15 @@ func (r *SystemOptionsRepo) priceFacts(ctx context.Context, tx *gorm.DB, key, na
 	return facts, nil
 }
 func (r *SystemOptionsRepo) priceView(ctx context.Context, key, raw string) (string, error) {
+	if key == "ServiceTierPricing" {
+		facts := authorization.ObjectFacts{Context: authorization.Platform()}
+		for _, op := range []string{"billing.pricing.read", "billing.upstream_cost.read"} {
+			if authorization.Require(ctx, op, facts) != nil {
+				return "", nil
+			}
+		}
+		return raw, nil
+	}
 	op := "billing.pricing.read"
 	if key == "GroupRatio" {
 		op = "billing.routing_policy.read"

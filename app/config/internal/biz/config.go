@@ -7,6 +7,8 @@ import (
 	"micro-one-api/platform/security/serviceidentity"
 	"strings"
 	"time"
+
+	kratoserrors "github.com/go-kratos/kratos/v3/errors"
 )
 
 var (
@@ -94,6 +96,9 @@ func (uc *ConfigUsecase) SetConfig(ctx context.Context, namespace, key, value, c
 	return err
 }
 func (uc *ConfigUsecase) setConfig(ctx context.Context, namespace, key, value, comment string) (*ConfigEntry, error) {
+	if namespace == "system" && key == "ServiceTierPricing" {
+		return nil, kratoserrors.BadRequest("SERVICE_TIER_PRICING_OWNER_REQUIRED", "ServiceTierPricing must be saved through Admin pricing options; dynamic configs do not control billing")
+	}
 	op := ConfigWriteOperation(namespace, key)
 	point := "system.options.update"
 	if strings.HasPrefix(op, "system.content.") {

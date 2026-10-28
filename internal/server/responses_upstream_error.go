@@ -75,6 +75,9 @@ func (s *HTTPServer) writeResponsesUpstreamError(w http.ResponseWriter, err erro
 	if s.writeCapabilityError(w, err) {
 		return
 	}
+	if s.writeServiceTierAdmissionError(w, err) {
+		return
+	}
 	upstreamStatus := relaybiz.UpstreamStatus(err)
 	clientStatus := mapUpstreamError(upstreamStatus)
 	if clientStatus == http.StatusRequestEntityTooLarge {

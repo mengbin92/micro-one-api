@@ -15,21 +15,24 @@ var (
 
 // LogEntry represents a centralized log record.
 type LogEntry struct {
-	Telemetry       requesttrace.Carrier
-	ID              int64
-	Level           string // info, warn, error, debug
-	Message         string
-	Source          string // service name or component
-	RequestID       string
-	RootRequestID   string
-	AttemptNumber   int32
-	ReservationID   string
-	SourceKind      string
-	UpstreamModelID string
-	DedupeKey       string
-	UserID          int64
-	CreatedAt       time.Time
-	RequestTiming   *requesttrace.TimingSummary
+	RequestedServiceTier string
+	ActualServiceTier    string
+	ServiceTierStatus    string
+	Telemetry            requesttrace.Carrier
+	ID                   int64
+	Level                string // info, warn, error, debug
+	Message              string
+	Source               string // service name or component
+	RequestID            string
+	RootRequestID        string
+	AttemptNumber        int32
+	ReservationID        string
+	SourceKind           string
+	UpstreamModelID      string
+	DedupeKey            string
+	UserID               int64
+	CreatedAt            time.Time
+	RequestTiming        *requesttrace.TimingSummary
 
 	Username              string
 	TokenName             string

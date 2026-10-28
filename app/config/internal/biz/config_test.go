@@ -2,9 +2,18 @@ package biz
 
 import (
 	"context"
+	kratoserrors "github.com/go-kratos/kratos/v3/errors"
 	"testing"
 	"time"
 )
+
+func TestServiceTierPricingRejectsIneffectiveDynamicConfig(t *testing.T) {
+	repo := newMockRepo()
+	err := NewConfigUsecase(repo).SetConfig(context.Background(), "system", "ServiceTierPricing", `{"enabled":false}`, "")
+	if kratoserrors.Code(err) != 400 || len(repo.entries) != 0 {
+		t.Fatalf("ineffective billing config write: err=%v entries=%v", err, repo.entries)
+	}
+}
 
 type mockConfigRepo struct {
 	entries map[string]*ConfigEntry // key: "namespace/key"

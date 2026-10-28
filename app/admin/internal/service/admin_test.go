@@ -247,6 +247,11 @@ func TestListLedgerEntriesPreservesUsageAuditContract(t *testing.T) {
 		SubsetCandidateCost:    123,
 		ExclusiveCandidateCost: 456,
 		PricingConfigHash:      "hash",
+		RequestedServiceTier:   "priority",
+		ServiceTierStatus:      "missing",
+		BilledServiceTier:      "max",
+		ServiceTierPolicy:      "actual_or_max_v1",
+		ServiceTierConfigHash:  "tier-hash",
 	}}
 	svc := NewAdminService(client, nil, nil, nil)
 
@@ -265,6 +270,12 @@ func TestListLedgerEntriesPreservesUsageAuditContract(t *testing.T) {
 		"subsetCandidateCost":    int64(123),
 		"exclusiveCandidateCost": int64(456),
 		"pricingConfigHash":      "hash",
+		"requestedServiceTier":   "priority",
+		"actualServiceTier":      "",
+		"serviceTierStatus":      "missing",
+		"billedServiceTier":      "max",
+		"serviceTierPolicy":      "actual_or_max_v1",
+		"serviceTierConfigHash":  "tier-hash",
 	}
 	for key, want := range checks {
 		if !reflect.DeepEqual(got[key], want) {

@@ -100,6 +100,11 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 		return
 	}
 
+	tier, tierErr := readServiceTierRequest(firstMessage, "unsupported")
+	if tierErr != nil || tier.RequestedServiceTier == "priority" || tier.RequestedServiceTier == "flex" {
+		closeOpenAIWSClientConn(wsConn, coderws.StatusPolicyViolation, "service_tier is unsupported over WebSocket")
+		return
+	}
 	ctx, timings := s.startWSTimings(ctx, firstMessage)
 	timings.ConnectionMilestones(acceptStartedAt, acceptedAt, firstFrameAt)
 	defer timings.Close()

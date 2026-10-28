@@ -28,6 +28,7 @@ import (
 )
 
 type PricingConfig struct {
+	ServiceTier      billingdomain.ServiceTierConfig
 	GroupRatios      map[string]float64
 	ModelRatios      map[string]float64
 	CompletionRatios map[string]float64
@@ -39,19 +40,7 @@ type PricingConfig struct {
 
 const AmountScale = 10000
 
-type ModelPrice struct {
-	InputPrice     float64  `json:"input_price"`
-	OutputPrice    float64  `json:"output_price"`
-	CacheReadPrice *float64 `json:"cache_read_price,omitempty"`
-	// CacheCreation5mPrice / CacheCreation1hPrice are optional per-token
-	// prices for the v0.11.0 cache-creation buckets
-	// (docs/design/token-usage-semantics.md §5). nil = unpriced: billing
-	// keeps v0.10.2 behaviour (no cache-creation charge) and marks the
-	// model unpriced so ops can see the gap. The price is *not* defaulted
-	// to InputPrice.
-	CacheCreation5mPrice *float64 `json:"cache_creation_5m_price,omitempty"`
-	CacheCreation1hPrice *float64 `json:"cache_creation_1h_price,omitempty"`
-}
+type ModelPrice = billingdomain.ModelPrice
 
 // BillingOptions wires the optional dependencies the dual-track
 // "subscription priority" flow needs. The default zero value disables
@@ -132,6 +121,7 @@ type BillingUsecase struct {
 	completionRatios    map[string]float64
 	modelPrices         map[string]ModelPrice
 	upstreamPrices      map[string]ModelPrice
+	serviceTier         billingdomain.ServiceTierConfig
 	cacheCreationMode   CacheCreationMode
 	canonicalUsageMode  CanonicalUsageMode
 	canonicalCharge     canonicalUsageChargeGate
@@ -181,6 +171,7 @@ func NewBillingUsecaseWithPricing(
 		completionRatios:   normalizeModelRatios(pricing.CompletionRatios),
 		modelPrices:        normalizeModelPrices(pricing.ModelPrices),
 		upstreamPrices:     normalizeUpstreamPrices(pricing.UpstreamPrices),
+		serviceTier:        pricing.ServiceTier,
 		cacheCreationMode:  resolveCacheCreationMode(),
 		canonicalUsageMode: resolveCanonicalUsageMode(),
 		canonicalCharge:    resolveCanonicalUsageChargeAllowlist(),
@@ -305,6 +296,7 @@ func (uc *BillingUsecase) usdToAmountFloor(usd float64) int64 {
 }
 
 func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID string, estimatedTokens int64, model, channelID string, subscriptionAccountID int64, contexts ...*routing.ResolvedRoutingContext) (*Reservation, error) {
+	ctx = withServiceTierSource(ctx, channelID, subscriptionAccountID, model)
 	var routingContext *routing.ResolvedRoutingContext
 	if len(contexts) > 0 {
 		routingContext = contexts[0]
@@ -374,6 +366,9 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 		estimatedTokens = snapshot.CostBound.InputTokens
 	}
 	cost := calculator.calculateCost(ctx, priceGroup, model, estimatedTokens, 0, 0, false)
+	if snapshot != nil && snapshot.ServiceTier != nil {
+		cost = snapshot.ServiceTier.MaxCost
+	}
 	if cost <= 0 {
 		cost = 1
 	}
@@ -2384,6 +2379,7 @@ func (uc *BillingUsecase) pricingConfig(ctx context.Context) PricingConfig {
 		CompletionRatios: uc.completionRatios,
 		ModelPrices:      uc.modelPrices,
 		UpstreamPrices:   uc.upstreamPrices,
+		ServiceTier:      uc.serviceTier,
 	}
 	if uc.pricingStore == nil {
 		return config
@@ -2392,6 +2388,7 @@ func (uc *BillingUsecase) pricingConfig(ctx context.Context) PricingConfig {
 	if err != nil {
 		return config
 	}
+	config.ServiceTier = dynamic.ServiceTier
 	if len(dynamic.GroupRatios) > 0 {
 		config.GroupRatios = normalizePositiveRatios(dynamic.GroupRatios)
 	}
@@ -2418,6 +2415,13 @@ func (uc *BillingUsecase) calculateUpstreamCostWithUsage(ctx context.Context, ch
 }
 
 func (uc *BillingUsecase) calculateUpstreamCostWithPricing(pricing PricingConfig, channelID int64, model string, actualTokens int64, usage LedgerUsage) int64 {
+	if usage.FrozenServiceTier != nil {
+		price, ok := frozenTierSupplierPrice(usage)
+		if !ok {
+			return 0
+		}
+		return calculateCanonicalCost(price, *usage.Envelope.Canonical, 1).CanonicalCost
+	}
 	if usage.UpstreamCost > 0 {
 		return usage.UpstreamCost
 	}
@@ -2463,6 +2467,12 @@ func (uc *BillingUsecase) calculateUpstreamCostWithPricing(pricing PricingConfig
 }
 
 func upstreamCostAuditStatus(upstreamCost int64, usage LedgerUsage) string {
+	if usage.FrozenServiceTier != nil {
+		if _, ok := frozenTierSupplierPrice(usage); ok {
+			return CostAuditPriced
+		}
+		return CostAuditUnpriced
+	}
 	if usage.UsageContractVersion >= UsageContractVersionV1 {
 		if validateV1Envelope(usage.Envelope) != "" || usage.Envelope.ParseStatus == UsageParseStatusAmbiguous {
 			// The legacy-derived amount may still be useful as an estimate, but

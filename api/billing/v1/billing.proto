@@ -75,7 +75,6 @@ service BillingService {
   rpc AggregateLedgerByDate(AggregateLedgerByDateRequest) returns (AggregateLedgerByDateResponse);
   rpc AggregateUsage(AggregateUsageRequest) returns (AggregateUsageResponse);
 }
-
 message GetSubscriptionUsageRequest { int64 user_id = 1; bool self_request = 2; }
 message SubscriptionUsageDimension {
   double used = 1;
@@ -109,7 +108,7 @@ message SubscriptionUsage {
 message GetSubscriptionUsageResponse { SubscriptionUsage usage = 1; }
 
 message GetRoutingCapabilitiesRequest {}
-message GetRoutingCapabilitiesResponse { int32 request_snapshot_version = 1; bool fixed_routing = 2; bool subscription_contracts = 3; bool user_price_overrides = 4; int32 settlement_receipt_version = 5; int32 execution_delivery_version = 6; int32 usage_contract_version = 7; string settlement_policy_version = 8; }
+message GetRoutingCapabilitiesResponse { int32 request_snapshot_version = 1; bool fixed_routing = 2; bool subscription_contracts = 3; bool user_price_overrides = 4; int32 settlement_receipt_version = 5; int32 execution_delivery_version = 6; int32 usage_contract_version = 7; string settlement_policy_version = 8; int32 service_tier_pricing_version = 9; }
 message SetUserRoutingPriceRequest { int64 user_id = 1; int64 routing_group_id = 2; double price_ratio = 3; optional int64 expected_version = 4; string reason = 5; }
 message SetUserRoutingPriceReply { int64 version = 1; }
 message ClearUserRoutingPriceRequest { int64 user_id = 1; int64 routing_group_id = 2; optional int64 expected_version = 3; string reason = 4; }
@@ -135,6 +134,11 @@ message ReserveQuotaRequest {
   int32 execution_delivery_version = 13;
   int32 usage_contract_version = 14;
   string settlement_policy_version = 15;
+ string requested_service_tier = 16;
+ string service_tier_protocol = 17;
+ int64 input_token_bound = 18;
+ int64 output_token_bound = 19;
+ int32 service_tier_pricing_version = 20;
 }
 
 message ListRequestAttemptsRequest {
@@ -188,6 +192,8 @@ message ReserveQuotaResponse {
   int32 execution_delivery_version = 18;
   int32 usage_contract_version = 19;
   string settlement_policy_version = 20;
+ int32 service_tier_pricing_version = 21;
+ int32 service_tier_contract_version = 22;
 }
 
 message CommitQuotaRequest {
@@ -249,6 +255,8 @@ message CommitQuotaRequest {
   int32 settlement_receipt_version = 27;
   string settlement_event_id = 28; // reservation_id + "/final/0"
   string settlement_payload_sha256 = 29;
+ string actual_service_tier = 30;
+ string service_tier_status = 31;
 }
 
 // ========== Usage 语义契约（token-usage-billing-semantics-remediation §4.1/§6.2） ==========

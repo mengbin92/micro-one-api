@@ -49,6 +49,9 @@ func (uc *SystemOptionsUsecase) Get(ctx context.Context, key string) (string, er
 	if err != nil {
 		return "", err
 	}
+	if key == "ServiceTierPricing" && !serviceTierOptionReadable(ctx) {
+		return "", nil
+	}
 	raw, err := uc.repo.Get(ctx, key)
 	if authorization.External(ctx) && SensitiveSystemOption(key) {
 		raw = ""
@@ -59,7 +62,21 @@ func (uc *SystemOptionsUsecase) Get(ctx context.Context, key string) (string, er
 // Set upserts a key-value pair.
 func (uc *SystemOptionsUsecase) Set(ctx context.Context, key, value string) error {
 	if uc == nil || uc.repo == nil {
+		if key == "ServiceTierPricing" {
+			return authorization.ErrWriteStorageUnavailable
+		}
 		return nil
+	}
+	if key == "ServiceTierPricing" {
+		if err := validateServiceTierOption(value); err != nil {
+			return err
+		}
+		// Tier prices are one versioned object, including procurement estimates.
+		// Every writer joins the same revision-checked transaction.
+		if _, supplied := ExpectedOptionRevision(ctx); !supplied {
+			return ErrSystemOptionConflict
+		}
+		return uc.Mutate(ctx, key, func(string) (string, error) { return value, nil })
 	}
 	var err error
 	ctx, err = uc.prepareWrite(ctx, key)

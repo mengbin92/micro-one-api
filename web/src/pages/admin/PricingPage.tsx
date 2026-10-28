@@ -15,11 +15,13 @@ import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { AMOUNT_SCALE } from '@/lib/amount';
 import { listModels, type ModelSummary } from '@/lib/model-management';
 import { t } from '@/lib/i18n';
+import { ServiceTierPricingEditor } from '@/components/admin/ServiceTierPricingEditor';
 
 interface OptionItem {
   key: string;
   value: string;
   revision?: string;
+  restricted?: boolean;
 }
 
 interface PricingRow {
@@ -487,6 +489,10 @@ export function AdminPricingPage() {
           )}
         </CardContent>
       </Card>
+      <ServiceTierPricingEditor options={options} ready={optionsReady} refresh={async () => {
+        const result = await optionsQuery.refetch();
+        return result.isSuccess && Array.isArray(result.data) ? result.data : undefined;
+      }} />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"micro-one-api/domain/authorization"
+	billingdomain "micro-one-api/domain/billing"
 	"micro-one-api/domain/execution"
 	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/routing"
@@ -117,6 +118,10 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 	if req == nil || req.UserId == "" || req.RequestId == "" || req.Model == "" || req.EstimatedTokens < 0 {
 		return nil, biz.ErrRoutingContextInvalid
 	}
+	if !billingdomain.ValidRequestedServiceTier(req.RequestedServiceTier) || len(req.RequestedServiceTier) > 32 {
+		return nil, biz.ErrServiceTierUnsupported
+	}
+	ctx = billingdomain.WithServiceTierRequest(ctx, billingdomain.ServiceTierRequest{RequestedServiceTier: req.RequestedServiceTier, Protocol: req.ServiceTierProtocol, InputTokenBound: req.InputTokenBound, OutputTokenBound: req.OutputTokenBound, Version: req.ServiceTierPricingVersion})
 	if req.CostBound != nil {
 		ctx = routing.WithCostBound(ctx, routing.CostBound{Protocol: req.CostBound.Protocol, InputTokens: req.CostBound.InputTokens, UpstreamModel: req.CostBound.UpstreamModel})
 	}
@@ -152,7 +157,7 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 		if authz.IsAuthorizationError(err) {
 			return nil, err
 		}
-		if req.RoutingContext != nil || errors.Is(err, biz.ErrRoutingContextConflict) {
+		if req.RoutingContext != nil || errors.Is(err, biz.ErrRoutingContextConflict) || errors.Is(err, biz.ErrServiceTierUnsupported) || errors.Is(err, biz.ErrServiceTierBoundRequired) || errors.Is(err, biz.ErrRequestSnapshotUnavailable) {
 			return nil, err
 		}
 		return &billingv1.ReserveQuotaResponse{
@@ -169,19 +174,23 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 	// regardless of float precision; the relay converts back to a
 	// display USD when needed.
 	resp := &billingv1.ReserveQuotaResponse{
-		RootRequestId:      reservation.RootRequestID,
-		AttemptNumber:      reservation.AttemptNumber,
-		RequestId:          reservation.RequestID,
-		SourceKind:         reservation.SourceKind,
-		UpstreamModelId:    reservation.UpstreamModelID,
-		Success:            true,
-		ReservationId:      reservation.ReservationID,
-		ReservedAmount:     reservation.Amount,
-		BalanceAmountQuota: reservation.BalanceAmount, // Deprecated compatibility field.
-		SubscriptionId:     reservation.SubscriptionID,
-		BalanceAmount:      reservation.BalanceAmount,
+		ServiceTierContractVersion: 1,
+		RootRequestId:              reservation.RootRequestID,
+		AttemptNumber:              reservation.AttemptNumber,
+		RequestId:                  reservation.RequestID,
+		SourceKind:                 reservation.SourceKind,
+		UpstreamModelId:            reservation.UpstreamModelID,
+		Success:                    true,
+		ReservationId:              reservation.ReservationID,
+		ReservedAmount:             reservation.Amount,
+		BalanceAmountQuota:         reservation.BalanceAmount, // Deprecated compatibility field.
+		SubscriptionId:             reservation.SubscriptionID,
+		BalanceAmount:              reservation.BalanceAmount,
 	}
 	if snapshot := reservation.RequestSnapshot; snapshot != nil {
+		if snapshot.ServiceTier != nil {
+			resp.ServiceTierPricingVersion = 1
+		}
 		if snapshot.Execution != nil {
 			full, loadErr := s.uc.StoredExecutionIntent(ctx, reservation.ReservationID)
 			if loadErr != nil {
@@ -225,7 +234,7 @@ func (s *BillingService) GetRoutingCapabilities(ctx context.Context, _ *billingv
 	if s.asyncUc != nil && s.uc.ExecutionAvailable(ctx) {
 		executionVersion, usageVersion, policy = 1, 2, execution.Policy
 	}
-	return &billingv1.GetRoutingCapabilitiesResponse{ExecutionDeliveryVersion: executionVersion, UsageContractVersion: usageVersion, SettlementPolicyVersion: policy, SettlementReceiptVersion: receiptVersion, RequestSnapshotVersion: version, FixedRouting: version == 2, SubscriptionContracts: version == 2 && subscriptionbiz.EntitlementsEnabled(), UserPriceOverrides: version == 2 && subscriptionbiz.EntitlementsEnabled()}, nil
+	return &billingv1.GetRoutingCapabilitiesResponse{ServiceTierPricingVersion: 1, ExecutionDeliveryVersion: executionVersion, UsageContractVersion: usageVersion, SettlementPolicyVersion: policy, SettlementReceiptVersion: receiptVersion, RequestSnapshotVersion: version, FixedRouting: version == 2, SubscriptionContracts: version == 2 && subscriptionbiz.EntitlementsEnabled(), UserPriceOverrides: version == 2 && subscriptionbiz.EntitlementsEnabled()}, nil
 }
 
 func (s *BillingService) SetUserRoutingPrice(ctx context.Context, req *billingv1.SetUserRoutingPriceRequest) (*billingv1.SetUserRoutingPriceReply, error) {
@@ -269,6 +278,9 @@ func (s *BillingService) CheckRoutingSettlement(ctx context.Context, req *billin
 func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQuotaRequest) (*billingv1.CommitQuotaResponse, error) {
 	if req == nil || req.UsageContractVersion == 2 {
 		return nil, biz.ErrSettlementReceiptInvalid
+	}
+	if len(req.ActualServiceTier) > 64 || (req.ServiceTierStatus != "" && req.ServiceTierStatus != "reported" && req.ServiceTierStatus != "missing" && req.ServiceTierStatus != "unknown" && req.ServiceTierStatus != "conflict") {
+		return nil, biz.ErrServiceTierUnsupported
 	}
 	usage := billingdto.CommitUsage(req)
 
@@ -763,6 +775,12 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 			SubsetCandidateCost:    ledger.SubsetCandidateCost,
 			ExclusiveCandidateCost: ledger.ExclusiveCandidateCost,
 			PricingConfigHash:      ledger.PricingConfigHash,
+			RequestedServiceTier:   ledger.RequestedServiceTier,
+			ActualServiceTier:      ledger.ActualServiceTier,
+			ServiceTierStatus:      ledger.ServiceTierStatus,
+			BilledServiceTier:      ledger.BilledServiceTier,
+			ServiceTierPolicy:      ledger.ServiceTierPolicy,
+			ServiceTierConfigHash:  ledger.ServiceTierConfigHash,
 		}
 	}
 
@@ -837,7 +855,13 @@ func (s *BillingService) GetLedgerEntry(ctx context.Context, req *billingv1.GetL
 		if err != nil {
 			return nil, err
 		}
-		encoded, err := jsonx.Marshal(requestSnapshot)
+		snapshotView := *requestSnapshot
+		if snapshotView.ServiceTier != nil {
+			tierView := *snapshotView.ServiceTier
+			tierView.Config.UpstreamPrices = nil
+			snapshotView.ServiceTier = &tierView
+		}
+		encoded, err := jsonx.Marshal(&snapshotView)
 		if err != nil {
 			return nil, err
 		}
@@ -900,6 +924,12 @@ func (s *BillingService) GetLedgerEntry(ctx context.Context, req *billingv1.GetL
 			SubsetCandidateCost:    ledger.SubsetCandidateCost,
 			ExclusiveCandidateCost: ledger.ExclusiveCandidateCost,
 			PricingConfigHash:      ledger.PricingConfigHash,
+			RequestedServiceTier:   ledger.RequestedServiceTier,
+			ActualServiceTier:      ledger.ActualServiceTier,
+			ServiceTierStatus:      ledger.ServiceTierStatus,
+			BilledServiceTier:      ledger.BilledServiceTier,
+			ServiceTierPolicy:      ledger.ServiceTierPolicy,
+			ServiceTierConfigHash:  ledger.ServiceTierConfigHash,
 			PricingSnapshot:        pricingSnapshot,
 		},
 	}, nil
@@ -912,6 +942,9 @@ func pricingSnapshotToProto(snap *biz.PricingSnapshot) *commonv1.PricingSnapshot
 	}
 	return &commonv1.PricingSnapshot{
 		ConfigHash:            snap.ConfigHash,
+		ServiceTier:           snap.ServiceTier,
+		ServiceTierPolicy:     snap.ServiceTierPolicy,
+		ServiceTierConfigHash: snap.ServiceTierConfigHash,
 		ModelName:             snap.ModelName,
 		InputPrice:            snap.InputPrice,
 		OutputPrice:           snap.OutputPrice,

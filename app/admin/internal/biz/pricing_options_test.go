@@ -14,3 +14,10 @@ func TestBatchOptionsNeverFallsBackToPartialWrites(t *testing.T) {
 	require.ErrorIs(t, err, authorization.ErrWriteStorageUnavailable)
 	require.Zero(t, repo.writes)
 }
+
+func TestServiceTierPricesNeverFallBackToUnversionedWrites(t *testing.T) {
+	repo := &groupPricingRepo{}
+	err := NewSystemOptionsUsecase(repo).Set(WithExpectedOptionRevision(context.Background(), 0), "ServiceTierPricing", `{"enabled":false}`)
+	require.ErrorIs(t, err, authorization.ErrWriteStorageUnavailable)
+	require.Zero(t, repo.writes)
+}

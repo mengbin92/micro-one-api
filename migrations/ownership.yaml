@@ -91,6 +91,7 @@ services:
     - 109_add_credential_refresh_pending
 
   billing:
+    - 144_add_billing_service_tier
     - 138_add_settlement_telemetry
     - 135_vendor_reconciliation_run_sequence
     - 132_vendor_reconciliation
@@ -166,6 +167,7 @@ services:
     - 107_add_log_request_trace
     - 137_add_request_timing_summaries
     - 139_add_request_trace_snapshot_indexes
+    - 145_add_log_service_tier
 
   admin:
     - 119_upstream_cost_resource_ids

@@ -108,6 +108,9 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		trace.Number += extraAttempts
 		ctx = requesttrace.WithAttempt(ctx, trace)
 		if s.hybridAdaptorEnabled && isSubscriptionChannel(ch.Type) {
+			if err := rejectUnsupportedServiceTier(ctx); err != nil {
+				return &relaybiz.RetryableError{Status: http.StatusBadRequest, Err: err, Retryable: func() *bool { value := false; return &value }()}
+			}
 			attemptPlan, err := relayPlanForAttempt(ctx, s.relayUsecase, plan, ch, clientModel)
 			if err != nil {
 				return err
@@ -144,9 +147,10 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		req.Model = currentResolvedModel
 		// P3 #6: derive the billing model name from billing_model_source.
 		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)
+		ctx = tierAttemptContext(ctx, originalBody, "openai_chat", ch)
 		reservation, reserveErr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimatedTokens, billingModel, fmt.Sprintf("%d", ch.ID), ch.SubscriptionAccountID, plan.Auth.RoutingContext)
 		if reserveErr != nil {
-			return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
+			return reserveFailure(reserveErr)
 		}
 
 		provider, provErr := s.providerFactory.CreateProviderWithConfig(ch.Type, ch.BaseURL, ch.Key, relayprovider.ProviderConfig{
@@ -165,6 +169,9 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		ctx = s.observeNativeUsage(ctx, ch, requestID, currentResolvedModel)
 
 		if req.Stream {
+			if reservation.ServiceTierPricingVersion == 1 {
+				req.StreamOptions = &relayprovider.ChatStreamOptions{IncludeUsage: true}
+			}
 			streamLogInput := usageLogInput{
 				UserID:                plan.Auth.UserID,
 				TokenID:               plan.Auth.TokenID,
@@ -188,6 +195,18 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		if callErr != nil {
 			_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream error")
 			return callErr
+		}
+
+		usageEnvelope := envelopeFromProviderUsage(resp.Usage, resp.Canonical)
+		if reservation.ServiceTierPricingVersion == 1 {
+			usageEnvelope = envelopeFromCompleteTierChatUsage(resp.Usage, resp.Canonical)
+		}
+		if reservation.ServiceTierPricingVersion == 1 && (!resp.UsagePresent || usageEnvelope.ParseStatus != relaybiz.UsageParseVerified) {
+			var tier tierObservation
+			tier.observe(resp.ServiceTier)
+			_ = s.releaseTierQuota(ctx, reservation, tierAttemptLog(plan, ch, reservation, billingModel, "/v1/chat/completions", false, startedAt), tier, "service_tier_usage_missing")
+			s.writeJSON(w, http.StatusOK, resp)
+			return nil
 		}
 
 		// Success — commit quota and return
@@ -214,9 +233,12 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		// request, not the original plan, so failover attribution is correct.
 		logInput.applyChannelInputs(ch)
 		logInput.applyReservation(reservation)
+		var tier tierObservation
+		tier.observe(resp.ServiceTier)
+		logInput.applyTier(ctx, tier)
 		// §4.3: the envelope comes from the provider-proven canonical buckets
 		// (Anthropic) or the OpenAI field shape — never the channel type.
-		logInput.applyEnvelope(envelopeFromProviderUsage(resp.Usage, resp.Canonical))
+		logInput.applyEnvelope(usageEnvelope)
 		compareNativeUsageShadow(ctx, logInput.Usage)
 		if err := s.commitQuota(ctx, reservation.ReservationId, actualTokens, true, logInput); err != nil {
 			return relaybiz.MarkPostForwardError(err)
@@ -243,6 +265,9 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 				metrics.RelaySubscriptionFailoverTotal.WithLabelValues(subscriptionRetryReason(*subscriptionResult), "exhausted").Inc()
 			}
 			subscriptionResult.write(w)
+			return
+		}
+		if s.writeServiceTierAdmissionError(w, result.Err) {
 			return
 		}
 		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")
@@ -283,8 +308,26 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 	terminal := &streamTerminalTracker{endpoint: EndpointChatCompletions}
 	var lastUsage relayprovider.Usage
 	var streamCanonical *relayprovider.CanonicalUsage
+	var tier tierObservation
+	sawTierUsage := false
+	invalidTierUsage := false
 
 	for chunk := range chunkChan {
+		if chunk.InvalidPayload {
+			invalidTierUsage = true
+			continue
+		}
+		tier.observe(chunk.ServiceTier)
+		if logInput.TierPricing && chunk.UsageObserved {
+			sawTierUsage = sawTierUsage || chunk.UsagePresent
+			invalidTierUsage = invalidTierUsage || !chunk.UsagePresent || envelopeFromCompleteTierChatUsage(chunk.Usage, chunk.Canonical).ParseStatus != relaybiz.UsageParseVerified
+			if chunk.UsagePresent {
+				lastUsage = chunk.Usage
+				totalTokens, promptTokens, completionTokens = int64(lastUsage.TotalTokens), int64(lastUsage.PromptTokens), int64(lastUsage.CompletionTokens)
+				cacheReadTokens = cacheReadTokensFromProviderUsage(lastUsage)
+				cacheCreation5mTokens, cacheCreation1hTokens = cacheCreationTokensFromProviderUsage(lastUsage)
+			}
+		}
 		if chunk.Complete {
 			terminal.success = true
 			continue
@@ -293,7 +336,7 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 			streamError = true
 			break
 		}
-		if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 || chunk.Usage.PromptTokensDetails != (relayprovider.UsageTokenDetails{}) || chunk.Usage.InputTokensDetails != (relayprovider.UsageTokenDetails{}) {
+		if !logInput.TierPricing && (chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 || chunk.Usage.PromptTokensDetails != (relayprovider.UsageTokenDetails{}) || chunk.Usage.InputTokensDetails != (relayprovider.UsageTokenDetails{})) {
 			lastUsage = mergeProviderUsage(chunk.Usage, lastUsage)
 			totalTokens = int64(lastUsage.TotalTokens)
 			promptTokens = int64(lastUsage.PromptTokens)
@@ -332,9 +375,15 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 		flusher.Flush()
 	}
 
+	// A complete stream without reported usage releases the tier reservation.
+	if !streamError && logInput.TierPricing && (!sawTierUsage || invalidTierUsage) {
+		_ = s.releaseTierQuota(r.Context(), reservation, logInput, tier, "service_tier_usage_missing")
+		return nil
+	}
+
 	// 流式请求完成，提交配额
 	if !streamError {
-		if totalTokens == 0 {
+		if totalTokens == 0 && !logInput.TierPricing {
 			totalTokens = estimatedTokens
 			completionTokens = estimatedTokens
 		}
@@ -345,13 +394,18 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 		logInput.CacheCreation5mTokens = cacheCreation5mTokens
 		logInput.CacheCreation1hTokens = cacheCreation1hTokens
 		logInput.ElapsedTime = time.Since(startedAt).Milliseconds()
+		logInput.applyTier(r.Context(), tier)
 		if logInput.Endpoint == "" {
 			logInput.Endpoint = "/v1/chat/completions"
 		}
 		// §4.3: prefer the provider-proven canonical buckets from the
 		// terminal usage chunk; otherwise decide from the OpenAI shape.
-		if totalTokens > 0 {
-			logInput.applyEnvelope(envelopeFromProviderUsage(lastUsage, streamCanonical))
+		if totalTokens > 0 || logInput.TierPricing {
+			usageEnvelope := envelopeFromProviderUsage(lastUsage, streamCanonical)
+			if logInput.TierPricing {
+				usageEnvelope = envelopeFromCompleteTierChatUsage(lastUsage, streamCanonical)
+			}
+			logInput.applyEnvelope(usageEnvelope)
 		}
 		compareNativeUsageShadow(r.Context(), logInput.Usage)
 		if err := s.commitQuotaAfterResponseObserved(r.Context(), reservation.ReservationId, totalTokens, true, logInput); err != nil {
@@ -362,7 +416,7 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 		}
 	} else {
 		cancelStream()
-		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "stream error")
+		_ = s.releaseTierQuota(r.Context(), reservation, logInput, tier, "incomplete_or_cancelled_stream")
 		return relayStreamInterrupted(r.Context(), nil)
 	}
 	return nil

@@ -694,11 +694,13 @@ func safeRawContentType(contentType, fallback string) string {
 // rawStreamUsageTracker observes SSE chunks from a raw stream and accumulates
 // usage + response-id information.
 type rawStreamUsageTracker struct {
+	tier                tierObservation
 	fallback            rawUsage
 	usage               rawUsage
 	responseID          string
 	pending             string
 	preserveTotalTokens bool
+	strictTierResponses bool
 	sawUsage            bool
 }
 
@@ -714,11 +716,25 @@ func newResponsesStreamUsageTracker(fallback rawUsage) *rawStreamUsageTracker {
 	return &rawStreamUsageTracker{fallback: fallback, preserveTotalTokens: true}
 }
 
+func newTierResponsesStreamUsageTracker() *rawStreamUsageTracker {
+	return &rawStreamUsageTracker{preserveTotalTokens: true, strictTierResponses: true}
+}
+
 // Observe parses a complete data payload (without the "data: " prefix) and
 // updates accumulated usage / response-id.
 func (t *rawStreamUsageTracker) Observe(chunk []byte) {
+	t.tier.observeJSON(chunk)
 	if t.responseID == "" {
 		t.responseID = extractRawStreamResponseID(chunk)
+	}
+	if t.strictTierResponses {
+		var event struct {
+			Type string `json:"type"`
+		}
+		if jsonx.Unmarshal(chunk, &event) == nil && event.Type == "response.completed" {
+			t.usage, t.sawUsage = completeTierResponsesUsage(chunk)
+		}
+		return
 	}
 	usage := extractRawUsage(chunk, 0)
 	if hasRawUsage(usage) {
@@ -758,6 +774,9 @@ func (t *rawStreamUsageTracker) ObserveBytes(p []byte) {
 func (t *rawStreamUsageTracker) Usage() rawUsage {
 	if strings.TrimSpace(t.pending) != "" {
 		t.ObserveBytes([]byte("\n"))
+	}
+	if t.strictTierResponses {
+		return t.usage
 	}
 	return normalizeRawUsageWithFallback(t.usage, t.fallback)
 }

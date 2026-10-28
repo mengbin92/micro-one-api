@@ -100,6 +100,12 @@ interface LogEntry {
   requestSnapshot?: string;
   pricingConfigHash?: string;
   pricingSnapshot?: UsageAuditLog['pricingSnapshot'];
+  requestedServiceTier?: string;
+  actualServiceTier?: string;
+  serviceTierStatus?: string;
+  billedServiceTier?: string;
+  serviceTierPolicy?: string;
+  serviceTierConfigHash?: string;
   costSource?: string;
   subscriptionCost?: number | string;
   balanceCost?: number | string;

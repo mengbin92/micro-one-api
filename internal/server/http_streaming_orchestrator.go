@@ -36,6 +36,10 @@ func (s *HTTPServer) handleResponsesWithOrchestrator(w http.ResponseWriter, r *h
 		return
 	}
 	stream := isRawStreamRequest(body)
+	if tierErr := rejectUnsupportedServiceTier(r.Context()); tierErr != nil {
+		s.writeError(w, http.StatusBadRequest, tierErr.Error())
+		return
+	}
 	setRelayObservationStream(r.Context(), stream)
 	model := extractRawModel(body)
 	if model == "" {
@@ -98,6 +102,10 @@ func (s *HTTPServer) handleAnthropicMessagesWithOrchestrator(w http.ResponseWrit
 	var request apicompat.AnthropicRequest
 	if err := jsonx.Unmarshal(body, &request); err != nil {
 		s.writeAnthropicError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if tierErr := rejectUnsupportedServiceTier(r.Context()); tierErr != nil {
+		s.writeError(w, http.StatusBadRequest, tierErr.Error())
 		return
 	}
 	setRelayObservationStream(r.Context(), request.Stream)

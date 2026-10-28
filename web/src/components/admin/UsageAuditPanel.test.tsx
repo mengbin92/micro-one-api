@@ -40,6 +40,22 @@ const verifiedLog = {
 };
 
 describe('UsageAuditPanel', () => {
+  it('keeps actual tier unknown and explains frozen maximum pricing without usage', () => {
+    render(<UsageAuditPanel log={{ requestedServiceTier: 'priority', actualServiceTier: '', serviceTierStatus: 'missing', billedServiceTier: 'max', serviceTierPolicy: 'actual_or_max_v1', serviceTierConfigHash: 'tier-hash', requestSnapshot: JSON.stringify({ ServiceTier: { max_cost: 10000 } }) }} />);
+    expect(screen.getByText('priority')).toBeInTheDocument();
+    expect(screen.getByText('未知')).toBeInTheDocument();
+    expect(screen.getByText('逐桶最高价')).toBeInTheDocument();
+    expect(screen.getByText('tier-hash')).toBeInTheDocument();
+    expect(screen.getByText(/供应商实扣需独立账单证据/)).toBeInTheDocument();
+  });
+  it('reads the owner Go-field snapshot without replacing original evidence', () => {
+    const requestSnapshot = JSON.stringify({ Version: 2, Routing: { TokenMode: 'fixed', GroupID: 7 }, GroupKey: 'vip', BillingMode: 'wallet_only', Pricing: { Method: 'model_price', GroupRatio: 0.75 }, ServiceTier: { max_cost: 12000 } });
+    render(<UsageAuditPanel log={{ ...verifiedLog, requestedServiceTier: 'flex', actualServiceTier: 'default', serviceTierStatus: 'reported', billedServiceTier: 'default', requestSnapshot }} />);
+    expect(screen.getByText('固定分组 Key')).toBeInTheDocument();
+    expect(screen.getByText('仅钱包')).toBeInTheDocument();
+    expect(screen.getByText(/vip \(#7\)/)).toBeInTheDocument();
+    expect(screen.getByText(requestSnapshot)).toBeInTheDocument();
+  });
   it('renders the five canonical buckets with snapshot unit prices and the hash', () => {
     render(<UsageAuditPanel log={verifiedLog} />);
 

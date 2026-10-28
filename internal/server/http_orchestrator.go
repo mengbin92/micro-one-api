@@ -56,6 +56,10 @@ func (s *HTTPServer) handleChatCompletionsWithOrchestrator(w http.ResponseWriter
 		s.writeError(w, http.StatusBadRequest, "messages are required")
 		return
 	}
+	if tierErr := rejectUnsupportedServiceTier(r.Context()); tierErr != nil {
+		s.writeError(w, http.StatusBadRequest, tierErr.Error())
+		return
+	}
 	setRelayObservationStream(r.Context(), req.Stream)
 	if s.billingClient == nil {
 		s.writeError(w, http.StatusServiceUnavailable, "billing service unavailable")

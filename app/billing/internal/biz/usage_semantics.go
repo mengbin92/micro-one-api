@@ -171,6 +171,12 @@ func reportedCandidateBuckets(usage LedgerUsage) (CanonicalBuckets, CanonicalBuc
 // onto the ledger row (migration 085). It is produced by the cost resolver
 // and consumed identically by the sync and async commit pipelines.
 type ledgerUsageAudit struct {
+	RequestedServiceTier   string
+	ActualServiceTier      string
+	ServiceTierStatus      string
+	BilledServiceTier      string
+	ServiceTierPolicy      string
+	ServiceTierConfigHash  string
 	UncachedInputTokens    int64
 	ReportedPromptTokens   int64
 	ReportedTotalTokens    int64
@@ -225,6 +231,12 @@ func legacyCanonicalBuckets(usage LedgerUsage, actualTokens int64) CanonicalBuck
 
 // applyTo copies the audit trail onto a consume ledger row.
 func (a ledgerUsageAudit) applyTo(l *Ledger) {
+	l.RequestedServiceTier = a.RequestedServiceTier
+	l.ActualServiceTier = a.ActualServiceTier
+	l.ServiceTierStatus = a.ServiceTierStatus
+	l.BilledServiceTier = a.BilledServiceTier
+	l.ServiceTierPolicy = a.ServiceTierPolicy
+	l.ServiceTierConfigHash = a.ServiceTierConfigHash
 	l.UncachedInputTokens = a.UncachedInputTokens
 	l.ReportedPromptTokens = a.ReportedPromptTokens
 	l.ReportedTotalTokens = a.ReportedTotalTokens

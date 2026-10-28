@@ -115,6 +115,11 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		currentResolvedModel := relaybiz.ResolveChannelModel(ch, plan.BaseModel()) // recompute from global model
 		retriedBody := rewriteRawModel(upstreamBody, currentResolvedModel)
 		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)
+		protocol := "unsupported"
+		if r.URL.Path == "/v1/responses" {
+			protocol = "openai_responses"
+		}
+		ctx = tierAttemptContext(ctx, retriedBody, protocol, ch)
 		reservation, reserveErr := s.reserveQuota(
 			ctx,
 			fmt.Sprintf("%d", plan.Auth.UserID),
@@ -126,7 +131,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			plan.Auth.RoutingContext,
 		)
 		if reserveErr != nil {
-			return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
+			return reserveFailure(reserveErr)
 		}
 		releaseChannel, slotErr := s.relayUsecase.AcquireChannelSlot(ctx, ch)
 		if slotErr != nil {
@@ -145,12 +150,24 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				return terminalErr
 			}
 			usage := newResponsesStreamUsageTracker(estimateRawUsage(upstreamBody))
+			if reservation.ServiceTierPricingVersion == 1 {
+				usage = newTierResponsesStreamUsageTracker()
+			}
 			completed := writeRawStreamResponse(w, streamResp, usage)
 			if !completed || ctx.Err() != nil {
-				_ = s.releaseQuota(ctx, reservation.ReservationId, "incomplete upstream stream")
+				_ = s.releaseTierQuota(ctx, reservation, tierAttemptLog(plan, ch, reservation, billingModel, r.URL.Path, true, startedAt), usage.tier, "incomplete_or_cancelled_stream")
 				return relayStreamInterrupted(ctx, nil)
 			}
 			actualUsage := usage.Usage()
+			usageEnvelope := envelopeFromRawUsage(actualUsage)
+			if reservation.ServiceTierPricingVersion == 1 && usage.SawUsage() {
+				usageEnvelope = envelopeFromCompleteTierResponsesUsage(actualUsage)
+			}
+			if reservation.ServiceTierPricingVersion == 1 && (!usage.SawUsage() || usageEnvelope.ParseStatus != relaybiz.UsageParseVerified) {
+				_ = s.releaseTierQuota(ctx, reservation, tierAttemptLog(plan, ch, reservation, billingModel, r.URL.Path, true, startedAt), usage.tier, "service_tier_usage_missing")
+				upstreamResp, responseChannel = &relayprovider.RawResponse{StatusCode: streamResp.StatusCode}, ch
+				return nil
+			}
 			logInput := usageLogInput{
 				UserID:           plan.Auth.UserID,
 				TokenID:          plan.Auth.TokenID,
@@ -169,7 +186,8 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				PromptExclusive: isPromptExclusiveChannelType(ch.Type)}
 			logInput.applyChannelInputs(ch)
 			logInput.applyReservation(reservation)
-			logInput.applyEnvelope(envelopeFromRawUsage(actualUsage))
+			logInput.applyTier(ctx, usage.tier)
+			logInput.applyEnvelope(usageEnvelope)
 			compareNativeUsageShadow(ctx, logInput.Usage)
 			if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 				s.logPostResponseCommitError(err)
@@ -194,6 +212,19 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		}
 
 		usage := extractRawUsage(resp.Body, estimateRawTokens(retriedBody))
+		usageEnvelope := envelopeFromRawUsage(usage)
+		completeTierUsage := true
+		if reservation.ServiceTierPricingVersion == 1 {
+			usage, completeTierUsage = completeTierResponsesUsage(resp.Body)
+			usageEnvelope = envelopeFromCompleteTierResponsesUsage(usage)
+		}
+		if reservation.ServiceTierPricingVersion == 1 && (!completeTierUsage || usageEnvelope.ParseStatus != relaybiz.UsageParseVerified) {
+			var tier tierObservation
+			tier.observeJSON(resp.Body)
+			_ = s.releaseTierQuota(ctx, reservation, tierAttemptLog(plan, ch, reservation, billingModel, r.URL.Path, false, startedAt), tier, "service_tier_usage_missing")
+			upstreamResp, responseChannel = resp, ch
+			return nil
+		}
 		logInput := usageLogInput{
 			UserID:           plan.Auth.UserID,
 			TokenID:          plan.Auth.TokenID,
@@ -212,7 +243,10 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			PromptExclusive: isPromptExclusiveChannelType(ch.Type)}
 		logInput.applyChannelInputs(ch)
 		logInput.applyReservation(reservation)
-		logInput.applyEnvelope(envelopeFromRawUsage(usage))
+		var tier tierObservation
+		tier.observeJSON(resp.Body)
+		logInput.applyTier(ctx, tier)
+		logInput.applyEnvelope(usageEnvelope)
 		compareNativeUsageShadow(ctx, logInput.Usage)
 		if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 			return relaybiz.MarkPostForwardError(err)

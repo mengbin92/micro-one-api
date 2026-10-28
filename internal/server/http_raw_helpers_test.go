@@ -185,6 +185,7 @@ func (c *rawLogClient) IngestLog(ctx context.Context, req *logv1.IngestLogReques
 }
 
 type rawBillingClient struct {
+	tierPricingVersion int32
 	billingv1.BillingServiceClient
 	commits               int
 	commitRequests        []*billingv1.CommitQuotaRequest
@@ -200,6 +201,10 @@ type rawBillingClient struct {
 	accountSnapshot       *commonv1.AccountSnapshot
 }
 
+func (c *rawBillingClient) GetRoutingCapabilities(context.Context, *billingv1.GetRoutingCapabilitiesRequest, ...grpc.CallOption) (*billingv1.GetRoutingCapabilitiesResponse, error) {
+	return &billingv1.GetRoutingCapabilitiesResponse{ServiceTierPricingVersion: 1}, nil
+}
+
 func (c *rawBillingClient) ReserveQuota(ctx context.Context, req *billingv1.ReserveQuotaRequest, opts ...grpc.CallOption) (*billingv1.ReserveQuotaResponse, error) {
 	c.reserveRequests = append(c.reserveRequests, req)
 	success := c.reserveSuccess
@@ -207,15 +212,17 @@ func (c *rawBillingClient) ReserveQuota(ctx context.Context, req *billingv1.Rese
 		success = true
 	}
 	return &billingv1.ReserveQuotaResponse{
-		RootRequestId:   req.RootRequestId,
-		RequestId:       req.RequestId,
-		AttemptNumber:   req.AttemptNumber,
-		SourceKind:      req.SourceKind,
-		UpstreamModelId: req.UpstreamModelId,
-		Success:         success,
-		ErrorMessage:    c.reserveMessage,
-		ReservationId:   fmt.Sprintf("reservation-%d", len(c.reserveRequests)),
-		ReservedAmount:  req.EstimatedTokens,
+		RootRequestId:              req.RootRequestId,
+		RequestId:                  req.RequestId,
+		AttemptNumber:              req.AttemptNumber,
+		SourceKind:                 req.SourceKind,
+		UpstreamModelId:            req.UpstreamModelId,
+		Success:                    success,
+		ErrorMessage:               c.reserveMessage,
+		ReservationId:              fmt.Sprintf("reservation-%d", len(c.reserveRequests)),
+		ReservedAmount:             req.EstimatedTokens,
+		ServiceTierPricingVersion:  c.tierPricingVersion,
+		ServiceTierContractVersion: 1,
 	}, nil
 }
 

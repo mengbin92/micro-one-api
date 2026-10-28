@@ -36,6 +36,7 @@ func prepareRequestTiming(entry *LogEntry) error {
 	entry.Message, entry.RequestID, entry.ReservationID = "", "", ""
 	entry.AttemptNumber = 0
 	entry.SourceKind, entry.UpstreamModelID = "", ""
+	entry.RequestedServiceTier, entry.ActualServiceTier, entry.ServiceTierStatus = "", "", ""
 	entry.Username, entry.TokenName, entry.ModelName = "", "", ""
 	entry.Quota, entry.PromptTokens, entry.CompletionTokens = 0, 0, 0
 	entry.CacheReadTokens, entry.CacheCreation5mTokens, entry.CacheCreation1hTokens = 0, 0, 0

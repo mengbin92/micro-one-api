@@ -4,10 +4,12 @@ import { EN_US_REQUEST_TIMING_MESSAGES } from '@/locales/en-US.request-timing';
 import { EN_US_LEGAL_MESSAGES } from '@/locales/en-US.legal';
 import { EN_US_SECURITY_MESSAGES } from '@/locales/en-US.security';
 import { EN_US_AUTH_MESSAGES } from '@/locales/en-US.auth';
+import { EN_US_SERVICE_TIER_MESSAGES } from '@/locales/en-US.service-tier';
 
 // Product terminology overrides. Keep these concise and consistent across
 // user and admin surfaces; the generated catalog provides the long-tail copy.
 export const EN_US_MESSAGES: Record<string, string> = {
+  ...EN_US_SERVICE_TIER_MESSAGES,
   '账期最终性依据': 'Period finality basis', '确认类型': 'Confirmation type', '维护者确认': 'Maintainer confirmation',
   '确认内容': 'Confirmation statement', '该账期不再更正': 'No further corrections for this period',
   '确认时间': 'Confirmed at', '确认证据': 'Confirmation evidence',

@@ -37,6 +37,9 @@ type Repository struct {
 }
 
 type logModel struct {
+	RequestedServiceTier  string   `gorm:"column:requested_service_tier"`
+	ActualServiceTier     string   `gorm:"column:actual_service_tier"`
+	ServiceTierStatus     string   `gorm:"column:service_tier_status"`
 	RequestTimingJSON     *string  `gorm:"column:request_timing_json"`
 	ObservationID         *string  `gorm:"column:observation_id;uniqueIndex:idx_log_observation"`
 	OTelTraceID           *string  `gorm:"column:otel_trace_id"`
@@ -389,6 +392,9 @@ func newLog(entry *biz.LogEntry) (*logModel, error) {
 		AttemptNumber:         entry.AttemptNumber,
 		ReservationID:         entry.ReservationID,
 		SourceKind:            entry.SourceKind,
+		RequestedServiceTier:  entry.RequestedServiceTier,
+		ActualServiceTier:     entry.ActualServiceTier,
+		ServiceTierStatus:     entry.ServiceTierStatus,
 		UpstreamModelID:       entry.UpstreamModelID,
 		UserID:                entry.UserID,
 		CreatedAt:             entry.CreatedAt.Unix(),
@@ -664,6 +670,9 @@ func logModelToEntry(m logModel) (*biz.LogEntry, error) {
 		AttemptNumber:         m.AttemptNumber,
 		ReservationID:         m.ReservationID,
 		SourceKind:            m.SourceKind,
+		RequestedServiceTier:  m.RequestedServiceTier,
+		ActualServiceTier:     m.ActualServiceTier,
+		ServiceTierStatus:     m.ServiceTierStatus,
 		UpstreamModelID:       m.UpstreamModelID,
 		UserID:                m.UserID,
 		CreatedAt:             time.Unix(m.CreatedAt, 0),

@@ -79,15 +79,21 @@ const MaxUpstreamErrorBody = 1 << 20
 
 // ChatCompletionsRequest represents a standardized chat completions request
 type ChatCompletionsRequest struct {
-	Model               string    `json:"model"`
-	Messages            []Message `json:"messages"`
-	Stream              bool      `json:"stream"`
-	Temperature         *float64  `json:"temperature,omitempty"`
-	MaxTokens           *int      `json:"max_tokens,omitempty"`
-	MaxCompletionTokens *int      `json:"max_completion_tokens,omitempty"`
-	ReasoningEffort     string    `json:"reasoning_effort,omitempty"`
-	Tools               any       `json:"tools,omitempty"`
-	ToolChoice          any       `json:"tool_choice,omitempty"`
+	ServiceTier         string             `json:"service_tier,omitempty"`
+	StreamOptions       *ChatStreamOptions `json:"stream_options,omitempty"`
+	Model               string             `json:"model"`
+	Messages            []Message          `json:"messages"`
+	Stream              bool               `json:"stream"`
+	Temperature         *float64           `json:"temperature,omitempty"`
+	MaxTokens           *int               `json:"max_tokens,omitempty"`
+	MaxCompletionTokens *int               `json:"max_completion_tokens,omitempty"`
+	ReasoningEffort     string             `json:"reasoning_effort,omitempty"`
+	Tools               any                `json:"tools,omitempty"`
+	ToolChoice          any                `json:"tool_choice,omitempty"`
+}
+
+type ChatStreamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
 }
 
 const DefaultEstimatedOutputTokens int64 = 1000
@@ -141,12 +147,14 @@ type ToolCallDelta struct {
 
 // ChatCompletionsResponse represents a standardized chat completions response
 type ChatCompletionsResponse struct {
-	ID      string   `json:"id"`
-	Object  string   `json:"object"`
-	Created int64    `json:"created"`
-	Model   string   `json:"model"`
-	Choices []Choice `json:"choices"`
-	Usage   Usage    `json:"usage"`
+	UsagePresent bool     `json:"-"`
+	ServiceTier  string   `json:"service_tier,omitempty"`
+	ID           string   `json:"id"`
+	Object       string   `json:"object"`
+	Created      int64    `json:"created"`
+	Model        string   `json:"model"`
+	Choices      []Choice `json:"choices"`
+	Usage        Usage    `json:"usage"`
 	// Canonical carries the parser-proven five mutually-exclusive billing
 	// buckets BEFORE the client-facing OpenAI projection (§4.3). In-process
 	// only: never serialized to clients.
@@ -200,14 +208,18 @@ type UsageTokenDetails struct {
 
 // StreamChunk represents a single SSE chunk from streaming response
 type StreamChunk struct {
-	Complete    bool           `json:"-"`
-	StreamError error          `json:"-"`
-	ID          string         `json:"id"`
-	Object      string         `json:"object"`
-	Created     int64          `json:"created"`
-	Model       string         `json:"model"`
-	Choices     []StreamChoice `json:"choices"`
-	Usage       Usage          `json:"usage,omitempty"`
+	UsageObserved  bool           `json:"-"`
+	InvalidPayload bool           `json:"-"`
+	UsagePresent   bool           `json:"-"`
+	ServiceTier    string         `json:"service_tier,omitempty"`
+	Complete       bool           `json:"-"`
+	StreamError    error          `json:"-"`
+	ID             string         `json:"id"`
+	Object         string         `json:"object"`
+	Created        int64          `json:"created"`
+	Model          string         `json:"model"`
+	Choices        []StreamChoice `json:"choices"`
+	Usage          Usage          `json:"usage,omitempty"`
 	// Canonical carries the parser-proven billing buckets for terminal usage
 	// chunks (in-process only, see ChatCompletionsResponse.Canonical).
 	Canonical *CanonicalUsage `json:"-"`
@@ -562,6 +574,7 @@ func (p *OpenAIProvider) ChatCompletions(ctx context.Context, req *ChatCompletio
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
+	response.UsagePresent = openAIUsagePresent(respBody)
 	return &response, nil
 }
 
@@ -628,6 +641,9 @@ func readOpenAIStream(resp *http.Response, contexts ...context.Context) <-chan S
 
 				var chunk StreamChunk
 				if err := jsonx.Unmarshal([]byte(data), &chunk); err != nil {
+					if !sendStreamChunk(ctx, chunkChan, StreamChunk{InvalidPayload: true}) {
+						return
+					}
 					logProviderWarn("failed to parse SSE chunk",
 						zap.Error(err),
 						zap.Int("data_length", len(data)),
@@ -635,6 +651,8 @@ func readOpenAIStream(resp *http.Response, contexts ...context.Context) <-chan S
 					)
 					continue
 				}
+				chunk.UsagePresent = openAIUsagePresent([]byte(data))
+				chunk.UsageObserved = openAIUsageObserved([]byte(data))
 				if !sendStreamChunk(ctx, chunkChan, chunk) {
 					return
 				}
@@ -665,4 +683,22 @@ func sendStreamChunk(ctx context.Context, chunks chan<- StreamChunk, chunk Strea
 	case <-ctx.Done():
 		return false
 	}
+}
+
+// openAIUsagePresent distinguishes a reported zero from an omitted usage object.
+func openAIUsagePresent(body []byte) bool {
+	var payload struct {
+		Usage *struct {
+			Prompt *int64 `json:"prompt_tokens"`
+			Output *int64 `json:"completion_tokens"`
+		} `json:"usage"`
+	}
+	return jsonx.Unmarshal(body, &payload) == nil && payload.Usage != nil && payload.Usage.Prompt != nil && payload.Usage.Output != nil && *payload.Usage.Prompt >= 0 && *payload.Usage.Output >= 0
+}
+
+func openAIUsageObserved(body []byte) bool {
+	var payload struct {
+		Usage jsonx.RawMessage `json:"usage"`
+	}
+	return jsonx.Unmarshal(body, &payload) == nil && len(payload.Usage) > 0 && strings.TrimSpace(string(payload.Usage)) != "null"
 }
