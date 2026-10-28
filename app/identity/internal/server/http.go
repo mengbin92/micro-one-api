@@ -1896,6 +1896,9 @@ func handleOAuthCallback(w http.ResponseWriter, r *http.Request, provider oauth.
 	if strings.Contains(r.Header.Get("Accept"), "text/html") {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "no-referrer")
+		// #nosec G124 -- HttpOnly, SameSite=Strict and Secure are all set; Secure
+		// follows r.TLS or the trusted reverse-proxy header, which gosec cannot
+		// evaluate statically. A plain-HTTP direct deployment cannot set it.
 		http.SetCookie(w, &http.Cookie{Name: "oauth_login", Value: token, Path: "/api/user/security/oauth", MaxAge: 60, HttpOnly: true, Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https", SameSite: http.SameSiteStrictMode})
 		http.Redirect(w, r, "/login#oauth=1", http.StatusFound)
 		return
@@ -1944,6 +1947,8 @@ func handleOAuthSession(w http.ResponseWriter, r *http.Request, uc *biz.Identity
 		return
 	}
 	cookie, err := r.Cookie("oauth_login")
+	// #nosec G124 -- HttpOnly, SameSite=Strict and Secure are all set; Secure
+	// follows r.TLS or the trusted reverse-proxy header (see the login handler).
 	http.SetCookie(w, &http.Cookie{Name: "oauth_login", Value: "", Path: "/api/user/security/oauth", MaxAge: -1, HttpOnly: true, Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https", SameSite: http.SameSiteStrictMode})
 	if err != nil {
 		writeJSON(w, 401, apiResponse{Message: "OAuth login expired"})

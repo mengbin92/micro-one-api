@@ -4,7 +4,7 @@ package totp
 import (
 	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha1" // RFC 4226/6238 interoperability, not a password hash.
+	"crypto/sha1" // #nosec G505 -- RFC 4226/6238 authenticator interoperability; not a password hash.
 	"crypto/subtle"
 	"encoding/base32"
 	"encoding/binary"

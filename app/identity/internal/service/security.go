@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	v "micro-one-api/api/identity/v1"
+	"micro-one-api/pkg/safecast"
 	"strings"
 )
 
@@ -40,7 +41,7 @@ func (s *IdentityService) GetSecurityStatus(ctx context.Context, p *v.SecurityRe
 	if err != nil {
 		return nil, mapIdentityErrorToGRPC(err)
 	}
-	return &v.SecurityReply{PasswordAvailable: out.PasswordAvailable, Enabled: out.Enabled, Configured: out.Configured, RecoveryCodesRemaining: int32(out.RecoveryCodesRemaining), StepUpRequired: out.StepUpRequired, AdminMfaRequired: out.AdminMFARequired}, nil
+	return &v.SecurityReply{PasswordAvailable: out.PasswordAvailable, Enabled: out.Enabled, Configured: out.Configured, RecoveryCodesRemaining: safecast.IntToInt32Saturating(out.RecoveryCodesRemaining), StepUpRequired: out.StepUpRequired, AdminMfaRequired: out.AdminMFARequired}, nil
 }
 
 func (s *IdentityService) VerifyStepUp(ctx context.Context, p *v.SecurityRequest) (*v.SecurityReply, error) {
