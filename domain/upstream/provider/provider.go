@@ -76,6 +76,14 @@ const MaxUpstreamResponseBody = 128 * 1024 * 1024
 // this is far tighter than the success cap (relay-C1).
 const MaxUpstreamErrorBody = 1 << 20
 
+func readUpstreamResponseBody(resp *http.Response, success bool) ([]byte, error) {
+	limit := int64(MaxUpstreamResponseBody)
+	if !success {
+		limit = MaxUpstreamErrorBody
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, limit))
+}
+
 // ChatCompletionsRequest represents a standardized chat completions request
 type ChatCompletionsRequest struct {
 	ServiceTier         string             `json:"service_tier,omitempty"`
@@ -438,7 +446,7 @@ func (p *OpenAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawResp
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
+	respBody, err := readUpstreamResponseBody(resp, resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read raw response: %w", err)
 	}
@@ -563,7 +571,7 @@ func (p *OpenAIProvider) ChatCompletions(ctx context.Context, req *ChatCompletio
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
+	respBody, err := readUpstreamResponseBody(resp, resp.StatusCode == http.StatusOK)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
