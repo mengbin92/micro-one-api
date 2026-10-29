@@ -636,6 +636,10 @@ func (iw *idempotentResponseWriter) Flush() {
 	}
 }
 
+// Unwrap exposes the underlying writer so http.NewResponseController can reach
+// optional ResponseWriter interfaces (Flush/Hijack/Push) through this wrapper.
+func (iw *idempotentResponseWriter) Unwrap() http.ResponseWriter { return iw.ResponseWriter }
+
 // captureHeaders snapshots the current response headers (first value of each)
 // into iw.headers for later caching.
 func (iw *idempotentResponseWriter) captureHeaders() {
