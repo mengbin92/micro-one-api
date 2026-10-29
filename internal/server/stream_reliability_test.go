@@ -110,8 +110,9 @@ func TestIncompleteStreamsNeverCommitOrReplay(t *testing.T) {
 				if calls != 1 || billing.commits != 0 || billing.releases != 1 {
 					t.Fatalf("calls=%d commits=%d releases=%d body=%s", calls, billing.commits, billing.releases, rec.Body.String())
 				}
-				if strings.Contains(rec.Body.String(), `"error"`) || strings.Contains(rec.Body.String(), "[DONE]") {
-					t.Fatalf("incomplete stream appended a terminal response: %s", rec.Body.String())
+				wantErrorEvent := !orchestrator && endpoint == "/v1/chat/completions"
+				if strings.Contains(rec.Body.String(), `"error"`) != wantErrorEvent || strings.Contains(rec.Body.String(), "[DONE]") {
+					t.Fatalf("incomplete stream error-event=%t: %s", wantErrorEvent, rec.Body.String())
 				}
 				if len(recorder.events) != 2 || recorder.events[1].Result != "error" {
 					t.Fatalf("incomplete stream selection events=%+v", recorder.events)
