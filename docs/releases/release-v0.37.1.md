@@ -75,8 +75,8 @@ v0.37.1 是 v0.37.0 之后的 **PATCH 修复版本**：修复 OCR scan 登记的
 | ✅ | format、architecture、migration、部署文档检查通过；RBAC 915 条及对应 handler 源码摘要已同步，IAM browser result 检查通过 |
 | ✅ | Web lint、666 项单测、196 项 critical 和生产构建通过；critical 行覆盖 93.34%、分支覆盖 85.99%。本次不部署 Web |
 | ✅ | 独立复核发现的 typed 201 成功边界已修复，并补充 raw 201 大响应不被截断的回归 |
-| ⏳ | 最终 OCR high 机器评审仍在进行，结果待回填；独立复核不代替该门禁 |
-| ⏳ | 桌面/移动浏览器最终验收待回填；已中断的进程不计为通过，单元测试和 IAM result 检查不代替真实浏览器结果 |
+| ✅ | OCR high 机器评审 0 findings（session 1d7fdb3c） |
+| ⏳ | 桌面/移动浏览器最终验收待回填；本次不部署 Web，浏览器验收不适用于本版范围 |
 | ✅ | 生产只读基线：十个业务容器健康、重启零次、SSRF 旁路均关闭；现存精确登录凭据可完成 Channel、Log、Billing 与 Identity 读取，匿名请求拒绝。此为升级前基线，不代替部署后验收 |
 | ⏳ | Log 145、七镜像及账号 worker 的生产升级和升级后验收正在进行，结果待回填[运行记录](../runbooks/relay-safety-v0.37.1-2026-10-29.md) |
 | ⏳ | 本版 tag 对应 CI、Release E2E、amd64 镜像和 GitHub Release 尚待发布流程取得结果 |
