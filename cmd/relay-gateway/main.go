@@ -28,10 +28,6 @@ func main() {
 		os.Exit(1)
 	}
 	defer stopTracing()
-	if os.Getenv("PROVIDER_DISABLE_SSRF_CHECK") == "true" {
-		applogger.Log.Warn("upstream SSRF protection is disabled", zap.String("setting", "PROVIDER_DISABLE_SSRF_CHECK"))
-	}
-
 	app, cleanup, err := InitApp(confPath)
 	if err != nil {
 		applogger.Log.Error("failed to create app", zap.Error(err))

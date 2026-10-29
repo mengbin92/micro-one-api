@@ -195,7 +195,7 @@ func (p *GeminiProvider) ChatCompletions(ctx context.Context, req *ChatCompletio
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
+	respBody, err := readUpstreamResponseBody(resp, resp.StatusCode == http.StatusOK)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}

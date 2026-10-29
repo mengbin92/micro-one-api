@@ -8,7 +8,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.37.0 发布公告](./docs/releases/release-v0.37.0.md)（注册与 MFA、服务档位计价、微信 Native 充值及首轮 12 项修复；新增迁移 143–145，强制认证与新收费默认关闭） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.37.0)
+> 📣 **最新发布**：[v0.37.1 发布公告](./docs/releases/release-v0.37.1.md)（SSRF 旁路统一告警、上游错误缓冲限额与 Chat SSE 结算终止修复；无新增迁移，生产升级先补既有 Log 145） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.37.1)
 
 ## 功能概览
 
@@ -184,6 +184,7 @@ make web-dist
 
 ## 发布与升级
 
+- [v0.37.1](./docs/releases/release-v0.37.1.md)：修复 SSRF 旁路静默、八条非流式路径错误缓冲过大与 Chat SSE 后置错误；成功标记前完成结算，失败发送脱敏错误事件。无新增 API、配置、依赖或迁移；升级先补既有 Log 145，收费与强制认证等开关保持原状态。
 - [v0.37.0](./docs/releases/release-v0.37.0.md)：注册/邮件恢复、TOTP 与首批 step-up、服务档位计价、微信 Native 余额充值及第一轮 12 项修复。新增 Identity 143／Billing 144／Log 145；强制认证与新收费默认关闭，A3 完整生产上线和真实外部验收分别保留。
 - [v0.36.6](./docs/releases/release-v0.36.6.md)：修复上游供应商漏报、扫描停滞与有界复核例外，保留历史账单补证及开发依赖安全修复；无新增迁移，生产证据监控保持停用。
 - [v0.36.5](./docs/releases/release-v0.36.5.md)：Identity 142 持久发布 builtin root 三项契约写权限，修正 IAM 验收期望；渠道 11 两次真实探测通过并进入 1% 灰度，付费目标已撤销。

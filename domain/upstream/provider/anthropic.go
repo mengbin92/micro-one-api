@@ -123,7 +123,7 @@ func (p *AnthropicProvider) Forward(ctx context.Context, req *RawRequest) (*RawR
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
+	respBody, err := readUpstreamResponseBody(resp, resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read raw response: %w", err)
 	}
@@ -421,7 +421,7 @@ func (p *AnthropicProvider) ChatCompletions(ctx context.Context, req *ChatComple
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
+	respBody, err := readUpstreamResponseBody(resp, resp.StatusCode == http.StatusOK)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}

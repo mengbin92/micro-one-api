@@ -28,6 +28,15 @@ func challengeRepositories(t *testing.T) (*miniredis.Miniredis, biz.ChallengeRep
 	return srv, newRepo(), newRepo()
 }
 
+func TestChallengeKeyIsStablePurposeAndIdentifierAddress(t *testing.T) {
+	if got := challengeKey(biz.ChallengePasswordReset, "test@example.com"); got != "identity:email-challenge:v1:2c5b61a16ce108c9905c2e732883e8e534a3bb5c9b074c560567c27ddf12d2f9" {
+		t.Fatalf("Redis challenge addressing changed: %s", got)
+	}
+	if challengeKey(biz.ChallengePasswordReset, "test@example.com") == challengeKey(biz.ChallengeVerification, "test@example.com") || challengeKey(biz.ChallengePasswordReset, "test@example.com") == challengeKey(biz.ChallengePasswordReset, "other@example.com") {
+		t.Fatal("challenge purposes or recipients share the same Redis address")
+	}
+}
+
 func TestChallengeCrossReplicaAtomicConsumption(t *testing.T) {
 	_, first, second := challengeRepositories(t)
 	ctx := context.Background()

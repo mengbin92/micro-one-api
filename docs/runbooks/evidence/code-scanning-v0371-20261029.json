@@ -1,0 +1,3935 @@
+{
+  "date_beijing": "2026-10-29",
+  "tool": "CodeQL",
+  "tool_version": "2.27.3",
+  "analyzed_ref": "refs/heads/main",
+  "analyzed_commit": "52c5c32e47dfa456103af58f4fc3c2018f752cfd",
+  "source": "GitHub SARIF from code-scanning analysis; only selected code-flow locations and symbolic messages retained",
+  "remote_alerts_modified": false,
+  "results": [
+    {
+      "alert": 342,
+      "rule": "go/reflected-xss",
+      "path": "app/admin/internal/server/http.go",
+      "line": 1878,
+      "github_state_observed": "open",
+      "assessment": "false_positive_pending_maintainer_confirmation",
+      "code_flows": [
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1282,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 128,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 129,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 158,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 103,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 112,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1874,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1878,
+            "message": "p"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1282,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 128,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 129,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 160,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 99,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 100,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "[]type{args} [array]"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "internal/server/relay_execution_metrics.go",
+            "line": 91,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "internal/server/relay_execution_metrics.go",
+            "line": 95,
+            "message": "p"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1874,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1878,
+            "message": "p"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1308,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 70,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 84,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 96,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 132,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 158,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 103,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 112,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1874,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1878,
+            "message": "p"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1308,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 70,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 84,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 96,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 132,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 160,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 99,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 100,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "[]type{args} [array]"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "internal/server/relay_execution_metrics.go",
+            "line": 91,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "internal/server/relay_execution_metrics.go",
+            "line": 95,
+            "message": "p"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1874,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1878,
+            "message": "p"
+          }
+        ]
+      ]
+    },
+    {
+      "alert": 343,
+      "rule": "go/reflected-xss",
+      "path": "app/admin/internal/server/http.go",
+      "line": 1958,
+      "github_state_observed": "open",
+      "assessment": "false_positive_pending_maintainer_confirmation",
+      "code_flows": [
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1282,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 128,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 129,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 158,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 103,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 112,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1282,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 128,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 129,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 160,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 99,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 100,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "[]type{args} [array]"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1308,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 70,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 84,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 96,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 132,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 158,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 103,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 112,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1308,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 70,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 84,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 96,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 132,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 160,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 99,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 100,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "[]type{args} [array]"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          }
+        ]
+      ]
+    },
+    {
+      "alert": 344,
+      "rule": "go/reflected-xss",
+      "path": "internal/server/relay_execution_metrics.go",
+      "line": 95,
+      "github_state_observed": "open",
+      "assessment": "false_positive_pending_maintainer_confirmation",
+      "code_flows": [
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1282,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 128,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 129,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 158,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 103,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 112,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "internal/server/relay_execution_metrics.go",
+            "line": 91,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "internal/server/relay_execution_metrics.go",
+            "line": 95,
+            "message": "p"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1282,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 128,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 129,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 160,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 99,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 100,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "[]type{args} [array]"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1874,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1878,
+            "message": "p"
+          },
+          {
+            "path": "internal/server/relay_execution_metrics.go",
+            "line": 91,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "internal/server/relay_execution_metrics.go",
+            "line": 95,
+            "message": "p"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1308,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 70,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 84,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 96,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 132,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 158,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 103,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 112,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "internal/server/relay_execution_metrics.go",
+            "line": 91,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "internal/server/relay_execution_metrics.go",
+            "line": 95,
+            "message": "p"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1308,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 70,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 84,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 96,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 132,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 160,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 99,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 100,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "[]type{args} [array]"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1874,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1878,
+            "message": "p"
+          },
+          {
+            "path": "internal/server/relay_execution_metrics.go",
+            "line": 91,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "internal/server/relay_execution_metrics.go",
+            "line": 95,
+            "message": "p"
+          }
+        ]
+      ]
+    },
+    {
+      "alert": 345,
+      "rule": "go/reflected-xss",
+      "path": "internal/server/request_timing.go",
+      "line": 103,
+      "github_state_observed": "open",
+      "assessment": "false_positive_pending_maintainer_confirmation",
+      "code_flows": [
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1282,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 128,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 129,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 158,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 103,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 112,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "internal/server/request_timing.go",
+            "line": 94,
+            "message": "SSA def(data)"
+          },
+          {
+            "path": "internal/server/request_timing.go",
+            "line": 103,
+            "message": "data"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1282,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 128,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 129,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 160,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 99,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 100,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "[]type{args} [array]"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1874,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1878,
+            "message": "p"
+          },
+          {
+            "path": "internal/server/request_timing.go",
+            "line": 94,
+            "message": "SSA def(data)"
+          },
+          {
+            "path": "internal/server/request_timing.go",
+            "line": 103,
+            "message": "data"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1308,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 70,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 84,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 96,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 132,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 158,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 103,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 112,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "internal/server/request_timing.go",
+            "line": 94,
+            "message": "SSA def(data)"
+          },
+          {
+            "path": "internal/server/request_timing.go",
+            "line": 103,
+            "message": "data"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1308,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 70,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 84,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 96,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 132,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 160,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 99,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 100,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "[]type{args} [array]"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1874,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1878,
+            "message": "p"
+          },
+          {
+            "path": "internal/server/request_timing.go",
+            "line": 94,
+            "message": "SSA def(data)"
+          },
+          {
+            "path": "internal/server/request_timing.go",
+            "line": 103,
+            "message": "data"
+          }
+        ]
+      ]
+    },
+    {
+      "alert": 346,
+      "rule": "go/reflected-xss",
+      "path": "platform/middleware/http_metrics.go",
+      "line": 69,
+      "github_state_observed": "open",
+      "assessment": "false_positive_pending_maintainer_confirmation",
+      "code_flows": [
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1282,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 128,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 129,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 158,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 103,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 112,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "platform/middleware/http_metrics.go",
+            "line": 63,
+            "message": "SSA def(b)"
+          },
+          {
+            "path": "platform/middleware/http_metrics.go",
+            "line": 69,
+            "message": "b"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1282,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 128,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 129,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 160,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 99,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 100,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "[]type{args} [array]"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1874,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1878,
+            "message": "p"
+          },
+          {
+            "path": "platform/middleware/http_metrics.go",
+            "line": 63,
+            "message": "SSA def(b)"
+          },
+          {
+            "path": "platform/middleware/http_metrics.go",
+            "line": 69,
+            "message": "b"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1308,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 70,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 84,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 96,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 132,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 158,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 103,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 112,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "platform/middleware/http_metrics.go",
+            "line": 63,
+            "message": "SSA def(b)"
+          },
+          {
+            "path": "platform/middleware/http_metrics.go",
+            "line": 69,
+            "message": "b"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1308,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 70,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 84,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 96,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 132,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 160,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 99,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 100,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "[]type{args} [array]"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1874,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1878,
+            "message": "p"
+          },
+          {
+            "path": "platform/middleware/http_metrics.go",
+            "line": 63,
+            "message": "SSA def(b)"
+          },
+          {
+            "path": "platform/middleware/http_metrics.go",
+            "line": 69,
+            "message": "b"
+          }
+        ]
+      ]
+    },
+    {
+      "alert": 347,
+      "rule": "go/reflected-xss",
+      "path": "platform/middleware/idempotency.go",
+      "line": 591,
+      "github_state_observed": "open",
+      "assessment": "false_positive_pending_maintainer_confirmation",
+      "code_flows": [
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1282,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 128,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 129,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 158,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 103,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 112,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "platform/middleware/idempotency.go",
+            "line": 573,
+            "message": "SSA def(data)"
+          },
+          {
+            "path": "platform/middleware/idempotency.go",
+            "line": 591,
+            "message": "data"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1282,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 128,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 129,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 160,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 99,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 100,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "[]type{args} [array]"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1874,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1878,
+            "message": "p"
+          },
+          {
+            "path": "platform/middleware/idempotency.go",
+            "line": 573,
+            "message": "SSA def(data)"
+          },
+          {
+            "path": "platform/middleware/idempotency.go",
+            "line": 591,
+            "message": "data"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1308,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 70,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 84,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 96,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 132,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 158,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 103,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 112,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "platform/middleware/idempotency.go",
+            "line": 573,
+            "message": "SSA def(data)"
+          },
+          {
+            "path": "platform/middleware/idempotency.go",
+            "line": 591,
+            "message": "data"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1308,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 70,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 84,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 96,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 132,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 160,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 99,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 100,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "[]type{args} [array]"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1953,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1958,
+            "message": "p"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1874,
+            "message": "SSA def(p)"
+          },
+          {
+            "path": "app/admin/internal/server/http.go",
+            "line": 1878,
+            "message": "p"
+          },
+          {
+            "path": "platform/middleware/idempotency.go",
+            "line": 573,
+            "message": "SSA def(data)"
+          },
+          {
+            "path": "platform/middleware/idempotency.go",
+            "line": 591,
+            "message": "data"
+          }
+        ]
+      ]
+    },
+    {
+      "alert": 348,
+      "rule": "go/weak-sensitive-data-hashing",
+      "path": "app/identity/internal/data/challenge.go",
+      "line": 24,
+      "github_state_observed": "open",
+      "assessment": "false_positive_pending_maintainer_confirmation",
+      "code_flows": [
+        [
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "ChallengePasswordReset"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(purpose)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 154,
+            "message": "purpose"
+          },
+          {
+            "path": "app/identity/internal/data/challenge.go",
+            "line": 35,
+            "message": "SSA def(purpose)"
+          },
+          {
+            "path": "app/identity/internal/data/challenge.go",
+            "line": 51,
+            "message": "purpose"
+          },
+          {
+            "path": "app/identity/internal/data/challenge.go",
+            "line": 23,
+            "message": "SSA def(purpose)"
+          },
+          {
+            "path": "app/identity/internal/data/challenge.go",
+            "line": 24,
+            "message": "type conversion"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "ChallengePasswordReset"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(purpose)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 163,
+            "message": "purpose"
+          },
+          {
+            "path": "app/identity/internal/data/challenge.go",
+            "line": 61,
+            "message": "SSA def(purpose)"
+          },
+          {
+            "path": "app/identity/internal/data/challenge.go",
+            "line": 69,
+            "message": "purpose"
+          },
+          {
+            "path": "app/identity/internal/data/challenge.go",
+            "line": 23,
+            "message": "SSA def(purpose)"
+          },
+          {
+            "path": "app/identity/internal/data/challenge.go",
+            "line": 24,
+            "message": "type conversion"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "ChallengePasswordReset"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(purpose)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 170,
+            "message": "purpose"
+          },
+          {
+            "path": "app/identity/internal/data/challenge.go",
+            "line": 79,
+            "message": "SSA def(purpose)"
+          },
+          {
+            "path": "app/identity/internal/data/challenge.go",
+            "line": 86,
+            "message": "purpose"
+          },
+          {
+            "path": "app/identity/internal/data/challenge.go",
+            "line": 23,
+            "message": "SSA def(purpose)"
+          },
+          {
+            "path": "app/identity/internal/data/challenge.go",
+            "line": 24,
+            "message": "type conversion"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1333,
+            "message": "selection of ChallengePasswordReset"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 175,
+            "message": "SSA def(purpose)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 186,
+            "message": "purpose"
+          },
+          {
+            "path": "app/identity/internal/data/challenge.go",
+            "line": 105,
+            "message": "SSA def(purpose)"
+          },
+          {
+            "path": "app/identity/internal/data/challenge.go",
+            "line": 119,
+            "message": "purpose"
+          },
+          {
+            "path": "app/identity/internal/data/challenge.go",
+            "line": 23,
+            "message": "SSA def(purpose)"
+          },
+          {
+            "path": "app/identity/internal/data/challenge.go",
+            "line": 24,
+            "message": "type conversion"
+          }
+        ]
+      ]
+    },
+    {
+      "alert": 349,
+      "rule": "go/email-injection",
+      "path": "app/identity/internal/data/mail.go",
+      "line": 174,
+      "github_state_observed": "open",
+      "assessment": "false_positive_pending_maintainer_confirmation",
+      "code_flows": [
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1282,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 128,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 129,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 158,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 103,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 112,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "writer [postupdate]"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1273,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1282,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 128,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 129,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 160,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 99,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 100,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "[]type{args} [array]"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "writer [postupdate]"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1308,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 70,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 84,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 96,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 132,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 158,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 103,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 112,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "writer [postupdate]"
+          }
+        ],
+        [
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "selection of URL"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Query"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to Get"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1296,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/server/http.go",
+            "line": 1308,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 70,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 77,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 84,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 96,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 132,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 133,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 136,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 143,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/biz/challenge.go",
+            "line": 160,
+            "message": "deliveryEmail"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 99,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 100,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 115,
+            "message": "SSA def(email)"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 119,
+            "message": "call to TrimSpace"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "email"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "[]type{args} [array]"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 173,
+            "message": "call to Sprintf"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "type conversion"
+          },
+          {
+            "path": "app/identity/internal/data/mail.go",
+            "line": 174,
+            "message": "writer [postupdate]"
+          }
+        ]
+      ]
+    }
+  ]
+}
