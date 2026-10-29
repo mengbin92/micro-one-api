@@ -79,8 +79,9 @@ export function RechargePage() {
   const attempt = useRef<{ scope: string; key: string } | null>(null);
   const channelsQuery = useQuery({
     queryKey: ['payment-channels'],
-    queryFn: async () => {
-      const res = await apiClient.get('/user/payment/channels');
+    meta: { protected: true },
+    queryFn: async ({ signal }) => {
+      const res = await apiClient.get('/user/payment/channels', { signal });
       return unwrapApiData<{ channels?: PaymentChannel[] }>(res.data).channels ?? [];
     },
   });
@@ -90,8 +91,9 @@ export function RechargePage() {
   const orderQuery = useQuery({
     queryKey: ['wechat-payment-order', wechatOrder?.trade_no],
     enabled: Boolean(wechatOrder?.trade_no),
-    queryFn: async () => {
-      const res = await apiClient.get(`/user/payment/orders/${encodeURIComponent(wechatOrder!.trade_no!)}`);
+    meta: { protected: true },
+    queryFn: async ({ signal }) => {
+      const res = await apiClient.get(`/user/payment/orders/${encodeURIComponent(wechatOrder!.trade_no!)}`, { signal });
       return unwrapApiData<{ order: PaymentOrder }>(res.data).order;
     },
     refetchInterval: query => ['paid', 'closed', 'refunded'].includes(query.state.data?.status ?? '') ? false : 3000,

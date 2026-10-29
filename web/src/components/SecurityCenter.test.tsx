@@ -8,8 +8,34 @@ import { SecurityCenter } from './SecurityCenter';
 import { SecurityVerificationDialog } from './SecurityVerificationDialog';
 import { apiClient } from '@/lib/api';
 import { requestSecurityVerification } from '@/lib/security-verification';
+import { AUTHORIZATION_REFRESH } from '@/lib/authorization-events';
 
 describe('security center', () => {
+  it('does not publish recovery codes or clear a session after leaving the security center', async () => {
+    const user = userEvent.setup();
+    let finish!: () => void;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    const started = vi.fn();
+    const post = vi.spyOn(apiClient, 'post');
+    localStorage.setItem('token', 'enrolled-session');
+    server.use(
+      http.get('/api/user/security', () => HttpResponse.json({ configured: true, enabled: true })),
+      http.post('/api/user/security/recovery', async () => {
+        started();
+        await pending;
+        return HttpResponse.json({ recovery_codes: ['late-recovery-secret'] });
+      }),
+    );
+    const view = renderWithQuery(<SecurityCenter />);
+    await user.click(await screen.findByRole('button', { name: '重新生成恢复码' }));
+    await waitFor(() => expect(started).toHaveBeenCalledOnce());
+    view.unmount();
+    renderWithQuery(<SecurityVerificationDialog />);
+    await act(async () => { finish(); await post.mock.results[0].value; });
+    expect(localStorage.getItem('token')).toBe('enrolled-session');
+    expect(screen.queryByText('late-recovery-secret')).not.toBeInTheDocument();
+  });
+
   it('verifies before setup and only displays recovery codes after confirmation', async () => {
     const user = userEvent.setup();
     let verified = false;
@@ -106,4 +132,48 @@ it('starts a separate verification when the session changes while a dialog is pe
   await user.click(screen.getByRole('button', { name: '验证并继续' }));
   expect(await first).toBeInstanceOf(Error);
   expect(await next).toBeUndefined();
+});
+
+it.each(['storage', 'refresh'])('clears published recovery codes when a replacement session arrives by %s', async event => {
+  const user = userEvent.setup();
+  localStorage.setItem('token', 'enrolled-session');
+  server.use(
+    http.get('/api/user/security', () => HttpResponse.json({ configured: true, enabled: true })),
+    http.post('/api/user/security/recovery', () => HttpResponse.json({ recovery_codes: ['original-account-recovery-secret'] })),
+  );
+  renderWithQuery(<><SecurityCenter /><SecurityVerificationDialog /></>);
+  await user.click(await screen.findByRole('button', { name: '重新生成恢复码' }));
+  expect(await screen.findByText('original-account-recovery-secret')).toBeInTheDocument();
+  expect(localStorage.getItem('token')).toBeNull();
+  await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key: 'token', newValue: null })); });
+  expect(screen.getByText('original-account-recovery-secret')).toBeInTheDocument();
+  await act(async () => {
+    localStorage.setItem('token', 'replacement-session');
+    window.dispatchEvent(event === 'storage'
+      ? new StorageEvent('storage', { key: 'token', newValue: 'replacement-session' })
+      : new Event(AUTHORIZATION_REFRESH));
+  });
+  expect(screen.queryByText('original-account-recovery-secret')).not.toBeInTheDocument();
+  expect(localStorage.getItem('token')).toBe('replacement-session');
+});
+
+it('discards an old verification factor when another tab replaces the session', async () => {
+  const user = userEvent.setup();
+  localStorage.setItem('token', 'old-session');
+  server.use(http.get('/api/user/security', () => HttpResponse.json({ enabled: true })));
+  renderWithQuery(<SecurityVerificationDialog />);
+  let oldResult!: Promise<unknown>;
+  await act(async () => { oldResult = requestSecurityVerification().catch(error => error); });
+  await user.type(await screen.findByLabelText('验证码或恢复码'), 'private-old-recovery-code');
+  await act(async () => {
+    localStorage.setItem('token', 'replacement-session');
+    window.dispatchEvent(new StorageEvent('storage', { key: 'token', newValue: 'replacement-session' }));
+  });
+  expect(screen.queryByLabelText('验证码或恢复码')).not.toBeInTheDocument();
+  expect(await oldResult).toBeInstanceOf(Error);
+  let newResult!: Promise<unknown>;
+  await act(async () => { newResult = requestSecurityVerification().catch(error => error); });
+  expect(await screen.findByLabelText('验证码或恢复码')).toHaveValue('');
+  await user.click(screen.getByRole('button', { name: '取消' }));
+  expect(await newResult).toBeInstanceOf(Error);
 });

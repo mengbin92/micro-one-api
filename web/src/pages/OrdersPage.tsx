@@ -2,7 +2,7 @@ import { toast } from 'sonner';
 import { safePaymentURL } from '@/lib/payment-url';
 import { WechatPaymentCode } from '@/components/WechatPaymentCode';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -207,9 +207,12 @@ function ledgerToRow(log: LedgerLog, index: number): OrderRow {
 export function OrdersPage() {
   const [page, setPage] = useState(1);
   const [type, setType] = useState('');
-  const [selectedOrder, setSelectedOrder] = useState<PaymentOrder | null>(null);
+  const [selection, setSelection] = useState<{ order: PaymentOrder; generation: string } | null>(null);
   const pageSize = 20;
   const auth = useAuthorization();
+  const generation = useRef(auth.generation);
+  useEffect(() => { generation.current = auth.generation; }, [auth.generation]);
+  const selectedOrder = selection?.generation === auth.generation ? selection.order : null;
   const isAdminView = auth.displayCanAll(['admin.console.enter', 'billing.payment.list']);
   const sessionActive = auth.displaySnapshot?.authorization_mode === 'legacy' || auth.displaySnapshot?.session?.activation_state === 'active';
   const queryClient = useQueryClient();
@@ -275,13 +278,17 @@ export function OrdersPage() {
       if (!sessionActive || (isAdminView && !auth.displayCan('billing.payment.read'))) throw new Error(t('权限受限'));
       const client = isAdminView ? adminApiClient : apiClient;
       const path = isAdminView ? `/payment/orders/${encodeURIComponent(tradeNo)}` : `/user/payment/orders/${encodeURIComponent(tradeNo)}`;
+      const token = localStorage.getItem('token');
       const res = await client.get(path);
-      return unwrapApiData<PaymentOrderPayload>(res.data);
+      if (localStorage.getItem('token') !== token) throw new Error(t('会话已变化，请重试'));
+      return { ...unwrapApiData<PaymentOrderPayload>(res.data), generation: auth.generation };
     },
     onSuccess: (payload) => {
-      if (!payload.order) return;
-      setSelectedOrder(payload.order);
-      const updatedRow = paymentOrderToRow(payload.order);
+      const order = payload.order;
+      if (!order || payload.generation !== generation.current) return;
+      setSelection(current => current?.generation === payload.generation && getTradeNo(current.order) === getTradeNo(order)
+        ? { ...current, order } : current);
+      const updatedRow = paymentOrderToRow(order);
       queryClient.setQueryData<OrderRow[]>(queryKey, (current) =>
         (current ?? []).map((row) => (row.reference === updatedRow.reference ? updatedRow : row)),
       );
@@ -296,7 +303,7 @@ export function OrdersPage() {
 
   const handleOpenPaymentDetail = (row: OrderRow) => {
     if (!row.paymentOrder || (isAdminView && !auth.displayCan('billing.payment.read'))) return;
-    setSelectedOrder(row.paymentOrder);
+    setSelection({ order: row.paymentOrder, generation: auth.generation });
     if (row.reference !== '-') paymentOrderDetail.mutate(row.reference);
   };
 
@@ -400,7 +407,7 @@ export function OrdersPage() {
         </>
       )}
 
-      <Dialog open={Boolean(selectedOrder)} onOpenChange={(open) => !open && setSelectedOrder(null)}>
+      <Dialog open={Boolean(selectedOrder)} onOpenChange={(open) => !open && setSelection(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("订单详情")}</DialogTitle>
@@ -432,7 +439,7 @@ export function OrdersPage() {
             {selectedOrder?.status === 'pending' ? (
               <Button
                 type="button"
-                disabled={!canContinuePayment}
+                disabled={!canContinuePayment || paymentOrderDetail.isPending}
                 onClick={handleContinuePayment}
                 className="bg-blue-600 text-white hover:bg-blue-700"
               >{t(selectedOrder.channel === 'wechat' ? '刷新支付状态' : '继续支付')}</Button>

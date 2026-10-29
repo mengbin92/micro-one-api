@@ -46,13 +46,16 @@ export function PasswordRecoveryPage() {
     if (!resetting && (!policy.data?.email_delivery_configured || policy.isError || cooldown.seconds > 0)) return;
     submitLock.current = true;
     setBusy(true);
+    const originalToken = localStorage.getItem('token');
     try {
       if (resetting) {
         const response = await apiClient.post('/user/reset', { email: email.trim(), token: token.trim(), password });
         ensureApiSuccess(response.data, t('密码重置失败'));
         if (!flow.isCurrent()) return;
-        clearUserSession();
-        queryClient.clear();
+        if (localStorage.getItem('token') === originalToken) {
+          clearUserSession();
+          queryClient.clear();
+        }
         flow.finish();
       } else {
         const response = await apiClient.get('/reset_password', { params: { email: email.trim() } });
