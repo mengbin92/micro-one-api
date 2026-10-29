@@ -13,7 +13,7 @@ import (
 func validateAttemptReplay(ctx context.Context, r *Reservation, model, channelID string, subscriptionAccountID int64, routingContext *routing.ResolvedRoutingContext) error {
 	a := requesttrace.FromContext(ctx)
 	if r.RequestSnapshot != nil && r.RequestSnapshot.ServiceTier != nil {
-		if r.RequestSnapshot.ServiceTier.Request != billingdomain.GetServiceTierRequest(ctx) {
+		if r.RequestSnapshot.ServiceTier.Request != billingdomain.GetServiceTierRequest(ctx) || r.ChannelID != channelID || parseInt64Default(r.SubscriptionAccountID, 0) != subscriptionAccountID {
 			return ErrRoutingContextConflict
 		}
 	} else if q := billingdomain.GetServiceTierRequest(ctx); q.RequestedServiceTier == "priority" || q.RequestedServiceTier == "flex" {

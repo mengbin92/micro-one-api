@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"github.com/go-kratos/kratos/v3/errors"
+	v "micro-one-api/api/admin/v1"
 	"micro-one-api/domain/authorization"
 	"sort"
 	"strings"
@@ -37,7 +38,25 @@ func SensitiveSystemOption(key string) bool {
 	k := strings.ToLower(key)
 	return strings.Contains(k, "secret") || strings.Contains(k, "password") || strings.Contains(k, "token") || strings.Contains(k, "privatekey") || strings.Contains(k, "webhook") || k == "smtpaccount"
 }
+
+var ErrSystemOptionKeyInvalid = errors.BadRequest(v.AuthorizationErrorReason_AUTHORIZATION_BUSINESS_RULE_VIOLATION.String(), "system option key must use its canonical ASCII name")
+
+func validateSystemOptionKey(key string) error {
+	for _, c := range key {
+		if c != '_' && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') {
+			return ErrSystemOptionKeyInvalid
+		}
+	}
+	if key == "" || key != "ServiceTierPricing" && strings.EqualFold(key, "ServiceTierPricing") {
+		return ErrSystemOptionKeyInvalid
+	}
+	return nil
+}
+
 func (uc *SystemOptionsUsecase) prepareRead(ctx context.Context, key string) (context.Context, error) {
+	if err := validateSystemOptionKey(key); err != nil {
+		return ctx, err
+	}
 	if !authorization.External(ctx) {
 		return ctx, nil
 	}
@@ -89,6 +108,9 @@ func serviceTierOptionReadable(ctx context.Context) bool {
 	return true
 }
 func (uc *SystemOptionsUsecase) prepareWrite(ctx context.Context, key string) (context.Context, error) {
+	if err := validateSystemOptionKey(key); err != nil {
+		return ctx, err
+	}
 	if !authorization.External(ctx) {
 		return ctx, nil
 	}

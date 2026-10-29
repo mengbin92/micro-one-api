@@ -201,9 +201,10 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		if reservation.ServiceTierPricingVersion == 1 {
 			usageEnvelope = envelopeFromCompleteTierChatUsage(resp.Usage, resp.Canonical)
 		}
-		if reservation.ServiceTierPricingVersion == 1 && (!resp.UsagePresent || usageEnvelope.ParseStatus != relaybiz.UsageParseVerified) {
+		if reservation.ServiceTierPricingVersion == 1 && (!resp.UsagePresent || !validTierUsageNumbers(resp.RawUsage) || usageEnvelope.ParseStatus != relaybiz.UsageParseVerified) {
 			var tier tierObservation
 			tier.observe(resp.ServiceTier)
+			tier.observeRaw(resp.RawServiceTier)
 			_ = s.releaseTierQuota(ctx, reservation, tierAttemptLog(plan, ch, reservation, billingModel, "/v1/chat/completions", false, startedAt), tier, "service_tier_usage_missing")
 			s.writeJSON(w, http.StatusOK, resp)
 			return nil
@@ -235,6 +236,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		logInput.applyReservation(reservation)
 		var tier tierObservation
 		tier.observe(resp.ServiceTier)
+		tier.observeRaw(resp.RawServiceTier)
 		logInput.applyTier(ctx, tier)
 		// §4.3: the envelope comes from the provider-proven canonical buckets
 		// (Anthropic) or the OpenAI field shape — never the channel type.
@@ -318,9 +320,10 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 			continue
 		}
 		tier.observe(chunk.ServiceTier)
+		tier.observeRaw(chunk.RawServiceTier)
 		if logInput.TierPricing && chunk.UsageObserved {
 			sawTierUsage = sawTierUsage || chunk.UsagePresent
-			invalidTierUsage = invalidTierUsage || !chunk.UsagePresent || envelopeFromCompleteTierChatUsage(chunk.Usage, chunk.Canonical).ParseStatus != relaybiz.UsageParseVerified
+			invalidTierUsage = invalidTierUsage || !chunk.UsagePresent || !validTierUsageNumbers(chunk.RawUsage) || envelopeFromCompleteTierChatUsage(chunk.Usage, chunk.Canonical).ParseStatus != relaybiz.UsageParseVerified
 			if chunk.UsagePresent {
 				lastUsage = chunk.Usage
 				totalTokens, promptTokens, completionTokens = int64(lastUsage.TotalTokens), int64(lastUsage.PromptTokens), int64(lastUsage.CompletionTokens)
