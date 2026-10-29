@@ -7,15 +7,26 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-10-29
+
+v0.37.0 是 v0.36.6 之后的 **MINOR 功能版本**：发布 A1 注册/邮件恢复、A2 TOTP/恢复码与首批 step-up、A3 有限服务档位计价、A4 微信 Native 余额充值，以及第一轮完整复核的 12 项修复。新增三库迁移 143–145；强制认证、档位计价与微信默认关闭，A3 尚未完整生产上线，真实因子/上游供应商收费/商户付款保留待验。升级与不可回滚限制详见 [release-v0.37.0.md](docs/releases/release-v0.37.0.md)。
+
 ### Added
 
-- 补齐 A1 注册、邮箱验证与密码恢复：Identity 公开策略、BFF 代理、中英文页面和 Turnstile，支持复用现有 Notify SMTP；共享 Redis challenge 实现限次、冷却、单次消费与投递失败撤销。配置和验收范围见 [A1 实施记录](docs/runbooks/a1-self-service-acceptance-2026-10-27.md)。
-- A3 服务档位计价 MVP（默认关闭）：单来源/模型的 default/priority/flex 五桶售价与可选采购估价、预扣成本上界、reserve 时冻结配置、PricingSnapshot v2 与账本六字段解释；HTTP JSON/SSE 分别保存请求与实际档位，缺失/未知/冲突按 `actual_or_max_v1` 结算；executor、WS 与其他协议明确拒绝。契约与验收见 [A3 冻结契约](docs/design/a3-service-tier-contract-2026-10-27.md) / [A3 实施验收](docs/runbooks/a3-service-tier-acceptance-2026-10-27.md)。
+- A1 完整注册、邮箱验证与密码恢复：Identity 公开策略、BFF 代理、中英文页面、Turnstile、共享 Redis challenge 和真实 SMTP 投递；支持 TTL、限次、重发替换及单次消费。
+- A2 TOTP 安全中心、一次展示的恢复码、密码/OAuth 统一 MFA challenge 与五分钟会话证明；首批敏感 owner/BFF 入口执行 step-up，认证秘密加密、恢复码不可逆存储。新增 Identity 143 迁移；强制策略默认关闭，已启用 MFA 的账号始终执行第二因子登录。
+- A3 服务档位计价 MVP：单来源/模型的 default/priority/flex 五桶售价与可选采购估价、预扣上界、冻结配置及 PricingSnapshot v2；HTTP JSON/SSE 分别保留请求与实际档位，缺失/未知/冲突按冻结最高价策略结算。新增 Billing 144、Log 145 迁移，默认关闭，executor/WS/其他未支持入口明确拒绝。
+- A4 微信 Native 单商户 CNY 余额充值：配置驱动支付渠道、下单/查单/正式回调、平台公钥验签和解密、本地二维码及原单幂等恢复；通知与查单在同一事务单次发放钱包和账本。默认关闭，不支持微信订阅购买、平台原路退款或多商户。
 
 ### Fixed
 
-- 恢复请求在账号查询和 SMTP 前统一有界异步接受，避免公开响应暴露邮箱存在性；新邮箱绑定在 Owner 写锁下检查占用，历史重复邮箱恢复失败关闭；注册与邀请奖励补稳定幂等键，重置后旧会话继续失效。
-- Billing 服务档位准入拒绝（`SERVICE_TIER_UNSUPPORTED`、`SERVICE_TIER_BOUND_REQUIRED`）不再被 Relay 当作预扣失败报告为 402「insufficient quota」，也不再重试或计入来源健康；统一返回 400 并在响应中点名 `service_tier`。
+- 恢复请求在账号查询和 SMTP 前统一有界异步接受，避免公开响应暴露邮箱存在性；新邮箱绑定在 owner 写锁下检查占用，注册/邀请奖励使用稳定幂等键，密码重置撤销旧会话；本轮恢复 worker 增加脱敏 panic 隔离。
+- 修复 A2 活跃 challenge、Secret 重绑重放水位、BFF 安全 reason、OAuth 失败恢复及 Compose MFA 变量注入；新表运行权限修复有独立部署记录，HTTP/gRPC 登录均区分依赖故障与凭据错误。
+- legacy 管理员改邮箱在写锁内重新核对会话与 step-up，防止等待锁期间证明到期或撤销后仍能写入。
+- 档位准入错误统一返回 400，不再误报余额不足、重试或计入来源健康；Chat JSON/SSE 保留 null usage/档位原始证据，无效用量不收费，未知档位不能被后续低价恢复。
+- 档位 reservation 无 trace 重放仍核对来源；系统配置拒绝大小写、尾空格及非 ASCII 别名绕过采购权限、JSON 和 revision 校验。
+- 密码重置迟到响应不清新会话；安全中心和全局验证弹窗按会话/生命周期清理恢复码及已输入因子；订单详情绑定授权代次与当前选择，支付查询纳入 protected cache 和取消信号。
+- 补齐既有 gosec 门禁问题、OAuth render 状态、证据检查误报与满载机器 Web 测试等待，保持原生产收费和监控开关。
 
 ## [0.36.6] - 2026-10-26
 

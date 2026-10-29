@@ -14,9 +14,10 @@ multi-channel API distribution and [sub2api](https://github.com/Wei-Shaw/sub2api
 for subscription windows, account pools, rate limits and usage management.
 You provide your own authorized upstream accounts and API keys.
 
-> Latest release: [v0.36.3](./docs/releases/release-v0.36.3.md) — bounded SQL memory
-> for maximum timing summaries, supplier evidence details and Jaeger 768 MiB.
-> [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.36.3)
+> Latest release: [v0.37.0](./docs/releases/release-v0.37.0.md) — self-service email recovery,
+> TOTP and step-up, service-tier pricing, WeChat Native recharge and 12 review fixes.
+> Adds migrations 143–145; enforcement and new charging features remain disabled by default.
+> [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.37.0)
 
 ## Features
 
@@ -147,6 +148,11 @@ and [repository development rules](./AGENTS.md). Both are currently maintained i
 
 ## Releases and upgrades
 
+- [v0.37.0](./docs/releases/release-v0.37.0.md): self-service registration and email
+  recovery, TOTP and initial step-up routes, service-tier pricing, WeChat Native
+  balance recharge, and 12 review fixes. Adds Identity 143, Billing 144 and Log 145;
+  enforcement and new charging features remain disabled by default. The complete
+  A3 production rollout and real external acceptance are tracked separately.
 - [v0.36.3](./docs/releases/release-v0.36.3.md): bounded SQL memory for maximum timing
   summaries, supplier evidence details and Jaeger 768 MiB. No new migrations;
   already deployed, with long-term production acceptance tracked separately.
