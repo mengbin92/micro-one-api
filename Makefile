@@ -363,6 +363,8 @@ format-check:
 verify:
 	@echo "== make verify: format =="
 	@make format-check
+	@echo "== make verify: rbac matrix digests =="
+	@python3 scripts/rbac-matrix-refresh.py --check
 	@echo "== make verify: unit =="
 	@make test-unit
 	@echo "== make verify: race =="
