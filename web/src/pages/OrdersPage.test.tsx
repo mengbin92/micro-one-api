@@ -1,13 +1,75 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OrdersPage } from './OrdersPage';
 import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
+import { adminApiClient, apiClient } from '@/lib/api';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { authorizationKey } from '@/lib/authorization';
 
 describe('OrdersPage', () => {
   beforeEach(() => server.use(http.get('/api/user/authorization', () => HttpResponse.json({ authorization_mode: 'legacy', legacy_admin: false }))));
+  it('keeps a closed Native order dialog closed when its refresh finishes', async () => {
+    const user = userEvent.setup();
+    let finish!: () => void;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    const started = vi.fn();
+    const get = vi.spyOn(apiClient, 'get');
+    const order = { trade_no: 'LATE-NATIVE', channel: 'wechat', status: 'pending' };
+    server.use(
+      http.get('/api/user/payment/orders', () => HttpResponse.json({ success: true, data: { orders: [order] } })),
+      http.get('/api/user/payment/orders/LATE-NATIVE', async () => {
+        started(); await pending;
+        return HttpResponse.json({ success: true, data: { order: { ...order, status: 'paid' } } });
+      }),
+      http.get('/api/user/logs', () => HttpResponse.json({ success: true, data: { logs: [] } })),
+    );
+    renderWithQuery(<OrdersPage />);
+    await user.click(await screen.findByRole('button', { name: '查看订单 LATE-NATIVE' }));
+    await waitFor(() => expect(started).toHaveBeenCalledOnce());
+    const response = get.mock.results[get.mock.calls.findIndex(([path]) => path === '/user/payment/orders/LATE-NATIVE')].value;
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '关闭' }));
+    await act(async () => { finish(); await response; });
+    await waitFor(() => expect(screen.getByRole('button', { name: '查看订单 LATE-NATIVE' })).toBeEnabled());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('hides privileged order details and rejects late responses when permissions are revoked', async () => {
+    const user = userEvent.setup();
+    let finish!: () => void;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    let allowed = true;
+    let client!: QueryClient;
+    function Page() { client = useQueryClient(); return <OrdersPage />; }
+    const started = vi.fn();
+    const order = { trade_no: 'ADMIN-NATIVE', channel: 'wechat', status: 'pending', user_id: 'other-user' };
+    const get = vi.spyOn(apiClient, 'get');
+    const detail = vi.spyOn(adminApiClient, 'get');
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({ authorization_mode: 'iam', session: { activation_state: 'active' }, permitted_operations: allowed ? ['admin.console.enter', 'billing.payment.list', 'billing.payment.read'] : [] })),
+      http.get('/api/payment/orders', () => HttpResponse.json({ success: true, data: { orders: [order] } })),
+      http.get('/api/payment/orders/ADMIN-NATIVE', async () => {
+        started(); await pending;
+        return HttpResponse.json({ success: true, data: { order } });
+      }),
+      http.get('/api/user/payment/orders', () => HttpResponse.json({ success: true, data: { orders: [] } })),
+      http.get('/api/user/logs', () => HttpResponse.json({ success: true, data: { logs: [] } })),
+    );
+    renderWithQuery(<Page />);
+    await user.click(await screen.findByRole('button', { name: '查看订单 ADMIN-NATIVE' }));
+    await waitFor(() => expect(started).toHaveBeenCalledOnce());
+    expect(within(screen.getByRole('dialog')).getByText('other-user')).toBeInTheDocument();
+    allowed = false;
+    await act(async () => { await client.refetchQueries({ queryKey: authorizationKey }); });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await act(async () => { finish(); await detail.mock.results[0].value; });
+    // Wait for the self-view query triggered by the new authorization summary.
+    await waitFor(() => expect(get.mock.calls.some(([path]) => String(path).startsWith('/user/payment/orders?'))).toBe(true));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText('other-user')).not.toBeInTheDocument();
+  });
   it('ignores a stale admin token for a normal user session', async () => {
     localStorage.setItem('adminToken', 'stale');
     let adminCalls = 0;

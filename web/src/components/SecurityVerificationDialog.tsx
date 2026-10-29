@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiClient } from '@/lib/api';
+import { AUTHORIZATION_REFRESH } from '@/lib/authorization-events';
 import { subscribeSecurityCompletion, subscribeSecurityVerification, type SecurityCompletion, type VerificationRequest } from '@/lib/security-verification';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -24,6 +25,27 @@ export function SecurityVerificationDialog() {
     setValue(''); setError(''); setEnabled(undefined); setRequest(next);
   }), []);
   useEffect(() => subscribeSecurityCompletion(setCompletion), []);
+  useEffect(() => {
+    const clearPreviousCompletion = (event: Event) => {
+      if (event instanceof StorageEvent && event.key !== null && event.key !== 'token') return;
+      const token = localStorage.getItem('token');
+      if (token) setCompletion(undefined);
+      const current = activeRequest.current;
+      if (current && current.token !== token) {
+        current.reject(new Error(t('会话已变化，请重试')));
+        if (activeRequest.current === current) {
+          activeRequest.current = undefined;
+          setRequest(undefined); setValue(''); setError('');
+        }
+      }
+    };
+    window.addEventListener('storage', clearPreviousCompletion);
+    window.addEventListener(AUTHORIZATION_REFRESH, clearPreviousCompletion);
+    return () => {
+      window.removeEventListener('storage', clearPreviousCompletion);
+      window.removeEventListener(AUTHORIZATION_REFRESH, clearPreviousCompletion);
+    };
+  }, []);
   useEffect(() => () => activeRequest.current?.reject(new Error('Security dialog closed')), []);
   useEffect(() => {
     if (!request) return;

@@ -145,6 +145,9 @@ func (s *IdentityService) Login(ctx context.Context, req *identityv1.LoginReques
 	if stderrors.As(err, &mfa) {
 		return &identityv1.LoginResponse{Success: true, MfaRequired: true, Challenge: mfa.Challenge}, nil
 	}
+	if stderrors.Is(err, biz.ErrIAMDependencyUnavailable) || stderrors.Is(err, biz.ErrMFAUnavailable) || stderrors.Is(err, biz.ErrChallengeUnavailable) {
+		return nil, status.Error(codes.Unavailable, "login temporarily unavailable")
+	}
 	if err != nil {
 		return &identityv1.LoginResponse{
 			Success: false,

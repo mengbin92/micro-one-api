@@ -118,6 +118,7 @@ func TestServiceTierChatStreamSettlementMatrix(t *testing.T) {
 	}{
 		{"conflict remains after oversized", tierObservationTestStream("priority", "flex", strings.Repeat("x", 33), "default"), "", "conflict", true},
 		{"oversized cannot restore default", tierObservationTestStream(strings.Repeat("x", 33), "default"), "", "unknown", true},
+		{"null tier cannot restore default", "data: {\"service_tier\":null,\"choices\":[]}\n\ndata: {\"service_tier\":\"default\",\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5},\"choices\":[]}\n\ndata: [DONE]\n\n", "", "unknown", true},
 		{"fallback", "data: {\"service_tier\":\"flex\",\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5},\"choices\":[]}\n\ndata: [DONE]\n\n", "flex", "reported", true},
 		{"missing tier", "data: {\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5},\"choices\":[]}\n\ndata: [DONE]\n\n", "", "missing", true},
 		{"future tier", "data: {\"service_tier\":\"future\",\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5},\"choices\":[]}\n\ndata: [DONE]\n\n", "future", "unknown", true},
@@ -305,6 +306,9 @@ func TestServiceTierChatRejectsUnprovenUsage(t *testing.T) {
 			{"cache exceeds input", `{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5,"prompt_tokens_details":{"cached_tokens":99}}`, false},
 			{"negative cache detail", `{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5,"prompt_tokens_details":{"cached_tokens":-1}}`, false},
 			{"negative creation detail", `{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5,"prompt_tokens_details":{"cache_creation_5m_tokens":-1}}`, false},
+			{"null cache detail", `{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5,"prompt_tokens_details":{"cached_tokens":null}}`, false},
+			{"null total", `{"prompt_tokens":3,"completion_tokens":2,"total_tokens":null}`, false},
+			{"null cache details object", `{"prompt_tokens":3,"completion_tokens":2,"prompt_tokens_details":null}`, false},
 			{"partial", `{"prompt_tokens":3,"total_tokens":3}`, false},
 			{"partial after valid", `{"prompt_tokens":3,"total_tokens":3}`, true},
 		} {

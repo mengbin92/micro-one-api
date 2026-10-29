@@ -147,14 +147,16 @@ type ToolCallDelta struct {
 
 // ChatCompletionsResponse represents a standardized chat completions response
 type ChatCompletionsResponse struct {
-	UsagePresent bool     `json:"-"`
-	ServiceTier  string   `json:"service_tier,omitempty"`
-	ID           string   `json:"id"`
-	Object       string   `json:"object"`
-	Created      int64    `json:"created"`
-	Model        string   `json:"model"`
-	Choices      []Choice `json:"choices"`
-	Usage        Usage    `json:"usage"`
+	RawUsage       jsonx.RawMessage `json:"-"`
+	RawServiceTier jsonx.RawMessage `json:"-"`
+	UsagePresent   bool             `json:"-"`
+	ServiceTier    string           `json:"service_tier,omitempty"`
+	ID             string           `json:"id"`
+	Object         string           `json:"object"`
+	Created        int64            `json:"created"`
+	Model          string           `json:"model"`
+	Choices        []Choice         `json:"choices"`
+	Usage          Usage            `json:"usage"`
 	// Canonical carries the parser-proven five mutually-exclusive billing
 	// buckets BEFORE the client-facing OpenAI projection (§4.3). In-process
 	// only: never serialized to clients.
@@ -208,18 +210,20 @@ type UsageTokenDetails struct {
 
 // StreamChunk represents a single SSE chunk from streaming response
 type StreamChunk struct {
-	UsageObserved  bool           `json:"-"`
-	InvalidPayload bool           `json:"-"`
-	UsagePresent   bool           `json:"-"`
-	ServiceTier    string         `json:"service_tier,omitempty"`
-	Complete       bool           `json:"-"`
-	StreamError    error          `json:"-"`
-	ID             string         `json:"id"`
-	Object         string         `json:"object"`
-	Created        int64          `json:"created"`
-	Model          string         `json:"model"`
-	Choices        []StreamChoice `json:"choices"`
-	Usage          Usage          `json:"usage,omitempty"`
+	RawUsage       jsonx.RawMessage `json:"-"`
+	RawServiceTier jsonx.RawMessage `json:"-"`
+	UsageObserved  bool             `json:"-"`
+	InvalidPayload bool             `json:"-"`
+	UsagePresent   bool             `json:"-"`
+	ServiceTier    string           `json:"service_tier,omitempty"`
+	Complete       bool             `json:"-"`
+	StreamError    error            `json:"-"`
+	ID             string           `json:"id"`
+	Object         string           `json:"object"`
+	Created        int64            `json:"created"`
+	Model          string           `json:"model"`
+	Choices        []StreamChoice   `json:"choices"`
+	Usage          Usage            `json:"usage,omitempty"`
 	// Canonical carries the parser-proven billing buckets for terminal usage
 	// chunks (in-process only, see ChatCompletionsResponse.Canonical).
 	Canonical *CanonicalUsage `json:"-"`
@@ -574,6 +578,7 @@ func (p *OpenAIProvider) ChatCompletions(ctx context.Context, req *ChatCompletio
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
+	response.RawUsage, response.RawServiceTier = openAIResponseEvidence(respBody)
 	response.UsagePresent = openAIUsagePresent(respBody)
 	return &response, nil
 }
@@ -651,6 +656,7 @@ func readOpenAIStream(resp *http.Response, contexts ...context.Context) <-chan S
 					)
 					continue
 				}
+				chunk.RawUsage, chunk.RawServiceTier = openAIResponseEvidence([]byte(data))
 				chunk.UsagePresent = openAIUsagePresent([]byte(data))
 				chunk.UsageObserved = openAIUsageObserved([]byte(data))
 				if !sendStreamChunk(ctx, chunkChan, chunk) {
@@ -701,4 +707,14 @@ func openAIUsageObserved(body []byte) bool {
 		Usage jsonx.RawMessage `json:"usage"`
 	}
 	return jsonx.Unmarshal(body, &payload) == nil && len(payload.Usage) > 0 && strings.TrimSpace(string(payload.Usage)) != "null"
+}
+
+// Preserve null and omitted values before typed decoding erases the distinction.
+func openAIResponseEvidence(body []byte) (jsonx.RawMessage, jsonx.RawMessage) {
+	var fields struct {
+		Usage jsonx.RawMessage `json:"usage"`
+		Tier  jsonx.RawMessage `json:"service_tier"`
+	}
+	_ = jsonx.Unmarshal(body, &fields)
+	return fields.Usage, fields.Tier
 }

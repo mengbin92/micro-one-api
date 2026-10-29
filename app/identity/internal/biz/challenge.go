@@ -84,6 +84,11 @@ func (u *EmailChallengeUsecase) RequestRecovery(ctx context.Context, email strin
 	go func() {
 		defer func() { <-u.recoverySlots }()
 		defer cancel()
+		defer func() {
+			if recover() != nil {
+				applogger.Log.Error("email recovery worker failed")
+			}
+		}()
 		userID, epoch, err := prepare(workCtx, email)
 		if err != nil {
 			return

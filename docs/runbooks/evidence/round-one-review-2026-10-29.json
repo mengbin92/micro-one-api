@@ -1,0 +1,235 @@
+{
+  "date": "2026-10-29",
+  "timezone": "Asia/Shanghai",
+  "scope": {
+    "base": "918b56c9",
+    "reviewed_head": "89bdddd6",
+    "work_packages": [
+      "A1",
+      "A2",
+      "A3",
+      "A4"
+    ]
+  },
+  "status": "local_fixes_verified_external_ocr_not_passed",
+  "committed": false,
+  "deployed": false,
+  "findings": [
+    {
+      "id": 1,
+      "priority": "P1",
+      "issue": "legacy_email_step_up_inside_transaction",
+      "status": "fixed"
+    },
+    {
+      "id": 2,
+      "priority": "P2",
+      "issue": "rpc_login_dependency_errors",
+      "status": "fixed"
+    },
+    {
+      "id": 3,
+      "priority": "P3",
+      "issue": "recovery_worker_panic_isolation",
+      "status": "fixed"
+    },
+    {
+      "id": 4,
+      "priority": "P1",
+      "issue": "chat_null_usage_evidence",
+      "status": "fixed"
+    },
+    {
+      "id": 5,
+      "priority": "P1",
+      "issue": "stream_null_tier_stays_unknown",
+      "status": "fixed"
+    },
+    {
+      "id": 6,
+      "priority": "P1",
+      "issue": "tier_replay_source_binding",
+      "status": "fixed"
+    },
+    {
+      "id": 7,
+      "priority": "P1",
+      "issue": "canonical_option_keys",
+      "status": "fixed"
+    },
+    {
+      "id": 8,
+      "priority": "P2",
+      "issue": "reset_response_replacement_session",
+      "status": "fixed"
+    },
+    {
+      "id": 9,
+      "priority": "P1",
+      "issue": "security_center_late_response",
+      "status": "fixed"
+    },
+    {
+      "id": 10,
+      "priority": "P1",
+      "issue": "security_dialog_session_secrets",
+      "status": "fixed"
+    },
+    {
+      "id": 11,
+      "priority": "P1",
+      "issue": "order_detail_authorization_generation",
+      "status": "fixed"
+    },
+    {
+      "id": 12,
+      "priority": "P2",
+      "issue": "payment_query_session_isolation",
+      "status": "fixed"
+    }
+  ],
+  "verification": [
+    {
+      "command": "make test-unit",
+      "status": "passed",
+      "local_log": "/tmp/round-one-review-go-unit.log"
+    },
+    {
+      "command": "go vet ./...",
+      "status": "passed",
+      "local_log": "/tmp/round-one-review-vet.log"
+    },
+    {
+      "command": "make test-race",
+      "status": "passed",
+      "local_log": "/tmp/round-one-review-race.log"
+    },
+    {
+      "command": "npm test -- --run",
+      "status": "passed",
+      "local_log": "/tmp/round-one-review-web-all.log"
+    },
+    {
+      "command": "npm run test:critical",
+      "status": "passed",
+      "local_log": "/tmp/round-one-review-web-critical.log"
+    },
+    {
+      "command": "npm run lint",
+      "status": "passed",
+      "local_log": "/tmp/round-one-review-web-lint.log"
+    },
+    {
+      "command": "npx tsc -b --noEmit",
+      "status": "passed",
+      "local_log": "/tmp/round-one-review-web-types.log"
+    },
+    {
+      "command": "npm run generate:api; git diff --exit-code -- src/types/api.ts",
+      "status": "passed",
+      "local_log": "/tmp/round-one-review-api-types.log"
+    },
+    {
+      "command": "make rbac-contract-check; scripts/check-architecture.sh; make migration-check; make iam-browser-gate-check; make format-check",
+      "status": "passed",
+      "local_log": "/tmp/round-one-review-contracts.log"
+    },
+    {
+      "command": "scripts/check-deployment-docs.sh",
+      "status": "passed",
+      "local_log": "/tmp/round-one-review-deploy-docs.log"
+    }
+  ],
+  "three_database": {
+    "status": "passed",
+    "databases": [
+      "sqlite",
+      "mysql",
+      "postgres"
+    ],
+    "packages": 3,
+    "top_level_tests": 8,
+    "leaf_cases": 63,
+    "failed": 0,
+    "skipped": 0,
+    "race_reports": 0,
+    "environment_cleaned": true,
+    "command": [
+      "go",
+      "test",
+      "-race",
+      "./app/admin/internal/data",
+      "./app/billing/internal/data",
+      "./internal/integration",
+      "-run",
+      "^(TestServiceTier.*|TestPricingSnapshotReuseKeepsTransactionUsable|TestWechatPrepayClaimFencesLateResponses|TestWechatQueryAndNotifyIssueOnce|TestConcurrentPaymentNotifyAndRefund)$",
+      "-count=1",
+      "-json"
+    ],
+    "local_log": "/tmp/round-one-review-three-db-20261029.log"
+  },
+  "browser": {
+    "status": "passed",
+    "cases": 20,
+    "projects": [
+      "desktop Chrome",
+      "mobile Chrome"
+    ],
+    "suites": [
+      "A1",
+      "A3",
+      "A4"
+    ],
+    "source_server": "Vite",
+    "production_build": false,
+    "bypass_csp_for_development_preamble": true,
+    "production_csp_validated": false,
+    "visual_check": [
+      "mobile_registration",
+      "desktop_native_qr"
+    ],
+    "local_log": "/tmp/round-one-review-browser.log"
+  },
+  "ocr": {
+    "status": "not_passed",
+    "external_status": "failed",
+    "reason": "stopped after 8m29s without a final review verdict; context canceled",
+    "session_id": "9d7c25da-54fb-4162-802c-65c1beebd423",
+    "reported_summary": {
+      "files_reviewed": 12,
+      "comments": 0,
+      "total_tokens": 1187098,
+      "input_tokens": 1166043,
+      "output_tokens": 21055,
+      "cache_read_tokens": 1079296,
+      "elapsed": "8m29s"
+    },
+    "local_result": "/tmp/round-one-review-ocr.json",
+    "comments_are_not_a_success_verdict": true
+  },
+  "independent_host_review": {
+    "status": "completed",
+    "blocking_unfixed_findings": 0,
+    "reviews": 2,
+    "ocr_delegate_rules_applied": true,
+    "local_delegate_report": "/tmp/round-one-review-ocr-delegate-host-review-20261029.json",
+    "external_ocr_pass": false
+  },
+  "not_run": [
+    "standalone production build",
+    "full make verify including production build",
+    "A2 real-browser rerun",
+    "real SMTP/OAuth/Turnstile validation",
+    "real upstream paid service-tier probe",
+    "real merchant payment",
+    "production deployment"
+  ],
+  "failed_attempts": [
+    {
+      "command": "go test ./...",
+      "result": "failed: initial in-progress regression/source digest failures plus E2E suite requires unstarted local services",
+      "superseded_by": "make test-unit passed"
+    }
+  ],
+  "branch": "codex/round-one-review"
+}

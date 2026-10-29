@@ -199,3 +199,13 @@ func TestServiceTierProcurementNeedsPricesForEveryPositiveBucket(t *testing.T) {
 		})
 	}
 }
+
+func TestServiceTierReplayCannotChangeSourceWithoutTrace(t *testing.T) {
+	uc, _ := tierTestUsecase(t)
+	request := billingdomain.GetServiceTierRequest(tierTestContext("priority"))
+	ctx := billingdomain.WithServiceTierRequest(context.Background(), request)
+	_, err := uc.ReserveQuota(ctx, "42", "untraced-tier", 1, "gpt-5.1", "11", 0)
+	require.NoError(t, err)
+	_, err = uc.ReserveQuota(ctx, "42", "untraced-tier", 1, "gpt-5.1", "12", 0)
+	require.ErrorIs(t, err, ErrRoutingContextConflict)
+}

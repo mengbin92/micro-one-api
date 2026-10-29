@@ -1,10 +1,13 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RechargePage } from './RechargePage';
 import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
+import { suspendProtectedQueries } from '@/lib/authorization';
+import { apiClient } from '@/lib/api';
 
 vi.mock('@/components/PurchasablePlansSection', () => ({ PurchasablePlansSection: () => null }));
 const wechat = { channel: 'wechat', currency: 'CNY', asset_types: ['balance'] };
@@ -148,5 +151,50 @@ describe('RechargePage payment methods', () => {
     await waitFor(() => expect(keys).toHaveLength(2));
     expect(keys[0]).toBeTruthy();
     expect(keys[1]).not.toBe(keys[0]);
+  });
+
+  it('removes cached payment details when the previous session is suspended', async () => {
+    const user = userEvent.setup();
+    let client!: QueryClient;
+    function CaptureClient() { client = useQueryClient(); return null; }
+    server.use(
+      http.get('/api/user/payment/channels', () => HttpResponse.json({ success: true, data: { channels: [wechat] } })),
+      http.post('/api/user/pay', () => HttpResponse.json({ success: true, data: { trade_no: 'PRIVATE-ORDER', order: { status: 'pending' } } })),
+      http.get('/api/user/payment/orders/PRIVATE-ORDER', () => HttpResponse.json({ success: true, data: { order: { status: 'pending', user_id: 'previous-account' } } })),
+    );
+    const view = renderWithQuery(<><RechargePage /><CaptureClient /></>);
+    await user.click(await screen.findByRole('button', { name: /确认支付/ }));
+    const key = ['wechat-payment-order', 'PRIVATE-ORDER'];
+    await waitFor(() => expect(client.getQueryData(key)).toMatchObject({ user_id: 'previous-account' }));
+    view.unmount();
+    await act(async () => { suspendProtectedQueries(client); });
+    expect(client.getQueryData(key)).toBeUndefined();
+    expect(client.getQueryData(['payment-channels'])).toBeUndefined();
+  });
+
+  it('cancels a pending payment detail lookup when leaving the recharge page', async () => {
+    const user = userEvent.setup();
+    let finish!: () => void;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    const get = vi.spyOn(apiClient, 'get');
+    const started = vi.fn();
+    server.use(
+      http.get('/api/user/payment/channels', () => HttpResponse.json({ success: true, data: { channels: [wechat] } })),
+      http.post('/api/user/pay', () => HttpResponse.json({ success: true, data: { trade_no: 'PENDING-ORDER', order: { status: 'pending' } } })),
+      http.get('/api/user/payment/orders/PENDING-ORDER', async () => {
+        started();
+        await pending;
+        return HttpResponse.json({ success: true, data: { order: { status: 'pending' } } });
+      }),
+    );
+    const view = renderWithQuery(<RechargePage />);
+    try {
+      await user.click(await screen.findByRole('button', { name: /确认支付/ }));
+      await waitFor(() => expect(started).toHaveBeenCalledOnce());
+      const lookupSignal = get.mock.calls.find(([path]) => path.endsWith('/PENDING-ORDER'))?.[1]?.signal;
+      expect(lookupSignal).toBeDefined();
+      view.unmount();
+      expect(lookupSignal?.aborted).toBe(true);
+    } finally { finish(); }
   });
 });

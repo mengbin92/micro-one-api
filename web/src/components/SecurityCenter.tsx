@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ShieldCheck, KeyRound } from 'lucide-react';
 import { apiClient, clearUserSession } from '@/lib/api';
@@ -14,26 +14,30 @@ import { t } from '@/lib/i18n';
 type SecurityReply = components['schemas']['api.identity.v1.SecurityReply'];
 
 export function SecurityCenter() {
-  const status = useQuery({ queryKey: ['user-security'], queryFn: async () => (await apiClient.get<SecurityReply>('/user/security')).data });
+  const status = useQuery({ queryKey: ['user-security'], meta: { protected: true }, queryFn: async ({ signal }) => (await apiClient.get<SecurityReply>('/user/security', { signal })).data });
   const [setup, setSetup] = useState<{ secret: string; otpauth_uri: string }>();
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
+  const active = useRef(false);
+  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
 
   const manage = async (action: 'setup' | 'confirm' | 'disable' | 'recovery') => {
     if (lock.current) return;
     const originalToken = localStorage.getItem('token');
+    const headers = { Authorization: `Bearer ${originalToken}` };
+    const isCurrent = () => active.current && localStorage.getItem('token') === originalToken;
     lock.current = true; setBusy(true); setError('');
     try {
-      const response = await apiClient.post<SecurityReply>(`/user/security/${action}`, { code }).catch(async (error: unknown) => {
+      const response = await apiClient.post<SecurityReply>(`/user/security/${action}`, { code }, { headers }).catch(async (error: unknown) => {
         const reason = (error as { response?: { data?: { reason?: string } } }).response?.data?.reason;
-        if (action === 'confirm' || reason !== 'STEP_UP_REQUIRED') throw error;
+        if (!isCurrent() || action === 'confirm' || reason !== 'STEP_UP_REQUIRED') throw error;
         await requestSecurityVerification();
-        if (localStorage.getItem('token') !== originalToken) throw new Error(t('会话已变化，请重试'));
-        return apiClient.post<SecurityReply>(`/user/security/${action}`, { code });
+        if (!isCurrent()) throw new Error(t('会话已变化，请重试'));
+        return apiClient.post<SecurityReply>(`/user/security/${action}`, { code }, { headers });
       });
-      if (localStorage.getItem('token') !== originalToken) throw new Error(t('会话已变化，请重试'));
+      if (!isCurrent()) return;
       setCode('');
       if (action === 'setup') {
         if (!response.data.secret || !response.data.otpauth_uri) throw new Error(t('安全设置失败'));

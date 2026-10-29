@@ -127,4 +127,26 @@ describe('PasswordRecoveryPage', () => {
     expect(window.localStorage.getItem('token')).toBe('later-browser-session');
     expect(screen.queryByText('密码已重置，原有会话已失效，请重新登录。')).not.toBeInTheDocument();
   });
+
+  it('preserves a replacement session when a reset finishes on the same page', async () => {
+    const user = userEvent.setup();
+    let resolveRequest!: () => void;
+    const pending = new Promise<void>(resolve => { resolveRequest = resolve; });
+    const started = vi.fn();
+    localStorage.setItem('token', 'original-session');
+    server.use(http.post('/api/user/reset', async () => {
+      started();
+      await pending;
+      return HttpResponse.json({ success: true });
+    }));
+    renderRecovery('/reset-password?email=alice%40example.com#token=mail-secret');
+    await user.type(screen.getByLabelText('新密码'), 'new-password-1');
+    await user.type(screen.getByLabelText('确认新密码'), 'new-password-1');
+    await user.click(screen.getByRole('button', { name: '保存新密码' }));
+    await waitFor(() => expect(started).toHaveBeenCalledOnce());
+    localStorage.setItem('token', 'replacement-session');
+    resolveRequest();
+    await screen.findByText('密码已重置，原有会话已失效，请重新登录。');
+    expect(localStorage.getItem('token')).toBe('replacement-session');
+  });
 });
