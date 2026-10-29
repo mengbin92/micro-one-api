@@ -117,3 +117,4 @@ v0.37.0 是 v0.36.6 之后的 **MINOR 功能版本**：集中发布第一轮 A1�
 - `fix(identity): recheck step-up under write lock and classify login errors`
 - `fix(billing): reject unproven tier evidence and alias option keys`
 - `fix(web): bind late responses to their session and lifecycle`
+- `fix(e2e): restore release smoke gate after A1/A2/A4`
