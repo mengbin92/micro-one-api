@@ -172,3 +172,27 @@ func TestRecoveryRejectsInvalidInputWithoutLookingUpAccounts(t *testing.T) {
 		t.Fatal("rejected input looked up an account")
 	}
 }
+
+func TestRecoveryPanicReleasesWorkerSlot(t *testing.T) {
+	uc := NewEmailChallengeUsecase(&recoveryTestRepo{}, recoveryTestDelivery{deliver: func(context.Context, string, string) error { return nil }})
+	entered := make(chan struct{})
+	err := uc.RequestRecovery(context.Background(), "known@example.test", func(context.Context, string) (int64, int64, error) {
+		close(entered)
+		panic("recovery dependency failure")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("recovery worker never started")
+	}
+	deadline := time.Now().Add(time.Second)
+	for len(uc.recoverySlots) != 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if len(uc.recoverySlots) != 0 {
+		t.Fatal("panicking recovery leaked its worker slot")
+	}
+}

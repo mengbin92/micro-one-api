@@ -1038,9 +1038,26 @@ func (uc *IdentityUsecase) CreateUser(ctx context.Context, username, displayName
 }
 
 func (uc *IdentityUsecase) UpdateUser(ctx context.Context, userID int64, displayName, email, group string, status int32) error {
+	var verify func(context.Context, IAMTx) error
 	if email != "" {
 		if err := uc.RequireStepUp(ctx, authorization.Credential(ctx), true); err != nil {
 			return err
+		}
+		if uc.security != nil && (os.Getenv("IDENTITY_STEP_UP_ENABLED") == "true" || os.Getenv("IDENTITY_MFA_REQUIRE_ADMIN") == "true") {
+			actor, err := uc.authenticateSession(authorization.Credential(ctx))
+			if err != nil {
+				return err
+			}
+			verify = func(ctx context.Context, tx IAMTx) error {
+				operator, err := uc.iam.User(ctx, tx, actor.UserID)
+				if err != nil {
+					return err
+				}
+				if err := uc.checkSecuritySession(ctx, tx, actor, operator); err != nil {
+					return err
+				}
+				return uc.requireStepUpTx(ctx, tx, actor, true)
+			}
 		}
 	}
 	// Owner facts for a routing change are resolved before the replayable callback.
@@ -1050,7 +1067,7 @@ func (uc *IdentityUsecase) UpdateUser(ctx context.Context, userID int64, display
 			return err
 		}
 	}
-	return uc.mutateLegacyAccount(ctx, userID, "account.update", []string{"display_name", "email", "group", "status"}, func(user *User) error {
+	return uc.mutateLegacyAccountChecked(ctx, userID, "account.update", []string{"display_name", "email", "group", "status"}, verify, func(user *User) error {
 		if user.IsRoot() && status != UserStatusEnabled {
 			return ErrIAMProtected
 		}
