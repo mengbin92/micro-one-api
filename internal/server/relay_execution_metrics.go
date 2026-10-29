@@ -119,9 +119,7 @@ func (w *relayObservationWriter) FlushError() error {
 	return err
 }
 
-func (w *relayObservationWriter) Unwrap() http.ResponseWriter {
-	return w.ResponseWriter
-}
+func (w *relayObservationWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func (w *relayObservationWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	conn, readWriter, err := http.NewResponseController(w.ResponseWriter).Hijack()

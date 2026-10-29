@@ -170,7 +170,10 @@ func (s *smtpCodeDeliverer) send(ctx context.Context, email, subject, body strin
 	if err != nil {
 		return biz.ErrMailUnavailable
 	}
-	message := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n%s", s.from.String(), email, mime.QEncoding.Encode("UTF-8", subject), body)
+	// SMTP header injection guard: strip CR/LF from the interpolated header values.
+	safeEmail := strings.NewReplacer("\r", "", "\n", "").Replace(email)
+	safeSubject := strings.NewReplacer("\r", "", "\n", "").Replace(subject)
+	message := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n%s", s.from.String(), safeEmail, mime.QEncoding.Encode("UTF-8", safeSubject), body)
 	if _, err := writer.Write([]byte(message)); err != nil {
 		return biz.ErrMailUnavailable
 	}

@@ -1878,6 +1878,10 @@ func (w *immutableAssetResponseWriter) Write(p []byte) (int, error) {
 	return w.ResponseWriter.Write(p)
 }
 
+// Unwrap exposes the underlying writer so http.NewResponseController can reach
+// optional ResponseWriter interfaces (Flush/Hijack/Push) through this wrapper.
+func (w *immutableAssetResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
 func serveWebAsset(w http.ResponseWriter, r *http.Request, root fs.FS) {
 	if !isCompressibleWebAsset(r.URL.Path) {
 		http.FileServer(http.FS(root)).ServeHTTP(w, r)
@@ -1962,6 +1966,10 @@ func (w *gzipResponseWriter) Write(p []byte) (int, error) {
 	}
 	return w.writer.Write(p)
 }
+
+// Unwrap exposes the underlying writer so http.NewResponseController can reach
+// optional ResponseWriter interfaces (Flush/Hijack/Push) through this wrapper.
+func (w *gzipResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func (w *gzipResponseWriter) Close() error {
 	if !w.enabled {
