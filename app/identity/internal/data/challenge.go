@@ -21,6 +21,7 @@ func NewChallengeRepo(d *Data) biz.ChallengeRepo { return &challengeRepo{data: d
 func (r *challengeRepo) Available() bool { return r.client() != nil }
 
 func challengeKey(purpose, email string) string {
+	// This hashes a purpose label and identifier for Redis addressing, never a password verifier.
 	hash := sha256.Sum256([]byte(purpose + ":" + email))
 	return "identity:email-challenge:v1:" + hex.EncodeToString(hash[:])
 }

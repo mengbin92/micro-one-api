@@ -6,7 +6,9 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/mail"
 	"net/textproto"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -87,6 +89,81 @@ func TestSMTPCodeDelivererReceivesVerificationAndResetMessages(t *testing.T) {
 	}
 	if !strings.Contains(reset, "https://console.example.test/reset-password?email=test%2Btag%40example.com#token=secret-reset") || !strings.Contains(reset, "10") {
 		t.Fatalf("unexpected reset message")
+	}
+}
+
+func TestSMTPCodeDelivererRejectsRecipientInjection(t *testing.T) {
+	config, messages := startMailSink(t, false)
+	sender := NewSMTPCodeDeliverer(config)
+	for _, email := range []string{
+		"victim@example.com\r\nBcc: attacker@example.net",
+		"victim@example.com\nContent-Type: text/html",
+		"victim@example.com,attacker@example.net",
+		"Attacker <victim@example.com>",
+		"victim@example.com\r\n\r\n<script>alert(1)</script>",
+	} {
+		if err := sender.DeliverVerificationCode(context.Background(), email, "test-code"); !errors.Is(err, biz.ErrEmailInvalid) {
+			t.Fatalf("verification accepted injected recipient %q: %v", email, err)
+		}
+		if err := sender.DeliverResetToken(context.Background(), email, "test-token"); !errors.Is(err, biz.ErrEmailInvalid) {
+			t.Fatalf("reset accepted injected recipient %q: %v", email, err)
+		}
+	}
+	select {
+	case <-messages:
+		t.Fatal("invalid recipient reached SMTP DATA")
+	default:
+	}
+}
+
+func TestSMTPResetLinkPreservesTrustedOriginAndEncodesRecipient(t *testing.T) {
+	config, messages := startMailSink(t, false)
+	config.PublicBaseURL += "/console"
+	email := "O'Hara+tag&token=other@example.com"
+	token := "test-token\r\nBcc: attacker@example.net"
+	if err := NewSMTPCodeDeliverer(config).DeliverResetToken(context.Background(), email, token); err != nil {
+		t.Fatal(err)
+	}
+	message, err := mail.ReadMessage(strings.NewReader(<-messages))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if message.Header.Get("To") != email || message.Header.Get("Bcc") != "" || message.Header.Get("Content-Type") != "text/plain; charset=UTF-8" {
+		t.Fatal("recipient or MIME headers changed")
+	}
+	body, err := io.ReadAll(message.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resetURL *url.URL
+	for _, line := range strings.Split(string(body), "\n") {
+		if strings.HasPrefix(line, config.PublicBaseURL) {
+			resetURL, err = url.Parse(strings.TrimSpace(line))
+			break
+		}
+	}
+	if err != nil || resetURL == nil {
+		t.Fatal("missing reset URL")
+	}
+	fragment, err := url.ParseQuery(resetURL.Fragment)
+	if err != nil || resetURL.Scheme != "https" || resetURL.Host != "console.example.test" || resetURL.Path != "/console/reset-password" || resetURL.Query().Get("email") != email || len(resetURL.Query()) != 1 || fragment.Get("token") != token || len(fragment) != 1 {
+		t.Fatal("untrusted values changed the reset URL structure")
+	}
+}
+
+func TestSMTPBodyDotTerminatorCannotInjectCommands(t *testing.T) {
+	config, messages := startMailSink(t, false)
+	code := "test-code\r\n.\r\nRCPT TO:<attacker@example.net>\r\nDATA\r\n"
+	if err := NewSMTPCodeDeliverer(config).DeliverVerificationCode(context.Background(), "victim@example.com", code); err != nil {
+		t.Fatal(err)
+	}
+	message, err := mail.ReadMessage(strings.NewReader(<-messages))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(message.Body)
+	if err != nil || !strings.Contains(string(body), "test-code\n.\nRCPT TO:<attacker@example.net>\nDATA\n") || message.Header.Get("Bcc") != "" {
+		t.Fatal("SMTP DATA terminator escaped the plain-text message body")
 	}
 }
 
