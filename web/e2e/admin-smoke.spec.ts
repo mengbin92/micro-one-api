@@ -96,6 +96,22 @@ test('login stores token and shows dashboard', async ({ page }) => {
 
 test('register creates account and signs in', async ({ page }) => {
   const requests: string[] = [];
+  await page.route('**/api/status', async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        data: {
+          registration_enabled: true,
+          email_verification: false,
+          email_domain_restriction_enabled: false,
+          email_domain_whitelist: [],
+          turnstile_check: false,
+          turnstile_site_key: '',
+          email_delivery_configured: false,
+        },
+      },
+    });
+  });
   await page.route('**/api/user/register', async (route) => {
     requests.push(route.request().postData() || '');
     await route.fulfill({
@@ -105,18 +121,34 @@ test('register creates account and signs in', async ({ page }) => {
       },
     });
   });
+  await page.route('**/api/user/login', async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        data: 'test-user-token',
+      },
+    });
+  });
 
   await page.goto('/register');
-  await expect(page.getByText('使用用户名和密码注册')).toBeVisible();
+  await expect(page.getByText('填写账号信息，完成验证后开始使用控制台。')).toBeVisible();
   await page.getByLabel('用户名').fill('bob');
   await page.getByLabel('密码', { exact: true }).fill('password123');
   await page.getByLabel('确认密码').fill('password123');
   await page.getByRole('checkbox', { name: /我已阅读并同意/ }).check();
   await page.getByRole('button', { name: '注册账号' }).click();
 
+  // A1 注册成功后先回登录页，再用新账号登录。
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByText(/注册成功/)).toBeVisible();
+  await expect.poll(() => requests.some((body) => body.includes('"username":"bob"'))).toBe(true);
+
+  await page.getByLabel('用户名').fill('bob');
+  await page.getByLabel('密码', { exact: true }).fill('password123');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.evaluate(() => localStorage.getItem('token'))).resolves.toBe('test-user-token');
-  await expect.poll(() => requests.some((body) => body.includes('"username":"bob"'))).toBe(true);
 });
 
 test('admin token enables Options nav', async ({ page }) => {
@@ -330,6 +362,16 @@ test('admin payment orders sends filters to backend', async ({ page }) => {
 
 test('recharge page can be opened and creates alipay order', async ({ page }) => {
   const paymentRequests: unknown[] = [];
+  await page.route('**/api/user/payment/channels', async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        data: {
+          channels: [{ channel: 'alipay', display_name: 'Alipay', currency: 'CNY', asset_types: ['balance'] }],
+        },
+      },
+    });
+  });
   await page.route('**/api/user/pay', async (route) => {
     paymentRequests.push(route.request().postDataJSON());
     await route.fulfill({
