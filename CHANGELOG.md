@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.37.1] - 2026-10-29
+
+v0.37.1 是 v0.37.0 之后的 **PATCH 修复版本**：修复 OCR 登记的三项存量安全与健壮性问题，包括 SSRF 旁路静默、非流式错误缓冲过大和 Chat SSE 终止策略不一致。无新增 API、配置、依赖或迁移；生产升级先补 v0.37.0 已有的 Log 145，收费、强制认证与证据监控等开关保持现场状态。升级顺序和验收边界详见 [release-v0.37.1.md](docs/releases/release-v0.37.1.md)。
+
+### Fixed
+
+- 将 `PROVIDER_DISABLE_SSRF_CHECK=true` 的安全告警统一到共享 provider 边界，每进程只记录一次 Warn，覆盖构造、URL 校验、连接和重定向；日志尚未就绪时不消耗告警机会，删除 Relay main 重复提示。
+- 八条非流式路径共用响应读取限额：typed Chat 仅 HTTP 200、raw HTTP 2xx 按原成功契约保留 128MB 上限，其余错误响应最多缓冲 1MB；保留上游 HTTP 状态及 Retry-After，raw 201 大响应仍完整返回。
+- Chat SSE 按“内容交付 → commit → DONE → usage log”收尾；上游错误、解析拒绝和缺少完成标记统一释放预扣并发送脱敏错误事件，不发 DONE。commit 失败或结果不确定时不重试、不释放 reservation，避免重复收费或错误退款；客户端取消及写失败不再追加错误响应。
+
 ## [0.37.0] - 2026-10-29
 
 v0.37.0 是 v0.36.6 之后的 **MINOR 功能版本**：发布 A1 注册/邮件恢复、A2 TOTP/恢复码与首批 step-up、A3 有限服务档位计价、A4 微信 Native 余额充值，以及第一轮完整复核的 12 项修复。新增三库迁移 143–145；强制认证、档位计价与微信默认关闭，A3 尚未完整生产上线，真实因子/上游供应商收费/商户付款保留待验。升级与不可回滚限制详见 [release-v0.37.0.md](docs/releases/release-v0.37.0.md)。

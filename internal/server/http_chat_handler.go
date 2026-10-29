@@ -306,7 +306,15 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 	cacheCreation5mTokens := int64(0)
 	cacheCreation1hTokens := int64(0)
 	estimatedTokens := int64(0)
-	streamError := false
+	var streamErr error
+	clientWriteFailed := false
+	interrupt := func(cause error) error {
+		if !clientWriteFailed && r.Context().Err() == nil {
+			_, _ = fmt.Fprint(w, "data: {\"error\":{\"message\":\"stream interrupted\",\"type\":\"server_error\",\"code\":\"stream_error\"}}\n\n")
+			flusher.Flush()
+		}
+		return relayStreamInterrupted(r.Context(), cause)
+	}
 	terminal := &streamTerminalTracker{endpoint: EndpointChatCompletions}
 	var lastUsage relayprovider.Usage
 	var streamCanonical *relayprovider.CanonicalUsage
@@ -315,9 +323,14 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 	invalidTierUsage := false
 
 	for chunk := range chunkChan {
+		if chunk.StreamError != nil || r.Context().Err() != nil {
+			streamErr = chunk.StreamError
+			break
+		}
 		if chunk.InvalidPayload {
-			invalidTierUsage = true
-			continue
+			// A parser rejection is terminal even when the producer later sends DONE.
+			streamErr = stderrors.New("invalid upstream stream payload")
+			break
 		}
 		tier.observe(chunk.ServiceTier)
 		tier.observeRaw(chunk.RawServiceTier)
@@ -334,10 +347,6 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 		if chunk.Complete {
 			terminal.success = true
 			continue
-		}
-		if chunk.StreamError != nil || r.Context().Err() != nil {
-			streamError = true
-			break
 		}
 		if !logInput.TierPricing && (chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 || chunk.Usage.PromptTokensDetails != (relayprovider.UsageTokenDetails{}) || chunk.Usage.InputTokensDetails != (relayprovider.UsageTokenDetails{})) {
 			lastUsage = mergeProviderUsage(chunk.Usage, lastUsage)
@@ -360,32 +369,30 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 		jsonData, err := jsonx.Marshal(chunk)
 		if err != nil {
 			applogger.Log.Warn("failed to marshal chunk", zap.Error(err))
-			continue
+			streamErr = err
+			break
 		}
 
 		terminal.observeLine("data: " + string(jsonData))
 		if _, err := fmt.Fprintf(w, "data: %s\n\n", string(jsonData)); err != nil {
-			streamError = true
+			streamErr = err
+			clientWriteFailed = true
 			break
 		}
 		flusher.Flush()
 	}
 
-	streamError = streamError || r.Context().Err() != nil || !terminal.Success()
-	if !streamError {
-		_, err := fmt.Fprintf(w, "data: [DONE]\n\n")
-		streamError = err != nil
-		flusher.Flush()
+	if streamErr != nil || r.Context().Err() != nil || !terminal.Success() {
+		cancelStream()
+		_ = s.releaseTierQuota(r.Context(), reservation, logInput, tier, "incomplete_or_cancelled_stream")
+		return interrupt(streamErr)
 	}
 
 	// A complete stream without reported usage releases the tier reservation.
-	if !streamError && logInput.TierPricing && (!sawTierUsage || invalidTierUsage) {
+	if logInput.TierPricing && (!sawTierUsage || invalidTierUsage) {
 		_ = s.releaseTierQuota(r.Context(), reservation, logInput, tier, "service_tier_usage_missing")
-		return nil
-	}
-
-	// 流式请求完成，提交配额
-	if !streamError {
+	} else {
+		// Settle before DONE so a failed commit cannot look like a successful stream.
 		if totalTokens == 0 && !logInput.TierPricing {
 			totalTokens = estimatedTokens
 			completionTokens = estimatedTokens
@@ -413,14 +420,20 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 		compareNativeUsageShadow(r.Context(), logInput.Usage)
 		if err := s.commitQuotaAfterResponseObserved(r.Context(), reservation.ReservationId, totalTokens, true, logInput); err != nil {
 			s.logPostResponseCommitError(err)
-		} else {
+			// The commit may already have reached billing; never release or replay it.
+			streamErr := interrupt(err)
+			setRelayObservationResult(r.Context(), "quota_error")
+			return streamErr
+		}
+		defer func() {
 			logUpstreamUsage(logInput)
 			s.ingestUsageLogAfterResponse(logInput, r.Context())
-		}
-	} else {
-		cancelStream()
-		_ = s.releaseTierQuota(r.Context(), reservation, logInput, tier, "incomplete_or_cancelled_stream")
-		return relayStreamInterrupted(r.Context(), nil)
+		}()
 	}
+	if _, err := fmt.Fprint(w, "data: [DONE]\n\n"); err != nil {
+		// Content was delivered and settlement is final; a lost sentinel cannot refund it.
+		return relayStreamInterrupted(r.Context(), err)
+	}
+	flusher.Flush()
 	return nil
 }

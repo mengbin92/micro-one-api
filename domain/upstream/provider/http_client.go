@@ -8,8 +8,28 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
+
+	"go.uber.org/zap"
+	applogger "micro-one-api/platform/logging"
 )
+
+var ssrfBypassWarning sync.Once
+
+// ssrfCheckDisabled reports the process-wide testing bypass once, after logging is ready.
+func ssrfCheckDisabled() bool {
+	disabled := os.Getenv("PROVIDER_DISABLE_SSRF_CHECK") == "true"
+	logger := applogger.Current()
+	if !disabled || !logger.Core().Enabled(zap.WarnLevel) {
+		return disabled
+	}
+	ssrfBypassWarning.Do(func() {
+		logger.Warn("SECURITY: upstream SSRF protection is disabled for all providers, including DNS and redirect checks; use only in isolated tests",
+			zap.String("setting", "PROVIDER_DISABLE_SSRF_CHECK"))
+	})
+	return true
+}
 
 type localNetworkAccessKey struct{}
 
@@ -27,6 +47,7 @@ func NewHTTPClient(timeout time.Duration) *http.Client {
 }
 
 func newHTTPClient(timeout time.Duration, allowLocal bool) *http.Client {
+	ssrfCheckDisabled()
 	return &http.Client{
 		Timeout:       timeout,
 		Transport:     newUpstreamTransport(0, allowLocal),
@@ -67,7 +88,7 @@ func (d *ssrfSafeDialer) DialContext(ctx context.Context, network, address strin
 	if len(ips) == 0 {
 		return nil, fmt.Errorf("upstream host resolved to no addresses")
 	}
-	allowLocal := d.allowLocal || localNetworkAccessAllowed(ctx) || os.Getenv("PROVIDER_DISABLE_SSRF_CHECK") == "true"
+	allowLocal := ssrfCheckDisabled() || d.allowLocal || localNetworkAccessAllowed(ctx)
 	for _, resolved := range ips {
 		if !allowLocal && isPrivateOrReservedIP(resolved.IP) {
 			return nil, fmt.Errorf("upstream host resolves to private/reserved IP: %s", resolved.IP)
@@ -107,7 +128,7 @@ func upstreamRedirectPolicy(allowLocal bool) func(*http.Request, []*http.Request
 				return errors.New("upstream redirect cannot change origin")
 			}
 		}
-		if allowLocal || localNetworkAccessAllowed(req.Context()) || os.Getenv("PROVIDER_DISABLE_SSRF_CHECK") == "true" {
+		if ssrfCheckDisabled() || allowLocal || localNetworkAccessAllowed(req.Context()) {
 			return validateBaseURLAllowLocal(req.URL.String())
 		}
 		if err := validateBaseURL(req.URL.String()); err != nil {

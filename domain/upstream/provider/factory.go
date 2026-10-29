@@ -16,6 +16,7 @@ type ProviderConfig struct {
 
 // NewProviderFactory creates a new provider factory
 func NewProviderFactory(defaultTimeout time.Duration) *ProviderFactory {
+	ssrfCheckDisabled()
 	if defaultTimeout == 0 {
 		defaultTimeout = time.Minute
 	}
