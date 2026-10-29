@@ -37,3 +37,6 @@ a133642efe4e238250f4c5d82865b823de984587:internal/integration/iam_resource_test.
 77f7ffb3c950f9c8baaa094ece14972944e4a3e2:docs/runbooks/evidence/p1-memory-vendor-2026-10-20/production-deployment.json:generic-api-key:319
 # A2 deployment evidence: image tag derived from the git source digest, not a credential.
 b4c787a44b9241c3dfd8b01086fdca65fa1833f9:docs/runbooks/evidence/a2-production-deployment-2026-10-27.json:generic-api-key:14
+# WeChat v3 API test fixtures: hex-only placeholder, not a credential.
+a0c4c789b7eb745438c5fe92547edfb017f77e94:app/billing/internal/data/payment_wechat_test.go:generic-api-key:60
+a0c4c789b7eb745438c5fe92547edfb017f77e94:internal/integration/iam_wechat_payment_test.go:generic-api-key:127
