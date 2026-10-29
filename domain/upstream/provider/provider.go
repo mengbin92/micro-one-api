@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -255,7 +254,7 @@ type OpenAIProvider struct {
 // It rejects non-http(s) schemes and private/internal/reserved IP addresses.
 // Set PROVIDER_DISABLE_SSRF_CHECK=true to bypass validation (for testing only).
 func validateBaseURL(rawURL string) error {
-	if os.Getenv("PROVIDER_DISABLE_SSRF_CHECK") == "true" {
+	if ssrfCheckDisabled() {
 		return nil
 	}
 

@@ -32,6 +32,7 @@ func newStreamHTTPClient(timeout time.Duration) *http.Client {
 }
 
 func newStreamHTTPClientWithLocalAccess(timeout time.Duration, allowLocal bool) *http.Client {
+	ssrfCheckDisabled()
 	cfg, err := StreamTimeoutsFromEnv(timeout)
 	if err != nil {
 		panic(err)
