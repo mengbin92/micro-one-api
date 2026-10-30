@@ -144,6 +144,9 @@ func TestSQLiteDialect_FreshInstall(t *testing.T) {
 	require.True(t, sqliteColumnExists(t, db, "billing_ledgers", "actual_service_tier"), "144 billing tier evidence must have applied")
 	require.True(t, sqliteColumnExists(t, db, "billing_pricing_snapshots", "service_tier_policy"), "144 immutable tier policy must have applied")
 	require.True(t, sqliteColumnExists(t, db, "logs", "actual_service_tier"), "145 log tier evidence must have applied")
+	require.True(t, sqliteColumnExists(t, db, "billing_ledgers", "long_context_input_tokens"), "146 context evidence must have applied")
+	require.True(t, sqliteColumnExists(t, db, "billing_ledgers", "pricing_time_unix"), "146 frozen pricing time must have applied")
+	require.True(t, sqliteColumnExists(t, db, "billing_pricing_snapshots", "pricing_time_band"), "146 immutable time tariff must have applied")
 	require.True(t, sqliteColumnExists(t, db, "iam_policy_state", "max_roles_per_user"), "111 IAM user cardinality must have applied")
 	require.True(t, sqliteColumnExists(t, db, "iam_policy_state", "max_roles_per_session"), "111 IAM session cardinality must have applied")
 	require.Contains(t, tables, "resource_write_audits", "112 durable resource audit must have applied")
@@ -174,7 +177,7 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 85, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 86, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
 	// Keep seeded legacy prices before 084 regardless of later appended migrations.
 	cut := sort.SearchStrings(files, "084_add_model_pricing_cache_read.sql")

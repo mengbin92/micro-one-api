@@ -1,0 +1,218 @@
+{
+  "date": "2026-10-29",
+  "timezone": "Asia/Shanghai",
+  "status": "engineering_acceptance_passed_external_validation_pending",
+  "baseline_commit": "80a16c1a9192d16c75cae50fbce44f06a4e08b68",
+  "delivery": "uncommitted_workspace_changes",
+  "target": {
+    "source_kind": "channel",
+    "source_id": 11,
+    "model": "deepseek-flash"
+  },
+  "scope": [
+    "whole-request long-context five-bucket pricing on verified input > threshold",
+    "admission-time peak/off_peak pricing with explicit timezone/windows/holiday calendar and expiry",
+    "composition of service tier, time band and context tier",
+    "immutable pricing snapshots, durable recovery, ledger explanations, migration 146"
+  ],
+  "runtime": "go1.27.3 darwin/arm64",
+  "checks": [
+    {
+      "command": "make all",
+      "result": "PASS",
+      "notes": "API/config/Wire regenerated; go mod tidy successful after an initial network timeout; no go.mod/go.sum changes"
+    },
+    {
+      "command": "make verify",
+      "result": "PASS",
+      "gates": [
+        "format",
+        "RBAC source matrix digests",
+        "Go unit",
+        "Go race",
+        "architecture",
+        "migration governance",
+        "RBAC contracts",
+        "IAM browser result checker",
+        "generated frontend API types",
+        "frontend lint",
+        "frontend full tests",
+        "critical coverage",
+        "TypeScript and production build",
+        "asset budgets"
+      ],
+      "frontend_full": {
+        "files": 95,
+        "tests": 715
+      },
+      "frontend_critical": {
+        "files": 16,
+        "tests": 196,
+        "statement_coverage_percent": 92.26,
+        "branch_coverage_percent": 85.99,
+        "function_coverage_percent": 92.77,
+        "line_coverage_percent": 93.34
+      },
+      "local_log": "/tmp/b1-make-verify.log",
+      "log_sha256": "afd0a53a8a4b5bb2eda8b27bb9d1c670e731ab66cf3d37fd086ada0893254ea4"
+    },
+    {
+      "command": "go test ./internal/integration -run 'Test(ServiceTierOwnerChain|LongContextTimePricingOwnerChain)' -count=1 -v",
+      "result": "PASS",
+      "duration_seconds": 30.989,
+      "dialects": [
+        "sqlite",
+        "mysql",
+        "postgres"
+      ],
+      "skipped": 0,
+      "scenario_leaf_passes": 90,
+      "final_run_after_request_ambiguity_fix": true,
+      "isolation": "Fresh local mysql:8.4/postgres:16 containers; scratch databases/schemas and containers removed. SQLite temporary file. No deployment credentials.",
+      "local_log": "/tmp/b1-owner-final.log",
+      "log_sha256": "c2d0c1e6b8092432f7ffdb10e639e64adcbefb5b511fed5d9f26f7c074c070f0"
+    },
+    {
+      "command": "cd web && npm run test:e2e:a3",
+      "result": "PASS",
+      "browser": "Chrome desktop and Pixel 5",
+      "stats": {
+        "startTime": "2026-10-29T13:14:44.611Z",
+        "duration": 15091.654,
+        "expected": 8,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "fixture_only": true,
+      "local_report": "web/a3-test-results/playwright.json",
+      "local_screenshots": "web/a3-test-results/artifacts/",
+      "visual_review": "Configuration and self-ledger screenshots inspected on desktop/mobile; exact frozen 09:00 admission remains distinct from 13:00 completion."
+    }
+  ],
+  "persistence_and_dto_checks": {
+    "databases": {
+      "sqlite": {
+        "driver": "github.com/mattn/go-sqlite3 v1.14.22",
+        "gorm_driver": "gorm.io/driver/sqlite v1.6.0",
+        "isolation": "temporary file, all repository migrations applied and repeated with no pending changes"
+      },
+      "mysql": {
+        "image": "mysql:8.4",
+        "gorm_driver": "gorm.io/driver/mysql v1.5.7",
+        "isolation": "disposable local container; uniquely named temporary database, removed by test cleanup"
+      },
+      "postgres": {
+        "image": "postgres:16",
+        "gorm_driver": "gorm.io/driver/postgres v1.6.0",
+        "isolation": "disposable local container; uniquely named temporary schema, removed by test cleanup"
+      }
+    },
+    "checks": [
+      {
+        "command": "go test ./app/billing/internal/data -count=1",
+        "result": "PASS",
+        "duration_seconds": 9.139,
+        "notes": "Full Billing data package; optional external-driver subtests lacked DSNs in this invocation. Separate three-dialect run below has no skips."
+      },
+      {
+        "command": "go run ./cmd/migrate-check -dir ./migrations",
+        "result": "PASS",
+        "notes": "Only historical allowlisted duplicate prefix warnings 057 mysql / 009 sqlite."
+      },
+      {
+        "command": "python3 /tmp/b1-persistence-databases.py",
+        "resolved_go_command": "go test ./app/billing/internal/data -run 'TestLongContext|TestPricingSnapshotReuseKeepsTransactionUsable' -count=1 -v",
+        "result": "PASS",
+        "duration_seconds": 16.825,
+        "skipped": 0,
+        "tests": [
+          "TestLongContextEvidenceStorageRoundTrip/sqlite",
+          "TestLongContextEvidenceStorageRoundTrip/mysql",
+          "TestLongContextEvidenceStorageRoundTrip/postgres",
+          "TestLongContextTimePricingDurableRecoveryUsesFrozenClock/sqlite",
+          "TestLongContextTimePricingDurableRecoveryUsesFrozenClock/mysql",
+          "TestLongContextTimePricingDurableRecoveryUsesFrozenClock/postgres",
+          "TestPricingSnapshotReuseKeepsTransactionUsable/sqlite",
+          "TestPricingSnapshotReuseKeepsTransactionUsable/mysql",
+          "TestPricingSnapshotReuseKeepsTransactionUsable/postgres"
+        ],
+        "assertions": [
+          "New migration 146 executes on real SQLite, MySQL and PostgreSQL and repeat apply is a no-op.",
+          "Long-context rule, threshold, selected band, actual input tokens, pricing timezone, time band and frozen admission timestamp survive storage round-trips.",
+          "Persisted async final task recovers into a newly constructed Billing owner after live pricing changes, clock advances 48h and admitted calendar expires.",
+          "Frozen peak + long tariff settles 8700 units within reserved upper bound; reserve snapshot digest is unchanged; replay leaves exactly one ledger row.",
+          "Pricing snapshot reuse preserves transaction usability including PostgreSQL."
+        ],
+        "credential_handling": "Only local disposable container environment is read inside the temporary Python process; no credentials or DSNs are printed or included in this result."
+      },
+      {
+        "command": "go test ./app/billing/internal/service ./app/admin/internal/service ./app/identity/internal/server -run 'TestLedgerDetailLongContext|TestPricingSnapshotLongContextTimeEvidenceMapping|TestListLedgerEntriesPreservesUsageAuditContract|TestSelfLedgerServiceTierExplanation' -count=1",
+        "result": "PASS",
+        "package_seconds": {
+          "billing_service": 2.488,
+          "admin_service": 2.479,
+          "identity_server": 2.43
+        },
+        "assertions": [
+          "Ledger request snapshot view removes base, long-context and peak procurement price maps without changing frozen snapshot digest.",
+          "Pricing snapshot DTO preserves context and time-band evidence.",
+          "Admin camel-case and Identity self-ledger snake-case representations preserve all new metadata."
+        ]
+      },
+      {
+        "command": "git diff --check",
+        "result": "PASS"
+      }
+    ]
+  },
+  "review": {
+    "independent_review_completed": true,
+    "confirmed_findings_fixed": [
+      {
+        "priority": "P1",
+        "issue": "Case-insensitive typed Chat decoding could forward limits/tools/tier different from exact-key reservation metadata. Responses rewriting could erase duplicate-key evidence.",
+        "proof": "Regression first failed with expected 400 but actual 200/upstream execution; fixed tests and final make verify pass.",
+        "fix": "Unambiguous submitted root keys; reject controlled case aliases/duplicates for active bounded pricing; Chat sends only frozen output bound in provider field; Responses inspects original body.",
+        "regressions": {
+          "chat_ambiguity_cases": 22,
+          "responses_ambiguity_cases": 18,
+          "forwarded_limit_controls": 4
+        }
+      }
+    ]
+  },
+  "deployment": {
+    "performed": false,
+    "production_configuration_modified": false,
+    "paid_upstream_calls": 0,
+    "release_or_tag_created": false,
+    "enabled": false,
+    "new_billing_migration": 146,
+    "services": [
+      "billing",
+      "relay",
+      "admin",
+      "identity",
+      "web"
+    ]
+  },
+  "pending_external": [
+    "maintainer confirms actual threshold and long-context selling prices",
+    "maintainer confirms peak/off_peak selling and procurement prices, reviewed holiday dates and calendar validity",
+    "authorized real upstream JSON/SSE and independent supplier evidence",
+    "production migration/deployment acceptance and separate charging enablement"
+  ],
+  "notes": [
+    "DeepSeek official pricing checked on 2026-10-29 lists peak/off_peak prices but no long-context surcharge; no real prices were invented or enabled.",
+    "Procurement estimates remain distinct from actual supplier deductions; absent actual tier or selected procurement tariff remains unknown.",
+    "Default-disabled examples do not imply verified live model pricing or calendar."
+  ],
+  "production_followup": {
+    "date": "2026-10-30",
+    "status": "deployed_disabled",
+    "evidence": "b1-production-deployment-2026-10-30.json",
+    "pricing_enabled": false,
+    "note": "The deployment=false entry above records engineering acceptance on 2026-10-29; this follow-up records the later explicit deployment request."
+  }
+}

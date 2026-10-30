@@ -372,6 +372,13 @@ message LedgerEntry {
  string billed_service_tier = 57;
  string service_tier_policy = 58;
  string service_tier_config_hash = 59;
+ string long_context_policy = 60;
+ int64 long_context_threshold = 61;
+ string long_context_tier = 62;
+ int64 long_context_input_tokens = 63;
+ string pricing_time_band = 64;
+ string pricing_timezone = 65;
+ int64 pricing_time_unix = 66;
 }
 
 // PricingSnapshot is the immutable per-request pricing evidence stored in
@@ -393,6 +400,11 @@ message PricingSnapshot {
  string service_tier = 12;
  string service_tier_policy = 13;
  string service_tier_config_hash = 14;
+ string long_context_policy = 15;
+ int64 long_context_threshold = 16;
+ string long_context_tier = 17;
+ string pricing_time_band = 18;
+ string pricing_timezone = 19;
 }
 
 // ========== 流水信息（管理端视图）==========

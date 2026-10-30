@@ -252,6 +252,8 @@ func TestListLedgerEntriesPreservesUsageAuditContract(t *testing.T) {
 		BilledServiceTier:      "max",
 		ServiceTierPolicy:      "actual_or_max_v1",
 		ServiceTierConfigHash:  "tier-hash",
+		LongContextPolicy:      "whole_request_input_gt_v1", LongContextThreshold: 128000, LongContextTier: "long", LongContextInputTokens: 128001,
+		PricingTimeBand: "peak", PricingTimezone: "Asia/Shanghai", PricingTimeUnix: 1793232000,
 	}}
 	svc := NewAdminService(client, nil, nil, nil)
 
@@ -276,6 +278,8 @@ func TestListLedgerEntriesPreservesUsageAuditContract(t *testing.T) {
 		"billedServiceTier":      "max",
 		"serviceTierPolicy":      "actual_or_max_v1",
 		"serviceTierConfigHash":  "tier-hash",
+		"longContextPolicy":      "whole_request_input_gt_v1", "longContextThreshold": int64(128000), "longContextTier": "long", "longContextInputTokens": int64(128001),
+		"pricingTimeBand": "peak", "pricingTimezone": "Asia/Shanghai", "pricingTimeUnix": int64(1793232000),
 	}
 	for key, want := range checks {
 		if !reflect.DeepEqual(got[key], want) {

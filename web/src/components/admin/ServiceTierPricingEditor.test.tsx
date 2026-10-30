@@ -7,6 +7,35 @@ import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 
 describe('ServiceTierPricingEditor', () => {
+  it('inserts a disabled selected-model long-context example with the threshold marked unconfirmed', async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<ServiceTierPricingEditor options={[{ key: 'ServiceTierPricing', value: '{"enabled":false}', revision: '8' }]} ready refresh={async () => []} />);
+    const insert = await screen.findByRole('button', { name: '填入长上下文关闭示例' });
+    await waitFor(() => expect(insert).toBeEnabled());
+    await user.click(insert);
+    const raw = screen.getByLabelText('档位价格 JSON') as HTMLTextAreaElement;
+    expect(JSON.parse(raw.value)).toMatchObject({ enabled: false, version: 2, source_id: 11, model: 'deepseek-flash', long_context: { policy: 'whole_request_input_gt_v1' } });
+    expect(screen.getByText(/128000 仅为未确认的示例阈值/)).toBeInTheDocument();
+  });
+
+  it('explains whole-request pricing and the unconfirmed threshold in English', async () => {
+    window.localStorage.setItem('web:language', JSON.stringify('en-US'));
+    renderWithQuery(<ServiceTierPricingEditor options={[{ key: 'ServiceTierPricing', value: '{"enabled":false}' }]} ready refresh={async () => []} />);
+    expect(await screen.findByText('Service tier pricing')).toBeInTheDocument();
+    expect(screen.getByText(/Only input strictly above threshold_tokens applies long-context prices to all five buckets/)).toBeInTheDocument();
+    expect(screen.getByText(/128000 is an unconfirmed example threshold/)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Insert disabled long-context example' })).toBeInTheDocument();
+    expect(screen.getByText(/freeze the peak or off-peak band at reservation time/)).toBeInTheDocument();
+  });
+  it('inserts a disabled time-pricing example without supplying real prices', async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<ServiceTierPricingEditor options={[{ key: 'ServiceTierPricing', value: '{"enabled":false}' }]} ready refresh={async () => []} />);
+    const insert = await screen.findByRole('button', { name: '填入忙闲分时关闭示例' });
+    await waitFor(() => expect(insert).toBeEnabled());
+    await user.click(insert);
+    expect(JSON.parse((screen.getByLabelText('档位价格 JSON') as HTMLTextAreaElement).value)).toMatchObject({ enabled: false, version: 3, source_id: 11, model: 'deepseek-flash', time_pricing: { timezone: 'Asia/Shanghai', peak_prices: { default: { input_price: null } } } });
+    expect(screen.getByText(/忙闲时段示例均未确认/)).toBeInTheDocument();
+  });
   it('writes one complete versioned object and waits for confirmed readback', async () => {
     const user = userEvent.setup();
     let payload: { values: Record<string, string>; expected_revisions: Record<string, string> } | undefined;

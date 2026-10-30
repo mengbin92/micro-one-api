@@ -152,6 +152,20 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		if reserveErr != nil {
 			return reserveFailure(reserveErr)
 		}
+		upstreamRequest := req
+		if reservation.ServiceTierPricingVersion == 1 {
+			limit, limitErr := tierOutputLimit(ctx)
+			if limitErr != nil {
+				_ = s.releaseQuota(ctx, reservation.ReservationId, "invalid bounded pricing request")
+				return reserveFailure(limitErr)
+			}
+			// Build the provider limit from the exact metadata admitted by
+			// Billing, rather than a second, case-insensitive typed decode.
+			upstreamRequest.MaxTokens, upstreamRequest.MaxCompletionTokens = nil, &limit
+			if ch.Type == relayprovider.ChannelTypeDeepSeek {
+				upstreamRequest.MaxTokens, upstreamRequest.MaxCompletionTokens = &limit, nil
+			}
+		}
 
 		provider, provErr := s.providerFactory.CreateProviderWithConfig(ch.Type, ch.BaseURL, ch.Key, relayprovider.ProviderConfig{
 			APIVersion: ch.Config.APIVersion,
@@ -170,7 +184,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 
 		if req.Stream {
 			if reservation.ServiceTierPricingVersion == 1 {
-				req.StreamOptions = &relayprovider.ChatStreamOptions{IncludeUsage: true}
+				upstreamRequest.StreamOptions = &relayprovider.ChatStreamOptions{IncludeUsage: true}
 			}
 			streamLogInput := usageLogInput{
 				UserID:                plan.Auth.UserID,
@@ -187,21 +201,23 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 			// request, not the original plan, so failover attribution is correct.
 			streamLogInput.applyChannelInputs(ch)
 			streamLogInput.applyReservation(reservation)
-			return s.handleStreamingResponse(w, r.WithContext(ctx), provider, &req, reservation, streamLogInput)
+			return s.handleStreamingResponse(w, r.WithContext(ctx), provider, &upstreamRequest, reservation, streamLogInput)
 		}
 
 		// Non-streaming call
-		resp, callErr := provider.ChatCompletions(ctx, &req)
+		resp, callErr := provider.ChatCompletions(ctx, &upstreamRequest)
 		if callErr != nil {
 			_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream error")
 			return callErr
 		}
 
-		usageEnvelope := envelopeFromProviderUsage(resp.Usage, resp.Canonical)
+		billingUsage := resp.Usage
+		usageEnvelope := envelopeFromProviderUsage(billingUsage, resp.Canonical)
+		completeTierUsage := true
 		if reservation.ServiceTierPricingVersion == 1 {
-			usageEnvelope = envelopeFromCompleteTierChatUsage(resp.Usage, resp.Canonical)
+			billingUsage, usageEnvelope, completeTierUsage = completeTierChatUsage(resp.Usage, resp.Canonical, resp.RawUsage)
 		}
-		if reservation.ServiceTierPricingVersion == 1 && (!resp.UsagePresent || !validTierUsageNumbers(resp.RawUsage) || usageEnvelope.ParseStatus != relaybiz.UsageParseVerified) {
+		if reservation.ServiceTierPricingVersion == 1 && (!resp.UsagePresent || !completeTierUsage) {
 			var tier tierObservation
 			tier.observe(resp.ServiceTier)
 			tier.observeRaw(resp.RawServiceTier)
@@ -212,7 +228,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 
 		// Success — commit quota and return
 		actualTokens := s.calculateActualTokens(resp)
-		cacheCreation5mTokens, cacheCreation1hTokens := cacheCreationTokensFromProviderUsage(resp.Usage)
+		cacheCreation5mTokens, cacheCreation1hTokens := cacheCreationTokensFromProviderUsage(billingUsage)
 		logInput := usageLogInput{
 			UserID:                plan.Auth.UserID,
 			TokenID:               plan.Auth.TokenID,
@@ -223,7 +239,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 			Quota:                 actualTokens,
 			PromptTokens:          int64(resp.Usage.PromptTokens),
 			CompletionTokens:      int64(resp.Usage.CompletionTokens),
-			CacheReadTokens:       cacheReadTokensFromProviderUsage(resp.Usage),
+			CacheReadTokens:       cacheReadTokensFromProviderUsage(billingUsage),
 			CacheCreation5mTokens: cacheCreation5mTokens,
 			CacheCreation1hTokens: cacheCreation1hTokens,
 			ChannelID:             ch.ID,
@@ -321,6 +337,7 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 	var tier tierObservation
 	sawTierUsage := false
 	invalidTierUsage := false
+	sawComplete := false
 
 	for chunk := range chunkChan {
 		if chunk.StreamError != nil || r.Context().Err() != nil {
@@ -336,15 +353,17 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 		tier.observeRaw(chunk.RawServiceTier)
 		if logInput.TierPricing && chunk.UsageObserved {
 			sawTierUsage = sawTierUsage || chunk.UsagePresent
-			invalidTierUsage = invalidTierUsage || !chunk.UsagePresent || !validTierUsageNumbers(chunk.RawUsage) || envelopeFromCompleteTierChatUsage(chunk.Usage, chunk.Canonical).ParseStatus != relaybiz.UsageParseVerified
+			observedUsage, _, completeUsage := completeTierChatUsage(chunk.Usage, chunk.Canonical, chunk.RawUsage)
+			invalidTierUsage = invalidTierUsage || !chunk.UsagePresent || !completeUsage
 			if chunk.UsagePresent {
-				lastUsage = chunk.Usage
+				lastUsage = observedUsage
 				totalTokens, promptTokens, completionTokens = int64(lastUsage.TotalTokens), int64(lastUsage.PromptTokens), int64(lastUsage.CompletionTokens)
 				cacheReadTokens = cacheReadTokensFromProviderUsage(lastUsage)
 				cacheCreation5mTokens, cacheCreation1hTokens = cacheCreationTokensFromProviderUsage(lastUsage)
 			}
 		}
 		if chunk.Complete {
+			sawComplete = true
 			terminal.success = true
 			continue
 		}
@@ -382,7 +401,7 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 		flusher.Flush()
 	}
 
-	if streamErr != nil || r.Context().Err() != nil || !terminal.Success() {
+	if streamErr != nil || r.Context().Err() != nil || !terminal.Success() || (logInput.TierPricing && !sawComplete) {
 		cancelStream()
 		_ = s.releaseTierQuota(r.Context(), reservation, logInput, tier, "incomplete_or_cancelled_stream")
 		return interrupt(streamErr)

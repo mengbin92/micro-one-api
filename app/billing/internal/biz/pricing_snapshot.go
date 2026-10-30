@@ -29,6 +29,13 @@ const PricingSnapshotVersion int32 = 1
 // per-bucket unit prices to freeze, so their ledger rows keep an empty
 // pricing_config_hash (their prices stay unknown by design, §8.2).
 type PricingSnapshot struct {
+	PricingTimeBand string
+	PricingTimezone string
+
+	LongContextPolicy    string
+	LongContextThreshold int64
+	LongContextTier      string
+
 	ServiceTier           string
 	ServiceTierPolicy     string
 	ServiceTierConfigHash string
@@ -173,5 +180,25 @@ func snapshotTierHash(s *PricingSnapshot) [32]byte {
 		Version                    int32
 		Base, Tier, Policy, Config string
 	}{2, s.ConfigHash, s.ServiceTier, s.ServiceTierPolicy, s.ServiceTierConfigHash})
+	return sha256.Sum256(b)
+}
+
+// Version three retains the v2 tariff evidence and adds the context decision.
+// Per-request token counts live on the ledger so equal tariffs can still share
+// a snapshot; threshold and selected context tier are immutable price inputs.
+func snapshotLongContextHash(s *PricingSnapshot) [32]byte {
+	b, _ := jsonx.Marshal(struct {
+		Version            int32
+		Base, Policy, Tier string
+		Threshold          int64
+	}{3, s.ConfigHash, s.LongContextPolicy, s.LongContextTier, s.LongContextThreshold})
+	return sha256.Sum256(b)
+}
+
+func snapshotTimePricingHash(s *PricingSnapshot) [32]byte {
+	b, _ := jsonx.Marshal(struct {
+		Version              int32
+		Base, Band, Timezone string
+	}{4, s.ConfigHash, s.PricingTimeBand, s.PricingTimezone})
 	return sha256.Sum256(b)
 }

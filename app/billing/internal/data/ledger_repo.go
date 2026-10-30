@@ -127,10 +127,26 @@ func (r *ledgerRepo) CreateLedgerInTx(ctx context.Context, tx subscriptionbiz.Tx
 		BilledServiceTier:      ledger.BilledServiceTier,
 		ServiceTierPolicy:      ledger.ServiceTierPolicy,
 		ServiceTierConfigHash:  ledger.ServiceTierConfigHash,
+		LongContextPolicy:      ledger.LongContextPolicy,
+		PricingTimeBand:        ledger.PricingTimeBand,
+		PricingTimezone:        ledger.PricingTimezone,
+		PricingTimeUnix:        ledger.PricingTimeUnix,
+
+		LongContextThreshold:   ledger.LongContextThreshold,
+		LongContextTier:        ledger.LongContextTier,
+		LongContextInputTokens: ledger.LongContextInputTokens,
+	}
+	var omitted []string
+	if ledger.PricingTimeBand == "" {
+		omitted = append(omitted, "PricingTimeBand", "PricingTimezone", "PricingTimeUnix")
+	}
+	if ledger.LongContextPolicy == "" {
+		omitted = append(omitted, "LongContextPolicy", "LongContextThreshold", "LongContextTier", "LongContextInputTokens")
 	}
 	if ledger.ServiceTierConfigHash == "" {
-		db = db.Omit("RequestedServiceTier", "ActualServiceTier", "ServiceTierStatus", "BilledServiceTier", "ServiceTierPolicy", "ServiceTierConfigHash")
+		omitted = append(omitted, "RequestedServiceTier", "ActualServiceTier", "ServiceTierStatus", "BilledServiceTier", "ServiceTierPolicy", "ServiceTierConfigHash")
 	}
+	db = db.Omit(omitted...)
 	return db.Create(model).Error
 }
 
@@ -819,6 +835,14 @@ func ledgerFromModel(model *ledgerModel) *biz.Ledger {
 		BilledServiceTier:      model.BilledServiceTier,
 		ServiceTierPolicy:      model.ServiceTierPolicy,
 		ServiceTierConfigHash:  model.ServiceTierConfigHash,
+		LongContextPolicy:      model.LongContextPolicy,
+		PricingTimeBand:        model.PricingTimeBand,
+		PricingTimezone:        model.PricingTimezone,
+		PricingTimeUnix:        model.PricingTimeUnix,
+
+		LongContextThreshold:   model.LongContextThreshold,
+		LongContextTier:        model.LongContextTier,
+		LongContextInputTokens: model.LongContextInputTokens,
 	}
 }
 

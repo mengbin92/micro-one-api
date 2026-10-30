@@ -6,6 +6,8 @@
 
 2026-10-28 A4 部署补记：Billing/Admin/Identity/Web 已随 A4 更新，Billing 144 号兼容字段迁移已落库；Relay/Log 未更新、Log 145 号未迁移，档位计价仍关闭，尚未完成 A3 端到端生产上线。本段不改变原验收时“未部署”的历史记录，见 [A4 线上证据](evidence/a4-production-deployment-2026-10-28.json)。
 
+2026-10-30 B1 部署补记：Billing/Log/Relay/Identity/Admin/Web 已完成本机 Linux/amd64 构建后的生产更新，补齐 Log 145，并新增 Billing 146。A3 相关服务兼容代码和字段现已到位，健康、运行账号权限、gRPC 能力、公网前端和未认证拒绝分支通过；档位及 B1 计价配置仍缺省关闭，真实售价/采购价/付费探测与收费启用继续保留。详见 [B1 线上证据](evidence/b1-production-deployment-2026-10-30.json)。本次没有开启 A3 或扩大既有契约灰度。
+
 ## 1. 已交付实现
 
 | 子项 | 实现 |

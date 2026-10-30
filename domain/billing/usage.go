@@ -42,6 +42,7 @@ type LedgerUsage struct {
 	// FrozenServiceTier is resolved by the Billing owner from its reservation.
 	// It is never part of the producer payload or settlement digest.
 	FrozenServiceTier     *ServiceTierConfig `json:"-"`
+	FrozenPricingTimeBand string             `json:"-"`
 	TokenName             string
 	Endpoint              string
 	PromptTokens          int64

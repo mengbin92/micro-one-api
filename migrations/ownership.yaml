@@ -92,6 +92,7 @@ services:
 
   billing:
     - 144_add_billing_service_tier
+    - 146_add_billing_long_context
     - 138_add_settlement_telemetry
     - 135_vendor_reconciliation_run_sequence
     - 132_vendor_reconciliation

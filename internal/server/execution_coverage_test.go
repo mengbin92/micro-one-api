@@ -63,11 +63,16 @@ func (r *coverageOutbox) Acknowledge(_ context.Context, id, digest string) error
 type coverageBillingClient struct {
 	rawBillingClient
 	capabilityRequests int
+	executionCapable   bool
 }
 
 func (c *coverageBillingClient) GetRoutingCapabilities(context.Context, *billingv1.GetRoutingCapabilitiesRequest, ...grpc.CallOption) (*billingv1.GetRoutingCapabilitiesResponse, error) {
 	c.capabilityRequests++
-	return &billingv1.GetRoutingCapabilitiesResponse{ServiceTierPricingVersion: 1, ExecutionDeliveryVersion: 1, UsageContractVersion: 2, SettlementPolicyVersion: execution.Policy}, nil
+	caps := &billingv1.GetRoutingCapabilitiesResponse{ServiceTierPricingVersion: 1}
+	if c.executionCapable {
+		caps.ExecutionDeliveryVersion, caps.UsageContractVersion, caps.SettlementPolicyVersion = 1, 2, execution.Policy
+	}
+	return caps, nil
 }
 
 func (c *coverageBillingClient) ReserveQuota(ctx context.Context, req *billingv1.ReserveQuotaRequest, opts ...grpc.CallOption) (*billingv1.ReserveQuotaResponse, error) {
@@ -151,7 +156,7 @@ func TestResponsesExecutionCoverageAdmissionAndSendTime(t *testing.T) {
 			defer upstream.Close()
 			identity := rawIdentityClient{}
 			channel := &coverageChannelClient{rawChannelClient: rawChannelClient{baseURL: upstream.URL + "/v1", key: "fixture", chType: 6, upstreamModel: "deepseek-flash"}}
-			billing, logs := &coverageBillingClient{}, &rawLogClient{}
+			billing, logs := &coverageBillingClient{executionCapable: tc.admitted}, &rawLogClient{}
 			uc := biz.NewRelayUsecase(data.NewIdentityAdapter(identity), data.NewChannelAdapter(channel), nil, &biz.RetryPolicy{MaxAttempts: 1})
 			s := NewHTTPServer(identity, channel, billing, provider.NewProviderFactory(time.Second), uc, logs)
 			t.Cleanup(func() {
@@ -186,8 +191,13 @@ func TestResponsesExecutionCoverageAdmissionAndSendTime(t *testing.T) {
 			require.Equal(t, "legacy", summary.ExecutionPath)
 			reservation := billing.reserveRequests[0]
 			t.Logf("path=%s reserve_delivery=%d reserve_usage=%d outbox_events=%d", summary.ExecutionPath, reservation.ExecutionDeliveryVersion, reservation.UsageContractVersion, len(outbox.events))
+			// DeepSeek legacy Responses now checks the independent A3 pricing
+			// contract. That shared capabilities RPC does not admit execution:
+			// non-pilot fixtures advertise no execution support at all.
+			require.Equal(t, "openai_responses", reservation.ServiceTierProtocol)
+			require.EqualValues(t, 1, reservation.ServiceTierPricingVersion)
+			require.Equal(t, 1, billing.capabilityRequests)
 			if !tc.admitted {
-				require.Zero(t, billing.capabilityRequests)
 				require.Zero(t, channel.capabilityRequests)
 				require.Zero(t, reservation.ExecutionDeliveryVersion)
 				require.Zero(t, reservation.UsageContractVersion)
@@ -196,7 +206,6 @@ func TestResponsesExecutionCoverageAdmissionAndSendTime(t *testing.T) {
 				require.EqualValues(t, 18, billing.commitRequests[0].ActualTokens)
 				return
 			}
-			require.Equal(t, 1, billing.capabilityRequests)
 			require.Equal(t, 1, channel.capabilityRequests)
 			require.EqualValues(t, 1, reservation.ExecutionDeliveryVersion)
 			require.EqualValues(t, 2, reservation.UsageContractVersion)

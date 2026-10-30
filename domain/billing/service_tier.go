@@ -35,6 +35,8 @@ type ServiceTierConfig struct {
 	Model          string                `json:"model"`
 	Prices         map[string]ModelPrice `json:"prices"`
 	UpstreamPrices map[string]ModelPrice `json:"upstream_prices,omitempty"`
+	LongContext    *LongContextConfig    `json:"long_context,omitempty"`
+	TimePricing    *TimePricingConfig    `json:"time_pricing,omitempty"`
 }
 
 func ParseServiceTierConfig(raw string) (ServiceTierConfig, error) {
@@ -80,6 +82,16 @@ func ParseServiceTierConfig(raw string) (ServiceTierConfig, error) {
 				}
 			}
 		}
+		if c.LongContext != nil {
+			if err := validateLongContextJSON(object["long_context"]); err != nil {
+				return c, err
+			}
+		}
+		if c.TimePricing != nil {
+			if err := validateTimePricingJSON(object["time_pricing"]); err != nil {
+				return c, err
+			}
+		}
 	}
 	return c, c.Validate()
 }
@@ -88,14 +100,27 @@ func (c ServiceTierConfig) Validate() error {
 	if !c.Enabled {
 		return nil
 	}
-	if c.Version != ServiceTierPricingVersion || c.SourceKind != "channel" || c.SourceID <= 0 || c.Model == "" || c.Model != strings.TrimSpace(c.Model) || len(c.Model) > 255 {
-		return fmt.Errorf("ServiceTierPricing requires version 1 and one channel/model")
+	if (c.Version != ServiceTierPricingVersion || c.LongContext != nil || c.TimePricing != nil) && (c.Version != LongContextPricingVersion || c.LongContext == nil || c.TimePricing != nil) && (c.Version != TimePricingVersion || c.TimePricing == nil) {
+		return fmt.Errorf("ServiceTierPricing requires version 1 for base tariffs, version 2 for long_context, or version 3 for time_pricing")
+	}
+	if c.SourceKind != "channel" || c.SourceID <= 0 || c.Model == "" || c.Model != strings.TrimSpace(c.Model) || len(c.Model) > 255 {
+		return fmt.Errorf("ServiceTierPricing requires one channel/model")
 	}
 	if err := validateTierPrices(c.Prices); err != nil {
 		return err
 	}
+	if c.TimePricing != nil {
+		if err := c.TimePricing.Validate(c.LongContext); err != nil {
+			return err
+		}
+	}
 	if c.UpstreamPrices != nil {
-		return validateTierPrices(c.UpstreamPrices)
+		if err := validateTierPrices(c.UpstreamPrices); err != nil {
+			return err
+		}
+	}
+	if c.LongContext != nil {
+		return c.LongContext.Validate(c.Prices)
 	}
 	return nil
 }

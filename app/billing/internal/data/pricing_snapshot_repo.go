@@ -17,6 +17,13 @@ import (
 // pricingSnapshotModel is the migration 088 billing_pricing_snapshots row:
 // immutable pricing evidence referenced by billing_ledgers.pricing_config_hash.
 type pricingSnapshotModel struct {
+	PricingTimeBand string `gorm:"column:pricing_time_band"`
+	PricingTimezone string `gorm:"column:pricing_timezone"`
+
+	LongContextPolicy    string `gorm:"column:long_context_policy"`
+	LongContextThreshold int64  `gorm:"column:long_context_threshold"`
+	LongContextTier      string `gorm:"column:long_context_tier"`
+
 	ServiceTier           string    `gorm:"column:service_tier"`
 	ServiceTierPolicy     string    `gorm:"column:service_tier_policy"`
 	ServiceTierConfigHash string    `gorm:"column:service_tier_config_hash"`
@@ -81,23 +88,37 @@ func claimPricingSnapshot(ctx context.Context, db *gorm.DB, snapshot *biz.Pricin
 		ServiceTier:           snapshot.ServiceTier,
 		ServiceTierPolicy:     snapshot.ServiceTierPolicy,
 		ServiceTierConfigHash: snapshot.ServiceTierConfigHash,
-		ModelName:             snapshot.ModelName,
-		InputPrice:            snapshot.InputPrice,
-		OutputPrice:           snapshot.OutputPrice,
-		CacheReadPrice:        snapshot.CacheReadPrice,
-		CacheCreation5mPrice:  snapshot.CacheCreation5mPrice,
-		CacheCreation1hPrice:  snapshot.CacheCreation1hPrice,
-		GroupRatio:            snapshot.GroupRatio,
-		CacheCreationMode:     snapshot.CacheCreationMode,
-		SnapshotVersion:       snapshot.SnapshotVersion,
+		LongContextPolicy:     snapshot.LongContextPolicy,
+		PricingTimeBand:       snapshot.PricingTimeBand,
+		PricingTimezone:       snapshot.PricingTimezone,
+
+		LongContextThreshold: snapshot.LongContextThreshold,
+		LongContextTier:      snapshot.LongContextTier,
+		ModelName:            snapshot.ModelName,
+		InputPrice:           snapshot.InputPrice,
+		OutputPrice:          snapshot.OutputPrice,
+		CacheReadPrice:       snapshot.CacheReadPrice,
+		CacheCreation5mPrice: snapshot.CacheCreation5mPrice,
+		CacheCreation1hPrice: snapshot.CacheCreation1hPrice,
+		GroupRatio:           snapshot.GroupRatio,
+		CacheCreationMode:    snapshot.CacheCreationMode,
+		SnapshotVersion:      snapshot.SnapshotVersion,
 	}
 	if model.SnapshotVersion == 0 {
 		model.SnapshotVersion = biz.PricingSnapshotVersion
 	}
 	create := db.WithContext(ctx)
-	if snapshot.ServiceTierConfigHash == "" {
-		create = create.Omit("ServiceTier", "ServiceTierPolicy", "ServiceTierConfigHash")
+	var omitted []string
+	if snapshot.PricingTimeBand == "" {
+		omitted = append(omitted, "PricingTimeBand", "PricingTimezone")
 	}
+	if snapshot.LongContextPolicy == "" {
+		omitted = append(omitted, "LongContextPolicy", "LongContextThreshold", "LongContextTier")
+	}
+	if snapshot.ServiceTierConfigHash == "" {
+		omitted = append(omitted, "ServiceTier", "ServiceTierPolicy", "ServiceTierConfigHash")
+	}
+	create = create.Omit(omitted...)
 	// PostgreSQL marks a transaction failed after a unique violation, even
 	// when Go swallows it. Conflict-free insertion keeps the caller's money
 	// transaction usable when another ledger reuses an immutable snapshot.
@@ -142,16 +163,22 @@ func (r *pricingSnapshotRepo) GetPricingSnapshotByHash(ctx context.Context, conf
 		ServiceTier:           model.ServiceTier,
 		ServiceTierPolicy:     model.ServiceTierPolicy,
 		ServiceTierConfigHash: model.ServiceTierConfigHash,
-		ModelName:             model.ModelName,
-		InputPrice:            model.InputPrice,
-		OutputPrice:           model.OutputPrice,
-		CacheReadPrice:        model.CacheReadPrice,
-		CacheCreation5mPrice:  model.CacheCreation5mPrice,
-		CacheCreation1hPrice:  model.CacheCreation1hPrice,
-		GroupRatio:            model.GroupRatio,
-		CacheCreationMode:     model.CacheCreationMode,
-		SnapshotVersion:       model.SnapshotVersion,
-		CreatedAt:             model.CreatedAt,
+		LongContextPolicy:     model.LongContextPolicy,
+		PricingTimeBand:       model.PricingTimeBand,
+		PricingTimezone:       model.PricingTimezone,
+
+		LongContextThreshold: model.LongContextThreshold,
+		LongContextTier:      model.LongContextTier,
+		ModelName:            model.ModelName,
+		InputPrice:           model.InputPrice,
+		OutputPrice:          model.OutputPrice,
+		CacheReadPrice:       model.CacheReadPrice,
+		CacheCreation5mPrice: model.CacheCreation5mPrice,
+		CacheCreation1hPrice: model.CacheCreation1hPrice,
+		GroupRatio:           model.GroupRatio,
+		CacheCreationMode:    model.CacheCreationMode,
+		SnapshotVersion:      model.SnapshotVersion,
+		CreatedAt:            model.CreatedAt,
 	}, nil
 }
 

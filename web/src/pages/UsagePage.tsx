@@ -55,6 +55,13 @@ interface UsageLog {
   billed_service_tier?: string;
   service_tier_policy?: string;
   service_tier_config_hash?: string;
+  long_context_policy?: string;
+  long_context_threshold?: number;
+  long_context_tier?: string;
+  long_context_input_tokens?: number;
+  pricing_time_band?: string;
+  pricing_timezone?: string;
+  pricing_time_unix?: number;
 }
 
 interface UsageLogData {
@@ -84,6 +91,12 @@ function formatQuota(value: number) {
 function formatDate(value: number) {
   if (!value) return '-';
   return new Date(value * 1000).toLocaleString(locale());
+}
+
+function formatPricingTime(value?: number, timeZone?: string) {
+  if (!value) return '—';
+  try { return new Date(value * 1000).toLocaleString(locale(), { timeZone: timeZone || 'UTC' }); }
+  catch { return String(value); }
 }
 
 function formatDuration(value?: number) {
@@ -144,7 +157,7 @@ function CostCell({ log }: { log: UsageLog }) {
         ) : null}
       </div>
     ) : <span className="font-semibold text-emerald-600">{formatQuota(total)}</span>;
-  const hasTier = !!(log.service_tier_status || log.requested_service_tier || log.actual_service_tier || log.service_tier_policy);
+  const hasTier = !!(log.service_tier_status || log.requested_service_tier || log.actual_service_tier || log.service_tier_policy || log.long_context_policy || log.pricing_time_band);
   return <div className="space-y-2">{amount}{hasTier && <details className="w-52 whitespace-normal text-xs">
     <summary className="cursor-pointer text-muted-foreground">{t('服务档位与计价依据')}</summary>
     <div className="mt-2 space-y-1">
@@ -154,6 +167,18 @@ function CostCell({ log }: { log: UsageLog }) {
       {log.billed_service_tier === 'max' && <p className="text-muted-foreground">{t('实际档位缺失、未知或冲突；保留上游原始值，使用预扣时冻结的各桶最高单价。')}</p>}
       {log.service_tier_policy && <p>{t('档位结算策略：')}{log.service_tier_policy}</p>}
       {log.service_tier_config_hash && <p className="break-all">{t('档位配置快照：')}{log.service_tier_config_hash}</p>}
+      {log.long_context_policy && <>
+        <p>{t('上下文计价档位：')}{log.long_context_tier === 'long' ? t('长上下文') : log.long_context_tier === 'base' ? t('基础上下文') : log.long_context_tier || t('未知')}</p>
+        <p>{t('实际输入总量（含缓存）：')}{(log.long_context_input_tokens ?? 0).toLocaleString(locale())}</p>
+        <p>{t('长上下文阈值：')}{(log.long_context_threshold ?? 0).toLocaleString(locale())}</p>
+        <p>{log.long_context_policy === 'whole_request_input_gt_v1' ? t('实际输入总量严格大于阈值时，整单五桶使用长上下文单价；等于阈值使用基础单价。') : log.long_context_policy}</p>
+      </>}
+      {log.pricing_time_band && <>
+        <p>{t('冻结计价时段：')}{log.pricing_time_band === 'peak' ? t('忙时') : log.pricing_time_band === 'off_peak' ? t('闲时') : log.pricing_time_band}</p>
+        <p>{t('预扣计价时刻：')}{formatPricingTime(log.pricing_time_unix, log.pricing_timezone)}</p>
+        <p>{t('计价时区：')}{log.pricing_timezone || t('未知')}</p>
+        <p>{t('按预扣时刻冻结时段，跨时段完成仍使用冻结价格。')}</p>
+      </>}
     </div>
   </details>}</div>;
 }
