@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	relayprovider "micro-one-api/domain/upstream/provider"
 	relayadaptor "micro-one-api/internal/adaptor"
 	relaybiz "micro-one-api/internal/biz"
+	"micro-one-api/internal/gemini"
 	"micro-one-api/internal/server/forwarder"
 	"micro-one-api/internal/server/usage"
 	applogger "micro-one-api/platform/logging"
@@ -96,6 +98,14 @@ func (f relayAdaptorForwarder) Forward(ctx context.Context, plan *relaybiz.Relay
 	if err != nil {
 		return nil, relaybiz.MarkUnverifiedResponseError(fmt.Errorf("adaptor convert response: %w", err))
 	}
+	if rc.InboundFormat == relayadaptor.FormatGemini {
+		frame, err := gemini.ParseResponse(body)
+		if err != nil || !frame.Terminal || frame.Usage == nil {
+			return nil, relaybiz.MarkUnverifiedResponseError(fmt.Errorf("Gemini response requires valid terminal usage"))
+		}
+		envelope := geminiUsageEnvelope(*frame.Usage)
+		return &relaybiz.ForwardResponse{StatusCode: resp.StatusCode, Headers: httpHeaderToMap(responseHeaders), Body: body, Usage: &envelope}, nil
+	}
 	env := usage.ExtractEnvelopeFromJSON(body, 0)
 	var parsed *relaybiz.UsageEnvelope
 	if !(env.ParseStatus == relaybiz.UsageParseEstimated && env.CanonicalOrZero().IsEmpty()) {
@@ -154,6 +164,17 @@ func (f relayAdaptorForwarder) ForwardStream(ctx context.Context, plan *relaybiz
 	if err != nil {
 		_ = resp.Body.Close()
 		return nil, relaybiz.MarkUnverifiedResponseError(fmt.Errorf("adaptor convert stream response: %w", err))
+	}
+	if rc.InboundFormat == relayadaptor.FormatGemini {
+		// Validate the first complete native event before committing HTTP
+		// headers. A malformed first frame is a 502, never an empty 200 SSE.
+		first := make([]byte, 1)
+		n, err := reader.Read(first)
+		if err != nil || n == 0 {
+			_ = resp.Body.Close()
+			return nil, relaybiz.MarkUnverifiedResponseError(fmt.Errorf("invalid initial Gemini SSE event"))
+		}
+		reader = io.MultiReader(bytes.NewReader(first[:n]), reader)
 	}
 	return &relaybiz.StreamForwardResponse{
 		StatusCode: resp.StatusCode,
@@ -295,6 +316,8 @@ func executorInboundFormat(endpoint string) relayadaptor.Format {
 		return relayadaptor.FormatOpenAIResponses
 	case EndpointAnthropicMessages:
 		return relayadaptor.FormatAnthropicMessages
+	case EndpointGemini:
+		return relayadaptor.FormatGemini
 	default:
 		return relayadaptor.FormatOpenAIChatCompletions
 	}

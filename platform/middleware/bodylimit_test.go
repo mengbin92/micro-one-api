@@ -15,6 +15,7 @@ func TestRequestBodyLimitForPath(t *testing.T) {
 	}{
 		{path: "/v1/chat/completions", want: JSONRequestBodyLimit},
 		{path: "/v1/messages", want: JSONRequestBodyLimit},
+		{path: "/v1beta/models/m:generateContent", want: 4 * 1024 * 1024},
 		{path: "/v1/responses/resp_1", want: JSONRequestBodyLimit},
 		{path: "/v1/completions", want: JSONRequestBodyLimit},
 		{path: "/v1/images/generations", want: JSONRequestBodyLimit},

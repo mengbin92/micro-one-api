@@ -36,6 +36,7 @@ const (
 	EndpointModerations       APIEndpoint = "moderations"
 	EndpointResponses         APIEndpoint = "responses"
 	EndpointAnthropicMessages APIEndpoint = "anthropic/messages"
+	EndpointGemini            APIEndpoint = "gemini/generateContent"
 	EndpointModels            APIEndpoint = "models"
 	EndpointUsage             APIEndpoint = "usage"
 )
@@ -307,7 +308,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		return result, err
 	}
 	rawBody := body
-	body = rewriteRequestModel(body, plan.ResolvedModel)
+	body = nativeGeminiRequestBody(req.Endpoint, body, plan.ResolvedModel)
 
 	endpoint := endpointPath(req.Endpoint)
 	if endpoint == "" {
@@ -342,7 +343,11 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 				lastFailureStatus = statusCodeFromError(planErr)
 				return planErr
 			}
-			attemptBody := rewriteRequestModel(rawBody, attemptPlan.ResolvedModel)
+			if err := validateNativeGeminiPlan(req.Endpoint, attemptPlan); err != nil {
+				lastFailureStatus = http.StatusNotImplemented
+				return err
+			}
+			attemptBody := nativeGeminiRequestBody(req.Endpoint, rawBody, attemptPlan.ResolvedModel)
 			attemptRequest := relaybiz.ExecutorRequest{
 				Token:         req.Token,
 				ClientIP:      req.ClientIP,
@@ -361,7 +366,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 				attemptRequest.RequestID = generateRequestID()
 			}
 			attemptNumber++
-			estimatedUsage := estimateUsageFromBody(attemptBody)
+			estimatedUsage := estimateEndpointUsage(req.Endpoint, attemptBody)
 			releaseAdmission := func() {}
 			if admission, ok := o.hooks.(relayAttemptAdmissionHook); ok {
 				releaseAdmission, err = admission.AcquireRelayAttempt(attemptCtx, attemptPlan, attemptRequest)
@@ -467,7 +472,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		if retryResult != nil && retryResult.Fallback {
 			recordRelayFailover(ctx, "switched", retryResult.FallbackReason)
 		}
-		estimatedUsage := estimateUsageFromBody(finalRequest.Body)
+		estimatedUsage := estimateEndpointUsage(req.Endpoint, finalRequest.Body)
 		result.StatusCode = finalStream.StatusCode
 		result.Headers = headerMapToHTTP(finalStream.Headers)
 		result.ChannelID = finalPlan.Channel.ID
@@ -545,7 +550,11 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			lastFailureStatus = statusCodeFromError(planErr)
 			return planErr
 		}
-		attemptBody := rewriteRequestModel(rawBody, attemptPlan.ResolvedModel)
+		if err := validateNativeGeminiPlan(req.Endpoint, attemptPlan); err != nil {
+			lastFailureStatus = http.StatusNotImplemented
+			return err
+		}
+		attemptBody := nativeGeminiRequestBody(req.Endpoint, rawBody, attemptPlan.ResolvedModel)
 		attemptReq := relaybiz.ExecutorRequest{
 			Token:         req.Token,
 			ClientIP:      req.ClientIP,
@@ -568,7 +577,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			attemptReq.RequestID = generateRequestID()
 		}
 		attemptNumber++
-		estimatedUsage := estimateUsageFromBody(attemptBody)
+		estimatedUsage := estimateEndpointUsage(req.Endpoint, attemptBody)
 		releaseAdmission := func() {}
 		if admission, ok := o.hooks.(relayAttemptAdmissionHook); ok {
 			releaseAdmission, err = admission.AcquireRelayAttempt(attemptCtx, attemptPlan, attemptReq)
@@ -635,7 +644,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		if forwardResp.Usage != nil {
 			attemptResult.Usage = forwardResp.Usage
 		}
-		if !evidence.HasDurableRecorder(attemptCtx) && (attemptResult.Usage == nil || attemptResult.Usage.BillableTotal() == 0) {
+		if req.Endpoint != EndpointGemini && !evidence.HasDurableRecorder(attemptCtx) && (attemptResult.Usage == nil || attemptResult.Usage.BillableTotal() == 0) {
 			attemptResult.Usage = &estimatedUsage
 		}
 		if record, durable := evidence.NativeObservation(attemptCtx); durable {
@@ -767,6 +776,8 @@ func endpointPath(endpoint APIEndpoint) string {
 		return "/responses"
 	case EndpointAnthropicMessages:
 		return "/messages"
+	case EndpointGemini:
+		return "/gemini/generateContent"
 	default:
 		return ""
 	}

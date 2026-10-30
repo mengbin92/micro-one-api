@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- B2 原生 Gemini `v1beta` 文本与函数调用入站：generateContent / streamGenerateContent、JSON/SSE、Token 鉴权/路由/模型映射、缓存与思考 token 的 canonical 计量及幂等结算；媒体、隐藏状态、服务端工具和未支持入口显式拒绝。2026-10-30 已部署 Relay 并完成生产拒绝分支验收，真实来源/SDK/付费验收保留，详见 [B2 验收](docs/runbooks/b2-native-gemini-acceptance-2026-10-30.md)。
+
 ## [0.37.1] - 2026-10-29
 
 v0.37.1 是 v0.37.0 之后的 **PATCH 修复版本**：修复 OCR 登记的三项存量安全与健壮性问题，包括 SSRF 旁路静默、非流式错误缓冲过大和 Chat SSE 终止策略不一致。无新增 API、配置、依赖或迁移；生产升级先补 v0.37.0 已有的 Log 145，收费、强制认证与证据监控等开关保持现场状态。升级顺序和验收边界详见 [release-v0.37.1.md](docs/releases/release-v0.37.1.md)。

@@ -1,0 +1,85 @@
+{
+  "stage": "B2 native Gemini ingress",
+  "date": "2026-10-30",
+  "timezone": "Asia/Shanghai",
+  "status": "engineering_verified_external_validation_pending",
+  "baseline_commit": "62edafdcb3d2fcfb11709d3657f7423f2197fb02",
+  "candidate_committed": false,
+  "deployed": false,
+  "production_configuration_changed": false,
+  "paid_supplier_requests": 0,
+  "verification": {
+    "related_go_regression": "PASS",
+    "make_verify": "PASS (format, unit, race, architecture, migration, RBAC, IAM browser checker, generated API types, frontend lint/test/critical coverage/build)",
+    "make_verify_log_sha256": "d586c19d83f283c2199ef830d4598575bc8db6775530a1169aea8725f6ff772b",
+    "owner_chain": {
+      "command": "go test ./internal/integration -run TestGeminiNativeOwnerChain -count=1 -v",
+      "result": "PASS",
+      "databases": [
+        "SQLite",
+        "MySQL 8.4",
+        "PostgreSQL 18"
+      ],
+      "cases_per_database": 5,
+      "cases": [
+        "JSON",
+        "SSE",
+        "JSON missing usage",
+        "SSE missing usage",
+        "real downstream cancellation"
+      ],
+      "billing_and_log": "real production owners over generated gRPC; migrated scratch storage",
+      "supplier": "isolated deterministic HTTP fixture"
+    },
+    "money_fixture": {
+      "reported": {
+        "prompt": 10,
+        "cached": 3,
+        "candidates": 4,
+        "thoughts": 2,
+        "total": 16
+      },
+      "canonical": [
+        7,
+        3,
+        0,
+        0,
+        6
+      ],
+      "amount_scale": 10000,
+      "charged_units": 196,
+      "duplicate_commit_charged_again": false,
+      "missing_usage_and_cancellation": "reservation released; no consume ledger"
+    },
+    "temporary_databases": "loopback-only disposable containers stopped and removed; scratch schemas cleaned by tests"
+  },
+  "final_go_source_sha256": {
+    "domain/upstream/provider/capability.go": "589fbe71da52537f33690fd8287b9c30d16ed8ff121e5170115872de1bf30e5f",
+    "internal/adaptor/gemini.go": "8302dd39ac90b6d6ba44bf5681548f2ab805544e1e8f7c69e20e3d4b06fc948b",
+    "internal/gemini/gemini_test.go": "8e0a7032ad8bdd59587313ff48a4234bd5de3b0c1045fac8dc6eba636977edf7",
+    "internal/gemini/request.go": "adc0d6a690f05e7594adb2200fe3993d2739157c3137cd5d0ffc86ac7b692e96",
+    "internal/gemini/response.go": "574d29d92a64078c63cea35b6f5b71fda54c21c7fb38639f94e5faeb3c75d0cc",
+    "internal/gemini/stream.go": "d926114c146c2a2c57fde237d939622a8a6d7ffd8cea64dfb02262d36aca1cb1",
+    "internal/integration/gemini_test.go": "38cbb9d5dc3299b1ffd7a8240d78f5a49e0d979ce539053ab09a35d6cea1d019",
+    "internal/server/adaptor_forwarder.go": "e50c7ff371f1d9b7ec7877637a0d0e4188e8af93ae5ddfc5d9265f2cb905e92f",
+    "internal/server/executor_stream.go": "19091cfcfe64b4e83c60de3c5023a39c44447d7891eeb6865a6879da05f20bcb",
+    "internal/server/gemini_handler.go": "08b7ea475d47d8ba1296903ccf218b4045966412c42de633326b7c15886b84e0",
+    "internal/server/gemini_handler_test.go": "b6ae2633433d4d529c7e044ab7e3ce026a409f62b27136666292a1d709ce7586",
+    "internal/server/gemini_usage.go": "519299fa7badb2054b1dd30109c63abdf04c7381b136d16578130bed44fefa07",
+    "internal/server/http_billing.go": "57f0f30cde3ee3902ce4091cf668e7a01ace5922e676650f98950ab950488ec6",
+    "internal/server/http_orchestrator.go": "a0542a92f105644ade55a3988acb32c8aafec70681b6bbe67f8ab2fefb08be53",
+    "internal/server/http_usage_log.go": "71b58f80c188ae43e3974d1e1ac89d18581e45377d937963077de1d9600fd29b",
+    "internal/server/orchestrator.go": "4b69b36d1e2b84b7b7b1fad1f2d610ae1df7cf41f3510de486ae3ba7218c3d59",
+    "internal/server/routes.go": "b4f3ca79e6b65823e23401d8a09d058bb1209a626ecb4802fc9126158cad28bd",
+    "platform/middleware/bodylimit.go": "ef75c9c634b02b0a9c3f564c585c3d83631e1e424bf2e76ec4b795f264abbd97",
+    "platform/middleware/bodylimit_test.go": "5480cdd04019d5b3be877ca8e1e565fcad31aa7be86d265054e6122e889faaa4",
+    "platform/middleware/cors.go": "7df19e81012c960482a03e5dd818a83c84a33398568338d827b2fc18be5c221b",
+    "platform/middleware/cors_test.go": "817bb897cb54e349eeacc0eb25057a47348b645173ec41ed0d9cb8544d8f1cf7"
+  },
+  "external_pending": [
+    "actual Gemini source/model and ordinary model pricing",
+    "actual SDK language/version and interoperability",
+    "authorized paid usage and supplier bill comparison",
+    "production deployment and verification"
+  ]
+}

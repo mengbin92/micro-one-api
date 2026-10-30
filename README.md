@@ -15,6 +15,7 @@
 - OpenAI 兼容 API 网关：支持 `/v1/chat/completions`、`/v1/models`、`/v1/responses` 以及 embeddings、audio、image、moderations 等 raw relay 路由。
 - 多渠道模型分发：支持渠道优先级、同优先级负载均衡、禁用渠道过滤、模型白名单和模型映射。
 - 多供应商适配：支持 OpenAI-compatible 渠道，并包含 Anthropic、Gemini、Azure、VoyageAI 等 provider 适配器；DeepSeek、Moonshot、Groq、Tongyi、OpenRouter、SiliconFlow、Ollama、Doubao 等按 OpenAI-compatible 方式转发。
+- 原生 Gemini 入站：支持 `v1beta` 的 generateContent / streamGenerateContent 文本与函数调用、JSON/SSE 和 canonical 用量结算；首版使用 Gemini API-key 渠道，图片/音频等能力明确拒绝。详见 [B2 协议契约](docs/design/b2-native-gemini-contract-2026-10-30.md)。
 - 用户与令牌管理：支持用户鉴权、令牌状态、过期时间、余额检查、模型权限和用户角色控制。
 - 钱包与账务：提供金额预扣、释放、结算、ledger、兑换码、支付订单和用量记录等能力。
 - 订阅套餐与用量查询：支持订阅套餐购买、续费、退款/冲正、购买时套餐快照，以及 API Key 鉴权的 `/v1/subscription/usage` 查询（额度、已用量、剩余额度和下次刷新时间）。
@@ -250,6 +251,18 @@ curl -X POST http://localhost:8080/v1/chat/completions \
     "stream": true
   }'
 ```
+
+### 原生 Gemini
+
+先配置可用的 Gemini API-key 渠道、模型路由及普通价格；`MODEL` 为平台允许访问的模型名称，`API_TOKEN` 为本平台 Token。
+
+```bash
+curl "http://localhost:8080/v1beta/models/${MODEL}:generateContent" \
+  -H "x-goog-api-key: ${API_TOKEN}" -H 'Content-Type: application/json' \
+  -d '{"contents":[{"parts":[{"text":"Hello"}]}],"generationConfig":{"maxOutputTokens":128}}'
+```
+
+流式调用改用 `:streamGenerateContent?alt=sse`，并加 `curl -N`。工具多轮、支持/拒绝矩阵及结算规则见 [B2 契约](docs/design/b2-native-gemini-contract-2026-10-30.md)；部署和真实来源验收状态见 [B2 验收](docs/runbooks/b2-native-gemini-acceptance-2026-10-30.md)。
 
 ## 配置要点
 

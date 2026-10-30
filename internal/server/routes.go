@@ -115,6 +115,7 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 
 	// Anthropic Messages API inbound endpoint (for Claude Code CLI / native Anthropic SDK clients)
 	s.handleFunc(srv, "/v1/messages", executionRoute(relayEndpointMessages, relayExecutionPathLegacy), s.relayOrchestratorMessagesHandler)
+	s.handlePrefix(srv, "/v1beta/models/", executionRoute("/v1beta/models/{model}:generateContent", relayExecutionPathOrchestrator), http.HandlerFunc(s.handleGemini))
 	s.handleFunc(srv, "/v1/models", readOnlyRoute(), s.handleModels)
 	s.handlePrefix(srv, "/v1/models/", readOnlyRoute(), http.HandlerFunc(s.handleRetrieveModel))
 	// Register last within /v1: exact endpoints and resource prefixes win.
@@ -155,6 +156,15 @@ func (s *HTTPServer) wrapRoute(pattern string, declaration routeDeclaration, han
 	}
 	for _, v := range slices.Backward(s.routeMiddleware) {
 		h = v(h)
+	}
+	if pattern == "/v1beta/models/" {
+		inner := h
+		h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			request, ok := prepareGeminiInbound(w, r)
+			if ok {
+				inner.ServeHTTP(w, request)
+			}
+		})
 	}
 	if declaration.category == routeCategoryExecution {
 		h = observeRelayExecution(h, declaration.endpoint, declaration.executionPath, declaration.stream)
