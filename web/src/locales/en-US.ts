@@ -9,6 +9,15 @@ import { EN_US_SERVICE_TIER_MESSAGES } from '@/locales/en-US.service-tier';
 // Product terminology overrides. Keep these concise and consistent across
 // user and admin surfaces; the generated catalog provides the long-tail copy.
 export const EN_US_MESSAGES: Record<string, string> = {
+ '备份 worker 已连接': 'Backup worker connected', '备份 worker 未连接': 'Backup worker offline', '最近一次备份检查失败': 'Last backup check failed',
+ '管理化备份': 'Managed backups', '备份会短暂停止业务写入。恢复演练须在隔离空环境完成。': 'Backups briefly pause application writes. Restore drills require an isolated empty environment.',
+ '备份管理未就绪，请检查 worker 和存储配置。': 'Backup management is unavailable. Check the worker and storage configuration.',
+ '启用定时备份': 'Enable scheduled backups', '备份间隔（小时）': 'Backup interval (hours)', '保留成功备份数': 'Successful backups to retain',
+ '可接受数据丢失（小时）': 'Recovery point objective (hours)', '恢复时长目标（分钟）': 'Recovery time objective (minutes)',
+ '保存备份策略': 'Save backup policy', '立即备份': 'Back up now', '放弃修改': 'Discard changes', '备份策略已保存': 'Backup policy saved',
+ '任务已排队，备份完成后可查看结果。': 'Backup queued. Check this list for its result.', '暂无备份任务': 'No backup jobs yet', '备份审计': 'Backup audit',
+ '备份中': 'Backing up', '备份成功': 'Backup succeeded', '备份失败': 'Backup failed', '结果不确定': 'Uncertain result', '清理中': 'Deleting', '已按保留策略清理': 'Expired by retention policy', '备份操作失败': 'Backup operation failed',
+
   ...EN_US_SERVICE_TIER_MESSAGES,
   '账期最终性依据': 'Period finality basis', '确认类型': 'Confirmation type', '维护者确认': 'Maintainer confirmation',
   '确认内容': 'Confirmation statement', '该账期不再更正': 'No further corrections for this period',

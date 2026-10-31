@@ -195,7 +195,7 @@ test-integration: proto
 # platform/security/auth carries the in-process JWT revocation blocklist
 # (global map + RWMutex) so its concurrent-access test runs under race too.
 test-race:
-	go test -race ./domain/operations/... ./domain/subscription/... ./domain/upstream/evidence/... ./domain/upstream/contract/... ./domain/upstream/repair/... ./app/channel/internal/data/... ./internal/biz/... ./internal/server/... ./app/billing/... ./app/admin/... ./platform/security/auth/... ./platform/routingoutbox/... ./platform/grpc/xgrpc/...
+	go test -race ./domain/backup/... ./domain/operations/... ./domain/subscription/... ./domain/upstream/evidence/... ./domain/upstream/contract/... ./domain/upstream/repair/... ./app/channel/internal/data/... ./internal/biz/... ./internal/server/... ./app/billing/... ./app/admin/... ./platform/security/auth/... ./platform/routingoutbox/... ./platform/grpc/xgrpc/...
 
 .PHONY: run-identity
 # run identity-service
@@ -575,3 +575,8 @@ migrate-postgres: migrate-prereq
 test-sqlite:
 	MIGRATIONS_DSN='file:/tmp/micro-one-api-test.db?_busy_timeout=5000&_foreign_keys=on' \
 	MIGRATIONS_DRIVER=sqlite3 go test -count=1 $$(go list ./... | grep -v '/test/e2e/suite$$' | grep -v '/web/node_modules/')
+
+.PHONY: test-managed-backup
+# Fresh isolated MySQL/Redis/S3 source + empty target; never reads deploy .env.
+test-managed-backup:
+	BACKUP_E2E=true go test ./internal/integration -run '^TestManagedBackupRealEmptyRestore$$' -count=1 -v -timeout=12m

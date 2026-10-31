@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	backupbiz "micro-one-api/domain/backup/biz"
 	"micro-one-api/platform/authz"
 	"net/http"
 	"net/url"
@@ -35,6 +36,7 @@ import (
 
 // AdminService is the transport layer entry for admin-api.
 type AdminService struct {
+	backupUc  *backupbiz.Usecase
 	logClient logv1.LogServiceClient
 	adminv1.UnimplementedAdminServiceServer
 	billingClient   billingv1.BillingServiceClient

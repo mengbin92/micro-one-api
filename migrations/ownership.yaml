@@ -171,6 +171,7 @@ services:
     - 145_add_log_service_tier
 
   admin:
+    - 147_create_managed_backups
     - 119_upstream_cost_resource_ids
     - 117_system_options_revision
     # system_options (007); the rest is owned elsewhere.

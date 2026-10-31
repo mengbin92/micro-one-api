@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/subtle"
+	"os"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -28,6 +30,15 @@ func (r adminResourceAuthorizer) Query(ctx context.Context, point, operation, cr
 	out, err := r.service.iam.uc.ResourceAuthorization(ctx, credential, authorization.ResourceRequest{ExecutionPoint: point, Operation: operation})
 	if err != nil {
 		return out, err
+	}
+	if point == "admin.backups" && out.Mode == "legacy" {
+		shared := os.Getenv("ADMIN_TOKEN")
+		if shared == "" || credential == "" || subtle.ConstantTimeCompare([]byte(shared), []byte(credential)) != 1 {
+			_, role, verifyErr := r.service.AuthorizeAdminToken(ctx, credential)
+			if verifyErr != nil || role < RoleAdmin {
+				return out, status.Error(codes.PermissionDenied, "backup administrator required")
+			}
+		}
 	}
 	if out.Mode != "legacy" && out.Mode != "iam" {
 		return out, status.Error(codes.Unavailable, "authorization mode unavailable")

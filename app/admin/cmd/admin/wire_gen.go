@@ -21,6 +21,7 @@ import (
 	"micro-one-api/app/admin/internal/data/routingaccess"
 	"micro-one-api/app/admin/internal/server"
 	"micro-one-api/app/admin/internal/service"
+	biz2 "micro-one-api/domain/backup/biz"
 	"micro-one-api/platform/audit"
 	registry2 "micro-one-api/platform/registry"
 	"time"
@@ -33,8 +34,13 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	repo, cleanup, err := newBackupRepo(config)
+	if err != nil {
+		return nil, nil, err
+	}
 	mainClientsResult, err := newClients(config)
 	if err != nil {
+		cleanup()
 		return nil, nil, err
 	}
 	mainSubscriptionResult := newSubscriptionUsecases(config)
@@ -54,8 +60,9 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	routingAccessUsecase := biz.NewRoutingAccessUsecase(routingGroupReader, routingAccessRepo)
 	auditor := newAuditAuditor()
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup := newApp(config, mainClientsResult, mainSubscriptionResult, adminService, iamAdminService, routingGroupUsecase, routingAccessUsecase, auditor, mainRegistrarResult)
+	app, cleanup2 := newApp(config, repo, mainClientsResult, mainSubscriptionResult, adminService, iamAdminService, routingGroupUsecase, routingAccessUsecase, auditor, mainRegistrarResult)
 	return app, func() {
+		cleanup2()
 		cleanup()
 	}, nil
 }
@@ -64,6 +71,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 var ProviderSet = wire.NewSet(
 	newClients,
+	newBackupRepo,
 	newSystemOptionsRepo,
 	newSystemOptionsUsecase,
 	newSubscriptionUsecases,
@@ -108,6 +116,7 @@ func provideRegistrar(cfg *Config) registrarResult {
 
 func newApp(
 	cfg *Config,
+	backupRepo biz2.Repo,
 	clients *clientsResult,
 	sub subscriptionResult,
 	svc *service.AdminService, iam2 *service.IAMAdminService,
@@ -117,6 +126,7 @@ func newApp(
 	reg registrarResult,
 ) (*kratos.App, func()) {
 	svc.SetIAMService(iam2)
+	svc.SetBackupUsecase(biz2.NewUsecase(backupRepo, svc.ResourceAuthorizer()))
 	svc.SetLogClient(clients.logClient)
 	svc.SetRoutingGroupUsecase(routingGroups)
 	svc.SetRoutingAccessUsecase(routingAccess)

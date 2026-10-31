@@ -333,6 +333,8 @@ services:
       - SERVICE_CALLER_TOKENS=${ADMIN_SERVICE_CALLER_TOKENS:-}
       - ADMIN_TRUSTED_PROXY_CIDRS=${ADMIN_TRUSTED_PROXY_CIDRS:-}
       - ADMIN_WEB_ROOT=/web
+      # Control metadata only; privileged backup worker runs on the host.
+      - BACKUP_CONTROL_ENABLED=${BACKUP_CONTROL_ENABLED:-false}
       - SUBSCRIPTION_USER_RPM_LIMIT=${SUBSCRIPTION_USER_RPM_LIMIT:-0}
       - PROMETHEUS_URL=${PROMETHEUS_URL:-http://prometheus:9090}
       # P2.3: relay-gateway /metrics direct scrape (degraded fallback when

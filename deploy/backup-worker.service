@@ -1,0 +1,26 @@
+[Unit]
+Description=Micro One API managed backup worker
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Docker orchestration is intentionally confined to this host role.
+User=root
+UMask=0077
+EnvironmentFile=/etc/micro-one-api/backup-worker.env
+ExecStart=/opt/micro-one-api/bin/backup-worker -config /etc/micro-one-api/backup-worker.json
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=240
+KillSignal=SIGTERM
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+StateDirectory=micro-one-api-backup
+StateDirectoryMode=0700
+
+[Install]
+WantedBy=multi-user.target

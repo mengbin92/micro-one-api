@@ -1,0 +1,25 @@
+# Build on the developer machine/CI and export a static Linux host executable.
+# Protobuf generation runs natively; the C toolchain runs on the target CPU.
+FROM --platform=$BUILDPLATFORM golang:1.27.2-alpine AS proto
+RUN apk add --no-cache make git
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY scripts/tool-versions.env scripts/tool-versions.env
+COPY Makefile ./
+RUN make init
+COPY . .
+RUN make proto
+
+FROM golang:1.27.2-alpine AS build
+RUN apk add --no-cache gcc musl-dev
+WORKDIR /src
+COPY --from=proto /src /src
+COPY --from=proto /go/pkg/mod /go/pkg/mod
+ARG TARGETOS
+ARG TARGETARCH
+RUN --mount=type=cache,id=micro-one-api-gobuild-${TARGETOS}-${TARGETARCH},target=/root/.cache/go-build \
+  CGO_ENABLED=1 go build -tags netgo,osusergo -ldflags="-s -w -linkmode external -extldflags '-static'" -o /out/backup-worker ./cmd/backup-worker
+
+FROM scratch AS artifact
+COPY --from=build /out/backup-worker /backup-worker

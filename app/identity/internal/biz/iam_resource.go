@@ -86,7 +86,7 @@ func (uc *IdentityUsecase) GetResourceAuthorization(ctx context.Context, raw str
 	if err != nil {
 		return authorization.ResourceAuthorization{}, err
 	}
-	if authorization.StepUpOperation(req.Operation) {
+	if authorization.StepUpOperation(req.Operation) || req.ExecutionPoint == "admin.backups" && req.Operation == "system.option.security.update" {
 		if err := uc.RequireStepUp(ctx, raw, true); err != nil {
 			return authorization.ResourceAuthorization{}, err
 		}

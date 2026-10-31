@@ -1,6 +1,6 @@
 # 下一阶段排期：用户自助、安全认证与计价补齐
 
-> **当前执行入口**。制定：2026-10-26（Asia/Shanghai）。源码基线：`develop@918b56c9` / v0.36.6；比较基线为本地 `new-api@34003e9c2`、`sub2api@ba81c7fd7`。接替 [10 月 20 日计划](next-stage-plan-2026-10-20.md)。本文为研发排期；2026-10-27 A1 已部署生产并验证，真实邮件收件通过；Turnstile 保持关闭，启用时另验。A2（含复核修复及登录权限修复）已部署生产并通过线上验证，强制策略开关关闭，真实外部因子验收保留（见 [A2 验收](../runbooks/a2-security-acceptance-2026-10-27.md)），A3 已实现并合入 `develop`（默认关闭；2026-10-30 B1 部署已更新 Billing/Log/Relay/Identity/Admin/Web，144/145/146 相关字段到位；计价未启用，真实来源/价格/付费验收保留，见 [A3 验收](../runbooks/a3-service-tier-acceptance-2026-10-27.md)），A4 已部署并完成关闭态线上验收（默认关闭；真实商户、付款及回调按维护者决定后补，见 [A4 验收](../runbooks/a4-wechat-native-acceptance-2026-10-28.md)），B1 于 2026-10-30 完成关闭态部署（含追加的忙闲时段计价，真实阈值/价格后补，见 [B1 验收](../runbooks/b1-context-time-pricing-acceptance-2026-10-29.md)），B2 于 2026-10-30 完成原生 Gemini 生产部署及鉴权/拒绝验收（真实来源/SDK/付费验收待外部条件，见 [B2 验收](../runbooks/b2-native-gemini-acceptance-2026-10-30.md)），既有生产条件继续按原记录保留。
+> **当前执行入口**。制定：2026-10-26（Asia/Shanghai）。源码基线：`develop@918b56c9` / v0.36.6；比较基线为本地 `new-api@34003e9c2`、`sub2api@ba81c7fd7`。接替 [10 月 20 日计划](next-stage-plan-2026-10-20.md)。本文为研发排期；2026-10-27 A1 已部署生产并验证，真实邮件收件通过；Turnstile 保持关闭，启用时另验。A2（含复核修复及登录权限修复）已部署生产并通过线上验证，强制策略开关关闭，真实外部因子验收保留（见 [A2 验收](../runbooks/a2-security-acceptance-2026-10-27.md)），A3 已实现并合入 `develop`（默认关闭；2026-10-30 B1 部署已更新 Billing/Log/Relay/Identity/Admin/Web，144/145/146 相关字段到位；计价未启用，真实来源/价格/付费验收保留，见 [A3 验收](../runbooks/a3-service-tier-acceptance-2026-10-27.md)），A4 已部署并完成关闭态线上验收（默认关闭；真实商户、付款及回调按维护者决定后补，见 [A4 验收](../runbooks/a4-wechat-native-acceptance-2026-10-28.md)），B1 于 2026-10-30 完成关闭态部署（含追加的忙闲时段计价，真实阈值/价格后补，见 [B1 验收](../runbooks/b1-context-time-pricing-acceptance-2026-10-29.md)），B2 于 2026-10-30 完成原生 Gemini 生产部署及鉴权/拒绝验收（真实来源/SDK/付费验收待外部条件，见 [B2 验收](../runbooks/b2-native-gemini-acceptance-2026-10-30.md)），B3 于 2026-10-30 工程验收通过并部署生产（默认关闭、控制面未启用，见 [B3 验收](../runbooks/b3-managed-backup-acceptance-2026-10-30.md) 及 [生产部署证据](../runbooks/evidence/b3-production-deployment-2026-10-30.json)），真实私有存储与启用验收待外部条件，既有生产条件继续按原记录保留。
 
 ## 1. 目标、投入假设与时间口径
 
@@ -115,7 +115,7 @@ Passkey 单列 C1，不计入本项。首批接口清单冻结后增加新的敏
 | --- | --- | --- | --- |
 | B1 / P2 | 长上下文计价；追加忙闲时段计价 | 单模型、单阈值，严格 >T 整单五桶计价；缓存参与阈值；预扣时冻结时区/忙闲窗口/节假日日历，可与长上下文组合 | 原估 5–7 日；2026-10-29 维护者指定 channel/11、deepseek-flash 并追加分时需求；2026-10-30 已部署关闭态，真实阈值/价格及收费验收后补 |
 | B2 / P2 | 原生 Gemini 入站 | 文本和工具调用、JSON/SSE、鉴权/路由/用量/结算；明确图片/音频及不支持特性的拒绝行为 | 原估 8–12 日；2026-10-30 已部署 Relay 并完成公网鉴权/拒绝/CORS/健康验收，真实来源/SDK/付费验收保留 |
-| B3 / P2 | 管理化备份 MVP | 当前生产 MySQL + Redis 的一致性计划、S3、调度 leader、任务状态、保留策略、审计；在隔离空环境完成恢复 | 10–15 日；依赖 A2，准备私有存储、恢复环境和恢复目标；生产覆盖恢复后排 |
+| B3 / P2 | 管理化备份 MVP | 当前生产 MySQL + Redis 的一致性计划、S3、调度 leader、任务状态、保留策略、审计；在隔离空环境完成恢复 | 原估 10–15 日；2026-10-30 工程验收通过并部署生产（默认关闭）；真实私有存储/生产恢复目标及启用验收保留，生产覆盖恢复后排 |
 | B4 / P2 | 用户运营可见性 | 第一切片为用户可用模型/渠道状态；下一切片为公告定向/发布时间/已读及管理页 | 3–5 日 + 4–6 日；先确认披露范围和公告使用需求 |
 
 ### B1：长上下文与忙闲时段计价
@@ -133,6 +133,8 @@ Passkey 单列 C1，不计入本项。首批接口清单冻结后增加新的敏
 相关回归、完整 `make verify`、SQLite/MySQL 8.4/PostgreSQL 18 的真实 HTTP/gRPC Billing/Log owner 验收通过；三库分别验证 JSON/SSE、缺 usage、真实客户端取消、账本/日志五桶和重复结算。无新增迁移、proto 或前端制品，候选只影响 Relay。冻结范围、调用示例所需配置、兼容与回滚见 [B2 契约](b2-native-gemini-contract-2026-10-30.md)，证据和外部保留项见 [B2 验收](../runbooks/b2-native-gemini-acceptance-2026-10-30.md)。2026-10-30 10:32 CST 本机跨构建后已更新 Relay，14 项公网检查、健康、镜像/源码摘要及环境一致性通过；其余 20 个容器、前端和业务配置未变，已留回滚备份（[生产证据](../runbooks/evidence/b2-production-deployment-2026-10-30.json)）。正式 API 根地址为 `https://api.mengbin.top`；真实来源/模型、SDK 实测和付费验证继续保留，未发布/tag。
 
 ### B3：管理化备份的完成边界
+
+**2026-10-30 状态：工程验收通过，生产已部署（默认关闭）；待存储与启用验收。** Identity/Admin/Web 与 Admin 147 于 2026-10-30 23:00 CST 上线，控制面关闭、host worker 未安装（见 [生产部署证据](../runbooks/evidence/b3-production-deployment-2026-10-30.json)）。 Admin 策略/任务/审计页与 HTTP/RPC、A2 会话证明、147 三库控制表、主机/MySQL 双锁调度、共同停写一致性、age 加密、私有 S3 与独立恢复索引、保留策略及空环境恢复均已实现。完整 `make verify`、三库真实 owner/step-up、桌面/移动 Chrome、Linux/amd64 静态 worker 构建通过。约 20.04 MiB 加密夹具覆盖分片上传、条件写入禁止覆盖和私有读回；独立空 MySQL/Redis 恢复导入 2.371 秒，下载至业务核对完成 3.027 秒，原 Token、从归档恢复的 MFA/渠道密钥、钱包及正金额待结算预扣幂等核对通过。重启日志恢复、S3 故障、停写后锁失败及保留清理重试已验证。工程默认目标 RPO 24 小时/RTO 60 分钟；真实私有 S3、生产目标/容量和停写窗口、连续调度及部署待维护者确认。实际候选涉及 Identity/Admin/Web/host worker，不更改既有生产开关或试点。契约、配置、回滚与证据见 [B3 契约](b3-managed-backup-contract-2026-10-30.md) / [B3 验收](../runbooks/b3-managed-backup-acceptance-2026-10-30.md)。
 
 B3 的完成条件包含数据库、Redis、版本/配置和密钥引用清单，以及钱包、Token、渠道凭证解密和待结算任务的恢复核对。SQLite/PostgreSQL 后台备份支持另排；复用 Lite 经验不等于已完成后台三库恢复。恢复目标先定义可接受的数据丢失窗口和恢复时长，再测量结果。
 
@@ -193,3 +195,8 @@ D 为从 2026-10-27 起计的工作日，表示工程安排，不替代外部验
 - [x] B2 工程验收（2026-10-30）：原生 Gemini 文本/函数 JSON/SSE、鉴权/映射/计费/日志、三库真实 owner 链路及完整门禁通过（[记录](../runbooks/b2-native-gemini-acceptance-2026-10-30.md)）。
 - [x] B2 生产部署验收（2026-10-30）：仅 Relay 更新，14 项公网检查、源码/镜像/环境及 20 个其他容器不变性通过（[证据](../runbooks/evidence/b2-production-deployment-2026-10-30.json)）。
 - [ ] B2 外部验证：实际来源/模型、SDK 版本与真实付费用量尚未执行；不扩大既有试点，不改历史账本。
+
+- [x] B3 工程验收（2026-10-30）：管理策略/任务/审计、A2、三库控制迁移和 owner HTTP/gRPC、双锁调度、私有 S3/age/保留策略、桌面/移动 Chrome 与完整门禁通过。
+- [x] B3 隔离空环境恢复（2026-10-30）：独立 MySQL/Redis、新卷和真实 S3 兼容服务；钱包、原 Token、归档密钥解密、MFA 和正金额未结算预扣幂等核对通过（[证据](../runbooks/evidence/b3-managed-backup-2026-10-30.json)）。
+- [x] B3 生产部署（2026-10-30）：Admin 147 → Identity → Admin/Web 按序上线，默认关闭，回滚锚点与线上核验齐全（[证据](../runbooks/evidence/b3-production-deployment-2026-10-30.json)）。
+- [ ] B3 外部验证及启用：真实私有 S3、host worker 安装与运行账号授权、生产 RPO/RTO/容量/停写窗口、连续调度观察及受控启用；不执行生产覆盖恢复。

@@ -1,0 +1,95 @@
+{
+ "date": "2026-10-30",
+ "timezone": "Asia/Shanghai",
+ "status": "deployed_disabled",
+ "stage": "B3 managed backup candidate: Identity/Admin/Web + admin migration 147, control plane disabled",
+ "tag": "deploy-20261030-225430-7d3f4cbf",
+ "baseline_commit": "7d3f4cbfdab60a6816a9ec3674d5c59e5f34f1b3",
+ "source_digest": "820a1abc8509cdb29880df207bb20c0e50a6ebda79f9873301ede375b1fd1c73",
+ "source_digest_tool": "scripts/rbac-source-digest.py over the pre-commit B3 working tree",
+ "platform": "linux/amd64",
+ "deployed_at_utc": "2026-10-30T15:01:09Z",
+ "verified_at_utc": "2026-10-31T02:21:24Z",
+ "services": {
+  "identity-service": {
+   "image_id": "sha256:46838618d443759b4913a7af73be6ac2be8f41422db494b3409d496ce7f9b94a",
+   "source_digest_matches": true,
+   "running": true,
+   "restart_count": 0,
+   "backup_control_env_lines": 0,
+   "healthz": true,
+   "healthz_port": 8001,
+   "startup_log_counts": {
+    "panic_fatal": 0,
+    "error_level": 0
+   }
+  },
+  "admin-api": {
+   "image_id": "sha256:d790b63628b73b1725883f9419a9305828ffe04d20b04d99fe3084f7715fc276",
+   "source_digest_matches": true,
+   "running": true,
+   "restart_count": 0,
+   "backup_control_env_lines": 0,
+   "healthz": true,
+   "startup_log_counts": {
+    "panic_fatal": 0,
+    "error_level": 0
+   }
+  }
+ },
+ "control_plane": {
+  "BACKUP_CONTROL_ENABLED": "absent (defaults to false; admin-api built backup repo only on literal true)",
+  "backup_api_unauthenticated_http": 401,
+  "policy_enabled": false,
+  "worker_phase": "offline",
+  "host_worker_installed": false,
+  "note": "Control metadata tables exist but no control DB connection, worker, S3 storage or schedule is configured; existing A2 enforcement policy untouched."
+ },
+ "migration": {
+  "version": "147_create_managed_backups",
+  "schema": "oneapi_admin",
+  "ownership": "admin",
+  "runner_status_applied": true,
+  "tables": [
+   "backup_policies",
+   "backup_jobs",
+   "backup_events",
+   "backup_worker_state"
+  ],
+  "default_rows": {
+   "backup_policies": "{\"Revision\":1,\"Enabled\":false,\"IntervalHours\":24,\"Retain\":7,\"RPOHours\":24,\"RTOMinutes\":60}",
+   "backup_worker_state": "id=1 phase=offline last_seen=0"
+  },
+  "method": "Repo Runner image (b3-migrate:amd64, Dockerfile.migrate) status-checked via admin service account; remote root TCP is locked (error 3118), so SQL was applied by root through the existing mysql container local socket per the B1 convention, then bookkeeping INSERT INTO schema_migrations (version) VALUES ('147_create_managed_backups') replicated runner markApplied; runner -ownership admin -status re-verified 147=yes. Admin service account (iamd_admin_*) lacks CREATE on schema_migrations, so it cannot run the writer itself."
+ },
+ "web": {
+  "index_sha256": "04154b2e2dbb0e46df907316d5d87b67fca52c13da931dcb5b51d9cd0fb75049",
+  "index_match_local_dist": true,
+  "deploy_method": "tarball extracted to staging, hashed assets merged first, index.html replaced last so open pages keep working",
+  "dist_backup": "/opt/web/dist.bak.20261030-225808"
+ },
+ "rollback": {
+  "image_tag": "rollback-20261030-225430",
+  "compose_backup": "/opt/micro-one-api/docker-compose/docker-compose.yml.rollback-20261030-225430",
+  "web_backup": "/opt/web/dist.bak.20261030-225808",
+  "previous_images": [
+   "docker-compose-identity-service:b1-20261030-085841-691292280c1e",
+   "docker-compose-admin-api:b1-20261030-085841-691292280c1e"
+  ],
+  "note": "Rollback: set compose image back to the previous tag and docker compose up -d --no-deps --no-build --pull never <svc>; control tables may stay. Backup control enablement would prevent rolling Identity back below a build that knows the admin.backups execution point."
+ },
+ "scope_unchanged": {
+  "other_containers": "all 21 remaining containers unchanged (uptime/restart continuity verified)",
+  "production_features": "pricing/payment/vendor pilots, A2 enforcement policy, relay safety unchanged; no release tag, no production restore executed"
+ },
+ "external_pending": [
+  "private production S3 credentials, TLS, permissions and lifecycle, then host backup-worker install (deploy/backup-worker.service, worker env with real DSNs/age recipient)",
+  "runtime grants from migrations/manual/147_backup_runtime_grants.example.sql for the admin control account plus separately provisioned backup_worker/backup_snapshot accounts",
+  "production RPO/RTO and interruption window confirmation, actual-size restore timing and consecutive schedule observation",
+  "controlled enablement: BACKUP_CONTROL_ENABLED=true first, then policy, only after maintainer acceptance of a manual backup/restore drill"
+ ],
+ "notes": [
+  "docker.io and GitHub were intermittently unreachable during the build window (TLS timeouts); base images were pre-pulled once the registry recovered, then both service images cross-built with scripts/deploy-update.sh.",
+  "Deploy order followed the frozen contract: admin migration 147 first, then Identity, then Admin, then Web; host worker intentionally not installed without production storage."
+ ]
+}

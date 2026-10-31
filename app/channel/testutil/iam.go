@@ -19,3 +19,10 @@ func NewIAMStack(db *gorm.DB, resolver *authz.Client) *kgrpc.Server {
 	svc.SetRoutingGroupUsecase(biz.NewRoutingGroupUsecase(groups))
 	return server.NewGRPCServer(":0", svc)
 }
+
+// NewBackupRecoveryService exercises credential decryption through the real
+// owner repository in a caller-owned, restored database.
+func NewBackupRecoveryService(db *gorm.DB, key []byte) *service.ChannelService {
+	channels := data.NewBackupRecoveryRepo(db, key)
+	return service.NewChannelService(biz.NewChannelUsecase(channels, nil))
+}
