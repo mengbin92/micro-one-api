@@ -22,7 +22,15 @@ class DeployArgumentsTest(unittest.TestCase):
             compose = root / "target/docker-compose"
             compose.mkdir(parents=True)
             config = compose / "docker-compose.yml"
-            original = 'services:\n  channel-service:\n    image: registry/channel:fixed-old\n    environment:\n      KEEP: untouched\n  billing-service:\n    image: registry/billing:fixed-old\n'
+            original = ('services:\n  channel-service:\n    image: registry/channel:fixed-old\n'
+                        '    labels:\n      micro-one-api.source.digest: ' + 'b' * 64 + '\n'
+                        '    environment:\n      KEEP: untouched\n  billing-service:\n    image: registry/billing:fixed-old\n'
+                        '    labels:\n      micro-one-api.source.digest: ' + 'c' * 64 + '\n')
+            old_label = '      micro-one-api.source.digest: ' + 'b' * 64 + '\n'
+            if failure == 'duplicate-source':
+                original = original.replace(old_label, old_label * 2, 1)
+            if failure == 'inherited-source':
+                original = original.replace('    labels:\n' + old_label, '', 1)
             config.write_text(original)
             calls = root / "calls"
             stubs = {
@@ -45,18 +53,26 @@ case "$1 $2" in
       *'{{.Image}}'*)
         if [[ -f "$DEPLOY_TEST_UPDATED.${2#test-container-}" ]]; then printf 'sha256:%064d\n' 2; else printf 'sha256:%064d\n' 1; fi ;;
       *'{{.Id}}'*) printf 'sha256:%064d\n' 2 ;;
+      *'micro-one-api.source.digest'*)
+        if [[ "$DEPLOY_TEST_FAILURE" = container-source ]]; then printf '%064d\n' 0; else printf '%064d\n' 0 | tr 0 a; fi ;;
     esac ;;
   'compose ps') echo "test-container-$4" ;;
   'compose config')
     if [[ "$3" = --format && "$4" = json ]]; then
       python3 - <<'PY'
 import json, os, re
-images = dict(re.findall(r'^  ([a-z-]+):\\n    image: (.+)$', open('docker-compose.yml').read(), re.M))
+text = open('docker-compose.yml').read()
+images = dict(re.findall(r'^  ([a-z-]+):\\n    image: (.+)$', text, re.M))
 images['redis'] = 'redis:8.4'
 failure = os.environ['DEPLOY_TEST_FAILURE']
 if failure == 'override': images['channel-service'] = 'registry/shadow:old'
 if failure == 'second-override': images['billing-service'] = 'registry/shadow:old'
-print(json.dumps({'services': {name: {'image': image} for name, image in images.items()}}))
+services = {name: {'image': image} for name, image in images.items()}
+for name, body in re.findall(r'^  ([a-z-]+):\\n((?:^    .*\\n)*)', text, re.M):
+    digest = re.search(r'^      micro-one-api\\.source\\.digest: (.+)$', body, re.M)
+    if digest: services[name]['labels'] = {'micro-one-api.source.digest': digest.group(1).strip('"')}
+if failure == 'source-override': services['channel-service']['labels']['micro-one-api.source.digest'] = 'b' * 64
+print(json.dumps({'services': services}))
 PY
     fi ;;
   'compose up') touch "$DEPLOY_TEST_UPDATED.${!#}" ;;
@@ -87,6 +103,25 @@ esac
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(config.count("image: docker-compose-"), 2)
         self.assertEqual(calls.count("docker remote=1 tag sha256:" + f"{1:064d}"), 2)
+
+    def test_selected_service_source_label_tracks_the_new_image(self):
+        result, _, config, _ = self.run_deploy()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('micro-one-api.source.digest: "' + 'a' * 64 + '"', config)
+        self.assertNotIn('micro-one-api.source.digest: ' + 'b' * 64, config)
+        self.assertIn('micro-one-api.source.digest: ' + 'c' * 64, config)
+
+    def test_running_source_label_must_match_image(self):
+        result, calls, _, _ = self.run_deploy(failure='container-source')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('compose up', calls)
+        self.assertNotIn('Deployment completed!', result.stdout)
+
+    def test_absent_compose_source_label_inherits_image_stamp(self):
+        result, _, config, _ = self.run_deploy(failure='inherited-source')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn('a' * 64, config)
+        self.assertIn('micro-one-api.source.digest: ' + 'c' * 64, config)
 
     def test_fixed_image_and_actual_running_rollback(self):
         result, calls, config, original = self.run_deploy()
@@ -119,7 +154,7 @@ esac
         self.assertEqual(calls, "")
 
     def test_failures_stop_deployment(self):
-        for failure in ("save", "upload", "backup", "load", "override", "health"):
+        for failure in ("save", "upload", "backup", "load", "override", "source-override", "duplicate-source", "health"):
             with self.subTest(failure=failure):
                 result, calls, config, original = self.run_deploy(failure=failure)
                 self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -137,7 +172,8 @@ esac
                 stub = root / name
                 stub.write_text('#!/bin/bash\necho "$0 $*" >> "$DEPLOY_TEST_CALLS"\nif [ "${0##*/}" = ssh ]; then cat >/dev/null; fi\n')
                 stub.chmod(0o755)
-            env = {**os.environ, "PATH": f"{root}:{os.environ['PATH']}", "DEPLOY_TEST_CALLS": str(calls)}
+            env = {**os.environ, "PATH": f"{root}:{os.environ['PATH']}", "DEPLOY_TEST_CALLS": str(calls),
+                   "DEPLOY_REMOTE_SERVER": "deploy@test.invalid", "DEPLOY_REMOTE_DIR": str(root / "target")}
             result = subprocess.run(["bash", str(SCRIPT), "billing-service", "typo-service"], env=env, capture_output=True, text=True, timeout=10)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("Unknown service", result.stdout + result.stderr)

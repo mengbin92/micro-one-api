@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PermissionButton as Button } from '@/components/admin/PermissionButton';
@@ -15,6 +16,7 @@ const READ_PERMISSIONS = ['billing.pricing.read', 'billing.upstream_cost.read'];
 const WRITE_PERMISSIONS = ['system.option.update', 'system.option.pricing.update', 'billing.pricing.update', 'billing.upstream_cost.update'];
 
 export function ServiceTierPricingEditor({ options, ready, refresh }: Props) {
+  const queryClient = useQueryClient();
   const auth = useAuthorization();
   const [draft, setDraft] = useState<{ raw: string; revision: string; generation: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -47,6 +49,7 @@ export function ServiceTierPricingEditor({ options, ready, refresh }: Props) {
         reason,
       });
       ensureApiSuccess(response.data, t('保存档位价格失败'));
+      void queryClient.invalidateQueries({ queryKey: ['readonly-pricing'] });
       const result = await refresh();
       if (result?.find(option => option.key === SERVICE_TIER_PRICING_KEY)?.value !== value) {
         toast.error(t('请刷新档位配置后再继续编辑。'));
