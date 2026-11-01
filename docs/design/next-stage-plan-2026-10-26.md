@@ -198,5 +198,5 @@ D 为从 2026-10-27 起计的工作日，表示工程安排，不替代外部验
 
 - [x] B3 工程验收（2026-10-30）：管理策略/任务/审计、A2、三库控制迁移和 owner HTTP/gRPC、双锁调度、私有 S3/age/保留策略、桌面/移动 Chrome 与完整门禁通过。
 - [x] B3 隔离空环境恢复（2026-10-30）：独立 MySQL/Redis、新卷和真实 S3 兼容服务；钱包、原 Token、归档密钥解密、MFA 和正金额未结算预扣幂等核对通过（[证据](../runbooks/evidence/b3-managed-backup-2026-10-30.json)）。
-- [x] B3 生产部署（2026-10-30）：Admin 147 → Identity → Admin/Web 按序上线，默认关闭，回滚锚点与线上核验齐全（[证据](../runbooks/evidence/b3-production-deployment-2026-10-30.json)）。
+- [x] B3 生产部署（2026-10-30）：Admin 147 → Identity → Admin/Web 按序上线，默认关闭，回滚锚点与线上核验齐全（[证据](../runbooks/evidence/b3-production-deployment-2026-10-30.json)）。B1/B2/B3 已合并入 main 并随 v0.38.0（2026-11-01）发布。
 - [ ] B3 外部验证及启用：真实私有 S3、host worker 安装与运行账号授权、生产 RPO/RTO/容量/停写窗口、连续调度观察及受控启用；不执行生产覆盖恢复。
