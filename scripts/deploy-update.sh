@@ -170,10 +170,10 @@ deploy_service() {
 
     # Load and deploy on server
     log_info "Deploying on server (rollback tag: ${ROLLBACK_TAG})..."
-    ssh "$SERVER" bash -s -- "$COMPOSE_DIR" "$service" "$image_name" "$expected_id" "$ROLLBACK_TAG" "${temp_file##*/}" <<'REMOTE'
+    ssh "$SERVER" bash -s -- "$COMPOSE_DIR" "$service" "$image_name" "$expected_id" "$ROLLBACK_TAG" "${temp_file##*/}" "$SOURCE_DIGEST" <<'REMOTE'
 set -euo pipefail
 cd "$1"
-service=$2; image=$3; expected=$4; rollback=$5; archive="/tmp/$6"
+service=$2; image=$3; expected=$4; rollback=$5; archive="/tmp/$6"; source_digest=$7
 cid=$(docker compose ps -q "$service")
 [[ -n "$cid" && "$cid" != *$'\n'* ]]
 old=$(docker inspect "$cid" --format '{{.Image}}')
@@ -191,10 +191,10 @@ test -n "$file"
 if [ ! -e "$file.$rollback" ]; then cp -p "$file" "$file.$rollback"; fi
 previous=$(mktemp "${file}.before-image.XXXXXX")
 cp -p "$file" "$previous"
-python3 - "$file" "$service" "$image" <<'PY'
+python3 - "$file" "$service" "$image" "$source_digest" <<'PY'
 import os, re, sys, tempfile
 from pathlib import Path
-path, service, image = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+path, service, image, source_digest = Path(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4]
 text = path.read_text()
 blocks = list(re.finditer(r'^  '+re.escape(service)+r':\s*\n(?:^(?:    .*|\s*|#.*)\n)*', text, re.M))
 if len(blocks) != 1:
@@ -209,6 +209,14 @@ if re.search(pattern, body, re.M):
 else:
     header, rest = body.split('\n', 1)
     body = header+'\n    image: '+image+'\n'+rest
+# Compose labels override image labels, so refresh an explicit source stamp too.
+labels = re.search(r'^    labels:\s*\n(?:^(?:      .*|\s*|#.*)\n)*', body, re.M)
+if labels:
+    label_pattern = r"^      ([\"']?)micro-one-api\.source\.digest\1:.*$"
+    if len(re.findall(label_pattern, labels.group(), re.M)) > 1:
+        raise SystemExit('Ambiguous source label; Compose file unchanged')
+    updated = re.sub(label_pattern, '      micro-one-api.source.digest: "'+source_digest+'"', labels.group(), flags=re.M)
+    body = body[:labels.start()]+updated+body[labels.end():]
 fd, name = tempfile.mkstemp(dir=path.parent)
 with os.fdopen(fd, 'w') as out:
     out.write(text[:block.start()]+body+text[block.end():])
@@ -217,10 +225,10 @@ os.replace(name, path)
 PY
 # Compose includes dependency images even when a service is specified. Read
 # the selected service explicitly from the resolved configuration instead.
-if ! test "$(docker compose config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"][sys.argv[1]]["image"])' "$service")" = "$image"; then
+if ! test "$(docker compose config --format json | python3 -c 'import json,sys; s=json.load(sys.stdin)["services"][sys.argv[1]]; print(s["image"], s.get("labels", {}).get("micro-one-api.source.digest", sys.argv[2]))' "$service" "$source_digest")" = "$image $source_digest"; then
     cp -p "$previous" "$file"
     rm -f "$previous"
-    echo 'Effective Compose image differs; restored configuration' >&2
+    echo 'Effective Compose image/source differs; restored configuration' >&2
     exit 1
 fi
 rm -f "$previous"
@@ -229,6 +237,7 @@ for attempt in {1..30}; do
     cid=$(docker compose ps -q "$service")
     test -n "$cid"
     test "$(docker inspect "$cid" --format '{{.Image}}')" = "$expected"
+    test "$(docker inspect "$cid" --format '{{index .Config.Labels "micro-one-api.source.digest"}}')" = "$source_digest"
     state=$(docker inspect "$cid" --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}')
     case "$state" in
         'running healthy'|'running none') echo "$service image=$expected state=$state rollback=$rollback"; break ;;
