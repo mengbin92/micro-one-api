@@ -7,9 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-11-01
+
+v0.38.0 是 v0.37.1 之后的 **MINOR 功能版本**：发布下一阶段排期 B 阶段三个工作包——B1 冻结上下文档与忙闲时段计价、B2 原生 Gemini `v1beta` 入站、B3 托管 MySQL/Redis 备份控制面，并附带 SMTP 头注入与响应包装器 Unwrap 等安全扫描修复。新增 Billing 146、Admin 147 两个三库迁移与公开契约，不能按补丁判 PATCH。三个工作包已于 2026-10-30 各自完成生产部署（计价与备份控制面默认关闭），真实阈值/价格、私有 S3、host worker 与付费验收保留。详见 [release-v0.38.0.md](docs/releases/release-v0.38.0.md)。
+
 ### Added
 
+- B1 冻结上下文档与忙闲时段计价：准入时冻结时段带，按已核验输入选择整请求五桶价格，账本与快照保留不可变证据；DeepSeek 有界 JSON/SSE、缓存别名校验、转发限额完整性、owner DTO、三库迁移 Billing 146 与计价管理 UI。计价默认关闭，生产关闭态已部署，真实阈值/价格/付费验收保留。
 - B2 原生 Gemini `v1beta` 文本与函数调用入站：generateContent / streamGenerateContent、JSON/SSE、Token 鉴权/路由/模型映射、缓存与思考 token 的 canonical 计量及幂等结算；媒体、隐藏状态、服务端工具和未支持入口显式拒绝。2026-10-30 已部署 Relay 并完成生产拒绝分支验收，真实来源/SDK/付费验收保留，详见 [B2 验收](docs/runbooks/b2-native-gemini-acceptance-2026-10-30.md)。
+- B3 托管 MySQL/Redis 备份控制面：策略、任务回执、append-only 审计与 worker 状态经 admin HTTP/RPC 暴露，受全局 IAM `admin.backups` 与 A2 step-up 保护（迁移 147，三库镜像）；私有 host worker 以 host+MySQL 双锁、age 公钥加密、私有 S3 条件不覆盖写入与外部恢复索引执行备份/恢复，admin-api 不接触制品凭据。生产关闭态已部署，真实私有 S3、host worker 与 RPO/RTO 验收保留。
+
+### Fixed
+
+- 关闭 code-scanning 8 项告警：identity mail sender 加固防 SMTP 头注入，admin 资产 gzip/immutable 包装器与幂等 writer 暴露 `http.ResponseController.Unwrap()`；`challenge.go` 的 SHA-256 澄清为 Redis key 寻址（误报）。
 
 ## [0.37.1] - 2026-10-29
 
