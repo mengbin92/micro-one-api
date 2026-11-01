@@ -1,4 +1,5 @@
 import { screen, waitFor } from '@testing-library/react';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
@@ -7,6 +8,23 @@ import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 
 describe('ServiceTierPricingEditor', () => {
+  it.each([true, false])('invalidates customer prices after a saved tariff with confirmed readback %s', async confirmed => {
+    const user = userEvent.setup();
+    const option = { key: 'ServiceTierPricing', value: '{"enabled":false}', revision: '8' };
+    let client: QueryClient;
+    function Shell() {
+      client = useQueryClient();
+      return <ServiceTierPricingEditor options={[option]} ready refresh={async () => confirmed ? [option] : undefined} />;
+    }
+    server.use(http.put('/api/option/', () => HttpResponse.json({ success: true })));
+    renderWithQuery(<Shell />);
+    const save = await screen.findByRole('button', { name: '保存档位价格' });
+    await waitFor(() => expect(save).toBeEnabled());
+    client!.setQueryData(['readonly-pricing'], { prices: [] });
+    await user.click(save);
+    await waitFor(() => expect(client.getQueryState(['readonly-pricing'])?.isInvalidated).toBe(true));
+  });
+
   it('inserts a disabled selected-model long-context example with the threshold marked unconfirmed', async () => {
     const user = userEvent.setup();
     renderWithQuery(<ServiceTierPricingEditor options={[{ key: 'ServiceTierPricing', value: '{"enabled":false}', revision: '8' }]} ready refresh={async () => []} />);

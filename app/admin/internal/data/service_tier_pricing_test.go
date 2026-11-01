@@ -8,6 +8,8 @@ import (
 	"micro-one-api/app/admin/internal/biz"
 	"micro-one-api/domain/authorization"
 	authztest "micro-one-api/domain/authorization/testutil"
+	"micro-one-api/domain/billing"
+	"micro-one-api/pkg/jsonx"
 	dbtest "micro-one-api/platform/database/testutil"
 )
 
@@ -93,4 +95,28 @@ func TestServiceTierPricingRejectsAmbiguousOptionKeys(t *testing.T) {
 	stored, err := repo.Get(context.Background(), "ServiceTierPricing")
 	require.NoError(t, err)
 	require.Equal(t, initial, stored)
+}
+
+func TestPublicServiceTierPricingDoesNotRequireProcurementGrant(t *testing.T) {
+	db := dbtest.RoutingContextDB(t, "sqlite")
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	repo := NewSystemOptionsRepoWithDriver(sqlDB, "sqlite")
+	repo.gdb = db
+	price := billing.ModelPrice{InputPrice: .000001, OutputPrice: .000002, CacheReadPrice: new(0.0)}
+	prices := map[string]billing.ModelPrice{"default": price, "priority": price, "flex": price}
+	raw, err := jsonx.Marshal(billing.ServiceTierConfig{Version: 1, Enabled: true, SourceKind: "channel", SourceID: 11, Model: "public-model", Prices: prices, UpstreamPrices: prices})
+	require.NoError(t, err)
+	require.NoError(t, repo.Set(context.Background(), "ServiceTierPricing", string(raw)))
+	uc := biz.NewSystemOptionsUsecase(repo)
+	uc.SetAuthorization(&authztest.Resolver{ActorID: 1, Scopes: map[string]authorization.QueryScope{}})
+	ctx := authorization.WithQueryScope(authztest.Context(), "billing.upstream_cost.read", authorization.QueryScope{ActorID: 1})
+	hidden, err := repo.Get(ctx, "ServiceTierPricing")
+	require.NoError(t, err)
+	require.Empty(t, hidden)
+	view, err := uc.PublicServiceTierPricing(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, view)
+	require.Equal(t, "public-model", view.Model)
+	require.Equal(t, prices, view.Prices)
 }
