@@ -43,7 +43,7 @@ func TestRelayCORSConfigIsCredentialFree(t *testing.T) {
 	if !contains(config.AllowedMethods, http.MethodGet) || !contains(config.AllowedMethods, http.MethodPost) || !contains(config.AllowedMethods, http.MethodDelete) || !contains(config.AllowedMethods, http.MethodPatch) || !contains(config.AllowedMethods, http.MethodPut) {
 		t.Fatalf("Relay allowed methods = %v", config.AllowedMethods)
 	}
-	for _, header := range []string{"Authorization", "X-API-Key", "Anthropic-Version", "OpenAI-Beta", "Idempotency-Key", "X-Session-Hash"} {
+	for _, header := range []string{"Authorization", "X-API-Key", "X-Goog-Api-Key", "X-Goog-Api-Client", "Anthropic-Version", "OpenAI-Beta", "Idempotency-Key", "X-Session-Hash"} {
 		if !contains(config.AllowedHeaders, header) {
 			t.Fatalf("Relay allowed headers %v missing %q", config.AllowedHeaders, header)
 		}

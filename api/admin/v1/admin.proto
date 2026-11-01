@@ -9,6 +9,10 @@ import "google/api/annotations.proto";
 option go_package = "micro-one-api/api/admin/v1;adminv1";
 
 service AdminService {
+  rpc GetBackupPolicy(GetBackupPolicyRequest) returns (BackupPolicy) { option (google.api.http) = { get: "/api/admin/backup-policy" }; }
+  rpc UpdateBackupPolicy(UpdateBackupPolicyRequest) returns (BackupPolicy) { option (google.api.http) = { put: "/api/admin/backup-policy" body: "*" }; }
+  rpc CreateBackup(CreateBackupRequest) returns (BackupJob) { option (google.api.http) = { post: "/api/admin/backups" body: "*" }; }
+  rpc ListBackups(ListBackupsRequest) returns (ListBackupsReply) { option (google.api.http) = { get: "/api/admin/backups" }; }
   // ========== 账务相关（透传 billing-service）==========
   rpc TopUpQuota(TopUpQuotaRequest) returns (TopUpQuotaResponse);
   rpc CreateRedeemCode(CreateRedeemCodeRequest) returns (CreateRedeemCodeResponse);
@@ -661,3 +665,41 @@ message DeleteModelRoutingResponse {
   bool success = 1;
   string message = 2;
 }
+
+// Managed backups expose receipts only. Storage credentials, configuration
+// files and downloadable backup objects never enter this public contract.
+message BackupPolicy {
+  int64 revision = 1;
+  bool enabled = 2;
+  int32 interval_hours = 3;
+  int32 retain = 4;
+  int32 rpo_hours = 5;
+  int32 rto_minutes = 6;
+}
+message GetBackupPolicyRequest {}
+message UpdateBackupPolicyRequest { BackupPolicy policy = 1; }
+message CreateBackupRequest { string request_id = 1; }
+message ListBackupsRequest {}
+message BackupJob {
+ string id = 1;
+ string status = 2;
+ string trigger = 3;
+ string actor = 4;
+ string reason = 5;
+ int64 created_at = 6;
+ int64 started_at = 7;
+ int64 finished_at = 8;
+ string sha256 = 9;
+ int64 bytes = 10;
+ string error_code = 11;
+ BackupPolicy policy = 12;
+}
+message BackupEvent {
+ string id = 1;
+ string job_id = 2;
+ string action = 3;
+ string actor = 4;
+ string reason = 5;
+ int64 at = 6;
+}
+message ListBackupsReply { repeated BackupJob jobs = 1; repeated BackupEvent events = 2; int64 worker_last_seen = 3; string worker_phase = 4; string worker_error_code = 5; int32 worker_timeout_minutes = 6; }

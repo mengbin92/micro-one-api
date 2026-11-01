@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	relaybiz "micro-one-api/internal/biz"
+	"micro-one-api/internal/gemini"
 	"micro-one-api/pkg/jsonx"
 )
 
@@ -35,6 +36,9 @@ func newFinalizingRelayStream(endpoint APIEndpoint, stream relaybiz.RelayStream,
 	var observer streamUsageObserver = newRawStreamUsageTracker(fallback)
 	if endpoint == EndpointResponses {
 		observer = newResponsesStreamUsageTracker(fallback)
+	}
+	if endpoint == EndpointGemini {
+		observer = &geminiStreamUsageObserver{}
 	}
 	return &finalizingRelayStream{stream: stream, usage: observer, estimated: estimated, finalize: finalize, terminal: streamTerminalTracker{endpoint: endpoint}}
 }
@@ -77,6 +81,9 @@ func (s *finalizingRelayStream) Close() error {
 // shared §4.2 decision proves the semantics from the accumulated field shape
 // of the FINAL attempt's stream.
 func (s *finalizingRelayStream) finalUsage() relaybiz.UsageEnvelope {
+	if native, ok := s.usage.(*geminiStreamUsageObserver); ok && native.usage != nil {
+		return geminiUsageEnvelope(*native.usage)
+	}
 	if !s.usage.SawUsage() {
 		if s.estimated.ContractVersion != 0 {
 			return s.estimated
@@ -129,6 +136,15 @@ func (t *streamTerminalTracker) observeLine(line string) {
 		return
 	}
 	payload = strings.TrimSpace(payload)
+	if t.endpoint == EndpointGemini {
+		frame, err := gemini.ParseResponse([]byte(payload))
+		if err != nil {
+			t.failed = true
+		} else if frame.Terminal {
+			t.success = true
+		}
+		return
+	}
 	if strings.EqualFold(payload, "[DONE]") {
 		if t.endpoint == EndpointChatCompletions {
 			t.success = true

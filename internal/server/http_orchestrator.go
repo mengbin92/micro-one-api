@@ -353,6 +353,9 @@ func (h httpRelayLifecycleHooks) AcquireRelayAttempt(ctx context.Context, plan *
 
 func orchestratorUsageLogInput(h httpRelayLifecycleHooks, plan *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.UsageEnvelope, latency time.Duration, stream bool) usageLogInput {
 	endpoint := "/v1" + endpointPath(req.Endpoint)
+	if req.Endpoint == EndpointGemini {
+		endpoint = "/v1beta/models/{model}:generateContent"
+	}
 	if endpoint == "/v1" {
 		endpoint = "/v1/chat/completions"
 	}

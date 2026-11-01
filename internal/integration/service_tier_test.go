@@ -70,6 +70,15 @@ func tierTestAddress(t *testing.T) string {
 // production Billing/Log owners and the complete migration tree. The upstream
 // is deterministic and never spends money or reads deployment credentials.
 func TestServiceTierOwnerChain(t *testing.T) {
+	runServiceTierOwnerChain(t, false)
+}
+
+func TestLongContextTimePricingOwnerChain(t *testing.T) {
+	runServiceTierOwnerChain(t, true)
+}
+
+func runServiceTierOwnerChain(t *testing.T, longContextTime bool) {
+	t.Helper()
 	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
 			t.Setenv("BILLING_REQUEST_SNAPSHOT_V2", "true")
@@ -79,7 +88,8 @@ func TestServiceTierOwnerChain(t *testing.T) {
 			db := dbtest.RoutingContextDB(t, dialect)
 			require.NoError(t, db.Table("users").Create(map[string]any{"id": 1, "username": "tier-chain", "group": "default", "status": 1, "balance": 100000000}).Error)
 			price := func(in, out, cached float64) billingdomain.ModelPrice {
-				return billingdomain.ModelPrice{InputPrice: in, OutputPrice: out, CacheReadPrice: &cached}
+				zero := 0.0
+				return billingdomain.ModelPrice{InputPrice: in, OutputPrice: out, CacheReadPrice: &cached, CacheCreation5mPrice: &zero, CacheCreation1hPrice: &zero}
 			}
 			config := billingdomain.ServiceTierConfig{
 				Version: 1, Enabled: true, SourceKind: "channel", SourceID: 1, Model: "gpt-4o-mini",
@@ -90,8 +100,20 @@ func TestServiceTierOwnerChain(t *testing.T) {
 					"default": price(.0005, .001, .0001), "priority": price(.0015, .003, .00025), "flex": price(.00025, .0005, .00005),
 				},
 			}
+			if longContextTime {
+				config.Version, config.SourceID, config.Model = 3, 11, "deepseek-flash"
+				config.LongContext = &billingdomain.LongContextConfig{ThresholdTokens: 9, Policy: billingdomain.LongContextPolicy, Prices: scaleTierPrices(config.Prices, 2), UpstreamPrices: scaleTierPrices(config.UpstreamPrices, 2)}
+				config.TimePricing = &billingdomain.TimePricingConfig{
+					Timezone: "Asia/Shanghai", CalendarValidThrough: "2099-12-31", Holidays: []string{},
+					PeakWindows: []billingdomain.PricingTimeWindow{{Weekdays: []int{1, 2, 3, 4, 5, 6, 7}, StartMinute: 0, EndMinute: 1440}},
+					PeakPrices:  scaleTierPrices(config.Prices, 2), PeakUpstreamPrices: scaleTierPrices(config.UpstreamPrices, 2),
+					PeakLongContextPrices: scaleTierPrices(config.Prices, 4), PeakLongContextUpstreamPrices: scaleTierPrices(config.UpstreamPrices, 4),
+				}
+			}
 			storeConfig := func(c billingdomain.ServiceTierConfig) {
 				b, err := jsonx.Marshal(c)
+				require.NoError(t, err)
+				_, err = billingdomain.ParseServiceTierConfig(string(b))
 				require.NoError(t, err)
 				require.NoError(t, db.Exec("DELETE FROM system_options WHERE option_key = ?", "ServiceTierPricing").Error)
 				require.NoError(t, db.Table("system_options").Create(map[string]any{"option_key": "ServiceTierPricing", "option_value": string(b)}).Error)
@@ -106,6 +128,7 @@ func TestServiceTierOwnerChain(t *testing.T) {
 				actual                         string
 				stream, responses, mutate      bool
 				zeroInput, zeroOutput, partial bool
+				cached                         bool
 			}
 			var active atomic.Pointer[scenario]
 			var calls atomic.Int64
@@ -126,9 +149,9 @@ func TestServiceTierOwnerChain(t *testing.T) {
 					t.Errorf("upstream tier changed: %v", request["service_tier"])
 				}
 				if sc.mutate {
-					changed := config
-					changed.Prices = map[string]billingdomain.ModelPrice{"default": price(1, 2, .2), "priority": price(3, 6, .5), "flex": price(.5, 1, .1)}
-					changed.UpstreamPrices = changed.Prices
+					// Replace every live tariff while the admitted request keeps its
+					// reserve-time context, clock decision and procurement prices.
+					changed := scaleTierConfig(config, 1000)
 					storeConfig(changed)
 				}
 				if sc.responses {
@@ -143,7 +166,7 @@ func TestServiceTierOwnerChain(t *testing.T) {
 					if sc.partial {
 						delete(usage, "output_tokens")
 					}
-					response := map[string]any{"id": "resp-tier", "object": "response", "status": "completed", "model": "gpt-4o-mini", "output": []any{}, "usage": usage}
+					response := map[string]any{"id": "resp-tier", "object": "response", "status": "completed", "model": config.Model, "output": []any{}, "usage": usage}
 					if sc.actual != "" {
 						response["service_tier"] = sc.actual
 					}
@@ -157,18 +180,33 @@ func TestServiceTierOwnerChain(t *testing.T) {
 					}
 					return
 				}
+				chatUsage := map[string]any{"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+				if longContextTime {
+					cached := 0
+					if sc.cached {
+						cached = 4
+					}
+					chatUsage["prompt_cache_hit_tokens"], chatUsage["prompt_cache_miss_tokens"] = cached, 10-cached
+					chatUsage["prompt_tokens_details"] = map[string]any{"cached_tokens": cached}
+				}
 				if sc.stream {
 					w.Header().Set("Content-Type", "text/event-stream")
-					chunk := map[string]any{"id": "chat-tier", "object": "chat.completion.chunk", "model": "gpt-4o-mini", "choices": []any{map[string]any{"index": 0, "delta": map[string]any{"content": "hello"}, "finish_reason": "stop"}}}
+					chunk := map[string]any{"id": "chat-tier", "object": "chat.completion.chunk", "model": config.Model, "choices": []any{map[string]any{"index": 0, "delta": map[string]any{"content": "hello"}, "finish_reason": "stop"}}}
+					if longContextTime {
+						chunk["usage"] = chatUsage
+					}
 					if sc.actual != "" {
 						chunk["service_tier"] = sc.actual
 					}
 					b, _ := jsonx.Marshal(chunk)
 					_, _ = fmt.Fprintf(w, "data: %s\n\n", b)
-					_, _ = io.WriteString(w, "data: {\"id\":\"chat-tier\",\"object\":\"chat.completion.chunk\",\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}\n\ndata: [DONE]\n\n")
+					if !longContextTime {
+						_, _ = io.WriteString(w, "data: {\"id\":\"chat-tier\",\"object\":\"chat.completion.chunk\",\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}\n\n")
+					}
+					_, _ = io.WriteString(w, "data: [DONE]\n\n")
 					return
 				}
-				response := map[string]any{"id": "chat-tier", "object": "chat.completion", "model": "gpt-4o-mini", "choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": "hello"}, "finish_reason": "stop"}}, "usage": map[string]any{"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}}
+				response := map[string]any{"id": "chat-tier", "object": "chat.completion", "model": config.Model, "choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": "hello"}, "finish_reason": "stop"}}, "usage": chatUsage}
 				if sc.actual != "" {
 					response["service_tier"] = sc.actual
 				}
@@ -178,7 +216,11 @@ func TestServiceTierOwnerChain(t *testing.T) {
 			t.Cleanup(upstream.Close)
 			identityCleanup, identityClient := setupIdentityAllowAll(t, tierTestAddress(t))
 			t.Cleanup(identityCleanup)
-			channelCleanup, channelClient := setupChannelWithUpstream(t, tierTestAddress(t), upstream.URL)
+			channelType := relayprovider.ChannelTypeOpenAI
+			if longContextTime {
+				channelType = relayprovider.ChannelTypeDeepSeek
+			}
+			channelCleanup, channelClient := setupChannelWithUpstreamModel(t, tierTestAddress(t), upstream.URL, config.SourceID, channelType, []string{config.Model})
 			t.Cleanup(channelCleanup)
 			uc := relaybiz.NewRelayUsecase(relaydata.NewIdentityAdapter(identityClient), relaydata.NewChannelAdapter(channelClient), nil, nil)
 			relay := relayserver.NewHTTPServer(identityClient, channelClient, billingClient, relayprovider.NewProviderFactory(5*time.Second), uc, logClient)
@@ -188,6 +230,7 @@ func TestServiceTierOwnerChain(t *testing.T) {
 				name, actual                   string
 				stream, responses, mutate      bool
 				zeroInput, zeroOutput, partial bool
+				cached                         bool
 				cost                           int64
 			}{
 				{name: "chat_priority", actual: "priority", cost: 600},
@@ -204,16 +247,28 @@ func TestServiceTierOwnerChain(t *testing.T) {
 				{name: "responses_json_partial_usage", actual: "flex", responses: true, partial: true},
 				{name: "responses_stream_partial_usage", actual: "flex", stream: true, responses: true, partial: true},
 				{name: "inflight_price_change", actual: "flex", mutate: true, cost: 100},
+				{name: "chat_cached_json", actual: "flex", cached: true, cost: 84},
+				{name: "chat_cached_stream", actual: "flex", cached: true, stream: true, cost: 84},
 			} {
+				if tc.cached && !longContextTime {
+					continue
+				}
 				t.Run(tc.name, func(t *testing.T) {
+					if longContextTime && tc.cost > 1 {
+						if tc.zeroInput {
+							tc.cost *= 2
+						} else {
+							tc.cost *= 4
+						}
+					}
 					expectedCalls++
 					storeConfig(config)
-					active.Store(&scenario{actual: tc.actual, stream: tc.stream, responses: tc.responses, mutate: tc.mutate, zeroInput: tc.zeroInput, zeroOutput: tc.zeroOutput, partial: tc.partial})
+					active.Store(&scenario{actual: tc.actual, stream: tc.stream, responses: tc.responses, mutate: tc.mutate, zeroInput: tc.zeroInput, zeroOutput: tc.zeroOutput, partial: tc.partial, cached: tc.cached})
 					var previousID int64
 					require.NoError(t, db.Table("billing_ledgers").Select("COALESCE(MAX(id),0)").Scan(&previousID).Error)
 					var previousReservationID int64
 					require.NoError(t, db.Table("billing_reservations").Select("COALESCE(MAX(id),0)").Scan(&previousReservationID).Error)
-					payload := map[string]any{"model": "gpt-4o-mini", "service_tier": "priority", "stream": tc.stream}
+					payload := map[string]any{"model": config.Model, "service_tier": "priority", "stream": tc.stream}
 					path := "/v1/chat/completions"
 					if tc.responses {
 						path = "/v1/responses"
@@ -221,7 +276,11 @@ func TestServiceTierOwnerChain(t *testing.T) {
 						payload["max_output_tokens"] = 20
 					} else {
 						payload["messages"] = []any{map[string]any{"role": "user", "content": "hello"}}
-						payload["max_completion_tokens"] = 20
+						if longContextTime {
+							payload["max_tokens"] = 20
+						} else {
+							payload["max_completion_tokens"] = 20
+						}
 					}
 					body, err := jsonx.Marshal(payload)
 					require.NoError(t, err)
@@ -260,6 +319,8 @@ func TestServiceTierOwnerChain(t *testing.T) {
 						ReferenceID                                                                                                                                string
 						Amount, UpstreamCost                                                                                                                       int64
 						RequestedServiceTier, ActualServiceTier, ServiceTierStatus, BilledServiceTier, ServiceTierPolicy, ServiceTierConfigHash, PricingConfigHash string
+						LongContextPolicy, LongContextTier, PricingTimeBand, PricingTimezone                                                                       string
+						LongContextThreshold, LongContextInputTokens, PricingTimeUnix, UncachedInputTokens, CacheReadTokens                                        int64
 					}
 					require.Eventually(t, func() bool {
 						return db.Table("billing_ledgers").Where("id > ? AND type = ?", previousID, "consume").First(&ledger).Error == nil
@@ -275,6 +336,35 @@ func TestServiceTierOwnerChain(t *testing.T) {
 					require.NotEmpty(t, ledger.ServiceTierPolicy)
 					require.NotEmpty(t, ledger.ServiceTierConfigHash)
 					require.NotEmpty(t, ledger.PricingConfigHash)
+					if longContextTime {
+						input, contextTier := int64(10), "long"
+						if tc.zeroInput {
+							input, contextTier = 0, "base"
+						}
+						require.Equal(t, billingdomain.LongContextPolicy, ledger.LongContextPolicy)
+						require.EqualValues(t, 9, ledger.LongContextThreshold)
+						require.Equal(t, input, ledger.LongContextInputTokens)
+						require.Equal(t, contextTier, ledger.LongContextTier)
+						require.Equal(t, "peak", ledger.PricingTimeBand)
+						require.Equal(t, "Asia/Shanghai", ledger.PricingTimezone)
+						require.Positive(t, ledger.PricingTimeUnix)
+						if tc.cached {
+							require.EqualValues(t, 6, ledger.UncachedInputTokens)
+							require.EqualValues(t, 4, ledger.CacheReadTokens)
+						}
+						var snapshot struct {
+							SnapshotVersion                                                      int32
+							LongContextPolicy, LongContextTier, PricingTimeBand, PricingTimezone string
+							LongContextThreshold                                                 int64
+						}
+						require.NoError(t, db.Table("billing_pricing_snapshots").Where("config_hash = ?", ledger.PricingConfigHash).First(&snapshot).Error)
+						require.EqualValues(t, 4, snapshot.SnapshotVersion)
+						require.Equal(t, ledger.LongContextPolicy, snapshot.LongContextPolicy)
+						require.Equal(t, ledger.LongContextThreshold, snapshot.LongContextThreshold)
+						require.Equal(t, ledger.LongContextTier, snapshot.LongContextTier)
+						require.Equal(t, ledger.PricingTimeBand, snapshot.PricingTimeBand)
+						require.Equal(t, ledger.PricingTimezone, snapshot.PricingTimezone)
+					}
 					var reserved struct {
 						Amount     int64
 						ActualCost *int64
@@ -306,4 +396,38 @@ func TestServiceTierOwnerChain(t *testing.T) {
 			require.EqualValues(t, expectedCalls, calls.Load())
 		})
 	}
+}
+
+func scaleTierPrices(prices map[string]billingdomain.ModelPrice, multiplier float64) map[string]billingdomain.ModelPrice {
+	if prices == nil {
+		return nil
+	}
+	result := make(map[string]billingdomain.ModelPrice, len(prices))
+	scale := func(value *float64) *float64 {
+		if value == nil {
+			return nil
+		}
+		v := *value * multiplier
+		return &v
+	}
+	for tier, value := range prices {
+		result[tier] = billingdomain.ModelPrice{InputPrice: value.InputPrice * multiplier, OutputPrice: value.OutputPrice * multiplier, CacheReadPrice: scale(value.CacheReadPrice), CacheCreation5mPrice: scale(value.CacheCreation5mPrice), CacheCreation1hPrice: scale(value.CacheCreation1hPrice)}
+	}
+	return result
+}
+
+func scaleTierConfig(config billingdomain.ServiceTierConfig, multiplier float64) billingdomain.ServiceTierConfig {
+	config.Prices, config.UpstreamPrices = scaleTierPrices(config.Prices, multiplier), scaleTierPrices(config.UpstreamPrices, multiplier)
+	if config.LongContext != nil {
+		longContext := *config.LongContext
+		longContext.Prices, longContext.UpstreamPrices = scaleTierPrices(longContext.Prices, multiplier), scaleTierPrices(longContext.UpstreamPrices, multiplier)
+		config.LongContext = &longContext
+	}
+	if config.TimePricing != nil {
+		timePricing := *config.TimePricing
+		timePricing.PeakPrices, timePricing.PeakUpstreamPrices = scaleTierPrices(timePricing.PeakPrices, multiplier), scaleTierPrices(timePricing.PeakUpstreamPrices, multiplier)
+		timePricing.PeakLongContextPrices, timePricing.PeakLongContextUpstreamPrices = scaleTierPrices(timePricing.PeakLongContextPrices, multiplier), scaleTierPrices(timePricing.PeakLongContextUpstreamPrices, multiplier)
+		config.TimePricing = &timePricing
+	}
+	return config
 }

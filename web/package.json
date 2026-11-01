@@ -23,6 +23,7 @@
     "i18n:codemod": "node scripts/i18n-tools.mjs codemod",
     "preview": "vite preview",
     "generate:api": "openapi-typescript ../openapi.yaml -o src/types/api.ts",
+    "test:e2e:b3": "npm run build && playwright test --config playwright.b3.config.ts",
     "test:e2e:a4": "npm run build && playwright test --config playwright.a4.config.ts"
   },
   "dependencies": {

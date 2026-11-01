@@ -11,6 +11,7 @@ import (
 
 	"micro-one-api/domain/upstream/provider"
 	"micro-one-api/internal/apicompat"
+	"micro-one-api/internal/gemini"
 	"micro-one-api/pkg/jsonx"
 )
 
@@ -127,7 +128,8 @@ func (a *GeminiAdaptor) ModelList() []string { return a.models }
 
 func (a *GeminiAdaptor) ConvertRequest(rc *RelayContext, inbound Format, body []byte) (Format, []byte, error) {
 	if inbound == FormatGemini {
-		return FormatGemini, body, nil
+		prepared, _, err := gemini.PrepareRequest(body)
+		return FormatGemini, prepared, err
 	}
 	_, chatBody, err := convertRequestToChat(rc, inbound, body)
 	if err != nil {
@@ -162,6 +164,9 @@ func (a *GeminiAdaptor) GetUpstreamURL(ctx *RelayContext) (string, error) {
 	}
 	if model == "" {
 		return "", fmt.Errorf("gemini adaptor: resolved model is required")
+	}
+	if ctx != nil && ctx.InboundFormat == FormatGemini && !gemini.ValidModel(model) {
+		return "", fmt.Errorf("gemini adaptor: invalid mapped model")
 	}
 	method := "generateContent"
 	if ctx != nil && ctx.IsStream {
@@ -216,7 +221,10 @@ func (a *GeminiAdaptor) ConvertResponse(rc *RelayContext, _ Format, resp *http.R
 }
 
 func (a *GeminiAdaptor) ConvertStreamResponse(rc *RelayContext, _ Format, resp *http.Response) (Format, io.Reader, error) {
-	if rc == nil || rc.InboundFormat == FormatGemini {
+	if rc != nil && rc.InboundFormat == FormatGemini {
+		return FormatGemini, gemini.NewStream(resp.Body), nil
+	}
+	if rc == nil {
 		return FormatGemini, resp.Body, nil
 	}
 	chatReader, chatWriter := io.Pipe()

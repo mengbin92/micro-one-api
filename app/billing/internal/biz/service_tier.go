@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
 
 	"github.com/go-kratos/kratos/v3/errors"
 	billingv1 "micro-one-api/api/billing/v1"
@@ -41,15 +42,25 @@ func withServiceTierSource(ctx context.Context, channelID string, accountID int6
 }
 
 type FrozenServiceTier struct {
-	Config     billingdomain.ServiceTierConfig  `json:"config"`
-	Request    billingdomain.ServiceTierRequest `json:"request"`
-	ConfigHash string                           `json:"config_hash"`
-	Policy     string                           `json:"policy"`
-	MaxCost    int64                            `json:"max_cost"`
+	PricingTimeBand string                           `json:",omitempty"`
+	PricingTimeUnix int64                            `json:",omitempty"`
+	Config          billingdomain.ServiceTierConfig  `json:"config"`
+	Request         billingdomain.ServiceTierRequest `json:"request"`
+	ConfigHash      string                           `json:"config_hash"`
+	Policy          string                           `json:"policy"`
+	MaxCost         int64                            `json:"max_cost"`
 }
 
 func (s *FrozenServiceTier) Validate() error {
 	if s == nil || !s.Config.Enabled || s.Config.Validate() != nil || s.ConfigHash != s.Config.Digest() || s.Policy != billingdomain.ServiceTierPolicy || s.MaxCost < 1 || !validTierBound(s.Request) {
+		return ErrRequestSnapshotInvalid
+	}
+	if s.Config.TimePricing != nil {
+		band, err := s.Config.TimePricing.BandAt(time.Unix(s.PricingTimeUnix, 0))
+		if err != nil || s.PricingTimeUnix <= 0 || band != s.PricingTimeBand {
+			return ErrRequestSnapshotInvalid
+		}
+	} else if s.PricingTimeBand != "" || s.PricingTimeUnix != 0 {
 		return ErrRequestSnapshotInvalid
 	}
 	return nil
@@ -84,7 +95,16 @@ func (uc *BillingUsecase) freezeServiceTier(ctx context.Context, c billingdomain
 	if !validTierBound(r) {
 		return nil, ErrServiceTierBoundRequired
 	}
-	maximum := billingdomain.MaxTierPrice(c.Prices)
+	frozen := &FrozenServiceTier{Config: c, Request: r, ConfigHash: c.Digest(), Policy: billingdomain.ServiceTierPolicy}
+	if c.TimePricing != nil {
+		now := uc.Now()
+		band, err := c.TimePricing.BandAt(now)
+		if err != nil {
+			return nil, ErrRequestSnapshotUnavailable
+		}
+		frozen.PricingTimeBand, frozen.PricingTimeUnix = band, now.Unix()
+	}
+	maximum := c.ForTimeBand(frozen.PricingTimeBand).MaximumPrice()
 	// An input bound covers any possible input bucket, not only uncached input.
 	maxInput := maximum.InputPrice
 	for _, v := range []*float64{maximum.CacheReadPrice, maximum.CacheCreation5mPrice, maximum.CacheCreation1hPrice} {
@@ -100,13 +120,15 @@ func (uc *BillingUsecase) freezeServiceTier(ctx context.Context, c billingdomain
 	if cost < 1 {
 		cost = 1
 	}
-	return &FrozenServiceTier{Config: c, Request: r, ConfigHash: c.Digest(), Policy: billingdomain.ServiceTierPolicy, MaxCost: cost}, nil
+	frozen.MaxCost = cost
+	return frozen, nil
 }
 
 func tierSelection(f *FrozenServiceTier, usage LedgerUsage) (ModelPrice, string, string) {
+	prices, _ := f.Config.ForTimeBand(f.PricingTimeBand).PricesForInput(contextInputTokens(usage))
 	actual, status := usage.ActualServiceTier, usage.ServiceTierStatus
 	if status == "reported" && billingdomain.KnownActualServiceTier(actual) {
-		return f.Config.Prices[actual], actual, status
+		return prices[actual], actual, status
 	}
 	if status != "conflict" && status != "unknown" {
 		if actual == "" {
@@ -115,7 +137,18 @@ func tierSelection(f *FrozenServiceTier, usage LedgerUsage) (ModelPrice, string,
 			status = "unknown"
 		}
 	}
-	return billingdomain.MaxTierPrice(f.Config.Prices), "max", status
+	return billingdomain.MaxTierPrice(prices), "max", status
+}
+
+// The canonical buckets are mutually exclusive: cached input contributes to
+// the context window exactly once. Output never contributes to the threshold.
+// Callers must first validate the canonical usage contract and frozen bounds.
+func contextInputTokens(usage LedgerUsage) int64 {
+	if usage.Envelope == nil || usage.Envelope.Canonical == nil {
+		return 0
+	}
+	b := usage.Envelope.Canonical
+	return saturatingCostSum(b.UncachedInputTokens, b.CacheReadTokens, b.CacheCreation5mTokens, b.CacheCreation1hTokens)
 }
 func tierUsageBounds(f *FrozenServiceTier, usage LedgerUsage, tokens int64) error {
 	if usage.UsageContractVersion != 1 || usage.Envelope == nil || usage.Envelope.ParseStatus != "verified" || usage.Envelope.Canonical == nil || validateV1Envelope(usage.Envelope) != "" {
@@ -141,6 +174,15 @@ func applyTierAudit(a *ledgerUsageAudit, f *FrozenServiceTier, usage LedgerUsage
 	a.BilledServiceTier = tier
 	a.ServiceTierPolicy = f.Policy
 	a.ServiceTierConfigHash = f.ConfigHash
+	if c := f.Config.TimePricing; c != nil {
+		a.PricingTimeBand, a.PricingTimeUnix, a.PricingTimezone = f.PricingTimeBand, f.PricingTimeUnix, c.Timezone
+	}
+	if c := f.Config.LongContext; c != nil {
+		a.LongContextPolicy = c.Policy
+		a.LongContextThreshold = c.ThresholdTokens
+		a.LongContextInputTokens = contextInputTokens(usage)
+		_, a.LongContextTier = f.Config.PricesForInput(a.LongContextInputTokens)
+	}
 	if a.pricingSnapshot != nil {
 		s := a.pricingSnapshot
 		s.ServiceTier = tier
@@ -148,6 +190,18 @@ func applyTierAudit(a *ledgerUsageAudit, f *FrozenServiceTier, usage LedgerUsage
 		s.ServiceTierConfigHash = f.ConfigHash
 		s.SnapshotVersion = 2
 		s.ConfigHash = fmt.Sprintf("%x", snapshotTierHash(s))
+		if a.LongContextPolicy != "" {
+			s.LongContextPolicy = a.LongContextPolicy
+			s.LongContextThreshold = a.LongContextThreshold
+			s.LongContextTier = a.LongContextTier
+			s.SnapshotVersion = 3
+			s.ConfigHash = fmt.Sprintf("%x", snapshotLongContextHash(s))
+		}
+		if a.PricingTimeBand != "" {
+			s.PricingTimeBand, s.PricingTimezone = a.PricingTimeBand, a.PricingTimezone
+			s.SnapshotVersion = 4
+			s.ConfigHash = fmt.Sprintf("%x", snapshotTimePricingHash(s))
+		}
 		a.PricingConfigHash = s.ConfigHash
 	}
 }
@@ -157,10 +211,18 @@ func applyTierAudit(a *ledgerUsageAudit, f *FrozenServiceTier, usage LedgerUsage
 // bucket price makes the entire supplier estimate unknown.
 func frozenTierSupplierPrice(usage LedgerUsage) (ModelPrice, bool) {
 	tier := usage.FrozenServiceTier
-	if tier == nil || tier.UpstreamPrices == nil || usage.ServiceTierStatus != "reported" || !billingdomain.KnownActualServiceTier(usage.ActualServiceTier) || usage.Envelope == nil || usage.Envelope.ParseStatus != "verified" || usage.Envelope.Canonical == nil || validateV1Envelope(usage.Envelope) != "" {
+	if tier == nil || usage.ServiceTierStatus != "reported" || !billingdomain.KnownActualServiceTier(usage.ActualServiceTier) || usage.Envelope == nil || usage.Envelope.ParseStatus != "verified" || usage.Envelope.Canonical == nil || validateV1Envelope(usage.Envelope) != "" {
 		return ModelPrice{}, false
 	}
-	price, ok := tier.UpstreamPrices[usage.ActualServiceTier]
+	selected := tier.ForTimeBand(usage.FrozenPricingTimeBand)
+	tier = &selected
+	prices := tier.UpstreamPrices
+	if c := tier.LongContext; c != nil && contextInputTokens(usage) > c.ThresholdTokens {
+		// A long-context procurement tariff is independent evidence. Missing
+		// long prices must never inherit the cheaper base estimate.
+		prices = c.UpstreamPrices
+	}
+	price, ok := prices[usage.ActualServiceTier]
 	if !ok {
 		return ModelPrice{}, false
 	}

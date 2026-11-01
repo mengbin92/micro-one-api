@@ -31,3 +31,5 @@ coverage
 *.sln
 *.sw?
 a4-test-results
+
+b3-test-results/

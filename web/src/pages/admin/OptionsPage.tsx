@@ -1,3 +1,4 @@
+import { BackupPanel } from '@/components/admin/BackupPanel';
 import { useAuthorizedQuery } from '@/lib/authorization';
 import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { Save } from 'lucide-react';
@@ -156,6 +157,8 @@ export function AdminOptionsPage() {
         <h2 className="text-2xl font-semibold">{t("系统选项")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{t("管理系统注册、钱包金额发放和兼容 one-api 的设置项。")}</p>
       </div>
+
+      <BackupPanel />
 
       <Card>
         <CardHeader>

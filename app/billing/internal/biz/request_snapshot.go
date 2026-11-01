@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"micro-one-api/domain/authorization"
-	billingdomain "micro-one-api/domain/billing"
 	"micro-one-api/domain/execution"
 	"micro-one-api/platform/security/serviceidentity"
 	"os"
@@ -367,7 +366,7 @@ func (uc *BillingUsecase) prepareRequestSnapshot(ctx context.Context, userID, le
 	}
 	s.ServiceTier = tier
 	if tier != nil {
-		price := billingdomain.MaxTierPrice(tier.Config.Prices)
+		price := tier.Config.ForTimeBand(tier.PricingTimeBand).MaximumPrice()
 		s.Pricing.Method = "model_price"
 		s.Pricing.Price = &price
 		// Tier pricing is a new, explicitly admitted canonical contract. Legacy

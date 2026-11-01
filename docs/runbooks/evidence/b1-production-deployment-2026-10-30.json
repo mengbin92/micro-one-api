@@ -1,0 +1,233 @@
+{
+  "date": "2026-10-30",
+  "timezone": "Asia/Shanghai",
+  "status": "deployed_disabled",
+  "tag": "b1-20261030-085841-691292280c1e",
+  "source_digest": "691292280c1e0f8904ecf451d4356e568d2c52c7f1d045334bf4c98521929c21",
+  "baseline_commit": "80a16c1a9192d16c75cae50fbce44f06a4e08b68",
+  "platform": "linux/amd64",
+  "deployed_at_utc": "2026-10-30T01:08:04.453603+00:00",
+  "verified_at_utc": "2026-10-30T01:12:34.424934+00:00",
+  "services": {
+    "billing-service": {
+      "image_id": "sha256:2717f6f4cd3864cd2b603c18f9df21dd394c684989d3d54b485fb6454f3543e7",
+      "source_digest_matches": true,
+      "running": true,
+      "restart_count": 0,
+      "environment_unchanged": true,
+      "healthz": true,
+      "startup_log_counts": {
+        "panic_fatal": 0,
+        "error_level": 0
+      },
+      "image_source_digest": "691292280c1e0f8904ecf451d4356e568d2c52c7f1d045334bf4c98521929c21",
+      "container_source_digest": "691292280c1e0f8904ecf451d4356e568d2c52c7f1d045334bf4c98521929c21"
+    },
+    "log-service": {
+      "image_id": "sha256:ba0c889b1046e2caf48278f96a8dcf714752c52552ed5eb397c5bdf6b0a9e354",
+      "source_digest_matches": true,
+      "running": true,
+      "restart_count": 0,
+      "environment_unchanged": true,
+      "healthz": true,
+      "startup_log_counts": {
+        "panic_fatal": 0,
+        "error_level": 0
+      },
+      "image_source_digest": "691292280c1e0f8904ecf451d4356e568d2c52c7f1d045334bf4c98521929c21",
+      "container_source_digest": "691292280c1e0f8904ecf451d4356e568d2c52c7f1d045334bf4c98521929c21"
+    },
+    "relay-gateway": {
+      "image_id": "sha256:be83c70c6ed27e5c451a72b89e7fa6765ff043e6d48ccc5030fc212827d9dfc3",
+      "source_digest_matches": true,
+      "running": true,
+      "restart_count": 0,
+      "environment_unchanged": true,
+      "healthz": true,
+      "startup_log_counts": {
+        "panic_fatal": 0,
+        "error_level": 0
+      },
+      "image_source_digest": "691292280c1e0f8904ecf451d4356e568d2c52c7f1d045334bf4c98521929c21",
+      "container_source_digest": "691292280c1e0f8904ecf451d4356e568d2c52c7f1d045334bf4c98521929c21"
+    },
+    "identity-service": {
+      "image_id": "sha256:71226489e6ed424d6e956fd876e798ec0b8e535343279ccdc454f8dbf1665b66",
+      "source_digest_matches": true,
+      "running": true,
+      "restart_count": 0,
+      "environment_unchanged": true,
+      "healthz": true,
+      "startup_log_counts": {
+        "panic_fatal": 0,
+        "error_level": 0
+      },
+      "image_source_digest": "691292280c1e0f8904ecf451d4356e568d2c52c7f1d045334bf4c98521929c21",
+      "container_source_digest": "691292280c1e0f8904ecf451d4356e568d2c52c7f1d045334bf4c98521929c21"
+    },
+    "admin-api": {
+      "image_id": "sha256:17c117719531b23fcab8830e13b3b7d272ec1984025c209e933a6523351790d1",
+      "source_digest_matches": true,
+      "running": true,
+      "restart_count": 0,
+      "environment_unchanged": true,
+      "healthz": true,
+      "startup_log_counts": {
+        "panic_fatal": 0,
+        "error_level": 0
+      },
+      "image_source_digest": "691292280c1e0f8904ecf451d4356e568d2c52c7f1d045334bf4c98521929c21",
+      "container_source_digest": "691292280c1e0f8904ecf451d4356e568d2c52c7f1d045334bf4c98521929c21"
+    }
+  },
+  "images": {
+    "billing-service": {
+      "name": "docker-compose-billing-service:b1-20261030-085841-691292280c1e",
+      "id": "sha256:2717f6f4cd3864cd2b603c18f9df21dd394c684989d3d54b485fb6454f3543e7",
+      "platform": "linux/amd64"
+    },
+    "log-service": {
+      "name": "docker-compose-log-service:b1-20261030-085841-691292280c1e",
+      "id": "sha256:ba0c889b1046e2caf48278f96a8dcf714752c52552ed5eb397c5bdf6b0a9e354",
+      "platform": "linux/amd64"
+    },
+    "relay-gateway": {
+      "name": "docker-compose-relay-gateway:b1-20261030-085841-691292280c1e",
+      "id": "sha256:be83c70c6ed27e5c451a72b89e7fa6765ff043e6d48ccc5030fc212827d9dfc3",
+      "platform": "linux/amd64"
+    },
+    "identity-service": {
+      "name": "docker-compose-identity-service:b1-20261030-085841-691292280c1e",
+      "id": "sha256:71226489e6ed424d6e956fd876e798ec0b8e535343279ccdc454f8dbf1665b66",
+      "platform": "linux/amd64"
+    },
+    "admin-api": {
+      "name": "docker-compose-admin-api:b1-20261030-085841-691292280c1e",
+      "id": "sha256:17c117719531b23fcab8830e13b3b7d272ec1984025c209e933a6523351790d1",
+      "platform": "linux/amd64"
+    }
+  },
+  "migrations": [
+    {
+      "owner": "billing",
+      "version": "146_add_billing_long_context",
+      "result": "owner=billing version=146_add_billing_long_context applied=1 repeat=0",
+      "repeat_noop": true
+    },
+    {
+      "owner": "log",
+      "version": "145_add_log_service_tier",
+      "result": "owner=log version=145_add_log_service_tier applied=1 repeat=0",
+      "repeat_noop": true
+    }
+  ],
+  "b1_column_count": 12,
+  "runtime_database_permissions": {
+    "billing": "owner=billing runtime_read=true zero_row_insert_update=true rolled_back=true",
+    "log": "owner=log runtime_read=true zero_row_insert_update=true rolled_back=true"
+  },
+  "billing_capabilities": {
+    "request_snapshot_version": 2,
+    "fixed_routing": true,
+    "subscription_contracts": true,
+    "user_price_overrides": true,
+    "settlement_receipt_version": 1,
+    "execution_delivery_version": 1,
+    "usage_contract_version": 2,
+    "settlement_policy_version": "native-v2-release-unproven-2026-10-13",
+    "service_tier_pricing_version": 1
+  },
+  "web": {
+    "index_sha256": "2805228752bfd70c3b4186eb090464ac02ea1796fece77160b48b7ab32ac3951",
+    "old_hashed_assets_retained": true,
+    "publish": "host /opt/web/dist; atomic index replacement after assets",
+    "public_asset_checks": {
+      "count": 9,
+      "passed": true
+    }
+  },
+  "public_checks": [
+    {
+      "method": "GET",
+      "path": "/healthz",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/login",
+      "status": 200,
+      "matches_new_index": true
+    },
+    {
+      "method": "GET",
+      "path": "/pricing",
+      "status": 200,
+      "matches_new_index": true
+    },
+    {
+      "method": "GET",
+      "path": "/usage",
+      "status": 200,
+      "matches_new_index": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/option/",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "path": "/api/user/payment/channels",
+      "status": 401
+    }
+  ],
+  "production_browser": {
+    "url": "https://console.mengbin.top/login",
+    "anonymous_render": "PASS",
+    "console_error_count": 0,
+    "authenticated_admin_test_performed": false,
+    "note": "Existing session absent; no credentials collected and no pricing writes. Authenticated feature workflows already covered by the isolated desktop/mobile acceptance."
+  },
+  "unaffected_containers_unchanged": true,
+  "unaffected_container_count": 16,
+  "runtime_environment_unchanged": true,
+  "pricing_configuration_unchanged": true,
+  "service_tier_pricing_enabled": false,
+  "backup": "/opt/micro-one-api/backups/rollback-b1-20261030-085841-691292280c1e",
+  "rollback_tag": "rollback-b1-20261030-085841-691292280c1e",
+  "backup_contents": [
+    "consistent Billing/Log SQL dump",
+    "Compose and private env backup",
+    "previous host frontend archive",
+    "previous image rollback tags",
+    "deployment-state.json"
+  ],
+  "rollback_notes": [
+    "Keep additive migrations 145/146 and historical ledger/snapshot data.",
+    "Restore selected image tags and Compose configuration from private backup; restore frontend index/assets from backup.",
+    "No feature configuration was enabled and no new B1-priced reservations were created. Before later enabling, drain frozen tasks before rolling back to older Billing."
+  ],
+  "operations_notes": [
+    "All images and verification/migration tools cross-built locally; no server compilation.",
+    "Remote MySQL root account remained locked. Migrations used existing container-local MySQL socket with the repository Runner; each repeated apply returned no-op.",
+    "Container read-only/noexec security settings remained unchanged; runtime database grants were checked host-side with existing service credentials using zero-row writes and explicit rollback.",
+    "Selected Compose source labels were corrected to match immutable image source labels and exact live image IDs; all five services were health checked.",
+    "Initial orchestration stopped on the migration-history guard before SQL or service changes; the final reporting-only NameError occurred after complete rollout and saved state, which was independently verified."
+  ],
+  "external_acceptance": {
+    "target_source": "channel/11",
+    "model": "deepseek-flash",
+    "actual_threshold_confirmed": false,
+    "real_prices_confirmed": false,
+    "paid_upstream_calls": 0,
+    "pricing_enabled": false,
+    "production_pricing_rule_writes": false,
+    "release_or_tag_created": false
+  },
+  "engineering_evidence": "b1-context-time-pricing-2026-10-29.json"
+}

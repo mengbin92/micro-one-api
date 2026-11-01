@@ -316,7 +316,7 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 		// §5.3 dual-write: the v1 envelope is sent only when the producer
 		// feature gate is on; the legacy fields above always keep their old
 		// meanings so old billing consumers are unaffected.
-		if detail.Usage != nil && (canonicalUsageProducerEnabled() || detail.TierPricing) {
+		if detail.Usage != nil && (canonicalUsageProducerEnabled() || detail.TierPricing || detail.Usage.Reported.SourceProtocol == "gemini") {
 			req.UsageContractVersion = relaybiz.UsageContractVersionV1
 			req.Usage = usageEnvelopeToProto(*detail.Usage)
 		}

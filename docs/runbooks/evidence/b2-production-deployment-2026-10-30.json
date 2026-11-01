@@ -1,0 +1,178 @@
+{
+  "date": "2026-10-30",
+  "timezone": "Asia/Shanghai",
+  "stage": "B2 native Gemini ingress",
+  "status": "deployed_external_supplier_validation_pending",
+  "tag": "b2-20261030-102901-f956fa5930d4",
+  "source_digest": "f956fa5930d42e50ff5af289d28c300213860dde3742dc81fa241738f8a7d92f",
+  "baseline_commit": "62edafdcb3d2fcfb11709d3657f7423f2197fb02",
+  "platform": "linux/amd64",
+  "deployed_at_utc": "2026-10-30T02:32:00.177752+00:00",
+  "verified_at_utc": "2026-10-30T02:33:48.392552+00:00",
+  "services": {
+    "relay-gateway": {
+      "image": "docker-compose-relay-gateway:b2-20261030-102901-f956fa5930d4",
+      "image_id": "sha256:9c1e4d7208cb78b3040b0988554c1cc7bde5b1d31775eaccb0d56011c91ba1f4",
+      "previous_image_id": "sha256:be83c70c6ed27e5c451a72b89e7fa6765ff043e6d48ccc5030fc212827d9dfc3",
+      "source_digest_matches": true,
+      "healthz": true,
+      "restart_count": 0,
+      "startup_log_counts": {
+        "panic_fatal": 0,
+        "error_level": 0
+      }
+    }
+  },
+  "verification": {
+    "verified_at_utc": "2026-10-30T02:33:31.961374+00:00",
+    "image_id": "sha256:9c1e4d7208cb78b3040b0988554c1cc7bde5b1d31775eaccb0d56011c91ba1f4",
+    "source_digest": "f956fa5930d42e50ff5af289d28c300213860dde3742dc81fa241738f8a7d92f",
+    "image_and_container_digest_match": true,
+    "linux_amd64": true,
+    "healthz": true,
+    "restart_count": 0,
+    "runtime_environment_unchanged": true,
+    "container_security_and_mounts_unchanged": true,
+    "compose_changes_only_relay_image_and_source_label": true,
+    "private_env_files_unchanged": true,
+    "unaffected_containers_unchanged": true,
+    "unaffected_container_count": 20,
+    "startup_log_counts": {
+      "panic_fatal": 0,
+      "error_level": 0
+    },
+    "web_index_sha256": "2805228752bfd70c3b4186eb090464ac02ea1796fece77160b48b7ab32ac3951"
+  },
+  "public_verification": {
+    "verified_at_utc": "2026-10-30T02:33:48.392552+00:00",
+    "origin": "https://api.mengbin.top",
+    "checks": [
+      {
+        "name": "json_missing_key",
+        "method": "POST",
+        "path": "/v1beta/models/b2-deployment-check:generateContent",
+        "status": 401,
+        "native_error_status": "UNAUTHENTICATED"
+      },
+      {
+        "name": "sse_missing_key",
+        "method": "POST",
+        "path": "/v1beta/models/b2-deployment-check:streamGenerateContent",
+        "status": 401,
+        "native_error_status": "UNAUTHENTICATED"
+      },
+      {
+        "name": "invalid_key_owner_auth",
+        "method": "POST",
+        "path": "/v1beta/models/b2-deployment-check:generateContent",
+        "status": 401
+      },
+      {
+        "name": "query_key_owner_auth",
+        "method": "POST",
+        "path": "/v1beta/models/b2-deployment-check:generateContent",
+        "status": 401
+      },
+      {
+        "name": "invalid_json",
+        "method": "POST",
+        "path": "/v1beta/models/b2-deployment-check:generateContent",
+        "status": 400,
+        "native_error_status": "INVALID_ARGUMENT"
+      },
+      {
+        "name": "media_rejected",
+        "method": "POST",
+        "path": "/v1beta/models/b2-deployment-check:generateContent",
+        "status": 400,
+        "native_error_status": "INVALID_ARGUMENT"
+      },
+      {
+        "name": "server_tool_rejected",
+        "method": "POST",
+        "path": "/v1beta/models/b2-deployment-check:generateContent",
+        "status": 400,
+        "native_error_status": "INVALID_ARGUMENT"
+      },
+      {
+        "name": "unsupported_method",
+        "method": "POST",
+        "path": "/v1beta/models/b2-deployment-check:countTokens",
+        "status": 501,
+        "native_error_status": "UNIMPLEMENTED"
+      },
+      {
+        "name": "response_cache_rejected",
+        "method": "POST",
+        "path": "/v1beta/models/b2-deployment-check:generateContent",
+        "status": 400,
+        "native_error_status": "INVALID_ARGUMENT"
+      },
+      {
+        "name": "conflicting_credentials",
+        "method": "POST",
+        "path": "/v1beta/models/b2-deployment-check:generateContent",
+        "status": 401,
+        "native_error_status": "UNAUTHENTICATED"
+      },
+      {
+        "name": "old_chat_auth",
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "status": 401
+      },
+      {
+        "name": "old_responses_auth",
+        "method": "POST",
+        "path": "/v1/responses",
+        "status": 401
+      },
+      {
+        "name": "native_cors",
+        "method": "OPTIONS",
+        "path": "/v1beta/models/b2-deployment-check:generateContent",
+        "status": 204,
+        "origin_and_native_headers_allowed": true
+      },
+      {
+        "name": "relay_health",
+        "method": "GET",
+        "path": "/healthz",
+        "status": 200
+      }
+    ],
+    "console_login_index_sha256": "2805228752bfd70c3b4186eb090464ac02ea1796fece77160b48b7ab32ac3951",
+    "real_credentials_used": false,
+    "paid_supplier_requests": 0
+  },
+  "backup": "/opt/micro-one-api/backups/rollback-b2-20261030-102901-f956fa5930d4",
+  "rollback_tag": "rollback-b2-20261030-102901-f956fa5930d4",
+  "backup_contents": [
+    "previous Relay image rollback tag",
+    "Compose source and resolved private configuration",
+    "private env files",
+    "previous container inspect and deployment state"
+  ],
+  "migrations": [],
+  "database_writes_by_deployment": false,
+  "business_configuration_writes": false,
+  "frontend_updated": false,
+  "reverse_proxy_configuration_changed": false,
+  "web_index_unchanged_from_b1": true,
+  "unaffected_container_count": 20,
+  "unaffected_containers_unchanged": true,
+  "paid_supplier_requests": 0,
+  "real_model_credentials_used_for_acceptance": false,
+  "release_or_tag_created": false,
+  "rollback_notes": [
+    "Restore only the Relay image and source-digest label from the private backup, leaving other Compose services and runtime settings intact.",
+    "Recreate only relay-gateway with --no-deps --no-build --pull never and verify healthz.",
+    "An older Relay removes the native Gemini ingress; no reverse database migration is needed."
+  ],
+  "external_acceptance_pending": [
+    "actual Gemini source/model, limits and ordinary model pricing",
+    "actual SDK language/version interoperability",
+    "authorized paid JSON/SSE and multi-turn function use, metering and supplier bill verification"
+  ],
+  "engineering_evidence": "b2-native-gemini-engineering-2026-10-30.json"
+}

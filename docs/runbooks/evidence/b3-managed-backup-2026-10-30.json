@@ -1,0 +1,344 @@
+{
+  "stage": "B3 managed MySQL + Redis backups",
+  "date": "2026-10-30",
+  "timezone": "Asia/Shanghai",
+  "status": "engineering_verified_external_validation_pending",
+  "production_changed": false,
+  "schedule_enabled": false,
+  "targets": {
+    "engineering_rpo_hours": 24,
+    "engineering_rto_minutes": 60,
+    "production_targets_confirmed": false
+  },
+  "verification": {
+    "make_all": "passed",
+    "make_verify": "passed",
+    "verify_generated_type_baseline": "temporary index with intended generated API types; actual Git index unchanged",
+    "backup_race": "passed",
+    "control_owner_http_grpc": {
+      "dialects": [
+        "sqlite",
+        "mysql8.4",
+        "postgres18"
+      ],
+      "result": "passed",
+      "modes": [
+        "legacy",
+        "iam"
+      ]
+    },
+    "step_up": {
+      "dialects": [
+        "sqlite",
+        "mysql8.4",
+        "postgres18"
+      ],
+      "result": "passed",
+      "checks": [
+        "session bound",
+        "expiry",
+        "legacy/IAM",
+        "read/write distinction"
+      ]
+    },
+    "browser": {
+      "expected": 2,
+      "unexpected": 0,
+      "projects": [
+        "desktop Chrome",
+        "mobile Chrome"
+      ],
+      "result": "passed"
+    }
+  },
+  "empty_restore": {
+    "artifact_bytes": 21010991,
+    "artifact_sha256": "34c4d4bf732fe6a1386e1aa5d9419ce0cdf5f028e8f01abae13285ed86083b67",
+    "backup_seconds": 2.150707625,
+    "checks": [
+      "full_migrations_repeat",
+      "connection_leader_exclusion",
+      "exact_writer_resume",
+      "private_s3_encrypted_roundtrip",
+      "wrong_receipt_rejected",
+      "empty_restore",
+      "redis_value",
+      "original_api_token",
+      "mfa_secret_decryption_login",
+      "channel_key_decryption",
+      "wallet_exact",
+      "pending_reservation_idempotency",
+      "duplicate_release_once",
+      "nonempty_restore_refused",
+      "external_s3_recovery_catalog",
+      "multipart_encrypted_roundtrip",
+      "conditional_immutable_objects",
+      "interruption_journal_resume_before_storage",
+      "snapshot_lock_failure_resumes_writers"
+    ],
+    "date": "2026-10-30",
+    "images": {
+      "admin-api": "sha256:c44528447fa07ed62bdb0c1944cba54f8cad6a4e4a49ada9d4843b5b07d03227",
+      "mysql": "sha256:6ea90827b1100f8f2ae306a539f86d2c264a26ed435a2a9f75551dd5c3aeb242",
+      "redis": "sha256:c44528447fa07ed62bdb0c1944cba54f8cad6a4e4a49ada9d4843b5b07d03227"
+    },
+    "production_changed": false,
+    "recovery_verified_seconds": 3.027245583,
+    "restore_seconds": 2.370649584,
+    "scope": "isolated MySQL8.4 Redis8.4 S3 empty restore",
+    "snapshot_at": 1793346181
+  },
+  "worker": {
+    "platform": "linux/amd64",
+    "statically_linked": true,
+    "cross_build": "passed",
+    "linux_cli_help": "passed",
+    "sha256": "542f1aaa47eaddf3ea34c3954a267875154f72fecd48e762112e90a89cb20e9d"
+  },
+  "candidate": {
+    "affected_services": [
+      "identity-service",
+      "admin-api",
+      "web",
+      "host backup-worker"
+    ],
+    "migration": "147_create_managed_backups (admin owner; MySQL/PostgreSQL/SQLite mirrors)",
+    "source_digest": "9f3d70fe681e92bf6b09b28de3e76a62898c65e73123aaa941032f7a84c3d703",
+    "source_scope": "changed implementation/config/test sources excluding documentation and local outputs",
+    "files": [
+      {
+        "path": "Makefile",
+        "sha256": "5a536ee632de186b54d88e2a15b14706fec2d55b580be04b9de09d24ad9746b5"
+      },
+      {
+        "path": "api/admin/v1/admin.proto",
+        "sha256": "3912b55aa009ccd7ef7e293184a52c9915134bac41e08d4383890900b0f31d87"
+      },
+      {
+        "path": "app/admin/cmd/admin/backup.go",
+        "sha256": "8712f439d3d16cdd8b3f05ff3a80e178a319d63a4ab5a90130b7f13b5ecee6b7"
+      },
+      {
+        "path": "app/admin/cmd/admin/wire.go",
+        "sha256": "033e1d518cf4d765acd558bb40f97d960e983451621fa1b168e54b1aa83de3e0"
+      },
+      {
+        "path": "app/admin/cmd/admin/wire_gen.go",
+        "sha256": "a777e26cad1bd060e2e0a29d74a861e984a6cb4564d1ba99fa1dd272b29c652c"
+      },
+      {
+        "path": "app/admin/internal/server/backup.go",
+        "sha256": "b13a560b2b604746bcbd1d29f9e7f51634defde06c90db9c2963e4ab5c844785"
+      },
+      {
+        "path": "app/admin/internal/server/backup_test.go",
+        "sha256": "0548a288de8992b1c88127445a291fb3cff453a5d19264e0c967209b0e8d8400"
+      },
+      {
+        "path": "app/admin/internal/server/http.go",
+        "sha256": "ada179a089886838dcd084e8fd507ad6b70f4cd29a07a91cf1ed3c1377749eaf"
+      },
+      {
+        "path": "app/admin/internal/server/resource_authorization.go",
+        "sha256": "70b8c59dc747090910a37fb4a1540604087871322f3a187d4223786b6b599cdb"
+      },
+      {
+        "path": "app/admin/internal/service/admin.go",
+        "sha256": "5dde7a42c20bc0ec40cc50b4b79fa8bd857ac68b6f960cf50403864399492bb2"
+      },
+      {
+        "path": "app/admin/internal/service/backup.go",
+        "sha256": "34bf3958e97494ae92ea895d5d13206acd61aaa3931056556ff5e8d6f43fddd8"
+      },
+      {
+        "path": "app/admin/internal/service/resource_authorizer.go",
+        "sha256": "8942cde180512cf27b709096fd15913c046581ff98e5ff8e02db2818828d2386"
+      },
+      {
+        "path": "app/admin/testutil/backup.go",
+        "sha256": "d54f9cee65975ab350413ec8002b94700c4cc9edd2a14605cf05425bdfea3d9a"
+      },
+      {
+        "path": "app/channel/internal/data/owner_fixture.go",
+        "sha256": "b5955f061ade42baa3ab0ce04984f8bc3c6bf3449d3ba4911d26dfaba55ae7bc"
+      },
+      {
+        "path": "app/channel/testutil/iam.go",
+        "sha256": "c6c0887fbae4b38d74b87e92c2bfff78be8c8cae67828e29a1d696208346bb02"
+      },
+      {
+        "path": "app/identity/internal/biz/iam_resource.go",
+        "sha256": "4bd66787d5a646d48487241e64f71c13e633f47f9a68663003cd487460ca7ba5"
+      },
+      {
+        "path": "app/identity/internal/data/backup_fixture.go",
+        "sha256": "8c53148f9e46fdbb1cc7654038a1eb92a8cb42c38ddd61fa0cbdfe8374c17181"
+      },
+      {
+        "path": "app/identity/internal/data/backup_security_test.go",
+        "sha256": "82cb58683a41c27105775b3611716a28f4ce16edffba90b4736ce9a20af1a66b"
+      },
+      {
+        "path": "app/identity/testutil/backup.go",
+        "sha256": "a353aed4b6d6bc168783a26269ac8f34ea451351ad2b42f0f420e8abd5838a5c"
+      },
+      {
+        "path": "cmd/backup-worker/main.go",
+        "sha256": "1fecff1654a048ec1af3c31c96a291ae863af1b59a24c6c1f9adb19dff69f2f8"
+      },
+      {
+        "path": "deploy/backup-worker.service",
+        "sha256": "60c272469d564f54d941b688e9bd26aa949ea6ac183333639793afaeb9870fba"
+      },
+      {
+        "path": "deployments/backup/worker.env.example",
+        "sha256": "49069e3bec8c3e5b6aab709db58a2e2846f91da26b10dfa23b66886d92d44b0e"
+      },
+      {
+        "path": "deployments/backup/worker.example.json",
+        "sha256": "3ba4192406b45ed4e0f5650a27ef5fe42a6d9357ee07be652854d14b411f7fe0"
+      },
+      {
+        "path": "deployments/docker-compose/.env.example",
+        "sha256": "0d354e38eaf4665b8173c719291202d968de76b6fededbd208ab99dece94cf27"
+      },
+      {
+        "path": "deployments/docker-compose/docker-compose.yml",
+        "sha256": "d2fdbf3bcfebceec80edfb10cf5225ecefc2927696344c0c318a1e3911550032"
+      },
+      {
+        "path": "deployments/docker/Dockerfile.backup-worker",
+        "sha256": "13a38a60ffc8e27dfa861b88e989b28e6793377e63b70ff5d72129215c2a3204"
+      },
+      {
+        "path": "domain/authorization/execution.go",
+        "sha256": "8f261ed13c3a7ff1c8bb3c6a712ee047844f4ca7eacb32aa8c2d20ac186445a1"
+      },
+      {
+        "path": "domain/backup/biz/backup.go",
+        "sha256": "adba3fffe79add5db3f783e1d2a50707ee1a966f74397e4a308074a5543b166d"
+      },
+      {
+        "path": "domain/backup/biz/backup_test.go",
+        "sha256": "173131b15eabd16accf0ff5465d9f585d5093b7f8e80970903049c0f389229ec"
+      },
+      {
+        "path": "domain/backup/data/archive.go",
+        "sha256": "a724e74faafd87e232acd38fac582bd90a2cd1ce3e5e17ceec907235997f27af"
+      },
+      {
+        "path": "domain/backup/data/backup_test.go",
+        "sha256": "545f0eb4246fba53441bda33ed0e415e542f08dd5f2f8e16410c4700154a6452"
+      },
+      {
+        "path": "domain/backup/data/host_lock.go",
+        "sha256": "41563a34b5e7c20edd16ee2b0eedc1ad429ef972a75bd27a3a2505fb416868c3"
+      },
+      {
+        "path": "domain/backup/data/repo.go",
+        "sha256": "d4cce97ef5033d3dac822f6d4fd652a05dc3e33110664d05c6b19b62c3f9994d"
+      },
+      {
+        "path": "domain/backup/data/restore.go",
+        "sha256": "b0708bb28fabf36d3635b7f57f0dd5b79bdc6bc7696b32133a2d94cbe95784ac"
+      },
+      {
+        "path": "domain/backup/data/runner.go",
+        "sha256": "8f771b133987d6a9193e75fa6ebeacaa19cbcc0ef082dccf5640c37e95cc16f3"
+      },
+      {
+        "path": "domain/backup/data/s3.go",
+        "sha256": "079261933799ce6dea5895292b3461e7ceb7c4cce5c96e2e17ded93650a2df6b"
+      },
+      {
+        "path": "domain/backup/data/worker.go",
+        "sha256": "243f93d08e1a8328f85b93fa0eeb09feb8d21d6dcdee087fab81e25ad44f6fa9"
+      },
+      {
+        "path": "internal/integration/managed_backup_owner_test.go",
+        "sha256": "b530a93cf48d637074d9049ec45b06f59840fe5ecae67d2a70b6dfa475acdedf"
+      },
+      {
+        "path": "internal/integration/managed_backup_test.go",
+        "sha256": "858cb5805cea419988972718a058006ab8daa780721fe731be5ae8b8f0f4ca3c"
+      },
+      {
+        "path": "migrations/147_create_managed_backups.sql",
+        "sha256": "0b84f9a6f75b6028459e337bcee950073fbd8de76dd7536add5d285a4640aade"
+      },
+      {
+        "path": "migrations/manual/147_backup_runtime_grants.example.sql",
+        "sha256": "04f6e3d804ab987a2e1bba0ca714bd7c6fcc8f1d52ade9f49c69200082c06f8e"
+      },
+      {
+        "path": "migrations/ownership.yaml",
+        "sha256": "770a447c5ac570b7ca72f51b03ef2ea15766b0e3f1a35a3d9780e5ffb65cef92"
+      },
+      {
+        "path": "migrations/postgres/147_create_managed_backups.sql",
+        "sha256": "0b84f9a6f75b6028459e337bcee950073fbd8de76dd7536add5d285a4640aade"
+      },
+      {
+        "path": "migrations/sqlite/147_create_managed_backups.sql",
+        "sha256": "0b84f9a6f75b6028459e337bcee950073fbd8de76dd7536add5d285a4640aade"
+      },
+      {
+        "path": "platform/database/migrate/sqlite_lifecycle_test.go",
+        "sha256": "aa6babee1e87c22ac68a9abdbdde45c1773dacd0e71ae62e8f42d635315d23f0"
+      },
+      {
+        "path": "platform/security/serviceidentity/registry.go",
+        "sha256": "60db21e5016f03b77bff04f13577df36200613fcbd7dd9ac4d6fccb50a87cb03"
+      },
+      {
+        "path": "scripts/test-managed-backup-control.sh",
+        "sha256": "1e96226d8bf7ac9cd76c16415825629678f8ae4e92848fa3236ac589d16bbb45"
+      },
+      {
+        "path": "web/e2e/b3-backup.spec.ts",
+        "sha256": "7bca6a444b4cab5ea18474a8184fa1d0a76ac7a8a48e34a677af0e72e1978397"
+      },
+      {
+        "path": "web/package.json",
+        "sha256": "9263b37011cda941ab6aa35139f3fd5ef3ee684be82faf236802246e33236650"
+      },
+      {
+        "path": "web/playwright.b3.config.ts",
+        "sha256": "e4d1078cbb5c0a69c46b79647d0d3a1df4e6b816f3d6090cfa9fde05abe753c6"
+      },
+      {
+        "path": "web/src/components/admin/BackupPanel.test.tsx",
+        "sha256": "43d5a79cb6ea6893fd31349318772b3e01b4367bd594241421dba7f4f668807b"
+      },
+      {
+        "path": "web/src/components/admin/BackupPanel.tsx",
+        "sha256": "d9c14d4eb804f6d923d787b421f912767b784055430b395106a1135b4ceb8078"
+      },
+      {
+        "path": "web/src/locales/en-US.ts",
+        "sha256": "8ccb9bad0dc66095510398dad7c76762fd02a1a69bd51fda92a1d76e75882602"
+      },
+      {
+        "path": "web/src/pages/admin/OptionsPage.tsx",
+        "sha256": "554f490c97767633462d218a4fabc410666237828e5ad9173c7c3b7cc5dc4684"
+      },
+      {
+        "path": "web/src/types/api.ts",
+        "sha256": "2a88f907cf9ed8fce661bdcfd7d084b8ceba3d0fd0634245d40b95e66bc69eda"
+      }
+    ]
+  },
+  "external_pending": [
+    "private production S3 credentials, TLS, permissions and lifecycle",
+    "production RPO/RTO and interruption window confirmation",
+    "actual-size restore timing and consecutive schedule observation",
+    "production deployment and controlled enablement"
+  ],
+  "preserved": [
+    "existing production services and configuration",
+    "existing A2 enforcement policy",
+    "pricing/payment/vendor pilot state",
+    "paused automations",
+    "no release/tag/push/production restore"
+  ]
+}

@@ -23,6 +23,7 @@ docs/
 | 个人单机，创建首个渠道和 Token | [quickstart-lite.md](./quickstart-lite.md) |
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
 | 查看用户自助、安全认证、计价补齐排期与条件保留项 | [design/next-stage-plan-2026-10-26.md](./design/next-stage-plan-2026-10-26.md) |
+| 接入原生 Gemini 文本/函数调用及核对部署状态 | [B2 契约](./design/b2-native-gemini-contract-2026-10-30.md) · [B2 验收](./runbooks/b2-native-gemini-acceptance-2026-10-30.md) |
 | 查看告警修复、生产容量基线与 executor 同窗复核 | [runbooks/post-v0.36.0-acceptance-2026-10-18.md](./runbooks/post-v0.36.0-acceptance-2026-10-18.md) |
 | 查看原生镜像提速与真实 Log RPC/SQL 容量边界 | [构建与 SQL 链路验收](./runbooks/build-timing-sql-acceptance-2026-10-18.md) |
 | 查看计时 SQL 分组写入优化与三库复验 | [容量定位与改进](./runbooks/request-timing-capacity-improvement-2026-10-18.md) |
@@ -122,6 +123,7 @@ docs/
 | 文档 | 用途 |
 |------|------|
 | [a1-self-service-acceptance-2026-10-27.md](./runbooks/a1-self-service-acceptance-2026-10-27.md) | A1 注册/邮件验证/密码恢复实现、SMTP 配置、跨实例/三库验收与外部保留项 |
+| [b2-native-gemini-acceptance-2026-10-30.md](./runbooks/b2-native-gemini-acceptance-2026-10-30.md) | B2 原生 Gemini 三库资金验收、生产 Relay 部署、回滚及真实来源保留项 |
 | [subscription-production-runbook.md](./runbooks/subscription-production-runbook.md) | 订阅系统生产发布、回滚与排障总入口 |
 | [post-v0.36.0-acceptance-2026-10-18.md](./runbooks/post-v0.36.0-acceptance-2026-10-18.md) | 告警修复/生产热加载、计时容量基线、executor 同窗及双语入口验收 |
 | [plan-execution-2026-10-16.md](./runbooks/plan-execution-2026-10-16.md) | v0.35.1 交付、定价原子保存上线、三库与协议验收及条件保留 |

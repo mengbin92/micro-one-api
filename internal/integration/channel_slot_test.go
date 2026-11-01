@@ -119,8 +119,7 @@ func (b *channelSlotGatedBilling) ReserveQuota(ctx context.Context, req *billing
 			Success:                    true,
 			ReservationId:              req.RequestId,
 			ReservedAmount:             100,
-			ServiceTierPricingVersion:  req.GetServiceTierPricingVersion(),
-			ServiceTierContractVersion: req.GetServiceTierPricingVersion(),
+			ServiceTierContractVersion: 1,
 		}, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()

@@ -782,6 +782,14 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 			BilledServiceTier:      ledger.BilledServiceTier,
 			ServiceTierPolicy:      ledger.ServiceTierPolicy,
 			ServiceTierConfigHash:  ledger.ServiceTierConfigHash,
+			LongContextPolicy:      ledger.LongContextPolicy,
+			PricingTimeBand:        ledger.PricingTimeBand,
+			PricingTimezone:        ledger.PricingTimezone,
+			PricingTimeUnix:        ledger.PricingTimeUnix,
+
+			LongContextThreshold:   ledger.LongContextThreshold,
+			LongContextTier:        ledger.LongContextTier,
+			LongContextInputTokens: ledger.LongContextInputTokens,
 		}
 	}
 
@@ -856,13 +864,8 @@ func (s *BillingService) GetLedgerEntry(ctx context.Context, req *billingv1.GetL
 		if err != nil {
 			return nil, err
 		}
-		snapshotView := *requestSnapshot
-		if snapshotView.ServiceTier != nil {
-			tierView := *snapshotView.ServiceTier
-			tierView.Config.UpstreamPrices = nil
-			snapshotView.ServiceTier = &tierView
-		}
-		encoded, err := jsonx.Marshal(&snapshotView)
+		snapshotView := ledgerRequestSnapshotView(requestSnapshot)
+		encoded, err := jsonx.Marshal(snapshotView)
 		if err != nil {
 			return nil, err
 		}
@@ -931,6 +934,14 @@ func (s *BillingService) GetLedgerEntry(ctx context.Context, req *billingv1.GetL
 			BilledServiceTier:      ledger.BilledServiceTier,
 			ServiceTierPolicy:      ledger.ServiceTierPolicy,
 			ServiceTierConfigHash:  ledger.ServiceTierConfigHash,
+			LongContextPolicy:      ledger.LongContextPolicy,
+			PricingTimeBand:        ledger.PricingTimeBand,
+			PricingTimezone:        ledger.PricingTimezone,
+			PricingTimeUnix:        ledger.PricingTimeUnix,
+
+			LongContextThreshold:   ledger.LongContextThreshold,
+			LongContextTier:        ledger.LongContextTier,
+			LongContextInputTokens: ledger.LongContextInputTokens,
 			PricingSnapshot:        pricingSnapshot,
 		},
 	}, nil
@@ -946,6 +957,12 @@ func pricingSnapshotToProto(snap *biz.PricingSnapshot) *commonv1.PricingSnapshot
 		ServiceTier:           snap.ServiceTier,
 		ServiceTierPolicy:     snap.ServiceTierPolicy,
 		ServiceTierConfigHash: snap.ServiceTierConfigHash,
+		LongContextPolicy:     snap.LongContextPolicy,
+		PricingTimeBand:       snap.PricingTimeBand,
+		PricingTimezone:       snap.PricingTimezone,
+
+		LongContextThreshold:  snap.LongContextThreshold,
+		LongContextTier:       snap.LongContextTier,
 		ModelName:             snap.ModelName,
 		InputPrice:            snap.InputPrice,
 		OutputPrice:           snap.OutputPrice,

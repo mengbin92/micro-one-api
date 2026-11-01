@@ -119,7 +119,9 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		if r.URL.Path == "/v1/responses" {
 			protocol = "openai_responses"
 		}
-		ctx = tierAttemptContext(ctx, retriedBody, protocol, ch)
+		// The submitted bytes still contain duplicate keys that model
+		// rewriting would otherwise collapse before pricing admission.
+		ctx = tierAttemptContext(ctx, body, protocol, ch)
 		reservation, reserveErr := s.reserveQuota(
 			ctx,
 			fmt.Sprintf("%d", plan.Auth.UserID),
@@ -132,6 +134,12 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		)
 		if reserveErr != nil {
 			return reserveFailure(reserveErr)
+		}
+		if reservation.ServiceTierPricingVersion == 1 {
+			if _, limitErr := tierOutputLimit(ctx); limitErr != nil {
+				_ = s.releaseQuota(ctx, reservation.ReservationId, "invalid bounded pricing request")
+				return reserveFailure(limitErr)
+			}
 		}
 		releaseChannel, slotErr := s.relayUsecase.AcquireChannelSlot(ctx, ch)
 		if slotErr != nil {

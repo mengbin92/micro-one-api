@@ -1,0 +1,29 @@
+{
+  "compose_file": "/opt/micro-one-api/docker-compose/docker-compose.yml",
+  "project": "docker-compose",
+  "state_dir": "/var/lib/micro-one-api-backup",
+  "control_dsn_env": "BACKUP_CONTROL_DSN",
+  "snapshot_dsn_env": "BACKUP_SNAPSHOT_DSN",
+  "redis_password_env": "BACKUP_REDIS_PASSWORD",
+  "schemas": ["oneapi", "oneapi_admin", "oneapi_identity", "oneapi_channel", "oneapi_billing", "oneapi_config", "oneapi_log", "oneapi_monitor", "oneapi_notify"],
+  "source_revision": "REPLACE_WITH_DEPLOYED_SOURCE_DIGEST",
+  "files": {
+    "deployment.env": "/opt/micro-one-api/docker-compose/.env",
+    "compose.yaml": "/opt/micro-one-api/docker-compose/docker-compose.yml",
+    "admin.yaml": "/opt/micro-one-api/configs/admin.yaml",
+    "identity.yaml": "/opt/micro-one-api/configs/identity.yaml",
+    "channel.yaml": "/opt/micro-one-api/configs/channel.yaml",
+    "billing.yaml": "/opt/micro-one-api/configs/billing.yaml"
+  },
+  "key_references": ["JWT_SECRET_KEY", "TOKEN_HASH_KEY", "CHANNEL_ENCRYPTION_KEY", "IDENTITY_MFA_ENCRYPTION_KEY", "SERVICE_TOKEN", "SERVICE_IDENTITY_TOKEN", "REDIS_PASSWORD", "DATABASE_DSN"],
+  "age_recipient": "REPLACE_WITH_OFFLINE_AGE_PUBLIC_RECIPIENT",
+  "timeout_minutes": 20,
+  "s3": {
+    "endpoint": "https://s3.example.invalid",
+    "bucket": "private-backups",
+    "prefix": "micro-one-api/production",
+    "region": "us-east-1",
+    "access_key_env": "BACKUP_S3_ACCESS_KEY",
+    "secret_key_env": "BACKUP_S3_SECRET_KEY"
+  }
+}

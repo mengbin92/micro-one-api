@@ -16,6 +16,9 @@ func (e *CapabilityError) Error() string {
 // ValidateEndpoint rejects routes without native or adaptor support. Only
 // Responses creation can be converted; stored-response operations remain native.
 func ValidateEndpoint(channelType int32, endpoint string) error {
+	if endpoint == "gemini/generateContent" && channelType != ChannelTypeGemini {
+		return &CapabilityError{Feature: "native Gemini requires a Gemini API-key channel"}
+	}
 	path := strings.TrimPrefix(endpoint, "/v1")
 	if path == "responses" {
 		path = "/responses"

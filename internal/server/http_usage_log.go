@@ -269,7 +269,7 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 	}
 	// §6.2/§9.1 display contract: dual-write the canonical fields once the
 	// producer gate is on. quota keeps its legacy reported-total meaning.
-	if in.Usage != nil && canonicalUsageProducerEnabled() {
+	if in.Usage != nil && (canonicalUsageProducerEnabled() || in.Usage.Reported.SourceProtocol == "gemini") {
 		env := in.Usage
 		req.UncachedInputTokens = env.CanonicalOrZero().UncachedInputTokens
 		req.ReportedPromptTokens = env.Reported.PromptTokens

@@ -1,8 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -22,6 +25,10 @@ var errServiceTierRequest = errors.New("invalid or unsupported service_tier requ
 // omitted value. The Billing owner decides whether this source/model enables
 // tier pricing; an unsupported ingress must therefore send its protocol too.
 func readServiceTierRequest(body []byte, protocol string) (billingdomain.ServiceTierRequest, error) {
+	return readServiceTierRequestWithChatLimit(body, protocol, false)
+}
+
+func readServiceTierRequestWithChatLimit(body []byte, protocol string, allowMaxTokens bool) (billingdomain.ServiceTierRequest, error) {
 	request := billingdomain.ServiceTierRequest{Protocol: protocol, Version: billingdomain.ServiceTierPricingVersion}
 	var payload map[string]jsonx.RawMessage
 	if jsonx.Unmarshal(body, &payload) != nil {
@@ -38,6 +45,11 @@ func readServiceTierRequest(body []byte, protocol string) (billingdomain.Service
 		}
 	}
 	if protocol != "openai_chat" && protocol != "openai_responses" {
+		return request, nil
+	}
+	if !unambiguousTierRoot(body) {
+		// Preserve the legacy path, but do not claim a bounded pricing
+		// contract when typed decoding can interpret a different request.
 		return request, nil
 	}
 	// Only self-contained textual requests have a byte-derived input bound.
@@ -60,6 +72,10 @@ func readServiceTierRequest(body []byte, protocol string) (billingdomain.Service
 	inputKey, limitKey := "messages", "max_completion_tokens"
 	if protocol == "openai_responses" {
 		inputKey, limitKey = "input", "max_output_tokens"
+	} else if _, explicit := payload[limitKey]; !explicit && allowMaxTokens {
+		// DeepSeek Chat uses max_tokens. Match the typed provider's explicit
+		// max_completion_tokens precedence when both fields are supplied.
+		limitKey = "max_tokens"
 	}
 	if !textOnlyTierInput(payload[inputKey], protocol) {
 		return request, nil
@@ -71,6 +87,46 @@ func readServiceTierRequest(body []byte, protocol string) (billingdomain.Service
 	// per-message allowance covers protocol framing/role tokens conservatively.
 	request.InputTokenBound = int64(len(body))*2 + 4096
 	return request, nil
+}
+
+// A map discards duplicate keys, while typed JSON decoding also accepts case
+// aliases. Inspect the submitted root before either projection can hide a
+// second output limit, tool list, input, model or conversation reference.
+func unambiguousTierRoot(body []byte) bool {
+	decoder := jsonx.NewTokenDecoder(bytes.NewReader(body))
+	start, err := decoder.Token()
+	if err != nil || start != jsonx.Delim('{') {
+		return false
+	}
+	seen := map[string]bool{}
+	canonical := []string{"model", "messages", "input", "instructions", "service_tier", "max_tokens", "max_completion_tokens", "max_output_tokens", "tools", "tool_choice", "previous_response_id", "conversation", "prompt", "background", "n", "stream", "stream_options", "temperature", "reasoning_effort"}
+	for decoder.More() {
+		token, err := decoder.Token()
+		key, ok := token.(string)
+		if err != nil || !ok || seen[key] {
+			return false
+		}
+		seen[key] = true
+		for _, name := range canonical {
+			if key != name && strings.EqualFold(key, name) {
+				return false
+			}
+		}
+		var value jsonx.RawMessage
+		if decoder.Decode(&value) != nil {
+			return false
+		}
+	}
+	end, err := decoder.Token()
+	return err == nil && end == jsonx.Delim('}')
+}
+
+func tierOutputLimit(ctx context.Context) (int, error) {
+	request := billingdomain.GetServiceTierRequest(ctx)
+	if request.Version != billingdomain.ServiceTierPricingVersion || (request.Protocol != "openai_chat" && request.Protocol != "openai_responses") || request.InputTokenBound <= 0 || request.InputTokenBound > math.MaxInt32 || request.OutputTokenBound <= 0 || request.OutputTokenBound > math.MaxInt32 {
+		return 0, fmt.Errorf("SERVICE_TIER_BOUND_REQUIRED: invalid or ambiguous bounded text request")
+	}
+	return int(request.OutputTokenBound), nil
 }
 
 func textOnlyTierInput(raw []byte, protocol string) bool {
@@ -112,10 +168,11 @@ func textOnlyTierInput(raw []byte, protocol string) bool {
 }
 
 func tierAttemptContext(ctx context.Context, body []byte, protocol string, channel *relaybiz.Channel) context.Context {
-	if channel == nil || channel.Type != relayprovider.ChannelTypeOpenAI || channel.SubscriptionAccountID != 0 {
+	if channel == nil || (channel.Type != relayprovider.ChannelTypeOpenAI && channel.Type != relayprovider.ChannelTypeDeepSeek) || channel.SubscriptionAccountID != 0 {
 		protocol = "unsupported"
 	}
-	request, _ := readServiceTierRequest(body, protocol)
+	allowMaxTokens := channel != nil && channel.Type == relayprovider.ChannelTypeDeepSeek
+	request, _ := readServiceTierRequestWithChatLimit(body, protocol, allowMaxTokens)
 	return billingdomain.WithServiceTierRequest(ctx, request)
 }
 
@@ -277,6 +334,11 @@ func completeTierResponsesUsage(body []byte) (rawUsage, bool) {
 		raw = payload.Response.Usage
 	}
 	if !validTierUsageNumbers(raw) {
+		return rawUsage{}, false
+	}
+	var aliasesOK bool
+	raw, aliasesOK = normalizeTierCacheAliases(raw)
+	if !aliasesOK {
 		return rawUsage{}, false
 	}
 	var reported struct {

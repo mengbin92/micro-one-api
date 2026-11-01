@@ -67,6 +67,15 @@ type reservationModel struct {
 func (reservationModel) TableName() string { return "billing_reservations" }
 
 type ledgerModel struct {
+	PricingTimeBand string `gorm:"column:pricing_time_band"`
+	PricingTimezone string `gorm:"column:pricing_timezone"`
+	PricingTimeUnix int64  `gorm:"column:pricing_time_unix"`
+
+	LongContextPolicy      string `gorm:"column:long_context_policy"`
+	LongContextThreshold   int64  `gorm:"column:long_context_threshold"`
+	LongContextTier        string `gorm:"column:long_context_tier"`
+	LongContextInputTokens int64  `gorm:"column:long_context_input_tokens"`
+
 	ID                    uint    `gorm:"primaryKey;column:id"`
 	UserID                string  `gorm:"index;column:user_id"`
 	Amount                int64   `gorm:"column:amount"`

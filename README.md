@@ -8,13 +8,14 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.37.1 发布公告](./docs/releases/release-v0.37.1.md)（SSRF 旁路统一告警、上游错误缓冲限额与 Chat SSE 结算终止修复；无新增迁移，生产升级先补既有 Log 145） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.37.1)
+> 📣 **最新发布**：[v0.38.0 发布公告](./docs/releases/release-v0.38.0.md)（B 阶段：忙闲时段计价、原生 Gemini 入站与托管备份控制面；新增 Billing 146／Admin 147，计价与备份控制面默认关闭） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.38.0)
 
 ## 功能概览
 
 - OpenAI 兼容 API 网关：支持 `/v1/chat/completions`、`/v1/models`、`/v1/responses` 以及 embeddings、audio、image、moderations 等 raw relay 路由。
 - 多渠道模型分发：支持渠道优先级、同优先级负载均衡、禁用渠道过滤、模型白名单和模型映射。
 - 多供应商适配：支持 OpenAI-compatible 渠道，并包含 Anthropic、Gemini、Azure、VoyageAI 等 provider 适配器；DeepSeek、Moonshot、Groq、Tongyi、OpenRouter、SiliconFlow、Ollama、Doubao 等按 OpenAI-compatible 方式转发。
+- 原生 Gemini 入站：支持 `v1beta` 的 generateContent / streamGenerateContent 文本与函数调用、JSON/SSE 和 canonical 用量结算；首版使用 Gemini API-key 渠道，图片/音频等能力明确拒绝。详见 [B2 协议契约](docs/design/b2-native-gemini-contract-2026-10-30.md)。
 - 用户与令牌管理：支持用户鉴权、令牌状态、过期时间、余额检查、模型权限和用户角色控制。
 - 钱包与账务：提供金额预扣、释放、结算、ledger、兑换码、支付订单和用量记录等能力。
 - 订阅套餐与用量查询：支持订阅套餐购买、续费、退款/冲正、购买时套餐快照，以及 API Key 鉴权的 `/v1/subscription/usage` 查询（额度、已用量、剩余额度和下次刷新时间）。
@@ -184,6 +185,7 @@ make web-dist
 
 ## 发布与升级
 
+- [v0.38.0](./docs/releases/release-v0.38.0.md)：B1 忙闲时段/长上下文计价、B2 原生 Gemini v1beta 入站、B3 托管 MySQL/Redis 备份控制面及三项安全扫描修复。新增 Billing 146／Admin 147 迁移；计价与备份控制面默认关闭，真实价格/S3/host worker 验收保留。
 - [v0.37.1](./docs/releases/release-v0.37.1.md)：修复 SSRF 旁路静默、八条非流式路径错误缓冲过大与 Chat SSE 后置错误；成功标记前完成结算，失败发送脱敏错误事件。无新增 API、配置、依赖或迁移；升级先补既有 Log 145，收费与强制认证等开关保持原状态。
 - [v0.37.0](./docs/releases/release-v0.37.0.md)：注册/邮件恢复、TOTP 与首批 step-up、服务档位计价、微信 Native 余额充值及第一轮 12 项修复。新增 Identity 143／Billing 144／Log 145；强制认证与新收费默认关闭，A3 完整生产上线和真实外部验收分别保留。
 - [v0.36.6](./docs/releases/release-v0.36.6.md)：修复上游供应商漏报、扫描停滞与有界复核例外，保留历史账单补证及开发依赖安全修复；无新增迁移，生产证据监控保持停用。
@@ -250,6 +252,18 @@ curl -X POST http://localhost:8080/v1/chat/completions \
     "stream": true
   }'
 ```
+
+### 原生 Gemini
+
+先配置可用的 Gemini API-key 渠道、模型路由及普通价格；`MODEL` 为平台允许访问的模型名称，`API_TOKEN` 为本平台 Token。
+
+```bash
+curl "http://localhost:8080/v1beta/models/${MODEL}:generateContent" \
+  -H "x-goog-api-key: ${API_TOKEN}" -H 'Content-Type: application/json' \
+  -d '{"contents":[{"parts":[{"text":"Hello"}]}],"generationConfig":{"maxOutputTokens":128}}'
+```
+
+流式调用改用 `:streamGenerateContent?alt=sse`，并加 `curl -N`。工具多轮、支持/拒绝矩阵及结算规则见 [B2 契约](docs/design/b2-native-gemini-contract-2026-10-30.md)；部署和真实来源验收状态见 [B2 验收](docs/runbooks/b2-native-gemini-acceptance-2026-10-30.md)。
 
 ## 配置要点
 

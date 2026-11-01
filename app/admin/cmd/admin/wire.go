@@ -7,6 +7,7 @@ import (
 	"context"
 	iamdata "micro-one-api/app/admin/internal/data/iam"
 	"micro-one-api/app/admin/internal/data/routingaccess"
+	backupbiz "micro-one-api/domain/backup/biz"
 	"time"
 
 	"github.com/go-kratos/kratos/v3"
@@ -28,6 +29,7 @@ import (
 
 var ProviderSet = wire.NewSet(
 	newClients,
+	newBackupRepo,
 	newSystemOptionsRepo,
 	newSystemOptionsUsecase,
 	newSubscriptionUsecases,
@@ -87,6 +89,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 func newApp(
 	cfg *Config,
+	backupRepo backupbiz.Repo,
 	clients *clientsResult,
 	sub subscriptionResult,
 	svc *service.AdminService,
@@ -97,6 +100,7 @@ func newApp(
 	reg registrarResult,
 ) (*kratos.App, func()) {
 	svc.SetIAMService(iam)
+	svc.SetBackupUsecase(backupbiz.NewUsecase(backupRepo, svc.ResourceAuthorizer()))
 	svc.SetLogClient(clients.logClient)
 	svc.SetRoutingGroupUsecase(routingGroups)
 	svc.SetRoutingAccessUsecase(routingAccess)

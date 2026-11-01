@@ -243,6 +243,8 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 		khttp.NotFoundHandler(http.HandlerFunc(handlePage)),
 	)
 	adminAuth := newAdminGuard(svc)
+	srv.HandleFunc("/api/admin/backup-policy", adminAuth(func(w http.ResponseWriter, r *http.Request) { handleBackupPolicy(w, r, svc) }))
+	srv.HandleFunc("/api/admin/backups", adminAuth(func(w http.ResponseWriter, r *http.Request) { handleBackups(w, r, svc) }))
 	if iam := svc.IAMService(); iam != nil {
 		adminv1.RegisterIAMAdminServiceHTTPServer(srv, iam)
 	}

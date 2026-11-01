@@ -10,6 +10,7 @@ type ExecutionPoint struct {
 }
 
 var executionPoints = map[string]ExecutionPoint{
+	"admin.backups":           {"admin", []string{"system.option.read", "system.option.security.update"}},
 	"billing.vendor_reports":  {"billing", []string{"billing.vendor_report.read", "billing.vendor_report.import", "billing.vendor_report.attribute"}},
 	"channel.contracts":       {"channel", []string{"channel.upstream_contract.read", "channel.upstream_contract.create", "channel.upstream_contract.publish", "channel.upstream_contract.quarantine"}},
 	"admin.subscription.self": {"admin", nil},

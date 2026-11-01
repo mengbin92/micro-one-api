@@ -32,6 +32,7 @@ func validateAttemptReplay(ctx context.Context, r *Reservation, model, channelID
 // use this identity even when the producer omits source fields.
 func usageForReservation(usage LedgerUsage, r *Reservation) LedgerUsage {
 	usage.FrozenServiceTier = nil
+	usage.FrozenPricingTimeBand = ""
 	if r.SourceKind != "" {
 		usage.SourceKind = r.SourceKind
 		usage.SubscriptionAccountID = parseInt64Default(r.SubscriptionAccountID, 0)
@@ -41,6 +42,7 @@ func usageForReservation(usage LedgerUsage, r *Reservation) LedgerUsage {
 	}
 	if r.RequestSnapshot != nil && r.RequestSnapshot.ServiceTier != nil {
 		usage.FrozenServiceTier = &r.RequestSnapshot.ServiceTier.Config
+		usage.FrozenPricingTimeBand = r.RequestSnapshot.ServiceTier.PricingTimeBand
 		usage.UpstreamCost = 0
 	}
 	return usage

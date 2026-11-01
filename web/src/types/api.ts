@@ -4,6 +4,38 @@
  */
 
 export interface paths {
+    "/api/admin/backup-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminService_GetBackupPolicy"];
+        put: operations["AdminService_UpdateBackupPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminService_ListBackups"];
+        put?: never;
+        post: operations["AdminService_CreateBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/user/authorization": {
         parameters: {
             query?: never;
@@ -1318,6 +1350,47 @@ export interface components {
             success?: boolean;
             message?: string;
         };
+        "api.admin.v1.BackupEvent": {
+            id?: string;
+            jobId?: string;
+            action?: string;
+            actor?: string;
+            reason?: string;
+            at?: string;
+        };
+        "api.admin.v1.BackupJob": {
+            id?: string;
+            status?: string;
+            trigger?: string;
+            actor?: string;
+            reason?: string;
+            createdAt?: string;
+            startedAt?: string;
+            finishedAt?: string;
+            sha256?: string;
+            bytes?: string;
+            errorCode?: string;
+            policy?: components["schemas"]["api.admin.v1.BackupPolicy"];
+        };
+        /**
+         * @description Managed backups expose receipts only. Storage credentials, configuration
+         *      files and downloadable backup objects never enter this public contract.
+         */
+        "api.admin.v1.BackupPolicy": {
+            revision?: string;
+            enabled?: boolean;
+            /** Format: int32 */
+            intervalHours?: number;
+            /** Format: int32 */
+            retain?: number;
+            /** Format: int32 */
+            rpoHours?: number;
+            /** Format: int32 */
+            rtoMinutes?: number;
+        };
+        "api.admin.v1.CreateBackupRequest": {
+            requestId?: string;
+        };
         "api.admin.v1.DeleteModelRoutingResponse": {
             success?: boolean;
             message?: string;
@@ -1327,6 +1400,15 @@ export interface components {
             revisions?: {
                 [key: string]: string;
             };
+        };
+        "api.admin.v1.ListBackupsReply": {
+            jobs?: components["schemas"]["api.admin.v1.BackupJob"][];
+            events?: components["schemas"]["api.admin.v1.BackupEvent"][];
+            workerLastSeen?: string;
+            workerPhase?: string;
+            workerErrorCode?: string;
+            /** Format: int32 */
+            workerTimeoutMinutes?: number;
         };
         "api.admin.v1.ListLogsResponse": {
             logs?: components["schemas"]["api.admin.v1.LogEntry"][];
@@ -1373,6 +1455,9 @@ export interface components {
             createdBy?: string;
             createdAt?: string;
             revision?: string;
+        };
+        "api.admin.v1.UpdateBackupPolicyRequest": {
+            policy?: components["schemas"]["api.admin.v1.BackupPolicy"];
         };
         "api.admin.v1.UpdateSystemOptionsRequest": {
             options?: components["schemas"]["api.common.v1.SystemOptions"];
@@ -2269,6 +2354,94 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    AdminService_GetBackupPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.BackupPolicy"];
+                };
+            };
+        };
+    };
+    AdminService_UpdateBackupPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.admin.v1.UpdateBackupPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.BackupPolicy"];
+                };
+            };
+        };
+    };
+    AdminService_ListBackups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.ListBackupsReply"];
+                };
+            };
+        };
+    };
+    AdminService_CreateBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.admin.v1.CreateBackupRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.BackupJob"];
+                };
+            };
+        };
+    };
     IAMAdminService_GetSessionAuthorization: {
         parameters: {
             query?: {

@@ -58,6 +58,8 @@ func RelayCORSConfig() *CORSConfig {
 		"Content-Type",
 		"X-Request-ID",
 		"X-API-Key",
+		"X-Goog-Api-Key",
+		"X-Goog-Api-Client",
 		"Anthropic-Version",
 		"Anthropic-Beta",
 		"OpenAI-Beta",

@@ -43,6 +43,8 @@ const (
 // limits, including the legacy and orchestrator paths.
 func RequestBodyLimitForPath(path string) int64 {
 	switch {
+	case strings.HasPrefix(path, "/v1beta/models/"):
+		return 4 * 1024 * 1024
 	case path == "/v1/chat/completions", path == "/v1/completions",
 		path == "/v1/embeddings", path == "/v1/moderations",
 		path == "/v1/images/generations", path == "/v1/audio/speech",
@@ -80,6 +82,10 @@ func WriteRequestBodyTooLarge(w http.ResponseWriter, path string) {
 	w.WriteHeader(http.StatusRequestEntityTooLarge)
 	if path == "/v1/messages" {
 		_, _ = w.Write([]byte(`{"type":"error","error":{"type":"invalid_request_error","message":"request body too large"}}`))
+		return
+	}
+	if strings.HasPrefix(path, "/v1beta/models/") {
+		_, _ = w.Write([]byte(`{"error":{"message":"request body too large","code":413,"status":"INVALID_ARGUMENT"}}`))
 		return
 	}
 	_, _ = w.Write([]byte(`{"error":{"message":"request body too large","code":413}}`))

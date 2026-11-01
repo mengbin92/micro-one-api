@@ -21,6 +21,8 @@ You provide your own authorized upstream accounts and API keys.
 
 ## Features
 
+- Native Gemini `v1beta` text/function generation over JSON or SSE, using Gemini API-key channels and canonical usage settlement. Media and unsupported features are rejected explicitly; see the [B2 contract](./docs/design/b2-native-gemini-contract-2026-10-30.md) and [deployment acceptance](./docs/runbooks/b2-native-gemini-acceptance-2026-10-30.md). Real supplier/SDK/paid validation remains pending.
+
 - OpenAI-compatible `/v1/chat/completions`, `/v1/models`, `/v1/responses` and raw
   relay routes for embeddings, audio, images and moderations.
 - Multiple upstream channels with priorities, weights, model allowlists and

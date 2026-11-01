@@ -68,28 +68,30 @@ func startRelayHTTPServer(t *testing.T, httpServer *relayserver.HTTPServer) stri
 // setupChannelWithUpstream creates a channel service pointing at the given upstream URL.
 func setupChannelWithUpstream(t *testing.T, addr, upstreamURL string) (func(), channelv1.ChannelServiceClient) {
 	t.Helper()
+	return setupChannelWithUpstreamModel(t, addr, upstreamURL, 1, relayprovider.ChannelTypeOpenAI, []string{"gpt-4o-mini", "gpt-4o"})
+}
+
+func setupChannelWithUpstreamModel(t *testing.T, addr, upstreamURL string, channelID int64, channelType int32, models []string) (func(), channelv1.ChannelServiceClient) {
+	t.Helper()
+	abilities := make(map[string][]channeltestutil.Ability, len(models))
+	for _, model := range models {
+		abilities["default:"+model] = []channeltestutil.Ability{{Group: "default", Model: model, ChannelID: channelID, Enabled: true, Priority: 10}}
+	}
 	repo := &testChannelRepo{
 		channels: map[int64]*channeltestutil.Channel{
-			1: {
-				ID:       1,
-				Type:     1, // OpenAI
+			channelID: {
+				ID:       channelID,
+				Type:     channelType,
 				Name:     "test-channel",
 				Status:   channeltestutil.ChannelStatusEnabled,
 				BaseURL:  upstreamURL,
 				Group:    "default",
-				Models:   []string{"gpt-4o-mini", "gpt-4o"},
+				Models:   models,
 				Priority: 10,
 				Key:      "test-api-key",
 			},
 		},
-		abilities: map[string][]channeltestutil.Ability{
-			"default:gpt-4o-mini": {
-				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 10},
-			},
-			"default:gpt-4o": {
-				{Group: "default", Model: "gpt-4o", ChannelID: 1, Enabled: true, Priority: 10},
-			},
-		},
+		abilities: abilities,
 	}
 	uc := channeltestutil.NewChannelUsecase(repo, nil)
 	svc := channeltestutil.NewChannelService(uc)
