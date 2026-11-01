@@ -7,6 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.38.1] - 2026-11-01
+
+v0.38.1 是 v0.38.0 之后的 **PATCH 修复版本**：修复线上已配置忙闲时价格但用户侧 `/pricing` 页不展示的问题——公开价格接口未投影 ServiceTierPricing 客户售价、页面丢弃分时变体，并连带修复公共价格请求的取消信号与配置保存后的缓存失效；同时修复共享部署脚本不同步 Compose `micro-one-api.source.digest` 标签导致的容器来源摘要偏差。无新增迁移与计费契约变更；admin-api 镜像与宿主机 Web dist 须成对更新。详见 [release-v0.38.1.md](docs/releases/release-v0.38.1.md)。
+
+### Fixed
+
+- 用户价格接口与页面展示忙闲时与长上下文售价：biz 按字段白名单从配置 owner 投影客户售价（排除采购与内部来源），Admin 公开接口经模型目录过滤后输出 `service_tier_prices`/`time_pricing`，Web 按忙闲时段与上下文条件列价并区分零价与未配置；公共价格请求改用自身取消信号，档位保存后使公共缓存失效。
+- 共享部署脚本重写所选服务 `image:` 时同步 Compose 来源标签，拒绝重复标签，校验生效镜像与来源对，并断言运行容器来源标签与构建输入一致；消除"镜像一致、容器摘要偏差"的部署元数据问题。
+
+## [Unreleased]
+
 ## [0.38.0] - 2026-11-01
 
 v0.38.0 是 v0.37.1 之后的 **MINOR 功能版本**：发布下一阶段排期 B 阶段三个工作包——B1 冻结上下文档与忙闲时段计价、B2 原生 Gemini `v1beta` 入站、B3 托管 MySQL/Redis 备份控制面，并附带 SMTP 头注入与响应包装器 Unwrap 等安全扫描修复。新增 Billing 146、Admin 147 两个三库迁移与公开契约，不能按补丁判 PATCH。三个工作包已于 2026-10-30 各自完成生产部署（计价与备份控制面默认关闭），真实阈值/价格、私有 S3、host worker 与付费验收保留。详见 [release-v0.38.0.md](docs/releases/release-v0.38.0.md)。
