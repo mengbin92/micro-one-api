@@ -7,6 +7,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "postinstall": "node scripts/patch-redocly-minimatch.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build && node scripts/check-build-budget.mjs",
     "build:budget": "node scripts/check-build-budget.mjs",
@@ -75,6 +76,7 @@
     "vitest": "^5.0.3"
   },
   "overrides": {
+    "minimatch": "^11.0.1",
     "@babel/core": "^7.29.6",
     "form-data": "^4.0.6",
     "hono": "^4.12.34",

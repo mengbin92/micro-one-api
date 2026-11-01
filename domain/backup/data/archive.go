@@ -157,7 +157,10 @@ func Unseal(input, identity, dir string, maxBytes int64) (Manifest, error) {
 		if e != nil {
 			return m, e
 		}
-		if !safeName(hdr.Name) || hdr.Typeflag != tar.TypeReg || seen[hdr.Name] || len(seen) >= 10000 || hdr.Size < 0 || hdr.Size > maxBytes-total {
+		// Keep the containment guard at the extraction boundary. safeName also
+		// enforces canonical slash-separated names; IsLocal explicitly guarantees
+		// that joining an entry to dir cannot escape it.
+		if !filepath.IsLocal(hdr.Name) || !safeName(hdr.Name) || hdr.Typeflag != tar.TypeReg || seen[hdr.Name] || len(seen) >= 10000 || hdr.Size < 0 || hdr.Size > maxBytes-total {
 			return m, fmt.Errorf("invalid or oversized backup archive")
 		}
 		seen[hdr.Name] = true

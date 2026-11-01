@@ -140,7 +140,8 @@ func TestManagedBackupRealEmptyRestore(t *testing.T) {
 	_, _, _, err = identity.ManageMFA(ctx, session, "confirm", code)
 	require.NoError(t, err)
 	channelKey := "fixture-channel-secret"
-	encrypted, err := appcrypto.Encrypt(channelKey, []byte("0123456789abcdef0123456789abcdef"))
+	channelEncryptionKey := backupSecret(t)
+	encrypted, err := appcrypto.Encrypt(channelKey, []byte(channelEncryptionKey))
 	require.NoError(t, err)
 	require.NoError(t, sourceDB.Table("channels").Create(map[string]any{"id": 1, "type": 1, "name": "backup-channel", "key": encrypted, "group": "default", "models": "gpt-test", "status": 1}).Error)
 	require.NoError(t, sourceDB.Exec("INSERT INTO abilities (`group`,model,channel_id,enabled,priority) VALUES ('default','gpt-test',1,1,1)").Error)
@@ -158,7 +159,7 @@ func TestManagedBackupRealEmptyRestore(t *testing.T) {
 	state := filepath.Join(scratch, "state")
 	require.NoError(t, os.Mkdir(state, 0700))
 	envFile := filepath.Join(scratch, "recovery.env")
-	require.NoError(t, os.WriteFile(envFile, []byte("CHANNEL_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef\nIDENTITY_MFA_ENCRYPTION_KEY="+string(mfaKey)+"\nJWT_SECRET_KEY="+os.Getenv("JWT_SECRET_KEY")+"\nTOKEN_HASH_KEY="+os.Getenv("TOKEN_HASH_KEY")+"\n"), 0600))
+	require.NoError(t, os.WriteFile(envFile, []byte("CHANNEL_ENCRYPTION_KEY="+channelEncryptionKey+"\nIDENTITY_MFA_ENCRYPTION_KEY="+string(mfaKey)+"\nJWT_SECRET_KEY="+os.Getenv("JWT_SECRET_KEY")+"\nTOKEN_HASH_KEY="+os.Getenv("TOKEN_HASH_KEY")+"\n"), 0600))
 	payloadPath := filepath.Join(scratch, "multipart-fixture.bin")
 	payload, err := os.OpenFile(payloadPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	require.NoError(t, err)
