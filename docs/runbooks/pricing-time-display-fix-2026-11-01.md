@@ -32,7 +32,7 @@
 | 数据边界 | 嵌套采购字段全部排除；未公开模型不展示；关闭/错误配置；独立档位价格；缺失缓存创建价格；严格上下文边界；显式零价；大小写模型别名；英文无中文残留 | 回归通过 |
 | OCR | `ocr review --audience agent --effort high --format json` | 完整完成 9 个生产文件；建议逐项复核，无 P0/P1 阻断项；见下方评审记录 |
 | 完整门禁 | `make all`、`go build ./...`、`go vet ./...`、`make verify` | 全部通过；已补齐新 SOURCE 登记和来源摘要 |
-| 生产构建与部署 | Web 生产构建已通过；镜像部署未执行 | 按后续指令先合入 develop，再部署与发版 |
+| 首次生产部署 | 先合入 develop，再本机构建 amd64 admin-api 并更新宿主机 Web dist | 接口已返回分时价；实际生产静态资源和公开 API 的桌面/手机中英文四场景通过；来源标签校正进行中 |
 
 ## 机器评审复核
 
@@ -43,6 +43,15 @@
 后续部署授权后执行完整门禁，发现新增 `readonly_pricing.go` 尚未登记到 RBAC 来源矩阵。最小复现 `go test ./cmd/rbac-contract-check -run '^TestReviewedSourceAndNegativeDrift$' -count=1` 报清单大小不一致；实际 inventory 比矩阵恰好多一条 SOURCE，无新增 HTTP/RPC 入口。按真实只读边界登记新文件并刷新两个既有来源摘要后，原用例及完整 `make verify` 均通过。
 
 合入前追加分支差异机器评审完整完成 10 个文件，无 P0/P1 阻断项；唯一英文计数措辞建议已处理。另修复历史阶段计划提交缺少正文导致的 Backend CI 失败：仅补提交说明、文件树一致，保留旧 ref 并用绑定旧 SHA 的 lease 更新 develop；[新 CI 全部通过](https://github.com/mengbin92/micro-one-api/actions/runs/41262944157)。
+
+## 部署来源标签校正（进行中）
+
+首次部署验收确认镜像来源摘要与本地构建输入一致，但容器保留旧摘要。进一步读取实际 Compose 服务块，确认显式的旧 `micro-one-api.source.digest` 标签覆盖了新镜像的同名标签；原共享部署脚本只固定 image。
+
+- [x] 红绿回归：`test_selected_service_source_label_tracks_the_new_image` 在旧脚本失败，补齐同步后通过。
+- [x] `bash -n scripts/deploy-update.sh` 与完整 9 个部署脚本测试通过，包含来源覆盖/重复标签拒绝、无显式标签时继承镜像、运行容器不匹配拒绝成功，以及旧回滚/多服务场景。
+- [ ] 补丁机器评审、提交并先合入 develop。
+- [ ] 更新 Admin 后核对镜像/容器/本地来源摘要三者一致，复跑生产检查；保留原镜像与 Web 回滚点。
 
 ## 发布要求
 
