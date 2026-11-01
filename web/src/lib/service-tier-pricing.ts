@@ -3,7 +3,7 @@ import { t } from '@/lib/i18n';
 export const SERVICE_TIER_PRICING_KEY = 'ServiceTierPricing';
 export const SERVICE_TIERS = ['default', 'priority', 'flex'] as const;
 export const LONG_CONTEXT_POLICY = 'whole_request_input_gt_v1';
-const PRICE_FIELDS = ['input_price', 'output_price', 'cache_read_price', 'cache_creation_5m_price', 'cache_creation_1h_price'] as const;
+export const PRICE_FIELDS = ['input_price', 'output_price', 'cache_read_price', 'cache_creation_5m_price', 'cache_creation_1h_price'] as const;
 
 // Null prices make the disabled example safe to copy: enabling requires the
 // administrator to replace every required price with a reviewed number.

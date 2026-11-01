@@ -1390,12 +1390,15 @@ type readonlyPricingRow struct {
 	CacheReadPrice       *float64 `json:"cache_read_price,omitempty"`
 	CacheCreation5mPrice *float64 `json:"cache_creation_5m_price,omitempty"`
 	CacheCreation1hPrice *float64 `json:"cache_creation_1h_price,omitempty"`
-	// CacheCreationUnpriced is true when the model row carries no
+	// CacheCreationUnpriced is true when the flat base row carries no
 	// cache-creation prices; surfaced so ops can see the v0.11.0 pricing gap
 	// (roadmap §1.3).
-	CacheCreationUnpriced bool     `json:"cache_creation_unpriced,omitempty"`
-	InputModalities       []string `json:"input_modalities,omitempty"`
-	OutputModalities      []string `json:"output_modalities,omitempty"`
+	CacheCreationUnpriced bool                          `json:"cache_creation_unpriced,omitempty"`
+	InputModalities       []string                      `json:"input_modalities,omitempty"`
+	OutputModalities      []string                      `json:"output_modalities,omitempty"`
+	ServiceTierPrices     map[string]readonlyModelPrice `json:"service_tier_prices,omitempty"`
+	LongContext           *readonlyLongContextPricing   `json:"long_context,omitempty"`
+	TimePricing           *readonlyTimePricing          `json:"time_pricing,omitempty"`
 }
 
 type readonlyModelPrice struct {
@@ -1442,6 +1445,12 @@ func handleReadonlyPricing(w http.ResponseWriter, r *http.Request, svc *service.
 	}
 
 	rows := readonlyPricingRows(optionMap, amountPerUnit)
+	tariff, err := svc.PublicServiceTierPricing(r.Context())
+	if err != nil {
+		writeServiceResponse(w, nil, err)
+		return
+	}
+	rows = mergeReadonlyServiceTierPricing(rows, tariff)
 	var models []*channelv1.ModelSummary
 	for page := int32(1); ; page++ {
 		modelsResp, modelsErr := svc.ListPublicModels(r.Context(), &channelv1.ListModelsRequest{Page: page, PageSize: 200})

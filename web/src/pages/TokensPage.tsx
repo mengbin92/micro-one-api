@@ -129,8 +129,8 @@ export function TokensPage() {
 
   const { data: pricing } = useQuery({
     queryKey: ['readonly-pricing'],
-    queryFn: async () => {
-      const res = await apiClient.get('/pricing');
+    queryFn: async ({ signal }) => {
+      const res = await apiClient.get('/pricing', { signal });
       return unwrapApiData<PricingPayload>(res.data);
     },
   });

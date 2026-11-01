@@ -2238,6 +2238,10 @@ func (s *AdminService) PublicContent(ctx context.Context, key string) (string, e
 	return s.systemOptsUc.PublicContent(ctx, key)
 }
 
+func (s *AdminService) PublicServiceTierPricing(ctx context.Context) (*adminbiz.PublicServiceTierPricing, error) {
+	return s.systemOptsUc.PublicServiceTierPricing(ctx)
+}
+
 func (s *AdminService) UpdateOneAPIOption(ctx context.Context, key, value string) (*adminv1.UpdateSystemOptionsResponse, error) {
 	if key == "GroupRatio" && subscriptionbiz.EntitlementsEnabled() {
 		return nil, adminbiz.ErrRoutingGroupInvalid
