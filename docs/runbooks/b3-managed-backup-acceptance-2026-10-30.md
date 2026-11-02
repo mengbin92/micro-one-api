@@ -4,7 +4,7 @@
 
 ## 状态与目标
 
-**工程验收通过，生产已部署（默认关闭）；存储与启用验收待外部验证。** 2026-10-30 23:00 CST 起 Identity/Admin/Web 与 Admin 147 已上线，控制面关闭、未启用调度、未安装 host worker、未覆盖任何生产存储（见[生产部署证据](evidence/b3-production-deployment-2026-10-30.json)）。工程默认 RPO 24 小时、RTO 60 分钟；真实私有存储、生产恢复目标及生产数据规模下的恢复时间待维护者补充确认。隔离演练不能替代生产恢复 SLA。生产覆盖恢复不在 B3 MVP 内。
+**工程验收通过；2026-11-01 生产控制面、私有 MinIO 与 host worker 已启用，定时策略仍关闭。** 最新[控制面修复与 MinIO 接入记录](b3-minio-enablement-2026-11-01.md)确认两个管理 GET 接口为 200、worker 为 ready；尚未执行生产全量备份和恢复演练。2026-10-30 的[首次生产部署证据](evidence/b3-production-deployment-2026-10-30.json)保留当时默认关闭、未安装 worker 的历史状态。工程默认 RPO 24 小时、RTO 60 分钟；生产恢复目标及生产数据规模下的恢复时间仍待验证。隔离演练不能替代生产恢复 SLA。生产覆盖恢复不在 B3 MVP 内。
 
 实现包括 Admin 控制页/HTTP/RPC、147 三库控制表、现有全局 IAM 配置权限及 A2 step-up、主机双锁调度、任务状态/worker 在线状态、共同停写一致性、age 公钥加密、S3 校验/外部恢复索引、保留策略和审计。SQLite/PostgreSQL 的后台备份仍未实现；本次三库验证针对控制表、鉴权和迁移。
 
@@ -96,9 +96,9 @@ backup-worker -config /etc/micro-one-api/recovery.json -mode restore -empty-targ
 5. 验证钱包余额/预扣/账本和原 Token 主键/额度；实际渠道凭证解密；MFA 登录/恢复码及会话 TTL；待结算 reservation/intent/异步任务及幂等键，不重复结算、退款、资产发放或外部执行。恢复出来的 running 备份任务属于历史中断，应标为 uncertain，不自动重新备份/清理未经核对的历史目标。
 6. 记录从下载到业务核对完成的时间、snapshot 年龄、真实数据量及差异。工程 fixture 仅证明流程；真实生产 RPO/RTO 和切流决定单独验收。
 
-## 保留项
+## 保留项（2026-11-01 更新）
 
-- 真实私有 S3 凭据、TLS/权限/容量和 bucket 生命周期未配置或验证。
+- 同机私有 MinIO 的凭据、权限、读写和匿名拒绝已验证，API 仅绑定 loopback。异机副本、容量、版本化和生命周期仍待生产验收。
 - 生产恢复目标、实际停写窗口、真实容量下 RTO、连续调度观察尚待维护者确认。
-- Identity/Admin/Web 与 Admin 147 已于 2026-10-30 部署（控制面关闭）；host worker、运行账号授权与启用待真实私有 S3 后按维护者决定执行；既有计价/认证/支付/供应商试点不变。
+- Identity/Admin/Web 与 Admin 147 已于 2026-10-30 部署；2026-11-01 已补齐控制开关、运行账号授权、私有 MinIO 与 host worker，策略仍关闭，首个生产手动备份及隔离恢复待运维窗口执行。既有计价/认证/支付/供应商试点不变。
 - PostgreSQL/SQLite 后台备份、PITR、跨主机自动接管及生产覆盖恢复另排；不创建或恢复任何既有暂停的自动任务。

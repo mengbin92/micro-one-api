@@ -1,0 +1,58 @@
+# Standalone project: host backup-worker reaches only the loopback S3 API.
+# Build/load BACKUP_MINIO_IMAGE locally; this file never builds or pulls it.
+name: micro-one-api-backup
+services:
+  minio:
+    image: ${BACKUP_MINIO_IMAGE:?Set the locally built and loaded MinIO image}
+    pull_policy: never
+    restart: unless-stopped
+    command: ["server", "--address", ":9000", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set a dedicated MinIO administrator}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set the MinIO administrator password}
+      MINIO_BROWSER: "off"
+      MINIO_REGION_NAME: ${BACKUP_S3_REGION:-us-east-1}
+    ports:
+      - "127.0.0.1:${BACKUP_MINIO_PORT:-9000}:9000"
+    volumes:
+      - minio-data:/data
+    networks: [backup-storage]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:9000/minio/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  minio-init:
+    image: ${BACKUP_MINIO_IMAGE:?Set the locally built and loaded MinIO image}
+    pull_policy: never
+    profiles: [setup]
+    restart: "no"
+    depends_on:
+      minio: {condition: service_healthy}
+    entrypoint: ["/bin/sh", "/opt/backup/minio-init.sh"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set a dedicated MinIO administrator}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set the MinIO administrator password}
+      BACKUP_S3_ACCESS_KEY: ${BACKUP_S3_ACCESS_KEY:?Set the worker access key}
+      BACKUP_S3_SECRET_KEY: ${BACKUP_S3_SECRET_KEY:?Set the worker secret key}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-private-backups}
+      BACKUP_S3_PREFIX: ${BACKUP_S3_PREFIX:-micro-one-api/production}
+    volumes:
+      - ./minio-init.sh:/opt/backup/minio-init.sh:ro
+    networks: [backup-storage]
+    read_only: true
+    tmpfs: ["/tmp:mode=0700"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+
+networks:
+  backup-storage: {}
+volumes:
+  minio-data: {}
