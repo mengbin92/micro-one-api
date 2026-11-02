@@ -55,8 +55,8 @@ type Model struct {
 	ModelType             string
 	ContextWindow         int32
 	// Registry prices are stored per 1M tokens, matching the unit shown in
-	// pricing management. They are reference defaults; billing charges are
-	// driven by the ModelPrice option.
+	// pricing management. Admin model edits publish them to ModelPrice;
+	// billing charges are driven by that authoritative option.
 	PriceFieldsVisible bool
 	MappingsVisible    bool
 	PricingInput       float64

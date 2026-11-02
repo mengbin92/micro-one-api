@@ -8,7 +8,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.39.1 发布公告](./docs/releases/release-v0.39.1.md)（备份 profile writer 停写与恢复修复、策略锁定读权限及私有 MinIO 部署归档；定时备份仍关闭） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.39.1)
+> 📣 **最新发布**：[v0.39.2 发布公告](./docs/releases/release-v0.39.2.md)（模型页保存直接发布正式价格、价格缓存刷新及异常回读修复；生产已更新验收） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.39.2)
 
 ## 功能概览
 
@@ -186,6 +186,7 @@ make web-dist
 
 ## 发布与升级
 
+- [v0.39.2](./docs/releases/release-v0.39.2.md)：修复模型页配价后需在管理价格页再次保存的问题，直接发布正式价格并刷新管理/公开价格缓存；保留独立售价与受限价格，异常发布明确提示重试。无新增 API 或迁移；生产已更新验收。
 - [v0.39.1](./docs/releases/release-v0.39.1.md)：修复备份 profile writer 的停写与恢复覆盖、拓扑遗漏拒绝及策略锁定读权限，归档私有 MinIO 配置与生产证据。无新增 API 或迁移；定时备份仍关闭，生产备份和恢复演练保留。
 - [v0.39.0](./docs/releases/release-v0.39.0.md)：B4 用户运营包——用户侧模型可用状态、定向/定时/到期公告与版本化已读，管理员公告管理。新增 Admin 148 四表迁移与运行授权；生产已部署，真实旅程浏览器补验保留。
 - [v0.38.1](./docs/releases/release-v0.38.1.md)：修复线上忙闲时价格不在用户 `/pricing` 页展示（接口投影 + 页面渲染 + 缓存失效），并修复部署脚本 Compose 来源标签同步。无新增迁移；admin-api 镜像与 Web dist 成对更新。

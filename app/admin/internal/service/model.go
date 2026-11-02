@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"micro-one-api/app/admin/internal/biz"
 	"micro-one-api/pkg/jsonx"
 
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -39,12 +40,43 @@ func (s *AdminService) GetModel(ctx context.Context, req *channelv1.GetModelRequ
 
 // CreateModel creates a new model.
 func (s *AdminService) CreateModel(ctx context.Context, req *channelv1.CreateModelRequest) (*channelv1.CreateModelResponse, error) {
-	return s.channelClient.CreateModel(operatorRPCContext(ctx), req)
+	price := biz.ModelPricing{ModelID: req.ModelId, InputPrice: req.PricingInput, OutputPrice: req.PricingOutput, CacheReadPrice: req.PricingCacheRead}
+	if err := biz.ValidateModelPricing(price); err != nil {
+		return nil, err
+	}
+	resp, err := s.channelClient.CreateModel(operatorRPCContext(ctx), req)
+	if err != nil || !resp.GetSuccess() || s.systemOptsUc == nil {
+		return resp, err
+	}
+	if err := s.systemOptsUc.PublishModelPricing(ctx, nil, price); err != nil {
+		return nil, &modelPricingPublishError{cause: err}
+	}
+	return resp, nil
 }
 
 // UpdateModel updates an existing model.
 func (s *AdminService) UpdateModel(ctx context.Context, req *channelv1.UpdateModelRequest) (*channelv1.UpdateModelResponse, error) {
-	return s.channelClient.UpdateModel(operatorRPCContext(ctx), req)
+	if req.PreservePricing || s.systemOptsUc == nil {
+		return s.channelClient.UpdateModel(operatorRPCContext(ctx), req)
+	}
+	detail, err := s.GetModel(ctx, &channelv1.GetModelRequest{ModelPk: req.ModelPk})
+	if err != nil {
+		return nil, err
+	}
+	model := detail.GetModel()
+	before := &biz.ModelPricing{ModelID: model.GetModelId(), InputPrice: model.GetPricingInput(), OutputPrice: model.GetPricingOutput(), CacheReadPrice: model.GetPricingCacheRead()}
+	after := biz.ModelPricing{ModelID: model.GetModelId(), InputPrice: req.PricingInput, OutputPrice: req.PricingOutput, CacheReadPrice: req.PricingCacheRead, ForcePublish: !model.GetPriceFieldsVisible()}
+	if err := biz.ValidateModelPricing(after); err != nil {
+		return nil, err
+	}
+	resp, err := s.channelClient.UpdateModel(operatorRPCContext(ctx), req)
+	if err != nil || !resp.GetSuccess() {
+		return resp, err
+	}
+	if err := s.systemOptsUc.PublishModelPricing(ctx, before, after); err != nil {
+		return nil, &modelPricingPublishError{cause: err}
+	}
+	return resp, nil
 }
 
 // DeleteModel deletes a model.

@@ -180,7 +180,13 @@ export function AdminModelsPage() {
 
   const auth = useAuthorization();
   const queryClient = useQueryClient();
-  const invalidateModels = () => queryClient.invalidateQueries({ queryKey: ['admin-models'] });
+  const invalidateModels = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['admin-models'] }),
+    queryClient.invalidateQueries({ queryKey: ['admin-model-detail'] }),
+    queryClient.invalidateQueries({ queryKey: ['admin-options'] }),
+    queryClient.invalidateQueries({ queryKey: ['admin-summary'] }),
+    queryClient.invalidateQueries({ queryKey: ['readonly-pricing'] }),
+  ]);
 
   const sort = {
     key: sortKey as keyof ModelSummary | null,
@@ -220,7 +226,10 @@ export function AdminModelsPage() {
       setIsCreateOpen(false);
       invalidateModels();
     },
-    onError: (err: unknown) => toast.error((err as Error).message || t("创建失败")),
+    onError: (err: unknown) => {
+      invalidateModels();
+      toast.error((err as Error).message || t("创建失败"));
+    },
   });
 
   const updateMutation = useMutation({
@@ -231,7 +240,10 @@ export function AdminModelsPage() {
       setEditingModel(null);
       invalidateModels();
     },
-    onError: (err: unknown) => toast.error((err as Error).message || t("更新失败")),
+    onError: (err: unknown) => {
+      invalidateModels();
+      toast.error((err as Error).message || t("更新失败"));
+    },
   });
 
   const deleteMutation = useMutation({
