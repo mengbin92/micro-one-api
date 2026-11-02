@@ -390,7 +390,7 @@ export function AdminPricingPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t("当前价格")}</CardTitle>
-          <CardDescription>{t("模型页价格会作为未配置模型的预填参考；点击保存价格后才会写入实际计费配置。上游供应商模型 ID 和采购成本不在此处配置。")}</CardDescription>
+          <CardDescription>{t("模型页保存价格后会同步到实际计费配置，此处可统一调整售价。上游供应商模型 ID 和采购成本不在此处配置。")}</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading || areModelsLoading ? (
