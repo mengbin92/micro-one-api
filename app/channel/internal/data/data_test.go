@@ -368,6 +368,7 @@ func setupChannelTestDB(t *testing.T) *Repository {
 		ON model_channel_mapping(channel_id, model_id)
 	`).Error)
 
+	require.NoError(t, db.AutoMigrate(&modelSubscriptionMappingModel{}))
 	return &Repository{db: db, encKey: []byte("01234567890123456789012345678901")}
 }
 

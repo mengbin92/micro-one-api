@@ -19,6 +19,7 @@ export const adminPages: Record<string, string> = {
   '/admin/logs': 'log.request.list',
   '/admin/payment-orders': 'billing.payment.list',
   '/admin/redemptions': 'billing.redemption.list',
+  '/admin/announcements': 'system.content.notice.update',
   '/admin/options': 'system.option.read',
   '/admin/reconciliation': 'billing.reconciliation.read',
   '/admin/cost-analysis': 'billing.account.ledger.read',

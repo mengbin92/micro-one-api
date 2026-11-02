@@ -1,4 +1,6 @@
 package data
 
-// Data aggregates downstream clients for admin-api.
-type Data struct{}
+import "gorm.io/gorm"
+
+// Data aggregates long-lived storage clients for admin-api.
+type Data struct{ DB *gorm.DB }

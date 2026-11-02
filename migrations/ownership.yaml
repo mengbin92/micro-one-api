@@ -171,6 +171,7 @@ services:
     - 145_add_log_service_tier
 
   admin:
+    - 148_create_announcements
     - 147_create_managed_backups
     - 119_upstream_cost_resource_ids
     - 117_system_options_revision

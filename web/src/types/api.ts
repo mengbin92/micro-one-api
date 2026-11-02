@@ -4,6 +4,22 @@
  */
 
 export interface paths {
+    "/api/admin/announcements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminService_ListManagedAnnouncements"];
+        put: operations["AdminService_SaveAnnouncement"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/backup-policy": {
         parameters: {
             query?: never;
@@ -36,6 +52,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/user/announcements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminService_ListMyAnnouncements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/user/announcements/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminService_ReadAnnouncement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/user/authorization": {
         parameters: {
             query?: never;
@@ -44,6 +92,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["IAMAdminService_GetSessionAuthorization"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/user/model-availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminService_GetMyModelAvailability"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1350,6 +1414,18 @@ export interface components {
             success?: boolean;
             message?: string;
         };
+        "api.admin.v1.Announcement": {
+            id?: string;
+            revision?: string;
+            title?: string;
+            body?: string;
+            audience?: string;
+            targets?: string[];
+            status?: string;
+            publishAt?: string;
+            expiresAt?: string;
+            updatedAt?: string;
+        };
         "api.admin.v1.BackupEvent": {
             id?: string;
             jobId?: string;
@@ -1401,6 +1477,10 @@ export interface components {
                 [key: string]: string;
             };
         };
+        "api.admin.v1.ListAnnouncementsReply": {
+            items?: components["schemas"]["api.admin.v1.Announcement"][];
+            total?: string;
+        };
         "api.admin.v1.ListBackupsReply": {
             jobs?: components["schemas"]["api.admin.v1.BackupJob"][];
             events?: components["schemas"]["api.admin.v1.BackupEvent"][];
@@ -1416,6 +1496,10 @@ export interface components {
         };
         "api.admin.v1.ListModelRoutingsResponse": {
             routings?: components["schemas"]["api.admin.v1.ModelRouting"][];
+        };
+        "api.admin.v1.ListMyAnnouncementsReply": {
+            items?: components["schemas"]["api.admin.v1.UserAnnouncement"][];
+            total?: string;
         };
         "api.admin.v1.ListRedeemCodesResponse": {
             codes?: components["schemas"]["api.admin.v1.RedeemCodeInfo"][];
@@ -1444,6 +1528,18 @@ export interface components {
             updatedAt?: string;
             revision?: string;
         };
+        "api.admin.v1.MyModelAvailability": {
+            models?: string[];
+            status?: string;
+            checkedAt?: string;
+        };
+        "api.admin.v1.ReadAnnouncementReply": {
+            success?: boolean;
+        };
+        "api.admin.v1.ReadAnnouncementRequest": {
+            id?: string;
+            revision?: string;
+        };
         "api.admin.v1.RedeemCodeInfo": {
             code?: string;
             name?: string;
@@ -1455,6 +1551,10 @@ export interface components {
             createdBy?: string;
             createdAt?: string;
             revision?: string;
+        };
+        "api.admin.v1.SaveAnnouncementRequest": {
+            announcement?: components["schemas"]["api.admin.v1.Announcement"];
+            reason?: string;
         };
         "api.admin.v1.UpdateBackupPolicyRequest": {
             policy?: components["schemas"]["api.admin.v1.BackupPolicy"];
@@ -1486,6 +1586,15 @@ export interface components {
             message?: string;
             id?: string;
             revision?: string;
+        };
+        "api.admin.v1.UserAnnouncement": {
+            id?: string;
+            revision?: string;
+            title?: string;
+            body?: string;
+            publishAt?: string;
+            expiresAt?: string;
+            read?: boolean;
         };
         "api.common.v1.AccountInfo": {
             userId?: string;
@@ -2354,6 +2463,53 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    AdminService_ListManagedAnnouncements: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.ListAnnouncementsReply"];
+                };
+            };
+        };
+    };
+    AdminService_SaveAnnouncement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.admin.v1.SaveAnnouncementRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.Announcement"];
+                };
+            };
+        };
+    };
     AdminService_GetBackupPolicy: {
         parameters: {
             query?: never;
@@ -2438,6 +2594,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["api.admin.v1.BackupJob"];
+                };
+            };
+        };
+    };
+    AdminService_ListMyAnnouncements: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.ListMyAnnouncementsReply"];
+                };
+            };
+        };
+    };
+    AdminService_ReadAnnouncement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.admin.v1.ReadAnnouncementRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.ReadAnnouncementReply"];
                 };
             };
         };
@@ -2557,6 +2760,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["api.identity.v1.IAMReply"];
+                };
+            };
+        };
+    };
+    AdminService_GetMyModelAvailability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.MyModelAvailability"];
                 };
             };
         };

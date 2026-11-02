@@ -31,12 +31,12 @@ func (r adminResourceAuthorizer) Query(ctx context.Context, point, operation, cr
 	if err != nil {
 		return out, err
 	}
-	if point == "admin.backups" && out.Mode == "legacy" {
+	if (point == "admin.backups" || point == "admin.content") && out.Mode == "legacy" {
 		shared := os.Getenv("ADMIN_TOKEN")
 		if shared == "" || credential == "" || subtle.ConstantTimeCompare([]byte(shared), []byte(credential)) != 1 {
 			_, role, verifyErr := r.service.AuthorizeAdminToken(ctx, credential)
 			if verifyErr != nil || role < RoleAdmin {
-				return out, status.Error(codes.PermissionDenied, "backup administrator required")
+				return out, status.Error(codes.PermissionDenied, "administrator required")
 			}
 		}
 	}

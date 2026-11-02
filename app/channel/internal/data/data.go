@@ -1927,8 +1927,12 @@ func (r *Repository) listAvailableModelsDB(ctx context.Context, group string) ([
 		// Once the managed registry is populated it is authoritative. This keeps
 		// private/testing discoveries and disabled models out of /v1/models and
 		// prevents raw provider IDs from leaking through legacy abilities.
-		r.addRegistryChannelModelsDB(ctx, group, seen)
-		r.addRegistrySubscriptionModelsDB(ctx, group, seen)
+		if err := r.addRegistryChannelModelsDB(ctx, group, seen); err != nil {
+			return nil, err
+		}
+		if err := r.addRegistrySubscriptionModelsDB(ctx, group, seen); err != nil {
+			return nil, err
+		}
 		return sortedModelIDs(seen), nil
 	}
 
@@ -1973,10 +1977,8 @@ func sortedModelIDs(seen map[string]struct{}) []string {
 }
 
 // addRegistryChannelModelsDB queries the model registry for models served by
-// enabled channels in the given group and adds them to the seen set. Errors
-// are silently ignored — if the registry tables do not exist or are empty,
-// the legacy path still provides results.
-func (r *Repository) addRegistryChannelModelsDB(ctx context.Context, group string, seen map[string]struct{}) {
+// enabled channels in the given group and adds them to the seen set.
+func (r *Repository) addRegistryChannelModelsDB(ctx context.Context, group string, seen map[string]struct{}) error {
 	var registryModels []string
 	// Join model_channel_mapping → models (enabled) → channels (enabled, group match).
 	// The channels.group column stores a CSV (e.g. "default,vip"). We use
@@ -1990,16 +1992,17 @@ func (r *Repository) addRegistryChannelModelsDB(ctx context.Context, group strin
 		Scopes(func(q *gorm.DB) *gorm.DB { return r.csvGroupScope(q, group, "c.`group`", "c.id") }).
 		Distinct("m.model_id")
 	if err := query.Pluck("m.model_id", &registryModels).Error; err != nil {
-		return // registry tables may not exist yet; silently skip
+		return err
 	}
 	for _, model := range registryModels {
 		seen[strings.ToLower(model)] = struct{}{}
 	}
+	return nil
 }
 
 // addRegistrySubscriptionModelsDB queries the model registry for models served
 // by enabled subscription accounts in the given group and adds them to seen.
-func (r *Repository) addRegistrySubscriptionModelsDB(ctx context.Context, group string, seen map[string]struct{}) {
+func (r *Repository) addRegistrySubscriptionModelsDB(ctx context.Context, group string, seen map[string]struct{}) error {
 	var registryModels []string
 	query := r.db.WithContext(ctx).Table("model_subscription_mapping AS msm").
 		Select("m.model_id").
@@ -2009,11 +2012,12 @@ func (r *Repository) addRegistrySubscriptionModelsDB(ctx context.Context, group 
 		Scopes(func(q *gorm.DB) *gorm.DB { return r.mappingGroupScope(q, group, "msm.") }).
 		Distinct("m.model_id")
 	if err := query.Pluck("m.model_id", &registryModels).Error; err != nil {
-		return // registry tables may not exist yet; silently skip
+		return err
 	}
 	for _, model := range registryModels {
 		seen[strings.ToLower(model)] = struct{}{}
 	}
+	return nil
 }
 
 func (r *Repository) findByIDMemory(_ context.Context, channelID int64) (*biz.Channel, error) {

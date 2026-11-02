@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	stderrors "errors"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/authz"
 	"micro-one-api/platform/contractdto"
@@ -208,7 +209,16 @@ func (s *ChannelService) listAvailableModelsAcrossRoutingGroups(ctx context.Cont
 	models := make([]string, 0)
 	for _, id := range groupIDs {
 		detail, err := s.routingGroupUC.Get(ctx, id)
-		if err != nil || detail == nil || detail.Group == nil || detail.Group.Status != "enabled" {
+		if stderrors.Is(err, biz.ErrRoutingGroupNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if detail == nil || detail.Group == nil {
+			return nil, biz.ErrRoutingGroupStorage
+		}
+		if detail.Group.Status != "enabled" {
 			continue
 		}
 		groupModels, err := s.uc.ListAvailableModels(ctx, detail.Group.Key)

@@ -21,6 +21,7 @@ You provide your own authorized upstream accounts and API keys.
 
 ## Features
 
+- User operations visibility (unreleased): personal model availability and aggregate routing status, plus announcements targeted to everyone, current default routing groups or selected users, with scheduled publication, expiry, versioned read receipts and a management page. Apply Admin migration 148 and runtime grants before deployment; see the [B4 contract](./docs/design/b4-user-operations-contract-2026-11-02.md) and [acceptance record](./docs/runbooks/b4-user-operations-acceptance-2026-11-02.md).
 - Native Gemini `v1beta` text/function generation over JSON or SSE, using Gemini API-key channels and canonical usage settlement. Media and unsupported features are rejected explicitly; see the [B2 contract](./docs/design/b2-native-gemini-contract-2026-10-30.md) and [deployment acceptance](./docs/runbooks/b2-native-gemini-acceptance-2026-10-30.md). Real supplier/SDK/paid validation remains pending.
 
 - OpenAI-compatible `/v1/chat/completions`, `/v1/models`, `/v1/responses` and raw
