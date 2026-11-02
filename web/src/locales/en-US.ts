@@ -385,7 +385,7 @@ export const EN_US_MESSAGES: Record<string, string> = {
   '视频': 'Video',
   '文件': 'File',
   '可用性': 'Availability',
-  '模型页价格会作为未配置模型的预填参考；点击保存价格后才会写入实际计费配置。上游供应商模型 ID 和采购成本不在此处配置。': 'Prices from Model Management are prefilled for models without billing prices. Click Save Pricing to write the effective billing configuration. Upstream model IDs and acquisition costs are configured elsewhere.',
+  '模型页保存价格后会同步到实际计费配置，此处可统一调整售价。上游供应商模型 ID 和采购成本不在此处配置。': 'Prices saved in Model Management are applied to billing. You can manage selling prices here. Upstream model IDs and acquisition costs are configured elsewhere.',
   '未登记': 'Unregistered',
   '优先级': 'Priority',
   '输入价格': 'Input Price',

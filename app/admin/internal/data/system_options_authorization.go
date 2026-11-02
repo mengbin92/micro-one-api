@@ -399,7 +399,7 @@ func optionWriteOperations(key string) []string {
 	return []string{"system.option.update", op}
 }
 
-func recordOptionWriteFailure(ctx context.Context, db *gorm.DB, keys []string, writeErr error) error {
+func mapSystemOptionWriteError(writeErr error) error {
 	if writeErr == nil {
 		return nil
 	}
@@ -411,6 +411,14 @@ func recordOptionWriteFailure(ctx context.Context, db *gorm.DB, keys []string, w
 		(errors.As(writeErr, &sqliteErr) && (sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique || sqliteErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey)) ||
 		(errors.As(writeErr, &state) && (state.SQLState() == "23505" || state.SQLState() == "40001" || state.SQLState() == "40P01")) {
 		writeErr = biz.ErrSystemOptionConflict
+	}
+	return writeErr
+}
+
+func recordOptionWriteFailure(ctx context.Context, db *gorm.DB, keys []string, writeErr error) error {
+	writeErr = mapSystemOptionWriteError(writeErr)
+	if writeErr == nil {
+		return nil
 	}
 	seen := map[string]bool{}
 	for _, key := range keys {

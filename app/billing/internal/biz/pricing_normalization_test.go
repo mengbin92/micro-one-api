@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"micro-one-api/pkg/jsonx"
 )
 
 func TestNormalizePricingRejectsNonFiniteValues(t *testing.T) {
@@ -120,4 +121,19 @@ func TestCalculateCost_DynamicPricingNormalizesModelKeys(t *testing.T) {
 	})
 
 	assert.Equal(t, int64(140), uc.calculateCost(context.Background(), "default", "deepseek-v4", 10, 20, 0, false))
+}
+
+func TestPublishedZeroModelPriceDoesNotFallBackToLegacyRatio(t *testing.T) {
+	// This is the explicit zero-price row published when model-edit prices
+	// are cleared. Keep the zero cache pointer through normalization.
+	var prices map[string]ModelPrice
+	if !assert.NoError(t, jsonx.Unmarshal([]byte(`{"new-model":{"input_price":0,"output_price":0,"cache_read_price":0}}`), &prices)) {
+		return
+	}
+	uc := NewBillingUsecaseWithPricing(nil, nil, nil, nil, PricingConfig{
+		ModelPrices:      prices,
+		ModelRatios:      map[string]float64{"new-model": 3},
+		CompletionRatios: map[string]float64{"new-model": 2},
+	})
+	assert.Zero(t, uc.calculateCost(context.Background(), "default", "new-model", 10, 20, 0, false))
 }

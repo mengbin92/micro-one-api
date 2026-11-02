@@ -1,8 +1,10 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { AdminModelsPage } from './ModelsPage';
+import { PricingPage } from '../PricingPage';
 import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 
@@ -293,6 +295,77 @@ describe('AdminModelsPage', () => {
     expect(body).not.toHaveProperty('pricing_input');
     expect(body).not.toHaveProperty('pricing_output');
     expect(body).not.toHaveProperty('pricing_cache_read');
+  });
+
+  it('refreshes published prices after saving model prices once', async () => {
+    let published = false;
+    server.use(
+      http.get('/api/admin/models', () => HttpResponse.json({ models: [model], total: 1 })),
+      http.get('/api/admin/models/1', () => HttpResponse.json(fullModel)),
+      http.put('/api/admin/models', () => {
+        published = true;
+        return HttpResponse.json({ success: true });
+      }),
+      http.get('/api/pricing', () => HttpResponse.json({
+        success: true,
+        data: { prices: published ? [{ model: 'gpt-4o', input_price: 3, output_price: 10, cache_read_price: 0.25 }] : [] },
+      })),
+    );
+    const { userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+    renderWithQuery(<MemoryRouter><AdminModelsPage /><PricingPage /></MemoryRouter>);
+    await screen.findByText('暂无模型价格');
+    const modelRow = (await screen.findByText('gpt-4o')).closest('tr')!;
+    await user.click(within(modelRow).getByRole('button', { name: '编辑' }));
+    await screen.findByDisplayValue('Most capable model');
+    const inputPrice = screen.getByLabelText('输入价格 ($/1M tokens)');
+    await user.clear(inputPrice);
+    await user.type(inputPrice, '3');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => expect(published).toBe(true));
+    expect(await screen.findByText('$3.00 / 1M tokens')).toBeInTheDocument();
+    expect(screen.queryByText('暂无模型价格')).not.toBeInTheDocument();
+  });
+
+  it.each(['create', 'update'])('reads back a saved model after %s reports a price publication failure', async (operation) => {
+    let saved = false;
+    const success = vi.spyOn(toast, 'success').mockImplementation(() => '');
+    const error = vi.spyOn(toast, 'error').mockImplementation(() => '');
+    const publicationFailure = () => {
+      saved = true;
+      return HttpResponse.json({ message: '模型已保存，价格发布失败，请在价格管理中重试。' }, { status: 409 });
+    };
+    server.use(
+      http.get('/api/admin/models', () => HttpResponse.json({
+        models: saved ? [{ ...model, display_name: '已保存的模型' }] : operation === 'update' ? [model] : [],
+        total: saved || operation === 'update' ? 1 : 0,
+      })),
+      http.get('/api/admin/models/1', () => HttpResponse.json(fullModel)),
+      http.post('/api/admin/models', publicationFailure),
+      http.put('/api/admin/models', publicationFailure),
+    );
+    const { userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+    renderWithQuery(<MemoryRouter><AdminModelsPage /></MemoryRouter>);
+    if (operation === 'create') {
+      await screen.findByText('暂无模型');
+      await user.click(screen.getByRole('button', { name: '新建模型' }));
+      await user.type(screen.getByPlaceholderText('如 gpt-4o, claude-3-5-sonnet'), 'gpt-4o');
+      await user.type(screen.getByLabelText('显示名称'), 'GPT-4o');
+      await user.type(screen.getByLabelText('输入价格 ($/1M tokens)'), '3');
+      await user.click(screen.getByRole('button', { name: '创建' }));
+    } else {
+      await screen.findByText('gpt-4o');
+      await user.click(screen.getByRole('button', { name: '编辑' }));
+      await screen.findByDisplayValue('Most capable model');
+      await user.click(screen.getByRole('button', { name: '保存' }));
+    }
+
+    await waitFor(() => expect(error).toHaveBeenCalled());
+    expect(saved).toBe(true);
+    expect(success).not.toHaveBeenCalled();
+    expect(await screen.findByText('已保存的模型')).toBeInTheDocument();
   });
 
   it('deletes a model via confirm dialog', async () => {
