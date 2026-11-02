@@ -1,0 +1,113 @@
+{
+  "date": "2026-11-02",
+  "timezone": "Asia/Shanghai",
+  "task": "next-stage-plan-2026-10-26/B4",
+  "source_branch": "codex/b4-user-operations",
+  "status": "engineering_acceptance_passed_pending_deployment",
+  "scope": {
+    "models": "self-only aggregate routing snapshot; no channel metadata",
+    "announcements": [
+      "all",
+      "current default routing groups",
+      "selected users",
+      "scheduled publication",
+      "expiry",
+      "archive",
+      "versioned read receipts",
+      "management page"
+    ]
+  },
+  "storage": {
+    "migration": "148_create_announcements",
+    "owner": "admin",
+    "dialects": [
+      "SQLite",
+      "MySQL 8.4",
+      "PostgreSQL 18"
+    ],
+    "fresh_repeat": "passed",
+    "same_revision_writers": 8,
+    "successful_writers": 1,
+    "concurrent_read_receipts": 12,
+    "persisted_read_receipts": 1,
+    "audit_failure_rollback": "passed",
+    "filter_before_pagination": "passed",
+    "mysql_runtime_grants": "passed; error 1142 reproduced without UPDATE; actual grant template enables first/repeated receipts, save and list",
+    "typed_driver_errors": "passed; storage failures map to owner unavailable errors with preserved causes"
+  },
+  "owner_protocols": {
+    "test": "TestB4UserOperationsHTTPAndRPC",
+    "dialects": 3,
+    "protocols": [
+      "HTTP",
+      "gRPC"
+    ],
+    "modes": [
+      "legacy",
+      "iam"
+    ],
+    "race": "passed",
+    "self_identity": "passed",
+    "role_hint_cannot_escalate": "passed",
+    "audience_and_group_change": "passed",
+    "session_revocation": "passed",
+    "HTTP_cache_control": "no-store",
+    "immediate_publication_timestamp": "passed; owner freezes actual publication time"
+  },
+  "web": {
+    "browser_projects": [
+      "Desktop Chrome",
+      "Pixel 5 Chrome"
+    ],
+    "browser_tests_passed": 8,
+    "browser_duration_seconds": 6.5,
+    "vitest_tests_passed": 733,
+    "critical_tests_passed": 196,
+    "critical_statement_coverage_percent": 92.26,
+    "critical_branch_coverage_percent": 85.99,
+    "lint": "passed",
+    "typescript": "passed",
+    "build_budget": "passed",
+    "visual_inspection": "passed",
+    "pending_save_preserves_drafts": "passed; new action and form fields disabled during delayed save",
+    "audience_namespace_switch": "passed; target IDs cleared when audience changes; browser regression red then green",
+    "schedule_validation_and_expired_page": "passed",
+    "english_shared_labels": "passed"
+  },
+  "gates": {
+    "make_verify": "passed",
+    "affected_go_vet": "passed",
+    "final_affected_protocol_format_rbac": "passed",
+    "rbac_inventory_rows": 942,
+    "go_build_all": "passed",
+    "go_vet_all": "passed"
+  },
+  "regressions": [
+    "TestAvailableModelsDoesNotHideRegistryQueryFailure",
+    "TestAvailableModelUnionPropagatesGroupStorageFailure",
+    "TestAvailableModelsUsesVerifiedTokenRoutesAndWhitelist"
+  ],
+  "ocr": {
+    "status": "complete_and_manually_dispositioned",
+    "review_session": "2bad18a7-fe3d-47b4-8b09-a0caba0e1a40",
+    "channel_followup_session": "3b6573bd-d5bf-4997-babd-4c4de0b87a25",
+    "files_reviewed": 33,
+    "findings": 16,
+    "adopted_and_fixed": 11,
+    "declined_with_reason": 5,
+    "unresolved_p0_p1": 0,
+    "channel_scan_status": "success",
+    "channel_scan_existing_suggestions": 4,
+    "channel_scan_existing_suggestions_status": "outside B4 change paths; retained for separate investigation"
+  },
+  "production_deployed": false,
+  "paid_probe_executed": false,
+  "release_tag_created": false,
+  "candidate_services": [
+    "channel-service",
+    "admin-api",
+    "host web/dist"
+  ],
+  "next_step": "Admin 148 migration and runtime grants, then controlled Channel/Admin/Web deployment and real-user acceptance",
+  "source_base": "a202bd7d"
+}

@@ -193,3 +193,12 @@ func containsModel(models []string, id string) bool {
 	}
 	return false
 }
+
+func TestAvailableModelsDoesNotHideRegistryQueryFailure(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	require.NoError(t, repo.db.Create(&modelModel{ModelID: "visible", DisplayName: "Visible", Status: biz.ModelStatusEnabled, IsPublic: true}).Error)
+	require.NoError(t, repo.db.Migrator().DropTable(&modelChannelMappingModel{}))
+	models, err := repo.ListAvailableModels(context.Background(), "default")
+	require.Error(t, err, "storage failure must not become an empty available-model snapshot")
+	require.Nil(t, models)
+}

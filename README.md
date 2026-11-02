@@ -12,6 +12,7 @@
 
 ## 功能概览
 
+- 用户运营可见性（未发布）：用户“模型与公告”页仅展示本人可用模型及聚合路由状态；管理员可向全体、用户默认路由组或指定用户发布公告，支持定时、下架及版本化已读。部署前需应用 Admin 148 并授权运行账号，详见 [B4 契约](docs/design/b4-user-operations-contract-2026-11-02.md)和[验收记录](docs/runbooks/b4-user-operations-acceptance-2026-11-02.md)。
 - OpenAI 兼容 API 网关：支持 `/v1/chat/completions`、`/v1/models`、`/v1/responses` 以及 embeddings、audio、image、moderations 等 raw relay 路由。
 - 多渠道模型分发：支持渠道优先级、同优先级负载均衡、禁用渠道过滤、模型白名单和模型映射。
 - 多供应商适配：支持 OpenAI-compatible 渠道，并包含 Anthropic、Gemini、Azure、VoyageAI 等 provider 适配器；DeepSeek、Moonshot、Groq、Tongyi、OpenRouter、SiliconFlow、Ollama、Doubao 等按 OpenAI-compatible 方式转发。

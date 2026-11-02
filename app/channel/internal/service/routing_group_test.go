@@ -190,3 +190,11 @@ func TestCreateRoutingGroupServiceForwardsOperatorInputOnly(t *testing.T) {
 	_, err = s.CreateRoutingGroup(ctx, &channelv1.CreateRoutingGroupRequest{Key: "vip"})
 	require.ErrorIs(t, err, biz.ErrRoutingGroupExists)
 }
+
+func TestAvailableModelUnionPropagatesGroupStorageFailure(t *testing.T) {
+	svc := &ChannelService{}
+	svc.SetRoutingGroupUsecase(&routingGroupFake{err: biz.ErrRoutingGroupStorage})
+	reply, err := svc.ListAvailableModels(context.Background(), &channelv1.ListAvailableModelsRequest{RoutingGroupIds: []int64{1}})
+	require.ErrorIs(t, err, biz.ErrRoutingGroupStorage)
+	require.Nil(t, reply)
+}

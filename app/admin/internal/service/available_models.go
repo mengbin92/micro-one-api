@@ -20,6 +20,8 @@ func (s *AdminService) AvailableModels(ctx context.Context, raw, clientIP string
 	if s.identityClient == nil || s.channelClient == nil {
 		return nil, status.Error(codes.Unavailable, "model dependencies unavailable")
 	}
+	// These fixed owner projections run only after identity proof and never as managed-user reads.
+	ownerContext := operatorRPCContext(WithOperatorCredential(ctx, ""))
 	var userID, tokenID int64
 	var allowed []string
 	var facts *routing.SubjectFacts
@@ -30,7 +32,7 @@ func (s *AdminService) AvailableModels(ctx context.Context, raw, clientIP string
 			return nil, err
 		}
 		userID = id
-		reply, err := s.identityClient.GetUserRoutingFacts(operatorRPCContext(ctx), &identityv1.GetUserRoutingFactsRequest{UserId: id})
+		reply, err := s.identityClient.GetUserRoutingFacts(ownerContext, &identityv1.GetUserRoutingFactsRequest{UserId: id})
 		if err != nil {
 			return nil, err
 		}
@@ -41,7 +43,7 @@ func (s *AdminService) AvailableModels(ctx context.Context, raw, clientIP string
 			facts.TokenGroupIDs = nil
 		}
 	} else {
-		reply, err := s.identityClient.GetAuthSnapshot(operatorRPCContext(ctx), &identityv1.GetAuthSnapshotRequest{Token: raw, ClientIp: clientIP})
+		reply, err := s.identityClient.GetAuthSnapshot(ownerContext, &identityv1.GetAuthSnapshotRequest{Token: raw, ClientIp: clientIP})
 		if err != nil {
 			return nil, err
 		}
@@ -75,7 +77,7 @@ func (s *AdminService) AvailableModels(ctx context.Context, raw, clientIP string
 	}
 	verified := make([]int64, 0, len(ids))
 	for ordinal, id := range ids {
-		detail, err := s.channelClient.GetRoutingGroup(operatorRPCContext(ctx), &channelv1.GetRoutingGroupRequest{Id: id})
+		detail, err := s.channelClient.GetRoutingGroup(ownerContext, &channelv1.GetRoutingGroupRequest{Id: id})
 		if err != nil {
 			if status.Code(err) == codes.NotFound && len(ordered) > 0 {
 				continue
@@ -105,7 +107,7 @@ func (s *AdminService) AvailableModels(ctx context.Context, raw, clientIP string
 	if len(verified) == 0 {
 		return []string{}, nil
 	}
-	reply, err := s.channelClient.ListAvailableModels(operatorRPCContext(ctx), &channelv1.ListAvailableModelsRequest{RoutingGroupIds: verified})
+	reply, err := s.channelClient.ListAvailableModels(ownerContext, &channelv1.ListAvailableModelsRequest{RoutingGroupIds: verified})
 	if err != nil {
 		return nil, err
 	}

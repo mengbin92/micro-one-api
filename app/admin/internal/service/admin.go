@@ -36,8 +36,9 @@ import (
 
 // AdminService is the transport layer entry for admin-api.
 type AdminService struct {
-	backupUc  *backupbiz.Usecase
-	logClient logv1.LogServiceClient
+	backupUc       *backupbiz.Usecase
+	announcementUc *adminbiz.AnnouncementUsecase
+	logClient      logv1.LogServiceClient
 	adminv1.UnimplementedAdminServiceServer
 	billingClient   billingv1.BillingServiceClient
 	identityClient  identityv1.IdentityServiceClient

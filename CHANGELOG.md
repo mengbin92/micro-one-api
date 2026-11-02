@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- B4 用户运营可见性：本人可用模型和聚合路由状态、全体/默认路由组/指定用户公告、北京时间定时发布与下架、版本化已读和公告管理页；新增 Admin 148 三库迁移及运行账号权限模板，用户投影不披露渠道和定向对象。工程验收见 [B4 记录](docs/runbooks/b4-user-operations-acceptance-2026-11-02.md)，尚未部署或发布。
+
+### Fixed
+
+- 共享模型列表透传注册表及路由组存储故障；本人模型投影在身份与路由权限验证后使用固定服务能力，避免普通用户被误要求持有管理权限。
+
 ## [0.38.1] - 2026-11-01
 
 v0.38.1 是 v0.38.0 之后的 **PATCH 修复版本**：修复线上已配置忙闲时价格但用户侧 `/pricing` 页不展示的问题——公开价格接口未投影 ServiceTierPricing 客户售价、页面丢弃分时变体，并连带修复公共价格请求的取消信号与配置保存后的缓存失效；同时修复共享部署脚本不同步 Compose `micro-one-api.source.digest` 标签导致的容器来源摘要偏差。无新增迁移与计费契约变更；admin-api 镜像与宿主机 Web dist 须成对更新。详见 [release-v0.38.1.md](docs/releases/release-v0.38.1.md)。

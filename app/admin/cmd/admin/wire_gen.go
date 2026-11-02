@@ -38,8 +38,14 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	announcementRepo, cleanup2, err := newAnnouncementRepo(config)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
 	mainClientsResult, err := newClients(config)
 	if err != nil {
+		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
@@ -60,8 +66,9 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	routingAccessUsecase := biz.NewRoutingAccessUsecase(routingGroupReader, routingAccessRepo)
 	auditor := newAuditAuditor()
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup2 := newApp(config, repo, mainClientsResult, mainSubscriptionResult, adminService, iamAdminService, routingGroupUsecase, routingAccessUsecase, auditor, mainRegistrarResult)
+	app, cleanup3 := newApp(config, repo, announcementRepo, mainClientsResult, mainSubscriptionResult, adminService, iamAdminService, routingGroupUsecase, routingAccessUsecase, auditor, mainRegistrarResult)
 	return app, func() {
+		cleanup3()
 		cleanup2()
 		cleanup()
 	}, nil
@@ -72,6 +79,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 var ProviderSet = wire.NewSet(
 	newClients,
 	newBackupRepo,
+	newAnnouncementRepo,
 	newSystemOptionsRepo,
 	newSystemOptionsUsecase,
 	newSubscriptionUsecases,
@@ -117,6 +125,7 @@ func provideRegistrar(cfg *Config) registrarResult {
 func newApp(
 	cfg *Config,
 	backupRepo biz2.Repo,
+	announcementRepo biz.AnnouncementRepo,
 	clients *clientsResult,
 	sub subscriptionResult,
 	svc *service.AdminService, iam2 *service.IAMAdminService,
@@ -126,6 +135,7 @@ func newApp(
 	reg registrarResult,
 ) (*kratos.App, func()) {
 	svc.SetIAMService(iam2)
+	svc.SetAnnouncementUsecase(biz.NewAnnouncementUsecase(announcementRepo, svc.ResourceAuthorizer()))
 	svc.SetBackupUsecase(biz2.NewUsecase(backupRepo, svc.ResourceAuthorizer()))
 	svc.SetLogClient(clients.logClient)
 	svc.SetRoutingGroupUsecase(routingGroups)

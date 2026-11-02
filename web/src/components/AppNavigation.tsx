@@ -69,6 +69,7 @@ const configuredMenuIcons: Record<string, LucideIcon> = { home: LayoutDashboard,
 
 const userLinks: NavItem[] = [
   { to: '/dashboard', label: '仪表盘', icon: LayoutDashboard },
+  { to: '/operations', label: '模型与公告', icon: Activity },
   { to: '/tokens', label: 'API 密钥', icon: KeyRound },
   { to: '/playground', label: '在线调试', icon: FlaskConical },
   { to: '/usage', label: '使用记录', icon: BarChart3 },
@@ -90,6 +91,7 @@ const adminOverviewLink: NavItem[] = [
 ];
 
 const adminSystemLink: NavItem[] = [
+  { to: '/admin/announcements', label: '公告管理', icon: ScrollText },
   { to: '/admin/options', label: '系统设置', icon: Settings2 },
 ];
 
@@ -189,6 +191,8 @@ const routeTitles: Record<string, string> = {
   '/admin/reconciliation': '账务对账',
   '/admin/redemptions': '兑换码',
   '/admin/options': '系统设置',
+  '/operations': '模型与公告',
+  '/admin/announcements': '公告管理',
 };
 
 function formatBalance(value?: number) {

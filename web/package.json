@@ -25,7 +25,8 @@
     "preview": "vite preview",
     "generate:api": "openapi-typescript ../openapi.yaml -o src/types/api.ts",
     "test:e2e:b3": "npm run build && playwright test --config playwright.b3.config.ts",
-    "test:e2e:a4": "npm run build && playwright test --config playwright.a4.config.ts"
+    "test:e2e:a4": "npm run build && playwright test --config playwright.a4.config.ts",
+    "test:e2e:b4": "npm run build && playwright test --config playwright.b4.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
