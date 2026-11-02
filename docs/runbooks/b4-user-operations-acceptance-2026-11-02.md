@@ -1,6 +1,6 @@
 # B4 用户运营可见性验收
 
-2026-11-02（北京时间）。状态：工程验收及机器评审整改通过，待部署；未发版。
+2026-11-02（北京时间）。状态：工程验收及机器评审整改通过；生产已部署（2026-11-02，关闭态功能随服务发布，无独立开关）；未发版。
 
 ## 1. 冻结范围和交付
 
@@ -62,4 +62,11 @@ Channel 全文件补扫的 4 条意见涉及既有刷新时长换算、旧式余
 3. 用真实普通用户/管理员验证模型投影、管理拒绝、定向与定时状态、已读保存和运行账号权限；核对健康、日志和制品摘要。
 4. 旧 Web 不使用新增接口；旧 Admin 可与保留的公告表共存。回滚按 Web → Admin/Channel，保留 148 表和记录，不执行删表或数据回写。新 Web 配旧 Admin 会出现功能不可用，因此不能只回滚后端。
 
-生产部署、真实用户运营公告、版本发布/tag 均未执行。下一步在维护者安排的发布窗口执行上述部署验收。
+## 5. 生产部署记录（2026-11-02）
+
+1. 迁移 148（Admin ownership）已应用，四张公告表落库 `oneapi_admin`；运行账号 `iamd_admin_7ff6fec0` 按权限模板授权（announcements SELECT/INSERT/UPDATE、targets SELECT/INSERT/DELETE、reads SELECT/INSERT/UPDATE、events INSERT）。
+2. Channel/Admin 镜像 `deploy-20261102-111927-377e9028`（源码 `377e9028`，来源摘要 `07160686…`）已部署，容器健康；宿主机 Web dist 已更新（体积预算通过）。
+3. 回滚锚点：镜像 tag `b4-rollback-20261102-105026`（Channel/Admin）、`docker-compose.yml.bak-b4-20261102-105026`、`/opt/web/dist.bak-b4-20261102-105026`、Admin 库 dump `/tmp/oneapi-admin-b4-20261102-105026.sql`。
+4. 部署后验证：匿名访问 `/api/user/announcements`、`/api/user/model-availability`、`/api/admin/announcements` 均 401 拒绝；运行账号对公告表 SELECT 通过；服务日志无 MySQL 1142 或公告权限错误（仅存量 unpriced-metric WARN）。
+
+待办：真实管理员登录后的公告管理旅程与真实用户的已读旅程需浏览器人工过一遍（需要维护者登录态）；发版/tag 未执行，按发布流程另行安排。
