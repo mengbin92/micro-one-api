@@ -8,7 +8,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.38.1 发布公告](./docs/releases/release-v0.38.1.md)（用户价格页忙闲时展示修复与部署来源标签校正；无新增迁移，admin-api 与 Web dist 须成对更新） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.38.1)
+> 📣 **最新发布**：[v0.39.0 发布公告](./docs/releases/release-v0.39.0.md)（B4：用户模型状态与定向公告、管理员公告管理；新增 Admin 148 迁移，2026-11-02 已生产部署） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.39.0)
 
 ## 功能概览
 
@@ -186,6 +186,7 @@ make web-dist
 
 ## 发布与升级
 
+- [v0.39.0](./docs/releases/release-v0.39.0.md)：B4 用户运营包——用户侧模型可用状态、定向/定时/到期公告与版本化已读，管理员公告管理。新增 Admin 148 四表迁移与运行授权；生产已部署，真实旅程浏览器补验保留。
 - [v0.38.1](./docs/releases/release-v0.38.1.md)：修复线上忙闲时价格不在用户 `/pricing` 页展示（接口投影 + 页面渲染 + 缓存失效），并修复部署脚本 Compose 来源标签同步。无新增迁移；admin-api 镜像与 Web dist 成对更新。
 - [v0.38.0](./docs/releases/release-v0.38.0.md)：B1 忙闲时段/长上下文计价、B2 原生 Gemini v1beta 入站、B3 托管 MySQL/Redis 备份控制面及三项安全扫描修复。新增 Billing 146／Admin 147 迁移；计价与备份控制面默认关闭，真实价格/S3/host worker 验收保留。
 - [v0.37.1](./docs/releases/release-v0.37.1.md)：修复 SSRF 旁路静默、八条非流式路径错误缓冲过大与 Chat SSE 后置错误；成功标记前完成结算，失败发送脱敏错误事件。无新增 API、配置、依赖或迁移；升级先补既有 Log 145，收费与强制认证等开关保持原状态。
