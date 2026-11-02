@@ -21,7 +21,7 @@ import (
 	"micro-one-api/pkg/safefile"
 )
 
-var Writers = []string{"relay-gateway", "admin-api", "identity-service", "channel-service", "billing-service", "config-service", "log-service", "monitor-worker", "notify-worker"}
+var Writers = []string{"relay-gateway", "admin-api", "identity-service", "channel-service", "channel-account-ops-worker", "billing-service", "config-service", "log-service", "monitor-worker", "notify-worker"}
 var ident = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_-]{0,79}$`)
 
 type Config struct {
@@ -223,8 +223,9 @@ func (r *Runner) Snapshot(ctx context.Context, id, dir string) (m Manifest, file
 		err = fmt.Errorf("unrecovered backup journal; run recover first")
 		return
 	}
-	// Validate the configured Compose project, including unexpected store writers.
-	rendered, e := r.output(ctx, "config", "--format", "json")
+	// Include optional profiles in the inventory without starting their services.
+	// A profiled writer may already be running even when this process has no profile set.
+	rendered, e := r.output(ctx, "--profile", "*", "config", "--format", "json")
 	if e != nil {
 		err = e
 		return
@@ -253,6 +254,12 @@ func (r *Runner) Snapshot(ctx context.Context, id, dir string) (m Manifest, file
 		return
 	}
 	active := strings.Fields(running)
+	for _, name := range active {
+		if _, ok := topology.Services[name]; !ok {
+			err = fmt.Errorf("running Compose service missing from backup topology")
+			return
+		}
+	}
 	if !slices.Contains(active, "mysql") || !slices.Contains(active, "redis") {
 		err = fmt.Errorf("MySQL and Redis must be running")
 		return

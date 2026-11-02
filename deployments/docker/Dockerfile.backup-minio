@@ -1,0 +1,62 @@
+# syntax=docker/dockerfile:1
+# Build locally with --platform linux/amd64. No source or toolchain runs on
+# the production host. One image contains both the server and its setup client.
+FROM --platform=$BUILDPLATFORM golang:1.27.2-alpine AS source
+RUN apk add --no-cache ca-certificates git
+
+FROM source AS server
+WORKDIR /src/minio
+# RELEASE.2025-10-15T17-29-55Z includes the upstream session-policy CVE fix.
+RUN git init . \
+    && git remote add origin https://github.com/minio/minio.git \
+    && for backup_attempt in 1 2 3; do \
+         git -c http.version=HTTP/1.1 fetch --depth=1 origin 9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a && break; \
+         test "$backup_attempt" -lt 3 || exit 1; \
+       done \
+    && git checkout --detach FETCH_HEAD \
+    && test "$(git rev-parse HEAD)" = 9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a
+ARG TARGETOS
+ARG TARGETARCH
+ARG GOPROXY=https://proxy.golang.org|https://goproxy.cn|direct
+RUN --mount=type=cache,id=backup-minio-mod,target=/go/pkg/mod \
+    --mount=type=cache,id=backup-minio-build,target=/root/.cache/go-build \
+    BACKUP_MINIO_LDFLAGS="$(MINIO_RELEASE=RELEASE go run buildscripts/gen-ldflags.go 2025-10-15T17:29:55Z)" \
+    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+       go build -trimpath -ldflags="$BACKUP_MINIO_LDFLAGS" -o /out/minio .
+
+FROM source AS client
+WORKDIR /src/mc
+# RELEASE.2025-08-13T08-35-41Z (peeled annotated tag).
+RUN git init . \
+    && git remote add origin https://github.com/minio/mc.git \
+    && for backup_attempt in 1 2 3; do \
+         git -c http.version=HTTP/1.1 fetch --depth=1 origin 7394ce0dd2a80935aded936b09fa12cbb3cb8096 && break; \
+         test "$backup_attempt" -lt 3 || exit 1; \
+       done \
+    && git checkout --detach FETCH_HEAD \
+    && test "$(git rev-parse HEAD)" = 7394ce0dd2a80935aded936b09fa12cbb3cb8096
+ARG TARGETOS
+ARG TARGETARCH
+ARG GOPROXY=https://proxy.golang.org|https://goproxy.cn|direct
+RUN --mount=type=cache,id=backup-minio-mod,target=/go/pkg/mod \
+    --mount=type=cache,id=backup-minio-build,target=/root/.cache/go-build \
+    BACKUP_MC_LDFLAGS="$(MC_RELEASE=RELEASE go run buildscripts/gen-ldflags.go 2025-08-13T08:35:41Z)" \
+    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+       go build -trimpath -ldflags="$BACKUP_MC_LDFLAGS" -o /out/mc .
+
+FROM alpine:3.23
+RUN apk add --no-cache ca-certificates curl jq \
+    && mkdir -p /data /licenses
+COPY --from=server /out/minio /usr/local/bin/minio
+COPY --from=client /out/mc /usr/local/bin/mc
+COPY --from=server /src/minio/LICENSE /licenses/minio-LICENSE
+COPY --from=client /src/mc/LICENSE /licenses/mc-LICENSE
+LABEL org.opencontainers.image.title="Micro One API private backup MinIO" \
+      org.opencontainers.image.version="RELEASE.2025-10-15T17-29-55Z" \
+      org.opencontainers.image.source="https://github.com/minio/minio" \
+      org.opencontainers.image.revision="9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later" \
+      io.microone.backup.mc-revision="7394ce0dd2a80935aded936b09fa12cbb3cb8096"
+EXPOSE 9000
+ENTRYPOINT ["/usr/local/bin/minio"]
+CMD ["server", "--address", ":9000", "/data"]

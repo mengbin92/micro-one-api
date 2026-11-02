@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.39.1] - 2026-11-02
+
+v0.39.1 是 v0.39.0 之后的 **PATCH 修复版本**：补齐备份 worker 对已运行 profile writer 的停写与恢复覆盖，拒绝运行拓扑缺失，并修正 MySQL 策略锁定读的权限模板；同时将已上线的私有 MinIO 配置、构建来源和运维证据纳入版本管理。无新增公开 API 或数据库迁移，定时备份仍关闭，生产全量备份及隔离恢复验收保留。详见 [release-v0.39.1.md](docs/releases/release-v0.39.1.md)。
+
+### Fixed
+
+- 备份盘点展开全部 Compose profile，将 `channel-account-ops-worker` 纳入 writer、镜像及中断恢复集合；运行服务缺失于模型时，在存储操作和停写之前拒绝快照。
+- 147 手工权限模板补充策略表 UPDATE，满足 MySQL `SELECT ... FOR UPDATE` 的锁定读要求；补齐两个备份管理 GET 接口的不可用错误 JSON 回归。
+
+### Added
+
+- 私有 MinIO 的固定源码交叉构建配方、loopback 独立 Compose、持久化卷、限定对象前缀的 worker 账号初始化及凭据占位模板；归档生产部署证据与恢复边界，修正 mc 提交哈希元数据的密钥扫描误报。
+
 ## [0.39.0] - 2026-11-02
 
 v0.39.0 是 v0.38.1 之后的 **MINOR 功能版本**：发布 B4 用户运营包——用户控制台"模型与公告"（本人可用模型聚合路由状态、定向/定时/到期公告与版本化已读）与管理员"公告管理"，新增 4 个公开端点与 Admin 148 迁移（四张公告表，三方言）及运行账号最小授权；另含备份扫描 findings、`minimatch` 与 `follow-redirects` 安全修复。B4 已于 2026-11-02 生产部署，真实管理员/用户旅程浏览器补验保留。详见 [release-v0.39.0.md](docs/releases/release-v0.39.0.md)。

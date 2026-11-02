@@ -9,7 +9,9 @@ GRANT SELECT, INSERT ON oneapi_admin.backup_events TO 'oneapi_admin'@'%';
 GRANT SELECT ON oneapi_admin.backup_worker_state TO 'oneapi_admin'@'%';
 
 -- Private host metadata worker (separately provisioned account).
-GRANT SELECT ON oneapi_admin.backup_policies TO 'backup_worker'@'%';
+-- Claim serializes scheduling with SELECT ... FOR UPDATE. MySQL requires
+-- SELECT plus UPDATE (or DELETE/LOCK TABLES) even when the policy is unchanged.
+GRANT SELECT, UPDATE ON oneapi_admin.backup_policies TO 'backup_worker'@'%';
 GRANT SELECT, INSERT, UPDATE ON oneapi_admin.backup_jobs TO 'backup_worker'@'%';
 GRANT INSERT ON oneapi_admin.backup_events TO 'backup_worker'@'%';
 GRANT SELECT, UPDATE ON oneapi_admin.backup_worker_state TO 'backup_worker'@'%';

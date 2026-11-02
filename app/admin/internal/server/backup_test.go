@@ -9,6 +9,7 @@ import (
 	"micro-one-api/app/admin/internal/service"
 	"micro-one-api/domain/authorization"
 	b "micro-one-api/domain/backup/biz"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -39,12 +40,23 @@ func TestManagedBackupHTTPErrorCodesAndClosedRoutes(t *testing.T) {
 		require.False(t, iamUserRouteReady(httptest.NewRequest("GET", path+"/download", nil)))
 	}
 	svc := service.NewAdminService(nil, nil, nil, nil)
-	w := httptest.NewRecorder()
-	handleBackupPolicy(w, httptest.NewRequest("GET", "/api/admin/backup-policy", nil), svc)
-	require.Equal(t, 503, w.Code)
+	for _, tc := range []struct {
+		path   string
+		handle func(http.ResponseWriter, *http.Request, *service.AdminService)
+	}{
+		{"/api/admin/backup-policy", handleBackupPolicy},
+		{"/api/admin/backups", handleBackups},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			tc.handle(w, httptest.NewRequest("GET", tc.path, nil), svc)
+			require.Equal(t, http.StatusServiceUnavailable, w.Code)
+			require.JSONEq(t, `{"message":"managed backup unavailable","reason":"AUTHORIZATION_DEPENDENCY_UNAVAILABLE","success":false}`, w.Body.String())
+		})
+	}
 	r := &backupRepo{}
 	svc.SetBackupUsecase(b.NewUsecase(r, nil))
-	w = httptest.NewRecorder()
+	w := httptest.NewRecorder()
 	handleBackupPolicy(w, httptest.NewRequest("PUT", "/api/admin/backup-policy", strings.NewReader(`{"policy":{"revision":1,"interval_hours":24,"retain":1,"rpo_hours":24,"rto_minutes":60}}`)), svc)
 	require.Equal(t, 400, w.Code)
 	require.Zero(t, r.writes)
