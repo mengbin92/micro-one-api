@@ -7,6 +7,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "postinstall": "node scripts/patch-redocly-minimatch.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build && node scripts/check-build-budget.mjs",
     "build:budget": "node scripts/check-build-budget.mjs",
@@ -24,7 +25,8 @@
     "preview": "vite preview",
     "generate:api": "openapi-typescript ../openapi.yaml -o src/types/api.ts",
     "test:e2e:b3": "npm run build && playwright test --config playwright.b3.config.ts",
-    "test:e2e:a4": "npm run build && playwright test --config playwright.a4.config.ts"
+    "test:e2e:a4": "npm run build && playwright test --config playwright.a4.config.ts",
+    "test:e2e:b4": "npm run build && playwright test --config playwright.b4.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -75,6 +77,7 @@
     "vitest": "^5.0.3"
   },
   "overrides": {
+    "minimatch": "^11.0.1",
     "@babel/core": "^7.29.6",
     "form-data": "^4.0.6",
     "hono": "^4.12.34",

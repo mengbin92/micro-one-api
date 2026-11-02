@@ -93,6 +93,9 @@ const VendorReportsPage = lazy(() => routeLoaders['/admin/vendor-reports']().the
 const SessionRolesPage = lazy(() => import('@/pages/SessionRolesPage').then(m => ({ default: m.SessionRolesPage })));
 const IAMPage = lazy(() => import('@/pages/admin/IAMPage').then(m => ({ default: m.IAMPage })));
 
+const OperationsPage = lazy(() => routeLoaders['/operations']().then(m => ({ default: m.OperationsPage })));
+const AnnouncementsPage = lazy(() => routeLoaders['/admin/announcements']().then(m => ({ default: m.AnnouncementsPage })));
+
 function withSuspense(element: React.ReactNode) {
   return <Suspense fallback={<PageLoading />}>{element}</Suspense>;
 }
@@ -140,6 +143,10 @@ export const router = createBrowserRouter([
       {
         path: 'dashboard',
         element: withSuspense(<DashboardPage />),
+      },
+      {
+        path: 'operations',
+        element: withSuspense(<OperationsPage />),
       },
       {
         path: 'tokens',
@@ -263,6 +270,10 @@ export const router = createBrowserRouter([
           {
             path: 'reconciliation',
             element: withSuspense(<AdminReconciliationPage />),
+          },
+          {
+            path: 'announcements',
+            element: withSuspense(<AnnouncementsPage />),
           },
           {
             path: 'options',

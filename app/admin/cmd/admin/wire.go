@@ -30,6 +30,7 @@ import (
 var ProviderSet = wire.NewSet(
 	newClients,
 	newBackupRepo,
+	newAnnouncementRepo,
 	newSystemOptionsRepo,
 	newSystemOptionsUsecase,
 	newSubscriptionUsecases,
@@ -90,6 +91,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 func newApp(
 	cfg *Config,
 	backupRepo backupbiz.Repo,
+	announcementRepo biz.AnnouncementRepo,
 	clients *clientsResult,
 	sub subscriptionResult,
 	svc *service.AdminService,
@@ -100,6 +102,7 @@ func newApp(
 	reg registrarResult,
 ) (*kratos.App, func()) {
 	svc.SetIAMService(iam)
+	svc.SetAnnouncementUsecase(biz.NewAnnouncementUsecase(announcementRepo, svc.ResourceAuthorizer()))
 	svc.SetBackupUsecase(backupbiz.NewUsecase(backupRepo, svc.ResourceAuthorizer()))
 	svc.SetLogClient(clients.logClient)
 	svc.SetRoutingGroupUsecase(routingGroups)

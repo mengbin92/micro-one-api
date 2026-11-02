@@ -40,3 +40,6 @@ b4c787a44b9241c3dfd8b01086fdca65fa1833f9:docs/runbooks/evidence/a2-production-de
 # WeChat v3 API test fixtures: hex-only placeholder, not a credential.
 a0c4c789b7eb745438c5fe92547edfb017f77e94:app/billing/internal/data/payment_wechat_test.go:generic-api-key:60
 a0c4c789b7eb745438c5fe92547edfb017f77e94:internal/integration/iam_wechat_payment_test.go:generic-api-key:127
+# Historical isolated backup fixture: a repeated hexadecimal placeholder, never
+# a deployed channel key. Current tests generate a fresh key for each run.
+14f58fec5ef6d5b15536a7f67ec8bab8c74178a3:internal/integration/managed_backup_test.go:generic-api-key:161

@@ -9,6 +9,12 @@ import "google/api/annotations.proto";
 option go_package = "micro-one-api/api/admin/v1;adminv1";
 
 service AdminService {
+  rpc ListManagedAnnouncements(ListAnnouncementsRequest) returns (ListAnnouncementsReply) { option (google.api.http) = { get: "/api/admin/announcements" }; }
+  rpc SaveAnnouncement(SaveAnnouncementRequest) returns (Announcement) { option (google.api.http) = { put: "/api/admin/announcements" body: "*" }; }
+  rpc ListMyAnnouncements(ListAnnouncementsRequest) returns (ListMyAnnouncementsReply) { option (google.api.http) = { get: "/api/user/announcements" }; }
+  rpc ReadAnnouncement(ReadAnnouncementRequest) returns (ReadAnnouncementReply) { option (google.api.http) = { post: "/api/user/announcements/read" body: "*" }; }
+  rpc GetMyModelAvailability(GetMyModelAvailabilityRequest) returns (MyModelAvailability) { option (google.api.http) = { get: "/api/user/model-availability" }; }
+
   rpc GetBackupPolicy(GetBackupPolicyRequest) returns (BackupPolicy) { option (google.api.http) = { get: "/api/admin/backup-policy" }; }
   rpc UpdateBackupPolicy(UpdateBackupPolicyRequest) returns (BackupPolicy) { option (google.api.http) = { put: "/api/admin/backup-policy" body: "*" }; }
   rpc CreateBackup(CreateBackupRequest) returns (BackupJob) { option (google.api.http) = { post: "/api/admin/backups" body: "*" }; }
@@ -703,3 +709,33 @@ message BackupEvent {
  int64 at = 6;
 }
 message ListBackupsReply { repeated BackupJob jobs = 1; repeated BackupEvent events = 2; int64 worker_last_seen = 3; string worker_phase = 4; string worker_error_code = 5; int32 worker_timeout_minutes = 6; }
+
+message Announcement {
+ string id = 1;
+ int64 revision = 2;
+ string title = 3;
+ string body = 4;
+ string audience = 5;
+ repeated string targets = 6;
+ string status = 7;
+ int64 publish_at = 8;
+ int64 expires_at = 9;
+ int64 updated_at = 10;
+}
+message UserAnnouncement {
+ string id = 1;
+ int64 revision = 2;
+ string title = 3;
+ string body = 4;
+ int64 publish_at = 5;
+ int64 expires_at = 6;
+ bool read = 7;
+}
+message ListAnnouncementsRequest { int32 page = 1; int32 page_size = 2; }
+message ListAnnouncementsReply { repeated Announcement items = 1; int64 total = 2; }
+message ListMyAnnouncementsReply { repeated UserAnnouncement items = 1; int64 total = 2; }
+message SaveAnnouncementRequest { Announcement announcement = 1; string reason = 2; }
+message ReadAnnouncementRequest { string id = 1; int64 revision = 2; }
+message ReadAnnouncementReply { bool success = 1; }
+message GetMyModelAvailabilityRequest {}
+message MyModelAvailability { repeated string models = 1; string status = 2; int64 checked_at = 3; }

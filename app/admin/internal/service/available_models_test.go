@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
@@ -28,14 +29,19 @@ func (c *modelProofIdentity) GetAuthSnapshot(_ context.Context, p *identityv1.Ge
 
 type modelProofChannel struct {
 	channelv1.ChannelServiceClient
-	groups    map[int64]*channelv1.RoutingGroup
-	requested []int64
-	models    []string
-	err       error
-	listed    bool
+	groups            map[int64]*channelv1.RoutingGroup
+	requested         []int64
+	models            []string
+	err               error
+	listed            bool
+	forwardedOperator string
 }
 
-func (c *modelProofChannel) GetRoutingGroup(_ context.Context, p *channelv1.GetRoutingGroupRequest, _ ...grpc.CallOption) (*channelv1.RoutingGroupDetail, error) {
+func (c *modelProofChannel) GetRoutingGroup(ctx context.Context, p *channelv1.GetRoutingGroupRequest, _ ...grpc.CallOption) (*channelv1.RoutingGroupDetail, error) {
+	md, _ := metadata.FromOutgoingContext(ctx)
+	if values := md.Get("x-operator-authorization"); len(values) > 0 {
+		c.forwardedOperator = values[0]
+	}
 	if c.err != nil {
 		return nil, c.err
 	}
@@ -56,10 +62,11 @@ func TestAvailableModelsUsesVerifiedTokenRoutesAndWhitelist(t *testing.T) {
 	identity := &modelProofIdentity{snapshot: &identityv1.GetAuthSnapshotReply{UserId: 7, TokenId: 9, UserEnabled: true, TokenEnabled: true, AllowedModels: []string{"MODEL-A"}, RoutingFacts: facts}}
 	channel := &modelProofChannel{groups: map[int64]*channelv1.RoutingGroup{2: {Id: 2, Key: "vip", Status: "enabled", AccessMode: "restricted", Revision: 5}}, models: []string{"model-a", "hidden"}}
 	svc := NewAdminService(nil, identity, channel, nil)
-	out, err := svc.AvailableModels(context.Background(), "real-key", "127.0.0.1")
+	out, err := svc.AvailableModels(WithOperatorCredential(context.Background(), "ordinary-session"), "real-key", "127.0.0.1")
 	require.NoError(t, err)
 	require.Equal(t, []string{"model-a"}, out)
 	require.Equal(t, []int64{2}, channel.requested)
+	require.Empty(t, channel.forwardedOperator)
 	require.Equal(t, "127.0.0.1", identity.ip)
 	facts.Grants[0].ExpiresAt = time.Now().Unix() - 1
 	channel.listed = false
