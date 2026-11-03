@@ -264,6 +264,22 @@ groups:
   - name: routing-cost-governance
     interval: 30s
     rules:
+      - alert: UnpricedRoutedMetricUnavailable
+        expr: |
+          up{job="micro-one-api",instance="admin-api:8000"} == 1
+          unless on (job, instance)
+          (
+            micro_one_api_model_unpriced_routed_evaluation_success == 1
+            and on (job, instance)
+            time() - micro_one_api_model_unpriced_routed_last_success_timestamp_seconds <= 180
+          )
+        for: 5m
+        labels:
+          severity: warning
+          service: admin-api
+        annotations:
+          summary: "Unpriced routed model monitoring is unavailable"
+          description: "The admin-api metrics target is up, but the unpriced-model evaluation failed, has no success signal, or has not succeeded within 3 minutes. Check the dedicated admin statistics RPC and ModelPrice reads; retained counts are stale."
 
       # 有流量但用户售价缺失 — 活跃路由的模型没有 ModelPrice 条目
       - alert: RoutedModelsUnpriced

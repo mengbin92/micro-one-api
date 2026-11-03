@@ -337,6 +337,8 @@ func init() {
 		BillingUsageAmbiguousTotal,
 		UsageSemanticSourceIsolationTotal,
 		UnpricedRoutedModels,
+		UnpricedRoutedEvaluationSuccess,
+		UnpricedRoutedLastSuccessTimestamp,
 		RelayCodexQuotaSnapshotsTotal,
 		// v0.11.0 Phase 3 §3.5 routing observability.
 		RoutingSelectionPlanned,

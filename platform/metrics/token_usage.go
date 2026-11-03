@@ -77,6 +77,22 @@ var UnpricedRoutedModels = prometheus.NewGaugeVec(
 	[]string{"source"},
 )
 
+// UnpricedRoutedEvaluationSuccess reports whether the last background audit
+// completed. Counts retain their previous values on failure.
+var UnpricedRoutedEvaluationSuccess = prometheus.NewGauge(prometheus.GaugeOpts{
+	Namespace: "micro_one_api", Subsystem: "model",
+	Name: "unpriced_routed_evaluation_success",
+	Help: "Whether the last background unpriced model audit completed successfully",
+})
+
+// UnpricedRoutedLastSuccessTimestamp distinguishes a fresh zero from a stale
+// or never-completed audit. Only successful background evaluations update it.
+var UnpricedRoutedLastSuccessTimestamp = prometheus.NewGauge(prometheus.GaugeOpts{
+	Namespace: "micro_one_api", Subsystem: "model",
+	Name: "unpriced_routed_last_success_timestamp_seconds",
+	Help: "Unix timestamp of the last successful background unpriced model audit",
+})
+
 // ---------------------------------------------------------------------------
 // token-usage-billing-semantics-remediation (2026-08-31) §9 metrics.
 // Labels stay low-cardinality: protocol / semantics / parse status / reason
