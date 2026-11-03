@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -37,15 +38,22 @@ func RecordUnpricedRoutedMetric(resp *channelv1.ListUnpricedRoutedModelsResponse
 }
 
 // loadPricedModelSet reads the ModelPrice system option and returns its keys as
-// a canonicalised set. Returns nil when the option is absent or unparseable.
-func (s *AdminService) loadPricedModelSet(ctx context.Context) []string {
+// a canonicalised set. An explicit empty object is valid; unavailable prices
+// must not be mistaken for an empty price set.
+func (s *AdminService) loadPricedModelSet(ctx context.Context) ([]string, error) {
 	raw, err := s.GetSystemOption(ctx, "ModelPrice")
-	if err != nil || strings.TrimSpace(raw) == "" {
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("load ModelPrice: %w", err)
+	}
+	if strings.TrimSpace(raw) == "" {
+		return nil, fmt.Errorf("ModelPrice is unavailable")
 	}
 	var parsed map[string]jsonx.RawMessage
 	if err := jsonx.Unmarshal([]byte(raw), &parsed); err != nil {
-		return nil
+		return nil, fmt.Errorf("decode ModelPrice: %w", err)
+	}
+	if parsed == nil {
+		return nil, fmt.Errorf("ModelPrice must be an object")
 	}
 	out := make([]string, 0, len(parsed))
 	for k := range parsed {
@@ -53,23 +61,43 @@ func (s *AdminService) loadPricedModelSet(ctx context.Context) []string {
 			out = append(out, k)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // EvaluateUnpricedRoutedMetric loads the priced-model set and updates the gauge.
-func (s *AdminService) EvaluateUnpricedRoutedMetric(ctx context.Context) error {
-	resp, err := s.ListUnpricedRoutedModelsWithPricing(ctx)
+func (s *AdminService) EvaluateUnpricedRoutedMetric(ctx context.Context) (err error) {
+	defer func() {
+		if err != nil {
+			metrics.UnpricedRoutedEvaluationSuccess.Set(0)
+		}
+	}()
+	priced, err := s.loadPricedModelSet(ctx)
 	if err != nil {
 		return err
 	}
-	RecordUnpricedRoutedMetric(resp)
+	// Background work uses its dedicated capability, never an operator session.
+	ctx = operatorRPCContext(WithOperatorCredential(ctx, ""))
+	resp, err := s.channelClient.CountUnpricedRoutedModels(ctx, &channelv1.ListUnpricedRoutedModelsRequest{PricedModelIds: priced})
+	if err != nil {
+		return err
+	}
+	if resp == nil {
+		return fmt.Errorf("unpriced model audit returned no result")
+	}
+	metrics.UnpricedRoutedModels.WithLabelValues("channel").Set(float64(resp.ChannelCount))
+	metrics.UnpricedRoutedModels.WithLabelValues("subscription").Set(float64(resp.SubscriptionCount))
+	metrics.UnpricedRoutedEvaluationSuccess.Set(1)
+	metrics.UnpricedRoutedLastSuccessTimestamp.SetToCurrentTime()
 	return nil
 }
 
 // ListUnpricedRoutedModelsWithPricing returns the routed-but-unpriced models
 // after loading the priced-model set from the ModelPrice system option.
 func (s *AdminService) ListUnpricedRoutedModelsWithPricing(ctx context.Context) (*channelv1.ListUnpricedRoutedModelsResponse, error) {
-	priced := s.loadPricedModelSet(ctx)
+	priced, err := s.loadPricedModelSet(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return s.ListUnpricedRoutedModels(ctx, &channelv1.ListUnpricedRoutedModelsRequest{
 		PricedModelIds: priced,
 	})
@@ -113,7 +141,13 @@ func (w *UnpricedRoutedMetricWorker) Run(ctx context.Context) {
 	}
 }
 
-func (w *UnpricedRoutedMetricWorker) evaluateOnce(ctx context.Context) error {
+func (w *UnpricedRoutedMetricWorker) evaluateOnce(ctx context.Context) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			metrics.UnpricedRoutedEvaluationSuccess.Set(0)
+			err = fmt.Errorf("unpriced model audit panic: %v", recovered)
+		}
+	}()
 	return w.svc.EvaluateUnpricedRoutedMetric(ctx)
 }
 

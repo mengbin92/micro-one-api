@@ -67,3 +67,15 @@ func TestUserOperatorNeverReceivesSystemBypass(t *testing.T) {
 	require.True(t, HasSystemCapability(ctx, method))
 	require.False(t, HasSystemCapability(authorization.WithCredential(ctx, "verified-session"), method))
 }
+
+func TestUnpricedAuditCapabilityIsAdminSystemOnly(t *testing.T) {
+	method := channel.ChannelService_CountUnpricedRoutedModels_FullMethodName
+	admin := Principal{Name: "admin", Dedicated: true}
+	require.True(t, admin.SystemCapability(method))
+	require.False(t, admin.SystemCapability(channel.ChannelService_ListUnpricedRoutedModels_FullMethodName))
+	require.False(t, (Principal{Name: "admin"}).CanCall(method))
+	require.False(t, (Principal{Name: "relay", Dedicated: true}).CanCall(method))
+	ctx := WithRPCMethod(WithPrincipal(context.Background(), admin), method)
+	require.True(t, HasSystemCapability(ctx, method))
+	require.False(t, HasSystemCapability(authorization.WithCredential(ctx, "verified-session"), method))
+}

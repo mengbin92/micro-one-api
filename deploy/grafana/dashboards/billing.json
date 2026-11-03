@@ -148,13 +148,14 @@
       },
       {
         "id": 12,
-        "title": "Gross Profit per request (P50)",
+        "title": "Configured margin per request (estimated P50)",
+        "description": "Histogram estimate against configured upstream prices, not vendor invoices. Bucket interpolation can show a small negative P50 for zero margins; alerts use the exact negative-request bucket and profit/loss counters.",
         "type": "graph",
         "gridPos": {"h": 8, "w": 24, "x": 0, "y": 48},
         "targets": [
           {
             "expr": "histogram_quantile(0.5, sum(rate(micro_one_api_billing_ledger_gross_profit_quota_bucket[5m])) by (le))",
-            "legendFormat": "P50 gross profit (quota)"
+            "legendFormat": "Estimated P50 margin (quota)"
           }
         ]
       }

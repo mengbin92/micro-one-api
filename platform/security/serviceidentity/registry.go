@@ -175,6 +175,7 @@ var rpcPolicies = map[string]RPCPolicy{
 	"/api.channel.v1.ChannelService/DeleteModelRouting":                      {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.channel.v1.ChannelService/CanonicalModelPreflight":                 {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.channel.v1.ChannelService/MergeCanonicalModels":                    {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{}},
+	"/api.channel.v1.ChannelService/CountUnpricedRoutedModels":               {Owner: "channel", UserCallers: []string{}, SystemCallers: []string{"admin"}},
 	"/api.channel.v1.ChannelService/ListUnpricedRoutedModels":                {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.channel.v1.ChannelService/ExportModels":                            {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.channel.v1.ChannelService/ImportModels":                            {Owner: "channel", UserCallers: []string{"admin"}, SystemCallers: []string{}},
