@@ -33,10 +33,46 @@
       `go test ./app/admin/internal/service ./app/channel/internal/server ./platform/metrics ./platform/security/serviceidentity -count=1`。
 - [x] IAM 入口契约、架构检查：`scripts/check-architecture.sh` 与
       `python3 scripts/rbac-matrix-refresh.py --check` 均通过。
-- [ ] 生产部署与监控窗口验证：尚未执行。
+- [x] 生产部署与监控窗口验证：2026-11-03 12:25 完成，见下节。
 
 Prometheus 回归沿用 CI 的 `promtool test rules`，两个新测试文件已加入 CI。
 本地使用现有 Prometheus 镜像执行，无需在生产主机运行测试或构建镜像。
+
+## 生产部署记录（2026-11-03 12:25）
+
+| 项 | 值 |
+|---|---|
+| 镜像标签 | `deploy-20261103-122545-629d5158`（commit `629d5158`） |
+| 回滚标签 | `rollback-20261103-122545`（三服务共用同一时间点） |
+| 部署顺序 | channel-service → admin-api → billing-service |
+| 容器状态 | 三者均 running，RestartCount=0 |
+| 告警文件备份 | `alerts.yml.bak.20261103-123149` |
+| Grafana 面板备份 | `billing.json.bak.20261103-123459` |
+
+部署后核对：
+
+- admin-api 自 12:26 重启后 `unpriced routed metric evaluation failed` 告警日志计数为 **0**（部署前每分钟 1 条）；
+  `micro_one_api_model_unpriced_routed_evaluation_success{instance="admin-api:8000"} = 1`，
+  成功时间持续刷新，两种来源计数均可读。
+- billing-service 新计数器已出数：`gross_profit_positive_quota_total=0`、
+  `gross_profit_negative_quota_total=5`（重启后首次采样），直方图 `le="-1"` 桶随后累计到 16，
+  说明重启后已结算请求全部为负差额。
+- `NegativeGrossMargin` 在 reload 后处于 firing：这是配置价差导致的真实信号
+  （缓存读取售价 $0.006/百万 token 低于配置采购估价 $0.007/百万 token），
+  不是本次修复引入的误报。售价或采购价的调整仍需运营决策。
+- `UnpricedRoutedMetricUnavailable` 为 inactive，符合成功求值的预期。
+- 三个服务在部署后 12 分钟内无 error 级日志、无 panic。
+
+注意事项：
+
+- 线上 `alerts.yml` 与仓库存在两处先于本次改动的本地差异：分组名 `p3-vendor-evidence`
+  （仓库为 `relay-gateway`），以及 `VendorEvidenceMonitorUnavailable` /
+  `VendorEvidenceNeedsReview` 两条告警线上缺失。本次只按补丁应用了本任务的两处改动，
+  没有覆盖整份文件，也没有恢复这两条告警；是否与仓库对齐需另行确认。
+- 新增 `-1` 桶的序列从部署时刻才开始，与 `_count` 的 15m 窗口长度不同，
+  部署后约 15 分钟内「负请求占比」会偏低；以补齐窗口后的数值为准。
+- Prometheus 会按浮点格式规范化 `le` 标签（线上为 `-1.0`），告警正则
+  `-1|-1[.]0+` 同时覆盖这两种写法。
 
 ## 部署与验收
 
