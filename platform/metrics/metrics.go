@@ -304,6 +304,8 @@ func init() {
 		QuotaFrozenAmount,
 		BillingLedgerUpstreamCostRecorded,
 		BillingLedgerGrossProfit,
+		BillingLedgerGrossProfitTotal,
+		BillingLedgerGrossLossTotal,
 	)
 	for _, result := range []string{"success", "partial", "error"} {
 		PaymentReconcileRuns.WithLabelValues(result)

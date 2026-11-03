@@ -1,0 +1,184 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+tests:
+  - name: zero margins never alert
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_ledger_gross_profit_positive_quota_total{provider_family="deepseek"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_negative_quota_total{provider_family="deepseek"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_count{provider_family="deepseek"}'
+        values: '0+10x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_sum{provider_family="deepseek"}'
+        values: '1000+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="-100"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="-1"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="0"}'
+        values: '0+10x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="100"}'
+        values: '0+10x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="+Inf"}'
+        values: '0+10x40'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NegativeGrossMargin
+        exp_alerts: []
+  - name: one quota losses form a majority even with positive net margin
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_ledger_gross_profit_positive_quota_total{provider_family="deepseek"}'
+        values: '0+100x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_negative_quota_total{provider_family="deepseek"}'
+        values: '0+6x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_count{provider_family="deepseek"}'
+        values: '0+10x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_sum{provider_family="deepseek"}'
+        values: '1000+94x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="-100"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="-1.0"}'
+        values: '0+6x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="0"}'
+        values: '0+6x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="100"}'
+        values: '0+10x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="+Inf"}'
+        values: '0+10x40'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NegativeGrossMargin
+        exp_alerts:
+          - exp_labels: {service: billing-service, severity: critical}
+            exp_annotations:
+              summary: Negative gross margin on billing ledgers
+              description: 'Settled user charges are below configured upstream cost estimates: aggregate margin is negative or more than half of requests have negative margin. Check ModelPrice, GroupRatio and UpstreamModelPrice, including cache-creation buckets; this is not vendor-invoice reconciliation.'
+  - name: negative aggregate alerts even when most requests are profitable
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_ledger_gross_profit_positive_quota_total{provider_family="deepseek"}'
+        values: '0+5x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_negative_quota_total{provider_family="deepseek"}'
+        values: '0+10x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_count{provider_family="deepseek"}'
+        values: '0+10x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_sum{provider_family="deepseek"}'
+        values: '100000-5x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="-100"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="-1"}'
+        values: '0+1x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="0"}'
+        values: '0+1x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="100"}'
+        values: '0+10x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="+Inf"}'
+        values: '0+10x40'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NegativeGrossMargin
+        exp_alerts:
+          - exp_labels: {service: billing-service, severity: critical}
+            exp_annotations:
+              summary: Negative gross margin on billing ledgers
+              description: 'Settled user charges are below configured upstream cost estimates: aggregate margin is negative or more than half of requests have negative margin. Check ModelPrice, GroupRatio and UpstreamModelPrice, including cache-creation buckets; this is not vendor-invoice reconciliation.'
+  - name: minority losses with positive aggregate do not alert
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_ledger_gross_profit_positive_quota_total{provider_family="deepseek"}'
+        values: '0+100x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_negative_quota_total{provider_family="deepseek"}'
+        values: '0+1x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_count{provider_family="deepseek"}'
+        values: '0+10x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_sum{provider_family="deepseek"}'
+        values: '1000+99x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="-100"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="-1"}'
+        values: '0+1x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="0"}'
+        values: '0+1x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="100"}'
+        values: '0+10x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="+Inf"}'
+        values: '0+10x40'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NegativeGrossMargin
+        exp_alerts: []
+  - name: counter reset retains a positive aggregate
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_ledger_gross_profit_positive_quota_total{provider_family="deepseek"}'
+        values: '0+100x9 0+100x30'
+      - series: 'micro_one_api_billing_ledger_gross_profit_negative_quota_total{provider_family="deepseek"}'
+        values: '0+1x9 0+1x30'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_count{provider_family="deepseek"}'
+        values: '0+10x9 0+10x30'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_sum{provider_family="deepseek"}'
+        values: '1000+99x9 0+99x30'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="-100"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="-1"}'
+        values: '0+1x9 0+1x30'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="0"}'
+        values: '0+1x9 0+1x30'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="100"}'
+        values: '0+10x9 0+10x30'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="+Inf"}'
+        values: '0+10x9 0+10x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NegativeGrossMargin
+        exp_alerts: []
+  - name: no requests do not alert
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_ledger_gross_profit_positive_quota_total{provider_family="deepseek"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_negative_quota_total{provider_family="deepseek"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_count{provider_family="deepseek"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_sum{provider_family="deepseek"}'
+        values: '1000+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="-100"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="-1"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="0"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="100"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="+Inf"}'
+        values: '0+0x40'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NegativeGrossMargin
+        exp_alerts: []
+  - name: incident fifteen requests then traffic ends
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_billing_ledger_gross_profit_positive_quota_total{provider_family="deepseek"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_billing_ledger_gross_profit_negative_quota_total{provider_family="deepseek"}'
+        values: '0 4 7 10+0x37'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_count{provider_family="deepseek"}'
+        values: '0 5 10 15+0x37'
+      - series: 'micro_one_api_billing_ledger_gross_profit_quota_bucket{provider_family="deepseek",le="-1"}'
+        values: '0 4 7 10+0x37'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: NegativeGrossMargin
+        exp_alerts:
+          - exp_labels: {service: billing-service, severity: critical}
+            exp_annotations:
+              summary: Negative gross margin on billing ledgers
+              description: 'Settled user charges are below configured upstream cost estimates: aggregate margin is negative or more than half of requests have negative margin. Check ModelPrice, GroupRatio and UpstreamModelPrice, including cache-creation buckets; this is not vendor-invoice reconciliation.'
+      - eval_time: 18m
+        alertname: NegativeGrossMargin
+        exp_alerts: []

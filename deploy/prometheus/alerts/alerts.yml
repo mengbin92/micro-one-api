@@ -264,6 +264,7 @@ groups:
   - name: routing-cost-governance
     interval: 30s
     rules:
+
       # 有流量但用户售价缺失 — 活跃路由的模型没有 ModelPrice 条目
       - alert: RoutedModelsUnpriced
         expr: micro_one_api_model_unpriced_routed > 0
@@ -357,22 +358,25 @@ groups:
           summary: "Cache-creation shadow cost signal lost in charge mode"
           description: "Routing is succeeding but there are no charge-mode shadow cost observations in the last 30m — cache-creation billing may have stopped or BILLING_CACHE_CREATION_MODE fell back to observe"
 
-      # 3. 毛利异常 — 每请求毛利 = 实扣 quota - 上游成本(quota)，由
-      #    micro_one_api_billing_ledger_gross_profit_quota 直方图承载。
-      #    总毛利持续为负或中位每请求毛利为负都说明用户售价低于上游成本。
+      # 3. 已结算请求的配置估算毛利。signed histogram _sum 会下降，不能用
+      # rate(_sum)；用非负 profit/loss counter 的速率之差。整数 quota 的
+      # <= -1 桶精确区分负值与0，避免 histogram_quantile 桶内插值误报。
       - alert: NegativeGrossMargin
         expr: |
-          sum(rate(micro_one_api_billing_ledger_gross_profit_quota_sum[15m])) < 0
+          (
+            sum(rate(micro_one_api_billing_ledger_gross_profit_positive_quota_total[15m]))
+            - sum(rate(micro_one_api_billing_ledger_gross_profit_negative_quota_total[15m]))
+          ) < 0
           or
-          histogram_quantile(0.5,
-            sum(rate(micro_one_api_billing_ledger_gross_profit_quota_bucket[15m])) by (le)) < 0
+          sum(rate(micro_one_api_billing_ledger_gross_profit_quota_bucket{le=~"-1|-1[.]0+"}[15m]))
+            > 0.5 * sum(rate(micro_one_api_billing_ledger_gross_profit_quota_count[15m]))
         for: 15m
         labels:
           severity: critical
           service: billing-service
         annotations:
           summary: "Negative gross margin on billing ledgers"
-          description: "Aggregate gross-profit rate is negative or the median per-request margin is below zero — user-facing price is below upstream cost (check ModelPrice vs UpstreamModelPrice, including cache-creation buckets)"
+          description: "Settled user charges are below configured upstream cost estimates: aggregate margin is negative or more than half of requests have negative margin. Check ModelPrice, GroupRatio and UpstreamModelPrice, including cache-creation buckets; this is not vendor-invoice reconciliation."
 
       # 单一来源流量长期偏离配置权重 — 订阅账号 vs 渠道流量比严重倾斜
       - alert: RoutingSourceImbalance
