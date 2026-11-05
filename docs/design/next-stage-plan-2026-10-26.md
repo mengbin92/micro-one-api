@@ -130,7 +130,7 @@ Passkey 单列 C1，不计入本项。首批接口清单冻结后增加新的敏
 
 完整契约、版本 1/2/3 配置、支持/拒绝矩阵、146 三库迁移和回滚限制见 [B1 冻结契约](b1-context-time-pricing-contract-2026-10-29.md)，实际验证与外部保留项见 [B1 验收](../runbooks/b1-context-time-pricing-acceptance-2026-10-29.md)。工程完成不代表已启用收费；不按示例值改动生产价格、历史账本、契约灰度或付费探测范围。
 
-**2026-11-05 线上核对（只读）**：生产 `ServiceTierPricing` 为 `version:3` / `enabled:true`，配置行最后写入 **2026-10-31 12:38 CST**，`source_kind=channel` / `source_id=11` / `model=deepseek-flash`；含 `time_pricing`（`Asia/Shanghai`，周一至周五 09:00–12:00、14:00–18:00 两段忙时，忙时售价与采购价均为基础价两倍，`holidays` 为空，`calendar_valid_through=2026-12-31`），**未配置 `long_context`**，即长上下文阈值计价仍未启用。Billing/Log/Relay 均为 2026-10-30 之后的镜像，`service_tier` 无法回填为请求值。近 7 天 `deepseek-flash` 请求数 **0**，`billing_pricing_snapshots` 无档位记录，因此「已启用」仅有配置事实、没有计费事实；同期 1,334 条 `service_tier_status=missing` 来自 `glm-5.3` / `kimi-k3`（2026-10-31—11-02），实际档位按契约保持 unknown。维护者需确认该启用是否为有意为之，并在文档中固定口径。
+**2026-11-05 线上核对（只读）**：生产 `ServiceTierPricing` 为 `version:3` / `enabled:true`，配置行最后写入 **2026-10-31 12:38 CST**，`source_kind=channel` / `source_id=11` / `model=deepseek-flash`；含 `time_pricing`（`Asia/Shanghai`，周一至周五 09:00–12:00、14:00–18:00 两段忙时，忙时售价与采购价均为基础价两倍，`holidays` 为空，`calendar_valid_through=2026-12-31`），**未配置 `long_context`**，即长上下文阈值计价仍未启用。Billing/Log/Relay 均为 2026-10-30 之后的镜像，`service_tier` 无法回填为请求值。近 7 天 `deepseek-flash` 请求数 **0**，`billing_pricing_snapshots` 无档位记录，因此「已启用」仅有配置事实、没有计费事实；同期 1,334 条 `service_tier_status=missing` 来自 `glm-5.3` / `kimi-k3`（2026-10-31—11-02），实际档位按契约保持 unknown。维护者需确认该启用是否为有意为之，并在文档中固定口径。2026-11-05 已按国务院办公厅 2026/2027 年节假日安排把 `holidays` 补齐为 62 个日期、日历延至 2027-12-31，法定节假日全天按基础价；写入走管理端 owner 路径（revision 1→2，三条审计），未改忙时窗口与价格，详见 [节假日日历对齐记录](../runbooks/b1-holiday-calendar-2026-11-05.md)。
 
 ### B2：原生 Gemini 文本与函数调用入站
 
