@@ -23,7 +23,7 @@ func (contractCoverageIAM) GetResourceAuthorization(context.Context, *identityv1
 }
 
 func TestUpstreamContractsCoverageReachesIAMOwner(t *testing.T) {
-	for _, method := range []string{channelv1.ChannelService_ListUpstreamContracts_FullMethodName, channelv1.ChannelService_CreateUpstreamContract_FullMethodName, channelv1.ChannelService_TransitionUpstreamContract_FullMethodName} {
+	for _, method := range []string{channelv1.ChannelService_ListUnpricedRoutedModels_FullMethodName, channelv1.ChannelService_ListUpstreamContracts_FullMethodName, channelv1.ChannelService_TransitionUpstreamContract_FullMethodName} {
 		t.Run(method, func(t *testing.T) {
 			for _, caller := range []struct {
 				name      string

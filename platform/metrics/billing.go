@@ -248,29 +248,35 @@ var BillingLedgerUpstreamCostRecorded = prometheus.NewCounterVec(
 	[]string{"result", "provider_family"}, // result: priced, unpriced
 )
 
-// BillingLedgerGrossProfit records per-commit gross profit — the quota charged
-// to the user minus the upstream cost, both in internal quota units
-// (1 USD = 10000 quota by convention, see routing-ops). Charge-mode ops use
-// this to alert on negative margin or a systematic drift from vendor-bill
-// thresholds (v0.17 roadmap P1.1). Negative observations are expected when a
-// cache-creation price is missing or set below the upstream price, so the
-// histogram buckets span negative values and the alert uses both the aggregate
-// rate and the median per-request margin. Labels are low-cardinality
-// (provider_family only) per the observability contract.
+// BillingLedgerGrossProfit records each settled request's charged quota minus
+// its configured upstream cost estimate (1 USD = 10000 quota). It is observed
+// after the ledger/transaction commits, once per request even for split ledgers.
+// This is a configuration estimate, not vendor-invoice reconciliation.
 //
-// Scope: this metric is recorded ONLY on the successful commit paths
-// (commitQuotaLegacy / commitQuotaDualTrack write-ledger branches). Releases,
-// failed commits, and requests that return before writing a ledger are NOT
-// observed, so the NegativeGrossMargin alert reflects only settled requests.
-// Cross-check billing_ledgers (RunReconciliation) for margin gaps caused by
-// settlement failures or missing upstream prices.
+// The -1 bucket counts strictly negative integer-quota margins. Quantile
+// interpolation cannot distinguish zero from a negative value, so alerting
+// compares this bucket with count instead of using the estimated P50's sign.
+// The signed _sum is not a counter: use the profit/loss counters below for rates.
 var BillingLedgerGrossProfit = prometheus.NewHistogramVec(
 	prometheus.HistogramOpts{
 		Namespace: "micro_one_api",
 		Subsystem: "billing_ledger",
 		Name:      "gross_profit_quota",
-		Help:      "Per-commit gross profit in quota units (charged quota - upstream cost)",
-		Buckets:   []float64{-1000000, -100000, -10000, -1000, -100, 0, 100, 1000, 10000, 100000, 1000000},
+		Help:      "Settled per-request margin in quota units (charged quota - configured upstream cost estimate)",
+		Buckets:   []float64{-1000000, -100000, -10000, -1000, -100, -1, 0, 100, 1000, 10000, 100000, 1000000},
 	},
+	[]string{"provider_family"},
+)
+
+// BillingLedgerGrossProfitTotal and BillingLedgerGrossLossTotal split signed
+// margins into non-negative counters so rate handles process resets correctly.
+// Both series are initialized together, including on a zero-margin settlement.
+var BillingLedgerGrossProfitTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{Namespace: "micro_one_api", Subsystem: "billing_ledger", Name: "gross_profit_positive_quota_total", Help: "Positive settled margins in quota units (configured cost estimate)"},
+	[]string{"provider_family"},
+)
+
+var BillingLedgerGrossLossTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{Namespace: "micro_one_api", Subsystem: "billing_ledger", Name: "gross_profit_negative_quota_total", Help: "Absolute negative settled margins in quota units (configured cost estimate)"},
 	[]string{"provider_family"},
 )

@@ -127,6 +127,9 @@ service ChannelService {
   // config from system_options, canonicalises its keys, and passes them here
   // so the audit stays a pure cross-source diff with no storage coupling.
   rpc ListUnpricedRoutedModels(ListUnpricedRoutedModelsRequest) returns (ListUnpricedRoutedModelsResponse);
+  // Dedicated admin background audit. Returns only aggregate counts and never
+  // grants the caller access to the operator-facing model list.
+  rpc CountUnpricedRoutedModels(ListUnpricedRoutedModelsRequest) returns (CountUnpricedRoutedModelsResponse);
   // ========== Model import/export (v0.11.0 Phase 4) ==========
   // Versioned JSON schema export/import for the model registry, its aliases,
   // channel mappings and subscription mappings. Prices are excluded by default
@@ -1256,6 +1259,11 @@ message UnpricedRoutedModel {
 message ListUnpricedRoutedModelsResponse {
   repeated UnpricedRoutedModel models = 1;
   int32 total = 2;
+}
+
+message CountUnpricedRoutedModelsResponse {
+  int64 channel_count = 1;
+  int64 subscription_count = 2;
 }
 
 // ── Model import/export (v0.11.0 Phase 4) ─────────────────────────────────

@@ -1328,3 +1328,26 @@ func (uc *ModelUsecase) ListUnpricedRoutedModels(ctx context.Context, pricedMode
 	}
 	return UnpricedRoutedModels(collected, priced), nil
 }
+
+// UnpricedRoutedCounts counts models independently for each route source.
+// A model routed through both sources contributes once to each count.
+type UnpricedRoutedCounts struct {
+	Channel, Subscription int64
+}
+
+func (uc *ModelUsecase) CountUnpricedRoutedModels(ctx context.Context, pricedModelIDs map[string]struct{}) (*UnpricedRoutedCounts, error) {
+	models, err := uc.ListUnpricedRoutedModels(ctx, pricedModelIDs)
+	if err != nil {
+		return nil, err
+	}
+	counts := &UnpricedRoutedCounts{}
+	for _, model := range models {
+		if model.ChannelCount > 0 {
+			counts.Channel++
+		}
+		if model.SubscriptionCount > 0 {
+			counts.Subscription++
+		}
+	}
+	return counts, nil
+}

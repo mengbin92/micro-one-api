@@ -1,0 +1,79 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+tests:
+  - name: unpriced metric evaluation fails and recovers
+    interval: 1m
+    input_series:
+      - series: 'up{job="micro-one-api",instance="admin-api:8000"}'
+        values: '1+0x12'
+      - series: 'micro_one_api_model_unpriced_routed_evaluation_success{job="micro-one-api",instance="admin-api:8000"}'
+        values: '1 0+0x6 1+0x4'
+      - series: 'micro_one_api_model_unpriced_routed_last_success_timestamp_seconds{job="micro-one-api",instance="admin-api:8000"}'
+        values: '0+0x7 480+60x4'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: UnpricedRoutedMetricUnavailable
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: UnpricedRoutedMetricUnavailable
+        exp_alerts:
+          - exp_labels: {job: micro-one-api, instance: 'admin-api:8000', severity: warning, service: admin-api}
+            exp_annotations:
+              summary: Unpriced routed model monitoring is unavailable
+              description: 'The admin-api metrics target is up, but the unpriced-model evaluation failed, has no success signal, or has not succeeded within 3 minutes. Check the dedicated admin statistics RPC and ModelPrice reads; retained counts are stale.'
+      - eval_time: 8m
+        alertname: UnpricedRoutedMetricUnavailable
+        exp_alerts: []
+  - name: missing evaluation signal cannot look healthy
+    interval: 1m
+    input_series:
+      - series: 'up{job="micro-one-api",instance="admin-api:8000"}'
+        values: '1+0x8'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: UnpricedRoutedMetricUnavailable
+        exp_alerts:
+          - exp_labels: {job: micro-one-api, instance: 'admin-api:8000', severity: warning, service: admin-api}
+            exp_annotations:
+              summary: Unpriced routed model monitoring is unavailable
+              description: 'The admin-api metrics target is up, but the unpriced-model evaluation failed, has no success signal, or has not succeeded within 3 minutes. Check the dedicated admin statistics RPC and ModelPrice reads; retained counts are stale.'
+  - name: a stopped worker ages out even after a successful evaluation
+    interval: 1m
+    input_series:
+      - series: 'up{job="micro-one-api",instance="admin-api:8000"}'
+        values: '1+0x12'
+      - series: 'micro_one_api_model_unpriced_routed_evaluation_success{job="micro-one-api",instance="admin-api:8000"}'
+        values: '1+0x12'
+      - series: 'micro_one_api_model_unpriced_routed_last_success_timestamp_seconds{job="micro-one-api",instance="admin-api:8000"}'
+        values: '0+0x9 600+60x2'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: UnpricedRoutedMetricUnavailable
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: UnpricedRoutedMetricUnavailable
+        exp_alerts:
+          - exp_labels: {job: micro-one-api, instance: 'admin-api:8000', severity: warning, service: admin-api}
+            exp_annotations:
+              summary: Unpriced routed model monitoring is unavailable
+              description: 'The admin-api metrics target is up, but the unpriced-model evaluation failed, has no success signal, or has not succeeded within 3 minutes. Check the dedicated admin statistics RPC and ModelPrice reads; retained counts are stale.'
+      - eval_time: 10m
+        alertname: UnpricedRoutedMetricUnavailable
+        exp_alerts: []
+  - name: healthy evaluations and down targets do not report worker failure
+    interval: 1m
+    input_series:
+      - series: 'up{job="micro-one-api",instance="admin-api:8000"}'
+        values: '1+0x10 0+0x5'
+      - series: 'micro_one_api_model_unpriced_routed_evaluation_success{job="micro-one-api",instance="admin-api:8000"}'
+        values: '1+0x10 0+0x5'
+      - series: 'micro_one_api_model_unpriced_routed_last_success_timestamp_seconds{job="micro-one-api",instance="admin-api:8000"}'
+        values: '0+60x10 600+0x5'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: UnpricedRoutedMetricUnavailable
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: UnpricedRoutedMetricUnavailable
+        exp_alerts: []
