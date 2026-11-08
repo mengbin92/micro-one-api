@@ -1,0 +1,599 @@
+{
+  "status": "off_peak_acceptance_passed",
+  "scope": "channel11 deepseek-flash; current off-peak only; ordinary pricing excluded",
+  "currency": "CNY",
+  "currency_authority": "Maintainer explicitly confirmed this source/model pricing values are RMB; no FX conversion",
+  "budget_cny": "1",
+  "max_upstream_attempts": 4,
+  "actual_upstream_attempts": 4,
+  "public_ui_baseline": {
+    "date": "2026-11-08",
+    "project_key_filter_verified": true,
+    "requests": 0,
+    "tokens": 0,
+    "display_cost_cny": "0.00"
+  },
+  "public_ui_after": {
+    "project_key_filter_verified": true,
+    "requests": 4,
+    "tokens": 19081,
+    "display_cost_cny": "0.01",
+    "display_is_not_precise_invoice": true
+  },
+  "supplier_read_after_utc": "2026-11-08T11:00:24.181688+00:00",
+  "supplier_verified_utc": "2026-11-08T11:05:04.783971+00:00",
+  "supplier_report": {
+    "scope_start": "2026-11-08T18:00:00+08:00",
+    "scope_end": "2026-11-08T19:00:00+08:00",
+    "granularity": "closed_hour_in_current_day",
+    "currency": "CNY",
+    "wallet_type": "Paid",
+    "amount": "0.0191680000000000",
+    "request_count": 4,
+    "input_cache_miss_tokens": 19052,
+    "output_tokens": 29,
+    "cache_hit_row_present": false,
+    "account_id_sha256": "d6cea0bf519c646c07a5d5199a0420c3cb4d0edadc572a1c676f7f2345a7bbc6",
+    "selected_project_name_sha256": "ab881a48c0e8364a8f46a8197ddc61f2dacdbbdef3f52d79d57a16be0092c133"
+  },
+  "expected_cny": "0.019168",
+  "supplier_difference_cny": "0E-16",
+  "platform_quota": 191,
+  "platform_numeric_amount_in_confirmed_cny": "0.0191",
+  "platform_rounding_difference_cny": "-0.000068",
+  "original_zip_sha256": "7431b705a2ff075ea383bf7a1cccfd86611ae35e3bfbf70049978f8bf98ed1c8",
+  "original_exports": {
+    "cost": {
+      "file": "cost-2026-11-08_2026-11-08.csv",
+      "sha256": "3e5a3380912a3c04e0c9f1607752fbc14714e595905522e355f629a0aab77968",
+      "rows": 1
+    },
+    "amount": {
+      "file": "amount-2026-11-08_2026-11-08.csv",
+      "sha256": "ee6f9ad948c4cf3b4f38548ba7ea9291b9c53d23c8cb9af6201778668c5aeef0",
+      "rows": 3
+    }
+  },
+  "redacted_exports": {
+    "cost": {
+      "file": "cost.csv",
+      "sha256": "b6a009102a84e024fe15d86c51e0d7a63965191a1bbf839d33b6e79320e21f44"
+    },
+    "amount": {
+      "file": "amount.csv",
+      "sha256": "2279a21a88918bfe5f7e4cf54602a1b7e0365c320d415c6e80f6c868ec00d113"
+    }
+  },
+  "cases": [
+    {
+      "index": 1,
+      "mode": "chat",
+      "stream": false,
+      "root_request_id": "n1-time-20261108-79ee4d-1",
+      "requested_root_id": "n1-time-20261108-79ee4d-1",
+      "http_status": 200,
+      "started_utc": "2026-11-08T10:47:31.630247+00:00",
+      "finished_utc": "2026-11-08T10:47:32.865949+00:00",
+      "request_bytes": 8408,
+      "request_body_sha256": "c9bea7ab4f9ce8f9419cadf43392517f2ad1bed02be50f79a1be70ab224a63b9",
+      "response_sha256": "5d03f5953df3798980ce61f4ed0c59c1eaaa4c6add48afef9ac46f6148dbba7d",
+      "usage": {
+        "prompt_tokens": 4784,
+        "completion_tokens": 12,
+        "total_tokens": 4796,
+        "prompt_tokens_details": {},
+        "input_tokens_details": {}
+      },
+      "upstream_response_id": "411e6e41-4b19-4853-8d97-7c9db2ac1c76",
+      "terminal": "stop",
+      "actual_service_tier": null,
+      "observed_consume_count": 0
+    },
+    {
+      "index": 1,
+      "mode": "chat",
+      "stream": true,
+      "root_request_id": "n1-time-20261108-2878ec-2",
+      "requested_root_id": "n1-time-20261108-2878ec-2",
+      "http_status": 200,
+      "started_utc": "2026-11-08T10:55:19.334272+00:00",
+      "finished_utc": "2026-11-08T10:55:20.581183+00:00",
+      "request_bytes": 8447,
+      "request_body_sha256": "33ad66ddd89c3db0f68da1721354eaccbd0dbea7f6580065fd7a607f7de8d783",
+      "response_sha256": "98dcd6647d544db30970ec3f07c4e99b37225871ae4df33b001ab60d7e652b6d",
+      "usage": {
+        "prompt_tokens": 4805,
+        "completion_tokens": 15,
+        "total_tokens": 4820,
+        "prompt_tokens_details": {},
+        "input_tokens_details": {}
+      },
+      "upstream_response_id": "15a01e65-1f92-4a89-ab24-48ec0dfd25b4",
+      "terminal": "[DONE]",
+      "actual_service_tier": null,
+      "observed_consume_count": 1
+    },
+    {
+      "index": 2,
+      "mode": "responses",
+      "stream": false,
+      "root_request_id": "n1-time-20261108-2878ec-3",
+      "requested_root_id": "n1-time-20261108-2878ec-3",
+      "http_status": 200,
+      "started_utc": "2026-11-08T10:55:21.553737+00:00",
+      "finished_utc": "2026-11-08T10:55:22.422932+00:00",
+      "request_bytes": 8397,
+      "request_body_sha256": "88aa474ebee7cddb7afecdb2b5dcf027b19f23944756d52b804754f95d0a81b2",
+      "response_sha256": "0342081406ce99d3d0c4c9428c49aa58525a1c76cd4424148cbd519543a860b6",
+      "usage": {
+        "input_tokens": 4739,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 1,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 4740
+      },
+      "upstream_response_id": "5a5706a0-1ba6-4d72-b591-1430d8f412db",
+      "terminal": "completed",
+      "actual_service_tier": "default",
+      "observed_consume_count": 2
+    },
+    {
+      "index": 3,
+      "mode": "responses",
+      "stream": true,
+      "root_request_id": "n1-time-20261108-2878ec-4",
+      "requested_root_id": "n1-time-20261108-2878ec-4",
+      "http_status": 200,
+      "started_utc": "2026-11-08T10:55:23.416204+00:00",
+      "finished_utc": "2026-11-08T10:55:24.181688+00:00",
+      "request_bytes": 8396,
+      "request_body_sha256": "1a3843620cd83b54665394a8946164b09e6aa56b4f72a430a2289bc0a1eb25a2",
+      "response_sha256": "2a488689077a04a1cb03201089c3e718a1f3eee49934ed6020b743060b62c9cb",
+      "usage": {
+        "input_tokens": 4724,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 1,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 4725
+      },
+      "upstream_response_id": "fd762fc4-4528-4782-81e5-4560bba9c352",
+      "terminal": "response.completed",
+      "actual_service_tier": "default",
+      "observed_consume_count": 3
+    }
+  ],
+  "ledger": [
+    {
+      "id": 80956,
+      "ref": "res_1794134851896660253_1794134851",
+      "hash": "0a2ec72c32152b0cd36d1914101d4b67df8fe075f465a7bf779fe971b7bc995e",
+      "input": 4784,
+      "model": "deepseek-flash",
+      "parse": "verified",
+      "amount": -48,
+      "output": 12,
+      "source": "channel",
+      "channel": 11,
+      "version": 1,
+      "timezone": "Asia/Shanghai",
+      "canonical": 1,
+      "time_band": "off_peak",
+      "time_unix": 1794134851,
+      "cache_read": 0,
+      "created_at": "2026-11-08 10:47:33.248000",
+      "creation1h": 0,
+      "creation5m": 0,
+      "input_cost": 48,
+      "token_name": "n1-time-20261108-79ee4d",
+      "actual_tier": "",
+      "billed_tier": "max",
+      "output_cost": 0,
+      "tier_status": "missing",
+      "upstream_cost": 0,
+      "requested_tier": "",
+      "cache_read_cost": 0,
+      "cost_audit_status": "unpriced"
+    },
+    {
+      "id": 80968,
+      "ref": "res_1794135319483379310_1794135319",
+      "hash": "0a2ec72c32152b0cd36d1914101d4b67df8fe075f465a7bf779fe971b7bc995e",
+      "input": 4805,
+      "model": "deepseek-flash",
+      "parse": "verified",
+      "amount": -49,
+      "output": 15,
+      "source": "channel",
+      "channel": 11,
+      "version": 1,
+      "timezone": "Asia/Shanghai",
+      "canonical": 1,
+      "time_band": "off_peak",
+      "time_unix": 1794135319,
+      "cache_read": 0,
+      "created_at": "2026-11-08 10:55:21.224000",
+      "creation1h": 0,
+      "creation5m": 0,
+      "input_cost": 48,
+      "token_name": "n1-time-20261108-2878ec",
+      "actual_tier": "",
+      "billed_tier": "max",
+      "output_cost": 1,
+      "tier_status": "missing",
+      "upstream_cost": 0,
+      "requested_tier": "",
+      "cache_read_cost": 0,
+      "cost_audit_status": "unpriced"
+    },
+    {
+      "id": 80969,
+      "ref": "res_1794135321612158384_1794135321",
+      "hash": "98350c168a5d24c9e5d2dd25a75d1798d030244a2b24c51de5dd2f13b45e0b95",
+      "input": 4739,
+      "model": "deepseek-flash",
+      "parse": "verified",
+      "amount": -47,
+      "output": 1,
+      "source": "channel",
+      "channel": 11,
+      "version": 1,
+      "timezone": "Asia/Shanghai",
+      "canonical": 1,
+      "time_band": "off_peak",
+      "time_unix": 1794135321,
+      "cache_read": 0,
+      "created_at": "2026-11-08 10:55:23.233000",
+      "creation1h": 0,
+      "creation5m": 0,
+      "input_cost": 47,
+      "token_name": "n1-time-20261108-2878ec",
+      "actual_tier": "default",
+      "billed_tier": "default",
+      "output_cost": 0,
+      "tier_status": "reported",
+      "upstream_cost": 47,
+      "requested_tier": "",
+      "cache_read_cost": 0,
+      "cost_audit_status": "priced"
+    },
+    {
+      "id": 80970,
+      "ref": "res_1794135323478529314_1794135323",
+      "hash": "98350c168a5d24c9e5d2dd25a75d1798d030244a2b24c51de5dd2f13b45e0b95",
+      "input": 4724,
+      "model": "deepseek-flash",
+      "parse": "verified",
+      "amount": -47,
+      "output": 1,
+      "source": "channel",
+      "channel": 11,
+      "version": 1,
+      "timezone": "Asia/Shanghai",
+      "canonical": 1,
+      "time_band": "off_peak",
+      "time_unix": 1794135323,
+      "cache_read": 0,
+      "created_at": "2026-11-08 10:55:24.225000",
+      "creation1h": 0,
+      "creation5m": 0,
+      "input_cost": 47,
+      "token_name": "n1-time-20261108-2878ec",
+      "actual_tier": "default",
+      "billed_tier": "default",
+      "output_cost": 0,
+      "tier_status": "reported",
+      "upstream_cost": 47,
+      "requested_tier": "",
+      "cache_read_cost": 0,
+      "cost_audit_status": "priced"
+    }
+  ],
+  "reservations": [
+    {
+      "root": "n1-time-20261108-79ee4d-1",
+      "actual": 48,
+      "amount": 216,
+      "source": "channel",
+      "status": "committed",
+      "attempt": 1,
+      "channel": "11",
+      "request": "req_b463e06fde1ee6a9147e2aa1e1ce0da8",
+      "created_at": "2026-11-08 10:47:31.897000",
+      "updated_at": "2026-11-08 10:47:33.249000",
+      "reservation": "res_1794134851896660253_1794134851"
+    },
+    {
+      "root": "n1-time-20261108-2878ec-2",
+      "actual": 49,
+      "amount": 217,
+      "source": "channel",
+      "status": "committed",
+      "attempt": 1,
+      "channel": "11",
+      "request": "req_9a76538618c7161e3025a3307c7a04d5",
+      "created_at": "2026-11-08 10:55:19.483000",
+      "updated_at": "2026-11-08 10:55:21.225000",
+      "reservation": "res_1794135319483379310_1794135319"
+    },
+    {
+      "root": "n1-time-20261108-2878ec-3",
+      "actual": 47,
+      "amount": 216,
+      "source": "channel",
+      "status": "committed",
+      "attempt": 1,
+      "channel": "11",
+      "request": "req_487b1fa6426e9229a65e66bbb09d3bb5",
+      "created_at": "2026-11-08 10:55:21.612000",
+      "updated_at": "2026-11-08 10:55:23.235000",
+      "reservation": "res_1794135321612158384_1794135321"
+    },
+    {
+      "root": "n1-time-20261108-2878ec-4",
+      "actual": 47,
+      "amount": 216,
+      "source": "channel",
+      "status": "committed",
+      "attempt": 1,
+      "channel": "11",
+      "request": "req_55c95f6dea90dec312d70002db8685a1",
+      "created_at": "2026-11-08 10:55:23.479000",
+      "updated_at": "2026-11-08 10:55:24.225000",
+      "reservation": "res_1794135323478529314_1794135323"
+    }
+  ],
+  "snapshots": [
+    {
+      "hash": "0a2ec72c32152b0cd36d1914101d4b67df8fe075f465a7bf779fe971b7bc995e",
+      "mode": "charge",
+      "tier": "max",
+      "model": "deepseek-flash",
+      "ratio": 1.0,
+      "version": 4,
+      "timezone": "Asia/Shanghai",
+      "time_band": "off_peak",
+      "input_price": 1e-06,
+      "output_price": 4e-06,
+      "cache_read_price": 2e-08,
+      "creation1h_price": 0.0,
+      "creation5m_price": 0.0
+    },
+    {
+      "hash": "98350c168a5d24c9e5d2dd25a75d1798d030244a2b24c51de5dd2f13b45e0b95",
+      "mode": "charge",
+      "tier": "default",
+      "model": "deepseek-flash",
+      "ratio": 1.0,
+      "version": 4,
+      "timezone": "Asia/Shanghai",
+      "time_band": "off_peak",
+      "input_price": 1e-06,
+      "output_price": 4e-06,
+      "cache_read_price": 2e-08,
+      "creation1h_price": 0.0,
+      "creation5m_price": 0.0
+    }
+  ],
+  "pricing_configuration_unchanged": {
+    "sha256": "ddbff0728d6628b4e381d34375caf25d158c95eda4ebf75a6c5339735a06d9ac",
+    "revision": 2
+  },
+  "cleanup": {
+    "source11_group": "default",
+    "fixture_members": 0,
+    "source11_status": 1,
+    "tokens_remaining": 0,
+    "owner_default_group": 2,
+    "active_fixture_grants": 0
+  },
+  "fixture_groups": [
+    {
+      "id": 2,
+      "status": "enabled",
+      "revision": 248
+    },
+    {
+      "id": 4,
+      "status": "archived",
+      "revision": 7
+    },
+    {
+      "id": 5,
+      "status": "archived",
+      "revision": 7
+    }
+  ],
+  "fixture_receipts": [
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/routing-groups",
+      "http_status": 201,
+      "success": true,
+      "utc": "2026-11-08T10:47:30.384705+00:00"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/admin/routing-groups/4/members",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:47:30.736305+00:00"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/routing-groups/4",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:47:31.138188+00:00"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/routing-access/1",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:47:31.388274+00:00"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/routing-tokens",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:47:31.484173+00:00"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/token/40",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:47:31.516723+00:00"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/token/40",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:47:33.218654+00:00"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/routing-access/1",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:47:33.359779+00:00"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/admin/routing-groups/4/members",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:47:33.728436+00:00"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/routing-groups/4/archive",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:47:33.912713+00:00"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/routing-groups",
+      "http_status": 201,
+      "success": true,
+      "utc": "2026-11-08T10:55:18.170981+00:00"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/admin/routing-groups/5/members",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:55:18.498229+00:00"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/routing-groups/5",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:55:18.891874+00:00"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/routing-access/1",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:55:19.105560+00:00"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/routing-tokens",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:55:19.201213+00:00"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/token/41",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:55:19.227510+00:00"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/token/41",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:55:24.480030+00:00"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/routing-access/1",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:55:24.612238+00:00"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/admin/routing-groups/5/members",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:55:24.935050+00:00"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/routing-groups/5/archive",
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T10:55:25.129969+00:00"
+    }
+  ],
+  "boundaries": [
+    "Closed-hour provider export snapshot; no irrevocable final daily watermark or tax invoice asserted",
+    "Provider export has no per-request IDs/amount allocations; verified four calls in aggregate against selected project Key",
+    "Key filter/name and account hashes retained; masked provider Key does not prove a full secret fingerprint match",
+    "Chat actual tier remains missing/max and procurement estimates remain unpriced/0; no free-cost inference",
+    "Peak/transition/long-context cases and real tier price differences excluded",
+    "No business code, tariff values, images or deployment changed; no commit/push"
+  ],
+  "harness_timing_guard": {
+    "first_poll_consume_count": 0,
+    "ledger_delay_after_response_seconds": "0.382051",
+    "first_call_not_reissued": true,
+    "continuation_requests": 3,
+    "read_only_settlement_poll_timeout_seconds": 20
+  },
+  "offline_counterfactual_peak_quota": 383,
+  "offline_counterfactual_peak_cny": "0.038336",
+  "counterfactual_is_not_live_peak_acceptance": true,
+  "original_default_group_members_unchanged": [
+    {
+      "group": 2,
+      "channel": 1
+    },
+    {
+      "group": 2,
+      "channel": 9
+    },
+    {
+      "group": 2,
+      "channel": 11
+    }
+  ],
+  "default_group_revision_before": 244,
+  "default_group_revision_after": 248,
+  "maintainer_closure_decision": {
+    "date": "2026-11-08",
+    "ordinary_pricing_remeasurement": "N/A: maintainer confirmed no remeasurement required",
+    "peak_pricing_remeasurement": "N/A: maintainer confirmed no remeasurement required",
+    "approved_acceptance_scope": "closed",
+    "no_new_peak_measurement_claim": true,
+    "other_extended_cases": "remain excluded; require separately defined scope"
+  },
+  "redacted_csv_line_endings": "LF; original ZIP/CSV SHA256 values retained unchanged"
+}

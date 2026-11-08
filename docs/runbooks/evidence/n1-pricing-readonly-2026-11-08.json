@@ -1,0 +1,624 @@
+{
+  "scope": "N1 read-only production pricing audit; no configuration write or paid request",
+  "local_code_commit": "24d17914",
+  "snapshot_utc": "2026-11-08 09:16:18.485000",
+  "snapshot_timezone": "UTC; display in runbook is Asia/Shanghai",
+  "read_protection": {
+    "transaction": "REPEATABLE READ; WITH CONSISTENT SNAPSHOT, READ ONLY; ROLLBACK",
+    "max_execution_ms_per_select": 15000,
+    "recent_row_limit": 20001,
+    "recent_complete": true
+  },
+  "local_private_export_sha256": "8be0613b494b604eca8fdaedcb57c155f15e53a703357e394cebba49381b3337",
+  "executed_sql_sha256": "c0306e91b4ff5a3b87f30bd6cfb5ea620b32747a56f272bd68e9091a0d4ace37",
+  "owner_options": [
+    {
+      "key": "CompletionRatio",
+      "revision": 5,
+      "updated_at_utc": "2026-11-02 04:25:45.573000",
+      "sha256": "dcf9e99387a03ffa68ef9c0b46d3608b49371bae2fb40ce760d164990d1a254a",
+      "entries": 15
+    },
+    {
+      "key": "ModelPrice",
+      "revision": 10,
+      "updated_at_utc": "2026-11-05 13:05:10.820000",
+      "sha256": "87e8d7d58d3d5422545dcc0a3c47faeb3b9b93d41dd88b16295ac64303ae8f0f",
+      "entries": 14
+    },
+    {
+      "key": "ModelRatio",
+      "revision": 5,
+      "updated_at_utc": "2026-11-02 04:25:45.584000",
+      "sha256": "5ed2d00604b2e90f1709a74bad852f2227d2435f31094de9d90de729c34e6f4d",
+      "entries": 15
+    },
+    {
+      "key": "ServiceTierPricing",
+      "revision": 2,
+      "updated_at_utc": "2026-11-05 12:45:54.574000",
+      "sha256": "ddbff0728d6628b4e381d34375caf25d158c95eda4ebf75a6c5339735a06d9ac",
+      "entries": 8
+    },
+    {
+      "key": "UpstreamModelPrice",
+      "revision": 5,
+      "updated_at_utc": "2026-11-05 12:55:29.524000",
+      "sha256": "3044cfd9ddcecbc0e1095cc96e131228dfdc0262e7060972a45e6b93cc681be0",
+      "entries": 11
+    }
+  ],
+  "billing_view_identical": [
+    {
+      "key": "ModelPrice",
+      "identical": true
+    },
+    {
+      "key": "ServiceTierPricing",
+      "identical": true
+    },
+    {
+      "key": "UpstreamModelPrice",
+      "identical": true
+    }
+  ],
+  "model_inventory": [
+    {
+      "model": "deepseek-flash",
+      "catalog_status": 1,
+      "public": true,
+      "enabled_parent_channel_ids": [
+        1,
+        11
+      ],
+      "persisted_channel_ids": [
+        1,
+        11
+      ],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [],
+      "has_model_price": true,
+      "has_upstream_price": true,
+      "consume_rows_90d": 235,
+      "consume_rows_7d": 0
+    },
+    {
+      "model": "deepseek-v4-flash-0731",
+      "catalog_status": 0,
+      "public": true,
+      "enabled_parent_channel_ids": [
+        1
+      ],
+      "persisted_channel_ids": [
+        1
+      ],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [],
+      "has_model_price": true,
+      "has_upstream_price": true,
+      "consume_rows_90d": 989,
+      "consume_rows_7d": 0
+    },
+    {
+      "model": "deepseek-v4-pro",
+      "catalog_status": 0,
+      "public": true,
+      "enabled_parent_channel_ids": [],
+      "persisted_channel_ids": [
+        11
+      ],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [],
+      "has_model_price": true,
+      "has_upstream_price": false,
+      "consume_rows_90d": 0,
+      "consume_rows_7d": 0
+    },
+    {
+      "model": "deepseek-v4-pro-0813",
+      "catalog_status": 1,
+      "public": true,
+      "enabled_parent_channel_ids": [
+        1
+      ],
+      "persisted_channel_ids": [
+        1
+      ],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [],
+      "has_model_price": true,
+      "has_upstream_price": true,
+      "consume_rows_90d": 3113,
+      "consume_rows_7d": 252
+    },
+    {
+      "model": "deepseek-v4.1-flash-1017",
+      "catalog_status": 1,
+      "public": true,
+      "enabled_parent_channel_ids": [
+        1
+      ],
+      "persisted_channel_ids": [
+        1
+      ],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [],
+      "has_model_price": true,
+      "has_upstream_price": true,
+      "consume_rows_90d": 1434,
+      "consume_rows_7d": 1434
+    },
+    {
+      "model": "glm-5.2",
+      "catalog_status": null,
+      "public": null,
+      "enabled_parent_channel_ids": [],
+      "persisted_channel_ids": [],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [],
+      "has_model_price": false,
+      "has_upstream_price": false,
+      "consume_rows_90d": 2118,
+      "consume_rows_7d": 0
+    },
+    {
+      "model": "glm-5.3",
+      "catalog_status": 1,
+      "public": true,
+      "enabled_parent_channel_ids": [
+        1
+      ],
+      "persisted_channel_ids": [
+        1
+      ],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [
+        4
+      ],
+      "has_model_price": true,
+      "has_upstream_price": true,
+      "consume_rows_90d": 13958,
+      "consume_rows_7d": 0
+    },
+    {
+      "model": "glm-5.3-flash",
+      "catalog_status": 0,
+      "public": true,
+      "enabled_parent_channel_ids": [
+        1
+      ],
+      "persisted_channel_ids": [
+        1
+      ],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [
+        4
+      ],
+      "has_model_price": true,
+      "has_upstream_price": false,
+      "consume_rows_90d": 4194,
+      "consume_rows_7d": 0
+    },
+    {
+      "model": "k3",
+      "catalog_status": 1,
+      "public": true,
+      "enabled_parent_channel_ids": [],
+      "persisted_channel_ids": [],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [
+        5
+      ],
+      "has_model_price": true,
+      "has_upstream_price": true,
+      "consume_rows_90d": 8994,
+      "consume_rows_7d": 0
+    },
+    {
+      "model": "k3-256k",
+      "catalog_status": 0,
+      "public": false,
+      "enabled_parent_channel_ids": [],
+      "persisted_channel_ids": [],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [],
+      "has_model_price": false,
+      "has_upstream_price": false,
+      "consume_rows_90d": 0,
+      "consume_rows_7d": 0
+    },
+    {
+      "model": "kimi-for-coding",
+      "catalog_status": 0,
+      "public": false,
+      "enabled_parent_channel_ids": [],
+      "persisted_channel_ids": [],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [],
+      "has_model_price": false,
+      "has_upstream_price": false,
+      "consume_rows_90d": 0,
+      "consume_rows_7d": 0
+    },
+    {
+      "model": "kimi-for-coding-highspeed",
+      "catalog_status": 0,
+      "public": false,
+      "enabled_parent_channel_ids": [],
+      "persisted_channel_ids": [],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [],
+      "has_model_price": false,
+      "has_upstream_price": false,
+      "consume_rows_90d": 0,
+      "consume_rows_7d": 0
+    },
+    {
+      "model": "kimi-k3",
+      "catalog_status": 1,
+      "public": true,
+      "enabled_parent_channel_ids": [
+        1
+      ],
+      "persisted_channel_ids": [
+        1
+      ],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [],
+      "has_model_price": true,
+      "has_upstream_price": true,
+      "consume_rows_90d": 20489,
+      "consume_rows_7d": 1285
+    },
+    {
+      "model": "minimax-m3",
+      "catalog_status": 0,
+      "public": true,
+      "enabled_parent_channel_ids": [
+        1
+      ],
+      "persisted_channel_ids": [
+        1
+      ],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [
+        2
+      ],
+      "has_model_price": true,
+      "has_upstream_price": true,
+      "consume_rows_90d": 0,
+      "consume_rows_7d": 0
+    },
+    {
+      "model": "qwen3.7-max",
+      "catalog_status": null,
+      "public": null,
+      "enabled_parent_channel_ids": [],
+      "persisted_channel_ids": [],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [],
+      "has_model_price": true,
+      "has_upstream_price": true,
+      "consume_rows_90d": 0,
+      "consume_rows_7d": 0
+    },
+    {
+      "model": "qwen3.8-flash",
+      "catalog_status": 1,
+      "public": true,
+      "enabled_parent_channel_ids": [
+        1
+      ],
+      "persisted_channel_ids": [
+        1
+      ],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [],
+      "has_model_price": true,
+      "has_upstream_price": false,
+      "consume_rows_90d": 4,
+      "consume_rows_7d": 0
+    },
+    {
+      "model": "step-3.7-flash",
+      "catalog_status": 1,
+      "public": true,
+      "enabled_parent_channel_ids": [],
+      "persisted_channel_ids": [
+        9
+      ],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [],
+      "has_model_price": true,
+      "has_upstream_price": true,
+      "consume_rows_90d": 179,
+      "consume_rows_7d": 0
+    },
+    {
+      "model": "step-5-preview",
+      "catalog_status": 1,
+      "public": true,
+      "enabled_parent_channel_ids": [],
+      "persisted_channel_ids": [
+        9
+      ],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [],
+      "has_model_price": true,
+      "has_upstream_price": false,
+      "consume_rows_90d": 660,
+      "consume_rows_7d": 0
+    },
+    {
+      "model": "step-explore",
+      "catalog_status": null,
+      "public": null,
+      "enabled_parent_channel_ids": [],
+      "persisted_channel_ids": [],
+      "enabled_parent_subscription_ids": [],
+      "persisted_subscription_ids": [],
+      "has_model_price": false,
+      "has_upstream_price": true,
+      "consume_rows_90d": 1892,
+      "consume_rows_7d": 0
+    }
+  ],
+  "recent_per_model": {
+    "deepseek-v4-pro-0813": {
+      "requests": 252,
+      "rows": 252,
+      "customer_quota": 9217,
+      "procurement_estimate_quota": 2114,
+      "margin_quota": 7103,
+      "negative_requests": 0,
+      "subscription_wallet_requests": 252,
+      "verified": 252,
+      "recomputed_quota": 9217,
+      "mismatch_requests": 0,
+      "creation_tokens_requests": 0,
+      "tier_requests": 0,
+      "time_pricing_requests": 0,
+      "long_context_requests": 0
+    },
+    "kimi-k3": {
+      "requests": 1285,
+      "rows": 1285,
+      "customer_quota": 799838,
+      "procurement_estimate_quota": 719790,
+      "margin_quota": 80048,
+      "negative_requests": 0,
+      "subscription_wallet_requests": 1285,
+      "verified": 1285,
+      "recomputed_quota": 799838,
+      "mismatch_requests": 0,
+      "creation_tokens_requests": 0,
+      "tier_requests": 0,
+      "time_pricing_requests": 0,
+      "long_context_requests": 0
+    },
+    "deepseek-v4.1-flash-1017": {
+      "requests": 1434,
+      "rows": 1434,
+      "customer_quota": 34733,
+      "procurement_estimate_quota": 35293,
+      "margin_quota": -560,
+      "negative_requests": 820,
+      "subscription_wallet_requests": 1434,
+      "verified": 1434,
+      "recomputed_quota": 34732,
+      "mismatch_requests": 7,
+      "creation_tokens_requests": 0,
+      "tier_requests": 0,
+      "time_pricing_requests": 0,
+      "long_context_requests": 0
+    }
+  },
+  "runtime_replay": {
+    "requests": 2971,
+    "runtime_matches": 2971,
+    "bucket_conflicts": 0,
+    "floor_requests": 4
+  },
+  "decimal_precision_examples": [
+    {
+      "ref_sha_prefix": "eb7f7d5422fe",
+      "model": "deepseek-v4.1-flash-1017",
+      "ledger": 38,
+      "decimal": 39,
+      "delta": -1,
+      "created_at_utc": "2026-11-04 06:36:38.223000",
+      "tokens": {
+        "input": 1722,
+        "output": 2375,
+        "cache_read": 88832,
+        "creation5m": 0,
+        "creation1h": 0
+      },
+      "price_per_token": {
+        "input_price": "3e-07",
+        "output_price": "1.2e-06",
+        "cache_read_price": "6e-09",
+        "cache_creation_5m_price": "0.0",
+        "cache_creation_1h_price": "0.0"
+      },
+      "group_ratio": "1.0",
+      "cache_creation_mode": "charge",
+      "persisted_bucket_quota": {
+        "input_cost": 5,
+        "output_cost": 28,
+        "cache_cost": 5,
+        "creation5m_cost": 0,
+        "creation1h_cost": 0
+      }
+    },
+    {
+      "ref_sha_prefix": "dd6e82aab33b",
+      "model": "deepseek-v4.1-flash-1017",
+      "ledger": 25,
+      "decimal": 26,
+      "delta": -1,
+      "created_at_utc": "2026-11-06 13:58:00.223000",
+      "tokens": {
+        "input": 500,
+        "output": 141,
+        "cache_read": 373120,
+        "creation5m": 0,
+        "creation1h": 0
+      },
+      "price_per_token": {
+        "input_price": "3e-07",
+        "output_price": "1.2e-06",
+        "cache_read_price": "6e-09",
+        "cache_creation_5m_price": "0.0",
+        "cache_creation_1h_price": "0.0"
+      },
+      "group_ratio": "1.0",
+      "cache_creation_mode": "charge",
+      "persisted_bucket_quota": {
+        "input_cost": 1,
+        "output_cost": 2,
+        "cache_cost": 22,
+        "creation5m_cost": 0,
+        "creation1h_cost": 0
+      }
+    },
+    {
+      "ref_sha_prefix": "b30d72459f13",
+      "model": "deepseek-v4.1-flash-1017",
+      "ledger": 34,
+      "decimal": 35,
+      "delta": -1,
+      "created_at_utc": "2026-11-06 15:43:07.223000",
+      "tokens": {
+        "input": 2439,
+        "output": 125,
+        "cache_read": 433024,
+        "creation5m": 0,
+        "creation1h": 0
+      },
+      "price_per_token": {
+        "input_price": "3e-07",
+        "output_price": "1.2e-06",
+        "cache_read_price": "6e-09",
+        "cache_creation_5m_price": "0.0",
+        "cache_creation_1h_price": "0.0"
+      },
+      "group_ratio": "1.0",
+      "cache_creation_mode": "charge",
+      "persisted_bucket_quota": {
+        "input_cost": 7,
+        "output_cost": 1,
+        "cache_cost": 26,
+        "creation5m_cost": 0,
+        "creation1h_cost": 0
+      }
+    }
+  ],
+  "configured_price_change_windows": {
+    "before_upstream_revision5": {
+      "requests": 1063,
+      "margin_quota": -561,
+      "negative_requests": 820
+    },
+    "after_upstream_revision5": {
+      "requests": 371,
+      "margin_quota": 1,
+      "negative_requests": 0
+    }
+  },
+  "route_boundary": {
+    "channels": [
+      {
+        "id": 1,
+        "status": 1,
+        "restrict_models": 0
+      },
+      {
+        "id": 9,
+        "status": 2,
+        "restrict_models": 0
+      },
+      {
+        "id": 11,
+        "status": 1,
+        "restrict_models": 1
+      }
+    ],
+    "global_mapping_disk_entries": 23,
+    "global_mapping_disk_targets_with_model_price": 0,
+    "in_memory_global_mapper_not_observed": true,
+    "paid_reachability_not_probed": true
+  },
+  "prometheus": {
+    "audit_metrics": [
+      {
+        "metric": {
+          "__name__": "micro_one_api_model_unpriced_routed",
+          "source": "channel",
+          "stack": "micro-one-api"
+        },
+        "value": [
+          1794129595.331,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "micro_one_api_model_unpriced_routed",
+          "source": "subscription",
+          "stack": "micro-one-api"
+        },
+        "value": [
+          1794129595.331,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "micro_one_api_model_unpriced_routed_evaluation_success",
+          "stack": "micro-one-api"
+        },
+        "value": [
+          1794129595.331,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "micro_one_api_model_unpriced_routed_last_success_timestamp_seconds",
+          "stack": "micro-one-api"
+        },
+        "value": [
+          1794129595.331,
+          "1794129573.0717587"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "name": "UnpricedRoutedMetricUnavailable",
+        "state": "inactive",
+        "health": "ok",
+        "lastEvaluation": "2026-11-08T09:19:56.449314363Z",
+        "evaluationTime": 0.00034146,
+        "lastError": null
+      },
+      {
+        "name": "NegativeGrossMargin",
+        "state": "inactive",
+        "health": "ok",
+        "lastEvaluation": "2026-11-08T09:19:56.450501539Z",
+        "evaluationTime": 0.000289262,
+        "lastError": null
+      }
+    ]
+  },
+  "not_verified": [
+    "real supplier debit reconciliation",
+    "three-database publication regressions",
+    "paid service-tier/time-pricing requests",
+    "catch-all successful upstream execution",
+    "deployment or new application build"
+  ],
+  "no_production_changes": true
+}
