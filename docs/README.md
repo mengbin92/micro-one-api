@@ -22,7 +22,7 @@ docs/
 |---------|--------|
 | 个人单机，创建首个渠道和 Token | [quickstart-lite.md](./quickstart-lite.md) |
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
-| 查看用户自助、安全认证、计价补齐排期与条件保留项 | [design/next-stage-plan-2026-10-26.md](./design/next-stage-plan-2026-10-26.md) |
+| 查看下一阶段计价核验、备份恢复与真实用户验收草案 | [design/next-stage-plan-2026-11-08.md](./design/next-stage-plan-2026-11-08.md) |
 | 接入原生 Gemini 文本/函数调用及核对部署状态 | [B2 契约](./design/b2-native-gemini-contract-2026-10-30.md) · [B2 验收](./runbooks/b2-native-gemini-acceptance-2026-10-30.md) |
 | 查看告警修复、生产容量基线与 executor 同窗复核 | [runbooks/post-v0.36.0-acceptance-2026-10-18.md](./runbooks/post-v0.36.0-acceptance-2026-10-18.md) |
 | 查看原生镜像提速与真实 Log RPC/SQL 容量边界 | [构建与 SQL 链路验收](./runbooks/build-timing-sql-acceptance-2026-10-18.md) |
@@ -50,9 +50,9 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——本表明确指向且头部标注「当前执行入口」的计划。未定发布版本时使用 `design/next-stage-plan-YYYY-MM-DD.md`，已定版本时使用 `design/vX.Y-roadmap.md`。新阶段立项时：新建计划 → 旧路线图标为「已归档」并指回新入口 → 同步本表、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-最新发布登记：[v0.36.6](./releases/release-v0.36.6.md)（2026-10-26），账单证据监控修复、历史补证与开发依赖安全更新；生产供应商证据监控保持停用，历史费用核验仍 pending。版本范围与验证见 [发布记录](./releases/release-v0.36.6.md#验证)。
+最新发布登记：[v0.39.3](./releases/release-v0.39.3.md)（2026-11-05），计费毛利及后台未定价监控修复；本轮已核对远端 tag，未重验生产或 CI。此前修复已于 11 月 3 日部署，发版无需重复重启。
 
-**当前排期（更新：2026-10-27）**：按 1 名主工程师 + AI 辅助，安排注册/恢复 2 周、TOTP/step-up 4 周、service_tier 计价 4 周、第二支付 2 周；目标窗口为 2026-10-27—2027-01-18，节假日、外部验证等待及增量需求另计。长上下文、原生 Gemini 和备份后台滚动排入后续。A1 注册/恢复已部署并验证，真实邮件收件通过、Turnstile 保持关闭；A2（含复核修复及登录权限修复）已部署生产并通过线上验证，强制策略开关关闭，真实外部因子验收保留（[验收记录](./runbooks/a2-security-acceptance-2026-10-27.md)）；A3 service_tier 计价已实现并合入 `develop`，默认关闭、未部署、未绑定真实来源（[实施验收](./runbooks/a3-service-tier-acceptance-2026-10-27.md)）；A4 未开始。既有监控停用、1% 契约试点及独立生产验收继续按各自记录管理。见 [当前计划](./design/next-stage-plan-2026-10-26.md)。
+**当前排期（2026-11-08，规划草案待确认）**：上一轮 A1–A4、B1–B4 工程和生产部署已落地。推荐依次推进 N1 价格核账/三库验证、N2 首次生产备份与隔离恢复、N3 MFA 真实因子、N4 公告与本人模型真实旅程；预计 7–10 工程日 + 2 日余量，外部等待单列。生产事实引用截至 11 月 5 日的记录；尚无管理化备份链路生成的生产全量归档及其隔离恢复验收证据，真实收费及用户旅程等仍待验，既有部署前备份按原记录保留。详见[当前计划草案](./design/next-stage-plan-2026-11-08.md)，既有关闭开关、灰度和历史验收边界继续保留。
 
 **以下为前阶段历史记录**，其中“待验证/已开启/当前”等表述仅对应各条登记时间；最新状态见上方发布记录与当前排期。
 
@@ -114,7 +114,9 @@ docs/
 - [v0.30.0](./releases/release-v0.30.0.md) · [v0.30.1](./releases/release-v0.30.1.md) · [v0.31.0](./releases/release-v0.31.0.md) · [v0.31.1](./releases/release-v0.31.1.md)
 - [v0.32.0](./releases/release-v0.32.0.md) · [v0.32.1](./releases/release-v0.32.1.md) · [v0.32.2](./releases/release-v0.32.2.md)
 - [v0.33.0](./releases/release-v0.33.0.md) · [v0.33.1](./releases/release-v0.33.1.md) · [v0.33.2](./releases/release-v0.33.2.md) · [v0.33.3](./releases/release-v0.33.3.md) · [v0.33.4](./releases/release-v0.33.4.md) · [v0.33.5](./releases/release-v0.33.5.md) · [v0.33.6](./releases/release-v0.33.6.md)
-- [v0.34.0](./releases/release-v0.34.0.md) · [v0.34.1](./releases/release-v0.34.1.md) · [v0.34.2](./releases/release-v0.34.2.md) · [v0.34.3](./releases/release-v0.34.3.md) · [v0.34.4](./releases/release-v0.34.4.md) · [v0.34.5 中止候选](./releases/release-v0.34.5.md) · [v0.34.6](./releases/release-v0.34.6.md) · [v0.34.7](./releases/release-v0.34.7.md) · [v0.34.8 中止候选](./releases/release-v0.34.8.md) · [v0.34.9](./releases/release-v0.34.9.md) · [v0.34.10](./releases/release-v0.34.10.md) · [v0.34.11](./releases/release-v0.34.11.md) · [v0.34.12 中止候选](./releases/release-v0.34.12.md) · [v0.34.13 中止候选](./releases/release-v0.34.13.md) · [v0.34.14 中止候选](./releases/release-v0.34.14.md) · [v0.34.15](./releases/release-v0.34.15.md) · [v0.34.16](./releases/release-v0.34.16.md) · [v0.34.17](./releases/release-v0.34.17.md) · [v0.34.18](./releases/release-v0.34.18.md) · [v0.35.0](./releases/release-v0.35.0.md) · [v0.35.1](./releases/release-v0.35.1.md) · [v0.35.2](./releases/release-v0.35.2.md) · [v0.36.0](./releases/release-v0.36.0.md) · [v0.36.1](./releases/release-v0.36.1.md) · [v0.36.2](./releases/release-v0.36.2.md) · [v0.36.3](./releases/release-v0.36.3.md) · [v0.36.4](./releases/release-v0.36.4.md) · [v0.36.5](./releases/release-v0.36.5.md) · [v0.36.6](./releases/release-v0.36.6.md)（最新）
+- [v0.34.0](./releases/release-v0.34.0.md) · [v0.34.1](./releases/release-v0.34.1.md) · [v0.34.2](./releases/release-v0.34.2.md) · [v0.34.3](./releases/release-v0.34.3.md) · [v0.34.4](./releases/release-v0.34.4.md) · [v0.34.5 中止候选](./releases/release-v0.34.5.md) · [v0.34.6](./releases/release-v0.34.6.md) · [v0.34.7](./releases/release-v0.34.7.md) · [v0.34.8 中止候选](./releases/release-v0.34.8.md) · [v0.34.9](./releases/release-v0.34.9.md) · [v0.34.10](./releases/release-v0.34.10.md) · [v0.34.11](./releases/release-v0.34.11.md) · [v0.34.12 中止候选](./releases/release-v0.34.12.md) · [v0.34.13 中止候选](./releases/release-v0.34.13.md) · [v0.34.14 中止候选](./releases/release-v0.34.14.md) · [v0.34.15](./releases/release-v0.34.15.md) · [v0.34.16](./releases/release-v0.34.16.md) · [v0.34.17](./releases/release-v0.34.17.md) · [v0.34.18](./releases/release-v0.34.18.md) · [v0.35.0](./releases/release-v0.35.0.md) · [v0.35.1](./releases/release-v0.35.1.md) · [v0.35.2](./releases/release-v0.35.2.md) · [v0.36.0](./releases/release-v0.36.0.md) · [v0.36.1](./releases/release-v0.36.1.md) · [v0.36.2](./releases/release-v0.36.2.md) · [v0.36.3](./releases/release-v0.36.3.md) · [v0.36.4](./releases/release-v0.36.4.md) · [v0.36.5](./releases/release-v0.36.5.md) · [v0.36.6](./releases/release-v0.36.6.md)
+
+- [v0.37.0](./releases/release-v0.37.0.md) · [v0.37.1](./releases/release-v0.37.1.md) · [v0.38.0](./releases/release-v0.38.0.md) · [v0.38.1](./releases/release-v0.38.1.md) · [v0.39.0](./releases/release-v0.39.0.md) · [v0.39.1](./releases/release-v0.39.1.md) · [v0.39.2](./releases/release-v0.39.2.md) · [v0.39.3](./releases/release-v0.39.3.md)（最新）
 
 ### runbooks/ — 运维操作手册
 
@@ -155,7 +157,8 @@ docs/
 | [v0.23-roadmap.md](./design/v0.23-roadmap.md) | v0.23 路线图：上线观察与 Relay executor 首切片（已归档） |
 | [v0.23-executor-observation.md](./design/v0.23-executor-observation.md) | executor 新旧路径 7 天生产观察与回滚事实源 |
 | [v0.24-web-release-readiness.md](./design/v0.24-web-release-readiness.md) | v0.24 双语 Web、中国法律协议与发布隔离准备清单 |
-| [next-stage-plan-2026-10-26.md](./design/next-stage-plan-2026-10-26.md) | 当前计划：用户自助、安全认证与计价补齐；12 周主线、滚动扩展及既有条件承接 |
+| [next-stage-plan-2026-11-08.md](./design/next-stage-plan-2026-11-08.md) | 当前规划草案：计价核验、备份恢复与真实用户验收；待确认后实施 |
+| [next-stage-plan-2026-10-26.md](./design/next-stage-plan-2026-10-26.md) | 已归档：用户自助、安全认证与计价补齐；保留 A/B 工程交付及历史证据 |
 | [next-stage-plan-2026-10-20.md](./design/next-stage-plan-2026-10-20.md) | 已归档：计时内存预算与供应商证据可读性；保留 N3/N4 历史证据 |
 | [next-stage-plan-2026-10-18.md](./design/next-stage-plan-2026-10-18.md) | 已归档：v0.36.0 运行验收、证据收口与双语入口；保留独立生产结论 |
 | [next-stage-plan-2026-10-16.md](./design/next-stage-plan-2026-10-16.md) | 已归档：审查修复交付、定价原子保存与真实证据验收 |
