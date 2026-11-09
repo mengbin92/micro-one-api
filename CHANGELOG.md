@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复管理化备份在 MySQL 上完成日槽后空闲轮询持续误报 409/attention：在已有策略行锁内识别已记录时槽，不再依赖 no-op upsert 的 affected-rows；已成功、失败和不确定任务不重放，下一槽仍正常领取。三库回归及生产验证见 [N2 记录](docs/runbooks/n2-offsite-recovery-2026-11-09.md)。
+
 ## [0.39.3] - 2026-11-05
 
 v0.39.3 是 v0.39.2 之后的 **PATCH 修复版本**：修复配置毛利告警把全零窗口误报为负毛利、又把净负差额漏报的问题，并恢复后台未定价监控的采集链路（专用服务身份计数 RPC、失败保留上次计数、求值失败告警）。无新增公开 API、数据库迁移或运行配置项，不改动线上售价、采购估价与历史账本；修复已于 2026-11-03 部署生产。详见 [release-v0.39.3.md](docs/releases/release-v0.39.3.md)。

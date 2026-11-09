@@ -22,7 +22,7 @@ docs/
 |---------|--------|
 | 个人单机，创建首个渠道和 Token | [quickstart-lite.md](./quickstart-lite.md) |
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
-| 查看下一阶段计划及 N1 只读核账进展 | [design/next-stage-plan-2026-11-08.md](./design/next-stage-plan-2026-11-08.md) |
+| 查看下一阶段计划及 N1/N2 验收进展 | [design/next-stage-plan-2026-11-08.md](./design/next-stage-plan-2026-11-08.md) |
 | 接入原生 Gemini 文本/函数调用及核对部署状态 | [B2 契约](./design/b2-native-gemini-contract-2026-10-30.md) · [B2 验收](./runbooks/b2-native-gemini-acceptance-2026-10-30.md) |
 | 查看告警修复、生产容量基线与 executor 同窗复核 | [runbooks/post-v0.36.0-acceptance-2026-10-18.md](./runbooks/post-v0.36.0-acceptance-2026-10-18.md) |
 | 查看原生镜像提速与真实 Log RPC/SQL 容量边界 | [构建与 SQL 链路验收](./runbooks/build-timing-sql-acceptance-2026-10-18.md) |
@@ -32,6 +32,7 @@ docs/
 | 复核 DeepSeek 已结束日窗的官方费用与手工调用 | [runbooks/deepseek-closed-day-2026-10-16.md](./runbooks/deepseek-closed-day-2026-10-16.md) |
 | 复核 executor 有限灰度与第二批条件结论 | [观察手册](./design/v0.23-executor-observation.md) · [第二批记录](./runbooks/executor-second-batch-acceptance-2026-10-07.md) |
 | 查看分时闲时付费结果及独立人民币费用证据 | [runbooks/n1-off-peak-paid-2026-11-08.md](./runbooks/n1-off-peak-paid-2026-11-08.md) |
+| 查看 N2 异机备份、生产归档隔离恢复与日调度观察 | [runbooks/n2-offsite-recovery-2026-11-09.md](./runbooks/n2-offsite-recovery-2026-11-09.md) |
 | 查看 N1 当前价格、兜底边界及七天账本核账 | [runbooks/n1-pricing-readonly-2026-11-08.md](./runbooks/n1-pricing-readonly-2026-11-08.md) |
 | 查看当前待办和历史完成记录 | [TODO.md](./TODO.md) |
 | 查看 Playground 安全 Markdown、字体与关键分支验收 | [D7 本地验收记录](./runbooks/d7-experience-acceptance-2026-10-07.md) |
@@ -54,7 +55,7 @@ docs/
 
 最新发布登记：[v0.39.3](./releases/release-v0.39.3.md)（2026-11-05），计费毛利及后台未定价监控修复；规划时已核对远端 tag；N1 的后续生产证据另见核账/验收记录，不代表重新核验发布 CI。此前修复已于 11 月 3 日部署，发版无需重复重启。
 
-**当前排期（2026-11-08，N1 核账、配置治理及三库专项已执行，其余待确认）**：上一轮 A1–A4、B1–B4 工程和生产部署已落地。推荐依次推进 N1 价格核账/三库验证、N2 首次生产备份与隔离恢复、N3 MFA 真实因子、N4 公告与本人模型真实旅程；预计 7–10 工程日 + 2 日余量，外部等待单列。11 月 8 日已完成获准的 [N1 只读核账](./runbooks/n1-pricing-readonly-2026-11-08.md)：2,971 笔符合现行算法，另有 3 笔比 Decimal 口径少 3 quota 的精度边界，维护者已接受，并确认采购价同售价及旧残留清理。采购价及指定残留已沿 owner 治理，三次写入、12 条成功审计及历史基线验证通过；三库价格专项随后带 race 通过（28 场景、0 失败/跳过），仅分时闲时付费验收随后通过（4 尝试、191 quota、独立小时费用 0.019168 CNY、原币合计差额 0），见[闲时记录](./runbooks/n1-off-peak-paid-2026-11-08.md)；忙时和普通计价已由维护者明确无需重测，本轮获准计价验收范围收口；兜底治理及其他扩展保留项另定范围。其他生产事实仍引用截至 11 月 5 日的记录；尚无管理化备份链路生成的生产全量归档及其隔离恢复验收证据，真实收费及用户旅程等仍待验，既有部署前备份按原记录保留。详见[当前计划草案](./design/next-stage-plan-2026-11-08.md)，既有关闭开关、灰度和历史验收边界继续保留。
+**当前排期（2026-11-09，N1 获准范围已交付，N2 日调度观察 1/2）**：上一轮 A1–A4、B1–B4 工程和生产部署已落地。推荐依次推进 N1 价格核账/三库验证、N2 首次生产备份与隔离恢复、N3 MFA 真实因子、N4 公告与本人模型真实旅程；预计 7–10 工程日 + 2 日余量，外部等待单列。11 月 8 日已完成获准的 [N1 只读核账](./runbooks/n1-pricing-readonly-2026-11-08.md)：2,971 笔符合现行算法，另有 3 笔比 Decimal 口径少 3 quota 的精度边界，维护者已接受，并确认采购价同售价及旧残留清理。采购价及指定残留已沿 owner 治理，三次写入、12 条成功审计及历史基线验证通过；三库价格专项随后带 race 通过（28 场景、0 失败/跳过），仅分时闲时付费验收随后通过（4 尝试、191 quota、独立小时费用 0.019168 CNY、原币合计差额 0），见[闲时记录](./runbooks/n1-off-peak-paid-2026-11-08.md)；忙时和普通计价已由维护者明确无需重测，本轮获准计价验收范围收口；兜底治理及其他扩展保留项另定范围。11 月 9 日已完成异机直连、首个生产备份及真实归档隔离恢复，88 张有数据表一致、原 owner 验证通过；每天策略启用后首个日槽成功，当前观察 1/2，第二槽预计 11 月 10 日 08:00，详见 [N2 记录](./runbooks/n2-offsite-recovery-2026-11-09.md)。其余生产事实继续引用既有记录，N3/N4 尚未执行；既有部署前备份保留。详见[当前计划草案](./design/next-stage-plan-2026-11-08.md)，既有关闭开关、灰度和历史验收边界继续保留。
 
 **以下为前阶段历史记录**，其中“待验证/已开启/当前”等表述仅对应各条登记时间；最新状态见上方发布记录与当前排期。
 
