@@ -1,0 +1,295 @@
+{
+  "date": "2026-11-10",
+  "timezone": "Asia/Shanghai",
+  "scope": "second actual daily backup read-only verification",
+  "read_only_business_operations": true,
+  "summary": {
+    "checked_at_cst": "2026-11-10 14:22:33",
+    "job_id": "schedule-2-20767",
+    "started_at_cst": "2026-11-10 08:00:03",
+    "finished_at_cst": "2026-11-10 08:01:21",
+    "elapsed_seconds": 78,
+    "snapshot_at_cst": "2026-11-10 08:00:13",
+    "artifact_bytes": 33212417,
+    "artifact_mib": 31.674,
+    "sha256": "583c17b19e287ed570a522a14e09e4ac59ff7ef4c91fad5d4635a98dcab515f8",
+    "current_backup_age_seconds": 22940,
+    "observed_window_start_cst": "2026-11-09 12:20:48",
+    "observed_window_seconds": 93705,
+    "maximum_reconstructed_backup_age_seconds": 69691,
+    "age_transition_checks": [
+      {
+        "after_job": "n2-production-20261109-first",
+        "age_seconds": 66
+      },
+      {
+        "before_job": "schedule-2-20766",
+        "age_seconds": 1273
+      },
+      {
+        "after_job": "schedule-2-20766",
+        "age_seconds": 65
+      },
+      {
+        "before_job": "schedule-2-20767",
+        "age_seconds": 69691
+      },
+      {
+        "after_job": "schedule-2-20767",
+        "age_seconds": 68
+      },
+      {
+        "at_check": true,
+        "age_seconds": 22940
+      }
+    ],
+    "actual_daily_slots_succeeded": 2,
+    "disk_free_gib": 2.122
+  },
+  "production": {
+    "checked_at": 1794291753,
+    "expected_job_id": "schedule-2-20767",
+    "policy": {
+      "document": {
+        "Revision": 2,
+        "Enabled": true,
+        "IntervalHours": 24,
+        "Retain": 7,
+        "RPOHours": 24,
+        "RTOMinutes": 60
+      },
+      "revision": 2
+    },
+    "worker": {
+      "phase": "ready",
+      "last_seen": 1794291725,
+      "error_code": "",
+      "timeout_minutes": 20
+    },
+    "systemd": {
+      "NRestarts": "0",
+      "ExecMainStatus": "0",
+      "ActiveState": "active"
+    },
+    "jobs": [
+      {
+        "id": "n2-production-20261109-first",
+        "actor": "1",
+        "bytes": 32667974,
+        "sha256": "6df97c24002cfe72794685b549702b05382a1df92303314b89095a2f2ca21d3e",
+        "status": "succeeded",
+        "trigger": "manual",
+        "created_at": 1794197960,
+        "error_code": "",
+        "started_at": 1794197973,
+        "finished_at": 1794198048
+      },
+      {
+        "id": "schedule-2-20766",
+        "actor": "system/backup-scheduler",
+        "bytes": 32637867,
+        "sha256": "4bbd6bb7e6a889e60611d53b6a2cfb12ce1bb39a88422bba3adbee847da6184d",
+        "status": "succeeded",
+        "trigger": "schedule",
+        "created_at": 1794199182,
+        "error_code": "",
+        "started_at": 1794199182,
+        "finished_at": 1794199255
+      },
+      {
+        "id": "schedule-2-20767",
+        "actor": "system/backup-scheduler",
+        "bytes": 33212417,
+        "sha256": "583c17b19e287ed570a522a14e09e4ac59ff7ef4c91fad5d4635a98dcab515f8",
+        "status": "succeeded",
+        "trigger": "schedule",
+        "created_at": 1794268803,
+        "error_code": "",
+        "started_at": 1794268803,
+        "finished_at": 1794268881
+      }
+    ],
+    "catalog_exit_code": 0,
+    "external_receipts": [
+      {
+        "job_id": "n2-production-20261109-first",
+        "object_key": "micro-one-api/production/n2-production-20261109-first.tar.gz.age",
+        "sha256": "6df97c24002cfe72794685b549702b05382a1df92303314b89095a2f2ca21d3e",
+        "bytes": 32667974,
+        "snapshot_at": 1794197982
+      },
+      {
+        "job_id": "schedule-2-20766",
+        "object_key": "micro-one-api/production/schedule-2-20766.tar.gz.age",
+        "sha256": "4bbd6bb7e6a889e60611d53b6a2cfb12ce1bb39a88422bba3adbee847da6184d",
+        "bytes": 32637867,
+        "snapshot_at": 1794199190
+      },
+      {
+        "job_id": "schedule-2-20767",
+        "object_key": "micro-one-api/production/schedule-2-20767.tar.gz.age",
+        "sha256": "583c17b19e287ed570a522a14e09e4ac59ff7ef4c91fad5d4635a98dcab515f8",
+        "bytes": 33212417,
+        "snapshot_at": 1794268813
+      }
+    ],
+    "today_readback": {
+      "attempted": true,
+      "receipt_matches_owner": true,
+      "fetch_exit_code": 0,
+      "sha256": "583c17b19e287ed570a522a14e09e4ac59ff7ef4c91fad5d4635a98dcab515f8",
+      "bytes": 33212417,
+      "sha256_matches": true,
+      "size_matches": true,
+      "temporary_artifact_removed": true,
+      "elapsed_seconds": 17.066
+    },
+    "containers": {
+      "relay-gateway": {
+        "running": true,
+        "status": "running",
+        "health": null,
+        "restart_count": 0,
+        "started_at": "2026-11-10T00:00:35.239719224Z",
+        "image": "sha256:9c1e4d7208cb78b3040b0988554c1cc7bde5b1d31775eaccb0d56011c91ba1f4"
+      },
+      "admin-api": {
+        "running": true,
+        "status": "running",
+        "health": null,
+        "restart_count": 0,
+        "started_at": "2026-11-10T00:00:35.234050652Z",
+        "image": "sha256:a3f77d8e9d1035dbb51229f60909e68396be6f82c6dc7ed7718c027051d67df9"
+      },
+      "identity-service": {
+        "running": true,
+        "status": "running",
+        "health": null,
+        "restart_count": 0,
+        "started_at": "2026-11-10T00:00:33.806758551Z",
+        "image": "sha256:e0a115eaae442058344e669b407548cffbfb6903c316d99bacde9ecd7bbe9c3f"
+      },
+      "channel-service": {
+        "running": true,
+        "status": "running",
+        "health": null,
+        "restart_count": 0,
+        "started_at": "2026-11-10T00:00:34.834148875Z",
+        "image": "sha256:b61baeab49d3becb167a68006425392ea908b09b9701b8d71fa352d8af3ed9cc"
+      },
+      "channel-account-ops-worker": {
+        "running": true,
+        "status": "running",
+        "health": "healthy",
+        "restart_count": 0,
+        "started_at": "2026-11-10T00:00:34.841615149Z",
+        "image": "sha256:b61baeab49d3becb167a68006425392ea908b09b9701b8d71fa352d8af3ed9cc"
+      },
+      "billing-service": {
+        "running": true,
+        "status": "running",
+        "health": null,
+        "restart_count": 0,
+        "started_at": "2026-11-10T00:00:34.844349788Z",
+        "image": "sha256:acc692f80c339354279fd2a5c5cc8bac2a9b994bdc5a83ae213a52313a714342"
+      },
+      "config-service": {
+        "running": true,
+        "status": "running",
+        "health": null,
+        "restart_count": 0,
+        "started_at": "2026-11-10T00:00:33.794455406Z",
+        "image": "sha256:e648c9bcf591b593640debf4d78bf8b3288cfcd05bff2dcef40004f4e3abc7e1"
+      },
+      "log-service": {
+        "running": true,
+        "status": "running",
+        "health": null,
+        "restart_count": 0,
+        "started_at": "2026-11-10T00:00:33.799531537Z",
+        "image": "sha256:ba0c889b1046e2caf48278f96a8dcf714752c52552ed5eb397c5bdf6b0a9e354"
+      },
+      "monitor-worker": {
+        "running": true,
+        "status": "running",
+        "health": null,
+        "restart_count": 0,
+        "started_at": "2026-11-10T00:00:33.779511226Z",
+        "image": "sha256:87ce8266df3724c642addbfb7f04d32dbbedfb41a570eaa24698d6ab88fd8f77"
+      },
+      "notify-worker": {
+        "running": true,
+        "status": "running",
+        "health": null,
+        "restart_count": 0,
+        "started_at": "2026-11-10T00:00:33.806014566Z",
+        "image": "sha256:6cdecd0a038ccd34ae1969ada672c5f30311203f6a1e4565de504d2f341f7bc2"
+      },
+      "mysql": {
+        "running": true,
+        "status": "running",
+        "health": "healthy",
+        "restart_count": 0,
+        "started_at": "2026-09-10T05:02:34.739009784Z",
+        "image": "sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b"
+      },
+      "redis": {
+        "running": true,
+        "status": "running",
+        "health": "healthy",
+        "restart_count": 0,
+        "started_at": "2026-11-10T00:00:23.055243015Z",
+        "image": "sha256:0cf7723388c29e8a936a9a1502f3fdfc8fec0688ffca8875d8e87940bec045eb"
+      }
+    },
+    "healthz": {
+      "admin": 200,
+      "relay": 200
+    },
+    "resume_journal_exists": false,
+    "unfinished_scratch_directories": 0,
+    "worker_attention_since_slot_start": {
+      "count": 0,
+      "first": null,
+      "last": null
+    },
+    "uses_expected_offsite_endpoint": true,
+    "worker_binary_sha256": "8b6a5b9c77849101200ab080e67b72256edaa6bc9150fd5384ed1c45922abc40",
+    "web_index_in_inventory": true
+  },
+  "storage": {
+    "checked_at": 1794291736,
+    "running": true,
+    "health": "healthy",
+    "oom_killed": false,
+    "restart_count": 0,
+    "memory_limit_bytes": 268435456,
+    "tls_health_exit": 0,
+    "tls_health_http_status": "200",
+    "disk_total_bytes": 19993219072,
+    "disk_used_bytes": 16678494208,
+    "disk_free_bytes": 2278072320
+  },
+  "daily_slots_verified": 2,
+  "required_daily_slots": 2,
+  "bounded_observation_backup_age_within_24h": true,
+  "strict_continuous_rpo_margin_resolved": false,
+  "rpo_boundary": "24h schedule has no execution/upload margin below the 24h goal; policy unchanged",
+  "restore_repeated_today": false,
+  "code_or_configuration_changed": false,
+  "acceptance": {
+    "status": "complete_for_original_N2_scope",
+    "date": "2026-11-10",
+    "basis": [
+      "first production backup succeeded",
+      "real production archive isolated restore and owner checks passed",
+      "independent offsite artifact readback passed",
+      "downtime space and RPO/RTO measured",
+      "two actual daily schedule slots succeeded"
+    ],
+    "operational_rpo_margin_is_blocking": false,
+    "strict_continuous_rpo_margin_resolved": false,
+    "long_term_sla_guaranteed": false,
+    "note": "Preserve the known 24h schedule/no-execution-margin boundary as operational follow-up; no configuration change or risk waiver is inferred."
+  }
+}
