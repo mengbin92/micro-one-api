@@ -1,0 +1,72 @@
+{
+  "phase": "N4",
+  "date": "2026-11-12",
+  "baseline": {
+    "announcements": 0,
+    "announcement_targets": 0,
+    "announcement_reads": 0,
+    "announcement_events": 0,
+    "routing_groups": [2, 3],
+    "probe_user": "n4probe (id=13, temporarily root, cleaned up)"
+  },
+  "test_cases": [
+    {
+      "id": "C1",
+      "title": "草稿-定向用户",
+      "audience": "users",
+      "targets": ["2", "4"],
+      "expected": "draft 不可见；publish 后仅目标用户可见",
+      "results": {
+        "draft_visible_to_probe": false,
+        "after_publish_visible_to_probe": false,
+        "reason": "probe (id=13) 不在 targets [2,4] 中"
+      }
+    },
+    {
+      "id": "C2",
+      "title": "分组公告-VIP",
+      "audience": "groups",
+      "targets": ["3"],
+      "expected": "非 group 3 成员不可见",
+      "results": {
+        "visible_to_probe": false,
+        "reason": "probe 在 default 组 (group 2)"
+      }
+    },
+    {
+      "id": "C3",
+      "title": "定时公告",
+      "audience": "all",
+      "publish_at": "future (+180s)",
+      "expected": "定时未到不可见，到时间后可见",
+      "results": {
+        "before_publish_at": false,
+        "after_publish_at": true
+      }
+    },
+    {
+      "id": "C4",
+      "title": "即将到期",
+      "audience": "all",
+      "expected": "published 可见；编辑更新；archive 后不可见",
+      "results": {
+        "visible_when_published": true,
+        "editable": true,
+        "read_receipt": true,
+        "visible_after_archive": false
+      }
+    }
+  ],
+  "security_checks": {
+    "cas_conflict_detected": true,
+    "non_target_user_sees_nothing": true,
+    "no_upstream_info_in_model_availability": true,
+    "admin_announcements_requires_auth": true
+  },
+  "cleanup": {
+    "n4probe_user_deleted": true,
+    "n4probe_role_restored": "N/A (deleted)",
+    "all_announcements_removed": true,
+    "identity_mfa_cleaned": true
+  }
+}
