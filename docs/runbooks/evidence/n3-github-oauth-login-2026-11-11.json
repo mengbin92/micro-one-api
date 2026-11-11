@@ -1,0 +1,14 @@
+{
+  "check": "N3 GitHub OAuth real authorization login",
+  "date": "2026-11-11 (Asia/Shanghai, evening)",
+  "result": "success",
+  "verifier": "maintainer browser, production",
+  "observed_flow": [
+    "login page: choose GitHub",
+    "popup opens with ?login&oauth=1",
+    "OAuth callback completes",
+    "lands on https://console.mengbin.top/dashboard as logged-in session"
+  ],
+  "secrets": "no token, code, or credential recorded",
+  "notes": "complements the 12:22 binding-landing record; confirms the full new OAuth login/session journey end to end"
+}

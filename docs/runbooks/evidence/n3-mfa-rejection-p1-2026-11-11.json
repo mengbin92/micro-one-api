@@ -1,0 +1,17 @@
+{
+  "checked_at": "2026-11-11 (Asia/Shanghai)",
+  "scope": "MFA endpoints reject unauthenticated/invalid proof, no session",
+  "paths": {
+    "bff": "loopback admin-api :3000",
+    "direct_owner": "identity-service :8001 loopback via container exec"
+  },
+  "results": [
+    {"endpoint": "GET /api/user/security", "auth": "none", "bff": 401, "owner": 401},
+    {"endpoint": "POST /api/user/security/verify", "auth": "none", "bff": 401, "owner": 401},
+    {"endpoint": "POST /api/user/security/confirm", "auth": "none", "bff": 401, "owner": 401},
+    {"endpoint": "POST /api/user/security/disable", "auth": "none", "bff": 401, "owner": 401},
+    {"endpoint": "POST /api/user/security/recovery", "auth": "none", "bff": 401, "owner": 401},
+    {"endpoint": "POST /api/user/security/login", "auth": "garbage challenge", "bff": "400 MFA_INVALID", "owner": "400 MFA_INVALID"}
+  ],
+  "notes": "passwords/tokens not recorded; owner responses verified by HTTP status (empty body capture)"
+}
