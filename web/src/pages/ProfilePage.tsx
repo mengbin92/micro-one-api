@@ -1,18 +1,19 @@
 import { SecurityCenter } from '@/components/SecurityCenter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
-import { bindableOAuthProviders, redirectToURL } from '@/lib/oauth';
+import { oauthProviders, redirectToURL } from '@/lib/oauth';
 import { formatUSD } from '@/lib/amount';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { User, Mail, Shield, Users, Save, X } from 'lucide-react';
+import { User, Mail, Shield, Users, Save, X, Check } from 'lucide-react';
 import { t } from '@/lib/i18n';
 import { accountDashboardQueryOptions, userSelfQueryOptions } from '@/lib/account-queries';
 
@@ -29,6 +30,9 @@ function formatAmount(q: number) {
 
 export function ProfilePage() {
   const queryClient = useQueryClient();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const handledBind = useRef<string | undefined>(undefined);
   const [editing, setEditing] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
@@ -36,6 +40,21 @@ export function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState('');
 
   const { data: user, isLoading } = useQuery(userSelfQueryOptions);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const outcome = params.get('oauth_bind');
+    if (!outcome || handledBind.current === location.key) return;
+    handledBind.current = location.key;
+    const label = oauthProviders.find((provider) => provider.id === params.get('provider'))?.label;
+    if (outcome === 'success') {
+      toast.success(label ? t('{provider} 绑定成功', { provider: t(label) }) : t('绑定成功'));
+      queryClient.invalidateQueries({ queryKey: ['user-self'] });
+    }
+    params.delete('oauth_bind');
+    params.delete('provider');
+    void navigate({ pathname: location.pathname, search: params.toString(), hash: location.hash }, { replace: true, state: location.state });
+  }, [location, navigate, queryClient]);
 
   const { data: dashboard } = useQuery(accountDashboardQueryOptions);
 
@@ -266,16 +285,22 @@ export function ProfilePage() {
               <CardTitle className="text-xl font-black tracking-normal text-slate-950 dark:text-white">{t("第三方账号")}</CardTitle>
             </CardHeader>
             <CardContent className="p-6">
-              <div className="grid grid-cols-2 gap-2">
-                {bindableOAuthProviders.map((provider) => (
-                  <Button
-                    key={provider.id}
-                    type="button"
-                    variant="outline"
-                    onClick={() => provider.bindPath && void startOAuthBind(provider.bindPath)}
-                  >{t("绑定")}{t(provider.label)}
-                  </Button>
-                ))}
+              <div className="grid grid-cols-1 gap-2">
+                {oauthProviders.filter(provider => provider.bindPath || user?.oauth_providers?.includes(provider.id)).map((provider) => {
+                  const bound = user?.oauth_providers?.includes(provider.id) ?? false;
+                  return (
+                    <Button
+                      key={provider.id}
+                      type="button"
+                      variant="outline"
+                      disabled={bound}
+                      onClick={() => provider.bindPath && void startOAuthBind(provider.bindPath)}
+                    >
+                      {bound && <Check className="mr-1 h-4 w-4" />}
+                      {t(bound ? '已绑定 {provider}' : '绑定{provider}', { provider: t(provider.label) })}
+                    </Button>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
