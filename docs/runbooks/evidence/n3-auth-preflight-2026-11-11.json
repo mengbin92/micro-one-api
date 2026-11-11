@@ -1,0 +1,18 @@
+{
+  "checked_at_beijing": "2026-11-11 08:22:55",
+  "account": "admin",
+  "transport": "SSH to production host, loopback Admin BFF",
+  "checks": {
+    "oauth_providers": {"http_status": 200, "providers": [], "real_login_test": "not_run"},
+    "password_login": {"http_status": 200, "status": "passed", "full_session_issued": true},
+    "self": {"http_status": 200, "success": true, "user_id": 1, "username": "admin", "role": 100, "status": 1},
+    "admin_access": {"http_status": 200, "success": true},
+    "security": {"http_status": 200, "password_available": true, "enabled": false, "configured": true, "recovery_codes_remaining": 0, "step_up_required": false, "admin_mfa_required": false},
+    "test_session_cleanup": {"http_status": 200, "own_session_only": true, "passed": true},
+    "revoked_session_rejected": {"http_status": 401, "passed": true},
+    "github_configuration": {"running_identity_configured": false, "deployment_root_env_configured": false, "deployment_compose_env_configured": false}
+  },
+  "decisions": {"oauth_provider": "github", "oauth_app": "creation_required", "mfa_qr_binding": "requested"},
+  "boundaries": {"production_mfa_enrollment": "not_run", "real_authenticator": "not_run", "real_external_oauth": "not_run", "forced_policy_change": "not_run"},
+  "remote_exit_code": 0
+}

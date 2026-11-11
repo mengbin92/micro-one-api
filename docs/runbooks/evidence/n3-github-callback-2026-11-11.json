@@ -1,0 +1,50 @@
+{
+  "stage": "real_admin_binding",
+  "maintainer_confirmation": "bind current GitHub identity to existing admin and continue",
+  "consent_application": "micro-one-api",
+  "consent_scope": [
+    "read:user",
+    "user:email"
+  ],
+  "callback_success": true,
+  "post_first_attempt_readback_at_beijing": "2026-11-11 09:36:15",
+  "post_first_attempt_readback": {
+    "admin_github_binding_count": 0,
+    "admin_bind_success_audits": 0,
+    "new_account_success_audits": 0,
+    "deadline_errors_in_recent_logs": 0,
+    "raw_logs_withheld": true
+  },
+  "root_cause": "The request context was already expired before the binding SQL; isolated regression also reproduces the inherited one-second Kratos request budget. Exact elapsed time of each production GitHub call was not retained.",
+  "boundaries": {
+    "real_external_login": "not_passed",
+    "new_credentials_or_oauth_code_recorded": false,
+    "mfa_enrollment": "not_run"
+  },
+  "root_cause_evidence": "production GORM log 01:37:59 UTC: user_oauth_identities SELECT failed with context deadline exceeded in 0.418ms; github identity id returned, meaning exchange had succeeded",
+  "fix": {
+    "change": "exchange capped at 25s; bind/login/registration-reward writes moved to context.WithoutCancel(ctx) with 15s timeout in both oauth callback handlers",
+    "regression": "TestOAuthBindCallbackDeadline: request ctx canceled at exchange completion -> bind still commits (red before fix, green after)",
+    "deployed_image": "docker-compose-identity-service:deploy-20261111-102036-a874a563",
+    "rollback_tag": "rollback-20261111-102036",
+    "deployed_at_beijing": "2026-11-11 10:20",
+    "smoke": "providers 200 contains github; authorize 302; identity logs clean",
+    "pending": "Binding confirmed at 12:22; a fresh OAuth login and session/account readback remain unverified."
+  },
+  "bound_at_beijing": "2026-11-11 12:22:55",
+  "bound_readback": {
+    "user_oauth_identities_row": {
+      "user_id": 1,
+      "provider": "github",
+      "binding_present": true
+    },
+    "audit": "account.oauth.bind success (iam_runtime audit event)",
+    "users_legacy_columns": "oauth_provider/oauth_id remain empty by design (multi-provider identities table is canonical)"
+  },
+  "display_gap": "profile page had no bound-state display; fixed by oauth_providers on /api/user/self + profile UI (deployed 13:26/13:28), pending maintainer refresh confirmation",
+  "initial_failed_callback_attempts": 2,
+  "initial_observed_response": {
+    "success": false,
+    "message": "context deadline exceeded"
+  }
+}

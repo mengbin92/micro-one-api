@@ -1,0 +1,31 @@
+{
+  "status": "complete",
+  "session_id": "567f53e7-7bb8-43e2-97de-33abd4092e08",
+  "ocr_version": "v1.13.7",
+  "selected_files": [
+    "deployments/docker-compose/docker-compose.lite.yml",
+    "scripts/check-deployment-docs.sh",
+    "docs/runbooks/evidence/n3-auth-preflight-2026-11-11.json",
+    "deployments/docker-compose/docker-compose.postgres.yml",
+    "web/src/components/SecurityCenter.tsx",
+    "deployments/docker-compose/docker-compose.yml",
+    "web/src/locales/en-US.security.ts"
+  ],
+  "completed_count": 7,
+  "failed_count": 0,
+  "p0_p1_findings": 0,
+  "findings": [
+    {
+      "path": "web/src/components/SecurityCenter.tsx",
+      "line": 69,
+      "severity": "low",
+      "category": "maintainability",
+      "summary": "Optional shared QR wrapper extraction",
+      "decision": "Not adopted: two direct uses of the existing library do not justify an additional wrapper."
+    }
+  ],
+  "boundaries": [
+    "OCR default exclusions omit test and Markdown files; independently reviewed.",
+    "No production deployment or real authenticator scan."
+  ]
+}
