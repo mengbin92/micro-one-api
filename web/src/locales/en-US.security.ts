@@ -1,4 +1,8 @@
 export const EN_US_SECURITY_MESSAGES: Record<string, string> = {
+  '绑定成功': 'Account linked successfully',
+  '{provider} 绑定成功': '{provider} linked successfully',
+  '已绑定 {provider}': 'Linked to {provider}',
+  '绑定{provider}': 'Link {provider}',
   '会话已变化，请重试': 'Your session changed. Please try again.',
   '验证码无效、过期或已使用': 'The verification code is invalid, expired, or already used.',
   '尝试过多，请在五分钟后重试': 'Too many attempts. Please retry in five minutes.',
@@ -24,7 +28,8 @@ export const EN_US_SECURITY_MESSAGES: Record<string, string> = {
   '重新生成恢复码': 'Regenerate recovery codes',
   '禁用双重认证': 'Disable two-factor authentication',
   '设置双重认证': 'Set up two-factor authentication',
-  '在验证器中手动添加以下密钥，再输入六位验证码。': 'Add this secret to your authenticator app, then enter its six-digit code.',
+  '使用验证器扫描二维码，或手动添加以下密钥，再输入六位验证码。': 'Scan the QR code with your authenticator app or add the secret manually, then enter its six-digit code.',
+  '验证器绑定二维码': 'Authenticator setup QR code',
   '在验证器应用中打开': 'Open in authenticator app',
   '验证器验证码': 'Authenticator code',
   '验证并启用': 'Verify and enable',
