@@ -24,9 +24,11 @@ validate_compose() {
     echo "==> docker compose config: $*"
     (
         cd "$COMPOSE_DIR"
-        # Exercise non-default MFA settings so omitted container env entries fail.
+        # Exercise non-default Identity settings so omitted container env entries fail.
         export IDENTITY_MFA_ENCRYPTION_KEY=01234567890123456789012345678901
         export IDENTITY_STEP_UP_ENABLED=true IDENTITY_MFA_REQUIRE_ADMIN=true
+        export OAUTH_BASE_URL=https://console.example.com OAUTH_GITHUB_ENABLED=true
+        export OAUTH_GITHUB_CLIENT_ID=github-client-id OAUTH_GITHUB_CLIENT_SECRET=github-client-secret
         docker compose --env-file "$env_file" "$@" config --quiet
         docker compose --env-file "$env_file" "$@" config --format json | python3 -c '
 import json
@@ -42,7 +44,10 @@ if len(key.encode()) not in (16, 24, 32):
     raise SystemExit("channel-service CHANNEL_ENCRYPTION_KEY must be 16, 24, or 32 bytes")
 if "CHANNEL_ENCRYPTION_KEY" in identity_env:
     raise SystemExit("CHANNEL_ENCRYPTION_KEY must not be injected into identity-service")
-for name in ("IDENTITY_MFA_ENCRYPTION_KEY", "IDENTITY_STEP_UP_ENABLED", "IDENTITY_MFA_REQUIRE_ADMIN"):
+for name in (
+    "IDENTITY_MFA_ENCRYPTION_KEY", "IDENTITY_STEP_UP_ENABLED", "IDENTITY_MFA_REQUIRE_ADMIN",
+    "OAUTH_BASE_URL", "OAUTH_GITHUB_ENABLED", "OAUTH_GITHUB_CLIENT_ID", "OAUTH_GITHUB_CLIENT_SECRET",
+):
     if identity_env.get(name) != os.environ[name]:
         raise SystemExit(f"identity-service must receive {name}")
 for service_name in (
