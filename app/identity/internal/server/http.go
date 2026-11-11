@@ -1157,7 +1157,15 @@ func handleSelf(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase)
 			writeJSON(w, http.StatusUnauthorized, apiResponse{Success: false, Message: "unauthorized"})
 			return
 		}
-		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: userToMap(user)})
+		// Stored bindings remain visible when their provider is disabled.
+		bound, err := uc.BoundOAuthProviders(r.Context(), user, []string{"github", "google", "oidc", "lark", "wechat", "telegram"})
+		if err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "OAuth binding state temporarily unavailable"})
+			return
+		}
+		data := userToMap(user)
+		data["oauth_providers"] = bound
+		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: data})
 	case http.MethodPut:
 		var req struct {
 			Username        string  `json:"username"`
