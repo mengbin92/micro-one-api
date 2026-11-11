@@ -43,3 +43,4 @@ a0c4c789b7eb745438c5fe92547edfb017f77e94:internal/integration/iam_wechat_payment
 # Historical isolated backup fixture: a repeated hexadecimal placeholder, never
 # a deployed channel key. Current tests generate a fresh key for each run.
 14f58fec5ef6d5b15536a7f67ec8bab8c74178a3:internal/integration/managed_backup_test.go:generic-api-key:161
+381a8e40d428fcdc4eb9a9515df333524f61bbc4:web/e2e/security-qr.spec.ts:generic-api-key:13
