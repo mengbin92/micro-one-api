@@ -2,6 +2,7 @@ import { queryOptions } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
 import type { SubscriptionProgressData } from '@/components/SubscriptionProgress';
+import type { OAuthProvider } from '@/lib/oauth';
 
 export interface UsageSummaryItem {
   date?: string;
@@ -30,6 +31,7 @@ export interface UserSelf {
   group: string;
   status: number;
   role: number;
+  oauth_providers?: OAuthProvider['id'][];
 }
 
 export interface AccountDashboard {

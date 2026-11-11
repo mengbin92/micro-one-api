@@ -56,17 +56,29 @@ describe('security center', () => {
       }),
     );
     renderWithQuery(<><SecurityCenter /><SecurityVerificationDialog /></>);
+    expect(screen.queryByRole('img', { name: '验证器绑定二维码' })).not.toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: '设置双重认证' }));
     await user.type(await screen.findByLabelText('当前密码'), 'current-password');
     await user.click(screen.getByRole('button', { name: '验证并继续' }));
     expect(await screen.findByText('AUTHENTICATORSECRET')).toBeInTheDocument();
+    const qr = screen.getByRole('img', { name: '验证器绑定二维码' });
+    expect(qr.tagName.toLowerCase()).toBe('svg');
+    expect(qr.querySelector('path')).not.toBeNull();
+    expect(qr.querySelector('image')).toBeNull();
+    expect(screen.getByRole('link', { name: '在验证器应用中打开' })).toHaveAttribute('href', 'otpauth://totp/test?secret=AUTHENTICATORSECRET');
     expect(screen.queryByText('one-time-recovery-code')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '取消' }));
+    expect(screen.queryByRole('img', { name: '验证器绑定二维码' })).not.toBeInTheDocument();
+    expect(screen.queryByText('AUTHENTICATORSECRET')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '设置双重认证' }));
+    expect(await screen.findByRole('img', { name: '验证器绑定二维码' })).toBeInTheDocument();
     await user.type(screen.getByLabelText('验证器验证码'), '123456');
     await user.click(screen.getByRole('button', { name: '验证并启用' }));
     expect(await screen.findByText('one-time-recovery-code')).toBeInTheDocument();
     expect(localStorage.getItem('token')).toBeNull();
     expect(localStorage.getItem('recovery_codes')).toBeNull();
     expect(screen.queryByText('AUTHENTICATORSECRET')).not.toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: '验证器绑定二维码' })).not.toBeInTheDocument();
   });
 
   it('retries a denied action only after verification and never retries repeatedly', async () => {

@@ -7,6 +7,22 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-11-11
+
+v0.40.0 是 v0.39.3 之后的 **MINOR 功能版本**：安全中心新增 MFA 二维码扫码绑定，GitHub OAuth 全链路生产化（Compose 四变量透传修复、回调超时根因修复、真实绑定回读通过），个人资料页新增第三方账号绑定状态回显。无数据库迁移，不改动计费契约与价格。详见 [release-v0.40.0.md](docs/releases/release-v0.40.0.md)。
+
+### Added
+
+- 安全中心 MFA 设置支持二维码扫码绑定：本地生成、白底黑码、随设置状态清理，保留手动密钥入口；组件、类型、ESLint 与桌面/移动 Playwright 用例通过。
+- `/api/user/self` 新增 `oauth_providers` 字段，覆盖 identities 表与 OAuth 登录 legacy 列两种绑定形态，禁用 provider 的存量绑定仍回显，查询失败返回 503。
+- 个人资料页"第三方账号"按绑定态显示"已绑定"，并消费 `?oauth_bind=success` 弹成功提示、清 URL（保留 history.state 与 hash）。
+
+### Fixed
+
+- 修复 OAuth 回调在外部交换耗尽请求预算后绑定必失败的问题：交换收敛 25s 独立预算，绑定/登录/注册奖励改用脱离请求生命周期的 5s 写 context，两处回调入口同改；隔离回归红→绿，生产 12:22 真实 GitHub 绑定落库且审计 success。
+- 修复管理化备份在 MySQL 上完成日槽后空闲轮询持续误报 409/attention：在已有策略行锁内识别已记录时槽，不再依赖 no-op upsert 的 affected-rows；已成功、失败和不确定任务不重放，下一槽仍正常领取。三库回归及生产验证见 [N2 记录](docs/runbooks/n2-offsite-recovery-2026-11-09.md)。
+- 修复三套 Compose 与对应环境示例不透传 GitHub OAuth 四变量导致宿主配置永远无法生效的问题，部署门禁新增渲染断言（完整 kustomize 门禁仍需补齐）。
+
 ## [0.39.3] - 2026-11-05
 
 v0.39.3 是 v0.39.2 之后的 **PATCH 修复版本**：修复配置毛利告警把全零窗口误报为负毛利、又把净负差额漏报的问题，并恢复后台未定价监控的采集链路（专用服务身份计数 RPC、失败保留上次计数、求值失败告警）。无新增公开 API、数据库迁移或运行配置项，不改动线上售价、采购估价与历史账本；修复已于 2026-11-03 部署生产。详见 [release-v0.39.3.md](docs/releases/release-v0.39.3.md)。

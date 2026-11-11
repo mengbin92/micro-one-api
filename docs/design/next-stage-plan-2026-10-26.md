@@ -1,6 +1,8 @@
 # 下一阶段排期：用户自助、安全认证与计价补齐
 
-> **当前执行入口**。制定：2026-10-26（Asia/Shanghai）。源码基线：`develop@918b56c9` / v0.36.6；比较基线为本地 `new-api@34003e9c2`、`sub2api@ba81c7fd7`。接替 [10 月 20 日计划](next-stage-plan-2026-10-20.md)。本文为研发排期；2026-10-27 A1 已部署生产并验证，真实邮件收件通过；Turnstile 保持关闭，启用时另验。A2（含复核修复及登录权限修复）已部署生产并通过线上验证，强制策略开关关闭，真实外部因子验收保留（见 [A2 验收](../runbooks/a2-security-acceptance-2026-10-27.md)），A3 已实现并合入 `develop`（2026-10-30 B1 部署已更新 Billing/Log/Relay/Identity/Admin/Web，144/145/146 相关字段到位；计价配置 2026-10-31 转启用态，真实来源/价格/付费验收保留，见 [A3 验收](../runbooks/a3-service-tier-acceptance-2026-10-27.md)），A4 已部署并完成关闭态线上验收（默认关闭；真实商户、付款及回调按维护者决定后补，见 [A4 验收](../runbooks/a4-wechat-native-acceptance-2026-10-28.md)），B1 于 2026-10-30 完成部署、2026-10-31 配置转启用态（含追加的忙闲时段计价，真实阈值/价格后补，见 [B1 验收](../runbooks/b1-context-time-pricing-acceptance-2026-10-29.md)），B2 于 2026-10-30 完成原生 Gemini 生产部署及鉴权/拒绝验收（真实来源/SDK/付费验收待外部条件，见 [B2 验收](../runbooks/b2-native-gemini-acceptance-2026-10-30.md)），B3 于 2026-10-30 工程验收通过并部署生产（默认关闭，控制面与私有存储 2026-11-01 接通、定时策略仍关闭，见 [B3 验收](../runbooks/b3-managed-backup-acceptance-2026-10-30.md)、[生产部署证据](../runbooks/evidence/b3-production-deployment-2026-10-30.json) 与 [MinIO 接入记录](../runbooks/b3-minio-enablement-2026-11-01.md)），真实备份与恢复验收待外部条件，既有生产条件继续按原记录保留。
+> **已归档（2026-11-08）**。当前入口为[计价核验、备份恢复与真实用户验收草案](next-stage-plan-2026-11-08.md)，待维护者确认后实施。A1–A4、B1–B4 已完成工程与生产部署，真实验收及外部条件由新入口承接。下文保留历史时点；本轮未重验生产。v0.39.3 已发布，B1 日历已延至 2027-12-31，以下对应执行项已同步。
+
+> **历史计划快照**。制定：2026-10-26（Asia/Shanghai）。源码基线：`develop@918b56c9` / v0.36.6；比较基线为本地 `new-api@34003e9c2`、`sub2api@ba81c7fd7`。接替 [10 月 20 日计划](next-stage-plan-2026-10-20.md)。本文为研发排期；2026-10-27 A1 已部署生产并验证，真实邮件收件通过；Turnstile 保持关闭，启用时另验。A2（含复核修复及登录权限修复）已部署生产并通过线上验证，强制策略开关关闭，真实外部因子验收保留（见 [A2 验收](../runbooks/a2-security-acceptance-2026-10-27.md)），A3 已实现并合入 `develop`（2026-10-30 B1 部署已更新 Billing/Log/Relay/Identity/Admin/Web，144/145/146 相关字段到位；计价配置 2026-10-31 转启用态，真实来源/价格/付费验收保留，见 [A3 验收](../runbooks/a3-service-tier-acceptance-2026-10-27.md)），A4 已部署并完成关闭态线上验收（默认关闭；真实商户、付款及回调按维护者决定后补，见 [A4 验收](../runbooks/a4-wechat-native-acceptance-2026-10-28.md)），B1 于 2026-10-30 完成部署、2026-10-31 配置转启用态（含追加的忙闲时段计价，真实阈值/价格后补，见 [B1 验收](../runbooks/b1-context-time-pricing-acceptance-2026-10-29.md)），B2 于 2026-10-30 完成原生 Gemini 生产部署及鉴权/拒绝验收（真实来源/SDK/付费验收待外部条件，见 [B2 验收](../runbooks/b2-native-gemini-acceptance-2026-10-30.md)），B3 于 2026-10-30 工程验收通过并部署生产（默认关闭，控制面与私有存储 2026-11-01 接通、定时策略仍关闭，见 [B3 验收](../runbooks/b3-managed-backup-acceptance-2026-10-30.md)、[生产部署证据](../runbooks/evidence/b3-production-deployment-2026-10-30.json) 与 [MinIO 接入记录](../runbooks/b3-minio-enablement-2026-11-01.md)），真实备份与恢复验收待外部条件，既有生产条件继续按原记录保留。
 
 > **2026-11-05 完成度复核（线上实测）**：首轮 A1–A4 与第二轮 B1–B4 共 8 个工作包的工程与生产部署全部落地，25 个执行项完成 19 项，剩余 6 项均为外部条件（真实外部因子、真实商户、真实付费来源、生产备份与恢复演练）。本轮复核同时登记四处与旧描述的偏差：B4 已部署并随 v0.39.0 发版；B1 计价配置在生产为启用态（`enabled=true`，version 3，channel 11 / `deepseek-flash`），但该模型近 7 天零请求，尚无真实收费样本；B3 私有 MinIO 与 host worker 已接通而定时策略仍关闭、备份任务为 0；2026-11-03 的计费监控修复已部署生产但未发版。逐项依据见第 7 节。
 
@@ -130,7 +132,7 @@ Passkey 单列 C1，不计入本项。首批接口清单冻结后增加新的敏
 
 完整契约、版本 1/2/3 配置、支持/拒绝矩阵、146 三库迁移和回滚限制见 [B1 冻结契约](b1-context-time-pricing-contract-2026-10-29.md)，实际验证与外部保留项见 [B1 验收](../runbooks/b1-context-time-pricing-acceptance-2026-10-29.md)。工程完成不代表已启用收费；不按示例值改动生产价格、历史账本、契约灰度或付费探测范围。
 
-**2026-11-05 线上核对（只读）**：生产 `ServiceTierPricing` 为 `version:3` / `enabled:true`，配置行最后写入 **2026-10-31 12:38 CST**，`source_kind=channel` / `source_id=11` / `model=deepseek-flash`；含 `time_pricing`（`Asia/Shanghai`，周一至周五 09:00–12:00、14:00–18:00 两段忙时，忙时售价与采购价均为基础价两倍，`holidays` 为空，`calendar_valid_through=2026-12-31`），**未配置 `long_context`**，即长上下文阈值计价仍未启用。Billing/Log/Relay 均为 2026-10-30 之后的镜像，`service_tier` 无法回填为请求值。近 7 天 `deepseek-flash` 请求数 **0**，`billing_pricing_snapshots` 无档位记录，因此「已启用」仅有配置事实、没有计费事实；同期 1,334 条 `service_tier_status=missing` 来自 `glm-5.3` / `kimi-k3`（2026-10-31—11-02），实际档位按契约保持 unknown。维护者需确认该启用是否为有意为之，并在文档中固定口径。
+**2026-11-05 线上核对（只读）**：生产 `ServiceTierPricing` 为 `version:3` / `enabled:true`，配置行最后写入 **2026-10-31 12:38 CST**，`source_kind=channel` / `source_id=11` / `model=deepseek-flash`；含 `time_pricing`（`Asia/Shanghai`，周一至周五 09:00–12:00、14:00–18:00 两段忙时，忙时售价与采购价均为基础价两倍，`holidays` 为空，`calendar_valid_through=2026-12-31`），**未配置 `long_context`**，即长上下文阈值计价仍未启用。Billing/Log/Relay 均为 2026-10-30 之后的镜像，`service_tier` 无法回填为请求值。近 7 天 `deepseek-flash` 请求数 **0**，`billing_pricing_snapshots` 无档位记录，因此「已启用」仅有配置事实、没有计费事实；同期 1,334 条 `service_tier_status=missing` 来自 `glm-5.3` / `kimi-k3`（2026-10-31—11-02），实际档位按契约保持 unknown。维护者需确认该启用是否为有意为之，并在文档中固定口径。2026-11-05 已按国务院办公厅 2026/2027 年节假日安排把 `holidays` 补齐为 62 个日期、日历延至 2027-12-31，法定节假日全天按基础价；写入走管理端 owner 路径（revision 1→2，三条审计），未改忙时窗口与价格，详见 [节假日日历对齐记录](../runbooks/b1-holiday-calendar-2026-11-05.md)。
 
 ### B2：原生 Gemini 文本与函数调用入站
 
@@ -179,7 +181,7 @@ Admin 为公告 owner，新增 Admin 148 三库迁移与最小运行权限模板
 - **分层**：service 转 DTO/DO，biz 定义模型/用例/repo，data 实现存储与外部客户端；长期客户端共享，BFF 聚合不能接管身份或资金 owner。跨服务复用沿用现有 domain 边界。
 - **契约与迁移**：proto/config/Wire 按 `make api`、`make config`、`make all` 生成；新增迁移覆盖 MySQL/PostgreSQL/SQLite，并同步 IAM/RBAC 契约与前端类型。工时包含这些工作。
 - **验证**：每个切片运行受影响层的有意义测试；认证重放/会话、资金快照/幂等、跨服务 HTTP/gRPC、涉及的真实三库迁移和浏览器关键流程列入验收。形成发布候选时执行适用 `make verify` 与相关 E2E；已有通过结果不无故重复长测。
-- **部署候选**：记录受影响服务、迁移顺序、兼容窗口与回滚限制。生产 Linux/amd64 镜像在本机/CI 构建；前端按宿主机 `web/dist` 单独发布。截至 2026-11-05：A1–A4 与 B1–B4 均已完成工程、生产部署；v0.38.0（B1–B3）、v0.39.0（B4）、v0.39.1 与 v0.39.2（PATCH）已打标发布；2026-11-03 的计费监控修复已部署生产但仍在 `[Unreleased]`，待补 PATCH 发版。未创建自动任务。
+- **部署候选**：记录受影响服务、迁移顺序、兼容窗口与回滚限制。生产 Linux/amd64 镜像在本机/CI 构建；前端按宿主机 `web/dist` 单独发布。截至 2026-11-05：A1–A4 与 B1–B4 均已完成工程、生产部署；v0.38.0（B1–B3）、v0.39.0（B4）、v0.39.1 与 v0.39.2（PATCH）已打标发布；2026-11-03 的计费监控修复已部署生产，2026-11-05 随 v0.39.3 PATCH 打标发布。未创建自动任务。
 - **状态**：统一使用“未开始 / 进行中 / 工程验收通过、待外部验证 / 可发布候选 / 已发布 / 已部署 / 暂缓”，分别登记证据。不将本地通过、实际收费与生产验收合并为一个完成勾选。
 
 ## 7. 前两周执行清单与排期调整
@@ -207,7 +209,7 @@ D 为从 2026-10-27 起计的工作日，表示工程安排，不替代外部验
 - [x] A4 生产关闭态部署验收（2026-10-28）：Billing/Identity/Admin/Web 已更新，补既有 Billing 144 号兼容迁移；真实管理员登录、渠道仅支付宝、订单读取及公网 Web 通过，其他容器未重启。真实微信付款与回调仍待外部验收。
 
 - [x] B1 生产关闭态部署验收（2026-10-30）：本机跨构建后更新 Billing/Log/Relay/Identity/Admin/Web，Billing146 和既有 Log145 已落库；健康、运行账号权限、gRPC、公网 Web/鉴权通过，其余16个容器未变（[证据](../runbooks/evidence/b1-production-deployment-2026-10-30.json)）。
-- [ ] B1 真实收费验收（配置已启用）：2026-11-05 核对生产 `ServiceTierPricing` 为 `version:3` / `enabled:true`，含忙闲时段（工作日两段，忙时双倍、节假日为空、日历至 2026-12-31），未配 `long_context`；`deepseek-flash` 近 7 天 0 请求，缺真实收费样本。售价与采购价、节假日日历及付费探测仍待维护者确认，并需明确该启用态是否为有意为之。
+- [ ] B1 真实收费验收（配置已启用）：2026-11-05 核对时目标模型近 7 天 0 请求，缺真实收费样本，未配置 `long_context`；同日已通过 owner 补齐节假日并把日历延至 2027-12-31（[记录](../runbooks/b1-holiday-calendar-2026-11-05.md)）。售价/采购估价确认、启用意图及真实付费验收由新计划 N1 承接，不再列空日历为待办。
 - [x] B2 工程验收（2026-10-30）：原生 Gemini 文本/函数 JSON/SSE、鉴权/映射/计费/日志、三库真实 owner 链路及完整门禁通过（[记录](../runbooks/b2-native-gemini-acceptance-2026-10-30.md)）。
 - [x] B2 生产部署验收（2026-10-30）：仅 Relay 更新，14 项公网检查、源码/镜像/环境及 20 个其他容器不变性通过（[证据](../runbooks/evidence/b2-production-deployment-2026-10-30.json)）。
 - [ ] B2 外部验证：实际来源/模型、SDK 版本与真实付费用量尚未执行；不扩大既有试点，不改历史账本。
@@ -220,6 +222,6 @@ D 为从 2026-10-27 起计的工作日，表示工程安排，不替代外部验
 - [x] B4 工程验收（2026-11-02）：本人模型/聚合路由状态、定向/定时公告及版本化已读、管理页、148 三库迁移及真实最小权限、双协议和浏览器验收、完整门禁与 ocr 复核整改通过。
 - [x] B4 生产部署验收（2026-11-02）：Admin 148 迁移与运行账号权限 → Channel/Admin → 宿主机 Web 按序上线（镜像 `deploy-20261102-111927-377e9028`，源码 `377e9028`），保留回滚锚点；2026-11-05 复核匿名访问 `/api/user/model-availability`、`/api/user/announcements`、`/api/admin/announcements` 均 401、`/healthz` 200。已随 v0.39.0 发版。
 - [ ] B4 真实旅程补验：线上 `announcements` 与 `announcement_reads` 仍为 0，管理员创建/定时/下架公告与真实用户已读、过期空页旅程需用维护者登录态在浏览器补走一遍。
-- [ ] 计费监控修复发版（2026-11-03）：两处修复已随 `deploy-20261103-122545-629d5158` 上线（channel-service → admin-api → billing-service，RestartCount=0），仍停留在 `[Unreleased]`；发布说明已按 PATCH 起草为 [v0.39.3](../releases/release-v0.39.3.md)，待合入 main 并打标。
+- [x] 计费监控修复发版：2026-11-03 已部署；2026-11-05 补齐 [v0.39.3](../releases/release-v0.39.3.md) 发布工件，合入 `main@0b06f6fd` 并打标；无需重复部署。
 
 **2026-11-05 线上快照（只读）**：23 个容器在跑，admin-api / channel-service / billing-service 为 `deploy-20261103-122545-629d5158`，identity-service 为 2026-10-30 镜像，relay-gateway 为 `b2-20261030`，log-service 为 `b1-20261030`；Prometheus 采集目标 0 掉线；唯一活动告警为 `NegativeGrossMargin`（pending），系缓存读取售价 $0.006/百万 token 低于采购估价 $0.007/百万 token 的真实配置价差，属运营定价决策，不是监控误报；近 24 小时 4,019 条请求日志、近 7 天 3,512 条账本，三服务于修复后无 error 级日志与 panic。支付侧仍有 `ALIPAY_FORM_URL` 指向支付宝沙箱网关，真实资金链路未打通。

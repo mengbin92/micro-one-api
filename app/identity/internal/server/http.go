@@ -79,6 +79,9 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 	srv := xhttp.NewServer(
 		khttp.RequestDecoder(iamdto.DecodeRequest), khttp.ResponseEncoder(iamdto.EncodeResponse),
 		khttp.Address(addr),
+		// OAuth fetches external identity data before committing the account transaction.
+		// Phase budgets must fit inside this bound: 25s exchange + 5s detached write.
+		khttp.Timeout(30*time.Second),
 		khttp.Filter(appmiddleware.RequestID),
 		khttp.Filter(publicIdentityRateLimit(uc)),
 	)
@@ -1154,7 +1157,15 @@ func handleSelf(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase)
 			writeJSON(w, http.StatusUnauthorized, apiResponse{Success: false, Message: "unauthorized"})
 			return
 		}
-		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: userToMap(user)})
+		// Stored bindings remain visible when their provider is disabled.
+		bound, err := uc.BoundOAuthProviders(r.Context(), user, []string{"github", "google", "oidc", "lark", "wechat", "telegram"})
+		if err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "OAuth binding state temporarily unavailable"})
+			return
+		}
+		data := userToMap(user)
+		data["oauth_providers"] = bound
+		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: data})
 	case http.MethodPut:
 		var req struct {
 			Username        string  `json:"username"`
@@ -1439,12 +1450,17 @@ func handleOneAPIOAuthBind(w http.ResponseWriter, r *http.Request, registry *oau
 		writeJSON(w, http.StatusUnauthorized, apiResponse{Success: false, Message: "invalid token"})
 		return
 	}
-	userInfo, err := provider.Exchange(r.Context(), code)
+	exchangeCtx, exchangeCancel := context.WithTimeout(r.Context(), 25*time.Second)
+	defer exchangeCancel()
+	userInfo, err := provider.Exchange(exchangeCtx, code)
 	if err != nil {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "oauth provider error"})
 		return
 	}
-	user, err := uc.BindOAuthIdentity(r.Context(), snapshot.UserID, userInfo.Provider, userInfo.ProviderID)
+	// Persist the consented binding within a bounded, independent write phase.
+	writeCtx, writeCancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+	defer writeCancel()
+	user, err := uc.BindOAuthIdentity(writeCtx, snapshot.UserID, userInfo.Provider, userInfo.ProviderID)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			authz.WriteHTTPError(w, err)
@@ -1902,13 +1918,18 @@ func handleOAuthCallback(w http.ResponseWriter, r *http.Request, provider oauth.
 		}
 	}
 
-	userInfo, err := provider.Exchange(r.Context(), code)
+	// A spent caller context must not discard a successful, consented identity exchange.
+	exchangeCtx, exchangeCancel := context.WithTimeout(r.Context(), 25*time.Second)
+	defer exchangeCancel()
+	userInfo, err := provider.Exchange(exchangeCtx, code)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "oauth provider error"})
 		return
 	}
+	writeCtx, writeCancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+	defer writeCancel()
 	if bindSnapshot != nil {
-		if _, err := uc.BindOAuthIdentity(r.Context(), bindSnapshot.UserID, userInfo.Provider, userInfo.ProviderID); err != nil {
+		if _, err := uc.BindOAuthIdentity(writeCtx, bindSnapshot.UserID, userInfo.Provider, userInfo.ProviderID); err != nil {
 			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 			return
 		}
@@ -1919,7 +1940,7 @@ func handleOAuthCallback(w http.ResponseWriter, r *http.Request, provider oauth.
 	if !userInfo.EmailVerified {
 		userInfo.Email = ""
 	}
-	user, token, created, err := uc.OAuthLogin(r.Context(), userInfo.Provider, userInfo.ProviderID, userInfo.Username, userInfo.Email, userInfo.DisplayName)
+	user, token, created, err := uc.OAuthLogin(writeCtx, userInfo.Provider, userInfo.ProviderID, userInfo.Username, userInfo.Email, userInfo.DisplayName)
 	var mfa *biz.MFARequired
 	if errors.As(err, &mfa) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -1932,7 +1953,7 @@ func handleOAuthCallback(w http.ResponseWriter, r *http.Request, provider oauth.
 		return
 	}
 	if created {
-		creditRegistrationRewards(r.Context(), user, uc, billingClient, userInfo.EmailVerified)
+		creditRegistrationRewards(writeCtx, user, uc, billingClient, userInfo.EmailVerified)
 	}
 
 	if strings.Contains(r.Header.Get("Accept"), "text/html") {

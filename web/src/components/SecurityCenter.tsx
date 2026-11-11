@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ShieldCheck, KeyRound } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { apiClient, clearUserSession } from '@/lib/api';
 import { requestSecurityVerification, showSecurityCompletion } from '@/lib/security-verification';
 import { getApiErrorMessage } from '@/lib/api-error';
@@ -62,7 +63,16 @@ export function SecurityCenter() {
       {status.data && !status.data.configured && <p className="text-sm text-muted-foreground">{t('管理员尚未配置认证密钥。')}</p>}
       {status.data?.enabled && <p className="flex items-center gap-2 text-sm text-muted-foreground"><KeyRound className="size-4" />{t('剩余恢复码：{count}', { count: status.data.recovery_codes_remaining ?? 0 })}</p>}
       {!setup && status.data?.configured && <div className="flex flex-wrap gap-2">{status.data.enabled ? <><Button variant="outline" disabled={busy} onClick={() => void manage('recovery')}>{t('重新生成恢复码')}</Button><Button variant="destructive" disabled={busy} onClick={() => void manage('disable')}>{t('禁用双重认证')}</Button></> : <Button disabled={busy} onClick={() => void manage('setup')}>{t('设置双重认证')}</Button>}</div>}
-      {setup && <form className="space-y-4 rounded-xl border bg-muted/20 p-4" onSubmit={event => { event.preventDefault(); void manage('confirm'); }}><p className="text-sm text-muted-foreground">{t('在验证器中手动添加以下密钥，再输入六位验证码。')}</p><code className="block break-all rounded-lg bg-background p-3 font-mono text-sm tracking-wide select-all">{setup.secret}</code><a className="inline-block text-sm text-primary underline" href={setup.otpauth_uri}>{t('在验证器应用中打开')}</a><div className="space-y-2"><Label htmlFor="enrollment-code">{t('验证器验证码')}</Label><Input id="enrollment-code" value={code} onChange={event => setCode(event.target.value)} inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" required /></div><div className="flex gap-2"><Button type="submit" disabled={busy}>{t('验证并启用')}</Button><Button type="button" variant="outline" disabled={busy} onClick={() => { setSetup(undefined); setCode(''); }}>{t('取消')}</Button></div></form>}
+      {setup && <form className="space-y-4 rounded-xl border bg-muted/20 p-4" onSubmit={event => { event.preventDefault(); void manage('confirm'); }}>
+        <p className="text-sm text-muted-foreground">{t('使用验证器扫描二维码，或手动添加以下密钥，再输入六位验证码。')}</p>
+        <div className="mx-auto w-fit max-w-full rounded-lg bg-white p-3">
+          <QRCodeSVG value={setup.otpauth_uri} size={220} marginSize={4} bgColor="#ffffff" fgColor="#000000" title={t('验证器绑定二维码')} role="img" aria-label={t('验证器绑定二维码')} className="h-auto max-w-full" />
+        </div>
+        <code className="block break-all rounded-lg bg-background p-3 font-mono text-sm tracking-wide select-all">{setup.secret}</code>
+        <a className="inline-block text-sm text-primary underline" href={setup.otpauth_uri}>{t('在验证器应用中打开')}</a>
+        <div className="space-y-2"><Label htmlFor="enrollment-code">{t('验证器验证码')}</Label><Input id="enrollment-code" value={code} onChange={event => setCode(event.target.value)} inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" required /></div>
+        <div className="flex gap-2"><Button type="submit" disabled={busy}>{t('验证并启用')}</Button><Button type="button" variant="outline" disabled={busy} onClick={() => { setSetup(undefined); setCode(''); }}>{t('取消')}</Button></div>
+      </form>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
     </CardContent>

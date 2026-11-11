@@ -240,14 +240,18 @@ func (r *repo) Claim(ctx context.Context, now time.Time) (*b.Job, error) {
 				return e
 			}
 			id := fmt.Sprintf("schedule-%d-%d", p.Revision, now.Unix()/(int64(p.IntervalHours)*3600))
+			// The policy lock serializes this check; MySQL no-op upserts can report one affected row.
+			var existing int64
+			if err := tx.Model(&jobRow{}).Where("id = ?", id).Count(&existing).Error; err != nil {
+				return err
+			}
+			if existing != 0 {
+				return nil
+			}
 			raw, _ := jsonx.Marshal(p)
 			row = jobRow{ID: id, Status: "queued", Trigger: "schedule", Actor: "system/backup-scheduler", Reason: "scheduled backup", CreatedAt: now.Unix(), Policy: string(raw)}
-			result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
-			if result.Error != nil {
-				return result.Error
-			}
-			if result.RowsAffected == 0 {
-				return nil
+			if err := tx.Create(&row).Error; err != nil {
+				return err
 			}
 		} else if err != nil {
 			return err

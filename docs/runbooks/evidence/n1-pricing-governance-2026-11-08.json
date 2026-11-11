@@ -1,0 +1,362 @@
+{
+  "status": "completed_and_verified",
+  "production_writes_executed": true,
+  "authorization": "Maintainer confirmed procurement price equals sale, accepted only the 3 recorded rounding examples, and requested obsolete ratio/disabled configuration cleanup.",
+  "preflight_utc": "2026-11-08 09:50:18.137000",
+  "authentication_result": {
+    "initial_existing_credential_http_status": 401,
+    "maintainer_provided_session_http_status": 200,
+    "credential_recorded": false
+  },
+  "accepted_rounding": {
+    "request_sha_prefixes": [
+      "eb7f7d5422fe",
+      "dd6e82aab33b",
+      "b30d72459f13"
+    ],
+    "decimal_delta_quota": -3,
+    "decision": "accepted; no historical adjustment or algorithm change in this task"
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/admin/upstream-costs",
+      "body": {
+        "source_kind": "model",
+        "public_model_id": "qwen3.8-flash",
+        "expected_revision": 5,
+        "reason": "N1 2026-11-08: maintainer confirmed qwen3.8-flash procurement equals sale; remove only obsolete glm-5.2 ratio and disabled-account references",
+        "input_price": 1.5e-07,
+        "output_price": 4.7e-07,
+        "cache_read_price": 1.6e-08
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/option",
+      "body": {
+        "values": {
+          "ModelPrice": "{\"k3\":{\"input_price\":3e-06,\"output_price\":1.5e-05,\"cache_read_price\":3e-07},\"glm-5.3\":{\"input_price\":1.4e-06,\"output_price\":4.4e-06,\"cache_read_price\":2.6e-07},\"kimi-k3\":{\"input_price\":3e-06,\"output_price\":1.5e-05,\"cache_read_price\":3e-07},\"minimax-m3\":{\"input_price\":3e-07,\"output_price\":1.2e-06,\"cache_read_price\":6e-08},\"qwen3.7-max\":{\"input_price\":2.5e-06,\"output_price\":7.5e-06,\"cache_read_price\":2.5e-07},\"glm-5.3-flash\":{\"input_price\":7.5e-08,\"output_price\":2.5e-07,\"cache_read_price\":1.5e-08},\"qwen3.8-flash\":{\"input_price\":1.5e-07,\"output_price\":4.7e-07,\"cache_read_price\":1.6e-08},\"deepseek-flash\":{\"input_price\":3e-07,\"output_price\":1.2e-06,\"cache_read_price\":6e-08},\"step-3.7-flash\":{\"input_price\":2e-07,\"output_price\":1.15e-06,\"cache_read_price\":4e-08},\"step-5-preview\":{\"input_price\":2e-07,\"output_price\":1.15e-06,\"cache_read_price\":4e-08},\"deepseek-v4-pro\":{\"input_price\":1e-07,\"output_price\":1e-07},\"deepseek-v4-pro-0813\":{\"input_price\":1.32e-06,\"output_price\":3.96e-06,\"cache_read_price\":4.4e-08},\"deepseek-v4-flash-0731\":{\"input_price\":4.4e-07,\"output_price\":1.32e-06,\"cache_read_price\":1.4e-08},\"deepseek-v4.1-flash-1017\":{\"input_price\":3e-07,\"output_price\":1.2e-06,\"cache_read_price\":6e-09}}",
+          "ModelRatio": "{\"deepseek-flash\":0.003,\"deepseek-v4-flash-0731\":0.0044,\"deepseek-v4-pro\":0.001,\"deepseek-v4-pro-0813\":0.0132,\"deepseek-v4.1-flash-1017\":0.003,\"glm-5.3\":0.014,\"glm-5.3-flash\":0.00075,\"k3\":0.03,\"kimi-k3\":0.03,\"minimax-m3\":0.003,\"qwen3.7-max\":0.025,\"qwen3.8-flash\":0.0015,\"step-3.7-flash\":0.002,\"step-5-preview\":0.002}",
+          "CompletionRatio": "{\"deepseek-flash\":4,\"deepseek-v4-flash-0731\":3,\"deepseek-v4-pro\":1,\"deepseek-v4-pro-0813\":3,\"deepseek-v4.1-flash-1017\":4,\"glm-5.3\":3.142857143,\"glm-5.3-flash\":3.333333333,\"k3\":5,\"kimi-k3\":5,\"minimax-m3\":4,\"qwen3.7-max\":3,\"qwen3.8-flash\":3.133333333,\"step-3.7-flash\":5.75,\"step-5-preview\":5.75}"
+        },
+        "expected_revisions": {
+          "ModelPrice": "10",
+          "ModelRatio": "5",
+          "CompletionRatio": "5"
+        },
+        "reason": "N1 2026-11-08: maintainer confirmed qwen3.8-flash procurement equals sale; remove only obsolete glm-5.2 ratio and disabled-account references"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/subscription-accounts/4",
+      "body": {
+        "id": 4,
+        "models": "glm-5.3,glm-5.3-flash",
+        "expected_revision": 2,
+        "reason": "N1 2026-11-08: maintainer confirmed qwen3.8-flash procurement equals sale; remove only obsolete glm-5.2 ratio and disabled-account references"
+      }
+    }
+  ],
+  "expected_differences": {
+    "UpstreamModelPrice": "add only qwen3.8-flash; input/output/cache-read equal ModelPrice",
+    "ModelRatio": "remove only glm-5.2",
+    "CompletionRatio": "remove only glm-5.2",
+    "ModelPrice": "byte-for-byte value unchanged; revision increases through three-map owner batch",
+    "subscription_accounts/4/models": "glm-5.2,glm-5.3,glm-5.3-flash -> glm-5.3,glm-5.3-flash",
+    "subscription_account_abilities": "owner transaction regenerates account 4 abilities without glm-5.2; retained models remain disabled"
+  },
+  "before_revisions": {
+    "CompletionRatio": 5,
+    "ModelPrice": 10,
+    "ModelRatio": 5,
+    "ServiceTierPricing": 2,
+    "UpstreamModelPrice": 5
+  },
+  "before_account": {
+    "id": 4,
+    "models": "glm-5.2,glm-5.3,glm-5.3-flash",
+    "status": 2,
+    "refresh_pending": 0,
+    "credential_revision": 2
+  },
+  "historical_glm52_baseline": {
+    "last": "2026-08-17 09:13:23.523000",
+    "rows": 23294,
+    "first": "2026-07-22 04:35:11.358000",
+    "amount": -24061467,
+    "upstream": 0
+  },
+  "candidate_sha256": "7a0647ae7b45586e2a730adc1a1ac9da03f26969b186ca50b11ca708db23b1cc",
+  "runtime_code_changed": false,
+  "three_database_tests_executed": true,
+  "receipts": [
+    {
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T09:51:51.580007+00:00",
+      "request_id": "n1-20261108-0-e8cc85bb8568",
+      "method": "POST",
+      "path": "/api/admin/upstream-costs"
+    },
+    {
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T09:53:42.212315+00:00",
+      "request_id": "n1-20261108-1-3483b8e6b3f4",
+      "method": "PUT",
+      "path": "/api/option"
+    },
+    {
+      "http_status": 200,
+      "success": true,
+      "utc": "2026-11-08T09:53:53.179569+00:00",
+      "request_id": "n1-20261108-2-bfb043a5cbc5",
+      "method": "PUT",
+      "path": "/api/subscription-accounts/4"
+    }
+  ],
+  "after_readback_utc": "2026-11-08 09:54:12.658000",
+  "after_revisions": {
+    "CompletionRatio": 6,
+    "ModelPrice": 11,
+    "ModelRatio": 6,
+    "ServiceTierPricing": 2,
+    "UpstreamModelPrice": 6
+  },
+  "after_account": {
+    "id": 4,
+    "models": "glm-5.3,glm-5.3-flash",
+    "status": 2,
+    "refresh_pending": 0,
+    "credential_revision": 3
+  },
+  "after_abilities": [
+    {
+      "model": "glm-5.3",
+      "account": 4,
+      "enabled": 0
+    },
+    {
+      "model": "glm-5.3-flash",
+      "account": 4,
+      "enabled": 0
+    }
+  ],
+  "historical_glm52_unchanged": true,
+  "after_history": {
+    "last": "2026-08-17 09:13:23.523000",
+    "rows": 23294,
+    "first": "2026-07-22 04:35:11.358000",
+    "amount": -24061467,
+    "upstream": 0
+  },
+  "model_price_value_byte_identical": true,
+  "service_tier_option_unchanged": true,
+  "success_audit_count": 12,
+  "success_audits": [
+    {
+      "actor": 1,
+      "reason": "N1 2026-11-08: maintainer confirmed qwen3.8-flash procurement equals sale; remove only obsolete glm-5.2 ratio and disabled-account references",
+      "result": "success",
+      "schema": "oneapi_admin",
+      "event_id": "52416fea6d07b8c5f6231623f7ba8bbc",
+      "resource": "35",
+      "operation": "system.option.update",
+      "occurred_at": 1794131511559
+    },
+    {
+      "actor": 1,
+      "reason": "N1 2026-11-08: maintainer confirmed qwen3.8-flash procurement equals sale; remove only obsolete glm-5.2 ratio and disabled-account references",
+      "result": "success",
+      "schema": "oneapi_admin",
+      "event_id": "965a3e5622f0e4503fd993d747406852",
+      "resource": "35",
+      "operation": "system.option.pricing.update",
+      "occurred_at": 1794131511564
+    },
+    {
+      "actor": 1,
+      "reason": "N1 2026-11-08: maintainer confirmed qwen3.8-flash procurement equals sale; remove only obsolete glm-5.2 ratio and disabled-account references",
+      "result": "success",
+      "schema": "oneapi_admin",
+      "event_id": "e69867df921265c036f8706467b665f7",
+      "resource": "447",
+      "operation": "billing.upstream_cost.create",
+      "occurred_at": 1794131511575
+    },
+    {
+      "actor": 1,
+      "reason": "N1 2026-11-08: maintainer confirmed qwen3.8-flash procurement equals sale; remove only obsolete glm-5.2 ratio and disabled-account references",
+      "result": "success",
+      "schema": "oneapi_admin",
+      "event_id": "175e5db304aede1929c5ee03eae2b39a",
+      "resource": "3",
+      "operation": "system.option.update",
+      "occurred_at": 1794131622201
+    },
+    {
+      "actor": 1,
+      "reason": "N1 2026-11-08: maintainer confirmed qwen3.8-flash procurement equals sale; remove only obsolete glm-5.2 ratio and disabled-account references",
+      "result": "success",
+      "schema": "oneapi_admin",
+      "event_id": "5137227c169eebe4f4be205e2a2ba21b",
+      "resource": "3",
+      "operation": "system.option.pricing.update",
+      "occurred_at": 1794131622201
+    },
+    {
+      "actor": 1,
+      "reason": "N1 2026-11-08: maintainer confirmed qwen3.8-flash procurement equals sale; remove only obsolete glm-5.2 ratio and disabled-account references",
+      "result": "success",
+      "schema": "oneapi_admin",
+      "event_id": "3ab4462bf62011a1f16212ecb9b4104a",
+      "resource": "0",
+      "operation": "billing.pricing.update",
+      "occurred_at": 1794131622203
+    },
+    {
+      "actor": 1,
+      "reason": "N1 2026-11-08: maintainer confirmed qwen3.8-flash procurement equals sale; remove only obsolete glm-5.2 ratio and disabled-account references",
+      "result": "success",
+      "schema": "oneapi_admin",
+      "event_id": "b9f534e0884139d47af6a3ef1bdec9ee",
+      "resource": "1",
+      "operation": "system.option.pricing.update",
+      "occurred_at": 1794131622204
+    },
+    {
+      "actor": 1,
+      "reason": "N1 2026-11-08: maintainer confirmed qwen3.8-flash procurement equals sale; remove only obsolete glm-5.2 ratio and disabled-account references",
+      "result": "success",
+      "schema": "oneapi_admin",
+      "event_id": "ea3a2f322aca7d89ed87bcd1a862a545",
+      "resource": "1",
+      "operation": "system.option.update",
+      "occurred_at": 1794131622204
+    },
+    {
+      "actor": 1,
+      "reason": "N1 2026-11-08: maintainer confirmed qwen3.8-flash procurement equals sale; remove only obsolete glm-5.2 ratio and disabled-account references",
+      "result": "success",
+      "schema": "oneapi_admin",
+      "event_id": "d943d9b3819717f056a7fbec2cb47493",
+      "resource": "2",
+      "operation": "system.option.update",
+      "occurred_at": 1794131622206
+    },
+    {
+      "actor": 1,
+      "reason": "N1 2026-11-08: maintainer confirmed qwen3.8-flash procurement equals sale; remove only obsolete glm-5.2 ratio and disabled-account references",
+      "result": "success",
+      "schema": "oneapi_admin",
+      "event_id": "72bda6ad5d616d11282f01ccbc7da670",
+      "resource": "2",
+      "operation": "system.option.pricing.update",
+      "occurred_at": 1794131622207
+    },
+    {
+      "actor": 1,
+      "reason": "N1 2026-11-08: maintainer confirmed qwen3.8-flash procurement equals sale; remove only obsolete glm-5.2 ratio and disabled-account references",
+      "result": "success",
+      "schema": "oneapi_admin",
+      "event_id": "cd47a38f3f3f2bbf6613beb416ca6970",
+      "resource": "0",
+      "operation": "billing.pricing.update",
+      "occurred_at": 1794131622208
+    },
+    {
+      "actor": 1,
+      "reason": "N1 2026-11-08: maintainer confirmed qwen3.8-flash procurement equals sale; remove only obsolete glm-5.2 ratio and disabled-account references",
+      "result": "success",
+      "schema": "oneapi_channel",
+      "event_id": "f0a9634c4cc2829e4df8972dfcb43feb",
+      "resource": "4",
+      "operation": "channel.account.update",
+      "occurred_at": 1794131633150
+    }
+  ],
+  "owner_readback_http_statuses": {
+    "/api/option": 200,
+    "/api/subscription-accounts/4": 200,
+    "/api/admin/upstream-costs": 200
+  },
+  "qwen_upstream_cost_resource_id": 447,
+  "health": {
+    "containers": {
+      "admin-api": {
+        "running": true,
+        "status": "running",
+        "restart_count": 0,
+        "started_at": "2026-11-03T04:26:32.836182252Z"
+      },
+      "channel-service": {
+        "running": true,
+        "status": "running",
+        "restart_count": 0,
+        "started_at": "2026-11-03T04:26:11.840911117Z"
+      },
+      "billing-service": {
+        "running": true,
+        "status": "running",
+        "restart_count": 0,
+        "started_at": "2026-11-03T04:26:59.026553346Z"
+      },
+      "relay-gateway": {
+        "running": true,
+        "status": "running",
+        "restart_count": 0,
+        "started_at": "2026-10-30T02:31:57.915267926Z"
+      }
+    },
+    "metrics": [
+      {
+        "name": "micro_one_api_model_unpriced_routed",
+        "source": "channel",
+        "sample": [
+          1794131673.599,
+          "0"
+        ]
+      },
+      {
+        "name": "micro_one_api_model_unpriced_routed",
+        "source": "subscription",
+        "sample": [
+          1794131673.599,
+          "0"
+        ]
+      },
+      {
+        "name": "micro_one_api_model_unpriced_routed_evaluation_success",
+        "source": null,
+        "sample": [
+          1794131673.599,
+          "1"
+        ]
+      },
+      {
+        "name": "micro_one_api_model_unpriced_routed_last_success_timestamp_seconds",
+        "source": null,
+        "sample": [
+          1794131673.599,
+          "1794131613.0726347"
+        ]
+      }
+    ]
+  },
+  "assertions_passed": [
+    "only qwen3.8-flash procurement entry added",
+    "only glm-5.2 removed from each legacy ratio map",
+    "sale option bytes unchanged; version increment is batch metadata",
+    "only glm-5.2 removed from disabled account 4 model list and abilities",
+    "all 23294 historical glm-5.2 consumption rows aggregate unchanged",
+    "3 successful HTTP receipts and 12 actor-1 success audits",
+    "all 4 affected/request-path services remain running with restart_count=0"
+  ],
+  "subsequent_three_database_regression": {
+    "status": "passed",
+    "evidence": "n1-pricing-three-db-2026-11-08.json",
+    "paid_calls": 0
+  }
+}

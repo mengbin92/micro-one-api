@@ -8,7 +8,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.39.3 发布公告](./docs/releases/release-v0.39.3.md)（配置毛利告警全零误报与净负差额漏报修复、后台未定价监控采集链路恢复；生产已于 11-03 部署） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.39.3)
+> 📣 **最新发布**：[v0.40.0 发布公告](./docs/releases/release-v0.40.0.md)（MFA 二维码绑定、GitHub OAuth 生产化、第三方账号绑定状态回显；生产已于 11-11 部署） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.40.0)
 
 ## 功能概览
 
@@ -186,6 +186,7 @@ make web-dist
 
 ## 发布与升级
 
+- [v0.40.0](./docs/releases/release-v0.40.0.md)：MFA 二维码扫码绑定、GitHub OAuth 全链路生产化（Compose 透传修复、回调超时根因修复、真实绑定回读通过）、资料页第三方账号绑定状态回显；无迁移，不改动计费契约；生产已于 11-11 部署。
 - [v0.39.3](./docs/releases/release-v0.39.3.md)：修复配置毛利告警的全零误报与净负差额漏报，恢复后台未定价监控的专用服务身份统计链路并补失败/过期告警；无新增 API、迁移或配置项，不改动售价与历史账本；生产已于 11-03 部署。
 - [v0.39.2](./docs/releases/release-v0.39.2.md)：修复模型页配价后需在管理价格页再次保存的问题，直接发布正式价格并刷新管理/公开价格缓存；保留独立售价与受限价格，异常发布明确提示重试。无新增 API 或迁移；生产已更新验收。
 - [v0.39.1](./docs/releases/release-v0.39.1.md)：修复备份 profile writer 的停写与恢复覆盖、拓扑遗漏拒绝及策略锁定读权限，归档私有 MinIO 配置与生产证据。无新增 API 或迁移；定时备份仍关闭，生产备份和恢复演练保留。

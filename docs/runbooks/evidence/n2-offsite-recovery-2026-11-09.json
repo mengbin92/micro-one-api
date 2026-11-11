@@ -1,0 +1,606 @@
+{
+  "date": "2026-11-09",
+  "timezone": "Asia/Shanghai",
+  "scope": "N2 direct offsite private S3, real production archive and isolated restore",
+  "status": "daily_observation_pending",
+  "business_code_changed": true,
+  "application_images_redeployed": false,
+  "storage": {
+    "directory": "/opt/micro-one-api-backup",
+    "private_tls": true,
+    "certificate_verification": true,
+    "production_only_firewall": true,
+    "admin_worker_credential_separation": true,
+    "worker_prefix_scoped": true,
+    "anonymous_object_access_denied": true,
+    "image_content_config_equal_to_reviewed_existing_image": true,
+    "memory_limit_bytes": 268435456,
+    "post_deploy_healthy": true,
+    "oom_killed": false,
+    "free_bytes_after_two_archives": 2354438144,
+    "tls_leaf_not_after_cst": "2027-11-09 12:13:43",
+    "existing_local_storage_preserved": true,
+    "versioning_enabled": false,
+    "stale_uploads_expiry": "24h",
+    "stale_uploads_cleanup_interval": "6h",
+    "incomplete_uploads_observed": 0,
+    "stale_upload_deletion_waited": false
+  },
+  "manual_backup": {
+    "id": "n2-production-20261109-first",
+    "status": "succeeded",
+    "created_at": "1794197960",
+    "started_at": "1794197973",
+    "finished_at": "1794198048",
+    "bytes": "32667974",
+    "sha256": "6df97c24002cfe72794685b549702b05382a1df92303314b89095a2f2ca21d3e",
+    "error_code": ""
+  },
+  "manual_writer_resume": {
+    "container_ids_and_images_unchanged": true,
+    "all_11_original_writer_and_redis_containers_running": true,
+    "sampled_interruption_upper_bound_seconds": 45,
+    "resume_journal_exists": false
+  },
+  "external_recovery": {
+    "production_control_database_required": false,
+    "catalog_entries_verified": 2,
+    "archive_sha256_verified": true,
+    "age_authentication_and_all_manifest_files_verified": true,
+    "schema_count": 9,
+    "manifest_files": 24,
+    "payload_bytes": 299837819,
+    "sql_compare": {
+      "sql_data_tables_compared": 88,
+      "insert_payload_equal": true,
+      "different_tables": []
+    },
+    "archived_runtime_keys_match_live": {
+      "JWT_SECRET_KEY": true,
+      "TOKEN_HASH_KEY": true,
+      "IDENTITY_MFA_ENCRYPTION_KEY": true,
+      "INITIAL_ADMIN_PASSWORD": true,
+      "CHANNEL_ENCRYPTION_KEY": true
+    },
+    "owner_checks": {
+      "isolated_mfa_enrollment_decryption_totp_recovery_replay": true,
+      "isolated_positive_reservation_amount": 100,
+      "isolated_reserve_replay_release_twice_wallet_exact": true,
+      "isolated_token_hmac_with_recovered_key": true,
+      "no_production_or_upstream_connections": true,
+      "original_owner_grants_replayed": true,
+      "original_session_valid": true,
+      "real_channel_credentials_owner_verified": 3,
+      "restored_mfa_rows": 0,
+      "restored_positive_reserved_rows": 0,
+      "restored_running_backup_marked_uncertain": true,
+      "restored_token_rows": 19
+    },
+    "timing": {
+      "download_to_owner_checks_seconds": 732.11,
+      "snapshot_age_seconds_at_owner_checks": 1111.086,
+      "restore_seconds": 21.184272289276123,
+      "completed_at": 1794199093.0855339
+    },
+    "independent_compose_project": "n2-recovery-20261109",
+    "original_mysql_redis_image_ids": {
+      "mysql": "sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b",
+      "redis": "sha256:0cf7723388c29e8a936a9a1502f3fdfc8fec0688ffca8875d8e87940bec045eb"
+    },
+    "loopback_ports_only": true,
+    "outbound_masquerading_disabled": true,
+    "mysql_event_scheduler_disabled": true,
+    "redis_aof_disabled": true,
+    "business_services_not_started": true,
+    "production_override_restore": false,
+    "legacy_api_token_plaintext_replayed": false,
+    "mfa_and_positive_reservation_scope": "isolated recovery copy fixtures; production snapshot had zero corresponding rows"
+  },
+  "daily_backup": {
+    "policy": {
+      "revision": 2,
+      "enabled": true,
+      "interval_hours": 24,
+      "retain": 7,
+      "rpo_hours": 24,
+      "rto_minutes": 60
+    },
+    "first_actual_daily_job": {
+      "id": "schedule-2-20766",
+      "status": "succeeded",
+      "created_at": "1794199182",
+      "started_at": "1794199182",
+      "finished_at": "1794199255",
+      "bytes": "32637867",
+      "sha256": "4bbd6bb7e6a889e60611d53b6a2cfb12ce1bb39a88422bba3adbee847da6184d",
+      "error_code": ""
+    },
+    "first_daily_writer_interruption_seconds": 27.106,
+    "writer_events": [
+      {
+        "name": "monitor-worker",
+        "action": "die",
+        "time": 1794199185,
+        "time_nano": 1794199185180578389
+      },
+      {
+        "name": "channel-account-ops-worker",
+        "action": "die",
+        "time": 1794199185,
+        "time_nano": 1794199185193889695
+      },
+      {
+        "name": "admin-api",
+        "action": "die",
+        "time": 1794199185,
+        "time_nano": 1794199185217737063
+      },
+      {
+        "name": "config-service",
+        "action": "die",
+        "time": 1794199185,
+        "time_nano": 1794199185227675664
+      },
+      {
+        "name": "relay-gateway",
+        "action": "die",
+        "time": 1794199189,
+        "time_nano": 1794199189417403495
+      },
+      {
+        "name": "channel-service",
+        "action": "die",
+        "time": 1794199189,
+        "time_nano": 1794199189587806862
+      },
+      {
+        "name": "log-service",
+        "action": "die",
+        "time": 1794199189,
+        "time_nano": 1794199189651151300
+      },
+      {
+        "name": "identity-service",
+        "action": "die",
+        "time": 1794199189,
+        "time_nano": 1794199189668726373
+      },
+      {
+        "name": "billing-service",
+        "action": "die",
+        "time": 1794199189,
+        "time_nano": 1794199189676731688
+      },
+      {
+        "name": "notify-worker",
+        "action": "die",
+        "time": 1794199189,
+        "time_nano": 1794199189803600382
+      },
+      {
+        "name": "redis",
+        "action": "die",
+        "time": 1794199190,
+        "time_nano": 1794199190263538227
+      },
+      {
+        "name": "redis",
+        "action": "start",
+        "time": 1794199199,
+        "time_nano": 1794199199862879825
+      },
+      {
+        "name": "identity-service",
+        "action": "start",
+        "time": 1794199210,
+        "time_nano": 1794199210810388100
+      },
+      {
+        "name": "log-service",
+        "action": "start",
+        "time": 1794199210,
+        "time_nano": 1794199210888043770
+      },
+      {
+        "name": "monitor-worker",
+        "action": "start",
+        "time": 1794199210,
+        "time_nano": 1794199210902641920
+      },
+      {
+        "name": "notify-worker",
+        "action": "start",
+        "time": 1794199210,
+        "time_nano": 1794199210973594408
+      },
+      {
+        "name": "config-service",
+        "action": "start",
+        "time": 1794199210,
+        "time_nano": 1794199210990351167
+      },
+      {
+        "name": "channel-service",
+        "action": "start",
+        "time": 1794199211,
+        "time_nano": 1794199211793109903
+      },
+      {
+        "name": "billing-service",
+        "action": "start",
+        "time": 1794199211,
+        "time_nano": 1794199211811354202
+      },
+      {
+        "name": "channel-account-ops-worker",
+        "action": "start",
+        "time": 1794199211,
+        "time_nano": 1794199211862147950
+      },
+      {
+        "name": "admin-api",
+        "action": "start",
+        "time": 1794199212,
+        "time_nano": 1794199212183541763
+      },
+      {
+        "name": "relay-gateway",
+        "action": "start",
+        "time": 1794199212,
+        "time_nano": 1794199212286556116
+      }
+    ],
+    "state_dir_peak_bytes": 332160365,
+    "minimum_filesystem_free_bytes": 32032075776,
+    "healthz": {
+      "admin": 200,
+      "relay": 200
+    },
+    "container_health": {
+      "relay-gateway": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "admin-api": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "identity-service": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "channel-service": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "channel-account-ops-worker": {
+        "running": true,
+        "health": "healthy",
+        "restart_count": 0
+      },
+      "billing-service": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "config-service": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "log-service": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "monitor-worker": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "notify-worker": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "redis": {
+        "running": true,
+        "health": "healthy",
+        "restart_count": 0
+      }
+    },
+    "resume_journal_exists": false,
+    "verified_actual_daily_slots": 1,
+    "required_actual_daily_slots": 2,
+    "next_slot_cst": "2026-11-10 08:00:00",
+    "next_expected_job_id": "schedule-2-20767",
+    "next_slot_verified": false,
+    "continuous_rpo_verified": false
+  },
+  "web_recovery_assets": {
+    "paired_backup": "n2-production-20261109-first",
+    "paired_scheduled_backup": "schedule-2-20766",
+    "web_index_sha256": "b6ae310273b62ce4d7b7befe07c7ed2e83ae9c1acaca80e2ba9a5d7a6f094195",
+    "web_index_mtime": 1793614948,
+    "web_tar_sha256": "e4ef561a51b6fcd43b54dc26035319e7c29d8f579c36d6c0b6927d568f72a69d",
+    "web_tar_bytes": 671843,
+    "version_unchanged_since_before_snapshot": true,
+    "offsite_path": "/opt/micro-one-api-backup/recovery-assets/web-dist-20261109.tar.gz",
+    "future_archives_include_live_web_index": true
+  },
+  "cleanup": {
+    "isolated_volumes_removed": true,
+    "plaintext_recovery_payload_removed": true,
+    "temporary_production_operator_and_transfer_credentials_removed": true
+  },
+  "checks_not_run": [
+    "full_external_e2e_success",
+    "new_playwright_runs",
+    "production_mfa_enrollment",
+    "real_paid_upstream_requests",
+    "production_overwrite_restore"
+  ],
+  "release": {
+    "new_version_required": false,
+    "reason": "restore existing scheduler behavior; no new API or backup contract; no release/tag in this execution",
+    "commit_created": true,
+    "tag_created": false,
+    "fix_version_classification": "PATCH",
+    "fix_commit": "66709a1b"
+  },
+  "worker_bug_fix": {
+    "priority": "P2",
+    "symptom": "idle ticks after a completed daily slot report 409 and attention",
+    "root_cause": "xdb enables MySQL clientFoundRows; no-op upsert reports one affected row and the existing slot is incorrectly claimed",
+    "fix": "check for existing slot while holding the existing policy row lock; insert only new slots",
+    "red_mysql_cases": 3,
+    "regression_cases": [
+      {
+        "Test": "TestScheduledClaimSkipsExistingSlot/sqlite/succeeded",
+        "Action": "pass",
+        "Elapsed": 0.1
+      },
+      {
+        "Test": "TestScheduledClaimSkipsExistingSlot/sqlite/failed",
+        "Action": "pass",
+        "Elapsed": 0.1
+      },
+      {
+        "Test": "TestScheduledClaimSkipsExistingSlot/sqlite/uncertain",
+        "Action": "pass",
+        "Elapsed": 0.1
+      },
+      {
+        "Test": "TestScheduledClaimSkipsExistingSlot/mysql/succeeded",
+        "Action": "pass",
+        "Elapsed": 4.74
+      },
+      {
+        "Test": "TestScheduledClaimSkipsExistingSlot/mysql/failed",
+        "Action": "pass",
+        "Elapsed": 4.77
+      },
+      {
+        "Test": "TestScheduledClaimSkipsExistingSlot/mysql/uncertain",
+        "Action": "pass",
+        "Elapsed": 4.49
+      },
+      {
+        "Test": "TestScheduledClaimSkipsExistingSlot/postgres/succeeded",
+        "Action": "pass",
+        "Elapsed": 0.41
+      },
+      {
+        "Test": "TestScheduledClaimSkipsExistingSlot/postgres/failed",
+        "Action": "pass",
+        "Elapsed": 0.42
+      },
+      {
+        "Test": "TestScheduledClaimSkipsExistingSlot/postgres/uncertain",
+        "Action": "pass",
+        "Elapsed": 0.4
+      }
+    ],
+    "go_build_all": "passed",
+    "go_vet_all": "passed",
+    "architecture_check": "passed",
+    "linux_amd64_static_build": "passed",
+    "linux_cli_startup": "passed",
+    "production_deployed": true,
+    "ocr_session": "99f2e6d3-0774-4196-85be-40446669a726",
+    "ocr_findings": 0,
+    "go_test_all": "failed: external E2E suite requires unstarted localhost services",
+    "project_unit_gate": "passed",
+    "format_check": "passed",
+    "shell_syntax_check": "passed",
+    "source_commit": "66709a1b",
+    "ocr_reviewed_files": [
+      "domain/backup/data/repo.go",
+      "scripts/test-managed-backup-control.sh"
+    ],
+    "artifact_sha256": "8b6a5b9c77849101200ab080e67b72256edaa6bc9150fd5384ed1c45922abc40",
+    "production_verification": {
+      "worker_sha256": "8b6a5b9c77849101200ab080e67b72256edaa6bc9150fd5384ed1c45922abc40",
+      "source_commit": "66709a1bb1ac270a5593ded9b2b0efbe13c8d1a4",
+      "source_tree_sha256": "ce0214a357e3a77fefc2c4aefd0474123b7151eca228caf58d8cd339494efe6b",
+      "rollback_directory": "/opt/micro-one-api/backup-storage/n2-worker-fix-20261109",
+      "policy_revision_unchanged": 2,
+      "same_slot_continuous_polling": [
+        {
+          "at": 1794210342,
+          "phase": "ready",
+          "error_code": "",
+          "last_seen": 1794210328,
+          "jobs": [
+            {
+              "id": "n2-production-20261109-first",
+              "status": "succeeded",
+              "sha256": "6df97c24002cfe72794685b549702b05382a1df92303314b89095a2f2ca21d3e"
+            },
+            {
+              "id": "schedule-2-20766",
+              "status": "succeeded",
+              "sha256": "4bbd6bb7e6a889e60611d53b6a2cfb12ce1bb39a88422bba3adbee847da6184d"
+            }
+          ]
+        },
+        {
+          "at": 1794210358,
+          "phase": "ready",
+          "error_code": "",
+          "last_seen": 1794210343,
+          "jobs": [
+            {
+              "id": "n2-production-20261109-first",
+              "status": "succeeded",
+              "sha256": "6df97c24002cfe72794685b549702b05382a1df92303314b89095a2f2ca21d3e"
+            },
+            {
+              "id": "schedule-2-20766",
+              "status": "succeeded",
+              "sha256": "4bbd6bb7e6a889e60611d53b6a2cfb12ce1bb39a88422bba3adbee847da6184d"
+            }
+          ]
+        },
+        {
+          "at": 1794210373,
+          "phase": "ready",
+          "error_code": "",
+          "last_seen": 1794210359,
+          "jobs": [
+            {
+              "id": "n2-production-20261109-first",
+              "status": "succeeded",
+              "sha256": "6df97c24002cfe72794685b549702b05382a1df92303314b89095a2f2ca21d3e"
+            },
+            {
+              "id": "schedule-2-20766",
+              "status": "succeeded",
+              "sha256": "4bbd6bb7e6a889e60611d53b6a2cfb12ce1bb39a88422bba3adbee847da6184d"
+            }
+          ]
+        },
+        {
+          "at": 1794210388,
+          "phase": "ready",
+          "error_code": "",
+          "last_seen": 1794210374,
+          "jobs": [
+            {
+              "id": "n2-production-20261109-first",
+              "status": "succeeded",
+              "sha256": "6df97c24002cfe72794685b549702b05382a1df92303314b89095a2f2ca21d3e"
+            },
+            {
+              "id": "schedule-2-20766",
+              "status": "succeeded",
+              "sha256": "4bbd6bb7e6a889e60611d53b6a2cfb12ce1bb39a88422bba3adbee847da6184d"
+            }
+          ]
+        }
+      ],
+      "new_jobs_created": 0,
+      "resume_journal_exists": false
+    }
+  },
+  "final_production_verification": {
+    "policy": {
+      "revision": 2,
+      "enabled": true,
+      "interval_hours": 24,
+      "retain": 7,
+      "rpo_hours": 24,
+      "rto_minutes": 60
+    },
+    "worker_phase": "ready",
+    "worker_last_seen": 1794210634,
+    "jobs": [
+      {
+        "id": "schedule-2-20766",
+        "status": "succeeded",
+        "sha256": "4bbd6bb7e6a889e60611d53b6a2cfb12ce1bb39a88422bba3adbee847da6184d",
+        "bytes": 32637867
+      },
+      {
+        "id": "n2-production-20261109-first",
+        "status": "succeeded",
+        "sha256": "6df97c24002cfe72794685b549702b05382a1df92303314b89095a2f2ca21d3e",
+        "bytes": 32667974
+      }
+    ],
+    "container_health": {
+      "relay-gateway": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "admin-api": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "identity-service": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "channel-service": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "channel-account-ops-worker": {
+        "running": true,
+        "health": "healthy",
+        "restart_count": 0
+      },
+      "billing-service": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "config-service": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "log-service": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "monitor-worker": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "notify-worker": {
+        "running": true,
+        "health": null,
+        "restart_count": 0
+      },
+      "redis": {
+        "running": true,
+        "health": "healthy",
+        "restart_count": 0
+      }
+    },
+    "healthz": {
+      "admin": 200,
+      "relay": 200
+    },
+    "resume_journal_exists": false,
+    "verified_at": 1794210644,
+    "temporary_operator_and_transfer_credentials_removed": true
+  },
+  "documentation_checks": {
+    "markdown_local_links": "passed",
+    "markdown_files_checked": 363,
+    "diff_whitespace": "passed",
+    "address_and_credential_redaction": "passed"
+  }
+}

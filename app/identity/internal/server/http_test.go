@@ -79,6 +79,85 @@ func TestIdentityHTTPRegisterLoginAndSelf(t *testing.T) {
 	}
 }
 
+func TestSelfListsBoundOAuthProviders(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo, nil)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"alice","password":"password123","email":"alice@example.com"}`))
+	registerRec := httptest.NewRecorder()
+	srv.ServeHTTP(registerRec, registerReq)
+	if registerRec.Code != http.StatusOK {
+		t.Fatalf("register status = %d, body=%s", registerRec.Code, registerRec.Body.String())
+	}
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/user/login", strings.NewReader(`{"username":"alice","password":"password123"}`))
+	loginRec := httptest.NewRecorder()
+	srv.ServeHTTP(loginRec, loginReq)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login status = %d, body=%s", loginRec.Code, loginRec.Body.String())
+	}
+	token := extractJSONField(loginRec.Body.String(), "token")
+	registered, err := repo.FindUserByUsername(context.Background(), "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID := registered.ID
+
+	selfReq := httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+	selfReq.Header.Set("Authorization", "Bearer "+token)
+	selfRec := httptest.NewRecorder()
+	srv.ServeHTTP(selfRec, selfReq)
+	if selfRec.Code != http.StatusOK || !strings.Contains(selfRec.Body.String(), `"oauth_providers":[]`) {
+		t.Fatalf("self before bind status = %d, body=%s", selfRec.Code, selfRec.Body.String())
+	}
+
+	now := time.Now().Unix()
+	if err := repo.CreateOAuthIdentity(context.Background(), &biz.OAuthIdentity{
+		UserID: userID, Provider: "github", ProviderID: "gh-1", CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	selfReq = httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+	selfReq.Header.Set("Authorization", "Bearer "+token)
+	selfRec = httptest.NewRecorder()
+	srv.ServeHTTP(selfRec, selfReq)
+	if selfRec.Code != http.StatusOK {
+		t.Fatalf("self after bind status = %d, body=%s", selfRec.Code, selfRec.Body.String())
+	}
+	if !strings.Contains(selfRec.Body.String(), `"oauth_providers":["github"]`) {
+		t.Fatalf("self after bind missing bound provider: %s", selfRec.Body.String())
+	}
+}
+
+type selfOAuthReadErrorRepo struct{ biz.IdentityRepo }
+
+func (*selfOAuthReadErrorRepo) FindOAuthIdentityByUserProvider(context.Context, int64, string) (*biz.OAuthIdentity, error) {
+	return nil, context.DeadlineExceeded
+}
+
+func TestSelfRejectsUnavailableOAuthBindingState(t *testing.T) {
+	repo := &selfOAuthReadErrorRepo{IdentityRepo: identitydata.NewMemoryRepositoryForTest()}
+	uc := biz.NewIdentityUsecase(repo, nil)
+	if _, err := uc.Register(context.Background(), "alice", "password123", "alice@example.test", "default"); err != nil {
+		t.Fatal(err)
+	}
+	_, token, err := uc.Login(context.Background(), "alice", "password123", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := oauth.NewProviderRegistry()
+	registry.Register(&fakeOAuthProvider{name: "github", providerID: "gh-1"})
+	srv := NewHTTPServer(":0", uc, registry)
+	req := httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unavailable OAuth state must not appear unbound: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestRequestRemoteIPOnlyTrustsConfiguredProxies(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.RemoteAddr = "203.0.113.9:1234"

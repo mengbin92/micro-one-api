@@ -12,6 +12,7 @@ import (
 	"filippo.io/age"
 	"github.com/stretchr/testify/require"
 	b "micro-one-api/domain/backup/biz"
+	dbtest "micro-one-api/platform/database/testutil"
 	"micro-one-api/platform/database/xdb"
 )
 
@@ -68,6 +69,51 @@ func TestPolicyQueueAndInterruptedReceipt(t *testing.T) {
 	events, err := r.Events(ctx, 100)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(events), 5)
+}
+
+func TestScheduledClaimSkipsExistingSlot(t *testing.T) {
+	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
+		for _, status := range []string{"succeeded", "failed", "uncertain"} {
+			t.Run(driver+"/"+status, func(t *testing.T) {
+				db := dbtest.RoutingContextDB(t, driver)
+				if driver == "mysql" {
+					var schema string
+					require.NoError(t, db.Raw("SELECT DATABASE()").Scan(&schema).Error)
+					var err error
+					db, err = xdb.Open(xdb.DatabaseConfig{Driver: driver, DSN: os.Getenv("GROUP_CONTEXT_TEST_MYSQL_DSN"), Schema: schema})
+					require.NoError(t, err)
+					pool, err := db.DB()
+					require.NoError(t, err)
+					t.Cleanup(func() { pool.Close() })
+				}
+				r := NewRepo(&Data{DB: db})
+				ctx := context.Background()
+				p, err := r.Policy(ctx)
+				require.NoError(t, err)
+				p.Enabled = true
+				_, err = r.UpdatePolicy(ctx, p, "root", "daily schedule acceptance")
+				require.NoError(t, err)
+				now := time.Date(2026, 11, 9, 4, 0, 0, 0, time.UTC)
+				first, err := r.Claim(ctx, now)
+				require.NoError(t, err)
+				require.NotNil(t, first)
+				first.Status = status
+				require.NoError(t, r.Finish(ctx, *first))
+				for i := 1; i <= 3; i++ {
+					same, err := r.Claim(ctx, now.Add(time.Duration(i)*15*time.Second))
+					require.NoError(t, err, "completed slots must leave idle polling healthy")
+					require.Nil(t, same, "existing slots must never be replayed")
+				}
+				next, err := r.Claim(ctx, now.Add(24*time.Hour))
+				require.NoError(t, err)
+				require.NotNil(t, next)
+				require.NotEqual(t, first.ID, next.ID)
+				jobs, err := r.List(ctx, 50)
+				require.NoError(t, err)
+				require.Len(t, jobs, 2)
+			})
+		}
+	}
 }
 func TestRetentionPreservesNewestAndUncertainAndRetriesDeletion(t *testing.T) {
 	r := scratchRepo(t)

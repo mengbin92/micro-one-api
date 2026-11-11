@@ -427,6 +427,31 @@ func (uc *IdentityUsecase) GetUser(ctx context.Context, userID int64) (*User, er
 	return uc.repo.FindUserByID(ctx, userID)
 }
 
+// BoundOAuthProviders reflects the same stored identities accepted by OAuthLogin.
+func (uc *IdentityUsecase) BoundOAuthProviders(ctx context.Context, user *User, providers []string) ([]string, error) {
+	if user == nil || user.ID <= 0 {
+		return nil, ErrUserNotFound
+	}
+	bound := make([]string, 0, len(providers))
+	for _, provider := range providers {
+		if user.OAuthProvider == provider && user.OAuthID != "" {
+			bound = append(bound, provider)
+			continue
+		}
+		identity, err := uc.repo.FindOAuthIdentityByUserProvider(ctx, user.ID, provider)
+		if errors.Is(err, ErrOAuthUserNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if identity != nil {
+			bound = append(bound, provider)
+		}
+	}
+	return bound, nil
+}
+
 // checkLoginRateLimit checks if the given key is rate-limited due to too
 // many failed attempts. The key is composed by loginRateKey (username+IP),
 // so both per-username and per-IP spraying are bounded (review L2).

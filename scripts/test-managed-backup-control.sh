@@ -17,5 +17,6 @@ B3_MYSQL_ADDR="$(b3_compose port mysql 3306)"
 B3_POSTGRES_ADDR="$(b3_compose port postgres 5432)"
 export GROUP_CONTEXT_TEST_MYSQL_DSN="root:${B3_CONTROL_PASSWORD}@tcp(${B3_MYSQL_ADDR})/mysql?parseTime=true&multiStatements=true"
 export GROUP_CONTEXT_TEST_POSTGRES_DSN="postgres://postgres:${B3_CONTROL_PASSWORD}@${B3_POSTGRES_ADDR}/postgres?sslmode=disable"
+go test ./domain/backup/data -run '^TestScheduledClaimSkipsExistingSlot$' -count=1 -v
 go test ./internal/integration -run '^TestManagedBackupAdminHTTPAndRPC$' -count=1 -v
 go test ./app/identity/internal/data -run '^TestManagedBackupStepUpIsSessionBoundInLegacyAndIAM$' -count=1 -v

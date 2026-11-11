@@ -1,0 +1,207 @@
+{
+  "scope": "N1 pricing publication/storage regression only",
+  "project": "n1-pricing-2ede0d90",
+  "command": [
+    "go",
+    "test",
+    "-race",
+    "./app/admin/internal/data",
+    "-run",
+    "^(TestModelPricing.*|TestPricingBatch.*|TestServiceTierPricing.*|TestPublicServiceTierPricing.*|TestIAMB3SystemOptionsOwnerDialects|TestIAMB3SystemOptionsAtomicMigrationDialects)$",
+    "-count=1",
+    "-json",
+    "-timeout=15m"
+  ],
+  "production_access": false,
+  "databases": {
+    "sqlite": "scratch files per test",
+    "mysql": "8.4",
+    "postgres": "18"
+  },
+  "status": "passed",
+  "cleanup_completed": true,
+  "started_at_local": "2026-11-08 18:18:18 +0800",
+  "image_ids": {
+    "mysql": "sha256:6ea90827b1100f8f2ae306a539f86d2c264a26ed435a2a9f75551dd5c3aeb242",
+    "postgres": "sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336"
+  },
+  "exit_code": 0,
+  "duration_seconds": 39.648,
+  "leaf_tests": [
+    {
+      "test": "TestModelPricingPublishesWithOnlyScopedPricePermission/sqlite",
+      "result": "pass",
+      "elapsed": 0.12
+    },
+    {
+      "test": "TestModelPricingPublishesWithOnlyScopedPricePermission/mysql",
+      "result": "pass",
+      "elapsed": 3.8
+    },
+    {
+      "test": "TestModelPricingPublishesWithOnlyScopedPricePermission/postgres",
+      "result": "pass",
+      "elapsed": 0.58
+    },
+    {
+      "test": "TestModelPricingCreatesOptionAndPreservesLatestOtherModel",
+      "result": "pass",
+      "elapsed": 0.13
+    },
+    {
+      "test": "TestModelPricingConcurrentFirstCreationPreservesSuccessfulWriters",
+      "result": "pass",
+      "elapsed": 0.11
+    },
+    {
+      "test": "TestModelPricingRejectsCorruptOptionWithoutReplacingOtherPrices",
+      "result": "pass",
+      "elapsed": 0.1
+    },
+    {
+      "test": "TestPricingBatchRejectsStaleLegacyAndConcurrentWriters/sqlite",
+      "result": "pass",
+      "elapsed": 0.1
+    },
+    {
+      "test": "TestPricingBatchRejectsStaleLegacyAndConcurrentWriters/mysql",
+      "result": "pass",
+      "elapsed": 3.29
+    },
+    {
+      "test": "TestPricingBatchRejectsStaleLegacyAndConcurrentWriters/postgres",
+      "result": "pass",
+      "elapsed": 0.45
+    },
+    {
+      "test": "TestPricingBatchConcurrentFirstCreation/sqlite",
+      "result": "pass",
+      "elapsed": 0.14
+    },
+    {
+      "test": "TestPricingBatchConcurrentFirstCreation/mysql",
+      "result": "pass",
+      "elapsed": 3.37
+    },
+    {
+      "test": "TestPricingBatchConcurrentFirstCreation/postgres",
+      "result": "pass",
+      "elapsed": 0.42
+    },
+    {
+      "test": "TestPricingBatchConcurrentFirstCreation/postgres_single",
+      "result": "pass",
+      "elapsed": 0.44
+    },
+    {
+      "test": "TestServiceTierPricingOwnerPermissionsAndRevision/sqlite",
+      "result": "pass",
+      "elapsed": 0.11
+    },
+    {
+      "test": "TestServiceTierPricingOwnerPermissionsAndRevision/mysql",
+      "result": "pass",
+      "elapsed": 3.45
+    },
+    {
+      "test": "TestServiceTierPricingOwnerPermissionsAndRevision/postgres",
+      "result": "pass",
+      "elapsed": 0.43
+    },
+    {
+      "test": "TestServiceTierPricingRejectsAmbiguousOptionKeys/servicetierpricing",
+      "result": "pass",
+      "elapsed": 0
+    },
+    {
+      "test": "TestServiceTierPricingRejectsAmbiguousOptionKeys/SERVICETIERPRICING",
+      "result": "pass",
+      "elapsed": 0
+    },
+    {
+      "test": "TestServiceTierPricingRejectsAmbiguousOptionKeys/ServiceTierPricing_",
+      "result": "pass",
+      "elapsed": 0
+    },
+    {
+      "test": "TestServiceTierPricingRejectsAmbiguousOptionKeys/SérviceTierPricing",
+      "result": "pass",
+      "elapsed": 0
+    },
+    {
+      "test": "TestServiceTierPricingRejectsAmbiguousOptionKeys/ServiceTierPricing\\u200b",
+      "result": "pass",
+      "elapsed": 0
+    },
+    {
+      "test": "TestPublicServiceTierPricingDoesNotRequireProcurementGrant",
+      "result": "pass",
+      "elapsed": 0.11
+    },
+    {
+      "test": "TestIAMB3SystemOptionsOwnerDialects/sqlite",
+      "result": "pass",
+      "elapsed": 0.12
+    },
+    {
+      "test": "TestIAMB3SystemOptionsOwnerDialects/mysql",
+      "result": "pass",
+      "elapsed": 3.3
+    },
+    {
+      "test": "TestIAMB3SystemOptionsOwnerDialects/postgres",
+      "result": "pass",
+      "elapsed": 0.44
+    },
+    {
+      "test": "TestIAMB3SystemOptionsAtomicMigrationDialects/sqlite",
+      "result": "pass",
+      "elapsed": 0.12
+    },
+    {
+      "test": "TestIAMB3SystemOptionsAtomicMigrationDialects/mysql",
+      "result": "pass",
+      "elapsed": 2.7
+    },
+    {
+      "test": "TestIAMB3SystemOptionsAtomicMigrationDialects/postgres",
+      "result": "pass",
+      "elapsed": 0.47
+    }
+  ],
+  "root_tests": [
+    "TestModelPricingPublishesWithOnlyScopedPricePermission",
+    "TestModelPricingCreatesOptionAndPreservesLatestOtherModel",
+    "TestModelPricingConcurrentFirstCreationPreservesSuccessfulWriters",
+    "TestModelPricingRejectsCorruptOptionWithoutReplacingOtherPrices",
+    "TestPricingBatchRejectsStaleLegacyAndConcurrentWriters",
+    "TestPricingBatchConcurrentFirstCreation",
+    "TestServiceTierPricingOwnerPermissionsAndRevision",
+    "TestServiceTierPricingRejectsAmbiguousOptionKeys",
+    "TestPublicServiceTierPricingDoesNotRequireProcurementGrant",
+    "TestIAMB3SystemOptionsOwnerDialects",
+    "TestIAMB3SystemOptionsAtomicMigrationDialects"
+  ],
+  "skip_count": 0,
+  "fail_count": 0,
+  "package_passed": true,
+  "finished_at_local": "2026-11-08 18:18:59 +0800",
+  "local_code_commit": "24d17914",
+  "go_version": "go1.27.3 darwin/arm64",
+  "driver_leaf_counts": {
+    "sqlite": 15,
+    "mysql": 6,
+    "postgres": 7
+  },
+  "raw_test_output_sha256": "42b31e439af1196407cf982826c28cca303235a40a5ca9562fb3f1d6d579caa1",
+  "package_results": [
+    {
+      "Action": "pass",
+      "Package": "micro-one-api/app/admin/internal/data",
+      "Elapsed": 26.347
+    }
+  ],
+  "coverage_boundary": "Six key driver-loop cases execute on all three databases; postgres_single adds one PostgreSQL first-creation case. Existing sequential/concurrent model creation, invalid-option and key-alias cases remain SQLite-only. Real paid upstream calls and production configuration changes are excluded.",
+  "containers_remaining": 0,
+  "volumes_remaining": 0
+}

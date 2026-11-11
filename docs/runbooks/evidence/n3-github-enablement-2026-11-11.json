@@ -1,0 +1,53 @@
+{
+  "checked_at_beijing": "2026-11-11 08:55:32",
+  "oauth_app": {
+    "registration": "confirmed_in_maintainer_browser",
+    "credential_handoff": "private_regular_file_owned_by_maintainer",
+    "credential_file_mode": "0600",
+    "four_fields_present": true,
+    "secret_values_recorded": false
+  },
+  "deployment": {
+    "kind": "identity_configuration_only",
+    "backup_reference": "$DEPLOY_REMOTE_DIR/docker-compose/backups/n3-github-20261111-085312-6140d176",
+    "rollback_image_tag": "docker-compose-identity-service:rollback-20261111-085312-n3-github",
+    "compose_before_sha256": "9f8fd73dd0495a6bf41054b04447e067c145c8d49629bc7d14ab17ab70cb865b",
+    "compose_after_sha256": "611c51b8195c02915220d603b1d224c0e2367aa4e2aa5e95a520e9f973b85355",
+    "only_four_oauth_environment_fields_changed": true,
+    "runtime_matched_original_compose": true,
+    "same_image": true,
+    "image_id": "sha256:e0a115eaae442058344e669b407548cffbfb6903c316d99bacde9ecd7bbe9c3f",
+    "existing_readonly_ca_mount_preserved": true,
+    "mfa_key_preserved": true,
+    "step_up_enabled": false,
+    "admin_mfa_required": false,
+    "other_project_containers_unchanged": true,
+    "health_ok": true
+  },
+  "public_checks": {
+    "providers": {"http_status": 200, "providers": ["github"]},
+    "authorize": {
+      "http_status": 302,
+      "github_destination": true,
+      "callback_matches": true,
+      "client_id_matches": true,
+      "scope_minimal": true,
+      "state_present": true,
+      "code_state_cookie_and_location_values_recorded": false
+    }
+  },
+  "identity_readback": {
+    "admin_user_id": 1,
+    "existing_github_binding_count": 0,
+    "recent_log_lines_examined": 3,
+    "error_level_count": 0
+  },
+  "pending": {
+    "browser_blocker": "Mac locked; manual unlock requested",
+    "admin_github_binding": "requires_action_time_confirmation",
+    "real_external_callback_and_session": "not_run",
+    "oauth_only_account": "not_run",
+    "production_mfa_enrollment": "not_run",
+    "qr_frontend_deployment": "not_run"
+  }
+}
