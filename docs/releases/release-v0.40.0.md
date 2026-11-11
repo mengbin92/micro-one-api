@@ -58,6 +58,15 @@ v0.40.0 是 v0.39.3 之后的 **MINOR 功能版本**：安全中心新增 MFA �
 ## 完整变更日志（v0.39.3 → v0.40.0）
 
 - `fix(backup): skip scheduled slots already recorded`（本版随 admin-api 部署）
+- `docs(billing): align peak calendar with statutory holidays`
+- `docs(billing): record glm-5.2 orphan price cleanup`
+- `docs(plan): plan production acceptance after v0.39.3`
+- `docs(n1): record pricing verification and acceptance`
+- `docs(backup): record N2 offsite recovery and daily acceptance`
+- `docs(backup): close N2 acceptance after second daily slot`
+- `docs(n3): sync docs index with N3 acceptance progress`
+- `chore(rbac): refresh reviewed source facts after identity http changes`
+- `chore(security): stop flagging the synthetic QR fixture as a leaked secret`
 - `fix(identity): complete oauth binds beyond the request deadline`
 - `feat(identity): report bound oauth providers on user self`
 - `feat(web): bind MFA with a QR code in the security center`
