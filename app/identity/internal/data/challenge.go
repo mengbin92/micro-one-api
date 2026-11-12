@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"encoding/hex"
 	"strconv"
 	"time"
@@ -135,4 +136,30 @@ func challengeRecord(result []string, err error) (*biz.EmailChallenge, error) {
 		return nil, biz.ErrChallengeInvalid
 	}
 	return &biz.EmailChallenge{UserID: userID, PasswordEpoch: epoch}, nil
+}
+
+// Passkey ceremonies are one-shot: Begin* writes them, Complete* consumes and
+// deletes, so a replayed assertion can never reuse a session.
+func (r *challengeRepo) PutCeremony(ctx context.Context, id string, raw []byte, ttl time.Duration) error {
+	if r.client() == nil || ttl <= 0 || id == "" {
+		return biz.ErrMFAUnavailable
+	}
+	if err := r.client().Set(ctx, "identity:passkey-ceremony:v1:"+id, raw, ttl).Err(); err != nil {
+		return biz.ErrMFAUnavailable
+	}
+	return nil
+}
+
+func (r *challengeRepo) TakeCeremony(ctx context.Context, id string) ([]byte, error) {
+	if r.client() == nil || id == "" {
+		return nil, biz.ErrMFAInvalid
+	}
+	b, err := r.client().GetDel(ctx, "identity:passkey-ceremony:v1:"+id).Bytes()
+	if errors.Is(err, redis.Nil) {
+		return nil, biz.ErrMFAInvalid
+	}
+	if err != nil {
+		return nil, biz.ErrMFAUnavailable
+	}
+	return b, nil
 }

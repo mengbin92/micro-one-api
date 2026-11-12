@@ -267,3 +267,25 @@ func TestChallengeRealRedisIntegration(t *testing.T) {
 		t.Fatalf("Redis expiry = %v", err)
 	}
 }
+
+func TestPasskeyCeremonySingleConsumptionAcrossReplicas(t *testing.T) {
+	_, first, second := challengeRepositories(t)
+	a, b := first.(biz.PasskeyCeremonyRepo), second.(biz.PasskeyCeremonyRepo)
+	ctx := context.Background()
+	if err := a.PutCeremony(ctx, "cer-1", []byte(`{"kind":"login"}`), time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := b.TakeCeremony(ctx, "cer-1")
+	if err != nil || string(raw) != `{"kind":"login"}` {
+		t.Fatalf("take = %s, %v", raw, err)
+	}
+	if _, err := b.TakeCeremony(ctx, "cer-1"); !errors.Is(err, biz.ErrMFAInvalid) {
+		t.Fatalf("replayed take = %v", err)
+	}
+	if _, err := b.TakeCeremony(ctx, "missing"); !errors.Is(err, biz.ErrMFAInvalid) {
+		t.Fatalf("missing take = %v", err)
+	}
+	if err := a.PutCeremony(ctx, "", []byte(`{}`), time.Minute); !errors.Is(err, biz.ErrMFAUnavailable) {
+		t.Fatalf("empty id put = %v", err)
+	}
+}

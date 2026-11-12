@@ -10,13 +10,19 @@ type RPCPolicy struct {
 // Identity forwards verified sessions for ListLedger and AggregateLedgerByDate.
 // Their user caller policy preserves billing self scope; it grants no system bypass.
 var rpcPolicies = map[string]RPCPolicy{
-	"/api.identity.v1.IdentityService/GetSecurityStatus":   {Owner: "identity", UserCallers: []string{"admin"}},
-	"/api.identity.v1.IdentityService/SetupMFA":            {Owner: "identity", UserCallers: []string{"admin"}},
-	"/api.identity.v1.IdentityService/ConfirmMFA":          {Owner: "identity", UserCallers: []string{"admin"}},
-	"/api.identity.v1.IdentityService/DisableMFA":          {Owner: "identity", UserCallers: []string{"admin"}},
-	"/api.identity.v1.IdentityService/RotateRecoveryCodes": {Owner: "identity", UserCallers: []string{"admin"}},
-	"/api.identity.v1.IdentityService/VerifyStepUp":        {Owner: "identity", UserCallers: []string{"admin"}},
-	"/api.identity.v1.IdentityService/CompleteMFALogin":    {Owner: "identity", UserCallers: []string{"admin"}},
+	"/api.identity.v1.IdentityService/GetSecurityStatus":         {Owner: "identity", UserCallers: []string{"admin"}},
+	"/api.identity.v1.IdentityService/SetupMFA":                  {Owner: "identity", UserCallers: []string{"admin"}},
+	"/api.identity.v1.IdentityService/ConfirmMFA":                {Owner: "identity", UserCallers: []string{"admin"}},
+	"/api.identity.v1.IdentityService/DisableMFA":                {Owner: "identity", UserCallers: []string{"admin"}},
+	"/api.identity.v1.IdentityService/RotateRecoveryCodes":       {Owner: "identity", UserCallers: []string{"admin"}},
+	"/api.identity.v1.IdentityService/VerifyStepUp":              {Owner: "identity", UserCallers: []string{"admin"}},
+	"/api.identity.v1.IdentityService/CompleteMFALogin":          {Owner: "identity", UserCallers: []string{"admin"}},
+	"/api.identity.v1.IdentityService/BeginPasskeyLogin":         {Owner: "identity", UserCallers: []string{"admin"}},
+	"/api.identity.v1.IdentityService/CompletePasskeyLogin":      {Owner: "identity", UserCallers: []string{"admin"}},
+	"/api.identity.v1.IdentityService/BeginPasskeyEnrollment":    {Owner: "identity", UserCallers: []string{"admin"}},
+	"/api.identity.v1.IdentityService/CompletePasskeyEnrollment": {Owner: "identity", UserCallers: []string{"admin"}},
+	"/api.identity.v1.IdentityService/ListPasskeys":              {Owner: "identity", UserCallers: []string{"admin"}},
+	"/api.identity.v1.IdentityService/DeletePasskey":             {Owner: "identity", UserCallers: []string{"admin"}},
 
 	"/api.billing.v1.BillingService/ResolveLedgerRequest":       {Owner: "billing", UserCallers: []string{"admin"}},
 	"/api.billing.v1.BillingService/GetSettlementStatus":        {Owner: "billing", UserCallers: []string{"admin"}},

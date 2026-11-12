@@ -210,6 +210,8 @@ type IdentityUsecase struct {
 	security                SecurityRepo
 	securityChallenges      ChallengeRepo
 	stepUp                  StepUpRepo
+	passkeys                PasskeyRepo
+	passkeyCeremonies       PasskeyCeremonyRepo
 	iam                     IAMRuntimeRepo
 	iamRunner               IAMTxRunner
 	routingGroups           RoutingGroupReader

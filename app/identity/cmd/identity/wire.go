@@ -42,6 +42,7 @@ func newIdentityUsecase(repo *data.Repository, auditor *audit.Auditor) *biz.Iden
 		uc.SetIAMRuntime(data.NewIAMRuntimeRepo(repo.Data), data.NewIAMTxRunner(repo.Data))
 		challenges := data.NewChallengeRepo(repo.Data)
 		uc.SetSecurity(data.NewSecurityRepo(repo.Data, []byte(os.Getenv("IDENTITY_MFA_ENCRYPTION_KEY"))), challenges, challenges.(biz.StepUpRepo))
+		uc.SetPasskey(data.NewPasskeyRepo(repo.Data, []byte(os.Getenv("IDENTITY_MFA_ENCRYPTION_KEY"))), challenges.(biz.PasskeyCeremonyRepo))
 	}
 	return uc
 }

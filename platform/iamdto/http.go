@@ -24,7 +24,10 @@ func DecodeRequest(req *http.Request, dst any) error {
 		message = value
 	case *v.SecurityRequest:
 		message = value
-		limit = 4096
+		// Attestation/assertion payloads carry base64url-encoded
+		// authenticator data, so the security envelope needs a larger budget
+		// than the 4096 default; the HTTP server still caps the whole body.
+		limit = 24576
 	default:
 		return khttp.DefaultRequestDecoder(req, dst)
 	}
