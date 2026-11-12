@@ -3,8 +3,8 @@ package data
 import (
 	"context"
 	"crypto/sha256"
-	"errors"
 	"encoding/hex"
+	"errors"
 	"strconv"
 	"time"
 

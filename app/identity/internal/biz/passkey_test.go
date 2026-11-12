@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"micro-one-api/domain/authorization"
+	"micro-one-api/pkg/jsonx"
 )
 
 type fakePasskeyRepo struct {
@@ -21,13 +21,19 @@ func (f fakePasskeyRepo) List(context.Context, IAMTx, int64) ([]PasskeyCredentia
 func (f fakePasskeyRepo) Save(context.Context, IAMTx, int64, PasskeyCredential) error { return nil }
 func (f fakePasskeyRepo) Delete(context.Context, IAMTx, int64, []byte) error          { return nil }
 
-type fakePasskeyCeremonyRepo struct{ puts int }
+type fakePasskeyCeremonyRepo struct {
+	puts int
+	raw  []byte
+}
 
 func (f *fakePasskeyCeremonyRepo) PutCeremony(context.Context, string, []byte, time.Duration) error {
 	f.puts++
 	return nil
 }
 func (f *fakePasskeyCeremonyRepo) TakeCeremony(context.Context, string) ([]byte, error) {
+	if f.raw != nil {
+		return f.raw, nil
+	}
 	return nil, errors.New("not found")
 }
 
@@ -104,4 +110,24 @@ func TestBeginPasskeyLoginUnavailableWithoutRPConfig(t *testing.T) {
 	}
 }
 
-var _ = authorization.Actor{} // keep import used if assertions grow
+// A decoy ceremony is bound to user 0 and must fail with the same sentinel as
+// a real account's invalid assertion, without reaching the IAM store (which
+// would return a distinguishable "user not found" error). This keeps the
+// anti-enumeration decoy effective at the complete endpoint too.
+func TestCompletePasskeyLoginRejectsDecoyCeremony(t *testing.T) {
+	t.Setenv("IDENTITY_PASSKEY_RP_ID", "example.com")
+	t.Setenv("IDENTITY_PASSKEY_ORIGIN", "https://example.com")
+
+	raw, err := jsonx.Marshal(passkeyCeremony{Kind: passkeyCeremonyKindLogin, UserID: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	uc := &IdentityUsecase{
+		passkeys:          fakePasskeyRepo{configured: true},
+		passkeyCeremonies: &fakePasskeyCeremonyRepo{raw: raw},
+	}
+	_, _, _, err = uc.CompletePasskeyLogin(context.Background(), "decoy-ceremony", "{}")
+	if !errors.Is(err, ErrMFAInvalid) {
+		t.Fatalf("decoy ceremony error = %v, want ErrMFAInvalid", err)
+	}
+}
