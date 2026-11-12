@@ -17,8 +17,8 @@ You provide your own authorized upstream accounts and API keys.
 > Latest release: [v0.41.0](./docs/releases/release-v0.41.0.md) — passkey passwordless
 > login and security-center management, `/v1/rerank` relay with usage metering,
 > and Identity migration 149 (passkey stays dark until RP ID/origin are configured).
-> Reissued on 2026-11-12 with the CI formatting-gate fix, passkey decoy parity fix
-> and corrected release facts.
+> Reissued on 2026-11-12 with the CI formatting-gate fix, passkey decoy parity fix,
+> admin-smoke E2E locator fix and corrected release facts.
 > [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.41.0)
 
 ## Features
@@ -157,8 +157,8 @@ and [repository development rules](./AGENTS.md). Both are currently maintained i
   management with anti-enumeration decoys, plus the `/v1/rerank` relay on the embeddings
   metering path. Adds Identity migration 149 (three dialects); passkey stays dark until
   RP ID/origin are configured. Reissued on 2026-11-12 with the CI formatting-gate fix,
-  decoy parity fix and corrected release facts; the same tag/image was overwritten,
-  so older deployments must be redeployed explicitly.
+  decoy parity fix, admin-smoke E2E locator fix and corrected release facts;
+  the same tag/image was overwritten, so older deployments must be redeployed explicitly.
 - [v0.37.0](./docs/releases/release-v0.37.0.md): self-service registration and email
   recovery, TOTP and initial step-up routes, service-tier pricing, WeChat Native
   balance recharge, and 12 review fixes. Adds Identity 143, Billing 144 and Log 145;
