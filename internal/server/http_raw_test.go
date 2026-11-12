@@ -39,6 +39,7 @@ func TestHTTPServerRawRoutesAreRegistered(t *testing.T) {
 		"/v1/audio/translations",
 		"/v1/audio/speech",
 		"/v1/moderations",
+		"/v1/rerank",
 	} {
 		req := httptest.NewRequest(http.MethodPost, route, strings.NewReader(`{}`))
 		rec := httptest.NewRecorder()
@@ -493,6 +494,87 @@ func TestHTTPServerRawRelayForwardsResponseAndCommitsBilling(t *testing.T) {
 	health := channelClient.modelHealthRequests()
 	if len(health) != 1 || !health[0].GetSuccess() || health[0].GetSourceKind() != relaybiz.UpstreamSourceChannel || health[0].GetSourceId() != 11 || health[0].GetModelId() != "text-embedding-ada-002" || health[0].GetUpstreamModelId() != "text-embedding-ada-002" {
 		t.Fatalf("raw model health = %+v, want one successful final channel/model sample", health)
+	}
+}
+
+func TestHTTPServerRerankForwardsResponseAndCommitsBilling(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	var gotPath string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"jina-reranker-v2-base-multilingual","results":[{"index":1,"relevance_score":0.9}],"usage":{"total_tokens":23}}`))
+	}))
+	defer upstream.Close()
+
+	identityClient := rawIdentityClient{}
+	channelClient := &rawModelHealthClient{rawChannelClient: rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}}
+	billingClient := &rawBillingClient{}
+	logClient := &rawLogClient{}
+	channelAdapter := relaydata.NewChannelAdapter(channelClient)
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		channelAdapter,
+		nil,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+		logClient,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/rerank", strings.NewReader(`{"model":"jina-reranker-v2-base-multilingual","query":"hello","documents":["a","b"]}`))
+	req = req.WithContext(context.Background())
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+	if err := channelAdapter.FlushModelHealth(context.Background()); err != nil {
+		t.Fatalf("flush model health: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if gotPath != "/v1/rerank" {
+		t.Fatalf("upstream path = %q", gotPath)
+	}
+	if !strings.Contains(rec.Body.String(), `"relevance_score"`) {
+		t.Fatalf("response body was not forwarded: %s", rec.Body.String())
+	}
+	if billingClient.commits != 1 {
+		t.Fatalf("commits = %d, want 1", billingClient.commits)
+	}
+	if len(logClient.entries) != 1 {
+		t.Fatalf("usage logs = %d, want 1", len(logClient.entries))
+	}
+	if got := logClient.entries[0]; got.ModelName != "jina-reranker-v2-base-multilingual" || got.Quota != 23 || got.ChannelId != 11 {
+		t.Fatalf("usage log mismatch: model=%q quota=%d channel=%d", got.ModelName, got.Quota, got.ChannelId)
+	}
+}
+
+func TestHTTPServerRerankRequiresModel(t *testing.T) {
+	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/rerank", strings.NewReader(`{"query":"hello","documents":["a"]}`))
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body=%s", rec.Code, rec.Body.String())
 	}
 }
 

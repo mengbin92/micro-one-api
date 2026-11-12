@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
-import { ShieldCheck, KeyRound } from 'lucide-react';
+import { Fingerprint, ShieldCheck, KeyRound } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { apiClient, clearUserSession } from '@/lib/api';
 import { requestSecurityVerification, showSecurityCompletion } from '@/lib/security-verification';
@@ -11,11 +12,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { components } from '@/types/api';
 import { t } from '@/lib/i18n';
+import { parsePasskeyOptions, passkeyUnavailable, prepareCreationOptions, serializeAttestation } from '@/lib/passkey';
 
 type SecurityReply = components['schemas']['api.identity.v1.SecurityReply'];
+type PasskeyCredential = components['schemas']['api.identity.v1.PasskeyCredential'];
 
 export function SecurityCenter() {
   const status = useQuery({ queryKey: ['user-security'], meta: { protected: true }, queryFn: async ({ signal }) => (await apiClient.get<SecurityReply>('/user/security', { signal })).data });
+  const passkeys = useQuery({ queryKey: ['user-passkeys'], meta: { protected: true }, retry: false, enabled: !passkeyUnavailable(), queryFn: async ({ signal }) => (await apiClient.post<SecurityReply>('/user/security/passkeys', {}, { signal })).data });
+  const [passkeyName, setPasskeyName] = useState('');
+  const [passkeyError, setPasskeyError] = useState('');
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [setup, setSetup] = useState<{ secret: string; otpauth_uri: string }>();
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
@@ -35,7 +42,7 @@ export function SecurityCenter() {
         const reason = (error as { response?: { data?: { reason?: string } } }).response?.data?.reason;
         if (!isCurrent() || action === 'confirm' || reason !== 'STEP_UP_REQUIRED') throw error;
         await requestSecurityVerification();
-        if (!isCurrent()) throw new Error(t('会话已变化，请重试'));
+        if (!isCurrent()) throw new Error(t('会话已变化，请重试'), { cause: error });
         return apiClient.post<SecurityReply>(`/user/security/${action}`, { code }, { headers });
       });
       if (!isCurrent()) return;
@@ -52,6 +59,59 @@ export function SecurityCenter() {
       }
     } catch (error) { setError(getApiErrorMessage(error, t('安全设置失败'))); }
     finally { lock.current = false; setBusy(false); }
+  };
+
+  const passkeyRequest = async <T,>(fn: (headers: { Authorization: string }) => Promise<T>): Promise<T> => {
+    const originalToken = localStorage.getItem('token');
+    const headers = { Authorization: `Bearer ${originalToken}` };
+    try {
+      return await fn(headers);
+    } catch (error: unknown) {
+      const reason = (error as { response?: { data?: { reason?: string } } }).response?.data?.reason;
+      if (reason !== 'STEP_UP_REQUIRED') throw error;
+      await requestSecurityVerification();
+      if (!active.current || localStorage.getItem('token') !== originalToken) throw new Error(t('会话已变化，请重试'), { cause: error });
+      return fn(headers);
+    }
+  };
+
+  const addPasskey = async () => {
+    if (lock.current || passkeyUnavailable()) return;
+    const originalToken = localStorage.getItem('token');
+    const isCurrent = () => active.current && localStorage.getItem('token') === originalToken;
+    lock.current = true; setPasskeyBusy(true); setPasskeyError('');
+    try {
+      const began = await passkeyRequest(headers => apiClient.post<SecurityReply>('/user/security/passkey/enroll/begin', { username: passkeyName.trim() }, { headers }));
+      if (!isCurrent()) return;
+      const options = parsePasskeyOptions<PublicKeyCredentialCreationOptions>(began.data.options);
+      const credential = await navigator.credentials.create({ publicKey: prepareCreationOptions(options) }).catch((error: unknown) => {
+        if (error instanceof DOMException && (error.name === 'NotAllowedError' || error.name === 'AbortError')) throw new Error(t('未选择通行密钥或操作已取消'), { cause: error });
+        throw error;
+      });
+      if (!(credential instanceof PublicKeyCredential)) throw new Error(t('通行密钥创建失败'));
+      if (!isCurrent()) return;
+      await passkeyRequest(headers => apiClient.post<SecurityReply>('/user/security/passkey/enroll/complete', { challenge: began.data.ceremony, attestation: serializeAttestation(credential) }, { headers }));
+      if (!isCurrent()) return;
+      setPasskeyName('');
+      toast.success(t('通行密钥已添加'));
+      await passkeys.refetch().catch(() => undefined);
+    } catch (error) { setPasskeyError(getApiErrorMessage(error, t('通行密钥设置失败'))); }
+    finally { lock.current = false; setPasskeyBusy(false); }
+  };
+
+  const removePasskey = async (credential: PasskeyCredential) => {
+    if (lock.current || !credential.credential_id) return;
+    if (!confirm(t(`确认删除通行密钥「${credential.name || t('未命名通行密钥')}」？此操作不可撤销。`))) return;
+    const originalToken = localStorage.getItem('token');
+    const isCurrent = () => active.current && localStorage.getItem('token') === originalToken;
+    lock.current = true; setPasskeyBusy(true); setPasskeyError('');
+    try {
+      await passkeyRequest(headers => apiClient.post<SecurityReply>('/user/security/passkey/delete', { credential_id: credential.credential_id }, { headers }));
+      if (!isCurrent()) return;
+      toast.success(t('通行密钥已删除'));
+      await passkeys.refetch().catch(() => undefined);
+    } catch (error) { setPasskeyError(getApiErrorMessage(error, t('通行密钥删除失败'))); }
+    finally { lock.current = false; setPasskeyBusy(false); }
   };
 
   return <Card id="security-center" className="overflow-hidden">
@@ -75,6 +135,26 @@ export function SecurityCenter() {
       </form>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
+      <div className="border-t pt-5">
+        <div className="flex flex-wrap items-center justify-between gap-4"><div><p className="font-semibold">{t('通行密钥（Passkey）')}</p><p className="mt-1 text-sm text-muted-foreground">{t('使用设备指纹或安全密钥免密码登录，登录时仍需通过第二因子验证。')}</p></div></div>
+        {passkeyUnavailable() && <p className="mt-3 text-sm text-muted-foreground">{t('当前浏览器不支持通行密钥。')}</p>}
+        {!passkeyUnavailable() && passkeys.isError && <p role="alert" className="mt-3 text-sm text-destructive">{t('通行密钥暂不可用')}</p>}
+        {!passkeyUnavailable() && passkeys.data && <div className="mt-3 space-y-3">
+          {passkeys.data.passkeys?.length ? <ul className="space-y-2">
+            {(passkeys.data.passkeys ?? []).map(credential => <li key={credential.credential_id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2">
+              <div className="flex min-w-0 items-center gap-2"><Fingerprint className="size-4 shrink-0 text-muted-foreground" /><div className="min-w-0"><p className="truncate text-sm font-medium">{credential.name || t('未命名通行密钥')}</p><p className="text-xs text-muted-foreground">{t('最近使用：{time}', { time: Number(credential.last_used_at) > 0 ? new Date(Number(credential.last_used_at)).toLocaleString() : t('从未') })}</p></div></div>
+              <Button variant="outline" size="sm" disabled={passkeyBusy} onClick={() => void removePasskey(credential)}>{t('删除')}</Button>
+            </li>)}
+          </ul> : <p className="text-sm text-muted-foreground">{t('尚未添加通行密钥。')}</p>}
+          {passkeys.data.passkey_enabled === false
+            ? <p className="text-sm text-muted-foreground">{t('管理员尚未启用通行密钥。')}</p>
+            : <form className="flex flex-wrap items-center gap-2" onSubmit={event => { event.preventDefault(); void addPasskey(); }}>
+              <Input value={passkeyName} onChange={event => setPasskeyName(event.target.value)} placeholder={t('通行密钥名称（可选）')} maxLength={128} className="w-56" />
+              <Button type="submit" variant="outline" disabled={passkeyBusy}>{t('添加通行密钥')}</Button>
+            </form>}
+        </div>}
+        {passkeyError && <p role="alert" className="mt-3 text-sm text-destructive">{passkeyError}</p>}
+      </div>
     </CardContent>
   </Card>;
 }

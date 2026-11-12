@@ -80,6 +80,7 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	s.handleFunc(srv, "/v1/audio/translations", executionRoute("/v1/audio/translations", relayExecutionPathRaw), s.handleRawRelay("/audio/translations", true))
 	s.handleFunc(srv, "/v1/audio/speech", executionRoute("/v1/audio/speech", relayExecutionPathRaw), s.handleRawRelay("/audio/speech", false))
 	s.handleFunc(srv, "/v1/moderations", executionRoute("/v1/moderations", relayExecutionPathRaw), s.handleRawRelay("/moderations", false))
+	s.handleFunc(srv, "/v1/rerank", executionRoute("/v1/rerank", relayExecutionPathRaw), s.handleRawRelay("/rerank", true))
 	s.handleFunc(srv, "/v1/edits", unsupportedRoute(), s.handleUnsupportedOpenAIRoute("edits"))
 	s.handleFunc(srv, "/v1/responses", executionRoute(relayEndpointResponses, relayExecutionPathLegacy), s.relayOrchestratorResponsesHandler)
 	s.handlePrefix(srv, "/v1/responses/", executionRoute(relayEndpointResponses, relayExecutionPathLegacy), http.HandlerFunc(s.relayOrchestratorResponsesHandler))

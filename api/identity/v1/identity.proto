@@ -16,6 +16,12 @@ service IdentityService {
   rpc RotateRecoveryCodes(SecurityRequest) returns (SecurityReply) { option (google.api.http) = { post: "/api/user/security/recovery" body: "*" }; }
   rpc VerifyStepUp(SecurityRequest) returns (SecurityReply) { option (google.api.http) = { post: "/api/user/security/verify" body: "*" }; }
   rpc CompleteMFALogin(SecurityRequest) returns (SecurityReply) { option (google.api.http) = { post: "/api/user/security/login" body: "*" }; }
+  rpc BeginPasskeyLogin(SecurityRequest) returns (SecurityReply) { option (google.api.http) = { post: "/api/user/security/passkey/login/begin" body: "*" }; }
+  rpc CompletePasskeyLogin(SecurityRequest) returns (SecurityReply) { option (google.api.http) = { post: "/api/user/security/passkey/login/complete" body: "*" }; }
+  rpc BeginPasskeyEnrollment(SecurityRequest) returns (SecurityReply) { option (google.api.http) = { post: "/api/user/security/passkey/enroll/begin" body: "*" }; }
+  rpc CompletePasskeyEnrollment(SecurityRequest) returns (SecurityReply) { option (google.api.http) = { post: "/api/user/security/passkey/enroll/complete" body: "*" }; }
+  rpc ListPasskeys(SecurityRequest) returns (SecurityReply) { option (google.api.http) = { post: "/api/user/security/passkeys" body: "*" }; }
+  rpc DeletePasskey(SecurityRequest) returns (SecurityReply) { option (google.api.http) = { post: "/api/user/security/passkey/delete" body: "*" }; }
 
   rpc GetUserRoutingFacts(GetUserRoutingFactsRequest) returns (GetUserRoutingFactsReply);
   rpc UpdateUserRoutingAccess(UpdateUserRoutingAccessRequest) returns (GetUserRoutingFactsReply);
@@ -256,6 +262,9 @@ message SecurityRequest {
   string password = 1;
   string code = 2;
   string challenge = 3;
+  string username = 4;
+  string credential_id = 5 [json_name = "credential_id"];
+  string attestation = 7 [json_name = "attestation"];
 }
 message SecurityReply {
   bool enabled = 1;
@@ -269,4 +278,16 @@ message SecurityReply {
   bool step_up_required = 9 [json_name = "step_up_required"];
   bool admin_mfa_required = 10 [json_name = "admin_mfa_required"];
   bool password_available = 11 [json_name = "password_available"];
+  bool passkey_enabled = 12 [json_name = "passkey_enabled"];
+  repeated PasskeyCredential passkeys = 13;
+  string options = 14;
+  string ceremony = 15;
+  bool mfa_required = 16 [json_name = "mfa_required"];
+  string mfa_challenge = 17 [json_name = "mfa_challenge"];
+}
+message PasskeyCredential {
+  string credential_id = 1 [json_name = "credential_id"];
+  string name = 2;
+  int64 created_at = 3 [json_name = "created_at"];
+  int64 last_used_at = 4 [json_name = "last_used_at"];
 }

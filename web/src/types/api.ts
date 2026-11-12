@@ -180,6 +180,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/user/security/passkey/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IdentityService_DeletePasskey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/user/security/passkey/enroll/begin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IdentityService_BeginPasskeyEnrollment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/user/security/passkey/enroll/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IdentityService_CompletePasskeyEnrollment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/user/security/passkey/login/begin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IdentityService_BeginPasskeyLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/user/security/passkey/login/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IdentityService_CompletePasskeyLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/user/security/passkeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["IdentityService_ListPasskeys"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/user/security/recovery": {
         parameters: {
             query?: never;
@@ -2060,6 +2156,12 @@ export interface components {
             sessionRevision?: string;
             revision?: string;
         };
+        "api.identity.v1.PasskeyCredential": {
+            credential_id?: string;
+            name?: string;
+            created_at?: string;
+            last_used_at?: string;
+        };
         "api.identity.v1.SecurityReply": {
             enabled?: boolean;
             configured?: boolean;
@@ -2073,12 +2175,21 @@ export interface components {
             step_up_required?: boolean;
             admin_mfa_required?: boolean;
             password_available?: boolean;
+            passkey_enabled?: boolean;
+            passkeys?: components["schemas"]["api.identity.v1.PasskeyCredential"][];
+            options?: string;
+            ceremony?: string;
+            mfa_required?: boolean;
+            mfa_challenge?: string;
         };
         /** @description No request may select a user/session. The transport supplies the credential. */
         "api.identity.v1.SecurityRequest": {
             password?: string;
             code?: string;
             challenge?: string;
+            username?: string;
+            credential_id?: string;
+            attestation?: string;
         };
         "api.log.v1.GetLogResponse": {
             id?: string;
@@ -2790,6 +2901,9 @@ export interface operations {
                 password?: string;
                 code?: string;
                 challenge?: string;
+                username?: string;
+                credential_id?: string;
+                attestation?: string;
             };
             header?: never;
             path?: never;
@@ -2857,6 +2971,150 @@ export interface operations {
         };
     };
     IdentityService_CompleteMFALogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.SecurityRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.SecurityReply"];
+                };
+            };
+        };
+    };
+    IdentityService_DeletePasskey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.SecurityRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.SecurityReply"];
+                };
+            };
+        };
+    };
+    IdentityService_BeginPasskeyEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.SecurityRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.SecurityReply"];
+                };
+            };
+        };
+    };
+    IdentityService_CompletePasskeyEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.SecurityRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.SecurityReply"];
+                };
+            };
+        };
+    };
+    IdentityService_BeginPasskeyLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.SecurityRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.SecurityReply"];
+                };
+            };
+        };
+    };
+    IdentityService_CompletePasskeyLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.identity.v1.SecurityRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.identity.v1.SecurityReply"];
+                };
+            };
+        };
+    };
+    IdentityService_ListPasskeys: {
         parameters: {
             query?: never;
             header?: never;
