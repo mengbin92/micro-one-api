@@ -9,19 +9,25 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [0.41.0] - 2026-11-12
 
-v0.41.0 是 v0.40.0 之后的 **MINOR 功能版本**：落地下一阶段计划备选功能包 C1/C2——安全中心与登录页新增通行密钥（WebAuthn passkey）无密码登录与全生命周期管理（诱饵 ceremony 防账号枚举、签名计数克隆检测、step-up 门控注册），中继网关新增 `/v1/rerank` 路由并复用 embeddings 计费管线。新增 Identity 149 迁移（三方言），不改动计费契约与现有价格；passkey 为暗开关功能，需显式配置 RP ID/ORIGIN 启用。详见 [release-v0.41.0.md](docs/releases/release-v0.41.0.md)。
+v0.41.0 是 v0.40.0 之后的 **MINOR 功能版本**：落地下一阶段计划备选功能包 C1/C2——安全中心与登录页新增通行密钥（WebAuthn passkey）无密码登录与全生命周期管理（诱饵 ceremony 防账号枚举、签名计数克隆检测、step-up 门控注册），中继网关新增 `/v1/rerank` 路由并复用 embeddings 计费管线。新增 Identity 149 迁移（三方言），不改动计费契约与现有价格；passkey 为暗开关功能，需显式配置 RP ID/ORIGIN 启用。本版本于 2026-11-12 以**同一版本号重新发布**（覆盖原 tag），纳入下列 Fixed 项与发布文档校正。详见 [release-v0.41.0.md](docs/releases/release-v0.41.0.md)。
 
 ### Added
 
-- Passkey 无密码登录与注册：identity 新增登录/注册 begin+complete、列表、删除六个安全端点，凭据绑定 IAM 写事务与审计；同时绑定 TOTP 的账号 passkey 登录后仍需第二因子；注册/删除始终要求新鲜 step-up 证明并受 `passkey_enabled` 门控。
+- Passkey 无密码登录与注册：identity 新增登录/注册 begin+complete、列表、删除六个安全端点，凭据绑定 IAM 写事务与审计；同时绑定 TOTP 的账号 passkey 登录后仍需第二因子；注册/删除始终要求新鲜 step-up 证明，并受全局暗开关（RP 配置 + MFA 加密密钥）门控。
 - 公开登录 begin 端点对未知/禁用/无通行密钥账号返回确定性伪 allowed credential 的诱饵 ceremony，形状与真实响应一致，complete 阶段必然失败，阻断账号枚举。
 - Web 登录页新增通行密钥登录（MFA 待决会话防死锁、可退回密码登录），安全中心新增通行密钥管理（删除确认、认证器取消映射可读提示、会话变化重试保护）。
-- `/v1/rerank` 中继路由（4 MiB 请求体预算），复用 embeddings 计费计量与 attempt 日志。
+- `/v1/rerank` 中继路由（8 MiB JSON 请求体预算，与 embeddings 等文本端点一致），复用 embeddings 计费计量与 attempt 日志。
 
 ### Changed
 
 - Identity security 信封解码预算 4096 → 24576（容纳 base64url 认证器数据）。
 - RBAC entry matrix 随 passkey 处理器刷新（`rbac-matrix-refresh.py` 重新生成）。
+
+### Fixed
+
+- 修复 `app/identity/internal/data/challenge.go` 的 import 顺序，恢复 CI `Backend / Check Go formatting` 门禁（此前两次 develop CI run 在首步失败，后续 Backend 步骤全部未执行）。
+- 修复公开 passkey 登录诱饵 ceremony 在 complete 阶段的可区分响应：user 0 会话改为在 IAM 查询与断言解析前返回 `ErrMFAInvalid`，保持账号枚举防护的响应形状一致；补 biz 回归与 24576 字节解码预算边界测试。
+- 校正本版文档事实：`/v1/rerank` 为 8 MiB 预算（非 4 MiB）、表名为 `identity_passkey`（非 `identity_passkeys`）、`passkey_enabled` 为全局暗开关回显（非账号级开关）；同步 README.md 与 README.en.md。
 
 ## [0.40.0] - 2026-11-11
 

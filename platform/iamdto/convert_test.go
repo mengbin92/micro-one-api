@@ -1,6 +1,7 @@
 package iamdto
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -37,6 +38,28 @@ func TestIAMProtoJSONPreservesLargeIDsAndRejectsUnknownFields(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	require.Error(t, DecodeRequest(req, &v.IAMRequest{}))
 }
+
+// SecurityRequest carries base64url WebAuthn attestation/assertion payloads.
+// Pin the decode budget: a full-size envelope must fit, and anything past the
+// cap must be rejected before protojson sees it. This guards against silently
+// reverting to the 4096 default and breaking passkey enrollment/login.
+func TestSecurityRequestDecodeBudget(t *testing.T) {
+	const budget = 24576
+	const prefix, suffix = `{"attestation":"`, `"}`
+	request := func(body string) *http.Request {
+		req := httptest.NewRequest("POST", "/", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		return req
+	}
+	exact := prefix + strings.Repeat("A", budget-len(prefix)-len(suffix)) + suffix
+	var p v.SecurityRequest
+	require.NoError(t, DecodeRequest(request(exact), &p))
+	require.Len(t, p.Attestation, budget-len(prefix)-len(suffix))
+
+	over := prefix + strings.Repeat("A", budget) + suffix
+	require.Error(t, DecodeRequest(request(over), &v.SecurityRequest{}))
+}
+
 func TestIAMScopeAndMaskBoundary(t *testing.T) {
 	platform := AuthorizationContextTo(authorization.Platform())
 	p := &v.IAMRequest{Context: platform, Role: &v.IAMRole{Name: "Name"}, UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"missing_field"}}}

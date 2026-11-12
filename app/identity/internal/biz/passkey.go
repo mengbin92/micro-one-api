@@ -218,6 +218,13 @@ func (uc *IdentityUsecase) CompletePasskeyLogin(ctx context.Context, ceremony, r
 	if err != nil {
 		return 0, "", "", err
 	}
+	// Decoy ceremonies are bound to user 0. Reject them before any IAM lookup
+	// or assertion parsing so their failure is indistinguishable from a real
+	// account's invalid assertion; otherwise the "not found" branch for user 0
+	// would leak which accounts own passkeys through a different error code.
+	if env.UserID == 0 {
+		return 0, "", "", ErrMFAInvalid
+	}
 	parsed, err := protocol.ParseCredentialRequestResponseBody(strings.NewReader(rawResponse))
 	if err != nil {
 		return 0, "", "", ErrMFAInvalid
