@@ -13,10 +13,10 @@ v0.41.0 是 v0.40.0 之后的 **MINOR 功能版本**：落地下一阶段计划�
 
 ### Added
 
-- Passkey 无密码登录与注册：identity 新增登录/注册 begin+complete、列表、删除六个安全端点，凭据绑定 IAM 写事务与审计；同时绑定 TOTP 的账号 passkey 登录后仍需第二因子；注册/删除始终要求新鲜 step-up 证明并受 `passkey_enabled` 门控。
+- Passkey 无密码登录与注册：identity 新增登录/注册 begin+complete、列表、删除六个安全端点，凭据绑定 IAM 写事务与审计；同时绑定 TOTP 的账号 passkey 登录后仍需第二因子；注册/删除始终要求新鲜 step-up 证明，并受全局暗开关（RP 配置 + MFA 加密密钥）门控。
 - 公开登录 begin 端点对未知/禁用/无通行密钥账号返回确定性伪 allowed credential 的诱饵 ceremony，形状与真实响应一致，complete 阶段必然失败，阻断账号枚举。
 - Web 登录页新增通行密钥登录（MFA 待决会话防死锁、可退回密码登录），安全中心新增通行密钥管理（删除确认、认证器取消映射可读提示、会话变化重试保护）。
-- `/v1/rerank` 中继路由（4 MiB 请求体预算），复用 embeddings 计费计量与 attempt 日志。
+- `/v1/rerank` 中继路由（8 MiB JSON 请求体预算，与 embeddings 等文本端点一致），复用 embeddings 计费计量与 attempt 日志。
 
 ### Changed
 

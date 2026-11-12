@@ -10,7 +10,7 @@ v0.41.0 是 v0.40.0 之后的 **MINOR 功能版本**：落地下一阶段计划 
 
 ### 1. Passkey 无密码登录（C1）
 
-**内容**：identity-service 新增六个安全端点（登录/注册的 begin+complete、列表、删除），WebAuthn 通行密钥作为首个抗钓鱼认证因子，与既有 TOTP MFA 共存——账号同时绑定 TOTP 时，passkey 登录后仍需完成第二因子。注册/删除通行密钥始终要求新鲜的 step-up 证明（与 ManageMFA 同语义），并受账号 `passkey_enabled` 开关门控；凭据存于 IAM 写事务内，共享账号审计与 revision 语义。
+**内容**：identity-service 新增六个安全端点（登录/注册的 begin+complete、列表、删除），WebAuthn 通行密钥作为首个抗钓鱼认证因子，与既有 TOTP MFA 共存——账号同时绑定 TOTP 时，passkey 登录后仍需完成第二因子。注册/删除通行密钥始终要求新鲜的 step-up 证明（与 ManageMFA 同语义），并受全局暗开关（`IDENTITY_PASSKEY_RP_ID` / `IDENTITY_PASSKEY_ORIGIN` 与 MFA 加密密钥）门控；列表接口的 `passkey_enabled` 是该全局能力的回显，并非账号级开关。凭据存于 IAM 写事务内，共享账号审计与 revision 语义。
 
 **安全设计**：
 
@@ -24,13 +24,13 @@ v0.41.0 是 v0.40.0 之后的 **MINOR 功能版本**：落地下一阶段计划 
 
 ### 2. /v1/rerank 中继（C2）
 
-**内容**：中继网关注册 `/v1/rerank` 路由（4 MiB 请求体预算），走 raw relay 路径，复用 embeddings 计费管线——按 `usage` 字段计量的额度结算、每请求 attempt 日志、token 配额账本一致。
+**内容**：中继网关注册 `/v1/rerank` 路由（8 MiB JSON 请求体预算，与 `/v1/embeddings` 等文本端点一致），走 raw relay 路径，复用 embeddings 计费管线——按 `usage` 字段计量的额度结算、每请求 attempt 日志、token 配额账本一致。
 
 **验证**：`internal/server/http_raw_test.go` 新增路由回归；relay-gateway 编译与单测通过。真实付费 rerank 调用留待上游渠道与价格配置后由维护者验收。
 
 ## 兼容性
 
-- 新增 Identity 149 迁移（MySQL/Postgres/SQLite 三方言，`identity_passkeys` 表）；既有库由 identity-service 启动迁移自动补齐，属追加式迁移，不回写旧表。
+- 新增 Identity 149 迁移（MySQL/Postgres/SQLite 三方言，`identity_passkey` 表）；既有库由 identity-service 启动迁移自动补齐，属追加式迁移，不回写旧表。
 - 计费契约不变：rerank 与 embeddings 同口径计量，无新价格表；passkey 不涉及计费。
 - 配置新增（均为可选）：`IDENTITY_PASSKEY_RP_ID`、`IDENTITY_PASSKEY_ORIGIN`、`IDENTITY_PASSKEY_DISPLAY_NAME`（缺省 "Micro-One API"）。
 - Web 前端需随本版成对更新（登录页与安全中心新增通行密钥交互）。
@@ -46,6 +46,7 @@ v0.41.0 是 v0.40.0 之后的 **MINOR 功能版本**：落地下一阶段计划 
 - `go build ./...`、`go test ./app/identity/...`、`make test-unit`、`make test-race`、`make migration-check`、`python3 scripts/rbac-matrix-refresh.py --check`（随 rbac-contract-check）全部通过。
 - `web`: `npx vitest run` 750 项通过，`npm run lint`、`npm run build` 通过。
 - 生产部署后：`docker ps` + `docker logs` 验证 identity-service/relay-gateway 健康；未配置 RP 变量时 `PASSKEY_UNAVAILABLE` 预期返回。
+- 发布后补记：develop 上两次 CI run 的 `Backend / Check Go formatting` 曾因 `app/identity/internal/data/challenge.go` 导入顺序失败（该步骤位于 Backend job 首位，其余 Backend 步骤未执行；上文测试结论来自本地门禁与其它 CI job）。该问题已随后续修复提交更正并同步刷新 RBAC SOURCE 摘要；本页原写的 4 MiB 预算、`identity_passkeys` 表名与"账号级 `passkey_enabled` 开关"也一并校正为 8 MiB、`identity_passkey` 与全局暗开关。
 
 ## 完整变更日志
 
