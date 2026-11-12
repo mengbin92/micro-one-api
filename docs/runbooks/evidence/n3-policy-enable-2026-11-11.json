@@ -1,0 +1,21 @@
+{
+  "checked_at": "2026-11-11 21:03 (Asia/Shanghai)",
+  "scope": "enable global MFA policies in production",
+  "changes": {
+    "IDENTITY_STEP_UP_ENABLED": "false -> true",
+    "IDENTITY_MFA_REQUIRE_ADMIN": "false -> true",
+    "remote_backup": ".env.bak.20261111-210317",
+    "recreate": "identity-service only (--no-deps)"
+  },
+  "post_enable_checks": {
+    "healthz": "ok",
+    "container_env": "both vars true",
+    "first_real_mfa_login": "success 21:14:34",
+    "recovery_codes": 10,
+    "failures": 0,
+    "lock": "none"
+  },
+  "acceptance": "maintainer completed console-side manual verification after enablement",
+  "rollback": "set both vars false in docker-compose/.env and recreate identity-service; render+container-env pipeline identical to enablement; full false drill not exercised per maintainer decision to avoid further production bounce",
+  "secrets": "no credential recorded"
+}

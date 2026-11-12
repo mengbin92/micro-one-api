@@ -1,0 +1,29 @@
+{
+  "checked_at": "2026-11-11 (Asia/Shanghai, evening)",
+  "scope": "MFA endpoints reject invalid proof with a valid MFA-authenticated admin session",
+  "paths": {
+    "bff": "loopback admin-api :3000",
+    "direct_owner": "identity-service :8001 loopback via container exec"
+  },
+  "results": [
+    {"step": "password login", "result": "mfa_required challenge issued"},
+    {"step": "mfa login with code 000000", "result": "rejected 400 MFA_INVALID, challenge survived"},
+    {"step": "mfa login with maintainer real TOTP", "result": "session issued"},
+    {"step": "GET security status", "result": "enabled=true, recovery_codes_remaining=10, step_up/admin policies false"},
+    {"step": "disable without step-up proof", "result": "rejected 403 STEP_UP_REQUIRED", "owner": "HTTP 403"},
+    {"step": "confirm with garbage code", "result": "rejected 400 MFA_INVALID", "owner": "HTTP 400"},
+    {"step": "rotate recovery without step-up proof", "result": "rejected 403 STEP_UP_REQUIRED", "owner": "HTTP 403"},
+    {"step": "verify step-up with wrong code", "result": "rejected 400 MFA_INVALID"},
+    {"step": "DELETE /api/user/session without expected_revision/reason", "result": "rejected 400 (documented contract)"}
+  ],
+  "cleanup": {
+    "self_revoke_semantics": "RevokeOwnSession revokes only the calling session; admin RevokeUserSessions returns ErrIAMProtected for self (by design)",
+    "orphaned_test_sessions": 2,
+    "orphaned_session_tokens": "never persisted to disk or logs, shells exited",
+    "natural_expiry": "12h session TTL",
+    "residual_failures": 3,
+    "mfa_state_untouched": "secret set, recovery_count 10, no lock"
+  },
+  "facts": {"securityTTL": "5m (challenge, step-up proof, lockout window)", "sessionTTL": "12h"},
+  "secrets": "no password, token, or TOTP recorded"
+}

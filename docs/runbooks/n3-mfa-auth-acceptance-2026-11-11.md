@@ -1,6 +1,6 @@
 # N3：账号登录、GitHub OAuth 与 MFA 扫码绑定
 
-2026-11-11，北京时间。关联 [下一阶段计划](../design/next-stage-plan-2026-11-08.md)、[A2 契约](../design/a2-security-contract-2026-10-27.md)。状态：生产管理员密码登录通过；既有记录确认 GitHub 绑定于 12:22 落库，完整的新 OAuth 登录/会话旅程仍待验。13:26 前端制品已包含绑定状态与 MFA 二维码，本轮只读摘要核对确认；实际手机扫码未验。工作区评审修复已提交并随 v0.40.0 发版部署（identity-service 15:27、admin-api 15:28、前端制品 15:29），RBAC 契约与 gitleaks 门禁修复后全绿；真实手机扫码与新 OAuth 登录旅程仍待验，N3 整体未完成。
+2026-11-11，北京时间。关联 [下一阶段计划](../design/next-stage-plan-2026-11-08.md)、[A2 契约](../design/a2-security-contract-2026-10-27.md)。状态：生产管理员密码登录通过；既有记录确认 GitHub 绑定于 12:22 落库，维护者已于 2026-11-11 晚在浏览器验证 GitHub 授权登录全流程成功：登录页选择 GitHub → 弹窗携带 `?login&oauth=1` → 回调 → 进入 `https://console.mengbin.top/dashboard`，见 [GitHub 登录证据](evidence/n3-github-oauth-login-2026-11-11.json)。13:26 前端制品已包含绑定状态与 MFA 二维码，本轮只读摘要核对确认；实际手机扫码未验。工作区评审修复已提交并随 v0.40.0 发版部署（identity-service 15:27、admin-api 15:28、前端制品 15:29），RBAC 契约与 gitleaks 门禁修复后全绿；真实手机扫码与新 OAuth 登录旅程仍待验，N3 整体未完成。
 
 ## 本轮范围与决定
 
@@ -90,12 +90,13 @@
 - [x] 二维码实现、组件及桌面/移动工程验证。
 - [x] 新建 GitHub OAuth App 并通过 0600 文件安全交接四项配置。
 - [x] 核对生产候选差异、回调及 GitHub 受控启用；仅重建 Identity，原镜像及 MFA 状态保留。
-- [ ] 真实 GitHub 授权、完整 callback/session 交接及账号归属回读。
+- [x] 真实 GitHub 授权、完整 callback/session 交接及账号归属回读：维护者浏览器实测，登录页 GitHub 入口 → `?login&oauth=1` 弹窗 → 回调 → 控制台 dashboard 已登录，见 [证据](evidence/n3-github-oauth-login-2026-11-11.json)。
 - [x] 二维码及 GitHub 配置候选自审和 OCR。
 - [x] 13:26 前端制品已发布；本轮公网 index/Profile chunk 摘要一致，二维码已包含。
-- [ ] 实际手机扫码 enrollment。
-- [ ] 恢复码、丢设备恢复边界、首批敏感操作及 BFF/直接 owner 拒绝验收。
-- [ ] 按维护者决定安排两个全局策略的启用窗口及回退验证。
+- [x] 实际手机扫码 enrollment：维护者用真实手机验证器完成扫码启用；生产只读回读 `identity_mfa`（user 1）secret 已置位、pending 已清空、恢复码 10、revision 2、无锁定，审计 `credential.mfa.setup success`（前两次 setup failure 为维护者重试）、`credential.mfa.confirm success`、`credential.mfa.login success`。
+- [x] BFF/直接 owner 无效证明拒绝验收（两阶段全绿）；首批敏感操作清单与丢设备恢复边界已定稿（见上节）。
+- [x] 恢复码真实消费验证：维护者完成轮换（rotate 成功，含一次失败重试）并用 1 个恢复码真实登录成功，生产回读余量 10→9、审计 `credential.mfa.recovery/step_up/login` 齐全；当前生效码组为最后一次轮换所示，剩 9 个。
+- [x] 两个全局策略已于 2026-11-11 21:03 生产启用（step-up + 管理员 MFA 强制），维护者完成手动验收，回滚锚点 `.env.bak.20261111-210317`。
 
 既有 Identity 与前端部署按上述时间记录保留；本轮工作区评审修复已提交（v0.40.0 窗口），identity-service 与 admin-api 已分别于 15:27/15:28 重建部署，前端制品 15:29 更新，tag v0.40.0 指向修复后 main。没有绑定生产 MFA 或打开强制策略。N3 未完成项继续保留，不以账号密码成功替代第二因子验收。
 
@@ -109,3 +110,31 @@
 | P3 / 证据准确性 | 初始失败响应与后来成功标记混列、已发布 QR 仍记为待部署，且外部调用理论上限被写成现场实测 | 分离初始失败和后续成功，按公开制品摘要回填部署状态，保留真实手机/新 OAuth 会话未验，并移除不必要的外部身份 ID |
 
 受影响 biz/server/cmd 三包测试通过，前端 10 项定向测试、ESLint、类型检查及差异格式检查通过。收口：make test 与 make test-race 全绿；本轮 OCR 3 条意见已处理（写阶段预算收紧至 5s，另两条按最简原则不采纳）；全历史 gitleaks detect 0 发现。本轮评审未操作生产写路径。
+
+## 无效证明拒绝验收（2026-11-11 续）
+
+第一阶段（无会话/无效输入）：BFF（admin-api loopback :3000）与直接 owner（identity-service :8001 loopback）两侧一致拒绝——安全状态/verify/confirm/disable/recovery 无会话均 401；伪造 challenge 的 MFA 登录均 400 `MFA_INVALID`。详见 [证据](evidence/n3-mfa-rejection-p1-2026-11-11.json)。
+
+第二阶段（有效会话，待维护者提供实时 TOTP）：脚本已备于生产 `/tmp/n3-reject-p2.sh`，覆盖：MFA 登录先拒无效码再受理有效码、无 step-up 证明时 disable/rotate 拒绝、confirm 伪码拒绝、verify 错误码拒绝、直接 owner 同会话复测、收尾撤销会话并验证 401。完成后连同恢复码消费（丢设备路径）与敏感操作清单回填本记录。
+
+## 第二阶段拒绝验收与会话清理边界（2026-11-11 晚）
+
+以真实 TOTP 通过 MFA 登录取得有效会话后，BFF 与直接 owner 双侧一致拒绝无效证明：disable/rotate 无 step-up 证明 → 403 `STEP_UP_REQUIRED`；confirm 伪码 → 400 `MFA_INVALID`；verify 错码 → 400 `MFA_INVALID`；MFA 登录先拒无效码（challenge 保留）再受理有效码；status 回读 enabled、恢复码 10、两个全局策略关闭。详见 [证据](evidence/n3-mfa-rejection-p2-2026-11-11.json)。
+
+会话清理中发现并确认的边界（代码佐证）：
+- `DELETE /api/user/session`（RevokeOwnSession）**只撤销调用会话本身**，`global` 仅区分会话/上下文粒度；必须携带 `expected_revision`（会话 revision）与 `reason`。
+- 管理端「撤销用户全部会话」（`RevokeUserSessions`）对操作者本人返回 `ErrIAMProtected`（`credentialScope` 拒绝 uid==actor），是防自我接管的设计；IAM 页面对自己执行必然失败属预期。
+- 因此**无自助"撤销我的全部会话"入口**；他人会话由管理端处理，自己的其余会话只能逐个持令牌撤销。
+- 本次遗留 2 个测试会话（令牌从未落盘、shell 已退出），12h 会话 TTL 内自然失效；MFA 状态未受影响（secret 置位、恢复码 10、计数 3 未锁）。锁定/挑战/step-up 证明 TTL 均为 5 分钟。
+
+## 敏感操作与丢设备恢复边界（定稿）
+
+step-up 强制面（`RequireStepUp` 代码确认，当前策略关闭时仅 MFA 自我管理始终强制）：修改密码/用户名、修改本人邮箱、创建 API 令牌、MFA setup/confirm/disable/recovery 轮换、IAM 授权变更、托管用户改邮箱/密码、备份安全选项更新、邮箱验证码消费。
+
+丢设备恢复路径：MFA 挑战与 step-up 的 `consumeMFA` 均接受 32 位恢复码（消费一个）→ 用任一恢复码登录 → 立即重新扫码注册新设备（setup/confirm 各需一次 step-up，恢复码可用）→ 轮换出新 10 个恢复码。**恢复码耗尽且设备丢失 = 无自助路径**，仅剩服务认证救援适配（RescueRootCredential）或运维手工清理 `identity_mfa`；建议恢复码低于 3 个时立即轮换。
+
+## 全局策略启用（2026-11-11 21:03，维护者拍板）
+
+生产 `docker-compose/.env` 两个开关置 `true`（备份 `.env.bak.20261111-210317`），仅重建 identity-service，容器内确认变量生效、healthz 正常。启用后维护者完成控制台侧手动验收（含敏感操作 step-up 流程）；服务端只读侧证：启用后首次真实 MFA 登录成功（21:14:34）、恢复码 10、无锁定、失败计数归零。详见 [证据](evidence/n3-policy-enable-2026-11-11.json)。
+
+回滚路径：同文件两开关改回 `false` 并重建 identity-service（渲染+容器注入管道与启用完全一致）。维护者决定不再做 false 全量演练，避免无谓的生产抖动；以 `.env.bak.20261111-210317` 为回滚锚点。

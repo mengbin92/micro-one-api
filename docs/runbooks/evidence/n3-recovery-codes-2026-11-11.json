@@ -1,0 +1,13 @@
+{
+  "checked_at": "2026-11-11 (Asia/Shanghai, evening)",
+  "scope": "recovery code rotate + real consumption",
+  "results": {
+    "rotate_recovery_codes": "success x2 in audit (one failed attempt retried)",
+    "step_up_for_rotate": "success, preceded by one failed_attempt",
+    "real_consumption_login": "maintainer completed an MFA login presenting one recovery code",
+    "recovery_count": "10 -> 9 after consumption",
+    "mfa_state": "secret set, revision 4, failures 0, no lock"
+  },
+  "notes": "the first rotation's codes were superseded by the second rotation; only the latest set minus the consumed one (9) remains valid",
+  "secrets": "no recovery code, token, or TOTP recorded"
+}
