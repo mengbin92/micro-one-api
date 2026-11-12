@@ -86,7 +86,7 @@ test('login stores token and shows dashboard', async ({ page }) => {
   await page.goto('/login');
   await page.getByLabel('用户名').fill('alice');
   await page.getByLabel('密码').fill('secret');
-  await page.getByRole('button', { name: '登录' }).click();
+  await page.getByRole('button', { name: '登录', exact: true }).click();
 
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole('heading', { name: /Alice/ })).toBeVisible();
