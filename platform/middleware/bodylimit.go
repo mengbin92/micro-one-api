@@ -47,6 +47,7 @@ func RequestBodyLimitForPath(path string) int64 {
 		return 4 * 1024 * 1024
 	case path == "/v1/chat/completions", path == "/v1/completions",
 		path == "/v1/embeddings", path == "/v1/moderations",
+		path == "/v1/rerank",
 		path == "/v1/images/generations", path == "/v1/audio/speech",
 		path == "/v1/messages", path == "/v1/responses",
 		strings.HasPrefix(path, "/v1/responses/"):
