@@ -6,6 +6,26 @@ v0.41.0 是 v0.40.0 之后的 **MINOR 功能版本**：落地下一阶段计划 
 
 版本判 MINOR 而非 PATCH 的依据：新增两项面向用户的公开能力（passkey 登录入口/管理界面、`/v1/rerank` 网关面），属于向后兼容的新功能而非对既有行为的修复。
 
+## 重新发版修订（2026-11-12，北京时间）
+
+v0.41.0 首次发布后，develop 上两次 CI run 在 `Backend / Check Go formatting` 失败，且发布文档存在事实偏差。现以**同一版本号重新发布**（覆盖原 `v0.41.0` tag），把修复与文档校正一并纳入。版本号仍判 MINOR：本轮为缺陷修复与文档修正，未新增公开能力、API、迁移或计费契约。
+
+### 1. 根因
+
+- `app/identity/internal/data/challenge.go` 将 `errors` import 排在 `encoding/hex` 之前，gofmt 门禁失败；该步骤位于 Backend job 首位，导致后续 test / race / architecture / RBAC / 生成文件校验全部未执行。
+- 公开 passkey 登录的诱饵 ceremony（绑定 user 0）在 complete 阶段仍会查询 `iam.User`，其 not-found 分支与真实账号的无效断言返回不同错误，账号枚举防护的响应形状被破坏。
+- 发布文档把 `/v1/rerank` 预算写成 4 MiB、表名写成 `identity_passkeys`，并把 `passkey_enabled` 描述为账号级开关。
+
+### 2. 修复
+
+- `a1c2593d`：gofmt + import 分组；对 user-0 ceremony 在 IAM 查询与断言解析之前直接返回 `ErrMFAInvalid`；补 biz 回归与 24576 字节解码预算边界测试；刷新 RBAC SOURCE 摘要并补评审说明。
+- `c03ab6a8`：校正 release notes / CHANGELOG，并如实记录 CI 失败。
+- 本轮 `docs(release)` 提交：补齐重新发版的发布工件，并同步 README.md 与 README.en.md。
+
+### 3. 影响服务
+
+仅 identity-service（已线上热更新并验收）；relay-gateway、web、迁移 149 与计费契约不变。passkey 仍为暗开关，真实设备旅程待配置 RP 后验收。固定版本 tag 与同名镜像被覆盖，已按旧 tag 部署的环境不会自动更新，需显式重新部署。
+
 ## 新增内容
 
 ### 1. Passkey 无密码登录（C1）
@@ -14,13 +34,13 @@ v0.41.0 是 v0.40.0 之后的 **MINOR 功能版本**：落地下一阶段计划 
 
 **安全设计**：
 
-- 公开的登录 begin 端点对未知、禁用、无通行密钥的账号返回**诱饵 ceremony**（discoverable begin + 按用户名确定性的伪 allowed credential），形状与真实响应一致，无法被用于枚举账号存在性或通行密钥归属；诱饵 ceremony 绑定 user 0，complete 阶段必然失败。
+- 公开的登录 begin 端点对未知、禁用、无通行密钥的账号返回**诱饵 ceremony**（discoverable begin + 按用户名确定性的伪 allowed credential），形状与真实响应一致，无法被用于枚举账号存在性或通行密钥归属；诱饵 ceremony 绑定 user 0，complete 阶段以与真实无效断言相同的错误失败。
 - complete 拒绝签名计数器不回退也不前进的凭据（go-webauthn 将克隆 authenticator 报告为 CloneWarning 而非错误），阻断克隆重放。
 - 凭据表以 `credential_id` 为主键，记录 `sign_count`/`last_used_at`，三方言迁移 149。
 
 **暗开关**：未配置 `IDENTITY_PASSKEY_RP_ID` 与 `IDENTITY_PASSKEY_ORIGIN` 时全部端点返回 `PASSKEY_UNAVAILABLE`，不建表不走 ceremony；安全信封解码预算 4096 → 24576 以容纳 base64url 认证器数据。
 
-**验证**：biz 层新增 decoy/暗开关/注册删除回归（含 anti-enumeration 形状断言），identity 全包单测、`make test-unit`（126 包）、`make test-race`、`make migration-check`、RBAC 契约检查全绿；web 侧 LoginPage/SecurityCenter/passkey lib 组件回归 750 项通过，lint/build 通过。真实设备（手机/指纹）扫码式 enrollment 与登录留待维护者在生产配置 RP 环境变量后验收。
+**验证**：biz 层新增 decoy/暗开关/注册删除回归（含 anti-enumeration 形状断言），identity 全包单测、`make test-unit`、`make test-race`、`make migration-check`、RBAC 契约检查全绿；web 侧 LoginPage/SecurityCenter/passkey lib 组件回归在 CI 全绿。真实设备（手机/指纹）式 enrollment 与登录留待维护者在生产配置 RP 环境变量后验收。
 
 ### 2. /v1/rerank 中继（C2）
 
@@ -40,13 +60,15 @@ v0.41.0 是 v0.40.0 之后的 **MINOR 功能版本**：落地下一阶段计划 
 1. 部署 identity-service（自动执行迁移 149）与 relay-gateway；web 执行 `make web-dist` 更新宿主 dist。
 2. 需要启用 passkey 时，为 identity-service 配置 `IDENTITY_PASSKEY_RP_ID`（如 `api.example.com`）与 `IDENTITY_PASSKEY_ORIGIN`（如 `https://api.example.com`），重启生效；不配置则功能保持关闭。
 3. 需要对外开放 rerank 时，在渠道侧配置对应上游与模型价格（与 embeddings 同口径）。
+4. 重新发版会覆盖 `v0.41.0` tag 与同名镜像；已按首次发布部署的环境需按新 tag 显式重新部署，不会自动滚动更新。
 
 ## 验证
 
-- `go build ./...`、`go test ./app/identity/...`、`make test-unit`、`make test-race`、`make migration-check`、`python3 scripts/rbac-matrix-refresh.py --check`（随 rbac-contract-check）全部通过。
-- `web`: `npx vitest run` 750 项通过，`npm run lint`、`npm run build` 通过。
-- 生产部署后：`docker ps` + `docker logs` 验证 identity-service/relay-gateway 健康；未配置 RP 变量时 `PASSKEY_UNAVAILABLE` 预期返回。
-- 发布后补记：develop 上两次 CI run 的 `Backend / Check Go formatting` 曾因 `app/identity/internal/data/challenge.go` 导入顺序失败（该步骤位于 Backend job 首位，其余 Backend 步骤未执行；上文测试结论来自本地门禁与其它 CI job）。该问题已随后续修复提交更正并同步刷新 RBAC SOURCE 摘要；本页原写的 4 MiB 预算、`identity_passkeys` 表名与"账号级 `passkey_enabled` 开关"也一并校正为 8 MiB、`identity_passkey` 与全局暗开关。
+- 重新发版 CI run `43170782758`：`conclusion=success`，25 个 job 全绿；Backend 的 format / openapi / test / race / architecture / commit bodies / migration / RBAC / iam-browser / generated files 全部通过，Frontend、Integration、两个 Migration smoke、Deployment docs 与 Docker 18 个构建也全部通过。
+- 本地门禁：`make format-check`、`make test-unit`、`make test-race`、`make migration-check`、`make rbac-contract-check`（959 行）、`python3 scripts/rbac-matrix-refresh.py --check`、`make iam-browser-gate-check`、`make api-check`、`python3 scripts/check-markdown-links.py` 全绿；`make api` 后生成文件无漂移。
+- `web`：CI 的 lint / test / critical coverage / build 全绿；本机全量 vitest 有 2 例 jsdom 超时基线（748/750），单文件 PlaygroundPage 复跑 15/15 通过。
+- 线上验收：identity-service 热更新为 `deploy-20261112-145032-c03ab6a8`，running、restarts=0、启动日志无错误；经 admin-api 探测 passkey begin/complete → 503 `MFA_UNAVAILABLE`（暗开关），`GET /api/user/security` → 401；rollback 锚点 `rollback-20261112-145032`。
+- 待维护者验收：真实设备（手机/指纹）enrollment 与登录需先配置 RP 变量；真实付费 rerank 调用需先确认上游渠道与价格。
 
 ## 完整变更日志
 
@@ -54,3 +76,6 @@ v0.41.0 是 v0.40.0 之后的 **MINOR 功能版本**：落地下一阶段计划 
 - `feat(identity): passkey passwordless login and enrollment`
 - `chore(rbac): refresh entry matrix for passkey endpoints`
 - `feat(web): passkey login and security-center management`
+- `fix(identity): restore passkey decoy parity and unblock CI formatting gate`
+- `docs(release): correct v0.41.0 facts and record CI failure`
+- `docs(release): reissue v0.41.0 with README sync`
