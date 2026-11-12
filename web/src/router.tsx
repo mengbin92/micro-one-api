@@ -92,6 +92,7 @@ const VendorReportsPage = lazy(() => routeLoaders['/admin/vendor-reports']().the
 
 const SessionRolesPage = lazy(() => import('@/pages/SessionRolesPage').then(m => ({ default: m.SessionRolesPage })));
 const IAMPage = lazy(() => import('@/pages/admin/IAMPage').then(m => ({ default: m.IAMPage })));
+const OperationAuditsPage = lazy(() => import('@/pages/admin/OperationAuditsPage').then(m => ({ default: m.OperationAuditsPage })));
 
 const OperationsPage = lazy(() => routeLoaders['/operations']().then(m => ({ default: m.OperationsPage })));
 const AnnouncementsPage = lazy(() => routeLoaders['/admin/announcements']().then(m => ({ default: m.AnnouncementsPage })));
@@ -198,6 +199,7 @@ export const router = createBrowserRouter([
         children: [
           { path: 'vendor-reports', element: withSuspense(<VendorReportsPage />) },
           { path: 'iam', element: withSuspense(<IAMPage />) },
+          { path: 'operation-audits', element: withSuspense(<OperationAuditsPage />) },
           ...['permissions', 'roles', 'assignments', 'delegations', 'constraints', 'menus', 'explain', 'audits'].map(section => ({ path: `iam/${section}`, element: withSuspense(<IAMPage />) })),
           {
             index: true,

@@ -18,6 +18,7 @@ export const routeLoaders = {
   '/redeem': () => import('@/pages/RedeemPage'),
   '/session-roles': () => import('@/pages/SessionRolesPage'),
   '/admin/iam/roles': () => import('@/pages/admin/IAMPage'),
+  '/admin/operation-audits': () => import('@/pages/admin/OperationAuditsPage'),
   '/profile': () => import('@/pages/ProfilePage'),
   '/subscriptions': () => import('@/pages/SubscriptionsPage'),
   '/admin': () => import('@/pages/admin/OverviewPage'),

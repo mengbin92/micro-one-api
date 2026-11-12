@@ -99,3 +99,27 @@ describe('IAM entry route', () => {
     } finally { view.unmount(); entryRouter.dispose(); }
   });
 });
+
+describe('operation audit entry route', () => {
+  beforeEach(() => localStorage.setItem('token', 'operation-audit-route-fixture'));
+
+  it('registers the page and gates it with audit read permission', async () => {
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({
+        authorization_mode: 'iam', session: { activation_state: 'active' },
+        permitted_operations: ['admin.console.enter', 'iam.audit.read'],
+      })),
+      http.get('/api/v1/admin/operation-audits', () => HttpResponse.json({ success: true, data: { items: [], total: 0, page: 1, page_size: 20 } })),
+    );
+    expect(matchRoutes(router.routes, '/admin/operation-audits')).not.toBeNull();
+    expect(routeLoaders).toHaveProperty('/admin/operation-audits');
+    const entryRouter = createMemoryRouter(router.routes, { initialEntries: ['/admin/operation-audits'] });
+    const view = renderWithQuery(<RouterProvider router={entryRouter} />);
+    try {
+      expect(await screen.findByRole('heading', { name: '操作审计', level: 2 })).toBeVisible();
+    } finally {
+      view.unmount();
+      entryRouter.dispose();
+    }
+  });
+});
