@@ -145,6 +145,38 @@ describe('AppNavigation', () => {
     expect(screen.queryByRole('link', { name: title })).not.toBeInTheDocument();
   });
 
+  it('shows the operation audit entry to audit readers', async () => {
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({
+        authorization_mode: 'iam', session: { activation_state: 'active' },
+        permitted_operations: ['admin.console.enter', 'iam.audit.read'],
+      })),
+      http.get('/api/v1/admin/operation-audits', () => HttpResponse.json({ success: true, data: { items: [], total: 0, page: 1, page_size: 20 } })),
+    );
+    mockSelfAndDashboardEmpty();
+    renderNavigation('/admin/operation-audits');
+
+    expect(await screen.findByRole('link', { name: '操作审计' })).toHaveAttribute('href', '/admin/operation-audits');
+    expect(screen.getByRole('heading', { name: '操作审计' })).toBeInTheDocument();
+  });
+
+  it('hides the operation audit entry without audit read permission', async () => {
+    localStorage.setItem('userRole', '100');
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({
+        authorization_mode: 'iam', session: { activation_state: 'active' },
+        permitted_operations: ['admin.console.enter', 'log.request.list'],
+      })),
+      http.get('/api/v1/admin/operation-audits', () => HttpResponse.json({ success: true, data: { items: [], total: 0, page: 1, page_size: 20 } })),
+    );
+    mockSelfAndDashboardEmpty();
+    renderNavigation('/admin/operation-audits');
+
+    await screen.findByRole('button', { name: '监控与分析' });
+    expect(screen.getByRole('link', { name: '调用日志' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '操作审计' })).not.toBeInTheDocument();
+  });
+
   it('only highlights admin overview on the exact admin route', async () => {
     window.localStorage.setItem('userRole', '10');
     mockSelf(10);

@@ -40,18 +40,19 @@ type AdminService struct {
 	announcementUc *adminbiz.AnnouncementUsecase
 	logClient      logv1.LogServiceClient
 	adminv1.UnimplementedAdminServiceServer
-	billingClient   billingv1.BillingServiceClient
-	identityClient  identityv1.IdentityServiceClient
-	channelClient   channelv1.ChannelServiceClient
-	systemOptsUc    *adminbiz.SystemOptionsUsecase
-	iam             *IAMAdminService
-	httpClient      *http.Client
-	providerFactory *relayprovider.ProviderFactory
-	subscriptionUc  *subscriptionbiz.SubscriptionUsecase
-	groupUc         *subscriptionbiz.GroupUsecase
-	planUc          *subscriptionbiz.PlanUsecase
-	routingGroupUc  routingGroupUsecase
-	routingAccessUc routingAccessUsecase
+	billingClient    billingv1.BillingServiceClient
+	identityClient   identityv1.IdentityServiceClient
+	channelClient    channelv1.ChannelServiceClient
+	systemOptsUc     *adminbiz.SystemOptionsUsecase
+	operationAuditUc *adminbiz.OperationAuditUsecase
+	iam              *IAMAdminService
+	httpClient       *http.Client
+	providerFactory  *relayprovider.ProviderFactory
+	subscriptionUc   *subscriptionbiz.SubscriptionUsecase
+	groupUc          *subscriptionbiz.GroupUsecase
+	planUc           *subscriptionbiz.PlanUsecase
+	routingGroupUc   routingGroupUsecase
+	routingAccessUc  routingAccessUsecase
 }
 
 type operatorCredentialKey struct{}

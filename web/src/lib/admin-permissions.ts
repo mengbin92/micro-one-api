@@ -32,6 +32,7 @@ export const adminPages: Record<string, string> = {
   '/admin/iam/menus': 'iam.menu.list',
   '/admin/iam/explain': 'iam.authorization.explain',
   '/admin/iam/audits': 'iam.audit.read',
+  '/admin/operation-audits': 'iam.audit.read',
 };
 export const menuRoutes: Record<string, string> = { 'vendor-reports': '/admin/vendor-reports', 'upstream-contracts': '/admin/upstream-contracts', overview: '/admin', users: '/admin/users', channels: '/admin/channels', models: '/admin/models', 'routing-groups': '/admin/routing-groups', pricing: '/admin/pricing', payments: '/admin/payment-orders', subscriptions: '/admin/subscriptions', logs: '/admin/logs', settings: '/admin/options', iam: '/admin/iam/roles' };
 export const menuIcons = ['home', 'users', 'server', 'box', 'route', 'coins', 'credit-card', 'calendar', 'file-text', 'settings', 'shield'];

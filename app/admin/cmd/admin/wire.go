@@ -33,6 +33,7 @@ var ProviderSet = wire.NewSet(
 	newAnnouncementRepo,
 	newSystemOptionsRepo,
 	newSystemOptionsUsecase,
+	newOperationAuditUsecase,
 	newSubscriptionUsecases,
 	provideIdentityClient,
 	provideIAMClient,
@@ -68,6 +69,10 @@ func newSystemOptionsUsecase(r systemOptionsResult) *biz.SystemOptionsUsecase {
 	return biz.NewSystemOptionsUsecase(r.Repo)
 }
 
+func newOperationAuditUsecase(r systemOptionsResult) *biz.OperationAuditUsecase {
+	return r.OperationAuditUc
+}
+
 type registrarResult struct {
 	Registrar kregistry.Registrar
 }
@@ -96,12 +101,14 @@ func newApp(
 	sub subscriptionResult,
 	svc *service.AdminService,
 	iam *service.IAMAdminService,
+	operationAudit *biz.OperationAuditUsecase,
 	routingGroups *biz.RoutingGroupUsecase,
 	routingAccess *biz.RoutingAccessUsecase,
 	auditor *audit.Auditor,
 	reg registrarResult,
 ) (*kratos.App, func()) {
 	svc.SetIAMService(iam)
+	svc.SetOperationAuditUsecase(operationAudit)
 	svc.SetAnnouncementUsecase(biz.NewAnnouncementUsecase(announcementRepo, svc.ResourceAuthorizer()))
 	svc.SetBackupUsecase(backupbiz.NewUsecase(backupRepo, svc.ResourceAuthorizer()))
 	svc.SetLogClient(clients.logClient)

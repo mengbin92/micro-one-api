@@ -128,9 +128,11 @@ func newClients(cfg *Config) (*clientsResult, error) {
 	}, nil
 }
 
-// systemOptionsResult wraps the optional system-options store.
+// systemOptionsResult wraps the optional system-options store and the
+// business-operation audit reader that shares its admin database connection.
 type systemOptionsResult struct {
-	Repo biz.SystemOptionsRepo
+	Repo             biz.SystemOptionsRepo
+	OperationAuditUc *biz.OperationAuditUsecase
 }
 
 // newSystemOptionsRepo opens the system-options DB if configured, returning
@@ -148,7 +150,17 @@ func newSystemOptionsRepo(cfg *Config) systemOptionsResult {
 		applogger.Log.Warn("failed to connect to system options DB", zap.Error(dbErr))
 		return systemOptionsResult{}
 	}
-	return systemOptionsResult{Repo: data.NewSystemOptionsRepoWithDriver(db, cfg.Bootstrap.Data.Database.Driver)}
+	driver := cfg.Bootstrap.Data.Database.Driver
+	auditRepo := data.NewOperationAuditRepoWithDriver(db, driver)
+	if auditRepo == nil {
+		// The usecase still reports ErrOperationAuditUnavailable, but without
+		// this log a failed dialector init is otherwise silent at startup.
+		applogger.Log.Warn("failed to open operation audit repository", zap.String("driver", driver))
+	}
+	return systemOptionsResult{
+		Repo:             data.NewSystemOptionsRepoWithDriver(db, driver),
+		OperationAuditUc: biz.NewOperationAuditUsecase(auditRepo),
+	}
 }
 
 // subscriptionResult wraps the optional subscription usecase.

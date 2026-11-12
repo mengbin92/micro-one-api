@@ -7,6 +7,26 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-11-12
+
+v0.42.0 是 v0.41.0 之后的 **MINOR 功能版本**：管理后台新增只读「操作审计」页与 `GET /api/v1/admin/operation-audits` 端点，读取 shared `resource_write_audits` 表，支持按操作人、操作码前缀、资源 ID、结果与时间范围筛选；操作人默认显示用户名，解析失败时回退数字 ID。新增 Admin 150 三方言迁移（两个读取索引），不改动计费契约与既有 API。部署时 admin-api 与 identity-service 必须同源，详见 [release-v0.42.0.md](docs/releases/release-v0.42.0.md)。
+
+### Added
+
+- 只读业务操作审计端点 `GET /api/v1/admin/operation-audits`：固定执行点 `admin.business_audits`（`iam.audit.read`，global），支持操作人、操作码前缀、资源 ID、结果与毫秒时间范围筛选，默认 20 条、上限 100，响应 `Cache-Control: no-store`。
+- Web 操作审计页（`/admin/operation-audits`）：懒加载、`iam.audit.read` 门控、筛选/分页/详情弹窗、整分钟结束时间、权限受限与错误重试状态。
+- 操作人用户名：按唯一 actor 去重调用 identity `GetUser`，2s 超时；权限不足、账号已删除或 identity 不可用时回退 `#<id>`，用户名不入库。
+- Admin 150 迁移（三方言）：`resource_write_audits_time (occurred_at, event_id)` 与 `resource_write_audits_operation_time (operation, occurred_at, event_id)`。
+
+### Changed
+
+- RBAC entry matrix 随新增端点与执行点刷新（`docs/design/rbac/entry-matrix.csv`）。
+
+### Fixed
+
+- 审计读取在存储不可用时返回 503 而非 500，并把分页/筛选校验前置到触库之前。
+- 前端时间筛选的结束时间按整分钟包含，避免遗漏所选分钟内的记录。
+
 ## [0.41.0] - 2026-11-12
 
 v0.41.0 是 v0.40.0 之后的 **MINOR 功能版本**：落地下一阶段计划备选功能包 C1/C2——安全中心与登录页新增通行密钥（WebAuthn passkey）无密码登录与全生命周期管理（诱饵 ceremony 防账号枚举、签名计数克隆检测、step-up 门控注册），中继网关新增 `/v1/rerank` 路由并复用 embeddings 计费管线。新增 Identity 149 迁移（三方言），不改动计费契约与现有价格；passkey 为暗开关功能，需显式配置 RP ID/ORIGIN 启用。本版本于 2026-11-12 以**同一版本号重新发布**（覆盖原 tag），纳入下列 Fixed 项与发布文档校正。详见 [release-v0.41.0.md](docs/releases/release-v0.41.0.md)。

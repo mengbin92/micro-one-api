@@ -60,13 +60,14 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	iamRepo := iam.NewRepo(iamServiceClient)
 	iamUsecase := biz.NewIAMUsecase(iamRepo)
 	iamAdminService := service.NewIAMAdminService(iamUsecase)
+	operationAuditUsecase := newOperationAuditUsecase(mainSystemOptionsResult)
 	routingGroupReader := channelclient.NewRoutingGroupReader(channelServiceClient)
 	routingGroupUsecase := biz.NewRoutingGroupUsecase(routingGroupReader)
 	routingAccessRepo := routingaccess.NewRepo(identityServiceClient, channelServiceClient, billingServiceClient)
 	routingAccessUsecase := biz.NewRoutingAccessUsecase(routingGroupReader, routingAccessRepo)
 	auditor := newAuditAuditor()
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup3 := newApp(config, repo, announcementRepo, mainClientsResult, mainSubscriptionResult, adminService, iamAdminService, routingGroupUsecase, routingAccessUsecase, auditor, mainRegistrarResult)
+	app, cleanup3 := newApp(config, repo, announcementRepo, mainClientsResult, mainSubscriptionResult, adminService, iamAdminService, operationAuditUsecase, routingGroupUsecase, routingAccessUsecase, auditor, mainRegistrarResult)
 	return app, func() {
 		cleanup3()
 		cleanup2()
@@ -82,6 +83,7 @@ var ProviderSet = wire.NewSet(
 	newAnnouncementRepo,
 	newSystemOptionsRepo,
 	newSystemOptionsUsecase,
+	newOperationAuditUsecase,
 	newSubscriptionUsecases,
 	provideIdentityClient,
 	provideIAMClient, iam.NewRepo, biz.NewIAMUsecase, service.NewIAMAdminService, provideChannelClient,
@@ -110,6 +112,10 @@ func newSystemOptionsUsecase(r systemOptionsResult) *biz.SystemOptionsUsecase {
 	return biz.NewSystemOptionsUsecase(r.Repo)
 }
 
+func newOperationAuditUsecase(r systemOptionsResult) *biz.OperationAuditUsecase {
+	return r.OperationAuditUc
+}
+
 type registrarResult struct {
 	Registrar registry.Registrar
 }
@@ -129,12 +135,14 @@ func newApp(
 	clients *clientsResult,
 	sub subscriptionResult,
 	svc *service.AdminService, iam2 *service.IAMAdminService,
+	operationAudit *biz.OperationAuditUsecase,
 	routingGroups *biz.RoutingGroupUsecase,
 	routingAccess *biz.RoutingAccessUsecase,
 	auditor *audit.Auditor,
 	reg registrarResult,
 ) (*kratos.App, func()) {
 	svc.SetIAMService(iam2)
+	svc.SetOperationAuditUsecase(operationAudit)
 	svc.SetAnnouncementUsecase(biz.NewAnnouncementUsecase(announcementRepo, svc.ResourceAuthorizer()))
 	svc.SetBackupUsecase(biz2.NewUsecase(backupRepo, svc.ResourceAuthorizer()))
 	svc.SetLogClient(clients.logClient)
