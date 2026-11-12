@@ -8,7 +8,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.41.0 发布公告](./docs/releases/release-v0.41.0.md)（2026-11-12 重新发版；Passkey 无密码登录与安全中心管理、/v1/rerank 中继计费；Identity 149 迁移，passkey 为可选暗开关；本次修复 CI 格式化门禁、passkey 诱饵一致性并校正发布文档） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.41.0)
+> 📣 **最新发布**：[v0.41.0 发布公告](./docs/releases/release-v0.41.0.md)（2026-11-12 重新发版；Passkey 无密码登录与安全中心管理、/v1/rerank 中继计费；Identity 149 迁移，passkey 为可选暗开关；本次修复 CI 格式化门禁、passkey 诱饵一致性与 Release E2E 登录按钮定位，并校正发布文档） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.41.0)
 
 ## 功能概览
 
@@ -186,7 +186,7 @@ make web-dist
 
 ## 发布与升级
 
-- [v0.41.0](./docs/releases/release-v0.41.0.md)：Passkey 无密码登录（诱饵 ceremony 防枚举、克隆检测、step-up 门控注册）与安全中心管理，/v1/rerank 复用 embeddings 计费管线；新增 Identity 149 三方言迁移，不改动计费契约；passkey 需配置 RP ID/ORIGIN 启用。2026-11-12 以同一版本号重新发版：修复 CI 格式化门禁与 passkey 诱饵一致性，校正 8 MiB 预算、`identity_passkey` 表名与全局暗开关描述；identity-service 已线上热更新验收，同名 tag/镜像被覆盖，旧部署需显式重新部署。
+- [v0.41.0](./docs/releases/release-v0.41.0.md)：Passkey 无密码登录（诱饵 ceremony 防枚举、克隆检测、step-up 门控注册）与安全中心管理，/v1/rerank 复用 embeddings 计费管线；新增 Identity 149 三方言迁移，不改动计费契约；passkey 需配置 RP ID/ORIGIN 启用。2026-11-12 以同一版本号重新发版：修复 CI 格式化门禁、passkey 诱饵一致性与 Release E2E 登录按钮定位，校正 8 MiB 预算、`identity_passkey` 表名与全局暗开关描述；identity-service 已线上热更新验收，同名 tag/镜像被覆盖，旧部署需显式重新部署。
 - [v0.40.0](./docs/releases/release-v0.40.0.md)：MFA 二维码扫码绑定、GitHub OAuth 全链路生产化（Compose 透传修复、回调超时根因修复、真实绑定回读通过）、资料页第三方账号绑定状态回显；无迁移，不改动计费契约；生产已于 11-11 部署。
 - [v0.39.3](./docs/releases/release-v0.39.3.md)：修复配置毛利告警的全零误报与净负差额漏报，恢复后台未定价监控的专用服务身份统计链路并补失败/过期告警；无新增 API、迁移或配置项，不改动售价与历史账本；生产已于 11-03 部署。
 - [v0.39.2](./docs/releases/release-v0.39.2.md)：修复模型页配价后需在管理价格页再次保存的问题，直接发布正式价格并刷新管理/公开价格缓存；保留独立售价与受限价格，异常发布明确提示重试。无新增 API 或迁移；生产已更新验收。

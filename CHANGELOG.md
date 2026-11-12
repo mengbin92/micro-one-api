@@ -28,6 +28,7 @@ v0.41.0 是 v0.40.0 之后的 **MINOR 功能版本**：落地下一阶段计划�
 - 修复 `app/identity/internal/data/challenge.go` 的 import 顺序，恢复 CI `Backend / Check Go formatting` 门禁（此前两次 develop CI run 在首步失败，后续 Backend 步骤全部未执行）。
 - 修复公开 passkey 登录诱饵 ceremony 在 complete 阶段的可区分响应：user 0 会话改为在 IAM 查询与断言解析前返回 `ErrMFAInvalid`，保持账号枚举防护的响应形状一致；补 biz 回归与 24576 字节解码预算边界测试。
 - 校正本版文档事实：`/v1/rerank` 为 8 MiB 预算（非 4 MiB）、表名为 `identity_passkey`（非 `identity_passkeys`）、`passkey_enabled` 为全局暗开关回显（非账号级开关）；同步 README.md 与 README.en.md。
+- 修复 Release E2E gate 的 Playwright 登录用例：登录页新增「使用通行密钥登录」按钮后，非精确按钮定位同时匹配两个按钮导致 strict mode 违规，改为 `exact: true`；本地定向复跑 chrome / mobile-chrome 2/2 通过。
 
 ## [0.40.0] - 2026-11-11
 

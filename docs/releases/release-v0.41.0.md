@@ -15,16 +15,18 @@ v0.41.0 首次发布后，develop 上两次 CI run 在 `Backend / Check Go forma
 - `app/identity/internal/data/challenge.go` 将 `errors` import 排在 `encoding/hex` 之前，gofmt 门禁失败；该步骤位于 Backend job 首位，导致后续 test / race / architecture / RBAC / 生成文件校验全部未执行。
 - 公开 passkey 登录的诱饵 ceremony（绑定 user 0）在 complete 阶段仍会查询 `iam.User`，其 not-found 分支与真实账号的无效断言返回不同错误，账号枚举防护的响应形状被破坏。
 - 发布文档把 `/v1/rerank` 预算写成 4 MiB、表名写成 `identity_passkeys`，并把 `passkey_enabled` 描述为账号级开关。
+- 登录页新增「使用通行密钥登录」按钮后，`web/e2e/admin-smoke.spec.ts` 的非精确 `getByRole('button', { name: '登录' })` 同时匹配该按钮与提交按钮，Playwright strict mode 违规；Release 的 E2E gate（chrome / mobile-chrome）失败，镜像构建、manifest 发布与 GitHub Release 创建随之被跳过。
 
 ### 2. 修复
 
 - `a1c2593d`：gofmt + import 分组；对 user-0 ceremony 在 IAM 查询与断言解析之前直接返回 `ErrMFAInvalid`；补 biz 回归与 24576 字节解码预算边界测试；刷新 RBAC SOURCE 摘要并补评审说明。
 - `c03ab6a8`：校正 release notes / CHANGELOG，并如实记录 CI 失败。
+- `fix(web)`：把 admin-smoke 的登录按钮定位改为 `exact: true`（与 `a2-security.spec.ts` 既有写法一致）；本地定向复跑 chrome / mobile-chrome 两个用例 2/2 通过。
 - 本轮 `docs(release)` 提交：补齐重新发版的发布工件，并同步 README.md 与 README.en.md。
 
 ### 3. 影响服务
 
-仅 identity-service（已线上热更新并验收）；relay-gateway、web、迁移 149 与计费契约不变。passkey 仍为暗开关，真实设备旅程待配置 RP 后验收。固定版本 tag 与同名镜像被覆盖，已按旧 tag 部署的环境不会自动更新，需显式重新部署。
+仅 identity-service（已线上热更新并验收）；relay-gateway、web、迁移 149 与计费契约不变。E2E 改动只在测试代码，不影响运行时服务。passkey 仍为暗开关，真实设备旅程待配置 RP 后验收。固定版本 tag 与同名镜像被覆盖，已按旧 tag 部署的环境不会自动更新，需显式重新部署。
 
 ## 新增内容
 
@@ -64,10 +66,12 @@ v0.41.0 首次发布后，develop 上两次 CI run 在 `Backend / Check Go forma
 
 ## 验证
 
-- 重新发版 CI run `43170782758`：`conclusion=success`，25 个 job 全绿；Backend 的 format / openapi / test / race / architecture / commit bodies / migration / RBAC / iam-browser / generated files 全部通过，Frontend、Integration、两个 Migration smoke、Deployment docs 与 Docker 18 个构建也全部通过。
+- develop CI run `43170782758`（修复提交）与 `43177043778`（发布工件）：均为 `conclusion=success`、25 个 job 全绿；Backend 的 format / openapi / test / race / architecture / commit bodies / migration / RBAC / iam-browser / generated files 全部通过，Frontend、Integration、两个 Migration smoke、Deployment docs 与 Docker 18 个构建也全部通过。
+- 主分支 CI run `43180264968`：25 个 job 全绿。
 - 本地门禁：`make format-check`、`make test-unit`、`make test-race`、`make migration-check`、`make rbac-contract-check`（959 行）、`python3 scripts/rbac-matrix-refresh.py --check`、`make iam-browser-gate-check`、`make api-check`、`python3 scripts/check-markdown-links.py` 全绿；`make api` 后生成文件无漂移。
-- `web`：CI 的 lint / test / critical coverage / build 全绿；本机全量 vitest 有 2 例 jsdom 超时基线（748/750），单文件 PlaygroundPage 复跑 15/15 通过。
+- `web`：CI 的 lint / test / critical coverage / build 全绿；本机全量 vitest 有 2 例 jsdom 超时基线（748/750），单文件 PlaygroundPage 复跑 15/15 通过；admin-smoke 登录用例修复后本地定向复跑 chrome / mobile-chrome 2/2 通过。
 - 线上验收：identity-service 热更新为 `deploy-20261112-145032-c03ab6a8`，running、restarts=0、启动日志无错误；经 admin-api 探测 passkey begin/complete → 503 `MFA_UNAVAILABLE`（暗开关），`GET /api/user/security` → 401；rollback 锚点 `rollback-20261112-145032`。
+- 首次重新发版流水线 `43180366130` 因上述 E2E 回归失败并被取消；修复后重跑 Release 流水线，以 GitHub Actions 运行结果为准。
 - 待维护者验收：真实设备（手机/指纹）enrollment 与登录需先配置 RP 变量；真实付费 rerank 调用需先确认上游渠道与价格。
 
 ## 完整变更日志
@@ -79,3 +83,5 @@ v0.41.0 首次发布后，develop 上两次 CI run 在 `Backend / Check Go forma
 - `fix(identity): restore passkey decoy parity and unblock CI formatting gate`
 - `docs(release): correct v0.41.0 facts and record CI failure`
 - `docs(release): reissue v0.41.0 with README sync`
+- `fix(web): disambiguate login button locator in admin smoke E2E`
+- `docs(release): record E2E fix in v0.41.0 reissue artifacts`
