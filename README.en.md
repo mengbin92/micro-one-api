@@ -14,12 +14,13 @@ multi-channel API distribution and [sub2api](https://github.com/Wei-Shaw/sub2api
 for subscription windows, account pools, rate limits and usage management.
 You provide your own authorized upstream accounts and API keys.
 
-> Latest release: [v0.41.0](./docs/releases/release-v0.41.0.md) — passkey passwordless
-> login and security-center management, `/v1/rerank` relay with usage metering,
-> and Identity migration 149 (passkey stays dark until RP ID/origin are configured).
-> Reissued on 2026-11-12 with the CI formatting-gate fix, passkey decoy parity fix,
-> admin-smoke E2E locator fix and corrected release facts.
-> [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.41.0)
+> Latest release: [v0.42.0](./docs/releases/release-v0.42.0.md) — a read-only business
+> operation audit page and `GET /api/v1/admin/operation-audits`, filterable by actor,
+> operation prefix, resource, result and time range, with usernames resolved best-effort
+> and a numeric-id fallback. Adds Admin migration 150 (three dialects, read indexes);
+> existing APIs and billing contracts are unchanged. admin-api and identity-service
+> must be deployed from the same commit.
+> [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.42.0)
 
 ## Features
 
@@ -153,6 +154,12 @@ and [repository development rules](./AGENTS.md). Both are currently maintained i
 
 ## Releases and upgrades
 
+- [v0.42.0](./docs/releases/release-v0.42.0.md): a read-only business operation audit page
+  and `GET /api/v1/admin/operation-audits`, filterable by actor, operation prefix,
+  resource, result and time range. Actor usernames are resolved best-effort from identity
+  with a numeric-id fallback. Adds Admin migration 150 (three dialects, read indexes);
+  existing APIs and billing contracts are unchanged. admin-api and identity-service must
+  be deployed from the same commit, and `iam.audit.read` must be granted explicitly.
 - [v0.41.0](./docs/releases/release-v0.41.0.md): passkey (WebAuthn) login and security-center
   management with anti-enumeration decoys, plus the `/v1/rerank` relay on the embeddings
   metering path. Adds Identity migration 149 (three dialects); passkey stays dark until
