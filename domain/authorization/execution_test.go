@@ -1,6 +1,29 @@
 package authorization
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
+
+// Execution points are compiled into every service that authorizes resource
+// writes (admin, identity, channel, billing, ...). A point added here but not
+// redeployed to the authorizing service fails at runtime with
+// ErrIAMInvalidRelation, which surfaces as a generic authorization denial.
+func TestBusinessAuditExecutionPointIsBound(t *testing.T) {
+	e, ok := Execution("admin.business_audits")
+	if !ok {
+		t.Fatal("admin.business_audits must stay declared for the admin audit reader")
+	}
+	if e.Owner != "admin" {
+		t.Errorf("admin.business_audits owner = %q, want admin", e.Owner)
+	}
+	if !slices.Contains(e.Operations, "iam.audit.read") {
+		t.Fatal("admin.business_audits must bind iam.audit.read")
+	}
+	if !ResourceBound("iam.audit.read") {
+		t.Fatal("iam.audit.read must be queryable by the audit execution point")
+	}
+}
 
 func TestCompletedExecutionDeclarations(t *testing.T) {
 	for point, entry := range executionPoints {

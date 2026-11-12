@@ -865,6 +865,8 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 		}))
 	}
 
+	srv.HandleFunc("/api/v1/admin/operation-audits", adminAuth(func(w http.ResponseWriter, r *http.Request) { handleOperationAudits(w, r, svc) }))
+
 	return srv
 }
 

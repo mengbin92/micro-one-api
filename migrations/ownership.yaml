@@ -18,6 +18,7 @@
 shared:
   - 022_create_schema_migrations
   - 112_create_resource_write_audits
+  - 150_add_resource_write_audit_read_indexes
 
 services:
   identity:

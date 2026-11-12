@@ -11,6 +11,7 @@ type ExecutionPoint struct {
 
 var executionPoints = map[string]ExecutionPoint{
 	"admin.backups":           {"admin", []string{"system.option.read", "system.option.security.update"}},
+	"admin.business_audits":   {"admin", []string{"iam.audit.read"}},
 	"billing.vendor_reports":  {"billing", []string{"billing.vendor_report.read", "billing.vendor_report.import", "billing.vendor_report.attribute"}},
 	"channel.contracts":       {"channel", []string{"channel.upstream_contract.read", "channel.upstream_contract.create", "channel.upstream_contract.publish", "channel.upstream_contract.quarantine"}},
 	"admin.subscription.self": {"admin", nil},
@@ -150,7 +151,7 @@ var completedResourceOperations = func() map[string]bool {
 		"channel.channels.list", "channel.channels.read", "channel.channels.create", "channel.channels.update", "channel.channels.delete", "channel.channels.export", "channel.channels.secret",
 		"channel.accounts.list", "channel.accounts.read", "channel.accounts.create", "channel.accounts.update", "channel.accounts.delete", "channel.accounts.quota", "channel.accounts.recovery", "channel.accounts.credential",
 		"channel.routing_groups.list", "channel.routing_groups.read", "channel.routing_groups.write",
-		"channel.models.list", "channel.models.read", "channel.models.create", "channel.models.update", "channel.models.delete", "channel.models.pricing", "channel.model_aliases", "channel.model_usage", "channel.model_mappings", "channel.accounts.oauth", "channel.health", "channel.channels.test", "channel.channels.balance", "channel.semantic_blocks", "channel.model_routings", "channel.models.exchange", "channel.models.canonical",
+		"channel.models.list", "channel.models.read", "channel.models.create", "channel.models.update", "channel.models.delete", "channel.models.pricing", "channel.model_aliases", "channel.model_usage", "channel.model_mappings", "channel.accounts.oauth", "channel.health", "channel.channels.test", "channel.channels.balance", "channel.semantic_blocks", "channel.model_routings", "channel.models.exchange", "channel.models.canonical", "admin.business_audits",
 		"admin.subscription.quota_policies", "admin.subscription.plans", "admin.subscription.user_subscriptions", "billing.request_attempts", "admin.upstream_costs", "admin.pricing", "admin.system_options", "admin.content", "admin.routing_policy", "billing.redemption.list", "billing.redemption.read", "billing.redemption.write", "billing.redemption.export", "billing.reconciliation", "billing.routing_policy",
 		"billing.accounts.read", "billing.accounts.adjust", "billing.ledger.read", "billing.payments.list", "billing.payments.read", "billing.payments.refund", "billing.report.export", "billing.pricing.read",
 		"log.requests.list", "log.requests.read", "log.requests.delete", "log.requests.export", "log.selection_events", "system.options.read", "system.options.update", "system.content", "monitor.health.service", "monitor.alert_rules", "notify.notifications",
