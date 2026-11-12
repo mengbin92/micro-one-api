@@ -40,10 +40,11 @@ type fixture struct {
 	O5                 map[string]o5sample `json:"o5"`
 }
 type suite struct {
-	t            *testing.T
-	db           *sql.DB
-	state        *fixture
-	admin, relay string
+	t               *testing.T
+	db              *sql.DB
+	state           *fixture
+	admin, relay    string
+	startupDeadline time.Time
 }
 
 func newSuite(t *testing.T) *suite {
@@ -56,7 +57,7 @@ func newSuite(t *testing.T) *suite {
 		defer cancel()
 		return db.PingContext(ctx) == nil
 	}, 90*time.Second, time.Second, "database readiness")
-	s := &suite{t: t, db: db, state: &fixture{Groups: map[string]int64{}}, admin: os.Getenv("ADMIN_HTTP_BASE"), relay: os.Getenv("RELAY_HTTP_BASE")}
+	s := &suite{t: t, db: db, state: &fixture{Groups: map[string]int64{}}, admin: os.Getenv("ADMIN_HTTP_BASE"), relay: os.Getenv("RELAY_HTTP_BASE"), startupDeadline: time.Now().Add(90 * time.Second)}
 	if raw, err := os.ReadFile(os.Getenv("ROUTING_STATE")); err == nil {
 		require.NoError(t, jsonx.Unmarshal(raw, s.state))
 	}
@@ -90,6 +91,19 @@ func newSuite(t *testing.T) *suite {
 		}
 		assert.Equal(collect, version, reply.RequestSnapshotVersion)
 	}, 10*time.Second, 100*time.Millisecond, "billing capability readiness")
+	// The V2 phase restarts admin-api with routing gates enabled. Relay
+	// healthz, admin login and billing capability probes do not cover the
+	// admin -> channel routing-group dependency: until that capability
+	// handshake settles, group mutations answer 503 "分组服务暂不可用"
+	// (nightly run 43187428109 failed on the very first V2 subtest).
+	// Wait for a read-only call on that dependency before the phase starts.
+	if os.Getenv("ROUTING_PHASE") == "v2" {
+		require.Positive(t, s.state.UserID, "legacy phase must persist the fixture user before V2")
+		require.Eventually(t, func() bool {
+			code, _, err := send("GET", fmt.Sprintf("%s/api/v1/admin/routing-access/%d", s.admin, s.state.UserID), os.Getenv("ADMIN_TOKEN"), nil, "")
+			return err == nil && code == http.StatusOK
+		}, 90*time.Second, time.Second, "admin routing-group dependency readiness")
+	}
 	return s
 }
 func (s *suite) save() {
@@ -131,6 +145,15 @@ func send(method, url, token string, body any, id string) (int, []byte, error) {
 func (s *suite) api(method, path, token string, body any, id string) object {
 	s.t.Helper()
 	code, raw, err := send(method, s.admin+path, token, body, id)
+	// Compose restarts admin-api with the V2 gates while channel/identity/
+	// billing capabilities are still converging. A first group mutation can
+	// transiently answer 503 "分组服务暂不可用" (nightly run 43187428109).
+	// Retry only that startup race, only in the V2 phase and only inside the
+	// suite's startup window; a persistent availability failure still fails.
+	for err == nil && code == http.StatusServiceUnavailable && os.Getenv("ROUTING_PHASE") == "v2" && time.Now().Before(s.startupDeadline) {
+		time.Sleep(500 * time.Millisecond)
+		code, raw, err = send(method, s.admin+path, token, body, id)
+	}
 	require.NoError(s.t, err)
 	var out object
 	require.NoError(s.t, jsonx.Unmarshal(raw, &out), "%s %s status=%d", method, path, code)
