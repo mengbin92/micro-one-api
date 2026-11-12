@@ -189,3 +189,68 @@ it('discards an old verification factor when another tab replaces the session', 
   await user.click(screen.getByRole('button', { name: '取消' }));
   expect(await newResult).toBeInstanceOf(Error);
 });
+
+describe('security center passkeys', () => {
+  class FakePublicKeyCredential {
+    id = 'cred-9';
+    rawId = new Uint8Array([9]);
+    type = 'public-key';
+    response = {
+      clientDataJSON: new Uint8Array([4]),
+      attestationObject: new Uint8Array([5]),
+      getTransports: () => ['usb'],
+    };
+    getClientExtensionResults() { return {}; }
+  }
+
+  it('enrolls and removes a passkey with step-up re-verification', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, 'credentials', { value: { create: vi.fn(async () => new FakePublicKeyCredential()), get: vi.fn() }, configurable: true });
+    Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
+    vi.stubGlobal('PublicKeyCredential', FakePublicKeyCredential);
+    localStorage.setItem('token', 'passkey-session');
+    const list = vi.fn(() => HttpResponse.json({ passkey_enabled: true, passkeys: [{ credential_id: 'cred-9', name: '工作手机', created_at: '0', last_used_at: '' }] }));
+    const bodies: Record<string, unknown> = {};
+    let stepUpPassed = false;
+    let completeAttempts = 0;
+    server.use(
+      http.get('/api/user/security', () => HttpResponse.json({ configured: true, enabled: false })),
+      http.post('/api/user/security/passkeys', list),
+      http.post('/api/user/security/verify', async ({ request }) => {
+        bodies.verify = await request.json();
+        stepUpPassed = true;
+        return HttpResponse.json({});
+      }),
+      http.post('/api/user/security/passkey/enroll/begin', async ({ request }) => {
+        bodies.begin = await request.json();
+        return HttpResponse.json({ options: JSON.stringify({ challenge: 'Y2hhbGxlbmdl', user: { id: 'dXNlcg', name: 'bob', displayName: 'Bob' } }), ceremony: 'enroll-ceremony' });
+      }),
+      http.post('/api/user/security/passkey/enroll/complete', async ({ request }) => {
+        bodies.enrollComplete = await request.json();
+        completeAttempts++;
+        if (!stepUpPassed && completeAttempts === 1) return HttpResponse.json({ reason: 'STEP_UP_REQUIRED' }, { status: 403 });
+        return HttpResponse.json({});
+      }),
+      http.post('/api/user/security/passkey/delete', async ({ request }) => {
+        bodies.delete = await request.json();
+        return HttpResponse.json({});
+      }),
+    );
+    renderWithQuery(<><SecurityCenter /><SecurityVerificationDialog /></>);
+
+    await user.type(await screen.findByPlaceholderText('通行密钥名称（可选）'), '工作手机');
+    await user.click(screen.getByRole('button', { name: '添加通行密钥' }));
+    // Enrollment requires step-up: dialog appears, then the action retries.
+    await user.type(await screen.findByLabelText('当前密码'), 'current-password');
+    await user.click(screen.getByRole('button', { name: '验证并继续' }));
+    await screen.findByText('工作手机');
+    expect(bodies.begin).toEqual({ username: '工作手机' });
+    const enrolled = bodies.enrollComplete as { challenge?: string; attestation?: string };
+    expect(enrolled.challenge).toBe('enroll-ceremony');
+    expect(JSON.parse(enrolled.attestation ?? '{}')).toMatchObject({ id: 'cred-9', type: 'public-key' });
+
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await user.click(screen.getByRole('button', { name: '删除' }));
+    await waitFor(() => expect(bodies.delete).toEqual({ credential_id: 'cred-9' }));
+  });
+});

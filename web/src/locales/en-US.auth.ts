@@ -48,4 +48,9 @@ export const EN_US_AUTH_MESSAGES: Record<string, string> = {
   '用户名或邮箱已被使用': 'The username or email is already in use',
   '重置链接非法或已过期': 'The reset link is invalid or expired',
   '邀请奖励需要验证邮箱；邮件服务不可用，请移除邀请码后注册。': 'Invitation rewards require a verified email. Email delivery is unavailable; remove the invitation code to register.',
+  '使用通行密钥登录': 'Sign in with a passkey',
+  '使用密码登录': 'Use password login',
+  '验证通行密钥…': 'Verifying passkey…',
+  '未选择通行密钥或操作已取消': 'No passkey selected, or the operation was canceled.',
+  '继续': 'Continue',
 };

@@ -42,3 +42,21 @@ export const EN_US_SECURITY_MESSAGES: Record<string, string> = {
   '请输入验证器的六位验证码，或使用一个恢复码。': 'Enter the six-digit code from your authenticator app, or use a recovery code.',
   '返回登录': 'Back to sign-in',
 };
+export const EN_US_PASSKEY_MESSAGES: Record<string, string> = {
+  '通行密钥（Passkey）': 'Passkeys',
+  '使用设备指纹或安全密钥免密码登录，登录时仍需通过第二因子验证。': 'Sign in passwordless with a device biometric or security key. A second factor is still required at sign-in.',
+  '当前浏览器不支持通行密钥。': 'This browser does not support passkeys.',
+  '管理员尚未启用通行密钥。': 'Passkeys are not enabled by the administrator.',
+  '通行密钥暂不可用': 'Passkeys are unavailable',
+  '尚未添加通行密钥。': 'No passkeys added yet.',
+  '通行密钥名称（可选）': 'Passkey name (optional)',
+  '添加通行密钥': 'Add passkey',
+  '通行密钥已添加': 'Passkey added',
+  '通行密钥已删除': 'Passkey deleted',
+  '通行密钥设置失败': 'Passkey setup failed',
+  '通行密钥删除失败': 'Passkey deletion failed',
+  '通行密钥创建失败': 'Passkey creation failed',
+  '未命名通行密钥': 'Unnamed passkey',
+  '最近使用：{time}': 'Last used: {time}',
+  '从未': 'never',
+};

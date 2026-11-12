@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Network, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Fingerprint, Network, ShieldCheck } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import { useI18n } from '@/hooks/useI18n';
 import { useRegistrationPolicy } from '@/hooks/useRegistrationPolicy';
 import { TurnstileChallenge } from '@/components/TurnstileChallenge';
 import { useResendCooldown } from '@/hooks/useResendCooldown';
+import { parsePasskeyOptions, passkeyUnavailable, prepareRequestOptions, serializeAssertion } from '@/lib/passkey';
 
 export function LoginPage() {
   const location = useLocation();
@@ -39,6 +40,7 @@ export function LoginPage() {
   const [deliveryMessage, setDeliveryMessage] = useState('');
   const [acceptedLegal, setAcceptedLegal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [passkeyLogin, setPasskeyLogin] = useState(false);
   const [error, setError] = useState('');
   const hashHandoff = location.hash === '#oauth=1';
   const [oauthFailed, setOauthFailed] = useState(false);
@@ -89,6 +91,7 @@ export function LoginPage() {
 
   const selectMode = (nextMode: 'login' | 'register') => {
     flowGeneration.current++;
+    setPasskeyLogin(false);
     if (nextMode !== mode) {
       navigate(nextMode === 'register' ? '/register' : '/login', { replace: true });
     }
@@ -143,6 +146,31 @@ export function LoginPage() {
     return true;
   };
 
+  const passkeySignIn = async (nextUsername: string, isCurrent: () => boolean) => {
+    if (passkeyUnavailable()) throw new Error(t('当前浏览器不支持通行密钥。'));
+    const began = await apiClient.post('/user/security/passkey/login/begin', { username: nextUsername });
+    if (!isCurrent()) return false;
+    const options = parsePasskeyOptions<PublicKeyCredentialRequestOptions>(began.data.options);
+    let credential: PublicKeyCredential;
+    try {
+      credential = await navigator.credentials.get({ publicKey: prepareRequestOptions(options) }) as PublicKeyCredential;
+    } catch (error) {
+      if (error instanceof DOMException && (error.name === 'NotAllowedError' || error.name === 'AbortError')) throw new Error(t('未选择通行密钥或操作已取消'), { cause: error });
+      throw error;
+    }
+    if (!isCurrent()) return false;
+    if (!(credential instanceof PublicKeyCredential)) throw new Error(t('未选择通行密钥或操作已取消'));
+    const response = await apiClient.post('/user/security/passkey/login/complete', { challenge: began.data.ceremony, attestation: serializeAssertion(credential) });
+    if (!isCurrent()) return false;
+    const data = response.data as { token?: string; mfa_required?: boolean; mfa_challenge?: string };
+    if (data.mfa_required && data.mfa_challenge) { setMfaChallenge(data.mfa_challenge); setPassword(''); return false; }
+    if (!data.token) throw new Error(t('登录失败'));
+    clearUserSession();
+    queryClient.clear();
+    localStorage.setItem('token', data.token);
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitLock.current || oauthHandoff) return;
@@ -154,6 +182,25 @@ export function LoginPage() {
 
     if (!mfaChallenge && !nextUsername) {
       setError(t("请输入用户名"));
+      return;
+    }
+    if (mode === 'login' && passkeyLogin && !mfaChallenge) {
+      submitLock.current = true;
+      setLoading(true);
+      try {
+        if (!await passkeySignIn(nextUsername, isCurrent)) return;
+        setPasskeyLogin(false);
+        toast.success(t("登录成功"));
+        navigate('/dashboard');
+      } catch (err: unknown) {
+        if (!isCurrent()) return;
+        const message = getAuthErrorMessage(err, t("网络错误"));
+        setError(message);
+        toast.error(message);
+      } finally {
+        submitLock.current = false;
+        if (generation === flowGeneration.current) setLoading(false);
+      }
       return;
     }
     if (mode === 'register' && password !== confirmPassword) {
@@ -333,7 +380,7 @@ export function LoginPage() {
                     autoComplete="username"
                   />
                 </div>
-                <div className="space-y-2">
+                {!passkeyLogin && <div className="space-y-2">
                   <Label htmlFor="password">{t("密码")}</Label>
                   <Input
                     id="password"
@@ -344,7 +391,7 @@ export function LoginPage() {
                     minLength={mode === 'register' ? 8 : undefined}
                     autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                   />
-                </div>
+                </div>}
                 </>}
                 {mfaChallenge && <div className="space-y-3"><p className="text-sm text-muted-foreground">{t('请输入验证器的六位验证码，或使用一个恢复码。')}</p><Label htmlFor="mfa-login-code">{t('验证码或恢复码')}</Label><Input id="mfa-login-code" value={mfaCode} onChange={event => setMfaCode(event.target.value)} autoComplete="one-time-code" maxLength={32} required autoFocus /><Button type="button" variant="ghost" disabled={loading} onClick={() => { flowGeneration.current++; setMfaChallenge(''); setMfaCode(''); setError(''); }}>{t('返回登录')}</Button></div>}
                 {mode === 'register' && (
@@ -403,8 +450,18 @@ export function LoginPage() {
                     </label>
                   </div>
                 )}
+                {mode === 'login' && !passkeyLogin && !mfaChallenge && !passkeyUnavailable() && (
+                  <Button type="button" variant="outline" className="w-full" disabled={loading || oauthHandoff} onClick={() => { setError(''); setPasskeyLogin(true); loginTabRef.current?.focus(); }}>
+                    <Fingerprint className="mr-2 size-4" />{t('使用通行密钥登录')}
+                  </Button>
+                )}
+                {mode === 'login' && passkeyLogin && !mfaChallenge && (
+                  <Button type="button" variant="outline" className="w-full" disabled={loading || oauthHandoff} onClick={() => { flowGeneration.current++; setError(''); setPasskeyLogin(false); }}>
+                    {t('使用密码登录')}
+                  </Button>
+                )}
                 <Button type="submit" className="w-full" disabled={loading || oauthHandoff || (mode === 'register' && registrationBlocked)}>
-                  {loading ? (mode === 'login' ? t("登录中…") : t("创建中…")) : mode === 'login' ? t("登录") : t("注册账号")}
+                  {loading ? (mode === 'login' ? (passkeyLogin ? t('验证通行密钥…') : t("登录中…")) : t("创建中…")) : mode === 'login' ? (passkeyLogin ? t('继续') : t("登录")) : t("注册账号")}
                 </Button>
                 {mode === 'login' && !mfaChallenge && (
                   <>

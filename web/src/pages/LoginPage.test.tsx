@@ -367,3 +367,69 @@ it('exchanges an OAuth handoff once through StrictMode effect cleanup', async ()
   await waitFor(() => expect(localStorage.getItem('token')).toBe('oauth-session'));
   expect(exchange).toHaveBeenCalledOnce();
 });
+
+describe('LoginPage passkey sign-in', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    server.use(http.get('/api/status', () => HttpResponse.json({ success: true, data: defaultRegistrationPolicy })));
+  });
+  afterEach(() => { window.localStorage.clear(); });
+
+  class FakePublicKeyCredential {
+    id = 'cred-1';
+    rawId = new Uint8Array([1, 2, 3]);
+    type = 'public-key';
+    response = {
+      clientDataJSON: new Uint8Array([4]),
+      attestationObject: new Uint8Array([5]),
+      authenticatorData: new Uint8Array([6]),
+      signature: new Uint8Array([7]),
+      userHandle: null,
+    };
+    getClientExtensionResults() { return {}; }
+  }
+
+  function stubPasskeyPlatform() {
+    const get = vi.fn(async () => new FakePublicKeyCredential());
+    Object.defineProperty(navigator, 'credentials', { value: { create: vi.fn(), get }, configurable: true });
+    Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
+    vi.stubGlobal('PublicKeyCredential', FakePublicKeyCredential);
+    return get;
+  }
+
+  it('signs in with a passkey without a password', async () => {
+    const user = userEvent.setup();
+    const get = stubPasskeyPlatform();
+    const bodies: Record<string, unknown> = {};
+    server.use(
+      http.post('/api/user/security/passkey/login/begin', async ({ request }) => {
+        bodies.begin = await request.json();
+        return HttpResponse.json({ options: JSON.stringify({ challenge: 'Y2hhbGxlbmdl', allowCredentials: [] }), ceremony: 'ceremony-1' });
+      }),
+      http.post('/api/user/security/passkey/login/complete', async ({ request }) => {
+        bodies.complete = await request.json();
+        return HttpResponse.json({ token: 'passkey-session' });
+      }),
+    );
+
+    renderWithQuery(<MemoryRouter initialEntries={['/login']}><LoginPage /></MemoryRouter>);
+
+    await user.type(screen.getByLabelText('用户名'), 'alice');
+    await user.click(screen.getByRole('button', { name: '使用通行密钥登录' }));
+    expect(screen.queryByLabelText('密码')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '继续' }));
+
+    await waitFor(() => expect(window.localStorage.getItem('token')).toBe('passkey-session'));
+    expect(get).toHaveBeenCalledOnce();
+    expect(bodies.begin).toEqual({ username: 'alice' });
+    const complete = bodies.complete as { challenge?: string; attestation?: string };
+    expect(complete.challenge).toBe('ceremony-1');
+    expect(JSON.parse(complete.attestation ?? '{}')).toMatchObject({ id: 'cred-1', type: 'public-key' });
+  });
+
+  it('keeps the password required for password sign-in', () => {
+    stubPasskeyPlatform();
+    renderWithQuery(<MemoryRouter initialEntries={['/login']}><LoginPage /></MemoryRouter>);
+    expect(screen.getByLabelText('密码')).toBeRequired();
+  });
+});
