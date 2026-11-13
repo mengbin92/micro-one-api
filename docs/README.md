@@ -22,7 +22,7 @@ docs/
 |---------|--------|
 | 个人单机，创建首个渠道和 Token | [quickstart-lite.md](./quickstart-lite.md) |
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
-| 查看下一阶段计划及 N1/N2 验收进展 | [design/next-stage-plan-2026-11-08.md](./design/next-stage-plan-2026-11-08.md) |
+| 查看下一阶段计划及 N1–N4、C1/C2 验收状态 | [design/next-stage-plan-2026-11-08.md](./design/next-stage-plan-2026-11-08.md) |
 | 接入原生 Gemini 文本/函数调用及核对部署状态 | [B2 契约](./design/b2-native-gemini-contract-2026-10-30.md) · [B2 验收](./runbooks/b2-native-gemini-acceptance-2026-10-30.md) |
 | 查看告警修复、生产容量基线与 executor 同窗复核 | [runbooks/post-v0.36.0-acceptance-2026-10-18.md](./runbooks/post-v0.36.0-acceptance-2026-10-18.md) |
 | 查看原生镜像提速与真实 Log RPC/SQL 容量边界 | [构建与 SQL 链路验收](./runbooks/build-timing-sql-acceptance-2026-10-18.md) |
@@ -53,9 +53,9 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——本表明确指向且头部标注「当前执行入口」的计划。未定发布版本时使用 `design/next-stage-plan-YYYY-MM-DD.md`，已定版本时使用 `design/vX.Y-roadmap.md`。新阶段立项时：新建计划 → 旧路线图标为「已归档」并指回新入口 → 同步本表、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-最新发布登记：[v0.40.0](./releases/release-v0.40.0.md)（2026-11-11），MFA 二维码绑定、GitHub OAuth 生产化与第三方账号绑定状态回显；v0.39.3（2026-11-05）为计费毛利及后台未定价监控修复；规划时已核对远端 tag；N1 的后续生产证据另见核账/验收记录，不代表重新核验发布 CI。此前修复已于 11 月 3 日部署，发版无需重复重启。
+最新发布登记：[v0.42.0](./releases/release-v0.42.0.md)（2026-11-13），新增只读业务操作审计页与 `GET /api/v1/admin/operation-audits`；v0.41.0（2026-11-12）包含 Passkey 与 `/v1/rerank` 工程交付，相关真实验收缺口见 C1/C2 记录。N1 的后续生产证据另见核账/验收记录，不代表重新核验发布 CI。
 
-**当前排期（2026-11-11，N1 获准范围已交付，N2 已完成验收，N3 已启动）**：上一轮 A1–A4、B1–B4 工程和生产部署已落地。推荐依次推进 N1 价格核账/三库验证、N2 首次生产备份与隔离恢复、N3 MFA 真实因子、N4 公告与本人模型真实旅程；预计 7–10 工程日 + 2 日余量，外部等待单列。11 月 8 日已完成获准的 [N1 只读核账](./runbooks/n1-pricing-readonly-2026-11-08.md)：2,971 笔符合现行算法，另有 3 笔比 Decimal 口径少 3 quota 的精度边界，维护者已接受，并确认采购价同售价及旧残留清理。采购价及指定残留已沿 owner 治理，三次写入、12 条成功审计及历史基线验证通过；三库价格专项随后带 race 通过（28 场景、0 失败/跳过），仅分时闲时付费验收随后通过（4 尝试、191 quota、独立小时费用 0.019168 CNY、原币合计差额 0），见[闲时记录](./runbooks/n1-off-peak-paid-2026-11-08.md)；忙时和普通计价已由维护者明确无需重测，本轮获准计价验收范围收口；兜底治理及其他扩展保留项另定范围。11 月 9 日已完成异机直连、首个生产备份及真实归档隔离恢复，88 张有数据表一致、原 owner 验证通过；每天策略启用后两个实际日槽均成功；11 月 10 日整份归档读回摘要一致，当前观察 2/2；本窗重建最大备份年龄 19h21m31s，N2 原计划验收已完成，执行余量作为后续运维事项保留，详见 [N2 记录](./runbooks/n2-offsite-recovery-2026-11-09.md)。其余生产事实继续引用既有记录，11 月 11 日 [N3](./runbooks/n3-mfa-auth-acceptance-2026-11-11.md) 管理员密码登录及读取通过，GitHub 配置已启用、公网重定向核对通过，真实绑定已于 12:22 回读成功，新 OAuth 会话仍待验，13:26 前端制品已包含二维码且摘要核对一致，实际手机扫码仍待验；N3 真实因子和 N4 仍待验；既有部署前备份保留。详见[当前计划草案](./design/next-stage-plan-2026-11-08.md)，既有关闭开关、灰度和历史验收边界继续保留。
+**当前排期（2026-11-13，N1 获准范围已交付，N2/N3/N4 已完成验收；C1/C2 真实验收待补）**：上一轮 A1–A4、B1–B4 工程和生产部署已落地。N1 已完成获准的只读核账、价格治理、三库专项及分时闲时付费验收，见 [N1 记录](./runbooks/n1-pricing-readonly-2026-11-08.md)；兜底治理、跨时段/其他档位/长上下文及上游最终实扣证据仍另定范围。N2 已完成首备、异机读回、真实归档隔离恢复及两次实际日调度，执行余量转运维跟踪，见 [N2 记录](./runbooks/n2-offsite-recovery-2026-11-09.md)。N3 已完成密码登录、GitHub 真实 OAuth、实际手机验证器扫码、恢复码消费、无效证明拒绝及两个全局强制策略验收，见 [N3 记录](./runbooks/n3-mfa-auth-acceptance-2026-11-11.md)。N4 已完成公告与本人模型真实管理/用户旅程，见 [N4 记录](./runbooks/n4-announcements-acceptance-2026-11-12.md)。C1 Passkey 真实设备验收待配置 RP/Origin，C2 Rerank 真实付费调用待确认上游渠道、计价和小额预算，分别见 [C1 记录](./runbooks/c1-passkey-acceptance-2026-11-12.md) 与 [C2 记录](./runbooks/c2-rerank-acceptance-2026-11-12.md)。当前计划入口见 [下一阶段计划](./design/next-stage-plan-2026-11-08.md)。
 
 **以下为前阶段历史记录**，其中“待验证/已开启/当前”等表述仅对应各条登记时间；最新状态见上方发布记录与当前排期。
 
@@ -160,7 +160,7 @@ docs/
 | [v0.23-roadmap.md](./design/v0.23-roadmap.md) | v0.23 路线图：上线观察与 Relay executor 首切片（已归档） |
 | [v0.23-executor-observation.md](./design/v0.23-executor-observation.md) | executor 新旧路径 7 天生产观察与回滚事实源 |
 | [v0.24-web-release-readiness.md](./design/v0.24-web-release-readiness.md) | v0.24 双语 Web、中国法律协议与发布隔离准备清单 |
-| [next-stage-plan-2026-11-08.md](./design/next-stage-plan-2026-11-08.md) | 当前计划：N1 核账、配置治理、三库及闲时验收已交付；忙时/普通计价无需重测，其余阶段待确认 |
+| [next-stage-plan-2026-11-08.md](./design/next-stage-plan-2026-11-08.md) | 当前计划：N1 获准范围、N2/N3/N4 已交付；C1/C2 工程已发布但真实设备/付费验收待补，N1 扩展条件另定范围 |
 | [next-stage-plan-2026-10-26.md](./design/next-stage-plan-2026-10-26.md) | 已归档：用户自助、安全认证与计价补齐；保留 A/B 工程交付及历史证据 |
 | [next-stage-plan-2026-10-20.md](./design/next-stage-plan-2026-10-20.md) | 已归档：计时内存预算与供应商证据可读性；保留 N3/N4 历史证据 |
 | [next-stage-plan-2026-10-18.md](./design/next-stage-plan-2026-10-18.md) | 已归档：v0.36.0 运行验收、证据收口与双语入口；保留独立生产结论 |
