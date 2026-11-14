@@ -272,7 +272,6 @@ func channelInfoToRelayChannel(ch *commonv1.ChannelInfo) *relaybiz.Channel {
 		Key:                           ch.Key,
 		ModelMapping:                  ch.GetModelMapping(),
 		UpstreamModelID:               ch.GetUpstreamModelId(),
-		RestrictModels:                ch.GetRestrictModels(),
 	}
 	if ch.Config != nil {
 		relayChannel.Config.APIVersion = ch.Config.ApiVersion

@@ -18,8 +18,8 @@ func upstreamExecutionFixture(t *testing.T, kind string) (*ChannelUsecase, provi
 	account := &SubscriptionAccount{ID: 7, Status: ChannelStatusEnabled, CredentialRevision: 1, Platform: "codex", Group: "g", Models: []string{"model-a"}}
 	repo := &mockChannelRepo{
 		channels: map[int64]*Channel{7: channel}, accounts: map[int64]*SubscriptionAccount{7: account},
-		abilities:    map[string][]Ability{"g:model-a": {{ChannelID: 7, Enabled: true}}},
-		accAbilities: map[string][]SubscriptionAccountAbility{"codex:g:model-a": {{AccountID: 7, Enabled: true}}},
+		candidates:   map[string][]RoutingCandidate{"g:model-a": {{ChannelID: 7, Enabled: true}}},
+		accAbilities: map[string][]SubscriptionRoutingCandidate{"codex:g:model-a": {{AccountID: 7, Enabled: true}}},
 	}
 	uc := NewChannelUsecase(repo, nil)
 	claim := provider.ExecutionClaim{SourceKind: kind, SourceID: 7, ConfigurationRevision: channel.UpstreamRevision(), UpstreamModelID: "model-a"}

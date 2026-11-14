@@ -209,7 +209,6 @@ func channelInfoToBiz(info *commonv1.ChannelInfo) *biz.Channel {
 		Priority:                      info.Priority,
 		Key:                           info.Key,
 		ModelMapping:                  info.GetModelMapping(),
-		RestrictModels:                info.GetRestrictModels(),
 	}
 }
 

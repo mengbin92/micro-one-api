@@ -1238,7 +1238,6 @@ func (s *HTTPServer) materializeWSStickySource(
 			Key:                           chInfo.Channel.Key,
 			ModelMapping:                  chInfo.Channel.ModelMapping,
 			UpstreamModelID:               permission.UpstreamModelID,
-			RestrictModels:                chInfo.Channel.RestrictModels,
 		}
 		if chInfo.Channel.Config != nil {
 			ch.Config = relaybiz.ChannelConfig{APIVersion: chInfo.Channel.Config.ApiVersion}

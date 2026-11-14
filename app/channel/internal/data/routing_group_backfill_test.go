@@ -142,7 +142,7 @@ func TestRoutingGroupBackfillSQLite(t *testing.T) {
 	verifyGroupBackfill(t, db, gdb, "sqlite3")
 }
 
-func TestRoutingGroupDualWriteRollsBackWithAbilities(t *testing.T) {
+func TestRoutingGroupDualWriteRollsBackWithMappings(t *testing.T) {
 	db, gdb := routingGroupFixture(t)
 	report := groupBaseline(t, db, "sqlite3")
 	require.NoError(t, applyGroupBaseline(t, db, "sqlite3", report, true))
@@ -157,7 +157,7 @@ func verifyRoutingGroupDualWrites(t *testing.T, gdb *gorm.DB, driver string) {
 			if err := tx.Table("channels").Where("id = ?", 1).Update("group", group).Error; err != nil {
 				return err
 			}
-			return r.syncAbilitiesTx(tx, &biz.Channel{ID: 1, Group: group, Models: []string{"legacy-*"}, Status: biz.ChannelStatusEnabled, Priority: 7})
+			return r.syncChannelModelMappingsTx(tx, &biz.Channel{ID: 1, Group: group, Models: []string{"denied"}, Status: biz.ChannelStatusEnabled, Priority: 7})
 		})
 	}
 	require.Error(t, update("does-not-exist"))
@@ -166,20 +166,20 @@ func verifyRoutingGroupDualWrites(t *testing.T, gdb *gorm.DB, driver string) {
 	require.Equal(t, "default,vip", old)
 	switch driver {
 	case "mysql":
-		require.NoError(t, gdb.Exec("CREATE TRIGGER fail_abilities BEFORE INSERT ON abilities FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'fixture failure'").Error)
+		require.NoError(t, gdb.Exec("CREATE TRIGGER fail_mappings BEFORE INSERT ON model_channel_mapping FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'fixture failure'").Error)
 	case "postgres":
-		require.NoError(t, gdb.Exec("CREATE FUNCTION fail_abilities_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture failure'; END $$").Error)
-		require.NoError(t, gdb.Exec("CREATE TRIGGER fail_abilities BEFORE INSERT ON abilities FOR EACH ROW EXECUTE FUNCTION fail_abilities_fn()").Error)
+		require.NoError(t, gdb.Exec("CREATE FUNCTION fail_mappings_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture failure'; END $$").Error)
+		require.NoError(t, gdb.Exec("CREATE TRIGGER fail_mappings BEFORE INSERT ON model_channel_mapping FOR EACH ROW EXECUTE FUNCTION fail_mappings_fn()").Error)
 	default:
-		require.NoError(t, gdb.Exec("CREATE TRIGGER fail_abilities BEFORE INSERT ON abilities BEGIN SELECT RAISE(ABORT, 'fixture failure'); END").Error)
+		require.NoError(t, gdb.Exec("CREATE TRIGGER fail_mappings BEFORE INSERT ON model_channel_mapping BEGIN SELECT RAISE(ABORT, 'fixture failure'); END").Error)
 	}
 	require.Error(t, update("vip"))
 	var count int64
 	require.NoError(t, gdb.Table("channel_routing_groups").Where("channel_id = 1").Count(&count).Error)
 	require.EqualValues(t, 2, count)
-	drop := "DROP TRIGGER fail_abilities"
+	drop := "DROP TRIGGER fail_mappings"
 	if driver == "postgres" {
-		drop += " ON abilities"
+		drop += " ON model_channel_mapping"
 	}
 	require.NoError(t, gdb.Exec(drop).Error)
 	require.NoError(t, update("vip,vip"))
@@ -222,27 +222,4 @@ func TestRoutingGroupImportMappingAtomicity(t *testing.T) {
 	require.Len(t, detail.ModelGrants, 1)
 	require.True(t, detail.ModelGrants[0].ExtraAuthorization)
 	require.Equal(t, "import-model", detail.ModelGrants[0].UpstreamModelID)
-}
-
-func verifyRoutingGroupShadowRejectsLikeExpansion(t *testing.T, db *sql.DB, gdb *gorm.DB, driver string) {
-	t.Helper()
-	for _, table := range []string{"channel_routing_groups", "account_routing_groups", "routing_group_backfills", "routing_groups"} {
-		require.NoError(t, gdb.Exec("DELETE FROM "+table).Error)
-	}
-	require.NoError(t, gdb.Table("channels").Where("id = 2").Update("group", "axb,other").Error)
-	require.NoError(t, gdb.Table("users").Create(map[string]any{"id": 3, "group": "a_b"}).Error)
-	report := uncheckedGroupBaseline(t, db, driver)
-	require.False(t, report.Migration.ReadyForBackfill)
-	// Even a manually cleared audit disposition cannot bypass candidate parity.
-	report.Migration.ReadyForBackfill = true
-	report.Migration.BlockingIssues = 0
-	report.Issues = nil
-	require.ErrorIs(t, applyGroupBaseline(t, db, driver, report, true), biz.ErrRoutingGroupBaselineConflict)
-	var count int64
-	require.NoError(t, gdb.Model(&routingGroupModel{}).Count(&count).Error)
-	require.Zero(t, count, "shadow difference must roll back all group inserts")
-}
-func TestRoutingGroupShadowRejectsLikeExpansionSQLite(t *testing.T) {
-	db, gdb := routingGroupFixture(t)
-	verifyRoutingGroupShadowRejectsLikeExpansion(t, db, gdb, "sqlite3")
 }

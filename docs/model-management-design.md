@@ -1,5 +1,7 @@
 # 独立模型管理系统设计文档 (方案B)
 
+> **2026-11-14 当前状态**：legacy `abilities` / `subscription_account_abilities` 已退役，`model_channel_mapping` / `model_subscription_mapping` 是唯一路由来源；catch-all 与 `restrict_models` 已删除。下文涉及 legacy abilities 双读/双写、catch-all 的段落仅保留为历史设计记录。
+
 ## 1. 概述
 
 模型管理列表和详情的 `status` 表示有效状态：登记为启用的模型，只有在至少一个启用的渠道或上游订阅账号通过启用映射提供该模型时才显示启用；可用来源归零时显示禁用。`channel_count`、`subscription_count` 和供应商列表仅统计启用映射对应的启用来源，同一订阅账号跨多个分组只计数一次。
@@ -408,9 +410,9 @@ ON DUPLICATE KEY UPDATE updated_at = UNIX_TIMESTAMP();
 
 ### 架构决策
 
-1. **模型表归属 channel-service**：channel-service 已拥有 channels/abilities/subscription_accounts 表，模型注册表是其自然扩展。
+1. **模型表归属 channel-service**：channel-service 已拥有 channels/model registry/subscription_accounts 表，模型注册表是其自然扩展。
 2. **admin-api 透传**：admin-api 通过 gRPC 调用 channel-service，不直接访问数据库，与现有渠道管理 RPC 模式一致。
-3. **内存回退**：当 DB 未配置时，Repository 使用内存 map 回退，与 channels/abilities 的内存模式保持一致。
+3. **内存回退**：当 DB 未配置时，Repository 使用内存 map 回退，与 channels/model registry 的内存模式保持一致。
 4. **nil 安全**：ModelUsecase 为 nil 时所有方法返回空/错误，确保未启用模型管理的部署不受影响。
 
 ## 6. 实现计划
@@ -497,7 +499,7 @@ ON DUPLICATE KEY UPDATE updated_at = UNIX_TIMESTAMP();
 | Component | `web/src/components/admin/ModelMultiSelect.tsx` | 可搜索的模型多选组件，从模型注册表加载已启用模型，支持自由输入未注册模型 ID |
 | Page | `web/src/pages/admin/ChannelsPage.tsx` | 渠道创建/编辑对话框的模型字段从 CSV 文本输入替换为 ModelMultiSelect |
 | Page | `web/src/pages/admin/SubscriptionAccountsPage.tsx` | 订阅账户创建/编辑表单的模型字段从 CSV 文本输入替换为 ModelMultiSelect |
-| Data | `app/channel/internal/data/data.go` | `listAvailableModelsDB` + `listAvailableModelsMemory` 新增双读逻辑：同时查询 legacy abilities 表和 model registry 映射表 |
+| Data | `app/channel/internal/data/data.go` | `listAvailableModelsDB` + `listAvailableModelsMemory` 历史迁移期曾双读；2026-11-14 起只查询 model registry 映射表 |
 | Test | `app/channel/internal/data/model_test.go` | 新增 2 个双读测试用例 (legacy+registry 合并 / 禁用模型过滤) |
 | Test | `web/src/pages/admin/SubscriptionAccountsPage.test.tsx` | 适配 ModelMultiSelect 的编辑测试 |
 
@@ -508,9 +510,9 @@ ON DUPLICATE KEY UPDATE updated_at = UNIX_TIMESTAMP();
 | 渠道模型选择 | 创建/编辑渠道时，模型字段从手动输入 CSV 变为从模型注册表勾选，支持搜索过滤 |
 | 订阅账户模型选择 | 创建/编辑订阅账户时，模型字段同样使用 ModelMultiSelect |
 | 模型多选组件 | 搜索框 + checkbox 列表，显示模型 ID/显示名/提供商，已选数量提示，支持未注册的自定义模型 ID |
-| /v1/models 双读 | ListAvailableModels 同时查询 legacy abilities 表和 model_channel_mapping/model_subscription_mapping，合并去重后返回 |
+| /v1/models | ListAvailableModels 只查询 model_channel_mapping/model_subscription_mapping 并去重返回 |
 | 禁用模型过滤 | 注册表中 status=0 的模型不会出现在 /v1/models 结果中 |
-| 向后兼容 | legacy abilities 表数据仍然有效，迁移期间双写双读，无需停机 |
+| 迁移收口 | legacy abilities 已回填到 registry mapping 后删除；不再双写双读 |
 
 ### Sprint 4: 增强功能 (1周) ✅ 已完成
 - [x] 使用统计功能
@@ -633,10 +635,10 @@ micro-one-api 已有比 sub2api 更规范的模型注册表（方案 B），很�
 | 优先级分层 + 负载均衡选择 | `WeightedSelector`（smooth WRR + health/latency/circuit-breaker） | `selector.go` |
 | 订阅账号优先级分层选择 | `SelectSubscriptionAccount`（priority tier → 随机） | `channel.go:365` |
 | 粘性会话 | `RelayUsecase.trySubscriptionSticky` + `SessionAccountStore` | `internal/biz/relay.go` |
-| `/v1/models` 聚合 | `ListAvailableModels(group)` 查 abilities 表 | `channel.go:529`、`data.go:641` |
+| `/v1/models` 聚合 | `ListAvailableModels(group)` 查 registry mappings | `channel.go`、`data.go` |
 | 调度编排 | `RelayUsecase.Plan`：model resolve → auth → permission → channel → subscription fallback | `relay.go:200` |
 
-**核心结论**：micro-one-api 的"多上游供应商提供同一模型"已天然成立——只要多个 `Channel` 或多个 `SubscriptionAccount` 在 `abilities` / `subscription_account_abilities` 表里挂同一个 `(group, model)`，`SelectChannel` / `SelectSubscriptionAccount` 就会在它们之间做优先级分层 + 加权/随机选择。
+**核心结论**：micro-one-api 的"多上游供应商提供同一模型"已天然成立——只要多个 `Channel` 或多个 `SubscriptionAccount` 在 registry mapping 中挂同一个模型，`SelectChannel` / `SelectSubscriptionAccount` 就会在它们之间做优先级分层 + 加权/随机选择。
 
 ### 9.3 差距清单
 

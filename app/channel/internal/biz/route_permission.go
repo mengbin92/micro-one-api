@@ -9,18 +9,17 @@ import (
 	"micro-one-api/domain/routing"
 )
 
-// routeChannelAbilities is the authorization seam shared by selection,
-// exclusions, catalogue verification and exact-source authorization. Preserve
-// the repository's registry/legacy precedence and its no-match error: a
-// registry denial must not widen into the unrestricted fallback.
-func (uc *ChannelUsecase) routeChannelAbilities(ctx context.Context, group, model string) ([]Ability, error) {
+// routeChannelCandidates is the authorization seam shared by selection,
+// exclusions, catalogue verification and exact-source authorization. A missing
+// registry mapping surfaces as ErrChannelNotFound and is never widened.
+func (uc *ChannelUsecase) routeChannelCandidates(ctx context.Context, group, model string) ([]RoutingCandidate, error) {
 	if group == "" || model == "" {
 		return nil, ErrChannelNotFound
 	}
-	return uc.repo.ListAbilitiesByGroupAndModel(ctx, group, model)
+	return uc.repo.ListChannelCandidates(ctx, group, model)
 }
 
-func (uc *ChannelUsecase) routeSubscriptionAbilities(ctx context.Context, group, model, platform string) ([]SubscriptionAccountAbility, error) {
+func (uc *ChannelUsecase) routeSubscriptionCandidates(ctx context.Context, group, model, platform string) ([]SubscriptionRoutingCandidate, error) {
 	if group == "" || model == "" {
 		return nil, ErrSubscriptionAccountNotFound
 	}
@@ -32,19 +31,19 @@ func (uc *ChannelUsecase) routeSubscriptionAbilities(ctx context.Context, group,
 		}
 		routed = RoutingMatchForSelect(rows, model)
 	}
-	abilities, err := uc.repo.ListSubscriptionAccountAbilities(ctx, group, model, platform)
+	candidates, err := uc.repo.ListSubscriptionCandidates(ctx, group, model, platform)
 	if err != nil {
 		return nil, err
 	}
-	before := len(abilities)
-	abilities = filterAbilitiesByRouted(abilities, routed)
-	if len(abilities) == 0 {
+	before := len(candidates)
+	candidates = filterCandidatesByRouted(candidates, routed)
+	if len(candidates) == 0 {
 		if len(routed) > 0 && before > 0 {
 			return nil, fmt.Errorf("model routing matched %d account(s) for %q but none are schedulable: %w", len(routed), model, ErrSubscriptionAccountNotFound)
 		}
 		return nil, ErrSubscriptionAccountNotFound
 	}
-	return abilities, nil
+	return candidates, nil
 }
 
 // CanRoute resolves current model-scoped authorization without selecting a
@@ -58,15 +57,15 @@ func (uc *ChannelUsecase) CanRoute(ctx context.Context, group, model string, sou
 	}
 	switch source.Kind {
 	case routing.Channel:
-		abilities, err := uc.routeChannelAbilities(ctx, group, model)
+		candidates, err := uc.routeChannelCandidates(ctx, group, model)
 		if errors.Is(err, ErrChannelNotFound) {
 			return deny, nil
 		}
 		if err != nil {
 			return deny, err
 		}
-		for _, ability := range abilities {
-			if ability.ChannelID == source.ID && ability.Enabled {
+		for _, candidate := range candidates {
+			if candidate.ChannelID == source.ID && candidate.Enabled {
 				channel, err := uc.repo.FindByID(ctx, source.ID)
 				if errors.Is(err, ErrChannelNotFound) {
 					return deny, nil
@@ -74,18 +73,7 @@ func (uc *ChannelUsecase) CanRoute(ctx context.Context, group, model string, sou
 				if err != nil {
 					return deny, err
 				}
-				return routing.Permission{Allowed: channel != nil && channel.Status == ChannelStatusEnabled, UpstreamModelID: ability.UpstreamModelID}, nil
-			}
-		}
-		if len(abilities) == 0 {
-			channels, err := uc.repo.ListUnrestrictedChannelsByGroup(ctx, group)
-			if err != nil {
-				return deny, err
-			}
-			for _, channel := range channels {
-				if channel.ID == source.ID && channel.Status == ChannelStatusEnabled {
-					return routing.Permission{Allowed: true}, nil
-				}
+				return routing.Permission{Allowed: channel != nil && channel.Status == ChannelStatusEnabled, UpstreamModelID: candidate.UpstreamModelID}, nil
 			}
 		}
 	case routing.Subscription:
@@ -99,16 +87,16 @@ func (uc *ChannelUsecase) CanRoute(ctx context.Context, group, model string, sou
 		if account == nil || account.Status != ChannelStatusEnabled {
 			return deny, nil
 		}
-		abilities, err := uc.routeSubscriptionAbilities(ctx, group, model, account.Platform)
+		candidates, err := uc.routeSubscriptionCandidates(ctx, group, model, account.Platform)
 		if errors.Is(err, ErrSubscriptionAccountNotFound) {
 			return deny, nil
 		}
 		if err != nil {
 			return deny, err
 		}
-		for _, ability := range abilities {
-			if ability.AccountID == source.ID && ability.Enabled {
-				return routing.Permission{Allowed: true, UpstreamModelID: ability.UpstreamModelID}, nil
+		for _, candidate := range candidates {
+			if candidate.AccountID == source.ID && candidate.Enabled {
+				return routing.Permission{Allowed: true, UpstreamModelID: candidate.UpstreamModelID}, nil
 			}
 		}
 	}
@@ -119,12 +107,12 @@ func (uc *ChannelUsecase) CanRoute(ctx context.Context, group, model string, sou
 // used for selection. Public/discovery filtering remains owned by the repo.
 // Temporary quota/health changes do not remove a model from the catalogue.
 func (uc *ChannelUsecase) hasAuthorizedModel(ctx context.Context, group, model string) (bool, error) {
-	channels, err := uc.routeChannelAbilities(ctx, group, model)
+	candidates, err := uc.routeChannelCandidates(ctx, group, model)
 	if err != nil && !errors.Is(err, ErrChannelNotFound) {
 		return false, err
 	}
-	for _, ability := range channels {
-		permission, err := uc.CanRoute(ctx, group, model, routing.Source{Kind: routing.Channel, ID: ability.ChannelID})
+	for _, candidate := range candidates {
+		permission, err := uc.CanRoute(ctx, group, model, routing.Source{Kind: routing.Channel, ID: candidate.ChannelID})
 		if err != nil {
 			return false, err
 		}
@@ -132,15 +120,15 @@ func (uc *ChannelUsecase) hasAuthorizedModel(ctx context.Context, group, model s
 			return true, nil
 		}
 	}
-	accounts, err := uc.repo.ListSubscriptionAccountAbilities(ctx, group, model, "")
+	accounts, err := uc.repo.ListSubscriptionCandidates(ctx, group, model, "")
 	if errors.Is(err, ErrSubscriptionAccountNotFound) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	for _, ability := range accounts {
-		permission, err := uc.CanRoute(ctx, group, model, routing.Source{Kind: routing.Subscription, ID: ability.AccountID})
+	for _, candidate := range accounts {
+		permission, err := uc.CanRoute(ctx, group, model, routing.Source{Kind: routing.Subscription, ID: candidate.AccountID})
 		if err != nil {
 			return false, err
 		}
@@ -160,50 +148,37 @@ func (uc *ChannelUsecase) HasRoutingCandidates(ctx context.Context, group *routi
 		return false, nil
 	}
 	now := uc.now()
-	abilities, err := uc.routeChannelAbilities(ctx, group.Key, model)
+	candidates, err := uc.routeChannelCandidates(ctx, group.Key, model)
 	if err != nil && !errors.Is(err, ErrChannelNotFound) {
 		return false, err
 	}
-	// Only an empty successful ability read permits the serving path's
-	// unrestricted fallback. A registry denial must never widen access.
-	if err == nil && len(abilities) == 0 {
-		channels, err := uc.repo.ListUnrestrictedChannelsByGroup(ctx, group.Key)
-		if err != nil {
-			return false, err
-		}
-		for _, channel := range channels {
-			if channel.SelectableAt(now) {
-				return true, nil
-			}
-		}
-	}
-	for _, ability := range abilities {
-		if !ability.Enabled {
+	for _, candidate := range candidates {
+		if !candidate.Enabled {
 			continue
 		}
-		channel, err := uc.repo.FindByID(ctx, ability.ChannelID)
+		channel, err := uc.repo.FindByID(ctx, candidate.ChannelID)
 		if err != nil {
 			if errors.Is(err, ErrChannelNotFound) {
 				continue
 			}
 			return false, err
 		}
-		if channel.SelectableAt(now) && !uc.IsUsageSemanticBlocked(ctx, UsageSemanticSourceKindChannel, channel.ID, ability.UpstreamModelID) {
+		if channel.SelectableAt(now) && !uc.IsUsageSemanticBlocked(ctx, UsageSemanticSourceKindChannel, channel.ID, candidate.UpstreamModelID) {
 			return true, nil
 		}
 	}
-	accounts, err := uc.routeSubscriptionAbilities(ctx, group.Key, model, "")
+	accounts, err := uc.routeSubscriptionCandidates(ctx, group.Key, model, "")
 	if err != nil && !errors.Is(err, ErrSubscriptionAccountNotFound) {
 		return false, err
 	}
-	for _, ability := range accounts {
-		if !ability.Enabled {
+	for _, candidate := range accounts {
+		if !candidate.Enabled {
 			continue
 		}
-		if uc.IsUsageSemanticBlocked(ctx, UsageSemanticSourceKindSubscription, ability.AccountID, ability.UpstreamModelID) {
+		if uc.IsUsageSemanticBlocked(ctx, UsageSemanticSourceKindSubscription, candidate.AccountID, candidate.UpstreamModelID) {
 			continue
 		}
-		account, err := uc.repo.FindSubscriptionAccountByID(ctx, ability.AccountID)
+		account, err := uc.repo.FindSubscriptionAccountByID(ctx, candidate.AccountID)
 		if err != nil {
 			if errors.Is(err, ErrSubscriptionAccountNotFound) {
 				continue

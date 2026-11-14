@@ -12,9 +12,9 @@ import (
 // Type aliases for entities.
 type (
 	Channel                                = channelbiz.Channel
-	Ability                                = channelbiz.Ability
+	RoutingCandidate                       = channelbiz.RoutingCandidate
 	SubscriptionAccount                    = channelbiz.SubscriptionAccount
-	SubscriptionAccountAbility             = channelbiz.SubscriptionAccountAbility
+	SubscriptionRoutingCandidate           = channelbiz.SubscriptionRoutingCandidate
 	AccountQuotaSnapshot                   = channelbiz.AccountQuotaSnapshot
 	AccountRecoveryState                   = channelbiz.AccountRecoveryState
 	AccountScan                            = channelbiz.AccountScan

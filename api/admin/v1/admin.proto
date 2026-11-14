@@ -391,7 +391,7 @@ message AdminCreateChannelRequest {
   uint32 weight = 9;
   string model_mapping = 10;
   string system_prompt = 11;
-  optional bool restrict_models = 12;                 // restrict to abilities list. Optional: threaded to channel-service CreateChannel; defaults to true (legacy) when unset.
+  optional bool restrict_models = 12 [deprecated = true]; // Deprecated: ignored. Routing always requires an explicit registry mapping.
   string reason = 13;
 }
 
@@ -413,7 +413,7 @@ message AdminUpdateChannelRequest {
   uint32 weight = 9;
   string model_mapping = 10;
   string system_prompt = 11;
-  optional bool restrict_models = 12;                 // restrict to abilities list. Optional (proto3 presence): only applied when the caller sets it, so callers that update only balance/health never silently flip restrict_models.
+  optional bool restrict_models = 12 [deprecated = true]; // Deprecated: ignored. Routing always requires an explicit registry mapping.
   int64 expected_revision = 13; string reason = 14;
   optional int32 type = 15; // Explicit provider correction; omitted preserves it.
 }

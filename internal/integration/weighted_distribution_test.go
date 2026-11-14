@@ -87,7 +87,7 @@ func TestRelaySelectChannel_WeightedDistribution(t *testing.T) {
 				Priority: 10, Weight: 1, Key: "low-weight-key",
 			},
 		},
-		abilities: map[string][]channeltestutil.Ability{
+		candidates: map[string][]channeltestutil.RoutingCandidate{
 			"default:gpt-4o-mini": {
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 10},
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 2, Enabled: true, Priority: 10},

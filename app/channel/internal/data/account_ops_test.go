@@ -175,8 +175,8 @@ func TestTransientPausePreservesAdministrativeDisable(t *testing.T) {
 	got, err := repo.FindSubscriptionAccountByID(ctx, a.ID)
 	require.NoError(t, err)
 	require.EqualValues(t, biz.ChannelStatusDisabled, got.Status)
-	for _, ability := range loadSubscriptionAbilities(t, repo, a.ID) {
-		require.Zero(t, ability.Enabled)
+	for _, mapping := range loadSubscriptionAbilities(t, repo, a.ID) {
+		require.True(t, mapping.Enabled, "source status, not mapping.enabled, owns availability")
 	}
 }
 
@@ -421,7 +421,7 @@ func TestAccountOpsAcrossDialects(t *testing.T) {
 	}
 }
 
-func TestAccountRecoveryRollsBackAbilityFailure(t *testing.T) {
+func TestAccountRecoveryRollsBackAccountFailure(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
 	a := &biz.SubscriptionAccount{Name: "rollback", Platform: "codex", Status: 1, Group: "default", Models: []string{"gpt-5"}}
@@ -429,15 +429,15 @@ func TestAccountRecoveryRollsBackAbilityFailure(t *testing.T) {
 	require.NoError(t, repo.SetTempUnschedulable(ctx, a.ID, time.Unix(500, 0), "upstream 429"))
 	observed, err := repo.FindSubscriptionAccountByID(ctx, a.ID)
 	require.NoError(t, err)
-	require.NoError(t, repo.db.Callback().Update().Before("gorm:update").Register("test:recovery:ability", func(tx *gorm.DB) {
-		if tx.Statement.Table == "subscription_account_abilities" {
-			tx.AddError(fmt.Errorf("injected ability failure"))
+	require.NoError(t, repo.db.Callback().Update().Before("gorm:update").Register("test:recovery:account", func(tx *gorm.DB) {
+		if tx.Statement.Table == "subscription_accounts" {
+			tx.AddError(fmt.Errorf("injected account failure"))
 		}
 	}))
 	cleared, err := repo.ClearRecoveryMarkers(ctx, observed.RecoveryState(), time.Unix(1000, 0))
-	require.ErrorContains(t, err, "injected ability failure")
+	require.ErrorContains(t, err, "injected account failure")
 	require.False(t, cleared)
-	require.NoError(t, repo.db.Callback().Update().Remove("test:recovery:ability"))
+	require.NoError(t, repo.db.Callback().Update().Remove("test:recovery:account"))
 	got, err := repo.FindSubscriptionAccountByID(ctx, a.ID)
 	require.NoError(t, err)
 	require.Equal(t, observed.RecoveryState(), got.RecoveryState())

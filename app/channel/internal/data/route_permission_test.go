@@ -20,10 +20,10 @@ func TestRoutePermissionMatchesSelectionAndPreservesModelGrant(t *testing.T) {
 			}
 			uc := biz.NewChannelUsecase(repo, nil)
 			uc.SetModelRoutingRepo(repo)
-			account := &biz.SubscriptionAccount{Group: "default", Models: []string{"managed", "legacy-*"}, Platform: "codex", Status: 1}
-			require.NoError(t, repo.CreateSubscriptionAccount(ctx, account))
 			model := &biz.Model{ModelID: "managed", Status: 1, IsPublic: true}
 			require.NoError(t, repo.CreateModel(ctx, model))
+			account := &biz.SubscriptionAccount{Group: "default", Models: []string{"managed", "legacy-chat"}, Platform: "codex", Status: 1}
+			require.NoError(t, repo.CreateSubscriptionAccount(ctx, account))
 			mapping := &biz.ModelSubscriptionMapping{ModelPK: model.ID, SubscriptionAccountID: account.ID, GroupName: "vip", Enabled: true, UpstreamModelID: "upstream-managed"}
 			require.NoError(t, repo.UpsertSubscriptionMapping(ctx, mapping))
 			source := routing.Source{Kind: routing.Subscription, ID: account.ID}
@@ -38,11 +38,19 @@ func TestRoutePermissionMatchesSelectionAndPreservesModelGrant(t *testing.T) {
 			models, err := uc.ListAvailableModels(ctx, "vip")
 			require.NoError(t, err)
 			require.Contains(t, models, "managed")
-			// CSV membership alone cannot bypass managed-model mapping denial.
+			// The account CSV projects into the default-group registry mapping.
 			permission, err = uc.CanRoute(ctx, "default", "managed", source)
 			require.NoError(t, err)
+			require.True(t, permission.Allowed)
+			require.Equal(t, "managed", permission.UpstreamModelID)
+			selected, err = uc.SelectSubscriptionAccount(ctx, "default", "managed", "codex", false)
+			require.NoError(t, err)
+			require.Equal(t, source.ID, selected.ID)
+			// A group without a mapping remains denied.
+			permission, err = uc.CanRoute(ctx, "other", "managed", source)
+			require.NoError(t, err)
 			require.False(t, permission.Allowed)
-			_, err = uc.SelectSubscriptionAccount(ctx, "default", "managed", "codex", false)
+			_, err = uc.SelectSubscriptionAccount(ctx, "other", "managed", "codex", false)
 			require.Error(t, err)
 			// A grant for one model never grants another model in that group.
 			permission, err = uc.CanRoute(ctx, "vip", "legacy-chat", source)
@@ -65,7 +73,7 @@ func TestRoutePermissionMatchesSelectionAndPreservesModelGrant(t *testing.T) {
 	}
 }
 
-func TestRoutePermissionRegistryDenialDoesNotWidenToCatchAll(t *testing.T) {
+func TestRoutePermissionDoesNotWidenToUnregisteredChannel(t *testing.T) {
 	for _, storage := range []string{"memory", "sqlite"} {
 		t.Run(storage, func(t *testing.T) {
 			repo := newMemoryRepository()
@@ -73,14 +81,14 @@ func TestRoutePermissionRegistryDenialDoesNotWidenToCatchAll(t *testing.T) {
 				repo = setupChannelTestDB(t)
 			}
 			ctx := context.Background()
-			channel := &biz.Channel{Group: "default,vip", Models: nil, Status: 1, RestrictModels: false}
+			channel := &biz.Channel{Group: "default,vip", Models: nil, Status: 1}
 			require.NoError(t, repo.CreateChannel(ctx, channel))
 			require.NoError(t, repo.CreateModel(ctx, &biz.Model{ModelID: "managed", Status: 1, IsPublic: true}))
 			uc := biz.NewChannelUsecase(repo, nil)
 			for _, tt := range []struct {
 				group, model string
 				allowed      bool
-			}{{"vip", "unknown", true}, {"vip", "managed", false}, {"other", "unknown", false}} {
+			}{{"vip", "unknown", false}, {"vip", "managed", false}, {"other", "unknown", false}} {
 				permission, err := uc.CanRoute(ctx, tt.group, tt.model, routing.Source{Kind: routing.Channel, ID: channel.ID})
 				require.NoError(t, err)
 				require.Equal(t, tt.allowed, permission.Allowed)

@@ -40,7 +40,7 @@ func TestSelectSubscriptionAccount_RandomWhenSelectorNil(t *testing.T) {
 		accounts: map[int64]*SubscriptionAccount{
 			1: {ID: 1, Platform: "codex", Status: ChannelStatusEnabled, Group: "default", Models: []string{"gpt-5"}, Priority: 1},
 		},
-		accAbilities: map[string][]SubscriptionAccountAbility{
+		accAbilities: map[string][]SubscriptionRoutingCandidate{
 			"codex:default:gpt-5": {{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 1, Enabled: true, Priority: 1}},
 		},
 	}

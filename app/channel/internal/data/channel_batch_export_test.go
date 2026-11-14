@@ -22,9 +22,9 @@ func TestIAMB2ChannelBatchExportDialects(t *testing.T) {
 			two.DisplayName = "two"
 			require.NoError(t, db.Create(&one).Error)
 			require.NoError(t, db.Create(&two).Error)
-			a := &biz.Channel{Name: "a", Group: "one", Key: "first-secret", RestrictModels: true, Status: 1}
-			b := &biz.Channel{Name: "b", Group: "two", Key: "second-secret", RestrictModels: true, Status: 1}
-			shared := &biz.Channel{Name: "shared", Group: "one,two", Key: "shared-secret", RestrictModels: true, Status: 1}
+			a := &biz.Channel{Name: "a", Group: "one", Key: "first-secret", Status: 1}
+			b := &biz.Channel{Name: "b", Group: "two", Key: "second-secret", Status: 1}
+			shared := &biz.Channel{Name: "shared", Group: "one,two", Key: "shared-secret", Status: 1}
 			for _, ch := range []*biz.Channel{a, b, shared} {
 				require.NoError(t, r.CreateChannel(legacy, ch))
 				stored, err := r.FindByID(legacy, ch.ID)
@@ -68,7 +68,7 @@ func TestIAMB2SingleDeleteChecksMappingEffectsDialects(t *testing.T) {
 			background := context.Background()
 			group := routingGroupModel{Key: "one", DisplayName: "one", Status: "enabled", AccessMode: "restricted", ModelAccessMode: "restricted", Revision: 1}
 			require.NoError(t, db.Create(&group).Error)
-			channel := &biz.Channel{Name: "mapped", Group: "one", Key: "secret", RestrictModels: true, Status: 1}
+			channel := &biz.Channel{Name: "mapped", Group: "one", Key: "secret", Status: 1}
 			require.NoError(t, r.CreateChannel(background, channel))
 			model := &biz.Model{ModelID: "mapped-model", Status: 1}
 			require.NoError(t, r.CreateModel(background, model))

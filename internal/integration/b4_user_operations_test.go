@@ -66,7 +66,10 @@ func TestB4UserOperationsHTTPAndRPC(t *testing.T) {
 				id := int64(7101 + i)
 				group := []string{"b4-default", "b4-private"}[i]
 				require.NoError(t, db.Table("channels").Create(map[string]any{"id": id, "name": "hidden supplier", "type": 1, "status": 1, "group": group, "models": name, "key": ""}).Error)
-				require.NoError(t, db.Table("abilities").Create(map[string]any{"channel_id": id, "group": group, "model": name, "enabled": 1, "priority": 0}).Error)
+				require.NoError(t, db.Table("models").Create(map[string]any{"model_id": name, "display_name": name, "provider": "", "model_type": "chat", "status": 1, "is_public": true}).Error)
+				var modelPK int64
+				require.NoError(t, db.Table("models").Select("id").Where("model_id = ?", name).Scan(&modelPK).Error)
+				require.NoError(t, db.Table("model_channel_mapping").Create(map[string]any{"channel_id": id, "model_id": modelPK, "enabled": true, "priority": 0, "upstream_model_id": name}).Error)
 				require.NoError(t, db.Table("channel_routing_groups").Create(map[string]any{"channel_id": id, "routing_group_id": id}).Error)
 			}
 			t.Setenv("IDENTITY_ROUTING_V2", "true")

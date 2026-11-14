@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -153,7 +152,7 @@ func setupInMemoryChannelService(t *testing.T, addr string) (func(), channelv1.C
 				Key:      "mock-api-key-1",
 			},
 		},
-		abilities: map[string][]channeltestutil.Ability{
+		candidates: map[string][]channeltestutil.RoutingCandidate{
 			"default:gpt-4o-mini": {
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 10},
 			},
@@ -399,8 +398,8 @@ func (m *testIdentityRepo) CountUsers(ctx context.Context) (int64, error) {
 }
 
 type testChannelRepo struct {
-	channels  map[int64]*channeltestutil.Channel
-	abilities map[string][]channeltestutil.Ability
+	channels   map[int64]*channeltestutil.Channel
+	candidates map[string][]channeltestutil.RoutingCandidate
 }
 
 func (m *testChannelRepo) FindByID(ctx context.Context, channelID int64) (*channeltestutil.Channel, error) {
@@ -411,38 +410,19 @@ func (m *testChannelRepo) FindByID(ctx context.Context, channelID int64) (*chann
 	return channel, nil
 }
 
-func (m *testChannelRepo) ListAbilitiesByGroupAndModel(ctx context.Context, group, model string) ([]channeltestutil.Ability, error) {
+func (m *testChannelRepo) ListChannelCandidates(ctx context.Context, group, model string) ([]channeltestutil.RoutingCandidate, error) {
 	key := group + ":" + model
-	abilities, ok := m.abilities[key]
+	candidates, ok := m.candidates[key]
 	if !ok {
-		return []channeltestutil.Ability{}, nil
+		return []channeltestutil.RoutingCandidate{}, nil
 	}
-	enabled := make([]channeltestutil.Ability, 0, len(abilities))
-	for _, ability := range abilities {
-		if ability.Enabled {
-			enabled = append(enabled, ability)
+	enabled := make([]channeltestutil.RoutingCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.Enabled {
+			enabled = append(enabled, candidate)
 		}
 	}
 	return enabled, nil
-}
-
-func (m *testChannelRepo) ListUnrestrictedChannelsByGroup(ctx context.Context, group string) ([]*channeltestutil.Channel, error) {
-	if m.channels == nil {
-		return nil, nil
-	}
-	result := make([]*channeltestutil.Channel, 0)
-	for _, ch := range m.channels {
-		if ch.Status != channeltestutil.ChannelStatusEnabled || ch.RestrictModels {
-			continue
-		}
-		for _, g := range strings.Split(ch.Group, ",") {
-			if g == group {
-				result = append(result, ch)
-				break
-			}
-		}
-	}
-	return result, nil
 }
 
 func (m *testChannelRepo) StoreSubscriptionCredentials(context.Context, *channeltestutil.SubscriptionAccount) error {
@@ -457,7 +437,7 @@ func (m *testChannelRepo) FindSubscriptionAccountByID(ctx context.Context, accou
 	return nil, channeltestutil.ErrSubscriptionAccountNotFound
 }
 
-func (m *testChannelRepo) ListSubscriptionAccountAbilities(ctx context.Context, group, model, platform string) ([]channeltestutil.SubscriptionAccountAbility, error) {
+func (m *testChannelRepo) ListSubscriptionCandidates(ctx context.Context, group, model, platform string) ([]channeltestutil.SubscriptionRoutingCandidate, error) {
 	return nil, nil
 }
 
@@ -535,11 +515,11 @@ func (m *testChannelRepo) StampQuotaAlertMetadata(ctx context.Context, accountID
 
 func (m *testChannelRepo) ListAvailableModels(ctx context.Context, group string) ([]string, error) {
 	uniqueModels := make(map[string]bool)
-	for key, abilities := range m.abilities {
+	for key, candidates := range m.candidates {
 		if len(key) > len(group)+1 && key[:len(group)+1] == group+":" {
-			for _, ability := range abilities {
-				if ability.Enabled {
-					uniqueModels[ability.Model] = true
+			for _, candidate := range candidates {
+				if candidate.Enabled {
+					uniqueModels[candidate.Model] = true
 				}
 			}
 		}

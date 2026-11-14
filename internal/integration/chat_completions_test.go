@@ -73,9 +73,9 @@ func setupChannelWithUpstream(t *testing.T, addr, upstreamURL string) (func(), c
 
 func setupChannelWithUpstreamModel(t *testing.T, addr, upstreamURL string, channelID int64, channelType int32, models []string) (func(), channelv1.ChannelServiceClient) {
 	t.Helper()
-	abilities := make(map[string][]channeltestutil.Ability, len(models))
+	candidates := make(map[string][]channeltestutil.RoutingCandidate, len(models))
 	for _, model := range models {
-		abilities["default:"+model] = []channeltestutil.Ability{{Group: "default", Model: model, ChannelID: channelID, Enabled: true, Priority: 10}}
+		candidates["default:"+model] = []channeltestutil.RoutingCandidate{{Group: "default", Model: model, ChannelID: channelID, Enabled: true, Priority: 10}}
 	}
 	repo := &testChannelRepo{
 		channels: map[int64]*channeltestutil.Channel{
@@ -91,7 +91,7 @@ func setupChannelWithUpstreamModel(t *testing.T, addr, upstreamURL string, chann
 				Key:      "test-api-key",
 			},
 		},
-		abilities: abilities,
+		candidates: candidates,
 	}
 	uc := channeltestutil.NewChannelUsecase(repo, nil)
 	svc := channeltestutil.NewChannelService(uc)
@@ -228,7 +228,7 @@ func TestChatCompletions_ModelMapping(t *testing.T) {
 	billingCleanup, billingClient := setupInMemoryBillingService(t, "127.0.0.1:19203")
 	defer billingCleanup()
 
-	// Custom channel setup that includes the mapped model name in abilities
+	// Custom channel setup that includes the mapped model name in candidates
 	channelRepo := &testChannelRepo{
 		channels: map[int64]*channeltestutil.Channel{
 			1: {
@@ -238,7 +238,7 @@ func TestChatCompletions_ModelMapping(t *testing.T) {
 				Priority: 10, Key: "test-api-key",
 			},
 		},
-		abilities: map[string][]channeltestutil.Ability{
+		candidates: map[string][]channeltestutil.RoutingCandidate{
 			"default:gpt-4o": {
 				{Group: "default", Model: "gpt-4o", ChannelID: 1, Enabled: true, Priority: 10},
 			},

@@ -82,7 +82,6 @@ type Channel struct {
 	UsedQuota                         int64
 	ModelMapping                      string
 	SystemPrompt                      string
-	RestrictModels                    bool // P1 (#2): false=catch-all (allow unregistered models), true=require abilities row. Default true (legacy). See docs/model-management-design.md §9.3 #2.
 	UpstreamModelID                   string
 	Config                            ChannelConfig
 }
@@ -187,7 +186,7 @@ type AccountQuotaSnapshot struct {
 	SnapshotPaused              bool
 }
 
-type Ability struct {
+type RoutingCandidate struct {
 	Group           string
 	Model           string
 	ChannelID       int64
@@ -197,7 +196,7 @@ type Ability struct {
 	UpstreamModelID string
 }
 
-type SubscriptionAccountAbility struct {
+type SubscriptionRoutingCandidate struct {
 	Group           string
 	Model           string
 	Platform        string
@@ -229,15 +228,9 @@ type HealthAlertConfig struct {
 
 type ChannelRepo interface {
 	FindByID(ctx context.Context, channelID int64) (*Channel, error)
-	ListAbilitiesByGroupAndModel(ctx context.Context, group, model string) ([]Ability, error)
-	// ListUnrestrictedChannelsByGroup returns enabled channels in the group
-	// whose restrict_models flag is false (catch-all channels that accept any
-	// model not matched by the abilities table). Used as the fallback path in
-	// SelectChannel when no abilities row matches the requested model. See
-	// docs/model-management-design.md §9.3 #2.
-	ListUnrestrictedChannelsByGroup(ctx context.Context, group string) ([]*Channel, error)
+	ListChannelCandidates(ctx context.Context, group, model string) ([]RoutingCandidate, error)
 	FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*SubscriptionAccount, error)
-	ListSubscriptionAccountAbilities(ctx context.Context, group, model, platform string) ([]SubscriptionAccountAbility, error)
+	ListSubscriptionCandidates(ctx context.Context, group, model, platform string) ([]SubscriptionRoutingCandidate, error)
 	ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*SubscriptionAccount, int64, error)
 	// ScanSubscriptionAccounts applies account-ID sharding before cursor pagination.
 	ScanSubscriptionAccounts(context.Context, AccountScan) ([]*SubscriptionAccount, error)
@@ -454,56 +447,46 @@ func (uc *ChannelUsecase) ConfigureHealthAlert(notifier Notifier, cfg HealthAler
 func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string, excludeFirstPriority bool) (*Channel, error) {
 	uc.runtimeControlMu.Lock()
 	defer uc.runtimeControlMu.Unlock()
-	abilities, err := uc.routeChannelAbilities(ctx, group, model)
+	candidates, err := uc.routeChannelCandidates(ctx, group, model)
 	if err != nil {
 		return nil, err
 	}
-	// P1 (#2): RestrictModels=false catch-all fallback. When no abilities row
-	// matches the requested model, a deployment may still want to route the
-	// request to a channel configured as a catch-all (restrict_models=0). This
-	// is the "pass through unregistered models" switch from sub2api. Only
-	// consulted on the primary selection (excludeFirstPriority=false) — the
-	// failover path excludes the top-priority tier and must not silently
-	// widen to catch-all channels. See docs/model-management-design.md §9.3 #2.
-	if len(abilities) == 0 {
-		if excludeFirstPriority {
-			return nil, ErrChannelNotFound
-		}
-		return uc.selectUnrestrictedChannel(ctx, group)
+	if len(candidates) == 0 {
+		return nil, ErrChannelNotFound
 	}
-	sort.Slice(abilities, func(i, j int) bool {
-		return abilities[i].Priority > abilities[j].Priority
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Priority > candidates[j].Priority
 	})
 
 	skipPriority := int64(0)
 	if excludeFirstPriority {
-		skipPriority = abilities[0].Priority
+		skipPriority = candidates[0].Priority
 	}
-	for i := 0; i < len(abilities); {
-		priority := abilities[i].Priority
+	for i := 0; i < len(candidates); {
+		priority := candidates[i].Priority
 		tier := make([]*Channel, 0)
-		for i < len(abilities) && abilities[i].Priority == priority {
-			ability := abilities[i]
+		for i < len(candidates) && candidates[i].Priority == priority {
+			candidate := candidates[i]
 			i++
 			if excludeFirstPriority && priority == skipPriority {
 				continue
 			}
-			channel, err := uc.repo.FindByID(ctx, ability.ChannelID)
+			channel, err := uc.repo.FindByID(ctx, candidate.ChannelID)
 			if err != nil {
 				continue
 			}
 			if channel.SelectableAt(uc.now()) {
-				channel.UpstreamModelID = ability.UpstreamModelID
-				if ability.Weight > 0 {
-					// #nosec G115 -- abilities.weight is BIGINT; values beyond
+				channel.UpstreamModelID = candidate.UpstreamModelID
+				if candidate.Weight > 0 {
+					// #nosec G115 -- candidates.weight is BIGINT; values beyond
 					// 32 bits are clamped so a hostile/legacy row can never
 					// wrap the scheduler weight to zero or negative.
-					channel.Weight = uint32(min(ability.Weight, math.MaxUint32))
+					channel.Weight = uint32(min(candidate.Weight, math.MaxUint32))
 				}
 				// §5.2 usage-semantics quarantine: a source+model key whose
 				// adapter keeps producing ambiguous usage is paused. This is
 				// a usage control-plane filter, NOT a transport health state.
-				if uc.IsUsageSemanticBlocked(ctx, UsageSemanticSourceKindChannel, channel.ID, ability.UpstreamModelID) {
+				if uc.IsUsageSemanticBlocked(ctx, UsageSemanticSourceKindChannel, channel.ID, candidate.UpstreamModelID) {
 					continue
 				}
 				tier = append(tier, channel)
@@ -537,41 +520,41 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 func (uc *ChannelUsecase) SelectChannelExcluding(ctx context.Context, group, model string, excluded map[int64]bool) (*Channel, error) {
 	uc.runtimeControlMu.Lock()
 	defer uc.runtimeControlMu.Unlock()
-	abilities, err := uc.routeChannelAbilities(ctx, group, model)
+	candidates, err := uc.routeChannelCandidates(ctx, group, model)
 	if err != nil {
 		return nil, err
 	}
-	if len(abilities) == 0 {
+	if len(candidates) == 0 {
 		return nil, ErrChannelNotFound
 	}
-	sort.Slice(abilities, func(i, j int) bool {
-		return abilities[i].Priority > abilities[j].Priority
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Priority > candidates[j].Priority
 	})
-	for i := 0; i < len(abilities); {
-		priority := abilities[i].Priority
+	for i := 0; i < len(candidates); {
+		priority := candidates[i].Priority
 		tier := make([]*Channel, 0)
-		for i < len(abilities) && abilities[i].Priority == priority {
-			ability := abilities[i]
+		for i < len(candidates) && candidates[i].Priority == priority {
+			candidate := candidates[i]
 			i++
-			if excluded[ability.ChannelID] {
+			if excluded[candidate.ChannelID] {
 				continue
 			}
-			channel, err := uc.repo.FindByID(ctx, ability.ChannelID)
+			channel, err := uc.repo.FindByID(ctx, candidate.ChannelID)
 			if err != nil {
 				continue
 			}
 			if channel.SelectableAt(uc.now()) {
-				channel.UpstreamModelID = ability.UpstreamModelID
-				if ability.Weight > 0 {
-					// #nosec G115 -- abilities.weight is BIGINT; values beyond
+				channel.UpstreamModelID = candidate.UpstreamModelID
+				if candidate.Weight > 0 {
+					// #nosec G115 -- candidates.weight is BIGINT; values beyond
 					// 32 bits are clamped so a hostile/legacy row can never
 					// wrap the scheduler weight to zero or negative.
-					channel.Weight = uint32(min(ability.Weight, math.MaxUint32))
+					channel.Weight = uint32(min(candidate.Weight, math.MaxUint32))
 				}
 				// §5.2 usage-semantics quarantine: a source+model key whose
 				// adapter keeps producing ambiguous usage is paused. This is
 				// a usage control-plane filter, NOT a transport health state.
-				if uc.IsUsageSemanticBlocked(ctx, UsageSemanticSourceKindChannel, channel.ID, ability.UpstreamModelID) {
+				if uc.IsUsageSemanticBlocked(ctx, UsageSemanticSourceKindChannel, channel.ID, candidate.UpstreamModelID) {
 					continue
 				}
 				tier = append(tier, channel)
@@ -591,38 +574,6 @@ func (uc *ChannelUsecase) SelectChannelExcluding(ctx context.Context, group, mod
 		}
 	}
 
-	return nil, ErrChannelNotFound
-}
-
-// selectUnrestrictedChannel is the RestrictModels=false fallback: when no
-// abilities row matches, route to an enabled catch-all channel in the group.
-// Catch-all channels are selected by the same WeightedSelector as the normal
-// path so health/latency/circuit-breaker state still applies. Returns
-// ErrChannelNotFound when there is no catch-all channel (the legacy default
-// behaviour). See docs/model-management-design.md §9.3 #2.
-func (uc *ChannelUsecase) selectUnrestrictedChannel(ctx context.Context, group string) (*Channel, error) {
-	channels, err := uc.repo.ListUnrestrictedChannelsByGroup(ctx, group)
-	if err != nil || len(channels) == 0 {
-		return nil, ErrChannelNotFound
-	}
-	tier := make([]*Channel, 0, len(channels))
-	for _, ch := range channels {
-		if ch.SelectableAt(uc.now()) {
-			tier = append(tier, ch)
-		}
-	}
-	if len(tier) == 0 {
-		return nil, ErrChannelNotFound
-	}
-	selected, err := uc.selector.Select(ctx, group, tier)
-	if err != nil {
-		return nil, err
-	}
-	for _, ch := range tier {
-		if ch.ID == selected.ID {
-			return selected, nil
-		}
-	}
 	return nil, ErrChannelNotFound
 }
 
@@ -736,46 +687,46 @@ func (uc *ChannelUsecase) SelectSubscriptionAccountExcluding(ctx context.Context
 func (uc *ChannelUsecase) selectSubscriptionAccount(ctx context.Context, group, model, platform string, excludeFirstPriority bool, excluded map[int64]bool) (*SubscriptionAccount, error) {
 	uc.runtimeControlMu.Lock()
 	defer uc.runtimeControlMu.Unlock()
-	abilities, err := uc.routeSubscriptionAbilities(ctx, group, model, platform)
+	candidates, err := uc.routeSubscriptionCandidates(ctx, group, model, platform)
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(abilities, func(i, j int) bool {
-		return abilities[i].Priority > abilities[j].Priority
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Priority > candidates[j].Priority
 	})
 
 	skipPriority := int64(0)
 	if excludeFirstPriority {
-		skipPriority = abilities[0].Priority
+		skipPriority = candidates[0].Priority
 	}
-	for i := 0; i < len(abilities); {
-		priority := abilities[i].Priority
+	for i := 0; i < len(candidates); {
+		priority := candidates[i].Priority
 		tier := make([]*SubscriptionAccount, 0)
-		for i < len(abilities) && abilities[i].Priority == priority {
-			ability := abilities[i]
+		for i < len(candidates) && candidates[i].Priority == priority {
+			candidate := candidates[i]
 			i++
 			if excludeFirstPriority && priority == skipPriority {
 				continue
 			}
-			if excluded[ability.AccountID] {
+			if excluded[candidate.AccountID] {
 				continue
 			}
 			// Usage-semantics quarantine is scoped to the exact subscription
 			// account + upstream model. Do not reuse the broader account-level
 			// rate-limit flag here: one broken adapter/model combination must
 			// not take unrelated models on the same account out of rotation.
-			if uc.IsUsageSemanticBlocked(ctx, UsageSemanticSourceKindSubscription, ability.AccountID, ability.UpstreamModelID) {
+			if uc.IsUsageSemanticBlocked(ctx, UsageSemanticSourceKindSubscription, candidate.AccountID, candidate.UpstreamModelID) {
 				continue
 			}
-			account, err := uc.repo.FindSubscriptionAccountByID(ctx, ability.AccountID)
+			account, err := uc.repo.FindSubscriptionAccountByID(ctx, candidate.AccountID)
 			if err != nil {
 				continue
 			}
 			if account.Status == ChannelStatusEnabled && account.IsSchedulableAt(uc.now()) {
-				account.UpstreamModelID = ability.UpstreamModelID
-				if ability.Weight > 0 {
+				account.UpstreamModelID = candidate.UpstreamModelID
+				if candidate.Weight > 0 {
 					// #nosec G115 -- see the channel path above; same clamp.
-					account.Weight = int32(min(ability.Weight, math.MaxInt32))
+					account.Weight = int32(min(candidate.Weight, math.MaxInt32))
 				}
 				tier = append(tier, account)
 			}
@@ -836,18 +787,18 @@ func routedPriority(matches []*ModelRouting, accountID int64) int32 {
 	return -1
 }
 
-// filterAbilitiesByRouted keeps only abilities whose account id appears in the
-// matched routing rows. When matches is empty the abilities are returned
+// filterCandidatesByRouted keeps only candidates whose account id appears in the
+// matched routing rows. When matches is empty the candidates are returned
 // unchanged (no routing configured → normal selection). It stamps the routing
-// priority onto each kept ability (shifted by a large constant so the caller's
+// priority onto each kept candidate (shifted by a large constant so the caller's
 // priority-desc sort orders routed accounts by routing priority first, then by
 // the account's own priority). See docs/model-management-design.md §9.3 #3.
-func filterAbilitiesByRouted(abilities []SubscriptionAccountAbility, matches []*ModelRouting) []SubscriptionAccountAbility {
+func filterCandidatesByRouted(candidates []SubscriptionRoutingCandidate, matches []*ModelRouting) []SubscriptionRoutingCandidate {
 	if len(matches) == 0 {
-		return abilities
+		return candidates
 	}
-	out := make([]SubscriptionAccountAbility, 0, len(abilities))
-	for _, a := range abilities {
+	out := make([]SubscriptionRoutingCandidate, 0, len(candidates))
+	for _, a := range candidates {
 		p := routedPriority(matches, a.AccountID)
 		if p < 0 {
 			continue // not routed

@@ -13,8 +13,8 @@ import (
 type mockChannelRepo struct {
 	channels     map[int64]*Channel
 	accounts     map[int64]*SubscriptionAccount
-	abilities    map[string][]Ability
-	accAbilities map[string][]SubscriptionAccountAbility
+	candidates   map[string][]RoutingCandidate
+	accAbilities map[string][]SubscriptionRoutingCandidate
 	resetRuns    map[string]bool
 }
 
@@ -47,38 +47,19 @@ func (m *mockChannelRepo) FindByID(ctx context.Context, channelID int64) (*Chann
 	return channel, nil
 }
 
-func (m *mockChannelRepo) ListAbilitiesByGroupAndModel(ctx context.Context, group, model string) ([]Ability, error) {
+func (m *mockChannelRepo) ListChannelCandidates(ctx context.Context, group, model string) ([]RoutingCandidate, error) {
 	key := group + ":" + model
-	abilities, ok := m.abilities[key]
+	candidates, ok := m.candidates[key]
 	if !ok {
-		return []Ability{}, nil
+		return []RoutingCandidate{}, nil
 	}
-	enabled := make([]Ability, 0, len(abilities))
-	for _, ability := range abilities {
-		if ability.Enabled {
-			enabled = append(enabled, ability)
+	enabled := make([]RoutingCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.Enabled {
+			enabled = append(enabled, candidate)
 		}
 	}
 	return enabled, nil
-}
-
-// ListUnrestrictedChannelsByGroup satisfies the ChannelRepo interface for the
-// RestrictModels=false catch-all fallback (P1 #2). The mock returns channels
-// seeded on m.channels whose RestrictModels flag is false.
-func (m *mockChannelRepo) ListUnrestrictedChannelsByGroup(ctx context.Context, group string) ([]*Channel, error) {
-	if m.channels == nil {
-		return nil, nil
-	}
-	result := make([]*Channel, 0)
-	for _, ch := range m.channels {
-		if ch.Status != ChannelStatusEnabled || ch.RestrictModels {
-			continue
-		}
-		if slices.Contains(SplitCSV(ch.Group), group) {
-			result = append(result, ch)
-		}
-	}
-	return result, nil
 }
 
 func (m *mockChannelRepo) FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*SubscriptionAccount, error) {
@@ -92,19 +73,19 @@ func (m *mockChannelRepo) FindSubscriptionAccountByID(ctx context.Context, accou
 	return account, nil
 }
 
-func (m *mockChannelRepo) ListSubscriptionAccountAbilities(ctx context.Context, group, model, platform string) ([]SubscriptionAccountAbility, error) {
+func (m *mockChannelRepo) ListSubscriptionCandidates(ctx context.Context, group, model, platform string) ([]SubscriptionRoutingCandidate, error) {
 	if len(m.accAbilities) == 0 {
 		return nil, nil
 	}
 	key := platform + ":" + group + ":" + model
-	abilities, ok := m.accAbilities[key]
+	candidates, ok := m.accAbilities[key]
 	if !ok {
 		return nil, nil
 	}
-	enabled := make([]SubscriptionAccountAbility, 0, len(abilities))
-	for _, ability := range abilities {
-		if ability.Enabled {
-			enabled = append(enabled, ability)
+	enabled := make([]SubscriptionRoutingCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.Enabled {
+			enabled = append(enabled, candidate)
 		}
 	}
 	return enabled, nil
@@ -310,11 +291,11 @@ func resetRunKey(accountID int64, scope string, windowStart int64) string {
 
 func (m *mockChannelRepo) ListAvailableModels(ctx context.Context, group string) ([]string, error) {
 	uniqueModels := make(map[string]bool)
-	for key, abilities := range m.abilities {
+	for key, candidates := range m.candidates {
 		if len(key) > len(group)+1 && key[:len(group)+1] == group+":" {
-			for _, ability := range abilities {
-				if ability.Enabled {
-					uniqueModels[ability.Model] = true
+			for _, candidate := range candidates {
+				if candidate.Enabled {
+					uniqueModels[candidate.Model] = true
 				}
 			}
 		}
@@ -401,7 +382,7 @@ func TestChannelUsecase_SelectChannel_SingleChannel(t *testing.T) {
 				Priority: 10,
 			},
 		},
-		abilities: map[string][]Ability{
+		candidates: map[string][]RoutingCandidate{
 			"default:gpt-4o-mini": {
 				{
 					Group:     "default",
@@ -426,8 +407,8 @@ func TestChannelUsecase_SelectChannel_SingleChannel(t *testing.T) {
 
 func TestChannelUsecase_SelectChannel_NoAvailableChannels(t *testing.T) {
 	repo := &mockChannelRepo{
-		channels:  map[int64]*Channel{},
-		abilities: map[string][]Ability{},
+		channels:   map[int64]*Channel{},
+		candidates: map[string][]RoutingCandidate{},
 	}
 
 	uc := NewChannelUsecase(repo, nil)
@@ -457,7 +438,7 @@ func TestChannelUsecase_SelectSubscriptionAccount_SkipsTempUnschedulable(t *test
 				Priority: 10,
 			},
 		},
-		accAbilities: map[string][]SubscriptionAccountAbility{
+		accAbilities: map[string][]SubscriptionRoutingCandidate{
 			"codex:default:gpt-5": {
 				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 1, Enabled: true, Priority: 10},
 				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 2, Enabled: true, Priority: 10},
@@ -498,7 +479,7 @@ func TestChannelUsecase_SelectSubscriptionAccount_SkipsLocalQuotaExceeded(t *tes
 				Priority: 10,
 			},
 		},
-		accAbilities: map[string][]SubscriptionAccountAbility{
+		accAbilities: map[string][]SubscriptionRoutingCandidate{
 			"codex:default:gpt-5": {
 				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 1, Enabled: true, Priority: 10},
 				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 2, Enabled: true, Priority: 10},
@@ -612,7 +593,7 @@ func TestChannelUsecase_SelectSubscriptionAccount_SkipsLocalQuota5hExceeded(t *t
 				Priority: 10,
 			},
 		},
-		accAbilities: map[string][]SubscriptionAccountAbility{
+		accAbilities: map[string][]SubscriptionRoutingCandidate{
 			"codex:default:gpt-5": {
 				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 1, Enabled: true, Priority: 10},
 				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 2, Enabled: true, Priority: 10},
@@ -651,7 +632,7 @@ func TestChannelUsecase_SelectChannel_PriorityOrdering(t *testing.T) {
 			2: {ID: 2, Name: "channel-2", Status: ChannelStatusEnabled, Priority: 20},
 			3: {ID: 3, Name: "channel-3", Status: ChannelStatusEnabled, Priority: 5},
 		},
-		abilities: map[string][]Ability{
+		candidates: map[string][]RoutingCandidate{
 			"default:gpt-4o-mini": {
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 10},
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 2, Enabled: true, Priority: 20},
@@ -677,7 +658,7 @@ func TestChannelUsecase_SelectChannel_SkipsOpenCircuit(t *testing.T) {
 			1: {ID: 1, Name: "open-circuit", Status: ChannelStatusEnabled, Priority: 20, HealthStatus: ChannelHealthUnavailable, CircuitOpenedUntil: now.Add(time.Minute).Unix()},
 			2: {ID: 2, Name: "healthy", Status: ChannelStatusEnabled, Priority: 10, HealthStatus: ChannelHealthHealthy},
 		},
-		abilities: map[string][]Ability{
+		candidates: map[string][]RoutingCandidate{
 			"default:gpt-4o-mini": {
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 20},
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 2, Enabled: true, Priority: 10},
@@ -703,7 +684,7 @@ func TestChannelUsecase_SelectChannel_AllowsHalfOpenAfterCooldown(t *testing.T) 
 			1: {ID: 1, Name: "cooldown-ended", Status: ChannelStatusEnabled, Priority: 20, HealthStatus: ChannelHealthUnavailable, CircuitOpenedUntil: now.Add(-time.Second).Unix()},
 			2: {ID: 2, Name: "healthy", Status: ChannelStatusEnabled, Priority: 10, HealthStatus: ChannelHealthHealthy},
 		},
-		abilities: map[string][]Ability{
+		candidates: map[string][]RoutingCandidate{
 			"default:gpt-4o-mini": {
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 20},
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 2, Enabled: true, Priority: 10},
@@ -728,7 +709,7 @@ func TestChannelUsecase_SelectChannel_SamePriorityRandom(t *testing.T) {
 			1: {ID: 1, Name: "channel-1", Status: ChannelStatusEnabled, Priority: 10},
 			2: {ID: 2, Name: "channel-2", Status: ChannelStatusEnabled, Priority: 10},
 		},
-		abilities: map[string][]Ability{
+		candidates: map[string][]RoutingCandidate{
 			"default:gpt-4o-mini": {
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 10},
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 2, Enabled: true, Priority: 10},
@@ -762,7 +743,7 @@ func TestChannelUsecase_SelectChannel_ExcludeFirstPriority(t *testing.T) {
 			2: {ID: 2, Name: "channel-2", Status: ChannelStatusEnabled, Priority: 10},
 			3: {ID: 3, Name: "channel-3", Status: ChannelStatusEnabled, Priority: 5},
 		},
-		abilities: map[string][]Ability{
+		candidates: map[string][]RoutingCandidate{
 			"default:gpt-4o-mini": {
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 10},
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 2, Enabled: true, Priority: 10},
@@ -795,7 +776,7 @@ func TestChannelUsecase_SelectChannelExcluding_WalksLowerTiers(t *testing.T) {
 			2: {ID: 2, Name: "channel-2", Status: ChannelStatusEnabled, Priority: 5},
 			3: {ID: 3, Name: "channel-3", Status: ChannelStatusEnabled, Priority: 1},
 		},
-		abilities: map[string][]Ability{
+		candidates: map[string][]RoutingCandidate{
 			"default:gpt-4o-mini": {
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 10},
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 2, Enabled: true, Priority: 5},
@@ -829,7 +810,7 @@ func TestChannelUsecase_SelectChannelExcluding_KeepsTierSiblings(t *testing.T) {
 			1: {ID: 1, Name: "channel-1", Status: ChannelStatusEnabled, Priority: 10},
 			2: {ID: 2, Name: "channel-2", Status: ChannelStatusEnabled, Priority: 10},
 		},
-		abilities: map[string][]Ability{
+		candidates: map[string][]RoutingCandidate{
 			"default:gpt-4o-mini": {
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 10},
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 2, Enabled: true, Priority: 10},
@@ -855,7 +836,7 @@ func TestChannelUsecase_SelectChannel_FilterDisabled(t *testing.T) {
 			1: {ID: 1, Name: "channel-1", Status: ChannelStatusEnabled, Priority: 10},
 			2: {ID: 2, Name: "channel-2", Status: ChannelStatusEnabled, Priority: 20},
 		},
-		abilities: map[string][]Ability{
+		candidates: map[string][]RoutingCandidate{
 			"default:gpt-4o-mini": {
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 10},
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 2, Enabled: false, Priority: 20},
@@ -878,7 +859,7 @@ func TestChannelUsecase_SelectChannel_AllDisabled(t *testing.T) {
 		channels: map[int64]*Channel{
 			1: {ID: 1, Name: "channel-1", Status: ChannelStatusEnabled, Priority: 10},
 		},
-		abilities: map[string][]Ability{
+		candidates: map[string][]RoutingCandidate{
 			"default:gpt-4o-mini": {
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: false, Priority: 10},
 			},
@@ -905,7 +886,7 @@ func TestChannelUsecase_RecordHealth_NotifiesWhenChannelBecomesUnavailable(t *te
 				HealthConsecutiveFailures: 1,
 			},
 		},
-		abilities: map[string][]Ability{},
+		candidates: map[string][]RoutingCandidate{},
 	}
 	notifier := &recordingNotifier{}
 	uc := NewChannelUsecase(repo, nil)
@@ -956,7 +937,7 @@ func TestChannelUsecase_RecordHealth_DoesNotRepeatUnavailableNotification(t *tes
 				CircuitOpenedUntil:        time.Unix(1000, 0).Add(time.Minute).Unix(),
 			},
 		},
-		abilities: map[string][]Ability{},
+		candidates: map[string][]RoutingCandidate{},
 	}
 	notifier := &recordingNotifier{}
 	uc := NewChannelUsecase(repo, nil)
@@ -991,7 +972,7 @@ func TestChannelUsecase_RecordHealth_DoesNotNotifyWhenAlertDisabled(t *testing.T
 				HealthConsecutiveFailures: 1,
 			},
 		},
-		abilities: map[string][]Ability{},
+		candidates: map[string][]RoutingCandidate{},
 	}
 	notifier := &recordingNotifier{}
 	uc := NewChannelUsecase(repo, nil)
@@ -1026,7 +1007,7 @@ func TestChannelUsecase_RecordHealth_DoesNotNotifyWhenNoNotifier(t *testing.T) {
 				HealthConsecutiveFailures: 1,
 			},
 		},
-		abilities: map[string][]Ability{},
+		candidates: map[string][]RoutingCandidate{},
 	}
 	uc := NewChannelUsecase(repo, nil)
 	uc.healthFailureThreshold = 2
@@ -1057,7 +1038,7 @@ func TestChannelUsecase_RecordHealth_NotifiesMultipleRecipients(t *testing.T) {
 				HealthConsecutiveFailures: 1,
 			},
 		},
-		abilities: map[string][]Ability{},
+		candidates: map[string][]RoutingCandidate{},
 	}
 	notifier := &recordingNotifier{}
 	uc := NewChannelUsecase(repo, nil)
@@ -1123,7 +1104,7 @@ func TestChannelUsecase_RecordHealth_NotifyOnceWhenTransitioningFromHealthy(t *t
 				HealthConsecutiveFailures: 0,
 			},
 		},
-		abilities: map[string][]Ability{},
+		candidates: map[string][]RoutingCandidate{},
 	}
 	notifier := &recordingNotifier{}
 	uc := NewChannelUsecase(repo, nil)
@@ -1167,7 +1148,7 @@ func TestChannelUsecase_GetChannel(t *testing.T) {
 				Key:      "sk-test",
 			},
 		},
-		abilities: map[string][]Ability{},
+		candidates: map[string][]RoutingCandidate{},
 	}
 
 	uc := NewChannelUsecase(repo, nil)
@@ -1188,8 +1169,8 @@ func TestChannelUsecase_GetChannel(t *testing.T) {
 
 func TestChannelUsecase_GetChannel_NotFound(t *testing.T) {
 	repo := &mockChannelRepo{
-		channels:  map[int64]*Channel{},
-		abilities: map[string][]Ability{},
+		channels:   map[int64]*Channel{},
+		candidates: map[string][]RoutingCandidate{},
 	}
 
 	uc := NewChannelUsecase(repo, nil)
@@ -1205,7 +1186,7 @@ func TestChannelUsecase_ListAvailableModels(t *testing.T) {
 			1: {ID: 1, Name: "channel-1", Status: ChannelStatusEnabled},
 			2: {ID: 2, Name: "channel-2", Status: ChannelStatusEnabled},
 		},
-		abilities: map[string][]Ability{
+		candidates: map[string][]RoutingCandidate{
 			"default:gpt-4o-mini": {
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 10},
 			},
@@ -1239,8 +1220,8 @@ func TestChannelUsecase_ListAvailableModels(t *testing.T) {
 
 func TestChannelUsecase_ListAvailableModels_NoChannels(t *testing.T) {
 	repo := &mockChannelRepo{
-		channels:  map[int64]*Channel{},
-		abilities: map[string][]Ability{},
+		channels:   map[int64]*Channel{},
+		candidates: map[string][]RoutingCandidate{},
 	}
 
 	uc := NewChannelUsecase(repo, nil)
@@ -1371,35 +1352,28 @@ func (m *mockChannelRepo) ScanSubscriptionAccounts(ctx context.Context, scan Acc
 }
 
 // ---------------------------------------------------------------------------
-// P1 (#2) — RestrictModels catch-all fallback.
+// Explicit registry candidates are required for routing.
 // ---------------------------------------------------------------------------
 
-func TestChannelUsecase_SelectChannel_RestrictModelsCatchAll(t *testing.T) {
+func TestChannelUsecase_SelectChannel_RejectsUnregisteredModel(t *testing.T) {
 	repo := &mockChannelRepo{
 		channels: map[int64]*Channel{
-			1: {
-				ID: 1, Type: 1, Name: "catch-all", Status: ChannelStatusEnabled,
-				Group: "default", Priority: 1, RestrictModels: false,
-			},
+			1: {ID: 1, Type: 1, Name: "explicit-only", Status: ChannelStatusEnabled, Group: "default", Priority: 1},
 		},
-		// No abilities for "unregistered-model" — the catch-all channel must serve it.
-		abilities: map[string][]Ability{},
+		candidates: map[string][]RoutingCandidate{},
 	}
 	uc := NewChannelUsecase(repo, nil)
-	channel, err := uc.SelectChannel(context.Background(), "default", "unregistered-model", false)
-	if err != nil {
-		t.Fatalf("catch-all SelectChannel() error = %v", err)
-	}
-	if channel.ID != 1 {
-		t.Fatalf("expected catch-all channel 1, got %d", channel.ID)
+	_, err := uc.SelectChannel(context.Background(), "default", "unregistered-model", false)
+	if err != ErrChannelNotFound {
+		t.Fatalf("expected ErrChannelNotFound, got %v", err)
 	}
 }
 
 func TestChannelUsecase_SelectChannel_RestrictedByDefault(t *testing.T) {
-	// No abilities, no catch-all channel → ErrChannelNotFound (legacy behaviour).
+	// No candidates means no routing candidate.
 	repo := &mockChannelRepo{
-		channels:  map[int64]*Channel{},
-		abilities: map[string][]Ability{},
+		channels:   map[int64]*Channel{},
+		candidates: map[string][]RoutingCandidate{},
 	}
 	uc := NewChannelUsecase(repo, nil)
 	_, err := uc.SelectChannel(context.Background(), "default", "any-model", false)
@@ -1408,31 +1382,30 @@ func TestChannelUsecase_SelectChannel_RestrictedByDefault(t *testing.T) {
 	}
 }
 
-func TestChannelUsecase_SelectChannel_CatchAllNotUsedOnFailover(t *testing.T) {
+func TestChannelUsecase_SelectChannel_UnregisteredModelNotFoundOnFailover(t *testing.T) {
 	repo := &mockChannelRepo{
 		channels: map[int64]*Channel{
 			1: {
-				ID: 1, Type: 1, Name: "catch-all", Status: ChannelStatusEnabled,
-				Group: "default", Priority: 1, RestrictModels: false,
+				ID: 1, Type: 1, Name: "explicit-only", Status: ChannelStatusEnabled,
+				Group: "default", Priority: 1,
 			},
 		},
-		abilities: map[string][]Ability{},
+		candidates: map[string][]RoutingCandidate{},
 	}
 	uc := NewChannelUsecase(repo, nil)
-	// excludeFirstPriority=true is the failover path — must NOT fall back to catch-all.
+	// Failover must not widen to unregistered models.
 	_, err := uc.SelectChannel(context.Background(), "default", "unregistered-model", true)
 	if err != ErrChannelNotFound {
-		t.Fatalf("failover path must not widen to catch-all: got err=%v", err)
+		t.Fatalf("failover path must not widen to unregistered models: got err=%v", err)
 	}
 }
 
-func TestChannelUsecase_SelectChannel_AbilitiesWinOverCatchAll(t *testing.T) {
+func TestChannelUsecase_SelectChannel_UsesExplicitRoutingCandidate(t *testing.T) {
 	repo := &mockChannelRepo{
 		channels: map[int64]*Channel{
-			1: {ID: 1, Type: 1, Name: "exact", Status: ChannelStatusEnabled, Group: "default", Priority: 10, RestrictModels: true},
-			2: {ID: 2, Type: 1, Name: "catch-all", Status: ChannelStatusEnabled, Group: "default", Priority: 1, RestrictModels: false},
+			1: {ID: 1, Type: 1, Name: "exact", Status: ChannelStatusEnabled, Group: "default", Priority: 10},
 		},
-		abilities: map[string][]Ability{
+		candidates: map[string][]RoutingCandidate{
 			"default:gpt-4o": {{Group: "default", Model: "gpt-4o", ChannelID: 1, Enabled: true, Priority: 10}},
 		},
 	}
@@ -1442,7 +1415,7 @@ func TestChannelUsecase_SelectChannel_AbilitiesWinOverCatchAll(t *testing.T) {
 		t.Fatalf("SelectChannel() error = %v", err)
 	}
 	if channel.ID != 1 {
-		t.Fatalf("exact-match channel must win over catch-all: got %d", channel.ID)
+		t.Fatalf("expected explicit ability channel 1, got %d", channel.ID)
 	}
 }
 
@@ -1454,7 +1427,7 @@ func TestChannelUsecase_SelectChannel_AbilitiesWinOverCatchAll(t *testing.T) {
 func TestChannelUsecase_CrossInstanceInvalidation(t *testing.T) {
 	repo := &mockChannelRepo{
 		channels: map[int64]*Channel{1: {ID: 1, Status: ChannelStatusEnabled}},
-		abilities: map[string][]Ability{
+		candidates: map[string][]RoutingCandidate{
 			"default:gpt-4o": {{Group: "default", Model: "gpt-4o", ChannelID: 1, Enabled: true, Priority: 1}},
 		},
 	}
@@ -1467,7 +1440,7 @@ func TestChannelUsecase_CrossInstanceInvalidation(t *testing.T) {
 	// Mutate the repo behind the cache's back, then publish a cross-instance
 	// event: the subscriber must drop the cache so the next read refetches.
 	repo.channels[2] = &Channel{ID: 2, Status: ChannelStatusEnabled}
-	repo.abilities["default:new-model"] = []Ability{{Group: "default", Model: "new-model", ChannelID: 2, Enabled: true, Priority: 1}}
+	repo.candidates["default:new-model"] = []RoutingCandidate{{Group: "default", Model: "new-model", ChannelID: 2, Enabled: true, Priority: 1}}
 	_ = uc.eventBus.Publish(context.Background(), "channel.changed", &Channel{ID: 2})
 
 	models, err := uc.ListAvailableModels(context.Background(), "default")
@@ -1497,7 +1470,7 @@ func TestChannelUsecase_SelectSubscriptionAccountExcluding_WalksLowerTiers(t *te
 			2: {ID: 2, Name: "acc-2", Status: ChannelStatusEnabled, Platform: "codex", Priority: 5},
 			3: {ID: 3, Name: "acc-3", Status: ChannelStatusEnabled, Platform: "codex", Priority: 1},
 		},
-		accAbilities: map[string][]SubscriptionAccountAbility{
+		accAbilities: map[string][]SubscriptionRoutingCandidate{
 			"codex:default:gpt-5": {
 				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 1, Enabled: true, Priority: 10},
 				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 2, Enabled: true, Priority: 5},
@@ -1533,7 +1506,7 @@ func TestChannelUsecase_SelectSubscriptionAccountExcluding_KeepsTierSiblings(t *
 			1: {ID: 1, Name: "acc-1", Status: ChannelStatusEnabled, Platform: "codex", Priority: 10},
 			2: {ID: 2, Name: "acc-2", Status: ChannelStatusEnabled, Platform: "codex", Priority: 10},
 		},
-		accAbilities: map[string][]SubscriptionAccountAbility{
+		accAbilities: map[string][]SubscriptionRoutingCandidate{
 			"codex:default:gpt-5": {
 				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 1, Enabled: true, Priority: 10},
 				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 2, Enabled: true, Priority: 10},

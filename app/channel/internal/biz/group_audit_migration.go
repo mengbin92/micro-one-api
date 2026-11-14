@@ -120,7 +120,7 @@ func groupAuditDisposition(code string) (string, bool) {
 func (report *GroupAuditReport) buildMigration(inventory *GroupInventory, issue func(string, GroupReference)) {
 	migration := GroupAuditMigration{Groups: []GroupAuditMigrationGroup{}, Users: []GroupAuditMigrationUser{}, TokenRoutingMode: "inherit", SubscriptionCoverage: "legacy_all_authorized", QuotaPolicySemantics: "legacy_live"}
 	users, routingKeys := map[int64]bool{}, map[string]bool{}
-	// Canonical references are kept distinct from derived abilities. A grant
+	// Canonical references are kept distinct from derived candidates. A grant
 	// that only exists due to database collation / LIKE behaviour is quarantined.
 	exactSources := map[string]map[routing.Source]bool{}
 	modelSources := map[string]map[string]map[routing.Source]bool{}

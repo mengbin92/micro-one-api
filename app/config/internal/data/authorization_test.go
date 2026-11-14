@@ -23,7 +23,7 @@ func TestIAMB4ConfigDeleteRejectsWrappedRevision(t *testing.T) {
 			if driver == "memory" {
 				r.mem["system/notice"].Revision = -1
 			} else {
-				require.NoError(t, r.db.Model(&configModel{}).Where("namespace = ? AND key = ?", "system", "notice").Update("revision", -1).Error)
+				require.NoError(t, r.db.Model(&configModel{}).Where(map[string]any{"namespace": "system", "key": "notice"}).Update("revision", -1).Error)
 			}
 			ctx := authorization.WithQueryScope(authorization.WithWriteReason(context.Background(), "reject corrupted revision"), "system.content.notice.update", authztest.All())
 			ctx = authorization.WithExpectedResourceRevision(ctx, math.MaxUint64)

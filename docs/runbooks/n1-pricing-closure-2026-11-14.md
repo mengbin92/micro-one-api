@@ -1,12 +1,12 @@
 # N1：计价扩展条件闭环
 
-> 2026-11-14，北京时间。状态：**4/5 已完成；跨时段实测已排队**。关联 [N1 核账](n1-pricing-readonly-2026-11-08.md)、[N1 分时验收](n1-off-peak-paid-2026-11-08.md)。机器证据见 [closure JSON](evidence/n1-pricing-closure-2026-11-14.json)。
+> 2026-11-14，北京时间。状态：**4/5 已完成；跨时段实测已排队**。同日后续重构已退役 legacy abilities / catch-all，当前路由以 registry mapping 为唯一来源；本记录保留当时验收口径。关联 [N1 核账](n1-pricing-readonly-2026-11-08.md)、[N1 分时验收](n1-off-peak-paid-2026-11-08.md)。机器证据见 [closure JSON](evidence/n1-pricing-closure-2026-11-14.json)。
 
 ## 1. 已完成
 
 | 项目 | 结果 | 证据 |
 | --- | --- | --- |
-| ✅ 兜底范围治理 | channel 1 从 catch-all 收口为 `restrict_models=1`；当前所有启用渠道均要求显式 abilities。未注册模型实测返回 503 `no available channel`，未创建 reservation 或账本。 | 审计 `channel.channel.update success`，reason 为 N1 fallback governance；abilities 与渠道回读在 JSON 证据中 |
+| ✅ 兜底范围治理 | channel 1 从 catch-all 收口为显式 registry mapping；当前所有启用渠道均要求显式 mapping。未注册模型实测返回 503 `no available channel`，未创建 reservation 或账本。 | 审计 `channel.channel.update success`，reason 为 N1 fallback governance；当时 legacy ability 投影与渠道回读在 JSON 证据中 |
 | ✅ 计价路由绑定 | 为预配置的 channel 11 / `deepseek-flash` 建立显式 ability；/v1/chat/completions 已真实命中 channel 11，账本快照版本 4。 | `channel.channel.update success`；账本 `channel_id=11`、`pricing_config_hash=0a2ec72c...` |
 | ✅ 其他档位合同核对 | 上游接受 `priority` / `flex` 请求参数，但响应均返回 `service_tier=null`。平台分别记录 `missing`，按 `actual_or_max_v1` 使用 `max`。 | 两次直连探针与两条平台账本；当前上游没有可验证的真实档位切换 |
 | ✅ 长上下文合同核对 | 上游模型声明 1M context、384K max output，公开费率只有一个输入/输出表，无长上下文加价行。经平台发送 190,610 input tokens 成功，账本仍使用基础/闲时快照，`long_context_*` 全为空或 0。 | 上游模型合同、文档哈希、真实请求 usage、平台账本和价格快照 |
@@ -24,5 +24,5 @@
 ## 3. 边界
 
 - 本轮只操作了生产渠道配置和短生命周期测试路由；临时 API Key 将在收口时删除。
-- 渠道 1 保持原有显式模型与 abilities，不删除历史价格键；全局模型映射中未被 ability 覆盖的入口现已被拒绝，不再兜底。
+- 渠道 1 保持原有显式模型与 registry mapping，不删除历史价格键；未被 mapping 覆盖的入口已被拒绝，不再兜底。
 - 本轮以受控请求前后的钱包实际变动作为最终实扣证据；余额两位小数展示不等同于逐请求分配或税务发票。

@@ -166,7 +166,7 @@ func (r *routingGroupRepo) ReplaceRoutingGroupMembers(ctx context.Context, id, r
 				if err != nil {
 					return err
 				}
-				if err := writer.syncAbilitiesTx(tx, channel); err != nil {
+				if err := writer.syncRoutingMembersTx(tx, routing.Source{Kind: routing.Channel, ID: channel.ID}, channel.Group); err != nil {
 					return err
 				}
 				if err := authzquery.AppendWriteAudit(ctx, tx, "channel.channel.update", source.ID); err != nil {
@@ -199,7 +199,7 @@ func (r *routingGroupRepo) ReplaceRoutingGroupMembers(ctx context.Context, id, r
 				if err != nil {
 					return err
 				}
-				if err := writer.syncSubscriptionAccountAbilitiesTx(tx, account); err != nil {
+				if err := writer.syncSubscriptionAccountModelMappingsTx(tx, account); err != nil {
 					return err
 				}
 				if err := authzquery.AppendWriteAudit(ctx, tx, "channel.account.update", source.ID); err != nil {

@@ -19,9 +19,9 @@ func TestIAMB2ChannelOwnerDialects(t *testing.T) {
 			g1, g2 := routingGroupModel{Key: "one", DisplayName: "one", Status: "enabled", AccessMode: "restricted", ModelAccessMode: "restricted", Revision: 1}, routingGroupModel{Key: "two", DisplayName: "two", Status: "enabled", AccessMode: "restricted", ModelAccessMode: "restricted", Revision: 1}
 			require.NoError(t, db.Create(&g1).Error)
 			require.NoError(t, db.Create(&g2).Error)
-			shared := &biz.Channel{Name: "shared", Key: "secret", Group: "one,two", Status: 1, RestrictModels: true}
-			single := &biz.Channel{Name: "one", Key: "single-secret", Group: "one", Status: 1, RestrictModels: true}
-			hidden := &biz.Channel{Name: "hidden", Key: "hidden-secret", Group: "two", Status: 1, RestrictModels: true}
+			shared := &biz.Channel{Name: "shared", Key: "secret", Group: "one,two", Status: 1}
+			single := &biz.Channel{Name: "one", Key: "single-secret", Group: "one", Status: 1}
+			hidden := &biz.Channel{Name: "hidden", Key: "hidden-secret", Group: "two", Status: 1}
 			for _, c := range []*biz.Channel{shared, single, hidden} {
 				require.NoError(t, repo.CreateChannel(ctx, c))
 			}
@@ -114,7 +114,7 @@ func TestIAMB2ChannelOwnerDialects(t *testing.T) {
 			// A compatibility Models edit can create/delete/update mappings;
 			// unfinished mapping authority cannot be acquired via channel.update.
 			require.NoError(t, db.Table("models").Create(map[string]any{"model_id": "registered", "display_name": "registered", "provider": "openai", "model_type": "chat", "status": 1, "is_public": true}).Error)
-			mapped := &biz.Channel{Name: "mapped", Key: "key", Group: "one", Status: 1, RestrictModels: true, Models: []string{"registered"}}
+			mapped := &biz.Channel{Name: "mapped", Key: "key", Group: "one", Status: 1, Models: []string{"registered"}}
 			require.NoError(t, repo.CreateChannel(ctx, mapped))
 			originalMapped, err := repo.FindByID(ctx, mapped.ID)
 			require.NoError(t, err)
@@ -132,7 +132,7 @@ func TestIAMB2ChannelOwnerDialects(t *testing.T) {
 				require.Error(t, uc.UpdateChannel(request, candidate))
 			}
 			policy.Scopes["channel.channel.create"] = authztest.Groups(g1.ID)
-			require.Error(t, uc.CreateChannel(request, &biz.Channel{Name: "implicit mapping", Group: "one", Models: []string{"registered"}, RestrictModels: true}))
+			require.Error(t, uc.CreateChannel(request, &biz.Channel{Name: "implicit mapping", Group: "one", Models: []string{"registered"}}))
 			policy.Scopes["channel.account.create"] = authztest.Groups(g1.ID)
 			require.Error(t, uc.CreateSubscriptionAccount(request, &biz.SubscriptionAccount{Name: "price bypass", Platform: "codex", Group: "one", RateMultiplier: 2}))
 			// Plain resource DTOs cannot expose the unfinished mapping field.

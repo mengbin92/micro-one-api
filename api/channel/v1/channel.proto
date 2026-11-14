@@ -552,7 +552,7 @@ message CreateChannelRequest {
   uint32 weight = 9;
   string model_mapping = 10;
   string system_prompt = 11;
-  optional bool restrict_models = 12;                 // restrict to abilities list: false=allow all models (catch-all), true=require registered model. Optional (proto3 presence) so an omitted field is distinct from an explicit false; service defaults to true (legacy) when unset.
+  optional bool restrict_models = 12 [deprecated = true]; // Deprecated: ignored. Routing always requires an explicit registry mapping.
   string reason = 13;
 }
 
@@ -582,7 +582,7 @@ message UpdateChannelRequest {
   // when true, the three balance_refresh_* fields above are written to the channel as-is
   // (so callers can clear last_error by passing "" and reset the counter by passing 0).
   bool set_balance_refresh_fields = 17;
-  optional bool restrict_models = 18;                 // restrict to abilities list. Optional (proto3 presence): only applied when the caller sets it, so balance-refresh / health updates that omit the field never silently flip a restricted channel into a catch-all.
+  optional bool restrict_models = 18 [deprecated = true]; // Deprecated: ignored. Routing always requires an explicit registry mapping.
   int64 expected_revision = 19;
   string reason = 20;
   optional int32 type = 21; // Omitted preserves the existing provider type.

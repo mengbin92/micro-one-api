@@ -33,23 +33,26 @@ func TestRoutingRelationOverrides(t *testing.T) {
 			var idA, idB int64
 			require.NoError(t, db.Table("channels").Select("id").Where("name = ?", "a").Scan(&idA).Error)
 			require.NoError(t, db.Table("channels").Select("id").Where("name = ?", "b").Scan(&idB).Error)
-			require.NoError(t, db.Table("abilities").Create(map[string]any{"group": "vip", "model": "m1", "channel_id": idA, "enabled": 1, "priority": 5}).Error)
-			require.NoError(t, db.Table("abilities").Create(map[string]any{"group": "vip", "model": "m1", "channel_id": idB, "enabled": 1, "priority": 4}).Error)
+			require.NoError(t, db.Table("models").Create(map[string]any{"model_id": "m1", "display_name": "m1", "provider": "", "model_type": "chat", "status": 1, "is_public": true}).Error)
+			var modelPK int64
+			require.NoError(t, db.Table("models").Select("id").Where("model_id = ?", "m1").Scan(&modelPK).Error)
+			require.NoError(t, db.Table("model_channel_mapping").Create(map[string]any{"channel_id": idA, "model_id": modelPK, "enabled": true, "priority": 5, "upstream_model_id": "m1"}).Error)
+			require.NoError(t, db.Table("model_channel_mapping").Create(map[string]any{"channel_id": idB, "model_id": modelPK, "enabled": true, "priority": 4, "upstream_model_id": "m1"}).Error)
 			require.NoError(t, db.Table("channel_routing_groups").Create(map[string]any{"channel_id": idA, "routing_group_id": g.ID}).Error)
 			require.NoError(t, db.Table("channel_routing_groups").Create(map[string]any{"channel_id": idB, "routing_group_id": g.ID}).Error)
 
-			abilities, err := r.ListAbilitiesByGroupAndModel(ctx, "vip", "m1")
+			candidates, err := r.ListChannelCandidates(ctx, "vip", "m1")
 			require.NoError(t, err)
-			require.Len(t, abilities, 2)
-			byID := map[int64]biz.Ability{}
-			for _, a := range abilities {
+			require.Len(t, candidates, 2)
+			byID := map[int64]biz.RoutingCandidate{}
+			for _, a := range candidates {
 				byID[a.ChannelID] = a
 			}
-			// Baseline: ability priority wins; all overrides NULL.
+			// Baseline: mapping priority wins; all overrides NULL.
 			require.EqualValues(t, 5, byID[idA].Priority)
 			require.EqualValues(t, 4, byID[idB].Priority)
 			require.Zero(t, byID[idA].Weight)
-			baseline := abilities
+			baseline := candidates
 
 			p7, w9 := int64(7), int64(9)
 			detail, err := repoSetOverrides(repo, ctx, g.ID, routing.Source{Kind: routing.Channel, ID: idA}, &p7, &w9)
@@ -58,15 +61,15 @@ func TestRoutingRelationOverrides(t *testing.T) {
 			for _, resource := range detail.Resources {
 				res[resource.Source.ID] = resource
 			}
-			require.EqualValues(t, 7, res[idA].Priority, "override replaces ability priority")
+			require.EqualValues(t, 7, res[idA].Priority, "override replaces mapping priority")
 			require.EqualValues(t, 9, res[idA].Weight)
 			require.NotNil(t, res[idA].PriorityOverride)
 			require.EqualValues(t, 8, res[idB].Priority, "other members inherit the channel's own priority")
 
-			abilities, err = r.ListAbilitiesByGroupAndModel(ctx, "vip", "m1")
+			candidates, err = r.ListChannelCandidates(ctx, "vip", "m1")
 			require.NoError(t, err)
-			byID = map[int64]biz.Ability{}
-			for _, a := range abilities {
+			byID = map[int64]biz.RoutingCandidate{}
+			for _, a := range candidates {
 				byID[a.ChannelID] = a
 			}
 			require.EqualValues(t, 7, byID[idA].Priority)
@@ -82,9 +85,9 @@ func TestRoutingRelationOverrides(t *testing.T) {
 			}
 			require.Nil(t, res[idA].PriorityOverride)
 			require.EqualValues(t, 9, res[idA].Priority, "cleared override restores the channel's own priority")
-			abilities, err = r.ListAbilitiesByGroupAndModel(ctx, "vip", "m1")
+			candidates, err = r.ListChannelCandidates(ctx, "vip", "m1")
 			require.NoError(t, err)
-			require.Equal(t, baseline, abilities, "all-NULL overrides keep the pre-F distribution inputs identical")
+			require.Equal(t, baseline, candidates, "all-NULL overrides keep the pre-F distribution inputs identical")
 
 			// Unknown relation and archived group are rejected.
 			require.ErrorIs(t, repoSetOverridesErr(repo, ctx, g.ID, routing.Source{Kind: routing.Channel, ID: 9999}, &p7, nil), biz.ErrRoutingGroupNotFound)
@@ -173,7 +176,7 @@ func TestRoutingGroupDualWriteKeepsRelationOverrides(t *testing.T) {
 			if err := tx.Table("channels").Where("id = ?", 1).Update("group", group).Error; err != nil {
 				return err
 			}
-			return r.syncAbilitiesTx(tx, &biz.Channel{ID: 1, Group: group, Models: []string{"legacy-*"}, Status: biz.ChannelStatusEnabled, Priority: 7})
+			return r.syncChannelModelMappingsTx(tx, &biz.Channel{ID: 1, Group: group, Models: []string{"managed"}, Status: biz.ChannelStatusEnabled, Priority: 7})
 		})
 	}
 	// "vip" keeps the vip membership and drops default, so the vip relation row

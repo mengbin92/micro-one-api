@@ -24,17 +24,17 @@ func TestRoutingGroupDuplicatesDoNotDuplicateAbilities(t *testing.T) {
 				Group: channel.Group, Models: []string{"custom-subscription-model"}}
 			require.NoError(t, repo.CreateSubscriptionAccount(ctx, account))
 			for _, group := range []string{"default", "vip"} {
-				abilities, err := repo.ListAbilitiesByGroupAndModel(ctx, group, "custom-model")
+				candidates, err := repo.ListChannelCandidates(ctx, group, "custom-model")
 				require.NoError(t, err)
-				require.Len(t, abilities, 1, "duplicate memberships must not bias channel selection")
-				subAbilities, err := repo.ListSubscriptionAccountAbilities(ctx, group, "custom-subscription-model", "codex")
+				require.Len(t, candidates, 1, "duplicate memberships must not bias channel selection")
+				subAbilities, err := repo.ListSubscriptionCandidates(ctx, group, "custom-subscription-model", "codex")
 				require.NoError(t, err)
 				require.Len(t, subAbilities, 1, "duplicate memberships must not bias account selection")
 			}
 			// A shared suffix is not membership in a routing group.
-			abilities, _ := repo.ListAbilitiesByGroupAndModel(ctx, "svip", "custom-model")
-			require.Empty(t, abilities)
-			subAbilities, _ := repo.ListSubscriptionAccountAbilities(ctx, "svip", "custom-subscription-model", "codex")
+			candidates, _ := repo.ListChannelCandidates(ctx, "svip", "custom-model")
+			require.Empty(t, candidates)
+			subAbilities, _ := repo.ListSubscriptionCandidates(ctx, "svip", "custom-subscription-model", "codex")
 			require.Empty(t, subAbilities)
 		})
 	}

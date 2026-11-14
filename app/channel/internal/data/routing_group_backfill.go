@@ -39,7 +39,7 @@ func channelAuditReferences(refs []biz.GroupReference) []biz.GroupReference {
 	result := []biz.GroupReference{}
 	for _, ref := range refs {
 		switch ref.Table {
-		case "channels", "subscription_accounts", "abilities", "subscription_account_abilities", "model_subscription_mapping", "model_channel_mapping", "model_routings":
+		case "channels", "subscription_accounts", "model_subscription_mapping", "model_channel_mapping", "model_routings":
 			result = append(result, ref)
 		}
 	}

@@ -380,7 +380,7 @@ func TestRelayUsecasePlan_SelectsDomesticSubscriptionPlatform(t *testing.T) {
 	}
 }
 
-func TestRelayUsecasePlan_CustomAliasUsesAbilityPlatform(t *testing.T) {
+func TestRelayUsecasePlan_CustomAliasUsesRoutingCandidatePlatform(t *testing.T) {
 	const model = "company-reasoner"
 	channelClient := &recordingChannelClient{
 		failModels: map[string]error{model: errors.New("no channel available")},

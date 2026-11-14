@@ -10,15 +10,21 @@ import (
 	"micro-one-api/domain/routing"
 )
 
-func TestRoutingCandidateProbeIncludesUnrestrictedChannels(t *testing.T) {
-	repo := &mockChannelRepo{channels: map[int64]*Channel{1: {ID: 1, Status: ChannelStatusEnabled, Group: "default"}}}
+func TestRoutingCandidateProbeUsesRegistryRoutingCandidate(t *testing.T) {
+	repo := &mockChannelRepo{
+		channels:   map[int64]*Channel{1: {ID: 1, Status: ChannelStatusEnabled, Group: "default"}},
+		candidates: map[string][]RoutingCandidate{"default:listed-model": {{Group: "default", Model: "listed-model", ChannelID: 1, Enabled: true}}},
+	}
 	uc := NewChannelUsecase(repo, nil)
 	ctx := context.Background()
-	_, err := uc.SelectChannel(ctx, "default", "unlisted-model", false)
+	_, err := uc.SelectChannel(ctx, "default", "listed-model", false)
 	require.NoError(t, err)
-	has, err := uc.HasRoutingCandidates(ctx, &routing.Group{ID: 10, Key: "default", Status: "enabled"}, "unlisted-model")
+	has, err := uc.HasRoutingCandidates(ctx, &routing.Group{ID: 10, Key: "default", Status: "enabled"}, "listed-model")
 	require.NoError(t, err)
-	require.True(t, has, "ordered routing must see the same catch-all candidate as selection")
+	require.True(t, has, "ordered routing must see the same explicit candidate as selection")
+	has, err = uc.HasRoutingCandidates(ctx, &routing.Group{ID: 10, Key: "default", Status: "enabled"}, "unlisted-model")
+	require.NoError(t, err)
+	require.False(t, has)
 }
 
 type failingRoutingRepo struct{ ModelRoutingRepo }
@@ -28,7 +34,7 @@ func (failingRoutingRepo) ListModelRoutingsForSelect(context.Context, string, st
 }
 
 func TestRoutingPolicyFailureClosesSelectionAndPermission(t *testing.T) {
-	repo := &mockChannelRepo{accounts: map[int64]*SubscriptionAccount{1: {ID: 1, Status: 1, Platform: "codex"}}, accAbilities: map[string][]SubscriptionAccountAbility{"codex:default:m": {{AccountID: 1, Enabled: true}}}}
+	repo := &mockChannelRepo{accounts: map[int64]*SubscriptionAccount{1: {ID: 1, Status: 1, Platform: "codex"}}, accAbilities: map[string][]SubscriptionRoutingCandidate{"codex:default:m": {{AccountID: 1, Enabled: true}}}}
 	uc := NewChannelUsecase(repo, nil)
 	uc.SetModelRoutingRepo(failingRoutingRepo{})
 	_, err := uc.SelectSubscriptionAccount(context.Background(), "default", "m", "codex", false)

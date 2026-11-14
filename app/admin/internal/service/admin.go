@@ -1098,19 +1098,18 @@ func (s *AdminService) GetChannel(ctx context.Context, channelID int64) (*common
 
 func (s *AdminService) CreateChannel(ctx context.Context, req *adminv1.AdminCreateChannelRequest) (*adminv1.AdminCreateChannelResponse, error) {
 	resp, err := s.channelClient.CreateChannel(operatorRPCContext(ctx), &channelv1.CreateChannelRequest{
-		Reason:         requestWriteReason(ctx, req.Reason),
-		Name:           req.Name,
-		Type:           req.Type,
-		BaseUrl:        req.BaseUrl,
-		Key:            req.Key,
-		Models:         req.Models,
-		Group:          req.Group,
-		Priority:       req.Priority,
-		Config:         req.Config,
-		Weight:         req.Weight,
-		ModelMapping:   req.ModelMapping,
-		SystemPrompt:   req.SystemPrompt,
-		RestrictModels: req.RestrictModels,
+		Reason:       requestWriteReason(ctx, req.Reason),
+		Name:         req.Name,
+		Type:         req.Type,
+		BaseUrl:      req.BaseUrl,
+		Key:          req.Key,
+		Models:       req.Models,
+		Group:        req.Group,
+		Priority:     req.Priority,
+		Config:       req.Config,
+		Weight:       req.Weight,
+		ModelMapping: req.ModelMapping,
+		SystemPrompt: req.SystemPrompt,
 	})
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
@@ -1141,7 +1140,6 @@ func (s *AdminService) UpdateChannel(ctx context.Context, req *adminv1.AdminUpda
 		Weight:           req.Weight,
 		ModelMapping:     req.ModelMapping,
 		SystemPrompt:     req.SystemPrompt,
-		RestrictModels:   req.RestrictModels,
 	})
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
