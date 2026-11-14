@@ -3,6 +3,13 @@ name: Reusable E2E
 # Shared release/nightly gate. Keep this workflow as the single source of
 # truth for compose E2E and Playwright admin smoke so the release gate cannot
 # drift from the nightly stability evidence.
+#
+# Pin every job to ubuntu-24.04 instead of ubuntu-latest: on 2026-11-14 the
+# rolling tag moved to Ubuntu 26.04 and Playwright 1.60.0 (locked in
+# web/package-lock.json) aborts with
+# "Playwright does not support ffmpeg on ubuntu26.04-x64" during
+# `npx playwright install chrome`. All jobs share one image so the routing and
+# compose suites do not drift onto a different runner than the browser suites.
 on:
   workflow_call:
     inputs:
@@ -38,7 +45,7 @@ jobs:
   iam-browser:
     if: inputs.run_iam
     name: IAM browser matrix (real owners)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
@@ -79,7 +86,7 @@ jobs:
   routing-e2e:
     if: inputs.run_routing
     name: Routing v2 acceptance (${{ matrix.driver }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -105,7 +112,7 @@ jobs:
   compose-e2e:
     if: inputs.run_compose
     name: Compose E2E suite
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -189,7 +196,7 @@ jobs:
   frontend-smoke:
     if: inputs.run_frontend
     name: Playwright admin smoke
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: web
