@@ -34,6 +34,7 @@ docs/
 | 查看分时闲时付费结果及独立人民币费用证据 | [runbooks/n1-off-peak-paid-2026-11-08.md](./runbooks/n1-off-peak-paid-2026-11-08.md) |
 | 查看 N2 异机备份、生产归档隔离恢复与日调度观察 | [runbooks/n2-offsite-recovery-2026-11-09.md](./runbooks/n2-offsite-recovery-2026-11-09.md) |
 | 查看 N1 当前价格、兜底边界及七天账本核账 | [runbooks/n1-pricing-readonly-2026-11-08.md](./runbooks/n1-pricing-readonly-2026-11-08.md) |
+| 查看 N1 兜底治理、档位/长上下文及最终实扣证据 | [runbooks/n1-pricing-closure-2026-11-14.md](./runbooks/n1-pricing-closure-2026-11-14.md) |
 | 查看当前待办和历史完成记录 | [TODO.md](./TODO.md) |
 | 查看 Playground 安全 Markdown、字体与关键分支验收 | [D7 本地验收记录](./runbooks/d7-experience-acceptance-2026-10-07.md) |
 | 排查控制台周期性闪刷和数据等待 | [权限轮询诊断与本地修复](./runbooks/console-authorization-refresh-2026-10-07.md) |
@@ -55,7 +56,7 @@ docs/
 
 最新发布登记：[v0.42.0](./releases/release-v0.42.0.md)（2026-11-13），新增只读业务操作审计页与 `GET /api/v1/admin/operation-audits`；v0.41.0（2026-11-12）包含 Passkey 与 `/v1/rerank` 工程交付，相关真实验收缺口见 C1/C2 记录。N1 的后续生产证据另见核账/验收记录，不代表重新核验发布 CI。
 
-**当前排期（2026-11-13，N1 获准范围已交付，N2/N3/N4 已完成验收；C1/C2 真实验收待补）**：上一轮 A1–A4、B1–B4 工程和生产部署已落地。N1 已完成获准的只读核账、价格治理、三库专项及分时闲时付费验收，见 [N1 记录](./runbooks/n1-pricing-readonly-2026-11-08.md)；兜底治理、跨时段/其他档位/长上下文及上游最终实扣证据仍另定范围。N2 已完成首备、异机读回、真实归档隔离恢复及两次实际日调度，执行余量转运维跟踪，见 [N2 记录](./runbooks/n2-offsite-recovery-2026-11-09.md)。N3 已完成密码登录、GitHub 真实 OAuth、实际手机验证器扫码、恢复码消费、无效证明拒绝及两个全局强制策略验收，见 [N3 记录](./runbooks/n3-mfa-auth-acceptance-2026-11-11.md)。N4 已完成公告与本人模型真实管理/用户旅程，见 [N4 记录](./runbooks/n4-announcements-acceptance-2026-11-12.md)。C1 Passkey 真实设备验收待配置 RP/Origin，C2 Rerank 真实付费调用待确认上游渠道、计价和小额预算，分别见 [C1 记录](./runbooks/c1-passkey-acceptance-2026-11-12.md) 与 [C2 记录](./runbooks/c2-rerank-acceptance-2026-11-12.md)。当前计划入口见 [下一阶段计划](./design/next-stage-plan-2026-11-08.md)。
+**当前排期（2026-11-14，N1 除跨时段外已闭环、跨时段定时待执行，N2/N3/N4 已完成验收；C1/C2 真实验收待补）**：上一轮 A1–A4、B1–B4 工程和生产部署已落地。N1 已完成只读核账、价格治理、三库专项、分时闲时付费、兜底治理、档位/长上下文合同核对及上游最终实扣，见 [闭环记录](./runbooks/n1-pricing-closure-2026-11-14.md)；仅跨时段实测待 2026-11-17 执行。N2 已完成首备、异机读回、真实归档隔离恢复及两次实际日调度，执行余量转运维跟踪，见 [N2 记录](./runbooks/n2-offsite-recovery-2026-11-09.md)。N3 已完成密码登录、GitHub 真实 OAuth、实际手机验证器扫码、恢复码消费、无效证明拒绝及两个全局强制策略验收，见 [N3 记录](./runbooks/n3-mfa-auth-acceptance-2026-11-11.md)。N4 已完成公告与本人模型真实管理/用户旅程，见 [N4 记录](./runbooks/n4-announcements-acceptance-2026-11-12.md)。C1 Passkey 真实设备验收待配置 RP/Origin，C2 Rerank 真实付费调用待确认上游渠道、计价和小额预算，分别见 [C1 记录](./runbooks/c1-passkey-acceptance-2026-11-12.md) 与 [C2 记录](./runbooks/c2-rerank-acceptance-2026-11-12.md)。当前计划入口见 [下一阶段计划](./design/next-stage-plan-2026-11-08.md)。
 
 **以下为前阶段历史记录**，其中“待验证/已开启/当前”等表述仅对应各条登记时间；最新状态见上方发布记录与当前排期。
 
@@ -160,7 +161,7 @@ docs/
 | [v0.23-roadmap.md](./design/v0.23-roadmap.md) | v0.23 路线图：上线观察与 Relay executor 首切片（已归档） |
 | [v0.23-executor-observation.md](./design/v0.23-executor-observation.md) | executor 新旧路径 7 天生产观察与回滚事实源 |
 | [v0.24-web-release-readiness.md](./design/v0.24-web-release-readiness.md) | v0.24 双语 Web、中国法律协议与发布隔离准备清单 |
-| [next-stage-plan-2026-11-08.md](./design/next-stage-plan-2026-11-08.md) | 当前计划：N1 获准范围、N2/N3/N4 已交付；C1/C2 工程已发布但真实设备/付费验收待补，N1 扩展条件另定范围 |
+| [next-stage-plan-2026-11-08.md](./design/next-stage-plan-2026-11-08.md) | 当前计划：N1 除跨时段外已闭环，N2/N3/N4 已交付；C1/C2 工程已发布但真实设备/付费验收待补 |
 | [next-stage-plan-2026-10-26.md](./design/next-stage-plan-2026-10-26.md) | 已归档：用户自助、安全认证与计价补齐；保留 A/B 工程交付及历史证据 |
 | [next-stage-plan-2026-10-20.md](./design/next-stage-plan-2026-10-20.md) | 已归档：计时内存预算与供应商证据可读性；保留 N3/N4 历史证据 |
 | [next-stage-plan-2026-10-18.md](./design/next-stage-plan-2026-10-18.md) | 已归档：v0.36.0 运行验收、证据收口与双语入口；保留独立生产结论 |
