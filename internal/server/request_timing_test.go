@@ -43,7 +43,7 @@ func awaitTiming(t *testing.T, summaries <-chan *requesttrace.TimingSummary) *re
 func TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement(t *testing.T) {
 	exporter, summaries := timingSink(t)
 	server := &HTTPServer{timingExporter: exporter}
-	var heartbeatFinished int64
+	var heartbeatFinished, lastFrameAt int64
 	handler := server.wrapRoute("/v1/timing-test", executionRoute("/v1/timing-test", "legacy"), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\n: ping\n\n")
@@ -52,6 +52,7 @@ func TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement(t *te
 		time.Sleep(3 * time.Millisecond)
 		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\ndata: [DONE]\n\n")
 		w.(http.Flusher).Flush()
+		lastFrameAt = time.Now().UnixMilli()
 		_, end := requesttrace.Phase(r.Context(), "quota.commit")
 		time.Sleep(4 * time.Millisecond)
 		end(nil)
@@ -61,7 +62,14 @@ func TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement(t *te
 	require.True(t, summary.OutputComplete)
 	require.NotNil(t, summary.FirstContentMS)
 	require.GreaterOrEqual(t, summary.StartedAtMS+int64(*summary.FirstContentMS), heartbeatFinished)
-	require.Greater(t, *summary.HandlerDurationMS, *summary.OutputDurationMS)
+	// Output timing must stop at the final SSE frame and exclude the
+	// post-output quota.commit phase. Compare absolute milestones instead of
+	// HandlerDurationMS vs OutputDurationMS: those two fields use different
+	// start anchors (handler entry vs recorder creation), so their difference
+	// absorbs middleware latency and flakes under CPU contention.
+	require.NotNil(t, summary.OutputFinishedAtMS)
+	require.InDelta(t, lastFrameAt, *summary.OutputFinishedAtMS, 5)
+	require.Greater(t, *summary.HandlerFinishedAtMS, *summary.OutputFinishedAtMS)
 	require.Equal(t, "sse", summary.Protocol)
 }
 

@@ -167,6 +167,13 @@ func TestStress_SessionHashSticky_CrossReplicaBindAndReuse(t *testing.T) {
 	rebindsBefore := testutil.ToFloat64(metrics.RelaySubscriptionStickyTotal.WithLabelValues("rebind", "codex"))
 
 	const sessionHash = "stress-session-1"
+	// Bind the session once before the concurrent phase. Otherwise all turns
+	// start against an empty sticky store and race to rebind it, so the hit
+	// assertion flakes under CPU contention even though cross-replica reuse
+	// works.
+	warmup := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(stressBody))
+	warmup.Header.Set("Authorization", "Bearer test-token")
+	serverA.handleChatCompletionsViaAdaptor(httptest.NewRecorder(), warmup, stressCodexPlan(1, 0), "gpt-5", []byte(stressBody), sessionHash)
 	var wg sync.WaitGroup
 	start := make(chan struct{})
 	for i := range turns {
