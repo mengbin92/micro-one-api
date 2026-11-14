@@ -136,3 +136,19 @@ func requireSourceMappingEffect(tx *gorm.DB, r *Repository, channelID, mappingID
 	}
 	return authzquery.AppendWriteAudit(ctx, tx, operation, mappingID)
 }
+
+func requireSubscriptionMappingEffect(tx *gorm.DB, r *Repository, accountID, mappingID int64, operation string) error {
+	ctx := tx.Statement.Context
+	if !sourceWriteActive(ctx) {
+		return nil
+	}
+	facts, err := (&Repository{db: tx, routingGroupRelations: r.routingGroupRelations, encKey: r.encKey}).SubscriptionAccountAuthorizationFacts(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	facts.ResourceID = mappingID
+	if err := authorization.Require(ctx, operation, facts); err != nil {
+		return err
+	}
+	return authzquery.AppendWriteAudit(ctx, tx, operation, mappingID)
+}

@@ -7,6 +7,33 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-11-14
+
+v0.43.0 是 v0.42.0 之后的 **MINOR 功能版本（含破坏性变更）**：模型注册表映射成为唯一路由候选来源，legacy `abilities` / `subscription_account_abilities` 投影与 `restrict_models` catch-all 开关退役。迁移 151 先回填存量路由再删除旧表与列，三方言一致且 MySQL DDL 可幂等重放。判 MINOR 而非 PATCH 是因为删除表/列并改变未注册模型的路由结果。线上按「备份 → 预加 config 列 → 部署同源镜像（含 worker）→ 执行 151 → 验证」的无停机顺序更新，详见 [release-v0.43.0.md](docs/releases/release-v0.43.0.md)。
+
+### Added
+
+- 迁移 151（MySQL / PostgreSQL / SQLite）：回填 legacy 路由到 registry mapping、补齐 `model_subscription_mapping.config` 与 `routing_group_id`、删除 legacy 表与 `channels.restrict_models` 列；父表 JOIN 过滤孤儿行，MySQL DDL 用 `information_schema` + `PREPARE` 守卫保证失败后可重放。
+- 订阅账号自动映射写入新增 `channel.model_mapping.*` 逐条 IAM 检查与写审计，越权时整个账号事务回滚；`TestSubscriptionAutoMappingRequiresMappingPermission` 覆盖授权、回滚与审计（含反向验证）。
+- `TestRetireLegacyAbilitiesMigrationSQLite` 覆盖迁移 151 的 SQLite 路径与孤儿行过滤。
+
+### Changed
+
+- `ChannelRepo` 改为 `ListChannelCandidates` / `ListSubscriptionCandidates`，只从 registry mapping 读取（DB 与内存一致）；`Ability` / `SubscriptionAccountAbility` 重命名为 `RoutingCandidate` / `SubscriptionRoutingCandidate`。
+- `SelectChannel`、`SelectChannelExcluding`、`CanRoute`、`HasRoutingCandidates` 移除 unrestricted fallback；未注册模型返回 `ErrChannelNotFound`。
+- 自动映射同步：记录所有既有键避免与回填/手工行撞唯一键；`enabled` 固定 true（可用性由来源 status 决定）；create / update 分支投影 `routing_group_id`；内存模式补齐优先级与上游模型名更新。
+- `api/*/v1/*.proto` 的 `restrict_models` 请求字段标记 deprecated 且被忽略；响应字段保留 wire 兼容并固定为 `true`，避免老客户端误读为允许兜底。
+- `scripts/test-e2e-flow.sh` bootstrap 改查 `model_channel_mapping`；RBAC 矩阵、设计文档与 N1 闭环文档措辞同步。
+- 渠道侧逐行 `slices.Contains` 改为 map 查找，避免更新大批量映射时的 O(n²) 扫描。
+
+### Fixed
+
+- 修复两个全量并行时因 CPU 竞争失败的用例：计时边界测试改用绝对里程碑比较（原跨基准时长差会吸收中间件延迟）；跨副本 sticky 压测在并发前先 bind，避免 40 个 goroutine 同时竞争空 store 而全部 rebind。
+
+### Removed
+
+- `abilities`、`subscription_account_abilities` 表，`channels.restrict_models` 列，catch-all 路由分支，以及所有 legacy 双读/双写与 group-audit 的 abilities 库存投影。
+
 ## [0.42.0] - 2026-11-12
 
 v0.42.0 是 v0.41.0 之后的 **MINOR 功能版本**：管理后台新增只读「操作审计」页与 `GET /api/v1/admin/operation-audits` 端点，读取 shared `resource_write_audits` 表，支持按操作人、操作码前缀、资源 ID、结果与时间范围筛选；操作人默认显示用户名，解析失败时回退数字 ID。新增 Admin 150 三方言迁移（两个读取索引），不改动计费契约与既有 API。部署时 admin-api 与 identity-service 必须同源，详见 [release-v0.42.0.md](docs/releases/release-v0.42.0.md)。

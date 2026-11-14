@@ -26,15 +26,6 @@ func TestRepository_ModelAvailabilityFollowsSourceStatus(t *testing.T) {
 			require.NoError(t, repo.CreateChannel(ctx, step))
 			require.NoError(t, repo.CreateChannel(ctx, glm))
 			require.NoError(t, repo.CreateSubscriptionAccount(ctx, account))
-			if storage == "memory" {
-				for _, channel := range []*biz.Channel{step, glm} {
-					for _, id := range channel.Models {
-						m := &biz.Model{ModelID: id, DisplayName: id, Status: biz.ModelStatusEnabled, IsPublic: true}
-						require.NoError(t, repo.CreateModel(ctx, m))
-						require.NoError(t, repo.UpsertChannelMapping(ctx, &biz.ModelChannelMapping{ChannelID: channel.ID, ModelPK: m.ID, Enabled: true, EnabledHasValue: true}))
-					}
-				}
-			}
 			model, err := repo.GetModelByID(ctx, "glm-5.3")
 			require.NoError(t, err)
 			require.NoError(t, repo.UpsertSubscriptionMapping(ctx, &biz.ModelSubscriptionMapping{SubscriptionAccountID: account.ID, ModelPK: model.ID, GroupName: "default", Enabled: true, EnabledHasValue: true}))

@@ -144,7 +144,10 @@ func TestManagedBackupRealEmptyRestore(t *testing.T) {
 	encrypted, err := appcrypto.Encrypt(channelKey, []byte(channelEncryptionKey))
 	require.NoError(t, err)
 	require.NoError(t, sourceDB.Table("channels").Create(map[string]any{"id": 1, "type": 1, "name": "backup-channel", "key": encrypted, "group": "default", "models": "gpt-test", "status": 1}).Error)
-	require.NoError(t, sourceDB.Exec("INSERT INTO abilities (`group`,model,channel_id,enabled,priority) VALUES ('default','gpt-test',1,1,1)").Error)
+	require.NoError(t, sourceDB.Table("models").Create(map[string]any{"model_id": "gpt-test", "display_name": "gpt-test", "provider": "", "model_type": "chat", "status": 1, "is_public": true}).Error)
+	var fixtureModelPK int64
+	require.NoError(t, sourceDB.Table("models").Select("id").Where("model_id = ?", "gpt-test").Scan(&fixtureModelPK).Error)
+	require.NoError(t, sourceDB.Table("model_channel_mapping").Create(map[string]any{"channel_id": 1, "model_id": fixtureModelPK, "enabled": true, "priority": 1, "upstream_model_id": "gpt-test"}).Error)
 	t.Setenv("BACKUP_FIXTURE_CONTROL", sourceDSN)
 	t.Setenv("BACKUP_FIXTURE_SNAPSHOT", sourceDSN)
 	t.Setenv("BACKUP_FIXTURE_REDIS", redisPassword)

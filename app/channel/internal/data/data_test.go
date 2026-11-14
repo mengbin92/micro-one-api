@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"micro-one-api/app/channel/internal/biz"
+	"micro-one-api/domain/authorization"
+	authztest "micro-one-api/domain/authorization/testutil"
 	appcrypto "micro-one-api/platform/security/crypto"
 
 	"github.com/stretchr/testify/assert"
@@ -125,7 +127,7 @@ func TestMigrateCredentialsDryRunAndApplyIsIdempotent(t *testing.T) {
 }
 
 // setupChannelTestDB creates an in-memory sqlite DB matching the
-// `channels` and `abilities` schemas relevant to repo behaviour.
+// `channels` and `candidates` schemas relevant to repo behaviour.
 // Only the columns the repo reads/writes are modelled here.
 func setupChannelTestDB(t *testing.T) *Repository {
 	t.Helper()
@@ -170,16 +172,6 @@ func setupChannelTestDB(t *testing.T) *Repository {
 		)
 	`).Error)
 
-	require.NoError(t, db.Exec(`
-		CREATE TABLE abilities (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			`+"`group`"+` TEXT NOT NULL DEFAULT 'default',
-			model TEXT NOT NULL,
-			channel_id INTEGER NOT NULL,
-			enabled INTEGER DEFAULT 1,
-			priority INTEGER DEFAULT 0
-		)
-	`).Error)
 	require.NoError(t, db.Exec(`
 		CREATE TABLE channel_usage_events (
 			reservation_id TEXT PRIMARY KEY,
@@ -233,18 +225,6 @@ func setupChannelTestDB(t *testing.T) *Repository {
 			quota_reset_strategy TEXT DEFAULT 'rolling',
 			quota_timezone TEXT DEFAULT 'UTC',
 			model_mapping TEXT DEFAULT ''
-		)
-	`).Error)
-
-	require.NoError(t, db.Exec(`
-		CREATE TABLE subscription_account_abilities (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			`+"`group`"+` TEXT NOT NULL DEFAULT 'default',
-			model TEXT NOT NULL,
-			platform TEXT NOT NULL,
-			account_id INTEGER NOT NULL,
-			enabled INTEGER DEFAULT 1,
-			priority INTEGER DEFAULT 0
 		)
 	`).Error)
 
@@ -368,263 +348,260 @@ func setupChannelTestDB(t *testing.T) *Repository {
 		ON model_channel_mapping(channel_id, model_id)
 	`).Error)
 
+	// IAM-scoped writes resolve authoritative routing groups and append write
+	// audits; both tables are part of the repository's write contract.
+	require.NoError(t, db.AutoMigrate(&routingGroupModel{}))
+	require.NoError(t, db.Exec(`
+		CREATE TABLE resource_write_audits (
+			event_id TEXT PRIMARY KEY,
+			actor_user_id INTEGER NOT NULL,
+			operation TEXT NOT NULL,
+			resource_id TEXT NOT NULL,
+			decision_versions TEXT NOT NULL,
+			reason TEXT NOT NULL,
+			occurred_at INTEGER NOT NULL,
+			result TEXT NOT NULL
+		)
+	`).Error)
+
 	require.NoError(t, db.AutoMigrate(&modelSubscriptionMappingModel{}))
 	return &Repository{db: db, encKey: []byte("01234567890123456789012345678901")}
 }
 
-// loadAbilities returns all rows in abilities for diagnostic + assertion use.
-func loadAbilities(t *testing.T, repo *Repository, channelID int64) []abilityModel {
+type testRegistryChannelRoutingCandidateRow struct {
+	ChannelID       int64  `gorm:"column:channel_id"`
+	Model           string `gorm:"column:model"`
+	Enabled         bool   `gorm:"column:enabled"`
+	Priority        int32  `gorm:"column:priority"`
+	UpstreamModelID string `gorm:"column:upstream_model_id"`
+}
+
+type testRegistrySubscriptionRoutingCandidateRow struct {
+	AccountID       int64  `gorm:"column:account_id"`
+	Model           string `gorm:"column:model"`
+	GroupName       string `gorm:"column:group_name"`
+	Enabled         bool   `gorm:"column:enabled"`
+	Priority        int32  `gorm:"column:priority"`
+	UpstreamModelID string `gorm:"column:upstream_model_id"`
+}
+
+func loadAbilities(t *testing.T, repo *Repository, channelID int64) []testRegistryChannelRoutingCandidateRow {
 	t.Helper()
-	var rows []abilityModel
-	require.NoError(t, repo.db.Where("channel_id = ?", channelID).Order("`group` ASC, model ASC").Find(&rows).Error)
+	var rows []testRegistryChannelRoutingCandidateRow
+	require.NoError(t, repo.db.Table("model_channel_mapping AS mcm").
+		Select("mcm.channel_id, m.model_id AS model, mcm.enabled, mcm.priority, mcm.upstream_model_id").
+		Joins("JOIN models AS m ON m.id = mcm.model_id").
+		Where("mcm.channel_id = ?", channelID).
+		Order("m.model_id ASC").Scan(&rows).Error)
 	return rows
 }
 
-func loadSubscriptionAbilities(t *testing.T, repo *Repository, accountID int64) []subscriptionAccountAbilityModel {
+func loadSubscriptionAbilities(t *testing.T, repo *Repository, accountID int64) []testRegistrySubscriptionRoutingCandidateRow {
 	t.Helper()
-	var rows []subscriptionAccountAbilityModel
-	require.NoError(t, repo.db.Where("account_id = ?", accountID).Order("`group` ASC, model ASC").Find(&rows).Error)
+	var rows []testRegistrySubscriptionRoutingCandidateRow
+	require.NoError(t, repo.db.Table("model_subscription_mapping AS msm").
+		Select("msm.subscription_account_id AS account_id, m.model_id AS model, msm.group_name, msm.enabled, msm.priority, msm.upstream_model_id").
+		Joins("JOIN models AS m ON m.id = msm.model_id").
+		Where("msm.subscription_account_id = ?", accountID).
+		Order("msm.group_name ASC, m.model_id ASC").Scan(&rows).Error)
 	return rows
 }
 
-func TestCreateChannel_PopulatesAbilities(t *testing.T) {
+func TestCreateChannel_PopulatesRegistryMappings(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
 
 	ch := &biz.Channel{
-		Name:     "test-anthropic",
-		Type:     2,
-		BaseURL:  "https://api.anthropic.com",
-		Key:      "sk-test",
-		Status:   biz.ChannelStatusEnabled,
-		Group:    "default,premium",
-		Models:   []string{"claude-opus-4-7", "claude-sonnet-4-6"},
-		Priority: 100,
+		Name: "test-anthropic", Type: 2, BaseURL: "https://api.anthropic.com", Key: "sk-test",
+		Status: biz.ChannelStatusEnabled, Group: "default,premium",
+		Models: []string{"claude-opus-4-7", "claude-sonnet-4-6"}, Priority: 100,
 	}
-
 	require.NoError(t, repo.CreateChannel(ctx, ch))
-	require.NotZero(t, ch.ID, "channel ID should be populated by INSERT")
+	require.NotZero(t, ch.ID)
 
 	rows := loadAbilities(t, repo, ch.ID)
-	assert.Len(t, rows, 4, "expected 2 groups × 2 models = 4 ability rows")
-
-	// Verify row content: enabled mirrors channel.Status; priority mirrors channel.Priority.
-	wantPairs := map[string]bool{
-		"default:claude-opus-4-7":   false,
-		"default:claude-sonnet-4-6": false,
-		"premium:claude-opus-4-7":   false,
-		"premium:claude-sonnet-4-6": false,
-	}
-	for _, r := range rows {
-		key := r.Group + ":" + r.Model
-		_, expected := wantPairs[key]
-		require.True(t, expected, "unexpected ability row %s", key)
-		wantPairs[key] = true
-		assert.True(t, r.Enabled != 0, "enabled should be true for enabled channel")
-		require.NotNil(t, r.Priority)
-		assert.EqualValues(t, 100, *r.Priority)
-		assert.Equal(t, ch.ID, r.ChannelID)
-	}
-	for k, seen := range wantPairs {
-		assert.True(t, seen, "ability row missing: %s", k)
+	require.Len(t, rows, 2)
+	for _, row := range rows {
+		assert.True(t, row.Enabled)
+		assert.EqualValues(t, 100, row.Priority)
+		assert.Equal(t, ch.ID, row.ChannelID)
+		assert.Equal(t, row.Model, row.UpstreamModelID)
 	}
 }
 
-func TestCreateChannel_DisabledChannel_AbilitiesDisabled(t *testing.T) {
+func TestCreateChannel_DisabledChannel_NotRoutable(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
-
-	ch := &biz.Channel{
-		Name:   "disabled",
-		Group:  "default",
-		Models: []string{"gpt-4o"},
-		Status: 2, // anything other than ChannelStatusEnabled
-	}
+	ch := &biz.Channel{Name: "disabled", Group: "default", Models: []string{"gpt-4o"}, Status: 2}
 	require.NoError(t, repo.CreateChannel(ctx, ch))
-
-	rows := loadAbilities(t, repo, ch.ID)
-	require.Len(t, rows, 1)
-	assert.False(t, rows[0].Enabled != 0, "ability.enabled should be false when channel.status != 1")
+	_, err := repo.ListChannelCandidates(ctx, "default", "gpt-4o")
+	require.ErrorIs(t, err, biz.ErrChannelNotFound)
 }
 
 func TestCreateChannel_SkipsEmptyGroupOrModel(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
-
 	ch := &biz.Channel{
-		Name:   "with-empties",
-		Group:  "default,,premium", // empty group between commas
-		Models: []string{"gpt-4o", "", "claude-opus-4-7"},
-		Status: biz.ChannelStatusEnabled,
+		Name: "with-empties", Group: "default,,premium",
+		Models: []string{"gpt-4o", "", "claude-opus-4-7"}, Status: biz.ChannelStatusEnabled,
 	}
 	require.NoError(t, repo.CreateChannel(ctx, ch))
-
 	rows := loadAbilities(t, repo, ch.ID)
-	// Expect 2 groups × 2 models = 4 (empty group + empty model skipped)
-	assert.Len(t, rows, 4)
-	for _, r := range rows {
-		assert.NotEmpty(t, r.Group)
-		assert.NotEmpty(t, r.Model)
+	require.Len(t, rows, 2)
+	for _, row := range rows {
+		assert.NotEmpty(t, row.Model)
 	}
 }
 
-func TestUpdateChannel_RewritesAbilities(t *testing.T) {
+func TestUpdateChannel_RewritesRegistryMappings(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
-
 	ch := &biz.Channel{
-		Name:     "drift",
-		Group:    "default",
-		Models:   []string{"gpt-3.5-turbo", "gpt-4"},
-		Status:   biz.ChannelStatusEnabled,
-		Priority: 10,
+		Name: "drift", Group: "default", Models: []string{"gpt-3.5-turbo", "gpt-4"},
+		Status: biz.ChannelStatusEnabled, Priority: 10,
 	}
 	require.NoError(t, repo.CreateChannel(ctx, ch))
 	require.Len(t, loadAbilities(t, repo, ch.ID), 2)
 
-	// Change models entirely and priority.
 	ch.Models = []string{"gpt-4o"}
 	ch.Priority = 50
 	require.NoError(t, repo.UpdateChannel(ctx, ch))
-
 	rows := loadAbilities(t, repo, ch.ID)
-	require.Len(t, rows, 1, "expected old abilities replaced by 1 new row")
+	require.Len(t, rows, 1)
 	assert.Equal(t, "gpt-4o", rows[0].Model)
-	require.NotNil(t, rows[0].Priority)
-	assert.EqualValues(t, 50, *rows[0].Priority)
+	assert.EqualValues(t, 50, rows[0].Priority)
 }
 
-// P1 (#2) / P0 (#1) review fix: UpdateChannel must persist restrict_models
-// and model_mapping (previously missing from the Updates map, so a DB-backed
-// admin toggle returned success but was silently dropped).
-func TestUpdateChannel_PersistsRestrictModelsAndModelMapping(t *testing.T) {
+func TestUpdateChannel_PersistsModelMapping(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
-
-	ch := &biz.Channel{
-		Name:           "drift",
-		Group:          "default",
-		Models:         []string{"gpt-4o"},
-		Status:         biz.ChannelStatusEnabled,
-		Priority:       10,
-		RestrictModels: true,
-	}
+	ch := &biz.Channel{Name: "drift", Group: "default", Models: []string{"gpt-4o"}, Status: biz.ChannelStatusEnabled, Priority: 10}
 	require.NoError(t, repo.CreateChannel(ctx, ch))
-
-	// Flip to catch-all and set a model mapping.
-	ch.RestrictModels = false
 	ch.ModelMapping = `{"gpt-4o":"gpt-4o-mini"}`
 	require.NoError(t, repo.UpdateChannel(ctx, ch))
-
 	got, err := repo.FindByID(ctx, ch.ID)
 	require.NoError(t, err)
-	assert.False(t, got.RestrictModels, "restrict_models must be persisted on update")
-	assert.Equal(t, `{"gpt-4o":"gpt-4o-mini"}`, got.ModelMapping, "model_mapping must be persisted on update")
+	assert.Equal(t, `{"gpt-4o":"gpt-4o-mini"}`, got.ModelMapping)
 }
 
-// P0 (#1) review fix: UpdateSubscriptionAccount must persist model_mapping
-// (previously missing from the Updates map, so per-account mapping was only
-// writable on Create and silently dropped on Update).
 func TestUpdateSubscriptionAccount_PersistsModelMapping(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
-
 	account := &biz.SubscriptionAccount{
-		Name:        "codex",
-		Platform:    "codex",
-		AccountType: "oauth",
-		Status:      biz.ChannelStatusEnabled,
-		Group:       "default",
-		Models:      []string{"gpt-5"},
-		Priority:    30,
-		AccountID:   "acc_1",
+		Name: "codex", Platform: "codex", AccountType: "oauth", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"gpt-5"}, Priority: 30, AccountID: "acc_1",
 	}
 	require.NoError(t, repo.CreateSubscriptionAccount(ctx, account))
-
 	account.ModelMapping = `{"gpt-5":"gpt-5-codex"}`
 	require.NoError(t, repo.UpdateSubscriptionAccount(ctx, account))
-
 	got, err := repo.FindSubscriptionAccountByID(ctx, account.ID)
 	require.NoError(t, err)
-	assert.Equal(t, `{"gpt-5":"gpt-5-codex"}`, got.ModelMapping, "model_mapping must be persisted on subscription account update")
+	assert.Equal(t, `{"gpt-5":"gpt-5-codex"}`, got.ModelMapping)
 }
 
-func TestDeleteChannel_RemovesAbilities(t *testing.T) {
+func TestDeleteChannel_RemovesRegistryMappings(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
-
-	ch := &biz.Channel{
-		Name:   "tbd",
-		Group:  "default",
-		Models: []string{"gpt-4o"},
-		Status: biz.ChannelStatusEnabled,
-	}
+	ch := &biz.Channel{Name: "tbd", Group: "default", Models: []string{"gpt-4o"}, Status: biz.ChannelStatusEnabled}
 	require.NoError(t, repo.CreateChannel(ctx, ch))
 	require.Len(t, loadAbilities(t, repo, ch.ID), 1)
-
 	require.NoError(t, repo.DeleteChannel(ctx, ch.ID))
 	assert.Empty(t, loadAbilities(t, repo, ch.ID))
-
-	// channels row also gone
-	var count int64
-	require.NoError(t, repo.db.Table("channels").Where("id = ?", ch.ID).Count(&count).Error)
-	assert.EqualValues(t, 0, count)
 }
 
-func TestChangeStatus_UpdatesAbilitiesEnabled(t *testing.T) {
+func TestChangeStatus_RemovesFromRouting(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
-
-	ch := &biz.Channel{
-		Name:   "toggleable",
-		Group:  "default",
-		Models: []string{"gpt-4o"},
-		Status: biz.ChannelStatusEnabled,
-	}
+	ch := &biz.Channel{Name: "toggleable", Group: "default", Models: []string{"gpt-4o"}, Status: biz.ChannelStatusEnabled}
 	require.NoError(t, repo.CreateChannel(ctx, ch))
-	rows := loadAbilities(t, repo, ch.ID)
-	require.True(t, rows[0].Enabled != 0)
-
-	// Disable the channel.
+	_, err := repo.ListChannelCandidates(ctx, "default", "gpt-4o")
+	require.NoError(t, err)
 	require.NoError(t, repo.ChangeStatus(ctx, ch.ID, 2))
-
-	rows = loadAbilities(t, repo, ch.ID)
-	require.Len(t, rows, 1)
-	assert.False(t, rows[0].Enabled != 0, "ability.enabled should be false after disabling channel")
-
-	// Re-enable.
+	_, err = repo.ListChannelCandidates(ctx, "default", "gpt-4o")
+	require.ErrorIs(t, err, biz.ErrChannelNotFound)
 	require.NoError(t, repo.ChangeStatus(ctx, ch.ID, biz.ChannelStatusEnabled))
-
-	rows = loadAbilities(t, repo, ch.ID)
-	assert.True(t, rows[0].Enabled != 0, "ability.enabled should be true after re-enabling channel")
+	_, err = repo.ListChannelCandidates(ctx, "default", "gpt-4o")
+	require.NoError(t, err)
 }
 
-func TestCreateSubscriptionAccount_PopulatesAbilities(t *testing.T) {
+func TestCreateSubscriptionAccount_PopulatesRegistryMappings(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
-
 	account := &biz.SubscriptionAccount{
-		Name:        "codex",
-		Platform:    "codex",
-		AccountType: "oauth",
-		Status:      biz.ChannelStatusEnabled,
-		Group:       "default,premium",
-		Models:      []string{"gpt-5", "gpt-5-codex"},
-		Priority:    30,
-		AccountID:   "acc_1",
+		Name: "codex", Platform: "codex", AccountType: "oauth", Status: biz.ChannelStatusEnabled,
+		Group: "default,premium", Models: []string{"gpt-5", "gpt-5-codex"}, Priority: 30, AccountID: "acc_1",
 	}
-
 	require.NoError(t, repo.CreateSubscriptionAccount(ctx, account))
 	require.NotZero(t, account.ID)
-
 	rows := loadSubscriptionAbilities(t, repo, account.ID)
-	assert.Len(t, rows, 4)
-	for _, r := range rows {
-		assert.True(t, r.Enabled != 0)
-		require.NotNil(t, r.Priority)
-		assert.EqualValues(t, 30, *r.Priority)
-		assert.Equal(t, "codex", r.Platform)
+	require.Len(t, rows, 4)
+	for _, row := range rows {
+		assert.True(t, row.Enabled)
+		assert.EqualValues(t, 30, row.Priority)
+		assert.NotEmpty(t, row.GroupName)
 	}
+}
+
+func TestSubscriptionModelMappingManualEditStopsAutoRewrite(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+	account := &biz.SubscriptionAccount{
+		Name: "codex", Platform: "codex", AccountType: "oauth", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"gpt-5"}, Priority: 10, AccountID: "acc_1",
+	}
+	require.NoError(t, repo.CreateSubscriptionAccount(ctx, account))
+	model, err := repo.GetModelByID(ctx, "gpt-5")
+	require.NoError(t, err)
+	require.NoError(t, repo.UpsertSubscriptionMapping(ctx, &biz.ModelSubscriptionMapping{
+		SubscriptionAccountID: account.ID, ModelPK: model.ID, GroupName: "default",
+		Enabled: true, EnabledHasValue: true, Priority: 99, UpstreamModelID: "custom-upstream",
+	}))
+
+	account.Name = "codex-renamed"
+	require.NoError(t, repo.UpdateSubscriptionAccount(ctx, account))
+	mappings, err := repo.ListSubscriptionMappings(ctx, account.ID)
+	require.NoError(t, err)
+	require.Len(t, mappings, 1)
+	assert.EqualValues(t, 99, mappings[0].Priority)
+	assert.Equal(t, "custom-upstream", mappings[0].UpstreamModelID)
+	assert.Empty(t, mappings[0].Config, "manual edit must promote the auto mapping")
+}
+
+func TestSubscriptionAutoMappingRequiresMappingPermission(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	require.NoError(t, repo.db.Exec(`
+		INSERT INTO routing_groups (id, key, status) VALUES (10, 'default', 'enabled')
+	`).Error)
+	newAccount := func() *biz.SubscriptionAccount {
+		return &biz.SubscriptionAccount{
+			Name: "guarded", Platform: "codex", AccountType: "oauth", Status: biz.ChannelStatusEnabled,
+			Group: "default", Models: []string{"gpt-5"}, AccountID: "acc_guard",
+		}
+	}
+
+	// An IAM caller can hold account.create while its mapping grant only covers
+	// an unrelated resource. The auto-projection must still be denied and the
+	// entire account creation rolled back.
+	denied := authorization.WithQueryScope(authztest.Context(), "channel.account.create", authztest.All())
+	denied = authorization.WithQueryScope(denied, "channel.model_mapping.create", authztest.Resources(9999))
+	require.ErrorIs(t, repo.CreateSubscriptionAccount(denied, newAccount()), authorization.ErrDenied)
+	var accounts, mappings int64
+	require.NoError(t, repo.db.Table("subscription_accounts").Count(&accounts).Error)
+	require.NoError(t, repo.db.Table("model_subscription_mapping").Count(&mappings).Error)
+	require.Zero(t, accounts, "denied mapping write must roll back the account")
+	require.Zero(t, mappings, "denied mapping write must roll back the projection")
+
+	allowed := authorization.WithQueryScope(authztest.Context(), "channel.account.create", authztest.All())
+	allowed = authorization.WithQueryScope(allowed, "channel.model_mapping.create", authztest.All())
+	account := newAccount()
+	require.NoError(t, repo.CreateSubscriptionAccount(allowed, account))
+	rows := loadSubscriptionAbilities(t, repo, account.ID)
+	require.Len(t, rows, 1)
+	assert.True(t, rows[0].Enabled)
+	var audits int64
+	require.NoError(t, repo.db.Table("resource_write_audits").
+		Where("operation = ? AND result = ?", "channel.model_mapping.create", "success").Count(&audits).Error)
+	require.EqualValues(t, 1, audits, "mapping grant must be audited")
 }
 
 func TestSelectSubscriptionAccount_ByPriority(t *testing.T) {
@@ -1096,32 +1073,21 @@ func TestAutoPauseAccount_AuthorizationErrorDisablesWithManualPolicy(t *testing.
 }
 
 // ---------------------------------------------------------------------------
-// P1 (#4) — wildcard model matching in abilities queries.
+// P1 (#4) — wildcard model matching in candidates queries.
 // ---------------------------------------------------------------------------
 
-func TestListAbilitiesByGroupAndModel_WildcardPattern(t *testing.T) {
+func TestListChannelCandidates_WildcardPattern(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
-
-	// Channel registered with a wildcard model "claude-*" in the default group.
 	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
 		ID: 1, Type: 1, Name: "wildcard-chan", Status: biz.ChannelStatusEnabled,
 		Group: "default", Models: []string{"claude-*"}, Priority: 5,
 	}))
-
-	// A specific model request must match the wildcard ability row.
-	abilities, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "claude-sonnet-4")
-	require.NoError(t, err)
-	require.Len(t, abilities, 1)
-	assert.Equal(t, int64(1), abilities[0].ChannelID)
-
-	// Non-matching model does not hit the wildcard.
-	abilities, err = repo.ListAbilitiesByGroupAndModel(ctx, "default", "gpt-4o")
-	require.NoError(t, err)
-	assert.Empty(t, abilities)
+	_, err := repo.ListChannelCandidates(ctx, "default", "claude-sonnet-4")
+	require.ErrorIs(t, err, biz.ErrChannelNotFound)
 }
 
-func TestListSubscriptionAccountAbilities_WildcardPattern(t *testing.T) {
+func TestListSubscriptionCandidates_WildcardPattern(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
 
@@ -1131,15 +1097,8 @@ func TestListSubscriptionAccountAbilities_WildcardPattern(t *testing.T) {
 	}
 	require.NoError(t, repo.CreateSubscriptionAccount(ctx, acc))
 
-	abilities, err := repo.ListSubscriptionAccountAbilities(ctx, "default", "claude-sonnet-4", "codex")
-	require.NoError(t, err)
-	require.Len(t, abilities, 1)
-	assert.Equal(t, acc.ID, abilities[0].AccountID)
-
-	// Non-matching model does not hit the wildcard.
-	abilities, err = repo.ListSubscriptionAccountAbilities(ctx, "default", "gpt-5", "codex")
-	require.NoError(t, err)
-	assert.Empty(t, abilities)
+	_, err := repo.ListSubscriptionCandidates(ctx, "default", "claude-sonnet-4", "codex")
+	require.ErrorIs(t, err, biz.ErrSubscriptionAccountNotFound)
 }
 
 func TestListAvailableModels_ExcludesWildcardPatterns(t *testing.T) {
@@ -1163,62 +1122,27 @@ func TestListAvailableModels_ExcludesWildcardPatterns(t *testing.T) {
 	}
 }
 
-func TestListAbilitiesByGroupAndModel_CatchAllPattern(t *testing.T) {
+func TestListChannelCandidates_RejectsUnregisteredWildcard(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
-
-	// Channel with a "*" catch-all ability — any model matches.
 	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
-		ID: 1, Type: 1, Name: "catchall-chan", Status: biz.ChannelStatusEnabled,
+		ID: 1, Type: 1, Name: "wildcard-only", Status: biz.ChannelStatusEnabled,
 		Group: "default", Models: []string{"*"}, Priority: 1,
 	}))
-
-	abilities, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "any-random-model")
-	require.NoError(t, err)
-	require.Len(t, abilities, 1)
-	assert.Equal(t, int64(1), abilities[0].ChannelID)
+	_, err := repo.ListChannelCandidates(ctx, "default", "any-random-model")
+	require.ErrorIs(t, err, biz.ErrChannelNotFound)
 }
 
-// ---------------------------------------------------------------------------
-// P1 (#2) — RestrictModels catch-all repo + end-to-end SelectChannel.
-// ---------------------------------------------------------------------------
-
-func TestListUnrestrictedChannelsByGroup_DB(t *testing.T) {
+func TestSelectChannel_RejectsUnregisteredModel(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
-
-	// restrict_models=true (default): not returned.
 	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
-		ID: 1, Type: 1, Name: "restricted", Status: biz.ChannelStatusEnabled,
-		Group: "default", Priority: 5, RestrictModels: true,
+		ID: 1, Type: 1, Name: "explicit-only", Status: biz.ChannelStatusEnabled,
+		Group: "default", Priority: 1,
 	}))
-	// restrict_models=false: returned as a catch-all.
-	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
-		ID: 2, Type: 1, Name: "catch-all", Status: biz.ChannelStatusEnabled,
-		Group: "default", Priority: 1, RestrictModels: false,
-	}))
-
-	got, err := repo.ListUnrestrictedChannelsByGroup(ctx, "default")
-	require.NoError(t, err)
-	require.Len(t, got, 1)
-	assert.Equal(t, int64(2), got[0].ID)
-	assert.False(t, got[0].RestrictModels)
-}
-
-func TestSelectChannel_FallsBackToCatchAllChannel_DB(t *testing.T) {
-	repo := setupChannelTestDB(t)
-	ctx := context.Background()
-
-	// A catch-all channel; no abilities row for "unregistered-model".
-	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
-		ID: 1, Type: 1, Name: "catch-all", Status: biz.ChannelStatusEnabled,
-		Group: "default", Priority: 1, RestrictModels: false,
-	}))
-
 	uc := biz.NewChannelUsecase(repo, nil)
-	ch, err := uc.SelectChannel(ctx, "default", "unregistered-model", false)
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), ch.ID)
+	_, err := uc.SelectChannel(ctx, "default", "unregistered-model", false)
+	require.ErrorIs(t, err, biz.ErrChannelNotFound)
 }
 
 func TestSelectChannel_NoCatchAllReturnsNotFound_DB(t *testing.T) {
@@ -1228,7 +1152,7 @@ func TestSelectChannel_NoCatchAllReturnsNotFound_DB(t *testing.T) {
 	// A restricted channel with an ability for a DIFFERENT model only.
 	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
 		ID: 1, Type: 1, Name: "restricted", Status: biz.ChannelStatusEnabled,
-		Group: "default", Models: []string{"gpt-4o"}, Priority: 5, RestrictModels: true,
+		Group: "default", Models: []string{"gpt-4o"}, Priority: 5,
 	}))
 
 	uc := biz.NewChannelUsecase(repo, nil)
@@ -1256,46 +1180,43 @@ func TestListModelRoutings_EmptyPlatformMatchesConcretePlatform(t *testing.T) {
 	assert.Equal(t, int64(7), rows[0].SubscriptionAccountID)
 }
 
-// TestListAbilitiesByGroupAndModel_ExactBeatsWildcardConsistency (🟡#4):
+// TestListChannelCandidates_ExactBeatsWildcardConsistency (🟡#4):
 // when a channel lists BOTH "gpt-4o" (exact) and "gpt-*" (wildcard), the
-// abilities query must return ONLY the exact tier — not both — so DB and
+// candidates query must return ONLY the exact tier — not both — so DB and
 // memory paths agree and the selector does not double-weight the channel.
-func TestListAbilitiesByGroupAndModel_ExactBeatsWildcardConsistency(t *testing.T) {
+func TestListChannelCandidates_ExactBeatsWildcardConsistency(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
 	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
 		ID: 1, Type: 1, Name: "both", Status: biz.ChannelStatusEnabled,
 		Group: "default", Models: []string{"gpt-4o", "gpt-*"}, Priority: 5,
 	}))
-	abilities, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "gpt-4o")
+	candidates, err := repo.ListChannelCandidates(ctx, "default", "gpt-4o")
 	require.NoError(t, err)
 	// Exactly one ability row — the exact "gpt-4o", not the wildcard too.
-	require.Len(t, abilities, 1, "exact tier must shadow wildcard tier (no double-count)")
-	assert.Equal(t, int64(1), abilities[0].ChannelID)
+	require.Len(t, candidates, 1, "exact tier must shadow wildcard tier (no double-count)")
+	assert.Equal(t, int64(1), candidates[0].ChannelID)
 
-	// A model that only the wildcard matches still resolves through it.
-	abilitiesWild, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "gpt-5")
-	require.NoError(t, err)
-	require.Len(t, abilitiesWild, 1, "wildcard tier must apply when no exact match")
+	_, err = repo.ListChannelCandidates(ctx, "default", "gpt-5")
+	require.ErrorIs(t, err, biz.ErrChannelNotFound)
 }
 
-// TestListAbilitiesByGroupAndModel_ExactBeatsWildcardConsistency_Memory:
+// TestListChannelCandidates_ExactBeatsWildcardConsistency_Memory:
 // same contract on the in-memory repo so DB and memory behave identically.
-func TestListAbilitiesByGroupAndModel_ExactBeatsWildcardConsistency_Memory(t *testing.T) {
+func TestListChannelCandidates_ExactBeatsWildcardConsistency_Memory(t *testing.T) {
 	repo := newMemoryRepository()
 	ctx := context.Background()
 	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
 		ID: 1, Type: 1, Name: "both", Status: biz.ChannelStatusEnabled,
 		Group: "default", Models: []string{"gpt-4o", "gpt-*"}, Priority: 5,
 	}))
-	abilities, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "gpt-4o")
+	candidates, err := repo.ListChannelCandidates(ctx, "default", "gpt-4o")
 	require.NoError(t, err)
-	require.Len(t, abilities, 1, "memory path: exact tier must shadow wildcard (no double-count)")
-	assert.Equal(t, int64(1), abilities[0].ChannelID)
+	require.Len(t, candidates, 1, "memory path: exact tier must shadow wildcard (no double-count)")
+	assert.Equal(t, int64(1), candidates[0].ChannelID)
 
-	abilitiesWild, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "gpt-5")
-	require.NoError(t, err)
-	require.Len(t, abilitiesWild, 1, "memory path: wildcard tier applies when no exact match")
+	_, err = repo.ListChannelCandidates(ctx, "default", "gpt-5")
+	require.ErrorIs(t, err, biz.ErrChannelNotFound)
 }
 
 // TestSyncChannelModelMappings_CreateAutoRegistersModels verifies that creating
@@ -1326,7 +1247,7 @@ func TestSyncChannelModelMappings_CreateAutoRegistersModels(t *testing.T) {
 		assert.True(t, mapping.Enabled)
 		assert.EqualValues(t, 50, mapping.Priority)
 		assert.Equal(t, autoChannelModelMappingConfig, mapping.Config)
-		assert.Empty(t, mapping.UpstreamModelID)
+		assert.NotEmpty(t, mapping.UpstreamModelID)
 	}
 
 	got, err := repo.ListAvailableModels(ctx, "default")
@@ -1403,7 +1324,7 @@ func TestSyncChannelModelMappings_ReenableRestoresVisibility(t *testing.T) {
 	assert.Contains(t, got, "gpt-4o")
 }
 
-func TestSyncChannelModelMappings_EmptyUpstreamPreservesChannelResolution(t *testing.T) {
+func TestSyncChannelModelMappings_PreservesConfiguredUpstreamSpelling(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
 	ch := &biz.Channel{
@@ -1412,12 +1333,12 @@ func TestSyncChannelModelMappings_EmptyUpstreamPreservesChannelResolution(t *tes
 	}
 	require.NoError(t, repo.CreateChannel(ctx, ch))
 
-	abilities, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "kimi-k3")
+	candidates, err := repo.ListChannelCandidates(ctx, "default", "kimi-k3")
 	require.NoError(t, err)
-	require.Len(t, abilities, 1)
-	assert.Equal(t, "kimi-k3", abilities[0].Model)
-	assert.Empty(t, abilities[0].UpstreamModelID,
-		"empty lets ResolveChannelModel apply channel.model_mapping and original channel.Models casing")
+	require.Len(t, candidates, 1)
+	assert.Equal(t, "kimi-k3", candidates[0].Model)
+	assert.Equal(t, "Kimi-K3", candidates[0].UpstreamModelID,
+		"registry keeps the configured upstream spelling; channel.model_mapping remains authoritative")
 }
 
 func TestSyncChannelModelMappings_UpdateRemovesOnlyOwnedMappings(t *testing.T) {

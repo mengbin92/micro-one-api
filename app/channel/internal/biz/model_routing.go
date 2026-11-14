@@ -163,7 +163,7 @@ func (uc *ModelRoutingUsecase) DeleteModelRouting(ctx context.Context, id int64)
 
 // RoutingMatchForSelect returns the enabled routing rows that match a
 // requested model, applying exact-before-wildcard precedence (same rule as
-// abilities/mapping). Returns nil when no routing matches — callers then
+// candidates/mapping). Returns nil when no routing matches — callers then
 // fall back to normal priority selection. The caller is the channel biz
 // SelectSubscriptionAccount path; this helper lives in biz so the precedence
 // rule is owned by the domain and unit-testable without a repo.

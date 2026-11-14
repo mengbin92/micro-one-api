@@ -11,7 +11,6 @@ import (
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/database/authzquery"
-	"micro-one-api/platform/database/xdb"
 )
 
 // ScanSubscriptionAccounts filters shard ownership in storage, before reading
@@ -186,9 +185,6 @@ func (r *Repository) clearRecoveryMarkersDB(ctx context.Context, expected biz.Ac
 		}
 		if res.RowsAffected == 0 {
 			return nil
-		}
-		if err := tx.Model(&subscriptionAccountAbilityModel{}).Where("account_id = ?", expected.AccountID).Update("enabled", xdb.BoolInt(true)).Error; err != nil {
-			return err
 		}
 		cleared = true
 		return nil

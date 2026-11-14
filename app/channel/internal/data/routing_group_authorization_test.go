@@ -27,7 +27,7 @@ func TestIAMB2RoutingGroupOwnerDialects(t *testing.T) {
 			second, err := uc.Create(raw, "second", "Second", "", "restricted")
 			require.NoError(t, err)
 			id := first.Group.ID
-			channel := &biz.Channel{Name: "member", Key: "hidden", Group: "first", Status: biz.ChannelStatusEnabled, RestrictModels: true}
+			channel := &biz.Channel{Name: "member", Key: "hidden", Group: "first", Status: biz.ChannelStatusEnabled}
 			require.NoError(t, store.CreateChannel(raw, channel))
 			policy := &authztest.Resolver{ActorID: 1, Scopes: map[string]authorization.QueryScope{
 				"channel.routing_group.list":                     authztest.Resources(id),

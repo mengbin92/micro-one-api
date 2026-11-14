@@ -50,6 +50,7 @@ services:
     - 142_publish_upstream_contract_write_permissions
 
   channel:
+    - 151_retire_legacy_abilities
     - 133_upstream_contracts
     - 130_exact_usage_semantic_model_keys
     - 127_upstream_inventory

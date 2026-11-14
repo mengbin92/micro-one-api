@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"micro-one-api/domain/authorization"
+	"micro-one-api/domain/routing"
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/database/authzquery"
 
@@ -83,6 +84,7 @@ type modelSubscriptionMappingModel struct {
 	GroupName             string `gorm:"column:group_name"`
 	Enabled               bool   `gorm:"column:enabled"`
 	Priority              int32  `gorm:"column:priority"`
+	Config                string `gorm:"column:config"`
 	UpstreamModelID       string `gorm:"column:upstream_model_id"`
 	CreatedAt             int64  `gorm:"column:created_at"`
 	UpdatedAt             int64  `gorm:"column:updated_at"`
@@ -248,6 +250,7 @@ func newSubscriptionMappingPO(do *biz.ModelSubscriptionMapping) *modelSubscripti
 		GroupName:             do.GroupName,
 		Enabled:               do.Enabled,
 		Priority:              do.Priority,
+		Config:                do.Config,
 		UpstreamModelID:       do.UpstreamModelID,
 		CreatedAt:             do.CreatedAt,
 		UpdatedAt:             do.UpdatedAt,
@@ -265,6 +268,7 @@ func toSubscriptionMappingDO(po *modelSubscriptionMappingModel) *biz.ModelSubscr
 		GroupName:             po.GroupName,
 		Enabled:               po.Enabled,
 		Priority:              po.Priority,
+		Config:                po.Config,
 		UpstreamModelID:       po.UpstreamModelID,
 		CreatedAt:             po.CreatedAt,
 		UpdatedAt:             po.UpdatedAt,
@@ -1014,6 +1018,7 @@ func (r *Repository) UpsertSubscriptionMapping(ctx context.Context, do *biz.Mode
 		if err == nil {
 			updates := map[string]any{
 				"priority":          po.Priority,
+				"config":            po.Config,
 				"upstream_model_id": po.UpstreamModelID,
 				"updated_at":        po.UpdatedAt,
 			}
@@ -1254,8 +1259,126 @@ func isRetryableModelHealthWrite(err error) bool {
 }
 
 // ── In-memory fallback implementations ─────────────────────────────────────
+
+func (r *Repository) ensureModelRegistryRowMemoryLocked(modelID string) int64 {
+	canonical := biz.NormalizeModelID(modelID)
+	for _, model := range r.models {
+		if biz.ModelIDEqual(model.ModelID, canonical) {
+			return model.ID
+		}
+	}
+	r.modelNextID++
+	id := r.modelNextID
+	ts := now()
+	r.models[id] = &biz.Model{
+		ID: id, ModelID: canonical, DisplayName: canonical,
+		Provider: providerForModelID(canonical), ModelType: "chat",
+		Status: biz.ModelStatusEnabled, IsPublic: true, CreatedAt: ts, UpdatedAt: ts,
+	}
+	return id
+}
+
+func (r *Repository) syncChannelModelMappingsMemoryLocked(channel *biz.Channel) {
+	desired := make(map[int64]biz.ModelChannelMapping)
+	for _, raw := range channel.Models {
+		modelID := biz.NormalizeModelID(raw)
+		if modelID == "" || strings.ContainsAny(modelID, "*?") {
+			continue
+		}
+		modelPK := r.ensureModelRegistryRowMemoryLocked(modelID)
+		desired[modelPK] = biz.ModelChannelMapping{
+			ChannelID: channel.ID, ModelPK: modelPK, Enabled: true,
+			Priority: safecast.Int64ToInt32Saturating(channel.Priority),
+			Config:   autoChannelModelMappingConfig, UpstreamModelID: strings.TrimSpace(raw),
+		}
+	}
+	for id, mapping := range r.modelChannelMappings {
+		if mapping.ChannelID == channel.ID && mapping.Config == autoChannelModelMappingConfig {
+			if _, ok := desired[mapping.ModelPK]; !ok {
+				delete(r.modelChannelMappings, id)
+			}
+		}
+	}
+	for modelPK, next := range desired {
+		var existing *biz.ModelChannelMapping
+		for _, mapping := range r.modelChannelMappings {
+			if mapping.ChannelID == channel.ID && mapping.ModelPK == modelPK {
+				existing = mapping
+				break
+			}
+		}
+		if existing != nil {
+			if existing.Config == autoChannelModelMappingConfig {
+				existing.Enabled = true
+				existing.Priority = next.Priority
+				existing.UpstreamModelID = next.UpstreamModelID
+				existing.UpdatedAt = now()
+			}
+			continue
+		}
+		r.modelMappingNextID++
+		next.ID = r.modelMappingNextID
+		next.CreatedAt, next.UpdatedAt = now(), now()
+		r.modelChannelMappings[next.ID] = &next
+	}
+}
+
+func (r *Repository) syncSubscriptionAccountModelMappingsMemoryLocked(account *biz.SubscriptionAccount) {
+	desired := make(map[string]biz.ModelSubscriptionMapping)
+	for _, group := range routing.Groups(account.Group) {
+		if group == "" {
+			continue
+		}
+		for _, raw := range account.Models {
+			modelID := biz.NormalizeModelID(raw)
+			if modelID == "" || strings.ContainsAny(modelID, "*?") {
+				continue
+			}
+			modelPK := r.ensureModelRegistryRowMemoryLocked(modelID)
+			key := subscriptionModelMappingKey(group, modelPK)
+			desired[key] = biz.ModelSubscriptionMapping{
+				SubscriptionAccountID: account.ID, ModelPK: modelPK, GroupName: group,
+				Enabled:  true,
+				Priority: safecast.Int64ToInt32Saturating(account.Priority),
+				Config:   autoSubscriptionModelMappingConfig, UpstreamModelID: strings.TrimSpace(raw),
+			}
+		}
+	}
+	for id, mapping := range r.modelSubscriptionMappings {
+		if mapping.SubscriptionAccountID != account.ID || mapping.Config != autoSubscriptionModelMappingConfig {
+			continue
+		}
+		key := subscriptionModelMappingKey(mapping.GroupName, mapping.ModelPK)
+		if _, ok := desired[key]; !ok {
+			delete(r.modelSubscriptionMappings, id)
+		}
+	}
+	for _, next := range desired {
+		var existing *biz.ModelSubscriptionMapping
+		for _, mapping := range r.modelSubscriptionMappings {
+			if mapping.SubscriptionAccountID == account.ID && mapping.GroupName == next.GroupName && mapping.ModelPK == next.ModelPK {
+				existing = mapping
+				break
+			}
+		}
+		if existing != nil {
+			if existing.Config == autoSubscriptionModelMappingConfig {
+				existing.Enabled = true
+				existing.Priority = next.Priority
+				existing.UpstreamModelID = next.UpstreamModelID
+				existing.UpdatedAt = now()
+			}
+			continue
+		}
+		r.modelSubMappingNextID++
+		next.ID = r.modelSubMappingNextID
+		next.CreatedAt, next.UpdatedAt = now(), now()
+		r.modelSubscriptionMappings[next.ID] = &next
+	}
+}
+
 // Used when the repository has no DB (lite/single-binary deployment), mirroring
-// the channels/abilities memory mode. Kept simple: sufficient for tests and
+// the channels/candidates memory mode. Kept simple: sufficient for tests and
 // local development.
 
 func (r *Repository) listModelsMemory(page, pageSize int32, filter biz.ListModelsFilter) ([]*biz.Model, int64, error) {
@@ -1566,6 +1689,7 @@ func (r *Repository) upsertSubscriptionMappingMemory(do *biz.ModelSubscriptionMa
 				m.Enabled = do.Enabled
 			}
 			m.Priority = do.Priority
+			m.Config = do.Config
 			m.UpstreamModelID = do.UpstreamModelID
 			m.UpdatedAt = do.UpdatedAt
 			return nil

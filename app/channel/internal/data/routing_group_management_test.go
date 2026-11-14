@@ -58,10 +58,9 @@ func TestIAMB2RoutingGroupManagementDialects(t *testing.T) {
 			var firstMembers []int64
 			require.NoError(t, db.Table("channel_routing_groups").Where("routing_group_id = ?", first.Group.ID).Pluck("channel_id", &firstMembers).Error)
 			require.Equal(t, []int64{two.ID}, firstMembers)
-			var abilities []abilityModel
-			require.NoError(t, db.Where("channel_id = ?", one.ID).Find(&abilities).Error)
-			require.Len(t, abilities, 1)
-			require.Equal(t, "second", abilities[0].Group)
+			var mappings []modelChannelMappingModel
+			require.NoError(t, db.Where("channel_id = ?", one.ID).Find(&mappings).Error)
+			require.Len(t, mappings, 1)
 			_, err = uc.ReplaceMembers(request, first.Group.ID, current.Group.Revision, nil, "stale CAS")
 			require.ErrorIs(t, err, biz.ErrRoutingGroupBaselineConflict)
 			// A retained member is not a metadata write and preserves its override.

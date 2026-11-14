@@ -96,6 +96,7 @@ func setupModelTestDB(t *testing.T) *Repository {
 			group_name TEXT NOT NULL DEFAULT 'default',
 			enabled INTEGER NOT NULL DEFAULT 1,
 			priority INTEGER NOT NULL DEFAULT 0,
+			config TEXT DEFAULT '',
 			created_at INTEGER NOT NULL DEFAULT 0,
 			updated_at INTEGER NOT NULL DEFAULT 0
 		)
@@ -434,19 +435,14 @@ func TestRepository_MemoryFallback(t *testing.T) {
 }
 
 // Once populated, the managed registry is authoritative for /v1/models; raw
-// legacy abilities must not bypass model status or visibility controls.
+// legacy candidates must not bypass model status or visibility controls.
 func TestRepository_ListAvailableModelsRegistryAuthoritative(t *testing.T) {
 	repo := newMemoryRepository()
 	ctx := context.Background()
 
-	// Create a legacy channel with models.
 	ch := &biz.Channel{
-		ID:       1,
-		Name:     "test-channel",
-		Status:   biz.ChannelStatusEnabled,
-		Group:    "default",
-		Models:   []string{"gpt-4o", "gpt-4o-mini"},
-		Priority: 0,
+		ID: 1, Name: "test-channel", Status: biz.ChannelStatusEnabled,
+		Group: "default", Priority: 0,
 	}
 	require.NoError(t, repo.CreateChannel(ctx, ch))
 
@@ -510,21 +506,21 @@ func TestRepository_ManagedRoutesPreserveExactUpstreamModelIDs(t *testing.T) {
 	repo := newMemoryRepository()
 	ctx := context.Background()
 
-	channel := &biz.Channel{
-		ID: 6, Name: "NVIDIA", Status: biz.ChannelStatusEnabled,
-		Group: "default", Models: []string{"z-ai/glm-5.2"}, Priority: 4,
-	}
-	require.NoError(t, repo.CreateChannel(ctx, channel))
-	account := &biz.SubscriptionAccount{
-		ID: 4, Name: "z.ai", Platform: "zhipu", Status: biz.ChannelStatusEnabled,
-		Group: "default", Models: []string{"GLM-5.2"}, Priority: 4,
-	}
-	require.NoError(t, repo.CreateSubscriptionAccount(ctx, account))
 	model := &biz.Model{
 		ModelID: "glm-5.2", DisplayName: "GLM 5.2",
 		Status: biz.ModelStatusEnabled, IsPublic: true,
 	}
 	require.NoError(t, repo.CreateModel(ctx, model))
+	channel := &biz.Channel{
+		ID: 6, Name: "NVIDIA", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"glm-5.2"}, Priority: 4,
+	}
+	require.NoError(t, repo.CreateChannel(ctx, channel))
+	account := &biz.SubscriptionAccount{
+		ID: 4, Name: "z.ai", Platform: "zhipu", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"glm-5.2"}, Priority: 4,
+	}
+	require.NoError(t, repo.CreateSubscriptionAccount(ctx, account))
 	require.NoError(t, repo.UpsertChannelMapping(ctx, &biz.ModelChannelMapping{
 		ChannelID: channel.ID, ModelPK: model.ID, Enabled: true,
 		UpstreamModelID: "z-ai/glm-5.2",
@@ -534,13 +530,13 @@ func TestRepository_ManagedRoutesPreserveExactUpstreamModelIDs(t *testing.T) {
 		UpstreamModelID: "GLM-5.2",
 	}))
 
-	channelAbilities, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "GLM-5.2")
+	channelAbilities, err := repo.ListChannelCandidates(ctx, "default", "GLM-5.2")
 	require.NoError(t, err)
 	require.Len(t, channelAbilities, 1)
 	assert.Equal(t, "glm-5.2", channelAbilities[0].Model)
 	assert.Equal(t, "z-ai/glm-5.2", channelAbilities[0].UpstreamModelID)
 
-	subscriptionAbilities, err := repo.ListSubscriptionAccountAbilities(ctx, "default", "glm-5.2", "zhipu")
+	subscriptionAbilities, err := repo.ListSubscriptionCandidates(ctx, "default", "glm-5.2", "zhipu")
 	require.NoError(t, err)
 	require.Len(t, subscriptionAbilities, 1)
 	assert.Equal(t, "GLM-5.2", subscriptionAbilities[0].UpstreamModelID)
@@ -553,24 +549,20 @@ func TestRepository_ManagedRoutesPreserveExactUpstreamModelIDs(t *testing.T) {
 func TestRepository_ManagedDisabledModelBlocksLegacyRoute(t *testing.T) {
 	repo := newMemoryRepository()
 	ctx := context.Background()
-	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
-		ID: 1, Name: "legacy", Status: biz.ChannelStatusEnabled,
-		Group: "default", Models: []string{"GLM-5.2"},
-	}))
-	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
-		ID: 2, Name: "catch-all", Status: biz.ChannelStatusEnabled,
-		Group: "default", RestrictModels: false,
-	}))
 	require.NoError(t, repo.CreateModel(ctx, &biz.Model{
 		ModelID: "glm-5.2", DisplayName: "GLM 5.2",
 		Status: biz.ModelStatusDisabled, IsPublic: true,
 	}))
+	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
+		ID: 1, Name: "legacy", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"glm-5.2"},
+	}))
 
-	abilities, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "GLM-5.2")
+	candidates, err := repo.ListChannelCandidates(ctx, "default", "GLM-5.2")
 	assert.ErrorIs(t, err, biz.ErrChannelNotFound)
-	assert.Empty(t, abilities, "a managed disabled model must not fall through to legacy abilities")
+	assert.Empty(t, candidates, "a managed disabled model must not fall through to legacy candidates")
 	_, err = biz.NewChannelUsecase(repo, nil).SelectChannel(ctx, "default", "GLM-5.2", false)
-	assert.ErrorIs(t, err, biz.ErrChannelNotFound, "a managed disabled model must not route through catch-all channels")
+	assert.ErrorIs(t, err, biz.ErrChannelNotFound, "a managed disabled model must not route")
 	models, err := repo.ListAvailableModels(ctx, "default")
 	require.NoError(t, err)
 	assert.Empty(t, models)

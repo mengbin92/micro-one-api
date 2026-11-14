@@ -74,7 +74,7 @@ func setupChannelSlotOwner(t *testing.T, upstreamURL string, opts ...grpc.Server
 				Priority: 10, Weight: 1, Key: "slot-key",
 			},
 		},
-		abilities: map[string][]channeltestutil.Ability{
+		candidates: map[string][]channeltestutil.RoutingCandidate{
 			"default:gpt-4o-mini": {
 				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 10},
 			},

@@ -20,7 +20,6 @@ import (
 
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/pkg/safecast"
-	"micro-one-api/pkg/wildcard"
 	"micro-one-api/platform/database/xdb"
 	applogger "micro-one-api/platform/logging"
 	appcrypto "micro-one-api/platform/security/crypto"
@@ -79,36 +78,35 @@ type Repository struct {
 }
 
 type channelModel struct {
-	AuthorizationRevision             int64    `gorm:"column:authorization_revision;default:1"`
-	ID                                int64    `gorm:"column:id"`
-	Type                              int32    `gorm:"column:type"`
-	Key                               string   `gorm:"column:key"`
-	Status                            int32    `gorm:"column:status"`
-	Name                              string   `gorm:"column:name"`
-	Weight                            *uint    `gorm:"column:weight"`
-	CreatedTime                       int64    `gorm:"column:created_time"`
-	TestTime                          int64    `gorm:"column:test_time"`
-	ResponseTime                      int64    `gorm:"column:response_time"`
-	BaseURL                           *string  `gorm:"column:base_url"`
-	Balance                           float64  `gorm:"column:balance"`
-	BalanceUpdatedTime                int64    `gorm:"column:balance_updated_time"`
-	BalanceRefreshLastError           *string  `gorm:"column:balance_refresh_last_error"`
-	BalanceRefreshLastSuccessTime     int64    `gorm:"column:balance_refresh_last_success_time"`
-	ConsecutiveBalanceRefreshFailures int32    `gorm:"column:consecutive_balance_refresh_failures"`
-	HealthStatus                      string   `gorm:"column:health_status"`
-	HealthLastError                   *string  `gorm:"column:health_last_error"`
-	HealthLastSuccessTime             int64    `gorm:"column:health_last_success_time"`
-	HealthLastFailureTime             int64    `gorm:"column:health_last_failure_time"`
-	HealthConsecutiveFailures         int32    `gorm:"column:health_consecutive_failures"`
-	CircuitOpenedUntil                int64    `gorm:"column:circuit_opened_until"`
-	Models                            string   `gorm:"column:models"`
-	Group                             string   `gorm:"column:group"`
-	UsedQuota                         int64    `gorm:"column:used_quota"`
-	ModelMapping                      *string  `gorm:"column:model_mapping"`
-	Priority                          *int64   `gorm:"column:priority"`
-	Config                            string   `gorm:"column:config"`
-	SystemPrompt                      *string  `gorm:"column:system_prompt"`
-	RestrictModels                    xdb.Flag `gorm:"column:restrict_models"`
+	AuthorizationRevision             int64   `gorm:"column:authorization_revision;default:1"`
+	ID                                int64   `gorm:"column:id"`
+	Type                              int32   `gorm:"column:type"`
+	Key                               string  `gorm:"column:key"`
+	Status                            int32   `gorm:"column:status"`
+	Name                              string  `gorm:"column:name"`
+	Weight                            *uint   `gorm:"column:weight"`
+	CreatedTime                       int64   `gorm:"column:created_time"`
+	TestTime                          int64   `gorm:"column:test_time"`
+	ResponseTime                      int64   `gorm:"column:response_time"`
+	BaseURL                           *string `gorm:"column:base_url"`
+	Balance                           float64 `gorm:"column:balance"`
+	BalanceUpdatedTime                int64   `gorm:"column:balance_updated_time"`
+	BalanceRefreshLastError           *string `gorm:"column:balance_refresh_last_error"`
+	BalanceRefreshLastSuccessTime     int64   `gorm:"column:balance_refresh_last_success_time"`
+	ConsecutiveBalanceRefreshFailures int32   `gorm:"column:consecutive_balance_refresh_failures"`
+	HealthStatus                      string  `gorm:"column:health_status"`
+	HealthLastError                   *string `gorm:"column:health_last_error"`
+	HealthLastSuccessTime             int64   `gorm:"column:health_last_success_time"`
+	HealthLastFailureTime             int64   `gorm:"column:health_last_failure_time"`
+	HealthConsecutiveFailures         int32   `gorm:"column:health_consecutive_failures"`
+	CircuitOpenedUntil                int64   `gorm:"column:circuit_opened_until"`
+	Models                            string  `gorm:"column:models"`
+	Group                             string  `gorm:"column:group"`
+	UsedQuota                         int64   `gorm:"column:used_quota"`
+	ModelMapping                      *string `gorm:"column:model_mapping"`
+	Priority                          *int64  `gorm:"column:priority"`
+	Config                            string  `gorm:"column:config"`
+	SystemPrompt                      *string `gorm:"column:system_prompt"`
 }
 
 type channelUsageEventModel struct {
@@ -121,16 +119,6 @@ type channelUsageEventModel struct {
 func (channelUsageEventModel) TableName() string { return "channel_usage_events" }
 
 func (channelModel) TableName() string { return "channels" }
-
-type abilityModel struct {
-	Group     string   `gorm:"column:group"`
-	Model     string   `gorm:"column:model"`
-	ChannelID int64    `gorm:"column:channel_id"`
-	Enabled   xdb.Flag `gorm:"column:enabled"`
-	Priority  *int64   `gorm:"column:priority"`
-}
-
-func (abilityModel) TableName() string { return "abilities" }
 
 type subscriptionAccountModel struct {
 	CredentialRefreshPending bool `gorm:"column:credential_refresh_pending"`
@@ -181,18 +169,6 @@ type subscriptionAccountModel struct {
 }
 
 func (subscriptionAccountModel) TableName() string { return "subscription_accounts" }
-
-type subscriptionAccountAbilityModel struct {
-	ID        int64    `gorm:"column:id"`
-	Group     string   `gorm:"column:group"`
-	Model     string   `gorm:"column:model"`
-	Platform  string   `gorm:"column:platform"`
-	AccountID int64    `gorm:"column:account_id"`
-	Enabled   xdb.Flag `gorm:"column:enabled"`
-	Priority  *int64   `gorm:"column:priority"`
-}
-
-func (subscriptionAccountAbilityModel) TableName() string { return "subscription_account_abilities" }
 
 type accountQuotaSnapshotModel struct {
 	AccountID                   int64      `gorm:"column:account_id;primaryKey"`
@@ -338,11 +314,11 @@ func (r *Repository) FindByID(ctx context.Context, channelID int64) (*biz.Channe
 	return r.findByIDMemory(ctx, channelID)
 }
 
-func (r *Repository) ListAbilitiesByGroupAndModel(ctx context.Context, group, model string) ([]biz.Ability, error) {
+func (r *Repository) ListChannelCandidates(ctx context.Context, group, model string) ([]biz.RoutingCandidate, error) {
 	if r.db != nil {
-		return r.listAbilitiesByGroupAndModelDB(ctx, group, model)
+		return r.listChannelCandidatesDB(ctx, group, model)
 	}
-	return r.listAbilitiesByGroupAndModelMemory(ctx, group, model)
+	return r.listChannelCandidatesMemory(ctx, group, model)
 }
 
 func (r *Repository) FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*biz.SubscriptionAccount, error) {
@@ -358,64 +334,9 @@ func (r *Repository) FindSubscriptionAccountByID(ctx context.Context, accountID 
 	return cloneSubscriptionAccount(account), nil
 }
 
-func (r *Repository) ListUnrestrictedChannelsByGroup(ctx context.Context, group string) ([]*biz.Channel, error) {
+func (r *Repository) ListSubscriptionCandidates(ctx context.Context, group, model, platform string) ([]biz.SubscriptionRoutingCandidate, error) {
 	if r.db != nil {
-		return r.listUnrestrictedChannelsByGroupDB(ctx, group)
-	}
-	return r.listUnrestrictedChannelsByGroupMemory(ctx, group)
-}
-
-// listUnrestrictedChannelsByGroupDB returns enabled channels in the group
-// whose restrict_models flag is false (catch-all channels). They accept any
-// model not matched by the abilities table. See docs §9.3 #2.
-func (r *Repository) listUnrestrictedChannelsByGroupDB(ctx context.Context, group string, columns ...string) ([]*biz.Channel, error) {
-	var models []channelModel
-	query := r.db.WithContext(ctx)
-	if len(columns) > 0 {
-		query = query.Select(columns)
-	}
-	// channels.group is a CSV; match exact, prefix, suffix, or infix to stay
-	// cross-driver compatible (no FIND_IN_SET in SQLite/Postgres).
-	query = r.csvGroupScope(query, group, "`group`", "id")
-	if err := query.
-		Where("status = ? AND restrict_models = ?", biz.ChannelStatusEnabled, 0).
-		Find(&models).Error; err != nil {
-		return nil, err
-	}
-	result := make([]*biz.Channel, 0, len(models))
-	for i := range models {
-		channel, err := r.modelToChannel(&models[i])
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, channel)
-	}
-	return result, nil
-}
-
-func (r *Repository) listUnrestrictedChannelsByGroupMemory(_ context.Context, group string) ([]*biz.Channel, error) {
-	r.lock.RLock()
-	defer r.lock.RUnlock()
-	result := make([]*biz.Channel, 0)
-	for _, channel := range r.channels {
-		if channel.Status != biz.ChannelStatusEnabled {
-			continue
-		}
-		if channel.RestrictModels {
-			continue
-		}
-		if routing.ContainsGroup(channel.Group, group) {
-			cloned := *channel
-			cloned.Models = append([]string(nil), channel.Models...)
-			result = append(result, &cloned)
-		}
-	}
-	return result, nil
-}
-
-func (r *Repository) ListSubscriptionAccountAbilities(ctx context.Context, group, model, platform string) ([]biz.SubscriptionAccountAbility, error) {
-	if r.db != nil {
-		return r.listSubscriptionAccountAbilitiesDB(ctx, group, model, platform)
+		return r.listSubscriptionCandidatesDB(ctx, group, model, platform)
 	}
 	r.lock.RLock()
 	defer r.lock.RUnlock()
@@ -425,79 +346,33 @@ func (r *Repository) ListSubscriptionAccountAbilities(ctx context.Context, group
 			managedModelPKs[id] = managed
 		}
 	}
-	if len(managedModelPKs) > 0 {
-		abilities := make([]biz.SubscriptionAccountAbility, 0)
-		for _, mapping := range r.modelSubscriptionMappings {
-			managed, ok := managedModelPKs[mapping.ModelPK]
-			if !ok || !mapping.Enabled || managed.Status != biz.ModelStatusEnabled || mapping.GroupName != group {
-				continue
-			}
-			account, ok := r.subAccounts[mapping.SubscriptionAccountID]
-			if !ok || account.Status != biz.ChannelStatusEnabled || (platform != "" && account.Platform != platform) {
-				continue
-			}
-			priority := int64(mapping.Priority)
-			if priority == 0 {
-				priority = account.Priority
-			}
-			upstream := strings.TrimSpace(mapping.UpstreamModelID)
-			if upstream == "" {
-				upstream = managed.ModelID
-			}
-			abilities = append(abilities, biz.SubscriptionAccountAbility{
-				Group: group, Model: managed.ModelID, Platform: account.Platform,
-				AccountID: account.ID, Enabled: true, Priority: priority, UpstreamModelID: upstream,
-			})
-		}
-		if len(abilities) == 0 {
-			return nil, biz.ErrSubscriptionAccountNotFound
-		}
-		return abilities, nil
-	}
-	// exact-first tier互斥, matching the DB path. See
-	// listAbilitiesByGroupAndModelMemory for the rationale.
-	exact := make([]biz.SubscriptionAccountAbility, 0)
-	wild := make([]biz.SubscriptionAccountAbility, 0)
-	for _, account := range r.subAccounts {
-		if account.Status != biz.ChannelStatusEnabled {
+	candidates := make([]biz.SubscriptionRoutingCandidate, 0)
+	for _, mapping := range r.modelSubscriptionMappings {
+		managed, ok := managedModelPKs[mapping.ModelPK]
+		if !ok || !mapping.Enabled || managed.Status != biz.ModelStatusEnabled || mapping.GroupName != group {
 			continue
 		}
-		if platform != "" && account.Platform != platform {
+		account, ok := r.subAccounts[mapping.SubscriptionAccountID]
+		if !ok || account.Status != biz.ChannelStatusEnabled || (platform != "" && account.Platform != platform) {
 			continue
 		}
-		for _, accountGroup := range routing.Groups(account.Group) {
-			if accountGroup != group {
-				continue
-			}
-			for _, accountModel := range account.Models {
-				if strings.EqualFold(accountModel, model) {
-					exact = append(exact, biz.SubscriptionAccountAbility{
-						Group:     group,
-						Model:     model,
-						Platform:  account.Platform,
-						AccountID: account.ID,
-						Enabled:   true,
-						Priority:  account.Priority,
-					})
-					continue
-				}
-				if wildcard.IsPattern(accountModel) && wildcard.Match(accountModel, model) {
-					wild = append(wild, biz.SubscriptionAccountAbility{
-						Group:     group,
-						Model:     model,
-						Platform:  account.Platform,
-						AccountID: account.ID,
-						Enabled:   true,
-						Priority:  account.Priority,
-					})
-				}
-			}
+		priority := int64(mapping.Priority)
+		if priority == 0 {
+			priority = account.Priority
 		}
+		upstream := strings.TrimSpace(mapping.UpstreamModelID)
+		if upstream == "" {
+			upstream = managed.ModelID
+		}
+		candidates = append(candidates, biz.SubscriptionRoutingCandidate{
+			Group: group, Model: managed.ModelID, Platform: account.Platform,
+			AccountID: account.ID, Enabled: true, Priority: priority, UpstreamModelID: upstream,
+		})
 	}
-	if len(exact) > 0 {
-		return exact, nil
+	if len(candidates) == 0 {
+		return nil, biz.ErrSubscriptionAccountNotFound
 	}
-	return wild, nil
+	return candidates, nil
 }
 
 func (r *Repository) ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*biz.SubscriptionAccount, int64, error) {
@@ -551,6 +426,7 @@ func (r *Repository) CreateSubscriptionAccount(ctx context.Context, account *biz
 	}
 	account.RecoveryBaseline = new(account.RecoveryState())
 	r.subAccounts[account.ID] = cloneSubscriptionAccount(account)
+	r.syncSubscriptionAccountModelMappingsMemoryLocked(account)
 	return nil
 }
 
@@ -578,6 +454,7 @@ func (r *Repository) UpdateSubscriptionAccount(ctx context.Context, account *biz
 	cp.CredentialRefreshPending = false
 	cp.RecoveryBaseline = new(cp.RecoveryState())
 	r.subAccounts[account.ID] = &cp
+	r.syncSubscriptionAccountModelMappingsMemoryLocked(&cp)
 	account.CredentialRevision = cp.CredentialRevision
 	account.CredentialRefreshPending = false
 	account.RecoveryBaseline = cp.RecoveryBaseline
@@ -906,6 +783,7 @@ func (r *Repository) CreateChannel(ctx context.Context, channel *biz.Channel) er
 	defer r.lock.Unlock()
 	channel.ID = int64(len(r.channels) + 1)
 	r.channels[channel.ID] = channel
+	r.syncChannelModelMappingsMemoryLocked(channel)
 	return nil
 }
 
@@ -919,6 +797,7 @@ func (r *Repository) UpdateChannel(ctx context.Context, channel *biz.Channel) er
 		return biz.ErrChannelNotFound
 	}
 	r.channels[channel.ID] = channel
+	r.syncChannelModelMappingsMemoryLocked(channel)
 	return nil
 }
 
@@ -1046,81 +925,15 @@ func (r *Repository) findSubscriptionAccountByIDDB(ctx context.Context, accountI
 	return r.subscriptionAccountModelToBiz(&model)
 }
 
-func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, group, model, platform string) ([]biz.SubscriptionAccountAbility, error) {
-	managed, err := r.managedModelExistsDB(ctx, model)
+func (r *Repository) listSubscriptionCandidatesDB(ctx context.Context, group, model, platform string) ([]biz.SubscriptionRoutingCandidate, error) {
+	candidates, err := r.listRegistrySubscriptionAbilitiesDB(ctx, group, model, platform)
 	if err != nil {
 		return nil, err
 	}
-	if managed {
-		registry, err := r.listRegistrySubscriptionAbilitiesDB(ctx, group, model, platform)
-		if err != nil {
-			return nil, err
-		}
-		if len(registry) == 0 {
-			return nil, biz.ErrSubscriptionAccountNotFound
-		}
-		return registry, nil
+	if len(candidates) == 0 {
+		return nil, biz.ErrSubscriptionAccountNotFound
 	}
-	// P1 (#4): support wildcard abilities for subscription accounts too.
-	// Exact (case-insensitive) match first; if none, scan wildcard-pattern
-	// rows and keep those matching the requested model. See
-	// docs/model-management-design.md §9.3 #4.
-	// The quoted constant is accepted by both legacy integer flags and
-	// PostgreSQL BOOLEAN snapshots; binding an int fails for BOOLEAN columns.
-	query := r.db.WithContext(ctx).Model(&subscriptionAccountAbilityModel{}).
-		Where(r.routingGroupSQL("`group` = ? AND LOWER(model) = ? AND enabled = '1'"), group, strings.ToLower(model))
-	if platform != "" {
-		query = query.Where("platform = ?", platform)
-	}
-	if r.routingGroupRelations {
-		query = r.memberScope(query, group, "account_id", true)
-	}
-	var rows []subscriptionAccountAbilityModel
-	if err := query.Find(&rows).Error; err != nil {
-		return nil, err
-	}
-	if len(rows) == 0 {
-		patternQuery := r.db.WithContext(ctx).Model(&subscriptionAccountAbilityModel{}).
-			Where(r.routingGroupSQL("`group` = ? AND enabled = '1' AND (model LIKE ? OR model LIKE ?)"), group, "%*%", "%?%")
-		if platform != "" {
-			patternQuery = patternQuery.Where("platform = ?", platform)
-		}
-		if r.routingGroupRelations {
-			patternQuery = r.memberScope(patternQuery, group, "account_id", true)
-		}
-		var patternRows []subscriptionAccountAbilityModel
-		if err := patternQuery.Find(&patternRows).Error; err != nil {
-			return nil, err
-		}
-		for _, row := range patternRows {
-			if wildcard.Match(row.Model, model) {
-				rows = append(rows, row)
-			}
-		}
-	}
-	overrides, err := r.relationOverrides(ctx, group, true)
-	if err != nil {
-		return nil, err
-	}
-	abilities := make([]biz.SubscriptionAccountAbility, 0, len(rows))
-	for _, row := range rows {
-		priority := int64(0)
-		if row.Priority != nil {
-			priority = *row.Priority
-		}
-		var weight int64
-		priority, weight = applyRelationOverride(overrides, row.AccountID, priority, weight)
-		abilities = append(abilities, biz.SubscriptionAccountAbility{
-			Group:     row.Group,
-			Model:     row.Model,
-			Platform:  row.Platform,
-			AccountID: row.AccountID,
-			Enabled:   row.Enabled != 0,
-			Priority:  priority,
-			Weight:    weight,
-		})
-	}
-	return abilities, nil
+	return candidates, nil
 }
 
 func (r *Repository) listSubscriptionAccountsDB(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*biz.SubscriptionAccount, int64, error) {
@@ -1244,7 +1057,7 @@ func (r *Repository) createSubscriptionAccountDB(ctx context.Context, account *b
 				return err
 			}
 		}
-		return r.syncSubscriptionAccountAbilitiesTx(tx, account)
+		return r.syncSubscriptionAccountModelMappingsTx(tx, account)
 	})
 }
 
@@ -1368,7 +1181,7 @@ func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *b
 		if result.RowsAffected != 1 {
 			return biz.ErrCredentialConflict
 		}
-		return r.syncSubscriptionAccountAbilitiesTx(tx, account)
+		return r.syncSubscriptionAccountModelMappingsTx(tx, account)
 	})
 	if err == nil {
 		account.CredentialRevision++
@@ -1393,9 +1206,6 @@ func (r *Repository) deleteSubscriptionAccountDB(ctx context.Context, accountID 
 		if err := tx.Where("id = ?", accountID).Delete(&subscriptionAccountModel{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("account_id = ?", accountID).Delete(&subscriptionAccountAbilityModel{}).Error; err != nil {
-			return err
-		}
 		if err := tx.Where("subscription_account_id = ?", accountID).Delete(&modelSubscriptionMappingModel{}).Error; err != nil {
 			return err
 		}
@@ -1411,8 +1221,7 @@ func (r *Repository) changeSubscriptionAccountStatusDB(ctx context.Context, acco
 		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Update("status", status).Error; err != nil {
 			return err
 		}
-		enabled := status == biz.ChannelStatusEnabled
-		return tx.Model(&subscriptionAccountAbilityModel{}).Where("account_id = ?", accountID).Update("enabled", xdb.BoolInt(enabled)).Error
+		return nil
 	})
 }
 
@@ -1658,19 +1467,14 @@ func (r *Repository) autoPauseAccountDB(ctx context.Context, accountID int64, re
 		policy := subscriptionAccountMetadataValue(metadata, "recovery_policy")
 		// A transient pause must not undo an administrative disable.
 		status := account.Status
-		abilityEnabled := status == biz.ChannelStatusEnabled
 		if policy == biz.RecoveryPolicyManual {
 			status = biz.ChannelStatusDisabled
-			abilityEnabled = false
 		}
 		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]any{
 			"status":     status,
 			"metadata":   new(metadata),
 			"updated_at": now(),
 		}).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&subscriptionAccountAbilityModel{}).Where("account_id = ?", accountID).Update("enabled", xdb.BoolInt(abilityEnabled)).Error; err != nil {
 			return err
 		}
 		return tx.Model(&accountQuotaSnapshotModel{}).Where("account_id = ?", accountID).Updates(map[string]any{
@@ -1740,95 +1544,18 @@ func (r *Repository) findByIDDB(ctx context.Context, channelID int64) (*biz.Chan
 	return r.modelToChannel(&model)
 }
 
-func (r *Repository) listAbilitiesByGroupAndModelDB(ctx context.Context, group, model string) ([]biz.Ability, error) {
-	managed, err := r.managedModelExistsDB(ctx, model)
+func (r *Repository) listChannelCandidatesDB(ctx context.Context, group, model string) ([]biz.RoutingCandidate, error) {
+	candidates, err := r.listRegistryChannelAbilitiesDB(ctx, group, model)
 	if err != nil {
 		return nil, err
 	}
-	if managed {
-		registry, err := r.listRegistryChannelAbilitiesDB(ctx, group, model)
-		if err != nil {
-			return nil, err
-		}
-		if len(registry) == 0 {
-			return nil, biz.ErrChannelNotFound
-		}
-		return registry, nil
+	if len(candidates) == 0 {
+		return nil, biz.ErrChannelNotFound
 	}
-	// P1 (#4): support wildcard abilities. First try exact (case-insensitive)
-	// model matching. If that yields rows, return them. If not, scan abilities
-	// whose model column contains a wildcard metacharacter and keep those
-	// whose pattern matches the requested model (e.g. "claude-*" matches
-	// "claude-sonnet-4"). This lets a single ability row route a whole
-	// family of model names. See docs/model-management-design.md §9.3 #4.
-	var rows []abilityModel
-	if err := r.db.WithContext(ctx).Scopes(func(q *gorm.DB) *gorm.DB {
-		if r.routingGroupRelations {
-			return r.memberScope(q, group, "channel_id", false)
-		}
-		return q
-	}).
-		Where(r.routingGroupSQL("`group` = ? AND LOWER(model) = ? AND enabled = '1'"), group, strings.ToLower(model)).
-		Find(&rows).Error; err != nil {
-		return nil, err
-	}
-	if len(rows) == 0 {
-		var patternRows []abilityModel
-		if err := r.db.WithContext(ctx).Scopes(func(q *gorm.DB) *gorm.DB {
-			if r.routingGroupRelations {
-				return r.memberScope(q, group, "channel_id", false)
-			}
-			return q
-		}).
-			Where(r.routingGroupSQL("`group` = ? AND enabled = '1' AND (model LIKE ? OR model LIKE ?)"), group, "%*%", "%?%").
-			Find(&patternRows).Error; err != nil {
-			return nil, err
-		}
-		for _, row := range patternRows {
-			if wildcard.Match(row.Model, model) {
-				rows = append(rows, row)
-			}
-		}
-	}
-	overrides, err := r.relationOverrides(ctx, group, false)
-	if err != nil {
-		return nil, err
-	}
-	abilities := make([]biz.Ability, 0, len(rows))
-	for _, row := range rows {
-		priority := int64(0)
-		if row.Priority != nil {
-			priority = *row.Priority
-		}
-		var weight int64
-		priority, weight = applyRelationOverride(overrides, row.ChannelID, priority, weight)
-		abilities = append(abilities, biz.Ability{
-			Group:     row.Group,
-			Model:     row.Model,
-			ChannelID: row.ChannelID,
-			Enabled:   row.Enabled != 0,
-			Priority:  priority,
-			Weight:    weight,
-		})
-	}
-	return abilities, nil
+	return candidates, nil
 }
 
-func (r *Repository) managedModelExistsDB(ctx context.Context, model string) (bool, error) {
-	// Older installations and focused repository tests may not have adopted
-	// the model registry yet. In that case the legacy abilities tables remain
-	// authoritative until the registry migration is applied.
-	if !r.db.Migrator().HasTable(&modelModel{}) {
-		return false, nil
-	}
-	var count int64
-	err := r.db.WithContext(ctx).Model(&modelModel{}).
-		Where("LOWER(model_id) = ?", strings.ToLower(strings.TrimSpace(model))).
-		Count(&count).Error
-	return count > 0, err
-}
-
-type registryChannelAbilityRow struct {
+type registryChannelRoutingCandidateRow struct {
 	ChannelID       int64  `gorm:"column:channel_id"`
 	Model           string `gorm:"column:model"`
 	UpstreamModelID string `gorm:"column:upstream_model_id"`
@@ -1836,8 +1563,8 @@ type registryChannelAbilityRow struct {
 	SourcePriority  int64  `gorm:"column:source_priority"`
 }
 
-func (r *Repository) listRegistryChannelAbilitiesDB(ctx context.Context, group, model string) ([]biz.Ability, error) {
-	var rows []registryChannelAbilityRow
+func (r *Repository) listRegistryChannelAbilitiesDB(ctx context.Context, group, model string) ([]biz.RoutingCandidate, error) {
+	var rows []registryChannelRoutingCandidateRow
 	query := r.db.WithContext(ctx).Table("model_channel_mapping AS mcm").
 		Select("mcm.channel_id, m.model_id AS model, mcm.upstream_model_id, mcm.priority AS mapping_priority, COALESCE(c.priority, 0) AS source_priority").
 		Joins("JOIN models AS m ON m.id = mcm.model_id").
@@ -1851,7 +1578,7 @@ func (r *Repository) listRegistryChannelAbilitiesDB(ctx context.Context, group, 
 	if err != nil {
 		return nil, err
 	}
-	out := make([]biz.Ability, 0, len(rows))
+	out := make([]biz.RoutingCandidate, 0, len(rows))
 	for _, row := range rows {
 		priority := row.MappingPriority
 		if priority == 0 {
@@ -1860,7 +1587,7 @@ func (r *Repository) listRegistryChannelAbilitiesDB(ctx context.Context, group, 
 		var weight int64
 		// Complete chain: relation override > mapping priority > source priority.
 		priority, weight = applyRelationOverride(overrides, row.ChannelID, priority, weight)
-		out = append(out, biz.Ability{
+		out = append(out, biz.RoutingCandidate{
 			Group: group, Model: row.Model, ChannelID: row.ChannelID, Enabled: true, Priority: priority, Weight: weight,
 			// Empty is meaningful: ResolveChannelModel must still be able to apply
 			// channel.model_mapping or preserve the exact spelling in channel.Models.
@@ -1870,7 +1597,7 @@ func (r *Repository) listRegistryChannelAbilitiesDB(ctx context.Context, group, 
 	return out, nil
 }
 
-type registrySubscriptionAbilityRow struct {
+type registrySubscriptionRoutingCandidateRow struct {
 	AccountID       int64  `gorm:"column:account_id"`
 	Model           string `gorm:"column:model"`
 	Platform        string `gorm:"column:platform"`
@@ -1879,8 +1606,8 @@ type registrySubscriptionAbilityRow struct {
 	SourcePriority  int64  `gorm:"column:source_priority"`
 }
 
-func (r *Repository) listRegistrySubscriptionAbilitiesDB(ctx context.Context, group, model, platform string) ([]biz.SubscriptionAccountAbility, error) {
-	var rows []registrySubscriptionAbilityRow
+func (r *Repository) listRegistrySubscriptionAbilitiesDB(ctx context.Context, group, model, platform string) ([]biz.SubscriptionRoutingCandidate, error) {
+	var rows []registrySubscriptionRoutingCandidateRow
 	query := r.db.WithContext(ctx).Table("model_subscription_mapping AS msm").
 		Select("msm.subscription_account_id AS account_id, m.model_id AS model, sa.platform, msm.upstream_model_id, msm.priority AS mapping_priority, COALESCE(sa.priority, 0) AS source_priority").
 		Joins("JOIN models AS m ON m.id = msm.model_id").
@@ -1897,7 +1624,7 @@ func (r *Repository) listRegistrySubscriptionAbilitiesDB(ctx context.Context, gr
 	if err != nil {
 		return nil, err
 	}
-	out := make([]biz.SubscriptionAccountAbility, 0, len(rows))
+	out := make([]biz.SubscriptionRoutingCandidate, 0, len(rows))
 	for _, row := range rows {
 		priority := row.MappingPriority
 		if priority == 0 {
@@ -1910,60 +1637,19 @@ func (r *Repository) listRegistrySubscriptionAbilitiesDB(ctx context.Context, gr
 		if upstream == "" {
 			upstream = row.Model
 		}
-		out = append(out, biz.SubscriptionAccountAbility{Group: group, Model: row.Model, Platform: row.Platform, AccountID: row.AccountID, Enabled: true, Priority: priority, Weight: weight, UpstreamModelID: upstream})
+		out = append(out, biz.SubscriptionRoutingCandidate{Group: group, Model: row.Model, Platform: row.Platform, AccountID: row.AccountID, Enabled: true, Priority: priority, Weight: weight, UpstreamModelID: upstream})
 	}
 	return out, nil
 }
 
 func (r *Repository) listAvailableModelsDB(ctx context.Context, group string) ([]string, error) {
 	seen := make(map[string]struct{})
-	var registryCount int64
-	if r.db.Migrator().HasTable(&modelModel{}) {
-		if err := r.db.WithContext(ctx).Model(&modelModel{}).Count(&registryCount).Error; err != nil {
-			return nil, err
-		}
-	}
-	if registryCount > 0 {
-		// Once the managed registry is populated it is authoritative. This keeps
-		// private/testing discoveries and disabled models out of /v1/models and
-		// prevents raw provider IDs from leaking through legacy abilities.
-		if err := r.addRegistryChannelModelsDB(ctx, group, seen); err != nil {
-			return nil, err
-		}
-		if err := r.addRegistrySubscriptionModelsDB(ctx, group, seen); err != nil {
-			return nil, err
-		}
-		return sortedModelIDs(seen), nil
-	}
-
-	// ── Legacy: query regular channel abilities ──────────────────────────
-	// P1 (#4): exclude wildcard patterns from the advertised model list —
-	// "claude-*" / "*" are routing rules, not real models a client can select.
-	var channelModels []string
-	if err := r.db.WithContext(ctx).
-		Model(&abilityModel{}).
-		Where(r.routingGroupSQL("`group` = ? AND enabled = '1' AND model NOT LIKE ? AND model NOT LIKE ?"), group, "%*%", "%?%").
-		Distinct("model").
-		Pluck("model", &channelModels).Error; err != nil {
+	if err := r.addRegistryChannelModelsDB(ctx, group, seen); err != nil {
 		return nil, err
 	}
-	for _, model := range channelModels {
-		seen[strings.ToLower(model)] = struct{}{}
-	}
-
-	// ── Legacy: query subscription account abilities ─────────────────────
-	var subscriptionModels []string
-	if err := r.db.WithContext(ctx).
-		Model(&subscriptionAccountAbilityModel{}).
-		Where(r.routingGroupSQL("`group` = ? AND enabled = '1' AND model NOT LIKE ? AND model NOT LIKE ?"), group, "%*%", "%?%").
-		Distinct("model").
-		Pluck("model", &subscriptionModels).Error; err != nil {
+	if err := r.addRegistrySubscriptionModelsDB(ctx, group, seen); err != nil {
 		return nil, err
 	}
-	for _, model := range subscriptionModels {
-		seen[strings.ToLower(model)] = struct{}{}
-	}
-
 	return sortedModelIDs(seen), nil
 }
 
@@ -2032,7 +1718,7 @@ func (r *Repository) findByIDMemory(_ context.Context, channelID int64) (*biz.Ch
 	return &cloned, nil
 }
 
-func (r *Repository) listAbilitiesByGroupAndModelMemory(_ context.Context, group, model string) ([]biz.Ability, error) {
+func (r *Repository) listChannelCandidatesMemory(_ context.Context, group, model string) ([]biz.RoutingCandidate, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	managedModelPKs := make(map[int64]*biz.Model)
@@ -2041,124 +1727,35 @@ func (r *Repository) listAbilitiesByGroupAndModelMemory(_ context.Context, group
 			managedModelPKs[id] = managed
 		}
 	}
-	if len(managedModelPKs) > 0 {
-		abilities := make([]biz.Ability, 0)
-		for _, mapping := range r.modelChannelMappings {
-			managed, ok := managedModelPKs[mapping.ModelPK]
-			if !ok || !mapping.Enabled || managed.Status != biz.ModelStatusEnabled {
-				continue
-			}
-			channel, ok := r.channels[mapping.ChannelID]
-			if !ok || channel.Status != biz.ChannelStatusEnabled || !routing.ContainsGroup(channel.Group, group) {
-				continue
-			}
-			priority := int64(mapping.Priority)
-			if priority == 0 {
-				priority = channel.Priority
-			}
-			abilities = append(abilities, biz.Ability{
-				Group: group, Model: managed.ModelID, ChannelID: channel.ID,
-				Enabled: true, Priority: priority, UpstreamModelID: strings.TrimSpace(mapping.UpstreamModelID),
-			})
-		}
-		if len(abilities) == 0 {
-			return nil, biz.ErrChannelNotFound
-		}
-		return abilities, nil
-	}
-	// two-tier, exact-first tier互斥 — mirrors the DB path
-	// (listAbilitiesByGroupAndModelDB). Previously the memory path merged
-	// exact + wildcard matches in a single pass, so (a) a channel listing
-	// both "gpt-4o" and "gpt-*" was double-counted (double weight in the
-	// selector) and (b) DB vs memory diverged for the same data. Now: if any
-	// exact match exists, return ONLY those; otherwise fall back to
-	// wildcard-pattern matches.
-	exact := make([]biz.Ability, 0)
-	wild := make([]biz.Ability, 0)
-	for _, channel := range r.channels {
-		if channel.Status != biz.ChannelStatusEnabled {
+	candidates := make([]biz.RoutingCandidate, 0)
+	for _, mapping := range r.modelChannelMappings {
+		managed, ok := managedModelPKs[mapping.ModelPK]
+		if !ok || !mapping.Enabled || managed.Status != biz.ModelStatusEnabled {
 			continue
 		}
-		for _, channelGroup := range routing.Groups(channel.Group) {
-			if channelGroup != group {
-				continue
-			}
-			for _, channelModel := range channel.Models {
-				if strings.EqualFold(channelModel, model) {
-					exact = append(exact, biz.Ability{
-						Group: group, Model: model, ChannelID: channel.ID,
-						Enabled: true, Priority: channel.Priority,
-					})
-					continue
-				}
-				if wildcard.IsPattern(channelModel) && wildcard.Match(channelModel, model) {
-					wild = append(wild, biz.Ability{
-						Group: group, Model: model, ChannelID: channel.ID,
-						Enabled: true, Priority: channel.Priority,
-					})
-				}
-			}
+		channel, ok := r.channels[mapping.ChannelID]
+		if !ok || channel.Status != biz.ChannelStatusEnabled || !routing.ContainsGroup(channel.Group, group) {
+			continue
 		}
+		priority := int64(mapping.Priority)
+		if priority == 0 {
+			priority = channel.Priority
+		}
+		candidates = append(candidates, biz.RoutingCandidate{
+			Group: group, Model: managed.ModelID, ChannelID: channel.ID,
+			Enabled: true, Priority: priority, UpstreamModelID: strings.TrimSpace(mapping.UpstreamModelID),
+		})
 	}
-	if len(exact) > 0 {
-		return exact, nil
+	if len(candidates) == 0 {
+		return nil, biz.ErrChannelNotFound
 	}
-	return wild, nil
+	return candidates, nil
 }
 
 func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) ([]string, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	seen := make(map[string]struct{})
-
-	// Before the model registry is populated, preserve the legacy abilities
-	// behavior. Once any managed models exist, only registry routes below are
-	// advertised so status/is_public remain authoritative.
-	if len(r.models) == 0 {
-		// ── Legacy: collect models from regular channels ─────────────────────
-		// P1 (#4): wildcard patterns (e.g. "claude-*", "*") are routing rules,
-		// not real advertiseable models — listing them in /v1/models would expose
-		// internal glob keys to clients. Skip any model name that is itself a
-		// wildcard pattern.
-		for _, channel := range r.channels {
-			if channel.Status != biz.ChannelStatusEnabled {
-				continue
-			}
-			for _, channelGroup := range routing.Groups(channel.Group) {
-				if channelGroup != group {
-					continue
-				}
-				for _, model := range channel.Models {
-					if wildcard.IsPattern(model) {
-						continue
-					}
-					seen[strings.ToLower(model)] = struct{}{}
-				}
-			}
-		}
-
-		// ── Legacy: collect models from subscription accounts ────────────────
-		for _, account := range r.subAccounts {
-			if account.Status != biz.ChannelStatusEnabled {
-				continue
-			}
-			for _, accountGroup := range routing.Groups(account.Group) {
-				if accountGroup != group {
-					continue
-				}
-				for _, model := range account.Models {
-					if wildcard.IsPattern(model) {
-						continue
-					}
-					seen[strings.ToLower(model)] = struct{}{}
-				}
-			}
-		}
-	}
-
-	// ── Sprint 3: dual-read from model registry (memory mode) ────────────
-	// Collect model_ids from the in-memory model_channel_mappings where the
-	// model is enabled and the channel is enabled and in the requested group.
 	for _, mcm := range r.modelChannelMappings {
 		if !mcm.Enabled {
 			continue
@@ -2175,8 +1772,6 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 			seen[strings.ToLower(model.ModelID)] = struct{}{}
 		}
 	}
-
-	// Collect model_ids from model_subscription_mappings.
 	for _, msm := range r.modelSubscriptionMappings {
 		if !msm.Enabled {
 			continue
@@ -2193,7 +1788,6 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 			seen[strings.ToLower(model.ModelID)] = struct{}{}
 		}
 	}
-
 	return sortedModelIDs(seen), nil
 }
 
@@ -2252,9 +1846,6 @@ func (r *Repository) createChannelDB(ctx context.Context, channel *biz.Channel) 
 		if err := authzquery.AppendWriteAudit(ctx, tx, "channel.channel.create", model.ID); err != nil {
 			return err
 		}
-		if err := r.syncAbilitiesTx(tx, channel); err != nil {
-			return err
-		}
 		return r.syncChannelModelMappingsTx(tx, channel)
 	})
 }
@@ -2302,7 +1893,6 @@ func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) 
 			"priority":                             model.Priority,
 			"weight":                               model.Weight,
 			"model_mapping":                        model.ModelMapping,
-			"restrict_models":                      model.RestrictModels,
 			"system_prompt":                        model.SystemPrompt,
 			"config":                               model.Config,
 			"balance":                              model.Balance,
@@ -2317,9 +1907,6 @@ func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) 
 			"health_consecutive_failures":          model.HealthConsecutiveFailures,
 			"circuit_opened_until":                 model.CircuitOpenedUntil,
 		}).Error; err != nil {
-			return err
-		}
-		if err := r.syncAbilitiesTx(tx, channel); err != nil {
 			return err
 		}
 		return r.syncChannelModelMappingsTx(tx, channel)
@@ -2340,9 +1927,6 @@ func (r *Repository) deleteChannelDB(ctx context.Context, channelID int64) error
 		if err := tx.Where("id = ?", channelID).Delete(&channelModel{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("channel_id = ?", channelID).Delete(&abilityModel{}).Error; err != nil {
-			return err
-		}
 		return tx.Where("channel_id = ?", channelID).Delete(&modelChannelMappingModel{}).Error
 	})
 }
@@ -2355,45 +1939,8 @@ func (r *Repository) changeStatusDB(ctx context.Context, channelID int64, status
 		if err := tx.Model(&channelModel{}).Where("id = ?", channelID).Update("status", status).Error; err != nil {
 			return err
 		}
-		enabled := status == biz.ChannelStatusEnabled
-		return tx.Model(&abilityModel{}).Where("channel_id = ?", channelID).Update("enabled", xdb.BoolInt(enabled)).Error
-	})
-}
-
-// syncAbilitiesTx rewrites ability rows for one channel: every old row for
-// channel_id is deleted, then a fresh row is inserted for each (group, model)
-// pair derived from the channel. Caller MUST pass an active gorm transaction.
-func (r *Repository) syncAbilitiesTx(tx *gorm.DB, channel *biz.Channel) error {
-	if err := r.syncRoutingMembersTx(tx, routing.Source{Kind: routing.Channel, ID: channel.ID}, channel.Group); err != nil {
-		return err
-	}
-	if err := tx.Where("channel_id = ?", channel.ID).Delete(&abilityModel{}).Error; err != nil {
-		return err
-	}
-	enabled := channel.Status == biz.ChannelStatusEnabled
-	priority := channel.Priority
-	rows := make([]abilityModel, 0)
-	for _, group := range routing.Groups(channel.Group) {
-		if group == "" {
-			continue
-		}
-		for _, model := range channel.Models {
-			if model == "" {
-				continue
-			}
-			rows = append(rows, abilityModel{
-				Group:     group,
-				Model:     model,
-				ChannelID: channel.ID,
-				Enabled:   xdb.BoolInt(enabled),
-				Priority:  &priority,
-			})
-		}
-	}
-	if len(rows) == 0 {
 		return nil
-	}
-	return tx.Create(&rows).Error
+	})
 }
 
 const autoChannelModelMappingConfig = `{"_managed_by":"channel_models"}`
@@ -2409,18 +1956,21 @@ const autoChannelModelMappingConfig = `{"_managed_by":"channel_models"}`
 // intentional: relay resolution then applies channel.model_mapping and finally
 // preserves the exact spelling from channel.Models.
 func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channel) error {
+	if err := r.syncRoutingMembersTx(tx, routing.Source{Kind: routing.Channel, ID: channel.ID}, channel.Group); err != nil {
+		return err
+	}
 	// Keep older installations usable until the registry migrations are applied.
 	if !tx.Migrator().HasTable(&modelModel{}) || !tx.Migrator().HasTable(&modelChannelMappingModel{}) {
 		return nil
 	}
 
-	wantedCanonical := make(map[string]struct{}, len(channel.Models))
+	wantedCanonical := make(map[string]string, len(channel.Models))
 	for _, raw := range channel.Models {
 		raw = strings.TrimSpace(raw)
 		if raw == "" || strings.ContainsAny(raw, "*?") {
 			continue
 		}
-		wantedCanonical[biz.NormalizeModelID(raw)] = struct{}{}
+		wantedCanonical[biz.NormalizeModelID(raw)] = raw
 	}
 
 	canonicalIDs := make([]string, 0, len(wantedCanonical))
@@ -2475,9 +2025,9 @@ func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channe
 			}
 		}
 	}
-	wanted := make(map[int64]struct{}, len(registeredByCanonical))
-	for _, pk := range registeredByCanonical {
-		wanted[pk] = struct{}{}
+	wanted := make(map[int64]string, len(registeredByCanonical))
+	for canonicalID, pk := range registeredByCanonical {
+		wanted[pk] = wantedCanonical[canonicalID]
 	}
 
 	var existing []modelChannelMappingModel
@@ -2496,7 +2046,7 @@ func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channe
 		}
 		if _, ok := wanted[row.ModelPK]; !ok {
 			managedToDelete = append(managedToDelete, row.ID)
-		} else if !row.Enabled || row.Priority != priority {
+		} else if !row.Enabled || row.Priority != priority || row.UpstreamModelID != wanted[row.ModelPK] {
 			managedToUpdate = append(managedToUpdate, row.ID)
 		}
 	}
@@ -2520,22 +2070,32 @@ func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channe
 		}
 	}
 	if len(managedToUpdate) > 0 {
-		if err := tx.Model(&modelChannelMappingModel{}).Where("id IN ?", managedToUpdate).Updates(map[string]any{
-			"enabled": true, "priority": priority, "updated_at": now,
-		}).Error; err != nil {
-			return err
+		toUpdate := make(map[int64]struct{}, len(managedToUpdate))
+		for _, id := range managedToUpdate {
+			toUpdate[id] = struct{}{}
+		}
+		for _, row := range existing {
+			if _, ok := toUpdate[row.ID]; !ok {
+				continue
+			}
+			if err := tx.Model(&modelChannelMappingModel{}).Where("id = ?", row.ID).Updates(map[string]any{
+				"enabled": true, "priority": priority,
+				"upstream_model_id": wanted[row.ModelPK], "updated_at": now,
+			}).Error; err != nil {
+				return err
+			}
 		}
 	}
 
 	missingMappings := make([]modelChannelMappingModel, 0, len(wanted))
-	for modelPK := range wanted {
+	for modelPK, upstream := range wanted {
 		if _, ok := existingByModel[modelPK]; ok {
 			continue
 		}
 		missingMappings = append(missingMappings, modelChannelMappingModel{
 			ChannelID: channel.ID, ModelPK: modelPK, Enabled: true,
 			Priority: priority, Config: autoChannelModelMappingConfig,
-			CreatedAt: now, UpdatedAt: now,
+			UpstreamModelID: upstream, CreatedAt: now, UpdatedAt: now,
 		})
 	}
 	if len(missingMappings) > 0 {
@@ -2618,38 +2178,126 @@ func providerForModelID(modelID string) string {
 	}
 }
 
-func (r *Repository) syncSubscriptionAccountAbilitiesTx(tx *gorm.DB, account *biz.SubscriptionAccount) error {
+const autoSubscriptionModelMappingConfig = `{"_managed_by":"subscription_models"}`
+
+func subscriptionModelMappingKey(group string, modelPK int64) string {
+	return fmt.Sprintf("%s\x00%d", group, modelPK)
+}
+
+// syncSubscriptionAccountModelMappingsTx projects the account's model CSV into
+// registry mappings. Operator-created mappings remain untouched; only rows with
+// the private auto marker are rewritten.
+func (r *Repository) syncSubscriptionAccountModelMappingsTx(tx *gorm.DB, account *biz.SubscriptionAccount) error {
 	if err := r.syncRoutingMembersTx(tx, routing.Source{Kind: routing.Subscription, ID: account.ID}, account.Group); err != nil {
 		return err
 	}
-	if err := tx.Where("account_id = ?", account.ID).Delete(&subscriptionAccountAbilityModel{}).Error; err != nil {
-		return err
-	}
-	enabled := account.Status == biz.ChannelStatusEnabled
-	priority := account.Priority
-	rows := make([]subscriptionAccountAbilityModel, 0)
+	now := now()
+	priority := safecast.Int64ToInt32Saturating(account.Priority)
+	desired := make(map[string]modelSubscriptionMappingModel)
 	for _, group := range routing.Groups(account.Group) {
 		if group == "" {
 			continue
 		}
-		for _, model := range account.Models {
-			if model == "" {
+		for _, raw := range account.Models {
+			modelID := biz.NormalizeModelID(raw)
+			if modelID == "" || strings.ContainsAny(modelID, "*?") {
 				continue
 			}
-			rows = append(rows, subscriptionAccountAbilityModel{
-				Group:     group,
-				Model:     model,
-				Platform:  account.Platform,
-				AccountID: account.ID,
-				Enabled:   xdb.BoolInt(enabled),
-				Priority:  &priority,
-			})
+			modelPK, err := ensureModelRegistryRowTx(tx, modelID)
+			if err != nil {
+				return err
+			}
+			key := subscriptionModelMappingKey(group, modelPK)
+			desired[key] = modelSubscriptionMappingModel{
+				SubscriptionAccountID: account.ID,
+				ModelPK:               modelPK,
+				GroupName:             group,
+				Enabled:               true,
+				Priority:              priority,
+				Config:                autoSubscriptionModelMappingConfig,
+				UpstreamModelID:       strings.TrimSpace(raw),
+				CreatedAt:             now,
+				UpdatedAt:             now,
+			}
 		}
 	}
-	if len(rows) == 0 {
-		return nil
+
+	var existing []modelSubscriptionMappingModel
+	if err := tx.Where("subscription_account_id = ?", account.ID).Find(&existing).Error; err != nil {
+		return err
 	}
-	return tx.Create(&rows).Error
+	existingByKey := make(map[string]modelSubscriptionMappingModel, len(existing))
+	autoByKey := make(map[string]modelSubscriptionMappingModel, len(existing))
+	for _, row := range existing {
+		key := subscriptionModelMappingKey(row.GroupName, row.ModelPK)
+		existingByKey[key] = row
+		if row.Config == autoSubscriptionModelMappingConfig {
+			autoByKey[key] = row
+		}
+	}
+	managedToDelete := make([]int64, 0)
+	managedToUpdate := make([]int64, 0)
+	createKeys := make([]string, 0)
+	for key, row := range autoByKey {
+		if _, ok := desired[key]; !ok {
+			managedToDelete = append(managedToDelete, row.ID)
+		}
+	}
+	for key := range desired {
+		if current, ok := existingByKey[key]; ok {
+			if current.Config == autoSubscriptionModelMappingConfig {
+				managedToUpdate = append(managedToUpdate, current.ID)
+			}
+			continue
+		}
+		createKeys = append(createKeys, key)
+	}
+	for _, id := range managedToDelete {
+		if err := requireSubscriptionMappingEffect(tx, r, account.ID, id, "channel.model_mapping.delete"); err != nil {
+			return err
+		}
+	}
+	for _, id := range managedToUpdate {
+		if err := requireSubscriptionMappingEffect(tx, r, account.ID, id, "channel.model_mapping.update"); err != nil {
+			return err
+		}
+	}
+	if len(createKeys) > 0 {
+		if err := requireSubscriptionMappingEffect(tx, r, account.ID, 0, "channel.model_mapping.create"); err != nil {
+			return err
+		}
+	}
+	for _, id := range managedToDelete {
+		if err := tx.Where("id = ?", id).Delete(&modelSubscriptionMappingModel{}).Error; err != nil {
+			return err
+		}
+	}
+	for key, next := range desired {
+		if current, ok := existingByKey[key]; ok {
+			if current.Config != autoSubscriptionModelMappingConfig {
+				continue
+			}
+			if err := tx.Model(&modelSubscriptionMappingModel{}).Where("id = ?", current.ID).Updates(map[string]any{
+				"enabled":           true,
+				"priority":          next.Priority,
+				"upstream_model_id": next.UpstreamModelID,
+				"updated_at":        now,
+			}).Error; err != nil {
+				return err
+			}
+			if err := r.syncRoutingMappingTx(tx, "model_subscription_mapping", map[string]any{"id": current.ID}, next.GroupName); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := tx.Create(&next).Error; err != nil {
+			return err
+		}
+		if err := r.syncRoutingMappingTx(tx, "model_subscription_mapping", map[string]any{"id": next.ID}, next.GroupName); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // encryptKey encrypts a credential for storage. Persistent repositories always
@@ -2729,7 +2377,6 @@ func (r *Repository) modelToChannel(m *channelModel) (*biz.Channel, error) {
 		UsedQuota:                         m.UsedQuota,
 		ModelMapping:                      derefString(m.ModelMapping),
 		SystemPrompt:                      derefString(m.SystemPrompt),
-		RestrictModels:                    m.RestrictModels != 0,
 		Config:                            biz.DecodeChannelConfig(m.Config),
 	}, nil
 }
@@ -2773,7 +2420,6 @@ func (r *Repository) channelToModel(ch *biz.Channel) (*channelModel, error) {
 		Key:                               key,
 		Config:                            string(config),
 		SystemPrompt:                      new(ch.SystemPrompt),
-		RestrictModels:                    xdb.BoolInt(ch.RestrictModels),
 	}, nil
 }
 

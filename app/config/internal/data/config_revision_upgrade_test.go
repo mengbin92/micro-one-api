@@ -22,10 +22,10 @@ func TestConfigLegacyRevisionUpgrade(t *testing.T) {
 				require.NoError(t, r.Set(context.Background(), &biz.ConfigEntry{Namespace: "system", Key: key, Value: key}))
 			}
 			// Migration 105 left existing config keys at revision zero.
-			require.NoError(t, db.Model(&configModel{}).Where("key = ?", "notice").Update("revision", 0).Error)
-			require.NoError(t, db.Model(&configModel{}).Where("key IN ?", []string{"current", "deleted"}).Update("revision", 7).Error)
-			require.NoError(t, db.Model(&configModel{}).Where("key = ?", "deleted").Update("deleted", 1).Error)
-			require.NoError(t, db.Model(&configModel{}).Where("key = ?", "invalid").Update("revision", -1).Error)
+			require.NoError(t, db.Model(&configModel{}).Where(map[string]any{"key": "notice"}).Update("revision", 0).Error)
+			require.NoError(t, db.Model(&configModel{}).Where(map[string]any{"key": []string{"current", "deleted"}}).Update("revision", 7).Error)
+			require.NoError(t, db.Model(&configModel{}).Where(map[string]any{"key": "deleted"}).Update("deleted", 1).Error)
+			require.NoError(t, db.Model(&configModel{}).Where(map[string]any{"key": "invalid"}).Update("revision", -1).Error)
 			require.NoError(t, db.Exec("DELETE FROM schema_migrations WHERE version = ?", "125_backfill_config_revision").Error)
 			sqlDB, err := db.DB()
 			require.NoError(t, err)
@@ -45,14 +45,14 @@ func TestConfigLegacyRevisionUpgrade(t *testing.T) {
 			require.ErrorIs(t, uc.DeleteConfig(authorization.WithWriteReason(ctx, ""), "system", "notice"), biz.ErrConfigMutationRequired)
 			require.NoError(t, uc.DeleteConfig(ctx, "system", "notice"))
 			var deleted configModel
-			require.NoError(t, db.Where("key = ?", "notice").First(&deleted).Error)
+			require.NoError(t, db.Where(map[string]any{"key": "notice"}).First(&deleted).Error)
 			require.EqualValues(t, 2, deleted.Revision)
 			require.EqualValues(t, 1, deleted.Deleted)
 			_, err = uc.SetConfigEntry(ctx, "system", "notice", "stale", "")
 			require.ErrorIs(t, err, biz.ErrConfigRevisionConflict)
 			for key, revision := range map[string]int64{"current": 7, "deleted": 7, "invalid": -1} {
 				var row configModel
-				require.NoError(t, db.Where("key = ?", key).First(&row).Error)
+				require.NoError(t, db.Where(map[string]any{"key": key}).First(&row).Error)
 				require.Equal(t, revision, row.Revision)
 			}
 			applied, err := runner.Apply(context.Background())

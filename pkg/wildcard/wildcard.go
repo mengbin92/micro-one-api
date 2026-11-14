@@ -6,11 +6,11 @@
 //   - "*" matches any sequence of characters (including empty)
 //   - "?" matches any single character
 //   - "claude-*" matches "claude-sonnet-4", "claude-3-5-sonnet", etc.
-//   - "*" matches everything (the catch-all used when RestrictModels=false
-//     or as a model_mapping catch-all key)
+//   - "*" matches everything (retired catch-all semantics, or as a
+//     model_mapping catch-all key)
 //
 // Matching is case-insensitive to match the rest of the routing stack
-// (abilities are stored and compared LOWER(model) = LOWER(?)).
+// (registry mappings are stored and compared LOWER(model) = LOWER(?)).
 package wildcard
 
 import "strings"

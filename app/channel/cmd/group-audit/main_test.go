@@ -38,8 +38,6 @@ func auditStatements() []string {
 		"CREATE TABLE payment_orders (id INTEGER PRIMARY KEY, user_id TEXT, asset_type TEXT, group_id INTEGER, plan_id INTEGER, subscription_id INTEGER, status TEXT, asset_issue_status TEXT, plan_snapshot TEXT)",
 		"CREATE TABLE channels (id INTEGER PRIMARY KEY, status INTEGER, `group` TEXT, models TEXT, restrict_models BOOLEAN, priority INTEGER)",
 		"CREATE TABLE subscription_accounts (id INTEGER PRIMARY KEY, status INTEGER, `group` TEXT, models TEXT, platform TEXT, priority INTEGER)",
-		"CREATE TABLE abilities (`group` TEXT, model TEXT, channel_id INTEGER, enabled BOOLEAN, priority INTEGER)",
-		"CREATE TABLE subscription_account_abilities (id INTEGER PRIMARY KEY, `group` TEXT, model TEXT, account_id INTEGER, platform TEXT, enabled BOOLEAN, priority INTEGER)",
 		"CREATE TABLE models (id INTEGER PRIMARY KEY, model_id TEXT, status INTEGER, is_public BOOLEAN)",
 		"CREATE TABLE model_channel_mapping (id INTEGER PRIMARY KEY, model_id INTEGER, channel_id INTEGER, enabled BOOLEAN, upstream_model_id TEXT, priority INTEGER)",
 		"CREATE TABLE model_subscription_mapping (id INTEGER PRIMARY KEY, model_id INTEGER, subscription_account_id INTEGER, group_name TEXT, enabled BOOLEAN, upstream_model_id TEXT, priority INTEGER)",
@@ -52,7 +50,6 @@ func auditStatements() []string {
 		"INSERT INTO user_subscriptions VALUES (102, 1, 100, 'active', 1700000000, 1900000000)",
 		`INSERT INTO payment_orders VALUES (103, '1', 'subscription', 100, 101, 0, 'pending', 'pending', '{"plan_id":101,"group_id":100,"validity_days":30,"price_quota":100,"name":"PRIVATE_PLAN_NAME","metadata":"SECRET_SENTINEL"}')`,
 		"INSERT INTO channels VALUES (1, 1, 'default', 'legacy-*', true, 0)",
-		"INSERT INTO abilities VALUES ('default', 'legacy-*', 1, true, 0)",
 		"INSERT INTO subscription_accounts VALUES (1, 1, 'default, default', 'managed', 'codex', 0)",
 		"INSERT INTO models VALUES (1, 'managed', 1, true)",
 		"INSERT INTO model_subscription_mapping VALUES (1, 1, 1, 'vip', true, 'upstream-managed', 0)",
@@ -82,14 +79,11 @@ func TestAuditReadOnlyDeterministicAndModelScoped(t *testing.T) {
 	require.NotContains(t, report.Groups, "100")
 	require.NotContains(t, output.String(), "PRIVATE_PLAN_NAME")
 	require.NotContains(t, output.String(), "SECRET_SENTINEL")
-	require.Len(t, report.Grants, 2)
-	require.Equal(t, "default", report.Grants[0].Group)
-	require.Equal(t, "legacy-chat", report.Grants[0].Model)
-	require.Equal(t, "channel", report.Grants[0].Source.Kind)
-	require.Equal(t, "vip", report.Grants[1].Group)
-	require.Equal(t, "managed", report.Grants[1].Model)
-	require.Equal(t, "subscription", report.Grants[1].Source.Kind)
-	require.Equal(t, "upstream-managed", report.Grants[1].UpstreamModelID)
+	require.Len(t, report.Grants, 1)
+	require.Equal(t, "vip", report.Grants[0].Group)
+	require.Equal(t, "managed", report.Grants[0].Model)
+	require.Equal(t, "subscription", report.Grants[0].Source.Kind)
+	require.Equal(t, "upstream-managed", report.Grants[0].UpstreamModelID)
 	codes := map[string]bool{}
 	for _, issue := range report.Issues {
 		codes[issue.Code] = true

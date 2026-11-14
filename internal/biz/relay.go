@@ -146,11 +146,7 @@ type Channel struct {
 	Config                        ChannelConfig
 
 	// ModelMapping is a JSON {"src":"dst"} channel-level model remap.
-	ModelMapping string
-	// RestrictModels is the P1 (#2) catch-all flag: false=allow unregistered
-	// models to route to this channel, true=require an abilities row. Default
-	// true (legacy). See docs/model-management-design.md §9.3 #2.
-	RestrictModels  bool
+	ModelMapping    string
 	UpstreamModelID string
 	// SubscriptionAccountID identifies channels projected from subscription
 	// accounts. Their numeric IDs live in a different namespace from ordinary
@@ -1012,7 +1008,7 @@ func (uc *RelayUsecase) ResolveSubscriptionRoutingSource(
 func (uc *RelayUsecase) selectSubscriptionAccountForModel(ctx context.Context, group, model string, exclude map[int64]bool) (*SubscriptionAccount, error) {
 	platforms := subscriptionPlatformsForModel(model)
 	if len(platforms) == 0 {
-		// The abilities table is authoritative for aliases and future providers.
+		// Registry mappings are authoritative for aliases and future providers.
 		return uc.selectSchedulableSubscriptionAccount(ctx, group, model, "", exclude)
 	}
 
@@ -1128,7 +1124,6 @@ func subscriptionAccountToChannel(account *SubscriptionAccount) (*Channel, error
 		Priority:                      account.Priority,
 		ModelMapping:                  account.ModelMapping,
 		UpstreamModelID:               account.UpstreamModelID,
-		RestrictModels:                true, // subscription accounts require explicit abilities; never catch-all
 		// Key intentionally left empty: the access token is NOT projected onto
 		// the generic Channel.Key field. The server layer resolves it via the
 		// SubscriptionAccountResolver (plan.Account) / credential store so it
@@ -1165,7 +1160,7 @@ func ApplyChannelModelMapping(mappingJSON, model string) string {
 // upstream. An explicit per-channel mapping is authoritative. Otherwise, when
 // selection matched a configured model case-insensitively, preserve the
 // channel's configured spelling because some upstreams treat model IDs as
-// case-sensitive. Wildcard abilities remain routing-only and are never sent as
+// case-sensitive. Wildcard registry entries remain routing-only and are never sent as
 // model identifiers.
 func ResolveChannelModel(channel *Channel, model string) string {
 	if channel == nil {

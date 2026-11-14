@@ -74,7 +74,6 @@ func TestRoutingGroupRealDatabase(t *testing.T) {
 			require.NoError(t, gdb.Table("channels").Where("id = 1").Update("group", "default,vip").Error)
 			verifyRoutingGroupDualWrites(t, gdb, driver)
 			verifyRoutingGroupExactKeys(t, gdb)
-			verifyRoutingGroupShadowRejectsLikeExpansion(t, db, gdb, driver)
 		})
 	}
 }

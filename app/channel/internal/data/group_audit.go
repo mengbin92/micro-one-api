@@ -93,13 +93,6 @@ func (r *groupAuditRepo) FindSubscriptionAccountByID(ctx context.Context, id int
 	return &biz.SubscriptionAccount{ID: row.ID, Status: row.Status, Platform: row.Platform}, nil
 }
 
-func (r *groupAuditRepo) ListUnrestrictedChannelsByGroup(ctx context.Context, group string) ([]*biz.Channel, error) {
-	// Share the exact query predicate with the serving repository, but project
-	// only ID and status so credentials never enter the audit process.
-	rows, err := r.Repository.listUnrestrictedChannelsByGroupDB(ctx, group, "id", "status")
-	return rows, err
-}
-
 func (r *groupAuditRepo) LoadGroupInventory(ctx context.Context) (*biz.GroupInventory, error) {
 	db := r.db.WithContext(ctx)
 	inventory := &biz.GroupInventory{}
@@ -145,20 +138,6 @@ func (r *groupAuditRepo) LoadGroupInventory(ctx context.Context) (*biz.GroupInve
 		inventory.Sources = append(inventory.Sources, source)
 		add("subscription_accounts", row.ID, row.Group, true, source, "")
 		inventory.Models = append(inventory.Models, strings.Split(row.Models, ",")...)
-	}
-	var abilities []abilityModel
-	if err := db.Find(&abilities).Error; err != nil {
-		return nil, err
-	}
-	for _, row := range abilities {
-		add("abilities", row.ChannelID, row.Group, false, routing.Source{Kind: routing.Channel, ID: row.ChannelID}, row.Model)
-	}
-	var subAbilities []subscriptionAccountAbilityModel
-	if err := db.Find(&subAbilities).Error; err != nil {
-		return nil, err
-	}
-	for _, row := range subAbilities {
-		add("subscription_account_abilities", row.ID, row.Group, false, routing.Source{Kind: routing.Subscription, ID: row.AccountID}, row.Model)
 	}
 	var models []modelModel
 	if err := db.Select("id", "model_id").Find(&models).Error; err != nil {

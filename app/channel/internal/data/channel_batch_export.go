@@ -75,9 +75,6 @@ func (r *Repository) BatchDeleteChannels(ctx context.Context, ids []int64, expec
 			if err := tx.Where("channel_id = ?", id).Delete(&modelChannelMappingModel{}).Error; err != nil {
 				return err
 			}
-			if err := tx.Where("channel_id = ?", id).Delete(&abilityModel{}).Error; err != nil {
-				return err
-			}
 			if err := tx.Where("id = ?", id).Delete(&channelModel{}).Error; err != nil {
 				return err
 			}

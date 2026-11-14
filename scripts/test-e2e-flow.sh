@@ -182,7 +182,7 @@ log "All services ready."
 # ── Step 1: Prepare test channel pointing to mock upstream ──
 
 log "Preparing test channel for mock-upstream..."
-# Create through the owner so credentials and ability projections use the
+# Create through the owner so credentials and model registry mappings use the
 # same persistence rules as real channels.
 curl --fail --silent --show-error --retry 10 --retry-all-errors --retry-delay 1 \
     --retry-max-time 30 --max-time 10 http://127.0.0.1:3000/healthz > /dev/null
@@ -203,12 +203,12 @@ channel_status=$(docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_
     "SELECT status = 1 AND \`key\` <> 'sk-mock-key' FROM channels WHERE name='e2e-mock-openai' LIMIT 1;" 2>/dev/null)
 channel_url=$(docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
     "SELECT base_url FROM channels WHERE name='e2e-mock-openai' LIMIT 1;" 2>/dev/null)
-ability_count=$(docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
-    "SELECT COUNT(*) FROM abilities a JOIN channels c ON c.id=a.channel_id WHERE c.name='e2e-mock-openai' AND a.enabled=1;" 2>/dev/null)
-if [ "$channel_status" = "1" ] && [ "$channel_url" = "http://mock-upstream:9999" ] && [ "$ability_count" -ge 2 ]; then
+mapping_count=$(docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
+    "SELECT COUNT(*) FROM model_channel_mapping mcm JOIN channels c ON c.id=mcm.channel_id WHERE c.name='e2e-mock-openai' AND mcm.enabled=1;" 2>/dev/null)
+if [ "$channel_status" = "1" ] && [ "$channel_url" = "http://mock-upstream:9999" ] && [ "$mapping_count" -ge 2 ]; then
     log "Test channel ready: $channel_url"
 else
-    fail "Test channel setup failed: status='$channel_status', url='$channel_url', abilities='$ability_count'"
+    fail "Test channel setup failed: status='$channel_status', url='$channel_url', mappings='$mapping_count'"
     exit 1
 fi
 

@@ -114,7 +114,7 @@ func TestSelectSubscriptionAccount_RoutingPinsAccount(t *testing.T) {
 			1: {ID: 1, Name: "a", Status: ChannelStatusEnabled, Platform: "codex", Priority: 10},
 			2: {ID: 2, Name: "b", Status: ChannelStatusEnabled, Platform: "codex", Priority: 10},
 		},
-		accAbilities: map[string][]SubscriptionAccountAbility{
+		accAbilities: map[string][]SubscriptionRoutingCandidate{
 			"codex:default:gpt-5": {
 				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 1, Enabled: true, Priority: 10},
 				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 2, Enabled: true, Priority: 10},
@@ -145,7 +145,7 @@ func TestSelectSubscriptionAccount_NoRoutingUsesNormalSelection(t *testing.T) {
 			1: {ID: 1, Name: "a", Status: ChannelStatusEnabled, Platform: "codex", Priority: 10},
 			2: {ID: 2, Name: "b", Status: ChannelStatusEnabled, Platform: "codex", Priority: 10},
 		},
-		accAbilities: map[string][]SubscriptionAccountAbility{
+		accAbilities: map[string][]SubscriptionRoutingCandidate{
 			"codex:default:gpt-5": {
 				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 1, Enabled: true, Priority: 10},
 				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 2, Enabled: true, Priority: 10},

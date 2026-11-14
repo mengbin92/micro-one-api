@@ -135,6 +135,7 @@ type ModelSubscriptionMapping struct {
 	Enabled               bool
 	EnabledHasValue       bool
 	Priority              int32
+	Config                string
 	UpstreamModelID       string
 	CreatedAt             int64
 	UpdatedAt             int64

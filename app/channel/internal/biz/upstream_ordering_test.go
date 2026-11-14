@@ -44,13 +44,8 @@ func (r *delayedUpstreamSnapshotRepo) FindSubscriptionAccountByID(context.Contex
 	return &account, nil
 }
 
-func (r *delayedUpstreamSnapshotRepo) ListUnrestrictedChannelsByGroup(context.Context, string) ([]*Channel, error) {
-	channel, err := r.FindByID(context.Background(), 7)
-	return []*Channel{channel}, err
-}
-
 func TestOwnerSnapshotOrderingPreservesNewGenerationQuarantine(t *testing.T) {
-	for _, path := range []string{"channel", "channel-excluding", "catch-all", "subscription", "subscription-excluding"} {
+	for _, path := range []string{"channel", "channel-excluding", "subscription", "subscription-excluding"} {
 		t.Run(path, func(t *testing.T) {
 			kind := "channel"
 			if path == "subscription" || path == "subscription-excluding" {
@@ -68,8 +63,6 @@ func TestOwnerSnapshotOrderingPreservesNewGenerationQuarantine(t *testing.T) {
 					_, err = uc.SelectChannel(context.Background(), "g", "model-a", false)
 				case "channel-excluding":
 					_, err = uc.SelectChannelExcluding(context.Background(), "g", "model-a", nil)
-				case "catch-all":
-					_, err = uc.SelectChannel(context.Background(), "g", "unlisted", false)
 				case "subscription":
 					_, err = uc.SelectSubscriptionAccount(context.Background(), "g", "model-a", "codex", false)
 				default:
@@ -120,16 +113,14 @@ func TestOwnerSnapshotOrderingPreservesNewGenerationQuarantine(t *testing.T) {
 }
 
 func TestOwnerExecutionClaimsApplyQuarantineToResolvedLegacyModels(t *testing.T) {
-	for _, kind := range []string{"channel", "catch-all", "subscription"} {
+	for _, kind := range []string{"channel", "subscription"} {
 		t.Run(kind, func(t *testing.T) {
 			channel := &Channel{ID: 7, Status: ChannelStatusEnabled, Group: "g", Models: []string{"legacy-a", "legacy-b"}, ModelMapping: `{"legacy-a":"actual-a","legacy-b":"actual-b"}`}
 			account := &SubscriptionAccount{ID: 7, Status: ChannelStatusEnabled, Platform: "codex", Group: "g", Models: channel.Models, ModelMapping: channel.ModelMapping}
-			repo := &mockChannelRepo{channels: map[int64]*Channel{7: channel}, accounts: map[int64]*SubscriptionAccount{7: account}, abilities: map[string][]Ability{}, accAbilities: map[string][]SubscriptionAccountAbility{}}
-			if kind != "catch-all" {
-				for _, model := range channel.Models {
-					repo.abilities["g:"+model] = []Ability{{ChannelID: 7, Enabled: true}}
-					repo.accAbilities["codex:g:"+model] = []SubscriptionAccountAbility{{AccountID: 7, Enabled: true}}
-				}
+			repo := &mockChannelRepo{channels: map[int64]*Channel{7: channel}, accounts: map[int64]*SubscriptionAccount{7: account}, candidates: map[string][]RoutingCandidate{}, accAbilities: map[string][]SubscriptionRoutingCandidate{}}
+			for _, model := range channel.Models {
+				repo.candidates["g:"+model] = []RoutingCandidate{{ChannelID: 7, Enabled: true}}
+				repo.accAbilities["codex:g:"+model] = []SubscriptionRoutingCandidate{{AccountID: 7, Enabled: true}}
 			}
 			uc := NewChannelUsecase(repo, nil)
 			selectModel := func(model string) (string, error) {
@@ -171,18 +162,14 @@ func TestOwnerExecutionClaimsApplyQuarantineToResolvedLegacyModels(t *testing.T)
 	}
 }
 
-func TestOwnerExcludingAndCatchAllSelectionsRetainProbeIdentity(t *testing.T) {
-	for _, path := range []string{"excluding", "catch-all"} {
+func TestOwnerExcludingSelectionsRetainProbeIdentity(t *testing.T) {
+	for _, path := range []string{"excluding"} {
 		t.Run(path, func(t *testing.T) {
 			uc, _, control, circuit := upstreamExecutionFixture(t, "channel")
 			*circuit = time.Now().Add(-time.Second).UnixNano()
 			var selected *Channel
 			var err error
-			if path == "excluding" {
-				selected, err = uc.SelectChannelExcluding(context.Background(), "g", "model-a", nil)
-			} else {
-				selected, err = uc.SelectChannel(context.Background(), "g", "unlisted", false)
-			}
+			selected, err = uc.SelectChannelExcluding(context.Background(), "g", "model-a", nil)
 			if err != nil || selected.HealthProbeID == "" || selected.HealthProbeID != control.probeID {
 				t.Fatalf("selected source lost probe identity: %+v err=%v", selected, err)
 			}
