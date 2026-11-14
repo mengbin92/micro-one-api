@@ -1,0 +1,438 @@
+{
+  "status": "in_progress",
+  "captured_at_utc": "2026-11-14T01:14:44.155905+00:00",
+  "scope": [
+    "fallback governance",
+    "service tier contract",
+    "long context contract",
+    "platform billing snapshots",
+    "provider settlement"
+  ],
+  "fallback_governance": {
+    "enabled_channels": [
+      {
+        "id": 1,
+        "name": "test",
+        "models": "MiniMax-M3,Kimi-K3,DeepSeek-V4-Flash-0731,DeepSeek-V4-Pro-0813,glm-5.3-flash,qwen3.8-flash,glm-5.3,DeepSeek-V4.1-Flash-1017",
+        "status": 1,
+        "restrict_models": 1,
+        "authorization_revision": 16
+      },
+      {
+        "id": 11,
+        "name": "ds",
+        "models": "deepseek-flash",
+        "status": 1,
+        "restrict_models": 1,
+        "authorization_revision": 14
+      }
+    ],
+    "abilities": [
+      {
+        "id": 707,
+        "model": "MiniMax-M3",
+        "enabled": 1,
+        "priority": 1,
+        "channel_id": 1
+      },
+      {
+        "id": 708,
+        "model": "Kimi-K3",
+        "enabled": 1,
+        "priority": 1,
+        "channel_id": 1
+      },
+      {
+        "id": 709,
+        "model": "DeepSeek-V4-Flash-0731",
+        "enabled": 1,
+        "priority": 1,
+        "channel_id": 1
+      },
+      {
+        "id": 710,
+        "model": "DeepSeek-V4-Pro-0813",
+        "enabled": 1,
+        "priority": 1,
+        "channel_id": 1
+      },
+      {
+        "id": 711,
+        "model": "glm-5.3-flash",
+        "enabled": 1,
+        "priority": 1,
+        "channel_id": 1
+      },
+      {
+        "id": 712,
+        "model": "qwen3.8-flash",
+        "enabled": 1,
+        "priority": 1,
+        "channel_id": 1
+      },
+      {
+        "id": 713,
+        "model": "glm-5.3",
+        "enabled": 1,
+        "priority": 1,
+        "channel_id": 1
+      },
+      {
+        "id": 714,
+        "model": "DeepSeek-V4.1-Flash-1017",
+        "enabled": 1,
+        "priority": 1,
+        "channel_id": 1
+      },
+      {
+        "id": 715,
+        "model": "deepseek-flash",
+        "enabled": 1,
+        "priority": 0,
+        "channel_id": 11
+      }
+    ],
+    "writes": [
+      {
+        "reason": "N1 fallback governance: require explicit model abilities and prevent unpriced catch-all routing",
+        "result": "success",
+        "operation": "channel.channel.update",
+        "occurred_at": 1794617524421,
+        "resource_id": "1"
+      },
+      {
+        "reason": "N1 pricing acceptance: bind preconfigured source/model route for real billing verification",
+        "result": "success",
+        "operation": "channel.channel.update",
+        "occurred_at": 1794617713076,
+        "resource_id": "11"
+      }
+    ],
+    "unregistered_model_probe": {
+      "model": "mimo-v2.5-pro",
+      "http_status": 503,
+      "error_message": "no available channel",
+      "billing_ledger_rows": 0
+    },
+    "conclusion": "all enabled channels now require explicit abilities; unregistered model was rejected before reservation/ledger creation"
+  },
+  "service_tier_contract": {
+    "provider_direct_probes": [
+      {
+        "requested_service_tier": "priority",
+        "http_status": 200,
+        "response": {
+          "id": "440bd898-989c-4bc6-8a63-7077bc0bb683",
+          "model": "deepseek-flash",
+          "service_tier": null,
+          "usage": {
+            "prompt_tokens": 35,
+            "completion_tokens": 1,
+            "total_tokens": 36,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1
+            },
+            "prompt_cache_hit_tokens": 0,
+            "prompt_cache_miss_tokens": 35
+          }
+        }
+      },
+      {
+        "requested_service_tier": "flex",
+        "http_status": 200,
+        "response": {
+          "id": "950abc4e-282b-4b8c-b39e-0566825f74ee",
+          "model": "deepseek-flash",
+          "service_tier": null,
+          "usage": {
+            "prompt_tokens": 35,
+            "completion_tokens": 1,
+            "total_tokens": 36,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1
+            },
+            "prompt_cache_hit_tokens": 0,
+            "prompt_cache_miss_tokens": 35
+          }
+        }
+      }
+    ],
+    "platform_probes": [
+      {
+        "response": {
+          "id": "b93f9573-1203-4734-a534-3b691a4fb4b1",
+          "model": "deepseek-flash",
+          "service_tier": null,
+          "usage": {
+            "prompt_tokens": 35,
+            "completion_tokens": 8,
+            "total_tokens": 43,
+            "prompt_tokens_details": {},
+            "input_tokens_details": {}
+          }
+        },
+        "ledger": null
+      },
+      {
+        "response": {
+          "id": "1a57a307-bad6-44c1-a29d-9dede3c4927b",
+          "model": "deepseek-flash",
+          "service_tier": null,
+          "usage": {
+            "prompt_tokens": 35,
+            "completion_tokens": 8,
+            "total_tokens": 43,
+            "prompt_tokens_details": {},
+            "input_tokens_details": {}
+          }
+        },
+        "ledger": null
+      }
+    ],
+    "ledgers": [
+      {
+        "id": 86772,
+        "quota": 43,
+        "amount": -1,
+        "channel_id": 11,
+        "created_at": "2026-11-14 00:57:01.649000",
+        "model_name": "deepseek-flash",
+        "token_name": "n1-pricing-closure",
+        "reference_id": "res_1794617820381180888_1794617820",
+        "prompt_tokens": 35,
+        "completion_tokens": 8,
+        "long_context_tier": "",
+        "pricing_time_band": "off_peak",
+        "pricing_time_unix": 1794617820,
+        "upstream_model_id": "deepseek-flash",
+        "actual_service_tier": "",
+        "billed_service_tier": "max",
+        "long_context_policy": "",
+        "pricing_config_hash": "0a2ec72c32152b0cd36d1914101d4b67df8fe075f465a7bf779fe971b7bc995e",
+        "service_tier_policy": "actual_or_max_v1",
+        "service_tier_status": "missing",
+        "long_context_threshold": 0,
+        "requested_service_tier": "priority",
+        "long_context_input_tokens": 0
+      },
+      {
+        "id": 86775,
+        "quota": 43,
+        "amount": -1,
+        "channel_id": 11,
+        "created_at": "2026-11-14 00:57:24.647000",
+        "model_name": "deepseek-flash",
+        "token_name": "n1-pricing-closure",
+        "reference_id": "res_1794617843183878299_1794617843",
+        "prompt_tokens": 35,
+        "completion_tokens": 8,
+        "long_context_tier": "",
+        "pricing_time_band": "off_peak",
+        "pricing_time_unix": 1794617843,
+        "upstream_model_id": "deepseek-flash",
+        "actual_service_tier": "",
+        "billed_service_tier": "max",
+        "long_context_policy": "",
+        "pricing_config_hash": "0a2ec72c32152b0cd36d1914101d4b67df8fe075f465a7bf779fe971b7bc995e",
+        "service_tier_policy": "actual_or_max_v1",
+        "service_tier_status": "missing",
+        "long_context_threshold": 0,
+        "requested_service_tier": "flex",
+        "long_context_input_tokens": 0
+      }
+    ],
+    "conclusion": "provider accepts requested service_tier values but returns service_tier=null; platform records actual tier missing and applies actual_or_max_v1, so distinct real tier switching is not available in this provider contract"
+  },
+  "long_context_contract": {
+    "provider_model_contract": {
+      "object": "list",
+      "data": [
+        {
+          "id": "deepseek-flash",
+          "object": "model",
+          "owned_by": "deepseek",
+          "name": "DeepSeek-V4.1-Flash",
+          "context_window": 1048576,
+          "max_output_tokens": 393216,
+          "input_modalities": [
+            "text",
+            "image"
+          ],
+          "output_modalities": [
+            "text"
+          ],
+          "effort": {
+            "supported_levels": [
+              "low",
+              "high",
+              "max"
+            ],
+            "default_level": "high"
+          },
+          "api_capabilities": {
+            "anthropic_messages": {
+              "system_prompt_update": "in-history",
+              "tool_update": "addition-only"
+            }
+          }
+        },
+        {
+          "id": "deepseek-v4-pro",
+          "object": "model",
+          "owned_by": "deepseek",
+          "name": "DeepSeek-V4-Pro",
+          "context_window": 1048576,
+          "max_output_tokens": 393216,
+          "input_modalities": [
+            "text"
+          ],
+          "output_modalities": [
+            "text"
+          ],
+          "effort": {
+            "supported_levels": [
+              "low",
+              "high",
+              "max"
+            ],
+            "default_level": "high"
+          },
+          "api_capabilities": {
+            "anthropic_messages": {
+              "system_prompt_update": "leading-only",
+              "tool_update": "leading-only"
+            }
+          }
+        }
+      ]
+    },
+    "provider_documentation": {
+      "retrieved": "2026-11-14",
+      "pricing_html_sha256": "5126b5f69e78f6dacb0a8bfc91e0cf0b705416b0b918b12e1f45f66b122e7741",
+      "chat_html_sha256": "019adea1e0389075255b29ab6eca9deff1e0e152d53c39a8738082ca777d6898",
+      "facts": [
+        "context length 1M",
+        "pricing has one input/output schedule with off-peak and peak rates, no long-context surcharge row"
+      ]
+    },
+    "platform_probe": {
+      "response": {
+        "id": "3d7dcda8-08fd-46c2-923a-605ac131c850",
+        "model": "deepseek-flash",
+        "service_tier": null,
+        "usage": {
+          "prompt_tokens": 190610,
+          "completion_tokens": 1,
+          "total_tokens": 190611,
+          "prompt_tokens_details": {},
+          "input_tokens_details": {}
+        }
+      }
+    },
+    "ledger": [
+      {
+        "id": 86777,
+        "quota": 190611,
+        "amount": -1906,
+        "channel_id": 11,
+        "created_at": "2026-11-14 00:57:46.649000",
+        "model_name": "deepseek-flash",
+        "token_name": "n1-pricing-closure",
+        "reference_id": "res_1794617863098310559_1794617863",
+        "prompt_tokens": 190610,
+        "completion_tokens": 1,
+        "long_context_tier": "",
+        "pricing_time_band": "off_peak",
+        "pricing_time_unix": 1794617863,
+        "upstream_model_id": "deepseek-flash",
+        "actual_service_tier": "",
+        "billed_service_tier": "max",
+        "long_context_policy": "",
+        "pricing_config_hash": "0a2ec72c32152b0cd36d1914101d4b67df8fe075f465a7bf779fe971b7bc995e",
+        "service_tier_policy": "actual_or_max_v1",
+        "service_tier_status": "missing",
+        "long_context_threshold": 0,
+        "requested_service_tier": "",
+        "long_context_input_tokens": 0
+      }
+    ],
+    "snapshot": [
+      {
+        "model_name": "deepseek-flash",
+        "config_hash": "0a2ec72c32152b0cd36d1914101d4b67df8fe075f465a7bf779fe971b7bc995e",
+        "group_ratio": 1.0,
+        "input_price": 1e-06,
+        "output_price": 4e-06,
+        "cache_read_price": 2e-08,
+        "snapshot_version": 4,
+        "cache_creation_mode": "charge",
+        "cache_creation_1h_price": 0.0,
+        "cache_creation_5m_price": 0.0
+      }
+    ],
+    "conclusion": "190,610 input tokens completed successfully above a 128K reference boundary; provider and platform retained the base/off-peak tariff with no long-context surcharge fields"
+  },
+  "upstream_settlement": {
+    "status": "completed",
+    "provider_balance_before_cny": "43.66",
+    "provider_balance_after_cny": "43.47",
+    "provider_actual_delta_cny": "0.19",
+    "observed_epoch": 1794618856,
+    "controlled_platform_quota": 1908,
+    "controlled_platform_amount_cny": "0.1908",
+    "platform_minus_provider_display_cny": "0.0008",
+    "boundary": "provider balance is displayed to 2 decimal places; delta is final observed wallet movement, while platform retains exact per-request quota and minimum-charge rounding",
+    "controlled_prompt_tokens": 190680,
+    "controlled_completion_tokens": 17,
+    "expected_from_usage_and_frozen_base_cny": "0.190748",
+    "platform_minus_expected_cny": "0.000052",
+    "provider_display_minus_expected_cny": "-0.000748"
+  },
+  "cross_period": {
+    "scheduled_start_cst": "2026-11-17 08:59:55",
+    "scheduled_start_epoch": 1794877195,
+    "status": "scheduled",
+    "boundary": "execution process is live; result not yet available",
+    "code_level_boundary_tests": [
+      {
+        "package": "domain/billing",
+        "tests": [
+          "TestTimePricingLocalClockWindowsHolidaysAndExpiry",
+          "TestTimePricingProjectionDoesNotMutateFrozenConfiguration"
+        ],
+        "result": "pass"
+      },
+      {
+        "package": "app/billing/internal/biz",
+        "tests": [
+          "TestTimePricingFreezesAdmissionBandAcrossBoundaryAndRestart"
+        ],
+        "result": "pass"
+      },
+      {
+        "package": "app/billing/internal/data",
+        "tests": [
+          "TestLongContextTimePricingDurableRecoveryUsesFrozenClock"
+        ],
+        "result": "pass"
+      }
+    ],
+    "settlement_watch": {
+      "baseline_cny": "captured at scheduled start",
+      "starts_cst": "2026-11-17 09:00:10",
+      "starts_epoch": 1794877210,
+      "deadline_cst": "2026-11-18 12:00:00",
+      "status": "scheduled"
+    }
+  },
+  "totals": {
+    "platform_quota_from_controlled_rows": 1908,
+    "controlled_rows": 3
+  }
+}

@@ -1,12 +1,12 @@
 # N3：账号登录、GitHub OAuth 与 MFA 扫码绑定
 
-2026-11-11，北京时间。关联 [下一阶段计划](../design/next-stage-plan-2026-11-08.md)、[A2 契约](../design/a2-security-contract-2026-10-27.md)。状态：生产管理员密码登录通过；既有记录确认 GitHub 绑定于 12:22 落库，维护者已于 2026-11-11 晚在浏览器验证 GitHub 授权登录全流程成功：登录页选择 GitHub → 弹窗携带 `?login&oauth=1` → 回调 → 进入 `https://console.mengbin.top/dashboard`，见 [GitHub 登录证据](evidence/n3-github-oauth-login-2026-11-11.json)。13:26 前端制品已包含绑定状态与 MFA 二维码，本轮只读摘要核对确认；实际手机扫码未验。工作区评审修复已提交并随 v0.40.0 发版部署（identity-service 15:27、admin-api 15:28、前端制品 15:29），RBAC 契约与 gitleaks 门禁修复后全绿；真实手机扫码与新 OAuth 登录旅程仍待验，N3 整体未完成。
+2026-11-11，北京时间。关联 [下一阶段计划](../design/next-stage-plan-2026-11-08.md)、[A2 契约](../design/a2-security-contract-2026-10-27.md)。状态：**已完成**。生产管理员密码登录、GitHub 真实 OAuth 登录、实际手机验证器扫码 enrollment、恢复码轮换与消费、BFF/直接 owner 无效证明拒绝及两个全局强制策略均已验收；证据见本记录及 [GitHub 登录证据](evidence/n3-github-oauth-login-2026-11-11.json)。N3 不再保留执行缺口。
 
 ## 本轮范围与决定
 
 - 维护者要求先完成账号及真实 OAuth 两项测试，指定生产 `admin`，随后选择 GitHub，并确认需要新建 OAuth App。
 - MFA 设置增加二维码扫码绑定；复用已有 `otpauth_uri` 和 `qrcode.react`，二维码在浏览器本地生成，保留手动密钥与验证器链接。
-- MFA 真实手机、恢复码及首批敏感操作验收仍按原 N3 清单推进；两个全局强制策略保持关闭。
+- MFA 真实手机、恢复码及首批敏感操作验收仍按原 N3 清单推进；两个全局强制策略当时保持关闭，后续已于 2026-11-11 21:03 启用并完成验收。
 
 ## 生产账号验证
 
@@ -25,7 +25,7 @@
 
 ## GitHub OAuth 条件与部署配置
 
-`GET /v1/oauth/providers` HTTP 200，列表为空。运行 Identity 环境及两份部署环境文件均未配置 GitHub 的启用值、Client ID、Client Secret 或 OAuth 回调基址。维护者已选择新建 OAuth App；真实外部回调及 OAuth-only 登录仍待验证。
+`GET /v1/oauth/providers` HTTP 200，列表为空。运行 Identity 环境及两份部署环境文件均未配置 GitHub 的启用值、Client ID、Client Secret 或 OAuth 回调基址。维护者已选择新建 OAuth App；初始状态为真实外部回调及 OAuth-only 登录待验证，后续已完成真实授权登录验收。
 
 应用配置的确定值：名称 `micro-one-api`；Homepage 为现有控制台 HTTPS origin；Authorization callback URL 为 `<控制台 origin>/v1/oauth/github/callback`。`OAUTH_BASE_URL` 使用同一控制台 origin，不附带路径或末尾斜杠。应用 Client ID/Secret 通过受限配置文件交接，证据不保存其值。已在维护者浏览器准备应用注册表，保持精确回调、关闭 wildcard/device flow，并保留默认 token 过期策略；注册及 Secret 生成交由维护者本人完成。维护者随后确认注册完成并保存凭据；已核对本机交接文件为本人所有、普通文件、权限 0600，四项配置齐全且回调基址一致。校验只输出存在性与布尔结果，未输出 Client ID/Secret。
 
@@ -60,7 +60,7 @@
 现场记录显示，绑定事务首条查询仅耗时 0.418ms 就返回 `context deadline exceeded`，说明进入绑定时请求 context 已失效，不能把该耗时当成存储锁等待；外部交换已返回身份。隔离真实 SQLite/IAM、Redis 和 HTTP/BFF 回归另验证：继承 Kratos 默认 1 秒预算时，1.2 秒成功 provider 会得到同样的错误和零写入；显式 30 秒预算后正常返回 302、绑定/成功审计各 1。现有记录没有保留每次真实 GitHub 外部调用的完整计时，三次各 10 秒只是客户端理论上限，不能据此认定现场实际用满了 30 秒或推断 Go 读超时的传播机制。
 
 已部署方案为 Identity 显式 30 秒请求预算、25 秒外部交换，以及交换成功后保留凭证 context value 的 15 秒独立写阶段。其约定是用户同意且身份交换成功后，即使原调用 context 失效，也有界地完成绑定/登录。IAM 在写事务内重验账号 epoch、有效期和会话撤销；绑定唯一约束、审计与状态同事务，注册奖励按既有 request ID 去重。本次评审按这一约定复核，不把有界持久化本身认定为漏洞。
-10:20 交叉构建镜像 `deploy-20261111-102036-a874a563`（含此修复与 30s 显式请求超时），沿用 `scripts/deploy-update.sh identity-service` 重建 Identity，回滚锚点 `rollback-20261111-102036`；冒烟：`/v1/oauth/providers` 200 含 github、authorize 302、健康日志无错误。OCR v1.13.7 high 复核本修复与部署脚本：0 发现。后续 12:22 的真实绑定已回读成功；完整的新 OAuth 登录/会话旅程仍待验。
+10:20 交叉构建镜像 `deploy-20261111-102036-a874a563`（含此修复与 30s 显式请求超时），沿用 `scripts/deploy-update.sh identity-service` 重建 Identity，回滚锚点 `rollback-20261111-102036`；冒烟：`/v1/oauth/providers` 200 含 github、authorize 302、健康日志无错误。OCR v1.13.7 high 复核本修复与部署脚本：0 发现。后续 12:22 的真实绑定已回读成功；完整的新 OAuth 登录/会话旅程随后已完成验收。
 
 回滚锚点为 `$DEPLOY_REMOTE_DIR/docker-compose/backups/n3-github-20261111-085312-6140d176`，内含 `compose.original.yml` / `env.original`；镜像标签 `docker-compose-identity-service:rollback-20261111-085312-n3-github`。恢复前需核对没有并发配置变更，仅恢复本轮文件并重建 Identity，不恢复 SQL/Redis，不自动撤销后续真实绑定。
 
@@ -78,7 +78,7 @@
 | ✅ | 定向 ESLint / `tsc -b` | 通过 |
 | ✅ | `npx playwright test e2e/security-qr.spec.ts` | 桌面、移动 Chrome 共 2 项通过；暗色模式白底黑码、无横向溢出、取消清理和无外部请求 |
 | ✅ | 生产前端制品 | 本轮只读核对公网 index 与 Profile chunk 均与本机 13:26 制品摘要一致；Profile chunk 已包含二维码实现 |
-| ⚠️ | 真实手机扫码 | 由维护者使用实际验证器完成；制品发布、合成夹具及可选浏览器解码不替代真实手机验收 |
+| ✅ | 真实手机扫码 | 维护者已用实际手机验证器完成扫码 enrollment，生产回读 secret 已置位、恢复码 10、审计 confirm/login 均 success；见下方退出条件与证据 |
 | ✅ | 首轮 QR/配置评审（历史） | 独立 ponytail-review 未发现新增问题；OCR v1.13.7 完成 7/7 文件、失败 0、P0/P1 为 0，仅 1 条可选共享 QR wrapper 建议，按最简原则不采纳；详见 [评审摘要](evidence/n3-code-review-2026-11-11.json) |
 
 浏览器用例使用公开的合成测试密钥，并关闭 trace、video、screenshot；不连接生产，不采集真实验证器秘密或恢复码。
@@ -98,7 +98,7 @@
 - [x] 恢复码真实消费验证：维护者完成轮换（rotate 成功，含一次失败重试）并用 1 个恢复码真实登录成功，生产回读余量 10→9、审计 `credential.mfa.recovery/step_up/login` 齐全；当前生效码组为最后一次轮换所示，剩 9 个。
 - [x] 两个全局策略已于 2026-11-11 21:03 生产启用（step-up + 管理员 MFA 强制），维护者完成手动验收，回滚锚点 `.env.bak.20261111-210317`。
 
-既有 Identity 与前端部署按上述时间记录保留；本轮工作区评审修复已提交（v0.40.0 窗口），identity-service 与 admin-api 已分别于 15:27/15:28 重建部署，前端制品 15:29 更新，tag v0.40.0 指向修复后 main。没有绑定生产 MFA 或打开强制策略。N3 未完成项继续保留，不以账号密码成功替代第二因子验收。
+既有 Identity 与前端部署按上述时间记录保留；本轮工作区评审修复已提交（v0.40.0 窗口），identity-service 与 admin-api 已分别于 15:27/15:28 重建部署，前端制品 15:29 更新，tag v0.40.0 指向修复后 main。后续实际手机 MFA 绑定、恢复码消费及两个全局强制策略启用均已验收，N3 不再保留未完成项。
 
 
 ## 当前工作区评审修复
@@ -107,7 +107,7 @@
 | --- | --- | --- |
 | P2 / 读取一致性 | 绑定仓库返回超时，self 仍 HTTP 200 且空列表，误导用户为未绑定 | biz 仅跳过明确不存在，真实错误向上传递；self 返回 503。HTTP 回归先红后绿 |
 | P2 / 状态漏显 | 提供方停用后已有绑定消失；仍可用于 OAuth 登录的原 User 绑定字段也未回显 | 查询全部已支持提供方，合并原 User 绑定来源；回归覆盖停用、原有绑定及其他用户隔离 |
-| P3 / 证据准确性 | 初始失败响应与后来成功标记混列、已发布 QR 仍记为待部署，且外部调用理论上限被写成现场实测 | 分离初始失败和后续成功，按公开制品摘要回填部署状态，保留真实手机/新 OAuth 会话未验，并移除不必要的外部身份 ID |
+| P3 / 证据准确性 | 初始失败响应与后来成功标记混列、已发布 QR 仍记为待部署，且外部调用理论上限被写成现场实测 | 分离初始失败和后续成功，按公开制品摘要回填部署状态，并回填后续真实手机扫描/OAuth 会话结果，移除不必要的外部身份 ID |
 
 受影响 biz/server/cmd 三包测试通过，前端 10 项定向测试、ESLint、类型检查及差异格式检查通过。收口：make test 与 make test-race 全绿；本轮 OCR 3 条意见已处理（写阶段预算收紧至 5s，另两条按最简原则不采纳）；全历史 gitleaks detect 0 发现。本轮评审未操作生产写路径。
 
