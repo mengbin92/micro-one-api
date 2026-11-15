@@ -14,13 +14,13 @@ multi-channel API distribution and [sub2api](https://github.com/Wei-Shaw/sub2api
 for subscription windows, account pools, rate limits and usage management.
 You provide your own authorized upstream accounts and API keys.
 
-> Latest release: [v0.42.0](./docs/releases/release-v0.42.0.md) — a read-only business
-> operation audit page and `GET /api/v1/admin/operation-audits`, filterable by actor,
-> operation prefix, resource, result and time range, with usernames resolved best-effort
-> and a numeric-id fallback. Adds Admin migration 150 (three dialects, read indexes);
-> existing APIs and billing contracts are unchanged. admin-api and identity-service
-> must be deployed from the same commit.
-> [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.42.0)
+> Latest release: [v0.43.1](./docs/releases/release-v0.43.1.md) — OpenTelemetry Go
+> upgraded across the whole module family to v1.47.0, fixing `GHSA-q7gw-24fr-5p69`
+> (two medium dependency alerts). No new migration or API change; upgrading only
+> requires rebuilding and redeploying the service images. The previous
+> [v0.43.0](./docs/releases/release-v0.43.0.md) retired legacy `abilities`, making
+> registry mappings the sole routing source.
+> [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.43.1)
 
 ## Features
 
@@ -29,8 +29,12 @@ You provide your own authorized upstream accounts and API keys.
 
 - OpenAI-compatible `/v1/chat/completions`, `/v1/models`, `/v1/responses` and raw
   relay routes for embeddings, audio, images and moderations.
-- Multiple upstream channels with priorities, weights, model allowlists and
-  mappings; provider adapters include Anthropic, Gemini, Azure and VoyageAI.
+- Multiple upstream channels with priorities, weights and model mappings; provider
+  adapters include Anthropic, Gemini, Azure and VoyageAI. **Since v0.43.0**
+  `model_channel_mapping` / `model_subscription_mapping` are the sole routing candidate
+  source: legacy `abilities` tables and the `restrict_models` catch-all switch are gone,
+  so unregistered models yield no available channel instead of a fallback. Apply
+  migration 151 before upgrading; see the [release notes](./docs/releases/release-v0.43.0.md).
 - Users, API tokens, model permissions and role-based administration.
 - Wallet reservations and settlement, ledgers, redemption codes, payment orders,
   subscription purchases, renewals and refunds.
@@ -154,6 +158,17 @@ and [repository development rules](./AGENTS.md). Both are currently maintained i
 
 ## Releases and upgrades
 
+- [v0.43.1](./docs/releases/release-v0.43.1.md): OpenTelemetry Go v1.46.0 → v1.47.0 across
+  the whole module family, fixing `GHSA-q7gw-24fr-5p69` (two medium alerts), plus README
+  release-info sync. No new migration or API change; redeploy the service images.
+- [v0.43.0](./docs/releases/release-v0.43.0.md): **breaking** — legacy `abilities` /
+  `subscription_account_abilities` and the `restrict_models` catch-all retired; registry
+  mappings become the sole routing source and unregistered models return
+  `ErrChannelNotFound`. Migration 151 (three dialects) backfills legacy routes before
+  dropping tables/column, with idempotent MySQL DDL; subscription auto-mappings gain
+  per-mapping IAM checks and write audit. Production upgrade uses a no-downtime sequence:
+  backup → pre-add the `config` column → deploy same-commit images (including the
+  account-ops worker) → apply 151 → verify.
 - [v0.42.0](./docs/releases/release-v0.42.0.md): a read-only business operation audit page
   and `GET /api/v1/admin/operation-audits`, filterable by actor, operation prefix,
   resource, result and time range. Actor usernames are resolved best-effort from identity

@@ -8,13 +8,13 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.42.0 发布公告](./docs/releases/release-v0.42.0.md)（只读业务操作审计页与 `GET /api/v1/admin/operation-audits`，按操作人/操作码/资源/结果/时间筛选；操作人显示用户名并可回退数字 ID；新增 Admin 150 三方言索引迁移，不改既有 API 与计费契约；部署需 admin-api 与 identity-service 同源） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.42.0)
+> 📣 **最新发布**：[v0.43.1 发布公告](./docs/releases/release-v0.43.1.md)（OpenTelemetry Go 整族升级到 v1.47.0，修复 `GHSA-q7gw-24fr-5p69` 两条 medium 依赖告警；无新增迁移、无 API 变更，升级只需重部署服务镜像） · 上一版 [v0.43.0](./docs/releases/release-v0.43.0.md) 已退役 legacy `abilities`，registry mapping 成为唯一路由来源 · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.43.1)
 
 ## 功能概览
 
 - 用户运营可见性（未发布）：用户“模型与公告”页仅展示本人可用模型及聚合路由状态；管理员可向全体、用户默认路由组或指定用户发布公告，支持定时、下架及版本化已读。部署前需应用 Admin 148 并授权运行账号，详见 [B4 契约](docs/design/b4-user-operations-contract-2026-11-02.md)和[验收记录](docs/runbooks/b4-user-operations-acceptance-2026-11-02.md)。
 - OpenAI 兼容 API 网关：支持 `/v1/chat/completions`、`/v1/models`、`/v1/responses` 以及 embeddings、audio、image、moderations 等 raw relay 路由。
-- 多渠道模型分发：支持渠道优先级、同优先级负载均衡、禁用渠道过滤、模型白名单和模型映射。
+- 多渠道模型分发：支持渠道优先级、同优先级负载均衡、禁用渠道过滤和模型映射。**v0.43.0 起** `model_channel_mapping` / `model_subscription_mapping` 是唯一路由候选来源，legacy `abilities` 表与 `restrict_models` catch-all 开关已退役，未注册模型返回无可用渠道而不再兜底；升级前必须应用迁移 151，详见[发布公告](./docs/releases/release-v0.43.0.md)。
 - 多供应商适配：支持 OpenAI-compatible 渠道，并包含 Anthropic、Gemini、Azure、VoyageAI 等 provider 适配器；DeepSeek、Moonshot、Groq、Tongyi、OpenRouter、SiliconFlow、Ollama、Doubao 等按 OpenAI-compatible 方式转发。
 - 原生 Gemini 入站：支持 `v1beta` 的 generateContent / streamGenerateContent 文本与函数调用、JSON/SSE 和 canonical 用量结算；首版使用 Gemini API-key 渠道，图片/音频等能力明确拒绝。详见 [B2 协议契约](docs/design/b2-native-gemini-contract-2026-10-30.md)。
 - 用户与令牌管理：支持用户鉴权、令牌状态、过期时间、余额检查、模型权限和用户角色控制。
@@ -186,6 +186,8 @@ make web-dist
 
 ## 发布与升级
 
+- [v0.43.1](./docs/releases/release-v0.43.1.md)：OpenTelemetry Go 依赖族 v1.46.0 → v1.47.0，修复 `GHSA-q7gw-24fr-5p69` 两条 medium 依赖告警并同步 README 发布信息；无新增迁移、无 API 变更，生产需重部署服务镜像。
+- [v0.43.0](./docs/releases/release-v0.43.0.md)：**破坏性变更**——legacy `abilities` / `subscription_account_abilities` 与 `restrict_models` catch-all 退役，registry mapping 成为唯一路由来源，未注册模型返回 `ErrChannelNotFound`；迁移 151 三方言回填后删表删列，MySQL DDL 可幂等重放；订阅自动映射补齐 IAM 授权与写审计；生产按「备份 → 预加列 → 部署同源镜像（含 worker）→ 迁移 → 验证」无停机上线。
 - [v0.42.0](./docs/releases/release-v0.42.0.md)：管理后台新增只读业务操作审计页与 `GET /api/v1/admin/operation-audits`，按操作人/操作码/资源/结果/时间筛选；操作人显示用户名并可回退数字 ID；新增 Admin 150 三方言索引迁移，不改既有 API 与计费契约；部署需 admin-api 与 identity-service 同源，`iam.audit.read` 需显式授予运维角色。
 - [v0.41.0](./docs/releases/release-v0.41.0.md)：Passkey 无密码登录（诱饵 ceremony 防枚举、克隆检测、step-up 门控注册）与安全中心管理，/v1/rerank 复用 embeddings 计费管线；新增 Identity 149 三方言迁移，不改动计费契约；passkey 需配置 RP ID/ORIGIN 启用。2026-11-12 以同一版本号重新发版：修复 CI 格式化门禁、passkey 诱饵一致性与 Release E2E 登录按钮定位，校正 8 MiB 预算、`identity_passkey` 表名与全局暗开关描述；identity-service 已线上热更新验收，同名 tag/镜像被覆盖，旧部署需显式重新部署。
 - [v0.40.0](./docs/releases/release-v0.40.0.md)：MFA 二维码扫码绑定、GitHub OAuth 全链路生产化（Compose 透传修复、回调超时根因修复、真实绑定回读通过）、资料页第三方账号绑定状态回显；无迁移，不改动计费契约；生产已于 11-11 部署。
