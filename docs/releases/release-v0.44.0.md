@@ -46,7 +46,8 @@ v0.44.0 是 v0.43.1 之后的 **MINOR 功能版本**：为 relay-gateway 的 orc
 - `make config` 重新生成后 `relay_conf.pb.go` 含 `FullRollout`；`wire ./cmd/relay-gateway` 输出与手工同步的 `wire_gen.go` 零差异。
 - `make rbac-contract-check` 962 行通过、`rbac-matrix-refresh.py --check` 通过；markdown links 373 文件通过；gofmt 与 `git diff --check` 干净；gosec 改动文件无 G115/G124/G505（仅生成文件既有 G103/G104）。
 - **未跑 `make verify`**：本机 web 全量 vitest 存在 4 例 1s 超时的既有基线，本轮无前端改动，未重跑；以 CI Frontend job 为准。此条如实登记，不表示 `make verify` 通过。
-- **未做生产验证**：本版只完成本地提交与发版制品，线上重部署与观察窗口另行执行。
+- **生产部署（2026-11-15 11:12 CST 补记）**：`relay-gateway` 已用 `scripts/deploy-update.sh relay-gateway` 本地交叉构建 linux/amd64 镜像并部署，镜像 `docker-compose-relay-gateway:deploy-20261115-111206-4db7ee9a`（source digest `3a5c42f9…`），共享回滚标签 `rollback-20261115-111206`；生产 Compose 补入 `RELAY_ORCHESTRATOR_FULL_ROLLOUT: ${RELAY_ORCHESTRATOR_FULL_ROLLOUT:-false}` 透传（备份 `docker-compose.yml.pre-full-rollout-20261115-111152`）。部署后确认容器 running / restarts=0、`/healthz` 200、容器内新开关为 `false`、`RELAY_ORCHESTRATOR_ENABLED=true` 与 allowlist 2 项保持不变、镜像内 `configs/config.yaml` 含 `full_rollout`、近 5 分钟无 panic/fatal、Prometheus relay target `up`、17 个服务均 Up。本版无迁移、无前端改动，其它服务及复用 channel 镜像的 `channel-account-ops-worker` 未改动。
+- **观察窗口影响**：本次重建产生新的 Relay 进程边界与 Prometheus counter 重置；按 `docs/design/v0.23-executor-observation.md`，计数重置不拼接、需记录中断，正式七天窗口原本即为 INSUFFICIENT、未起算。`full_rollout` 保持 `false`，灰度与 legacy 行为不变。
 
 ## 完整变更日志
 
