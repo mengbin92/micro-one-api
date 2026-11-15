@@ -84,6 +84,11 @@ subscription:
 # may use it; raw tokens must not be placed in configuration.
 relay_orchestrator:
   enabled: ${RELAY_ORCHESTRATOR_ENABLED:-false}
+  # Full rollout sends every staged-endpoint request to the orchestrator and
+  # ignores the token allowlist below. No-op unless enabled is also true;
+  # rollback is setting this back to false. Keep false while the executor
+  # observation window in docs/design/v0.23-executor-observation.md is open.
+  full_rollout: ${RELAY_ORCHESTRATOR_FULL_ROLLOUT:-false}
   # Flow-sequence syntax keeps an unset allowlist as [] instead of a YAML
   # null item, which protobuf repeated-string scanning rejects at startup.
   allowlist_token_hmac_sha256: [${RELAY_ORCHESTRATOR_TOKEN_HMAC_SHA256:-}]

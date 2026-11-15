@@ -146,3 +146,98 @@ func TestRelayOrchestratorGateDefaultsOffAndAllowlistClearRollsBack(t *testing.T
 		t.Fatal("cleared allowlist still selected the orchestrator")
 	}
 }
+
+func TestRelayOrchestratorFullRolloutIgnoresAllowlistButRequiresEnabled(t *testing.T) {
+	s := NewHTTPServer(nil, nil, nil, nil, nil)
+	s.SetRelayOrchestratorFullRollout(true)
+	s.SetRelayOrchestratorTokenHMACAllowlist(relayOrchestratorTestHMACKey, []string{relayOrchestratorTestDigest("staging-token")})
+
+	// Full rollout without the orchestrator enabled stays fail-closed.
+	unknown := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	unknown.Header.Set("Authorization", "Bearer other-token")
+	if s.shouldUseRelayOrchestrator(unknown) {
+		t.Fatal("full rollout took effect while the orchestrator is disabled")
+	}
+
+	s.SetRelayOrchestratorEnabled(true)
+	if !s.shouldUseRelayOrchestrator(unknown) {
+		t.Fatal("full rollout did not route an unlisted token to the orchestrator")
+	}
+
+	// The method guard still applies under full rollout.
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/chat/completions", nil)
+	getReq.Header.Set("Authorization", "Bearer other-token")
+	if s.shouldUseRelayOrchestrator(getReq) {
+		t.Fatal("full rollout routed a non-POST request to the orchestrator")
+	}
+
+	// Rollback is one switch: full rollout off restores allowlist gating.
+	s.SetRelayOrchestratorFullRollout(false)
+	if s.shouldUseRelayOrchestrator(unknown) {
+		t.Fatal("disabling full rollout did not restore the allowlist gate")
+	}
+	allowlisted := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	allowlisted.Header.Set("Authorization", "Bearer staging-token")
+	if !s.shouldUseRelayOrchestrator(allowlisted) {
+		t.Fatal("allowlisted token lost orchestrator access after full rollout rollback")
+	}
+}
+
+// TestRelayOrchestratorFullRolloutEndpoints asserts via the execution-path
+// metric that full rollout routes Responses and Messages POSTs without an
+// allowlisted token, while the legacy path still serves them when full
+// rollout is off. Unauthenticated requests terminate with 401 before any
+// dependency is touched, so the path label is the only difference.
+func TestRelayOrchestratorFullRolloutEndpoints(t *testing.T) {
+	assertPath := func(t *testing.T, handler func(http.ResponseWriter, *http.Request), method, path string, wantPath string) {
+		t.Helper()
+		before := testutil.ToFloat64(metrics.RelayExecutorRequestsTotal.WithLabelValues(
+			path, relayStreamUnknown, wantPath, "401", "error",
+		))
+		req := httptest.NewRequest(method, path, nil)
+		rec := httptest.NewRecorder()
+		handler(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%s %s status = %d, want %d", method, path, rec.Code, http.StatusUnauthorized)
+		}
+		if got := testutil.ToFloat64(metrics.RelayExecutorRequestsTotal.WithLabelValues(
+			path, relayStreamUnknown, wantPath, "401", "error",
+		)); got != before+1 {
+			t.Fatalf("%s %s execution path %q metric = %v, want %v", method, path, wantPath, got, before+1)
+		}
+	}
+
+	t.Run("responses default legacy", func(t *testing.T) {
+		s := NewHTTPServer(nil, nil, nil, nil, nil)
+		s.SetRelayOrchestratorEnabled(true)
+		assertPath(t, s.relayOrchestratorResponsesHandler, http.MethodPost, relayEndpointResponses, relayExecutionPathLegacy)
+	})
+	t.Run("responses full rollout", func(t *testing.T) {
+		s := NewHTTPServer(nil, nil, nil, nil, nil)
+		s.SetRelayOrchestratorEnabled(true)
+		s.SetRelayOrchestratorFullRollout(true)
+		assertPath(t, s.relayOrchestratorResponsesHandler, http.MethodPost, relayEndpointResponses, relayExecutionPathOrchestrator)
+	})
+	t.Run("messages default legacy", func(t *testing.T) {
+		s := NewHTTPServer(nil, nil, nil, nil, nil)
+		s.SetRelayOrchestratorEnabled(true)
+		assertPath(t, s.relayOrchestratorMessagesHandler, http.MethodPost, relayEndpointMessages, relayExecutionPathLegacy)
+	})
+	t.Run("messages full rollout", func(t *testing.T) {
+		s := NewHTTPServer(nil, nil, nil, nil, nil)
+		s.SetRelayOrchestratorEnabled(true)
+		s.SetRelayOrchestratorFullRollout(true)
+		assertPath(t, s.relayOrchestratorMessagesHandler, http.MethodPost, relayEndpointMessages, relayExecutionPathOrchestrator)
+	})
+	t.Run("chat default legacy", func(t *testing.T) {
+		s := NewHTTPServer(nil, nil, nil, nil, nil)
+		s.SetRelayOrchestratorEnabled(true)
+		assertPath(t, s.relayOrchestratorChatHandler, http.MethodPost, relayEndpointChatCompletions, relayExecutionPathLegacy)
+	})
+	t.Run("chat full rollout", func(t *testing.T) {
+		s := NewHTTPServer(nil, nil, nil, nil, nil)
+		s.SetRelayOrchestratorEnabled(true)
+		s.SetRelayOrchestratorFullRollout(true)
+		assertPath(t, s.relayOrchestratorChatHandler, http.MethodPost, relayEndpointChatCompletions, relayExecutionPathOrchestrator)
+	})
+}

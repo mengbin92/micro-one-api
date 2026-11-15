@@ -359,6 +359,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	httpServer.SetHybridAdaptorEnabled(cfg.Bootstrap.HybridAdaptor.GetHybridAdaptorEnabled())
 	httpServer.SetSubscriptionSessionStickyEnabled(cfg.Bootstrap.SessionSticky.GetSessionStickyEnabled())
 	httpServer.SetRelayOrchestratorEnabled(cfg.Bootstrap.RelayOrchestrator.GetRelayOrchestratorEnabled())
+	httpServer.SetRelayOrchestratorFullRollout(cfg.Bootstrap.RelayOrchestrator.GetRelayOrchestratorFullRollout())
 	httpServer.SetRelayOrchestratorTokenHMACAllowlist(os.Getenv("SERVICE_TOKEN"), cfg.Bootstrap.RelayOrchestrator.GetAllowlistTokenHmacSha256())
 	httpServer.SetSubscriptionAccountResolver(accountResolver)
 	httpServer.SetOAuthHTTPClient(oauthHTTPClient)

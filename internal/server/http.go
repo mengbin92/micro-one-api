@@ -78,7 +78,12 @@ type HTTPServer struct {
 	// relayOrchestratorEnabled gates the handler -> executor -> adaptor path for
 	// Chat Completions, Responses, and Anthropic Messages. It remains disabled
 	// by default and is further restricted to the configured token allowlist.
+	// relayOrchestratorFullRollout lifts the token restriction so every request
+	// on those endpoints uses the orchestrator; it is a no-op unless
+	// relayOrchestratorEnabled is also true, and rolling it back restores
+	// allowlist gating without touching any other service.
 	relayOrchestratorEnabled            bool
+	relayOrchestratorFullRollout        bool
 	relayOrchestratorTokenHMACKey       []byte
 	relayOrchestratorTokenHMACAllowlist map[string]struct{}
 	routeMiddleware                     []func(http.Handler) http.Handler
@@ -259,6 +264,17 @@ func (s *HTTPServer) SetRelayOrchestratorEnabled(enabled bool) {
 		return
 	}
 	s.relayOrchestratorEnabled = enabled
+}
+
+// SetRelayOrchestratorFullRollout routes every request on the staged endpoints
+// to the orchestrator, ignoring the token allowlist. It only takes effect
+// while the orchestrator is enabled; setting it back to false restores
+// allowlist gating as the immediate rollback.
+func (s *HTTPServer) SetRelayOrchestratorFullRollout(fullRollout bool) {
+	if s == nil {
+		return
+	}
+	s.relayOrchestratorFullRollout = fullRollout
 }
 
 // UseRouteMiddleware applies middleware to routes registered by RegisterRoutes.
