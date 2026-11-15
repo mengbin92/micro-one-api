@@ -164,6 +164,7 @@ COMMIT;
                                 restart_count=c['RestartCount'], oom_killed=c['State']['OOMKilled'])
                            for name, c in containers.items()],
                   relay=dict(flag=relay_env.get('RELAY_ORCHESTRATOR_ENABLED'),
+                             full_rollout=relay_env.get('RELAY_ORCHESTRATOR_FULL_ROLLOUT'),
                              allowlist_count=len([s for s in relay_env.get('RELAY_ORCHESTRATOR_TOKEN_HMAC_SHA256', '').split(',') if s.strip()]),
                              health=health, target_health=target['health'], target_last_error=target['lastError'],
                              scrape_interval_seconds=interval, current_process_age_hours=(end-started)/3600),

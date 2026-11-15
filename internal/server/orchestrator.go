@@ -487,11 +487,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			// (no IsPromptExclusiveChannel override). A verified envelope that
 			// carries cache buckets without proven semantics is a parser bug:
 			// count it and let billing's ambiguous safety path handle it.
-			if streamUsage.ParseStatus == relaybiz.UsageParseVerified && streamUsage.Semantics == "" &&
-				streamUsage.Canonical != nil && (streamUsage.Canonical.CacheReadTokens > 0 ||
-				streamUsage.Canonical.CacheCreation5mTokens > 0 || streamUsage.Canonical.CacheCreation1hTokens > 0) {
-				recordTokenUsageAnomaly(relaybiz.UsageReasonFinalAttemptSemanticsMissing)
-			}
+			recordFinalUsageSemanticsAnomaly(&streamUsage)
 			latency := time.Since(startTime)
 			settleCtx := settlementContext(ctx)
 			if completed && ctx.Err() == nil {
@@ -652,6 +648,10 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			attemptResult.Usage = &native
 		}
 		compareNativeUsageShadow(attemptCtx, attemptResult.Usage)
+		// Same parser-contract coverage as the stream finalizer: a verified
+		// non-stream envelope with cache buckets but no semantics is counted
+		// before billing settles it through the ambiguous safety path.
+		recordFinalUsageSemanticsAnomaly(attemptResult.Usage)
 		if o.quotaPort != nil {
 			latency := time.Since(startTime)
 			if err := o.quotaPort.Commit(attemptCtx, attemptPlan, attemptReq, reservation, *attemptResult.Usage, forwardResp.StatusCode < http.StatusBadRequest, latency); err != nil {
@@ -819,6 +819,22 @@ func (o *relayOrchestrator) logUsage(ctx context.Context, plan *relaybiz.RelayPl
 		return
 	}
 	o.hooks.LogUsage(ctx, plan, req, usage, latency, stream)
+}
+
+// recordFinalUsageSemanticsAnomaly counts the parser-contract violation where
+// a verified final envelope carries cache buckets without declared semantics.
+// Billing settles these through the ambiguous safety path; the anomaly metric
+// must fire for both stream and non-stream finalizers so non-stream
+// orchestrator traffic has the same quarantine coverage as streamed traffic.
+func recordFinalUsageSemanticsAnomaly(usage *relaybiz.UsageEnvelope) {
+	if usage == nil {
+		return
+	}
+	if usage.ParseStatus == relaybiz.UsageParseVerified && usage.Semantics == "" &&
+		usage.Canonical != nil && (usage.Canonical.CacheReadTokens > 0 ||
+		usage.Canonical.CacheCreation5mTokens > 0 || usage.Canonical.CacheCreation1hTokens > 0) {
+		recordTokenUsageAnomaly(relaybiz.UsageReasonFinalAttemptSemanticsMissing)
+	}
 }
 
 // finalizeSelectionResult emits the execution-boundary half of the routing

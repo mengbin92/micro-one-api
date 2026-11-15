@@ -189,6 +189,7 @@ type rawBillingClient struct {
 	billingv1.BillingServiceClient
 	commits               int
 	commitRequests        []*billingv1.CommitQuotaRequest
+	commitErrs            []error
 	reserveRequests       []*billingv1.ReserveQuotaRequest
 	releases              int
 	reserveSuccess        bool
@@ -199,6 +200,9 @@ type rawBillingClient struct {
 	releaseMessage        string
 	failOnCanceledContext bool
 	accountSnapshot       *commonv1.AccountSnapshot
+	attempts              []*billingv1.RequestAttempt
+	listAttemptsCalls     int
+	listAttemptsRequests  []*billingv1.ListRequestAttemptsRequest
 }
 
 func (c *rawBillingClient) GetRoutingCapabilities(context.Context, *billingv1.GetRoutingCapabilitiesRequest, ...grpc.CallOption) (*billingv1.GetRoutingCapabilitiesResponse, error) {
@@ -232,11 +236,43 @@ func (c *rawBillingClient) CommitQuota(ctx context.Context, req *billingv1.Commi
 	}
 	c.commits++
 	c.commitRequests = append(c.commitRequests, req)
+	if len(c.commitErrs) > 0 {
+		err := c.commitErrs[0]
+		c.commitErrs = c.commitErrs[1:]
+		if err != nil {
+			return nil, err
+		}
+	}
 	success := c.commitSuccess
 	if !success && c.commitMessage == "" {
 		success = true
 	}
 	return &billingv1.CommitQuotaResponse{Success: success, ErrorMessage: c.commitMessage, CommittedAmount: req.ActualTokens}, nil
+}
+
+func (c *rawBillingClient) ListRequestAttempts(ctx context.Context, req *billingv1.ListRequestAttemptsRequest, opts ...grpc.CallOption) (*billingv1.ListRequestAttemptsResponse, error) {
+	c.listAttemptsCalls++
+	c.listAttemptsRequests = append(c.listAttemptsRequests, req)
+	// Mirror billing's (page-1)*page_size windowing so recovery pagination is
+	// exercised instead of always returning the whole attempt list on page 1.
+	size := int(req.GetPageSize())
+	if size < 1 {
+		size = 100
+	}
+	page := int(req.GetPage())
+	if page < 1 {
+		page = 1
+	}
+	start := (page - 1) * size
+	items := []*billingv1.RequestAttempt(nil)
+	if start < len(c.attempts) {
+		end := start + size
+		if end > len(c.attempts) {
+			end = len(c.attempts)
+		}
+		items = c.attempts[start:end]
+	}
+	return &billingv1.ListRequestAttemptsResponse{Items: items, Total: int64(len(c.attempts))}, nil
 }
 
 func (c *rawBillingClient) ReleaseQuota(ctx context.Context, req *billingv1.ReleaseQuotaRequest, opts ...grpc.CallOption) (*billingv1.ReleaseQuotaResponse, error) {

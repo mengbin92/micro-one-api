@@ -8,6 +8,7 @@ import (
 	"micro-one-api/domain/requesttrace"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -323,30 +324,49 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 	}
 	billingCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
-	var resp *billingv1.CommitQuotaResponse
-	var err error
 	_, durable := s.executionAttempts.Load(reservationID)
-	if durable && success {
-		resp, err = s.durableCommit(billingCtx, req)
-	} else {
-		resp, err = s.billingClient.CommitQuota(billingCtx, req)
-	}
+	resp, err := s.commitQuotaRPCWithRetry(billingCtx, req, durable && success)
+	recoveredCommit := false
 	if err != nil {
-		recordRelayQuotaOutcome(ctx, "commit_error")
-		setRelayObservationResult(ctx, "quota_error")
-		// Post-forward commit failures must be operator-visible: the upstream
-		// already served the request, the reservation is left to the expiry
-		// sweeper, and without a log line the only trace is the client's 502.
-		applogger.Log.Warn("quota commit RPC failed after upstream served request", zap.String("reservation_id", reservationID), zap.Error(err))
-		return nil, err
+		// The commit RPC is idempotent server-side (in-tx row-locked re-entry
+		// returns the stored result), but a transport error may still hide an
+		// already-persisted commit. Ask billing for the attempt's durable
+		// state before declaring settlement lost: a confirmed commit continues
+		// the normal success path (usage log, channel counters) instead of
+		// leaking a served-but-unlogged request, and an unconfirmed state is
+		// logged for operator follow-up instead of silently falling through.
+		// The quota outcome is emitted once at the end of the settlement so a
+		// recovered commit cannot double-count it.
+		if recovered, state := s.recoverCommittedQuota(ctx, reservationID, details...); recovered != nil {
+			recoveredCommit = true
+			applogger.Log.Info("quota commit recovered from billing attempt state",
+				zap.String("reservation_id", reservationID),
+				zap.Int64("committed_amount", recovered.GetCommittedAmount()),
+				zap.String("attempt_status", state))
+			resp = recovered
+		} else {
+			recordRelayQuotaOutcome(ctx, "commit_error")
+			setRelayObservationResult(ctx, "quota_error")
+			// Post-forward commit failures must be operator-visible: the upstream
+			// already served the request, the reservation is left to the expiry
+			// sweeper, and without a log line the only trace is the client's 502.
+			applogger.Log.Warn("quota commit RPC failed after upstream served request",
+				zap.String("reservation_id", reservationID),
+				zap.String("attempt_state", state),
+				zap.Error(err))
+			return nil, err
+		}
 	}
 	if len(details) > 0 {
 		// §5.2: feed the usage-semantics quarantine with the final attempt's
-		// parser verdict. Best-effort — billing has already committed.
-		// Use the same detached, bounded context as the financial commit. The
-		// client may disconnect immediately after receiving the response; that
-		// must not cancel the quarantine verdict for the final attempt.
-		s.reportUsageSemanticVerdict(billingCtx, details[0])
+		// parser verdict. Best-effort — billing has already committed. Use a
+		// fresh detached, bounded context: three failed commit RPCs may have
+		// consumed the commit context's deadline, and the client may disconnect
+		// immediately after receiving the response. Neither must cancel the
+		// quarantine verdict for the final attempt.
+		verdictCtx, verdictCancel := detachedBillingContext(ctx)
+		s.reportUsageSemanticVerdict(verdictCtx, details[0])
+		verdictCancel()
 	}
 	if resp == nil || !resp.GetSuccess() {
 		recordRelayQuotaOutcome(ctx, "commit_error")
@@ -406,8 +426,135 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 		// failures fail-close this token in the relay until validation recovers.
 		s.consumeTokenQuota(ctx, detail.UserID, detail.TokenID, actualTokens, reservationID)
 	}
-	recordRelayQuotaOutcome(ctx, "commit_success")
+	// Exactly one quota outcome per settlement. A recovered commit keeps its
+	// own label for operator visibility instead of adding a second increment.
+	if recoveredCommit {
+		recordRelayQuotaOutcome(ctx, "commit_recovered")
+	} else {
+		recordRelayQuotaOutcome(ctx, "commit_success")
+	}
 	return resp, nil
+}
+
+const (
+	relayCommitMaxAttempts            = 3
+	relayCommitRetryBaseDelay         = 50 * time.Millisecond
+	relayCommitRecoveryPageSize int32 = 100 // billing clamps page_size to <=100
+	relayCommitRecoveryMaxPages int32 = 3
+	// Mirrors app/billing/internal/biz.ReservationStatusCommitted. That package
+	// is internal to billing-service and cannot be imported by relay-gateway.
+	relayAttemptStatusCommitted = "committed"
+)
+
+// commitQuotaRPCWithRetry commits with a bounded number of attempts. Billing
+// commit is idempotent (in-tx row-locked re-entry returns the stored result),
+// so transport retries cannot double-charge; the first success, business
+// failure, or context deadline stops the loop.
+func (s *HTTPServer) commitQuotaRPCWithRetry(ctx context.Context, req *billingv1.CommitQuotaRequest, durable bool) (*billingv1.CommitQuotaResponse, error) {
+	var lastErr error
+	for attempt := 0; attempt < relayCommitMaxAttempts; attempt++ {
+		// A previous attempt may have consumed the detached commit budget;
+		// never start another financial RPC on an already-dead context.
+		if ctx.Err() != nil {
+			if lastErr != nil {
+				return nil, lastErr
+			}
+			return nil, ctx.Err()
+		}
+		var resp *billingv1.CommitQuotaResponse
+		var err error
+		if durable {
+			resp, err = s.durableCommit(ctx, req)
+		} else {
+			resp, err = s.billingClient.CommitQuota(ctx, req)
+		}
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		if attempt == relayCommitMaxAttempts-1 {
+			break
+		}
+		timer := time.NewTimer(time.Duration(attempt+1) * relayCommitRetryBaseDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, lastErr
+		case <-timer.C:
+		}
+	}
+	return nil, lastErr
+}
+
+// recoverCommittedQuota reads the attempt's durable billing state after every
+// commit retry failed. It returns a synthetic commit response when the
+// reservation is already committed server-side (the RPC response was lost
+// after the persist), plus the observed state for logging; the caller then
+// continues the normal success path so the served request is neither
+// double-charged nor missing its usage log. A nil response means the state is
+// unconfirmed — settlement genuinely unresolved and left to the expiry sweeper
+// plus operator follow-up. The returned state is always a non-empty diagnostic
+// token so the failure log can be triaged without a second query.
+func (s *HTTPServer) recoverCommittedQuota(ctx context.Context, reservationID string, details ...usageLogInput) (*billingv1.CommitQuotaResponse, string) {
+	if s == nil || s.billingClient == nil || len(details) == 0 {
+		return nil, "recovery_unavailable"
+	}
+	detail := details[0]
+	rootID := detail.RootRequestID
+	if rootID == "" {
+		// First attempts persist root_request_id = request_id; legacy paths
+		// without a root default the same way.
+		rootID = detail.RequestID
+	}
+	if detail.UserID == 0 || rootID == "" {
+		return nil, "recovery_identity_missing"
+	}
+	recoverCtx, cancel := detachedBillingContext(ctx)
+	defer cancel()
+	// billing orders attempts by attempt_number ASC, so a retried request's
+	// reservation can be beyond the first page. Walk a bounded number of
+	// pages instead of assuming the first page contains it.
+	for page := int32(1); page <= relayCommitRecoveryMaxPages; page++ {
+		resp, err := s.billingClient.ListRequestAttempts(recoverCtx, &billingv1.ListRequestAttemptsRequest{
+			UserId:        strconv.FormatInt(detail.UserID, 10),
+			RootRequestId: rootID,
+			Page:          page,
+			PageSize:      relayCommitRecoveryPageSize,
+		})
+		if err != nil {
+			applogger.Log.Warn("quota commit recovery state read failed",
+				zap.String("reservation_id", reservationID), zap.Int32("page", page), zap.Error(err))
+			return nil, "state_read_failed"
+		}
+		for _, item := range resp.GetItems() {
+			if item.GetReservationId() != reservationID {
+				continue
+			}
+			if item.GetStatus() != relayAttemptStatusCommitted {
+				if state := item.GetStatus(); state != "" {
+					return nil, state
+				}
+				return nil, "status_unknown"
+			}
+			// ListRequestAttempts blanks ActualCost (and flags
+			// CostFieldsVisible=false) when the caller lacks the
+			// billing.account.cost.read scope. Synthesizing a success with a
+			// zero amount would silently skip subscription/session-window
+			// accounting, so stay on the conservative commit_error path and
+			// let the operator fix the service identity's scope instead.
+			if !item.GetCostFieldsVisible() {
+				return nil, "committed_cost_hidden"
+			}
+			return &billingv1.CommitQuotaResponse{
+				Success:         true,
+				CommittedAmount: item.GetActualCost(),
+			}, item.GetStatus()
+		}
+		if int64(page*relayCommitRecoveryPageSize) >= resp.GetTotal() {
+			break
+		}
+	}
+	return nil, "reservation_not_found"
 }
 
 func (s *HTTPServer) recordSubscriptionAccountQuotaUsage(ctx context.Context, accountID int64, reservationID string, costUSD float64) {

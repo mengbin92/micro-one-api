@@ -163,6 +163,12 @@ message RelayOrchestrator {
   // HMAC-SHA256 hex digests of bearer tokens allowed to use the staging route.
   // SERVICE_TOKEN is the HMAC key; raw bearer tokens must never be configured.
   repeated string allowlist_token_hmac_sha256 = 2 [json_name = "allowlist_token_hmac_sha256"];
+  // Full rollout routes every request on the staged endpoints to the
+  // orchestrator, ignoring the token allowlist. It only takes effect when
+  // enabled is also true; rollback is setting it back to false (or disabling
+  // enabled), which restores allowlist gating / the legacy path without a
+  // restart of any other service.
+  bool full_rollout = 3 [json_name = "full_rollout"];
 }
 
 // ChannelCacheConfig controls the multi-level ChannelCache.

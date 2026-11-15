@@ -38,6 +38,16 @@ func (c *RelayOrchestrator) GetRelayOrchestratorEnabled() bool {
 	return c.Enabled
 }
 
+// GetRelayOrchestratorFullRollout reports whether all staged-endpoint traffic
+// routes to the orchestrator regardless of the token allowlist. It only takes
+// effect together with GetRelayOrchestratorEnabled.
+func (c *RelayOrchestrator) GetRelayOrchestratorFullRollout() bool {
+	if c == nil {
+		return false
+	}
+	return c.FullRollout
+}
+
 // ChannelCacheConfig default methods.
 
 // GetChannelCacheEnabled reports whether the channel cache is enabled.

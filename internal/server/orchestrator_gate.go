@@ -28,7 +28,7 @@ func (s *HTTPServer) relayOrchestratorResponsesHandler(w http.ResponseWriter, r 
 	handler := s.handleResponsesRelay
 	if isOpenAIWSUpgradeRequest(r) {
 		stream = "true"
-	} else if r.Method == http.MethodPost && r.URL.Path == relayEndpointResponses && s.isRelayOrchestratorTokenAllowed(extractAPIKey(r)) {
+	} else if r.Method == http.MethodPost && r.URL.Path == relayEndpointResponses && s.useRelayOrchestratorForToken(extractAPIKey(r)) {
 		path = relayExecutionPathOrchestrator
 		handler = s.handleResponsesWithOrchestrator
 	}
@@ -38,7 +38,7 @@ func (s *HTTPServer) relayOrchestratorResponsesHandler(w http.ResponseWriter, r 
 func (s *HTTPServer) relayOrchestratorMessagesHandler(w http.ResponseWriter, r *http.Request) {
 	path := relayExecutionPathLegacy
 	handler := s.handleAnthropicMessages
-	if r.Method == http.MethodPost && s.isRelayOrchestratorTokenAllowed(extractAPIKey(r)) {
+	if r.Method == http.MethodPost && s.useRelayOrchestratorForToken(extractAPIKey(r)) {
 		path = relayExecutionPathOrchestrator
 		handler = s.handleAnthropicMessagesWithOrchestrator
 	}
@@ -51,9 +51,25 @@ func (s *HTTPServer) shouldUseRelayOrchestrator(r *http.Request) bool {
 	}
 	token, err := bearerTokenFromRequest(r)
 	if err != nil {
-		return false
+		return s.routeAllToRelayOrchestrator()
 	}
-	return s.isRelayOrchestratorTokenAllowed(token)
+	return s.useRelayOrchestratorForToken(token)
+}
+
+// useRelayOrchestratorForToken applies the token gate shared by the Responses
+// and Messages routes: an allowlisted digest, or full rollout when enabled.
+// The bearer token is still authenticated inside the executor plan, exactly as
+// on the legacy route; this gate only selects the execution path.
+func (s *HTTPServer) useRelayOrchestratorForToken(token string) bool {
+	return s.isRelayOrchestratorTokenAllowed(token) || s.routeAllToRelayOrchestrator()
+}
+
+// routeAllToRelayOrchestrator reports whether full rollout is active: the
+// orchestrator is enabled and configured to take every staged request,
+// ignoring the token allowlist. Disabling the orchestrator always wins, so
+// misconfiguration cannot silently widen the staging path.
+func (s *HTTPServer) routeAllToRelayOrchestrator() bool {
+	return s != nil && s.relayOrchestratorEnabled && s.relayOrchestratorFullRollout
 }
 
 func (s *HTTPServer) isRelayOrchestratorTokenAllowed(token string) bool {

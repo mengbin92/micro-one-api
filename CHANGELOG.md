@@ -7,6 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-11-15
+
+v0.44.0 是 v0.43.1 之后的 **MINOR 功能版本**：relay-gateway 的 orchestrator 执行路径新增全量切换开关 `relay_orchestrator.full_rollout`（默认关闭、fail-closed），并补齐 commit 结算失败后的有界重试与按 reservation 状态的幂等恢复；默认行为零变化，无新增迁移、无 API 与计费契约变更。详见 [release-v0.44.0.md](docs/releases/release-v0.44.0.md)。
+
+### Added
+
+- `relay_orchestrator.full_rollout`（`RELAY_ORCHESTRATOR_FULL_ROLLOUT`，默认 `false`）：staging 端点（Chat Completions / Responses POST / Messages POST）全量进入 orchestrator 的路由开关，仅在 `enabled=true` 时生效并忽略 token allowlist；回滚为改回 `false`。补齐全量切换的机制缺口，不改变灰度默认行为。commit 结算 RPC 失败增加有界重试与按 reservation 状态的幂等恢复（billing 已提交时继续成功路径、未确认时保留 `commit_error` 可见性）。
+
+### Fixed
+
+- 非流式 orchestrator 终态补上流式同款的 `final_attempt_semantics_missing` 异常计数：verified 且携带 cache 桶但无语义声明的 envelope 在结算进入 billing ambiguous 保守路径前必然被记录，非流式流量获得与流式一致的隔离信号覆盖。
+- commit 补偿恢复的防御性加固：billing 在调用方缺少 `billing.account.cost.read` 时会隐藏 `actual_cost` 并置 `cost_fields_visible=false`，此时不再以 0 金额合成成功响应（避免订阅账户与会话窗口记账静默漏记），改回 `commit_error` 保守路径并输出带诊断状态的告警；状态查询改为有界翻页，覆盖 billing 按 `attempt_number ASC` 排序时落在首页之后的 reservation；一次结算只记一个 quota outcome（`commit_recovered` 与 `commit_success` 互斥）。
+- 只读观察脚本补采 `RELAY_ORCHESTRATOR_FULL_ROLLOUT`，部署文档补齐「gate 只选路、鉴权仍在 executor 内完成」与回滚边界说明。
+
 ## [0.43.1] - 2026-11-15
 
 v0.43.1 是 v0.43.0 之后的 **PATCH 安全修复版本**：OpenTelemetry Go 依赖族升到 v1.47.0，修复 `GHSA-q7gw-24fr-5p69` 的两条 medium Dependabot 告警（#79 `otel/sdk`、#80 `otel/trace`）；同时补齐 v0.43.0 发版时遗漏的 README 发布信息同步。无新增迁移、无 API 与计费契约变更，详见 [release-v0.43.1.md](docs/releases/release-v0.43.1.md)。
