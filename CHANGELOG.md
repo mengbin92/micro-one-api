@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.43.1] - 2026-11-15
+
+v0.43.1 是 v0.43.0 之后的 **PATCH 安全修复版本**：OpenTelemetry Go 依赖族升到 v1.47.0，修复 `GHSA-q7gw-24fr-5p69` 的两条 medium Dependabot 告警（#79 `otel/sdk`、#80 `otel/trace`）；同时补齐 v0.43.0 发版时遗漏的 README 发布信息同步。无新增迁移、无 API 与计费契约变更，详见 [release-v0.43.1.md](docs/releases/release-v0.43.1.md)。
+
+### Changed
+
+- `go.opentelemetry.io/otel`、`metric`、`sdk`、`trace`、`exporters/otlp/otlptrace/otlptracehttp` 及间接依赖整族 v1.46.0 → v1.47.0；`genproto/googleapis/api` 与 `rpc` 随 exporter 升级，`go.sum` 无旧版本残留。
+- `README.md` / `README.en.md` / `docs/README.md` 同步最新发布到 v0.43.1，补入 v0.43.0 发布条目与 registry mapping 单一路由来源说明。
+
+### Fixed
+
+- 修复 `AttributeValueLengthLimit` 被合法 U+FFFD rune 属性值绕过的依赖漏洞；GitHub 依赖图重扫后两条告警自动关闭（`fixed: 30 / open: 0`）。
+
 ## [0.43.0] - 2026-11-14
 
 v0.43.0 是 v0.42.0 之后的 **MINOR 功能版本（含破坏性变更）**：模型注册表映射成为唯一路由候选来源，legacy `abilities` / `subscription_account_abilities` 投影与 `restrict_models` catch-all 开关退役。迁移 151 先回填存量路由再删除旧表与列，三方言一致且 MySQL DDL 可幂等重放。判 MINOR 而非 PATCH 是因为删除表/列并改变未注册模型的路由结果。线上按「备份 → 预加 config 列 → 部署同源镜像（含 worker）→ 执行 151 → 验证」的无停机顺序更新，详见 [release-v0.43.0.md](docs/releases/release-v0.43.0.md)。
