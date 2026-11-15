@@ -14,13 +14,14 @@ multi-channel API distribution and [sub2api](https://github.com/Wei-Shaw/sub2api
 for subscription windows, account pools, rate limits and usage management.
 You provide your own authorized upstream accounts and API keys.
 
-> Latest release: [v0.43.1](./docs/releases/release-v0.43.1.md) — OpenTelemetry Go
-> upgraded across the whole module family to v1.47.0, fixing `GHSA-q7gw-24fr-5p69`
-> (two medium dependency alerts). No new migration or API change; upgrading only
-> requires rebuilding and redeploying the service images. The previous
-> [v0.43.0](./docs/releases/release-v0.43.0.md) retired legacy `abilities`, making
-> registry mappings the sole routing source.
-> [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.43.1)
+> Latest release: [v0.44.0](./docs/releases/release-v0.44.0.md) — relay-gateway gains
+> the `RELAY_ORCHESTRATOR_FULL_ROLLOUT` switch for routing all staged-endpoint traffic
+> through the orchestrator, plus bounded retry and idempotent, state-based recovery for
+> failed billing commits. Both are opt-in: default behaviour is unchanged, with no new
+> migration or API change; upgrading only requires rebuilding `relay-gateway`. The
+> previous [v0.43.1](./docs/releases/release-v0.43.1.md) upgraded OpenTelemetry Go to
+> v1.47.0 and fixed the related dependency alerts.
+> [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.44.0)
 
 ## Features
 
@@ -158,6 +159,14 @@ and [repository development rules](./AGENTS.md). Both are currently maintained i
 
 ## Releases and upgrades
 
+- [v0.44.0](./docs/releases/release-v0.44.0.md): relay-gateway gains
+  `RELAY_ORCHESTRATOR_FULL_ROLLOUT` (effective only with
+  `RELAY_ORCHESTRATOR_ENABLED=true`, ignoring the token allowlist while authentication
+  stays inside the executor) for Chat Completions / Responses POST / Messages POST;
+  failed billing commits now get three bounded retries plus idempotent recovery from
+  the persisted reservation state; non-stream finalizers emit the same
+  `final_attempt_semantics_missing` anomaly as streamed ones. Default-off with zero
+  behaviour change; no migration or API change, redeploy `relay-gateway` only.
 - [v0.43.1](./docs/releases/release-v0.43.1.md): OpenTelemetry Go v1.46.0 → v1.47.0 across
   the whole module family, fixing `GHSA-q7gw-24fr-5p69` (two medium alerts), plus README
   release-info sync. No new migration or API change; redeploy the service images.
