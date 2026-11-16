@@ -82,8 +82,9 @@ v0.44.1 是 v0.44.0 之后的 **PATCH 修复版本**，收口最近三个 MINOR 
 - [x] 按项目允许的 OCR delegate 模式补齐未完成/后续变更的 35 项，加上已完成且未变的 27 项，共 62 项逐路径 hash 核验，P0/P1 为 0。外部模型两轮结果仍为 partial/failed，不冒充其通过；[门禁证据](../runbooks/evidence/release-v0.44.1-gates.json)。
 - [x] 临时使用官方固定版本验证工具完成完整部署检查：kubeconform 42 个资源 valid，0 invalid/error/skip；4 组 Compose、89 项引用与 routing gates 全绿。
 - [x] develop 提交 `7b49f928` 的 [CI](https://github.com/mengbin92/micro-one-api/actions/runs/43779090089) 16 项必需任务（含 9 个 amd64 构建）与[安全检查](https://github.com/mengbin92/micro-one-api/actions/runs/43779090025)通过；不以 arm64 作为部署等待条件。
-- [ ] main/tag 的发布流水线与 GitHub Release：推送后回填。
+- [x] tag `v0.44.1` 固定在 `f3b3874b`；[Release 流水线](https://github.com/mengbin92/micro-one-api/actions/runs/43781628996)成功，含全部发布 E2E、9 服务镜像与多架构 manifest 校验；[GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.44.1)已正式发布。
 - [x] 2026-11-16 生产更新：7 个服务 + account-ops profile worker 同一源码摘要，重启 0；7 个健康端点 200，启动日志 panic/schema/ERROR 为 0；6 个 owner 审计读取成功，既有 committed 记录的成本字段可见且与持久化金额一致。迁移 151 marker 保留，未重跑迁移、未更新宿主机前端。HTTP 无凭据请求 401、兄弟路径 404；没有可用用户登录态，完整浏览器验收未执行。[脱敏验收证据](../runbooks/evidence/release-v0.44.1-production.json)。
+- [x] 后续稳定性复查：8 个容器继续正常，源码一致、重启 0、真实启动错误 0。另有 30 天窗口的既有 ledger/log 对账 WARN，部署前已存在，部署后的记录数差与额度差未变；本版未擅自补写或改账。
 
 ## 完整变更日志
 
@@ -93,6 +94,7 @@ v0.44.1 是 v0.44.0 之后的 **PATCH 修复版本**，收口最近三个 MINOR 
 - `b3864ac5` fix(channel): make registry migration and concurrent creation safe
 - `1ecc47e6` fix(admin): complete cross-owner operation audit reads
 - `7b49f928` docs(release): v0.44.1
-- `docs(release): record v0.44.1 production verification`
+- `b599bfc5` docs(release): record v0.44.1 production verification
+- `docs(release): close v0.44.1 publication evidence`
 
 发布后完整范围：`git log v0.44.0..v0.44.1`。

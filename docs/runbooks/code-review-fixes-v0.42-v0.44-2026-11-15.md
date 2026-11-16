@@ -65,4 +65,4 @@ OCR 原始结果和意见处置分别保存在 `/tmp/micro-one-api-review-fixes/
 
 各 owner 必须信任 admin 专用服务凭据；共享服务 token 不授予审计 system capability。Compose 已补齐地址，Kubernetes 已补齐 ConfigMap/env 与限定目标端口的 egress；身份 Secret 由实际环境提供，不在仓库生成或记录真实凭据。
 
-本轮按 PATCH v0.44.1 提交和发布，理由与步骤见[发布文档](../releases/release-v0.44.1.md)。三个独立修复提交与生产验证已完成；main/tag 与发布状态以发布文档清单回填为准，尚未发生的步骤不提前勾选。
+本轮按 PATCH v0.44.1 提交和发布，理由与步骤见[发布文档](../releases/release-v0.44.1.md)。三个独立修复提交、生产验证、main/tag 推送与 GitHub Release 均已完成；最终状态和流水线链接见发布文档。历史 ledger/log 对账 WARN 部署前后差异未变，未擅自改账。

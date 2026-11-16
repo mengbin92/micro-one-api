@@ -336,5 +336,14 @@
   "production": {
     "status": "verified",
     "evidence": "release-v0.44.1-production.json"
+  },
+  "publication": {
+    "tag": "v0.44.1",
+    "tag_commit": "f3b3874b2abd405c2dfac008f4408b906ec45149",
+    "github_release_url": "https://github.com/mengbin92/micro-one-api/releases/tag/v0.44.1",
+    "published_at": "2026-11-16T01:02:57Z",
+    "workflow_url": "https://github.com/mengbin92/micro-one-api/actions/runs/43781628996",
+    "workflow_conclusion": "success",
+    "source_digest_matches_production": true
   }
 }

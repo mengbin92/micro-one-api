@@ -166,5 +166,76 @@
     "amd64_builds_passed": 9,
     "security": "https://github.com/mengbin92/micro-one-api/actions/runs/43779090025",
     "security_passed": true
+  },
+  "stability_followup": {
+    "verified_at_utc": "2026-11-16T00:48:47.910291+00:00",
+    "services": [
+      {
+        "service": "billing-service",
+        "running": true,
+        "restarts": 0,
+        "source_matches": true,
+        "startup_error_count": 0
+      },
+      {
+        "service": "channel-service",
+        "running": true,
+        "restarts": 0,
+        "source_matches": true,
+        "startup_error_count": 0
+      },
+      {
+        "service": "config-service",
+        "running": true,
+        "restarts": 0,
+        "source_matches": true,
+        "startup_error_count": 0
+      },
+      {
+        "service": "log-service",
+        "running": true,
+        "restarts": 0,
+        "source_matches": true,
+        "startup_error_count": 0
+      },
+      {
+        "service": "monitor-worker",
+        "running": true,
+        "restarts": 0,
+        "source_matches": true,
+        "startup_error_count": 0
+      },
+      {
+        "service": "notify-worker",
+        "running": true,
+        "restarts": 0,
+        "source_matches": true,
+        "startup_error_count": 0
+      },
+      {
+        "service": "admin-api",
+        "running": true,
+        "restarts": 0,
+        "source_matches": true,
+        "startup_error_count": 0
+      },
+      {
+        "service": "channel-account-ops-worker",
+        "running": true,
+        "restarts": 0,
+        "source_matches": true,
+        "startup_error_count": 0
+      }
+    ],
+    "all_stable": true
+  },
+  "existing_reconciliation_warning": {
+    "lookback_days": 30,
+    "warning_present_before_deployment": true,
+    "warning_present_after_deployment": true,
+    "read_only": true,
+    "amounts_or_record_ids_exposed": false,
+    "count_diff_unchanged": true,
+    "quota_diff_unchanged": true
   }
 }
