@@ -16,7 +16,10 @@ import (
 	adminv1 "micro-one-api/api/admin/v1"
 	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
+	configv1 "micro-one-api/api/config/v1"
 	identityv1 "micro-one-api/api/identity/v1"
+	monitorv1 "micro-one-api/api/monitor/v1"
+	notifyv1 "micro-one-api/api/notify/v1"
 	"micro-one-api/app/admin/internal/biz"
 	"micro-one-api/app/admin/internal/data"
 	"micro-one-api/app/admin/internal/server"
@@ -36,6 +39,10 @@ import (
 
 // clientsResult bundles all downstream gRPC clients and their connections.
 type clientsResult struct {
+	configClient   configv1.ConfigServiceClient
+	monitorClient  monitorv1.MonitorServiceClient
+	notifyClient   notifyv1.NotifyServiceClient
+	auditConns     map[string]*grpc.ClientConn
 	logClient      logv1.LogServiceClient
 	logConn        *grpc.ClientConn
 	identityClient identityv1.IdentityServiceClient
@@ -118,7 +125,36 @@ func newClients(cfg *Config) (*clientsResult, error) {
 		_ = billingConn.Close()
 		return nil, err
 	}
-	return &clientsResult{logClient: logv1.NewLogServiceClient(logConn), logConn: logConn,
+	auditConns := make(map[string]*grpc.ClientConn, 3)
+	for _, target := range []struct{ name, env, endpoint string }{
+		{"config", "CONFIG_GRPC_ENDPOINT", "127.0.0.1:9005"},
+		{"monitor", "MONITOR_GRPC_ENDPOINT", "127.0.0.1:9007"},
+		{"notify", "NOTIFY_GRPC_ENDPOINT", "127.0.0.1:9008"},
+	} {
+		endpoint := os.Getenv(target.env)
+		if endpoint == "" {
+			endpoint = target.endpoint
+		}
+		conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceToken)), grpc.WithStatsHandler(xgrpc.ClientStatsHandler()))
+		if err != nil {
+			_ = identityConn.Close()
+			_ = channelConn.Close()
+			_ = billingConn.Close()
+			_ = logConn.Close()
+			for _, opened := range auditConns {
+				_ = opened.Close()
+			}
+			return nil, fmt.Errorf("connect to %s audit owner: %w", target.name, err)
+		}
+		auditConns[target.name] = conn
+	}
+	return &clientsResult{
+		configClient:   configv1.NewConfigServiceClient(auditConns["config"]),
+		monitorClient:  monitorv1.NewMonitorServiceClient(auditConns["monitor"]),
+		notifyClient:   notifyv1.NewNotifyServiceClient(auditConns["notify"]),
+		auditConns:     auditConns,
+		logClient:      logv1.NewLogServiceClient(logConn),
+		logConn:        logConn,
 		identityClient: identityv1.NewIdentityServiceClient(identityConn),
 		channelClient:  channelv1.NewChannelServiceClient(channelConn),
 		billingClient:  billingv1.NewBillingServiceClient(billingConn),
@@ -131,8 +167,8 @@ func newClients(cfg *Config) (*clientsResult, error) {
 // systemOptionsResult wraps the optional system-options store and the
 // business-operation audit reader that shares its admin database connection.
 type systemOptionsResult struct {
-	Repo             biz.SystemOptionsRepo
-	OperationAuditUc *biz.OperationAuditUsecase
+	Repo      biz.SystemOptionsRepo
+	AuditRepo biz.OperationAuditRepo
 }
 
 // newSystemOptionsRepo opens the system-options DB if configured, returning
@@ -158,8 +194,8 @@ func newSystemOptionsRepo(cfg *Config) systemOptionsResult {
 		applogger.Log.Warn("failed to open operation audit repository", zap.String("driver", driver))
 	}
 	return systemOptionsResult{
-		Repo:             data.NewSystemOptionsRepoWithDriver(db, driver),
-		OperationAuditUc: biz.NewOperationAuditUsecase(auditRepo),
+		Repo:      data.NewSystemOptionsRepoWithDriver(db, driver),
+		AuditRepo: auditRepo,
 	}
 }
 

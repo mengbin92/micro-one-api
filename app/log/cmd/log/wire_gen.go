@@ -36,7 +36,9 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	logUsecase := biz.NewLogUsecase(repository)
 	logService := service.NewLogService(logUsecase)
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup := newApp(config, repository, logUsecase, logService, mainRegistrarResult)
+	writeAuditRepo := data.NewWriteAuditRepo(repository)
+	writeAuditUsecase := biz.NewWriteAuditUsecase(writeAuditRepo)
+	app, cleanup := newApp(config, repository, logUsecase, logService, mainRegistrarResult, writeAuditUsecase)
 	return app, func() {
 		cleanup()
 	}, nil
@@ -45,7 +47,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 // wire.go:
 
 var ProviderSet = wire.NewSet(
-	newRepo, biz.NewLogUsecase, service.NewLogService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.LogRepo), new(*data.Repository)),
+	newRepo, data.NewWriteAuditRepo, biz.NewWriteAuditUsecase, biz.NewLogUsecase, service.NewLogService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.LogRepo), new(*data.Repository)),
 )
 
 func newRepo(cfg *Config) (*data.Repository, error) {
@@ -64,9 +66,10 @@ func provideRegistrar(cfg *Config) registrarResult {
 	return registrarResult{Registrar: registrar}
 }
 
-func newApp(cfg *Config, repo *data.Repository, uc *biz.LogUsecase, svc *service.LogService, reg registrarResult) (*kratos.App, func()) {
+func newApp(cfg *Config, repo *data.Repository, uc *biz.LogUsecase, svc *service.LogService, reg registrarResult, writeAuditUC *biz.WriteAuditUsecase) (*kratos.App, func()) {
 	ownerAuth, _ := authz.FromEnvironment("log")
 	svc.SetAuthorization(ownerAuth)
+	svc.SetWriteAuditUsecase(writeAuditUC)
 
 	retentionDays := 30
 	if cfg.Bootstrap.LogSvc != nil && cfg.Bootstrap.LogSvc.RetentionDays > 0 {

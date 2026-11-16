@@ -16,7 +16,7 @@ v0.44.0 是 v0.43.1 之后的 **MINOR 功能版本**：为 relay-gateway 的 orc
 
 - **根因**：上游已响应后 commit 结算 RPC 失败时，请求已服务但结算与用量日志丢失；服务端 commit 幂等，但传输错误可能掩盖「已持久化」的事实。
 - **修复**：commit 增加 3 次有界重试（50ms / 100ms 退避，billing commit 服务端幂等不会重复扣费）；重试耗尽后通过 `ListRequestAttempts` 按 reservation 查询持久状态，billing 已提交则合成成功响应、金额取账存 `actual_cost`，继续 usage log、渠道计数与订阅记账；未确认则保留 `commit_error` 指标与带诊断状态的告警日志，交由过期清理与人工跟进。
-- **影响服务**：`relay-gateway`（`internal/server/http_billing.go`）。
+- **影响服务**：`relay-gateway`（`internal/server/http_billing.go`）。**补记（2026-11-15 code review P1 修复）**：恢复读取走 billing 的 `ListRequestAttempts`，其服务身份契约（`platform/security/serviceidentity/registry.go`，编译进 billing 的 gRPC 拦截器）必须把 `relay` 加入该 RPC 的 `SystemCallers` 才能放行；因此**结算恢复生效要求 relay-gateway 与 billing-service 同 commit（或含该修复的 commit）一起部署**，单独部署 relay 时恢复查询会被真实拦截器以 `PermissionDenied` 拒绝、退回保守 `commit_error` 路径（不会误扣费，但已扣款请求无法自动补齐成功路径）。
 
 ## 3. 非流式终态异常信号对称
 

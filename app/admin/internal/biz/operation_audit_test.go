@@ -13,9 +13,9 @@ type operationAuditRepoStub struct {
 	total  int64
 }
 
-func (r *operationAuditRepoStub) List(_ context.Context, filter OperationAuditFilter) ([]OperationAudit, int64, error) {
+func (r *operationAuditRepoStub) List(_ context.Context, filter OperationAuditFilter) (OperationAuditBatch, error) {
 	r.filter = filter
-	return r.items, r.total, nil
+	return OperationAuditBatch{Items: r.items, Total: r.total, StoreID: "test-store"}, nil
 }
 
 func TestOperationAuditUsecaseNormalizesPaginationAndValidatesFilters(t *testing.T) {

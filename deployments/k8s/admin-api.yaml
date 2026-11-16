@@ -95,6 +95,26 @@ spec:
             configMapKeyRef:
               name: app-config
               key: billing-grpc-endpoint
+        - name: LOG_GRPC_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: log-grpc-endpoint
+        - name: CONFIG_GRPC_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: config-grpc-endpoint
+        - name: MONITOR_GRPC_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: monitor-grpc-endpoint
+        - name: NOTIFY_GRPC_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: notify-grpc-endpoint
         - name: LOG_HTTP_ENDPOINT
           valueFrom:
             configMapKeyRef:

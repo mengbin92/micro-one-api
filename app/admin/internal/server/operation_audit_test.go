@@ -17,13 +17,13 @@ type operationAuditHandlerRepo struct {
 	filter adminbiz.OperationAuditFilter
 }
 
-func (r *operationAuditHandlerRepo) List(_ context.Context, filter adminbiz.OperationAuditFilter) ([]adminbiz.OperationAudit, int64, error) {
+func (r *operationAuditHandlerRepo) List(_ context.Context, filter adminbiz.OperationAuditFilter) (adminbiz.OperationAuditBatch, error) {
 	r.filter = filter
-	return []adminbiz.OperationAudit{{
+	return adminbiz.OperationAuditBatch{Items: []adminbiz.OperationAudit{{
 		EventID: "event-1", ActorUserID: 7, ActorUsername: "admin", Operation: "billing.pricing.update",
 		ResourceID: "1001", DecisionVersions: `{"policy":"3"}`, Reason: "reviewed",
 		OccurredAt: 1700000000000, Result: "success",
-	}}, 1, nil
+	}}, Total: 1, StoreID: "test-store"}, nil
 }
 
 func TestHandleOperationAuditsReturnsFilteredPage(t *testing.T) {
@@ -98,4 +98,15 @@ func TestOperationAuditRouteIsReadyOnlyForGet(t *testing.T) {
 		require.False(t, iamOwnerRouteReady(path, method), method)
 	}
 	require.False(t, iamOwnerRouteReady(path+"/export", http.MethodGet), "no prefix grant for unregistered subpaths")
+}
+
+func TestHandleOperationAuditsRejectsPageOutsideAggregationWindow(t *testing.T) {
+	local := &operationAuditHandlerRepo{}
+	svc := service.NewAdminService(nil, nil, nil, nil)
+	svc.SetOperationAuditUsecase(adminbiz.NewOperationAuditUsecase(adminbiz.NewAggregatedOperationAuditRepo(local)))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/operation-audits?page=251&page_size=20", nil)
+	rec := httptest.NewRecorder()
+	handleOperationAudits(rec, req, svc)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "narrow the time range or filters")
 }

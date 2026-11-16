@@ -19,6 +19,7 @@ import (
 
 // ConfigService is the transport layer entry for config-service.
 type ConfigService struct {
+	writeAuditUC       *biz.WriteAuditUsecase
 	ownerAuthorization *authz.Client
 	configv1.UnimplementedConfigServiceServer
 	uc *biz.ConfigUsecase

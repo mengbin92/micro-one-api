@@ -48,3 +48,22 @@ func TestOperationAuditRepoFiltersOrdersAndPaginates(t *testing.T) {
 		})
 	}
 }
+
+func TestOperationAuditAggregationReadsSharedStoreOnce(t *testing.T) {
+	db := dbtest.RoutingContextDB(t, "sqlite")
+	require.NoError(t, db.Table("resource_write_audits").Create(map[string]any{
+		"event_id": "shared-event", "actor_user_id": 7, "operation": "channel.channel.update", "resource_id": "1",
+		"decision_versions": "{}", "reason": "reviewed", "occurred_at": 100, "result": "success",
+	}).Error)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	local := NewOperationAuditRepoWithDriver(sqlDB, "sqlite")
+	channel := NewOperationAuditRepoWithDriver(sqlDB, "sqlite")
+	billing := NewOperationAuditRepoWithDriver(sqlDB, "sqlite")
+	uc := adminbiz.NewOperationAuditUsecase(adminbiz.NewAggregatedOperationAuditRepo(local, channel, billing))
+	page, err := uc.List(context.Background(), adminbiz.OperationAuditFilter{}, 1, 20)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, page.Total)
+	require.Len(t, page.Items, 1)
+	require.Equal(t, "shared-event", page.Items[0].EventID)
+}

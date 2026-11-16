@@ -21,6 +21,8 @@ import (
 // config_loader.go so it is visible under both build tags.
 var ProviderSet = wire.NewSet(
 	newRepo,
+	data.NewWriteAuditRepo,
+	biz.NewWriteAuditUsecase,
 	biz.NewConfigUsecase,
 	service.NewConfigService,
 	server.NewGRPCServer,
@@ -59,9 +61,10 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	))
 }
 
-func newApp(cfg *Config, svc *service.ConfigService, reg registrarResult) (*kratos.App, func()) {
+func newApp(cfg *Config, svc *service.ConfigService, reg registrarResult, writeAuditUC *biz.WriteAuditUsecase) (*kratos.App, func()) {
 	ownerAuth, _ := authz.FromEnvironment("config")
 	svc.SetAuthorization(ownerAuth)
+	svc.SetWriteAuditUsecase(writeAuditUC)
 	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc)
 	opts := []kratos.Option{

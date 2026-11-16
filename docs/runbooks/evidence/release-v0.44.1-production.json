@@ -1,0 +1,170 @@
+{
+  "verified_date": "2026-11-16",
+  "deployed_source_commit": "7b49f928dc23d4d0b7220a99d96af185ad8239fa",
+  "source_digest": "4be31262b0b03c74fc0df782caf362cad64c83c51ed6c7c79ee3f5c3ece73f54",
+  "rollback_tag": "rollback-20261116-082329",
+  "preconfig_rollback_tag": "rollback-pre-v0.44.1-20261116-082307",
+  "services": [
+    {
+      "service": "billing-service",
+      "running": true,
+      "restarts": 0,
+      "source_digest_matches": true,
+      "image": "docker-compose-billing-service:deploy-20261116-082329-7b49f928",
+      "health_http_200": true,
+      "startup_error_counts": {
+        "panic": 0,
+        "schema": 0,
+        "error_level": 0
+      }
+    },
+    {
+      "service": "channel-service",
+      "running": true,
+      "restarts": 0,
+      "source_digest_matches": true,
+      "image": "docker-compose-channel-service:deploy-20261116-082329-7b49f928",
+      "health_http_200": true,
+      "startup_error_counts": {
+        "panic": 0,
+        "schema": 0,
+        "error_level": 0
+      }
+    },
+    {
+      "service": "config-service",
+      "running": true,
+      "restarts": 0,
+      "source_digest_matches": true,
+      "image": "docker-compose-config-service:deploy-20261116-082329-7b49f928",
+      "health_http_200": true,
+      "startup_error_counts": {
+        "panic": 0,
+        "schema": 0,
+        "error_level": 0
+      }
+    },
+    {
+      "service": "log-service",
+      "running": true,
+      "restarts": 0,
+      "source_digest_matches": true,
+      "image": "docker-compose-log-service:deploy-20261116-082329-7b49f928",
+      "health_http_200": true,
+      "startup_error_counts": {
+        "panic": 0,
+        "schema": 0,
+        "error_level": 0
+      }
+    },
+    {
+      "service": "monitor-worker",
+      "running": true,
+      "restarts": 0,
+      "source_digest_matches": true,
+      "image": "docker-compose-monitor-worker:deploy-20261116-082329-7b49f928",
+      "health_http_200": true,
+      "startup_error_counts": {
+        "panic": 0,
+        "schema": 0,
+        "error_level": 0
+      }
+    },
+    {
+      "service": "notify-worker",
+      "running": true,
+      "restarts": 0,
+      "source_digest_matches": true,
+      "image": "docker-compose-notify-worker:deploy-20261116-082329-7b49f928",
+      "health_http_200": true,
+      "startup_error_counts": {
+        "panic": 0,
+        "schema": 0,
+        "error_level": 0
+      }
+    },
+    {
+      "service": "admin-api",
+      "running": true,
+      "restarts": 0,
+      "source_digest_matches": true,
+      "image": "docker-compose-admin-api:deploy-20261116-082329-7b49f928",
+      "health_http_200": true,
+      "startup_error_counts": {
+        "panic": 0,
+        "schema": 0,
+        "error_level": 0
+      }
+    },
+    {
+      "service": "channel-account-ops-worker",
+      "running": true,
+      "restarts": 0,
+      "source_digest_matches": true,
+      "image": "docker-compose-channel-service:deploy-20261116-082329-7b49f928",
+      "startup_error_counts": {
+        "panic": 0,
+        "schema": 0,
+        "error_level": 0
+      }
+    }
+  ],
+  "channel_worker_same_image": true,
+  "admin_owner_endpoints_match": true,
+  "migration151_still_registered": true,
+  "schema_migration_replayed": false,
+  "frontend_assets_updated": false,
+  "owner_audit_reads": [
+    {
+      "owner": "billing",
+      "ok": true,
+      "store_id_valid": true
+    },
+    {
+      "owner": "channel",
+      "ok": true,
+      "store_id_valid": true
+    },
+    {
+      "owner": "config",
+      "ok": true,
+      "store_id_valid": true
+    },
+    {
+      "owner": "log",
+      "ok": true,
+      "store_id_valid": true
+    },
+    {
+      "owner": "monitor",
+      "ok": true,
+      "store_id_valid": true
+    },
+    {
+      "owner": "notify",
+      "ok": true,
+      "store_id_valid": true
+    }
+  ],
+  "relay_settlement_read": {
+    "ok": true,
+    "scope_only": false,
+    "rpc_scope_ok": true,
+    "committed_match": true,
+    "cost_fields_visible": true,
+    "actual_cost_matches": true
+  },
+  "http_guards": {
+    "unauthenticated_status": 401,
+    "unregistered_sibling_status": 404
+  },
+  "console_static_token_status": 401,
+  "full_user_session_browser_acceptance": "not_performed_no_authorized_user_session",
+  "ci": {
+    "develop": "https://github.com/mengbin92/micro-one-api/actions/runs/43779090089",
+    "required_non_arm64_jobs_passed": 16,
+    "amd64_builds_passed": 9,
+    "security": "https://github.com/mengbin92/micro-one-api/actions/runs/43779090025",
+    "security_passed": true
+  }
+}

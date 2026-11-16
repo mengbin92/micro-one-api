@@ -138,6 +138,8 @@ docker compose --env-file .env down -v        # 停止并删除数据卷
 - 已安装 Go 1.27（执行数据库迁移）
 - 已准备九个服务镜像；本仓库的 Release 流程在 Linux E2E 通过后推送九服务多架构镜像，再发布 GitHub Release，部署仍需单独执行
 
+管理端操作审计通过各 owner 的 gRPC 读取接口聚合数据。`app-config` 的 `log-grpc-endpoint`、`config-grpc-endpoint`、`monitor-grpc-endpoint`、`notify-grpc-endpoint` 分别接入 admin-api 的同名 `*_GRPC_ENDPOINT` 环境变量，默认目标为 `log-service:9006`、`config-service:9005`、`monitor-worker:9007`、`notify-worker:9008`。启用 NetworkPolicy 时，admin-api 必须获准访问这四个目标 Pod 的对应 TCP 端口；任一 owner 读取失败时审计列表明确报错，不会将其当成空记录。 各 owner 还必须在 `SERVICE_CALLER_TOKENS` 中信任 admin 专用服务凭据，admin 使用对应的 `SERVICE_IDENTITY_TOKEN`；共享 `SERVICE_TOKEN` 不具备该系统读取能力。操作审计的 owner 版本、服务身份及网络配置必须一并更新。
+
 ### 3.2 创建命名空间
 
 ```bash

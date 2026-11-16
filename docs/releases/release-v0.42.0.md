@@ -17,13 +17,15 @@ v0.42.0 是 v0.41.0 之后的 **MINOR 功能版本**：管理后台新增只读�
 - 排序：`occurred_at DESC, event_id DESC`，与索引方向一致。
 - 返回字段：事件 ID、操作人 ID 与用户名、操作码、资源 ID、决策版本、原因、发生时间、结果。**不返回请求正文或凭据**。
 
+**跨 owner 聚合（2026-11-15 code review 修复补记）**：初版读取面只连接 admin schema，而各 owner 在各自 schema 的 `resource_write_audits` 写审计，独立 schema 下渠道、账单等操作在页面上不可见（空结果被误读为无操作）。修复：channel / billing / config / log / monitor / notify 各自提供受 registry 保护的只读 `ListWriteAudits` RPC（仅 admin 专用 system identity，usecase 内二次校验 capability，调用前剥离 operator 凭证），admin 侧 `AggregatedOperationAuditRepo` 聚合本地与各 owner 结果，统一按 `occurred_at/event_id` 排序分页、按物理审计库身份去重后汇总 total（共享数据库只计一次）。各源只读取当前页所需的排序前缀；查询限于全局前 5000 条，超窗返回 400 并提示缩小时间或其它筛选，不返回误导性的空页；任一 owner 读取失败明确报错，不静默当作空结果。审计与业务变更在原 owner 事务中的原子写入不变，admin 不跨库直连存储。该修复要求 admin-api 与上述六个 owner 同批部署；旧 owner 缺少 RPC 或 `store_id` 时明确失败。Compose 已补齐 admin 访问 config / monitor / notify 的服务地址，避免容器内回落到本机地址。
+
 **索引**：Admin 150 新增 `resource_write_audits_time (occurred_at, event_id)` 与 `resource_write_audits_operation_time (operation, occurred_at, event_id)`，覆盖最新优先分页与操作码前缀过滤。三方言内容一致，纯 `CREATE INDEX`，可 `DROP INDEX` 回滚。
 
 ### 2. 操作人用户名
 
 **内容**：审计表只存 `actor_user_id`，用户名在 identity schema，跨库不能 JOIN。读取时按**唯一 actor 去重**调用 identity `GetUser` 补齐 `actor_username`：
 
-- 每次调用带 2s 超时，不阻塞审计列表。
+- 调用预算整页共享一个 2s context（2026-11-15 code review 修复：初版为每个不同 actor 各建一个 2s deadline 且超时不停循环，identity 持续变慢时 20 个 actor 可超过前端 30s 超时；现预算耗尽立即停止 enrichment 并返回已有数据）。
 - 调用方缺少 `identity.user.read` / `identity.users.read`、账号已删除、或 identity 短暂不可用时，该字段为空，前端回退显示 `#<id>`，`title` 保留数字 ID 便于追溯。
 - 用户名不写入审计表，避免历史数据与改名产生不一致。
 

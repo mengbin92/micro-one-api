@@ -19,6 +19,8 @@ import (
 
 var ProviderSet = wire.NewSet(
 	newRepo,
+	data.NewWriteAuditRepo,
+	biz.NewWriteAuditUsecase,
 	biz.NewMonitorUsecase,
 	service.NewMonitorService,
 	server.NewGRPCServer,
@@ -51,13 +53,14 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	))
 }
 
-func newApp(cfg *Config, svc *service.MonitorService, reg registrarResult, repo *data.Repository) (*kratos.App, func(), error) {
+func newApp(cfg *Config, svc *service.MonitorService, reg registrarResult, repo *data.Repository, writeAuditUC *biz.WriteAuditUsecase) (*kratos.App, func(), error) {
 	stopProbes, err := startUpstreamProbes(repo)
 	if err != nil {
 		return nil, nil, err
 	}
 	ownerAuth, _ := authz.FromEnvironment("monitor")
 	svc.SetAuthorization(ownerAuth)
+	svc.SetWriteAuditUsecase(writeAuditUC)
 	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc)
 	_, channelCleanup := newChannelHealthChecker(cfg)

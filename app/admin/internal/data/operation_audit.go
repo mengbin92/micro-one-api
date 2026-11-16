@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 
 	"gorm.io/driver/mysql"
@@ -11,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"micro-one-api/app/admin/internal/biz"
+	"micro-one-api/platform/database/writeaudit"
 )
 
 type operationAuditRepo struct {
@@ -52,7 +54,14 @@ func escapeAuditPrefix(value string) string {
 	return strings.NewReplacer("!", "!!", "%", "!%", "_", "!_").Replace(value) + "%"
 }
 
-func (r *operationAuditRepo) List(ctx context.Context, filter biz.OperationAuditFilter) ([]biz.OperationAudit, int64, error) {
+func (r *operationAuditRepo) List(ctx context.Context, filter biz.OperationAuditFilter) (biz.OperationAuditBatch, error) {
+	if r == nil || r.db == nil {
+		return biz.OperationAuditBatch{}, biz.ErrOperationAuditUnavailable
+	}
+	storeID, err := writeaudit.StoreID(ctx, r.db)
+	if err != nil {
+		return biz.OperationAuditBatch{}, errors.Join(biz.ErrOperationAuditUnavailable, err)
+	}
 	base := func() *gorm.DB {
 		query := r.db.WithContext(ctx).Table("resource_write_audits")
 		if filter.ActorUserID > 0 {
@@ -78,12 +87,12 @@ func (r *operationAuditRepo) List(ctx context.Context, filter biz.OperationAudit
 
 	var total int64
 	if err := base().Count(&total).Error; err != nil {
-		return nil, 0, err
+		return biz.OperationAuditBatch{}, errors.Join(biz.ErrOperationAuditUnavailable, err)
 	}
 	var rows []operationAuditRow
 	if err := base().Select("event_id, actor_user_id, operation, resource_id, decision_versions, reason, occurred_at, result").
 		Order("occurred_at DESC, event_id DESC").Offset(filter.Offset).Limit(filter.Limit).Scan(&rows).Error; err != nil {
-		return nil, 0, err
+		return biz.OperationAuditBatch{}, errors.Join(biz.ErrOperationAuditUnavailable, err)
 	}
 	items := make([]biz.OperationAudit, 0, len(rows))
 	for _, row := range rows {
@@ -93,5 +102,5 @@ func (r *operationAuditRepo) List(ctx context.Context, filter biz.OperationAudit
 			Reason: row.Reason, OccurredAt: row.OccurredAt, Result: row.Result,
 		})
 	}
-	return items, total, nil
+	return biz.OperationAuditBatch{Items: items, Total: total, StoreID: storeID}, nil
 }

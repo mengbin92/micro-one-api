@@ -2143,17 +2143,29 @@ func ensureModelRegistryRowTx(tx *gorm.DB, canonicalID string) (int64, error) {
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	if err := tx.Create(&po).Error; err != nil {
-		// Concurrent insert by another request: re-read.
-		if isDuplicateEntry(err) {
-			if err := tx.Where("LOWER(model_id) = ?", canonicalID).First(&po).Error; err != nil {
-				return 0, err
-			}
-			return po.ID, nil
-		}
+	// Insert with conflict-ignore (the same approach as channel sync). After
+	// a unique-key conflict on PostgreSQL the transaction is aborted, so
+	// catching the error and re-querying in the same transaction fails with
+	// 25P02 and rolls back the whole caller transaction (code review
+	// 2026-11-15, concurrent subscription-account model creation).
+	result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&po)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	// MySQL clientFoundRows also counts duplicate no-ops; only a returned ID proves insertion.
+	if po.ID > 0 {
+		return po.ID, nil
+	}
+	// Another transaction inserted the same model first. The locking read
+	// sees the latest committed row; a plain re-read would keep serving this
+	// transaction's first-read snapshot under MySQL's default REPEATABLE
+	// READ. (The sqlite driver drops the locking clause; single-writer
+	// serialization there makes the plain read correct.)
+	var registered modelModel
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("LOWER(model_id) = ?", canonicalID).First(&registered).Error; err != nil {
 		return 0, err
 	}
-	return po.ID, nil
+	return registered.ID, nil
 }
 
 // providerForModelID infers a provider key from common model-name prefixes so

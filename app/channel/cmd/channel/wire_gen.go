@@ -39,9 +39,11 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	modelRoutingUsecase := biz.NewModelRoutingUsecase(repository)
 	routingGroupRepo := data.NewRoutingGroupRepo(repository)
 	routingGroupUsecase := biz.NewRoutingGroupUsecase(routingGroupRepo)
+	writeAuditRepo := data.NewWriteAuditRepo(repository)
+	writeAuditUsecase := biz.NewWriteAuditUsecase(writeAuditRepo)
 	channelService := service.NewChannelService(channelUsecase)
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup := newApp(config, repository, eventBus, channelUsecase, modelUsecase, modelRoutingUsecase, routingGroupUsecase, channelService, mainRegistrarResult)
+	app, cleanup := newApp(config, repository, eventBus, channelUsecase, modelUsecase, modelRoutingUsecase, routingGroupUsecase, writeAuditUsecase, channelService, mainRegistrarResult)
 	return app, func() {
 		cleanup()
 	}, nil
@@ -51,7 +53,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 var ProviderSet = wire.NewSet(
 	newRepo,
-	newEventBus, biz.NewChannelUsecase, biz.NewModelUsecase, biz.NewModelRoutingUsecase, data.NewRoutingGroupRepo, biz.NewRoutingGroupUsecase, service.NewChannelService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.ChannelRepo), new(*data.Repository)), wire.Bind(new(biz.ModelRepo), new(*data.Repository)), wire.Bind(new(biz.ModelRoutingRepo), new(*data.Repository)),
+	newEventBus, biz.NewChannelUsecase, biz.NewModelUsecase, biz.NewModelRoutingUsecase, data.NewRoutingGroupRepo, biz.NewRoutingGroupUsecase, data.NewWriteAuditRepo, biz.NewWriteAuditUsecase, service.NewChannelService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.ChannelRepo), new(*data.Repository)), wire.Bind(new(biz.ModelRepo), new(*data.Repository)), wire.Bind(new(biz.ModelRoutingRepo), new(*data.Repository)),
 )
 
 func newRepo(cfg *Config) (*data.Repository, error) {
@@ -88,6 +90,7 @@ func newApp(
 	modelUC *biz.ModelUsecase,
 	routingUC *biz.ModelRoutingUsecase,
 	groupUC *biz.RoutingGroupUsecase,
+	writeAuditUC *biz.WriteAuditUsecase,
 	svc *service.ChannelService,
 	reg registrarResult,
 ) (*kratos.App, func()) {
@@ -103,6 +106,7 @@ func newApp(
 	svc.SetModelUsecase(modelUC)
 	svc.SetModelRoutingUsecase(routingUC)
 	svc.SetRoutingGroupUsecase(groupUC)
+	svc.SetWriteAuditUsecase(writeAuditUC)
 	routingUC.SetCacheInvalidator(uc)
 	uc.SetModelRoutingRepo(repo)
 

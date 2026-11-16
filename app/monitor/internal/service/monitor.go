@@ -20,6 +20,7 @@ import (
 
 // MonitorService is the transport layer entry for monitor-worker.
 type MonitorService struct {
+	writeAuditUC       *biz.WriteAuditUsecase
 	ownerAuthorization *authz.Client
 	monitorv1.UnimplementedMonitorServiceServer
 	uc *biz.MonitorUsecase

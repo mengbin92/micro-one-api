@@ -56,6 +56,15 @@ for service_name in (
 ):
     if not services[service_name].get("environment", {}).get("SERVICE_TOKEN"):
         raise SystemExit(f"{service_name} must receive SERVICE_TOKEN")
+admin_env = services["admin-api"].get("environment", {})
+for name, endpoint in {
+    "LOG_GRPC_ENDPOINT": "log-service:9006",
+    "CONFIG_GRPC_ENDPOINT": "config-service:9005",
+    "MONITOR_GRPC_ENDPOINT": "monitor-worker:9007",
+    "NOTIFY_GRPC_ENDPOINT": "notify-worker:9008",
+}.items():
+    if admin_env.get(name) != endpoint:
+        raise SystemExit(f"admin-api must receive {name}={endpoint} for owner audit reads")
 grafana_password = services.get("grafana", {}).get("environment", {}).get("GF_SECURITY_ADMIN_PASSWORD")
 if grafana_password in ("", "admin"):
     raise SystemExit("Grafana must require a non-default admin password")

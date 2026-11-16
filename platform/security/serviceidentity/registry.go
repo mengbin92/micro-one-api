@@ -10,6 +10,10 @@ type RPCPolicy struct {
 // Identity forwards verified sessions for ListLedger and AggregateLedgerByDate.
 // Their user caller policy preserves billing self scope; it grants no system bypass.
 var rpcPolicies = map[string]RPCPolicy{
+	"/api.config.v1.ConfigService/ListWriteAudits":               {Owner: "config", UserCallers: []string{}, SystemCallers: []string{"admin"}},
+	"/api.log.v1.LogService/ListWriteAudits":                     {Owner: "log", UserCallers: []string{}, SystemCallers: []string{"admin"}},
+	"/api.monitor.v1.MonitorService/ListWriteAudits":             {Owner: "monitor", UserCallers: []string{}, SystemCallers: []string{"admin"}},
+	"/api.notify.v1.NotifyService/ListWriteAudits":               {Owner: "notify", UserCallers: []string{}, SystemCallers: []string{"admin"}},
 	"/api.identity.v1.IdentityService/GetSecurityStatus":         {Owner: "identity", UserCallers: []string{"admin"}},
 	"/api.identity.v1.IdentityService/SetupMFA":                  {Owner: "identity", UserCallers: []string{"admin"}},
 	"/api.identity.v1.IdentityService/ConfirmMFA":                {Owner: "identity", UserCallers: []string{"admin"}},
@@ -29,6 +33,7 @@ var rpcPolicies = map[string]RPCPolicy{
 	"/api.log.v1.LogService/ListRequestTraces":                  {Owner: "log", UserCallers: []string{"admin"}},
 	"/api.log.v1.LogService/GetRequestTrace":                    {Owner: "log", UserCallers: []string{"admin"}},
 	"/api.channel.v1.ChannelService/ListPublicModels":           {Owner: "channel", SystemCallers: []string{"admin"}},
+	"/api.channel.v1.ChannelService/ListWriteAudits":            {Owner: "channel", UserCallers: []string{}, SystemCallers: []string{"admin"}},
 	"/api.channel.v1.ChannelService/BatchDeleteChannels":        {Owner: "channel", UserCallers: []string{"admin"}},
 	"/api.channel.v1.ChannelService/ExportChannels":             {Owner: "channel", UserCallers: []string{"admin"}},
 	"/api.channel.v1.ChannelService/ArchiveRoutingGroup":        {Owner: "channel", UserCallers: []string{"admin"}},
@@ -200,7 +205,8 @@ var rpcPolicies = map[string]RPCPolicy{
 	"/api.billing.v1.BillingService/GetRoutingCapabilities":                  {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{"relay"}},
 	"/api.billing.v1.BillingService/RecordExecutionEvidence":                 {Owner: "billing", UserCallers: []string{}, SystemCallers: []string{"relay"}},
 	"/api.billing.v1.BillingService/ReserveQuota":                            {Owner: "billing", UserCallers: []string{}, SystemCallers: []string{"relay"}},
-	"/api.billing.v1.BillingService/ListRequestAttempts":                     {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{}},
+	"/api.billing.v1.BillingService/ListRequestAttempts":                     {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{"relay"}},
+	"/api.billing.v1.BillingService/ListWriteAudits":                         {Owner: "billing", UserCallers: []string{}, SystemCallers: []string{"admin"}},
 	"/api.billing.v1.BillingService/CommitQuota":                             {Owner: "billing", UserCallers: []string{}, SystemCallers: []string{"relay"}},
 	"/api.billing.v1.BillingService/ReleaseQuota":                            {Owner: "billing", UserCallers: []string{}, SystemCallers: []string{"relay"}},
 	"/api.billing.v1.BillingService/GetAccountSnapshot":                      {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{"relay", "identity"}},

@@ -110,6 +110,7 @@ type BillingUsecase struct {
 	reservationRepo     ReservationRepo
 	ledgerRepo          LedgerRepo
 	redeemRepo          RedeemRepo
+	writeAuditRepo      WriteAuditRepo
 	receivableRepo      ReceivableRepo
 	pricingSnapshotRepo PricingSnapshotRepo
 	txRunner            subscriptionbiz.TxRunner

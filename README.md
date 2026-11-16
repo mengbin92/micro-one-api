@@ -8,7 +8,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.44.0 发布公告](./docs/releases/release-v0.44.0.md)（orchestrator 新增全量切换开关 `RELAY_ORCHESTRATOR_FULL_ROLLOUT`，默认关闭；commit 结算失败补齐有界重试与幂等恢复；默认行为零变化，无新增迁移或 API 变更） · 上一版 [v0.43.1](./docs/releases/release-v0.43.1.md) 升级 OpenTelemetry Go 至 v1.47.0 修复依赖告警 · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.44.0)
+> 📣 **最新发布**：[v0.44.1 发布公告](./docs/releases/release-v0.44.1.md)（PATCH：修复结算恢复授权、迁移 151 与并发建模边界、跨库操作审计；无新增迁移编号或前端改动，已应用 151 的环境不重跑） · 上一版 [v0.44.0](./docs/releases/release-v0.44.0.md) 引入 orchestrator 全量切换开关与结算恢复 · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.44.1)
 
 ## 功能概览
 
@@ -186,7 +186,8 @@ make web-dist
 
 ## 发布与升级
 
-- [v0.44.0](./docs/releases/release-v0.44.0.md)：relay-gateway orchestrator 新增 `RELAY_ORCHESTRATOR_FULL_ROLLOUT` 全量切换（仅在 `RELAY_ORCHESTRATOR_ENABLED=true` 时生效，忽略 token allowlist，鉴权仍在 executor 内完成），覆盖 Chat Completions / Responses POST / Messages POST；commit 结算 RPC 失败增加 3 次有界重试与按 reservation 状态的幂等恢复，非流式终态补齐 `final_attempt_semantics_missing` 异常计数；默认关闭、行为零变化，无迁移或 API 变更，升级只需重部署 relay-gateway。
+- [v0.44.1](./docs/releases/release-v0.44.1.md)：PATCH 修复结算恢复的 relay/billing 身份契约、迁移 151 回填与 MySQL 重放、订阅账号并发创建模型，以及七源操作审计漏读/共享库重复计数/用户名超时；admin 与六个 owner 同版升级，复用 channel 镜像的 worker 同步切换；无新增迁移编号或前端改动，已应用 151 的环境不重跑。
+- [v0.44.0](./docs/releases/release-v0.44.0.md)：relay-gateway orchestrator 新增 `RELAY_ORCHESTRATOR_FULL_ROLLOUT` 全量切换（仅在 `RELAY_ORCHESTRATOR_ENABLED=true` 时生效，忽略 token allowlist，鉴权仍在 executor 内完成），覆盖 Chat Completions / Responses POST / Messages POST；commit 结算 RPC 失败增加 3 次有界重试与按 reservation 状态的幂等恢复，非流式终态补齐 `final_attempt_semantics_missing` 异常计数；默认关闭、行为零变化，无迁移或公开 API 变更；结算恢复还需 [v0.44.1](./docs/releases/release-v0.44.1.md) 的 billing 服务身份修复。
 - [v0.43.1](./docs/releases/release-v0.43.1.md)：OpenTelemetry Go 依赖族 v1.46.0 → v1.47.0，修复 `GHSA-q7gw-24fr-5p69` 两条 medium 依赖告警并同步 README 发布信息；无新增迁移、无 API 变更，生产需重部署服务镜像。
 - [v0.43.0](./docs/releases/release-v0.43.0.md)：**破坏性变更**——legacy `abilities` / `subscription_account_abilities` 与 `restrict_models` catch-all 退役，registry mapping 成为唯一路由来源，未注册模型返回 `ErrChannelNotFound`；迁移 151 三方言回填后删表删列，MySQL DDL 可幂等重放；订阅自动映射补齐 IAM 授权与写审计；生产按「备份 → 预加列 → 部署同源镜像（含 worker）→ 迁移 → 验证」无停机上线。
 - [v0.42.0](./docs/releases/release-v0.42.0.md)：管理后台新增只读业务操作审计页与 `GET /api/v1/admin/operation-audits`，按操作人/操作码/资源/结果/时间筛选；操作人显示用户名并可回退数字 ID；新增 Admin 150 三方言索引迁移，不改既有 API 与计费契约；部署需 admin-api 与 identity-service 同源，`iam.audit.read` 需显式授予运维角色。

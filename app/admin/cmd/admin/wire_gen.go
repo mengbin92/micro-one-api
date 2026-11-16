@@ -21,6 +21,7 @@ import (
 	"micro-one-api/app/admin/internal/data/routingaccess"
 	"micro-one-api/app/admin/internal/server"
 	"micro-one-api/app/admin/internal/service"
+	"micro-one-api/app/admin/internal/writeauditclient"
 	biz2 "micro-one-api/domain/backup/biz"
 	"micro-one-api/platform/audit"
 	registry2 "micro-one-api/platform/registry"
@@ -60,7 +61,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	iamRepo := iam.NewRepo(iamServiceClient)
 	iamUsecase := biz.NewIAMUsecase(iamRepo)
 	iamAdminService := service.NewIAMAdminService(iamUsecase)
-	operationAuditUsecase := newOperationAuditUsecase(mainSystemOptionsResult)
+	operationAuditUsecase := newOperationAuditUsecase(mainSystemOptionsResult, mainClientsResult)
 	routingGroupReader := channelclient.NewRoutingGroupReader(channelServiceClient)
 	routingGroupUsecase := biz.NewRoutingGroupUsecase(routingGroupReader)
 	routingAccessRepo := routingaccess.NewRepo(identityServiceClient, channelServiceClient, billingServiceClient)
@@ -112,8 +113,13 @@ func newSystemOptionsUsecase(r systemOptionsResult) *biz.SystemOptionsUsecase {
 	return biz.NewSystemOptionsUsecase(r.Repo)
 }
 
-func newOperationAuditUsecase(r systemOptionsResult) *biz.OperationAuditUsecase {
-	return r.OperationAuditUc
+func newOperationAuditUsecase(r systemOptionsResult, clients *clientsResult) *biz.OperationAuditUsecase {
+	if r.AuditRepo == nil {
+		return nil
+	}
+
+	aggregated := biz.NewAggregatedOperationAuditRepo(r.AuditRepo, writeauditclient.NewChannelSource(clients.channelClient), writeauditclient.NewBillingSource(clients.billingClient), writeauditclient.NewConfigSource(clients.configClient), writeauditclient.NewLogSource(clients.logClient), writeauditclient.NewMonitorSource(clients.monitorClient), writeauditclient.NewNotifySource(clients.notifyClient))
+	return biz.NewOperationAuditUsecase(aggregated)
 }
 
 type registrarResult struct {
@@ -186,6 +192,9 @@ func newApp(
 			sub.Close()
 		}
 		if clients != nil {
+			for _, conn := range clients.auditConns {
+				_ = conn.Close()
+			}
 			clients.identityConn.Close()
 			clients.channelConn.Close()
 			clients.billingConn.Close()

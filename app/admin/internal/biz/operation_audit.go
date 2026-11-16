@@ -41,8 +41,14 @@ type OperationAuditPage struct {
 	PageSize int
 }
 
+type OperationAuditBatch struct {
+	Items   []OperationAudit
+	Total   int64
+	StoreID string
+}
+
 type OperationAuditRepo interface {
-	List(ctx context.Context, filter OperationAuditFilter) ([]OperationAudit, int64, error)
+	List(ctx context.Context, filter OperationAuditFilter) (OperationAuditBatch, error)
 }
 
 type OperationAuditUsecase struct {
@@ -80,9 +86,9 @@ func (uc *OperationAuditUsecase) List(ctx context.Context, filter OperationAudit
 	}
 	filter.Offset = (page - 1) * pageSize
 	filter.Limit = pageSize
-	items, total, err := uc.repo.List(ctx, filter)
+	batch, err := uc.repo.List(ctx, filter)
 	if err != nil {
 		return OperationAuditPage{}, err
 	}
-	return OperationAuditPage{Items: items, Total: total, Page: page, PageSize: pageSize}, nil
+	return OperationAuditPage{Items: batch.Items, Total: batch.Total, Page: page, PageSize: pageSize}, nil
 }

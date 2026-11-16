@@ -27,6 +27,7 @@ type ChannelService struct {
 	routingUC         *biz.ModelRoutingUsecase
 	routingGroupUC    routingGroupUsecase
 	channelModelProbe channelModelProbeScheduler
+	writeAuditUC      *biz.WriteAuditUsecase
 	authz             authorization.Resolver
 }
 

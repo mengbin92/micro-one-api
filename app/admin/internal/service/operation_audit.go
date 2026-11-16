@@ -11,8 +11,10 @@ import (
 	adminbiz "micro-one-api/app/admin/internal/biz"
 )
 
-// auditActorLookupTimeout bounds the identity hop per distinct actor so a slow
-// or unavailable identity service cannot stall the audit read.
+// auditActorLookupTimeout bounds the identity lookups for the whole audit
+// page, not per actor: one shared budget stops enrichment as soon as it
+// expires instead of creating a fresh 2s deadline per distinct actor (which
+// let a page of 20 slow actors exceed the frontend timeout).
 const auditActorLookupTimeout = 2 * time.Second
 
 func (s *AdminService) SetOperationAuditUsecase(uc *adminbiz.OperationAuditUsecase) {
@@ -45,17 +47,25 @@ func (s *AdminService) fillActorUsernames(ctx context.Context, items []adminbiz.
 	if s == nil || s.identityClient == nil || len(items) == 0 {
 		return
 	}
+	// One deadline for the whole page: with a fresh timeout per actor a slow
+	// identity service multiplied the budget by the distinct-actor count (two
+	// actors already cost 4s). The loop checks the budget before every call
+	// and stops enrichment as soon as it is spent, keeping the numeric-id
+	// degradation.
+	lookupCtx, cancel := context.WithTimeout(operatorRPCContext(ctx), auditActorLookupTimeout)
+	defer cancel()
 	names := make(map[int64]string, len(items))
 	for i := range items {
+		if lookupCtx.Err() != nil {
+			return
+		}
 		id := items[i].ActorUserID
 		if id <= 0 {
 			continue
 		}
 		name, cached := names[id]
 		if !cached {
-			callCtx, cancel := context.WithTimeout(operatorRPCContext(ctx), auditActorLookupTimeout)
-			reply, err := s.identityClient.GetUser(callCtx, &identityv1.GetUserRequest{UserId: id})
-			cancel()
+			reply, err := s.identityClient.GetUser(lookupCtx, &identityv1.GetUserRequest{UserId: id})
 			switch {
 			case err != nil:
 				if code := status.Code(err); code == codes.PermissionDenied || code == codes.Unauthenticated {
