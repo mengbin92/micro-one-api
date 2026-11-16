@@ -1,4 +1,9 @@
 -- Retire legacy abilities; registry mappings are the sole routing source.
+-- The mapping backfill only resurrects routes the parent still advertises:
+-- the model must still be in the parent's models CSV and, for subscriptions,
+-- the ability's group must still be in the account's group CSV. Postgres DDL
+-- is transactional, so a failed marker write rolls the drops back and the
+-- whole file replays safely; no existence guards are needed here.
 ALTER TABLE model_subscription_mapping ADD COLUMN IF NOT EXISTS config TEXT DEFAULT '';
 
 INSERT INTO models (model_id, display_name, provider, model_type, status, is_public, created_at, updated_at)
@@ -22,6 +27,7 @@ FROM abilities a
 JOIN channels c ON c.id = a.channel_id
 JOIN models m ON LOWER(m.model_id) = LOWER(TRIM(a.model))
 WHERE TRIM(a.model) <> '' AND a.model NOT LIKE '%*%' AND a.model NOT LIKE '%?%'
+  AND LOWER(TRIM(a.model)) = ANY (string_to_array(LOWER(REGEXP_REPLACE(',' || c.models || ',', '\s*,\s*', ',', 'g')), ','))
 GROUP BY a.channel_id, m.id
 ON CONFLICT (channel_id, model_id) DO NOTHING;
 
@@ -33,6 +39,8 @@ FROM subscription_account_abilities saa
 JOIN subscription_accounts sa ON sa.id = saa.account_id
 JOIN models m ON LOWER(m.model_id) = LOWER(TRIM(saa.model))
 WHERE TRIM(saa.model) <> '' AND saa.model NOT LIKE '%*%' AND saa.model NOT LIKE '%?%'
+  AND LOWER(TRIM(saa.model)) = ANY (string_to_array(LOWER(REGEXP_REPLACE(',' || sa.models || ',', '\s*,\s*', ',', 'g')), ','))
+  AND TRIM(saa."group") = ANY (string_to_array(REGEXP_REPLACE(',' || sa."group" || ',', '\s*,\s*', ',', 'g'), ','))
 GROUP BY saa.account_id, m.id, saa."group"
 ON CONFLICT (subscription_account_id, model_id, group_name) DO NOTHING;
 

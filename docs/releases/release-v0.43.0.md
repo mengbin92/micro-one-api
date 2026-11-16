@@ -19,13 +19,15 @@ v0.43.0 是 v0.42.0 之后的 **MINOR 功能版本（含破坏性变更）**：�
 
 - 回填：`abilities` / `subscription_account_abilities` 中非通配符、非空的模型先补进 `models`，再按 `(channel, model)` / `(account, model, group)` 生成 registry mapping，`enabled` 一律为 true（可用性由来源 status 决定），`config` 使用 `{"_managed_by":"channel_models"}` / `{"_managed_by":"subscription_models"}` 标记，使后续自动同步可以正常接管这些行。
 - 过滤：三方言 INSERT 均 JOIN 父表（`channels` / `subscription_accounts`），跳过孤儿 legacy 行，避免 `fk_mcm_channel` / `fk_msm_account` 外键报错。
-- 幂等：MySQL 的 `ADD COLUMN config` 与 `DROP COLUMN restrict_models` 使用 `information_schema` + `PREPARE` 守卫（沿用 061/067 约定），破坏性的 `DROP TABLE` 放在文件末尾，使失败后的重放可以安全完成。
+- **父资源清单校验（2026-11-15 code review 修复）**：mapping 回填只复活父资源仍声明的路由——渠道 ability 的模型须仍在该渠道 `models` CSV 中；订阅 ability 的模型须仍在账号 `models` CSV 中、且 ability 的 group 须仍在账号 `group` CSV 中。切换窗口内从渠道／账号删除的模型或分组因此不会被旧投影插回。手工维护的 registry mapping 不受影响（它们只存在于 mapping 表，从不在旧投影中），运行时也不强制 mapping ⊆ 父资源 `Models`。
+- 幂等：MySQL 的 `ADD COLUMN config` 与 `DROP COLUMN restrict_models` 使用 `information_schema` + `PREPARE` 守卫（沿用 061/067 约定），破坏性的 `DROP TABLE` 放在文件末尾。**重放安全加固（同轮修复）**：MySQL 上所有读取两张旧表的回填段（catalog 两段 + mapping 两段）同样加源表存在性守卫，DROP 已提交但版本登记失败的运行可以安全重放（守卫段变为 no-op）；PostgreSQL / SQLite 的 DDL 本身随 runner 事务回滚，天然可重放。
 - 收尾：删除两张 legacy 表与 `channels.restrict_models` 列，并把 `model_subscription_mapping.routing_group_id` 按 group key 补齐。
 - `scripts/test-e2e-flow.sh` 的 bootstrap 校验从 `abilities` 计数改为 `model_channel_mapping` 计数。
 
 ### 3. 自动映射的授权与一致性加固
 
 - 订阅账号的自动映射写入（create / update / delete）新增 `channel.model_mapping.*` 的逐条 IAM 检查与 `resource_write_audits` 审计，与渠道侧对齐；缺少 mapping 授权时整个账号事务回滚。
+- **并发创建同一新模型（2026-11-15 code review 修复）**：`ensureModelRegistryRowTx` 由「捕获唯一键冲突后在同一事务重查」改为「`OnConflict DoNothing` 插入后读取获胜行」，冲突路径在 MySQL REPEATABLE READ 下使用加锁读避免首读快照 miss。两个并发创建包含同一全新模型的订阅账号时，双方均复用同一 registry 行、只有一条模型记录，不再出现 PostgreSQL `25P02` 整笔账号回滚。
 - `syncSubscriptionAccountModelMappingsTx` 记录所有既有 `(account, group, model)` 键（不再只看自动行），跳过创建但只对自动行更新 / 删除，避免与迁移 151 回填行或运维手工行撞唯一键。
 - 自动映射的 `enabled` 固定为 true，`changeStatusDB` / `changeSubscriptionAccountStatusDB` 只改来源 status；create / update 分支都会投影 `routing_group_id`。
 - 内存（lite）模式的同步助手补齐 `Enabled` / `Priority` / `UpstreamModelID` 更新；渠道侧把逐行 `slices.Contains` 改成 map 查找。
@@ -35,6 +37,8 @@ v0.43.0 是 v0.42.0 之后的 **MINOR 功能版本（含破坏性变更）**：�
 
 - `TestTimingHTTPBoundaryIgnoresHeartbeatAndExcludesPostOutputSettlement` 改用绝对里程碑（`OutputFinishedAtMS` 与 handler 内最后内容帧时刻）比较，不再跨基准比较 `HandlerDurationMS` / `OutputDurationMS`；后两者起点不同（handler 入口 vs recorder 创建），全量并行时中间件耗时会让断言翻转。
 - `TestStress_SessionHashSticky_CrossReplicaBindAndReuse` 在并发阶段前先同步 bind 一次 session，避免 40 个 goroutine 同时竞争空的 sticky store 而全部 rebind。
+
+**复核加固（2026-11-15）**：三方言 151 只归一 CSV token 边界空白，保留合法内部空格和分组大小写；SQLite 拆分 token 后按字面比较，保留名称中 `_`、`%` 的原义；订阅模型并发创建以非零主键判断插入结果，生产 MySQL 默认 `clientFoundRows=true` 下的冲突 no-op 不再返回模型 ID 0。对应真实迁移与跨库并发回归已补齐。
 
 ## 兼容性
 
@@ -53,6 +57,8 @@ v0.43.0 是 v0.42.0 之后的 **MINOR 功能版本（含破坏性变更）**：�
 5. 验证服务健康与 schema 状态。
 
 直接先删表再部署会让旧实例报错，直接先部署而不加列会让新实例的订阅映射 INSERT 失败。
+
+切换窗口约束：步骤 3 到步骤 4 之间冻结渠道／订阅账号的写入。父资源清单校验保证「从父资源 CSV 删除」的模型／分组不会被旧投影插回；但通过 model-management API 单独删除手工 mapping（父资源 CSV 仍列出该模型）在窗口内仍可能被旧投影复活，此类操作须等到删表完成后再进行。
 
 回滚：服务可用本次部署的共享 `rollback-20261114-225215` 镜像 tag 回退；数据侧因为 DROP 不可逆，必须从备份恢复 `abilities` / `subscription_account_abilities` 与 `restrict_models` 列，并删除 `151_retire_legacy_abilities` 版本记录后再回退服务。
 
