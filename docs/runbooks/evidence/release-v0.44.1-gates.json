@@ -1,0 +1,337 @@
+{
+  "release": "v0.44.1",
+  "verified_date": "2026-11-16",
+  "source_digest": "4be31262b0b03c74fc0df782caf362cad64c83c51ed6c7c79ee3f5c3ece73f54",
+  "review_mode": "OCR delegate host review plus unchanged completed provider coverage",
+  "external_provider_session_passed": false,
+  "reviewable_paths": 62,
+  "provider_completed_unchanged": 27,
+  "delegate_reviewed": 35,
+  "P0": 0,
+  "P1": 0,
+  "blocking_findings": 0,
+  "files": [
+    {
+      "path": "api/billing/v1/billing.proto",
+      "sha256": "c79dc8da5c09010a5aad3eecbc00304752c390793cbb6895cde29d04afa1b935",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "api/channel/v1/channel.proto",
+      "sha256": "abb8fe16c827d415ad7c96167ad15814e6c14cac265ee5d5d15860a005cc831e",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "api/config/v1/config.proto",
+      "sha256": "50c31408960cacf6166998102cea980e8ee656103aa90dab5e5f50d3013d89ca",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "api/log/v1/log.proto",
+      "sha256": "9e7fad447d9e0645250dba180a9be89ad0d4a4b65a8d4a75b7e632ec396cacab",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "api/monitor/v1/monitor.proto",
+      "sha256": "ac60de5b1ab2ea9d093bcd0ca3fd91ab97b7d21683fcfe6479aef7b47f7382f5",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "api/notify/v1/notify.proto",
+      "sha256": "7750b0e0ae1e7b107da6eb460403a317e848d9179b84a4de43f707847a7bcf58",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/admin/cmd/admin/admin_helpers.go",
+      "sha256": "3bcfe15146302f5e28f262e7602703cb9a6469437bbe4aa2514a1f29a4b795ca",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/admin/cmd/admin/wire.go",
+      "sha256": "33c90a22b41495428c6bb04f9e04de1b683ff784696b76b4003afb43659ecc15",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/admin/internal/biz/operation_audit.go",
+      "sha256": "29827010300539099a36e23a0eef27f2cdedd0012c6c1d8517e06280c0a07edb",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/admin/internal/biz/operation_audit_aggregate.go",
+      "sha256": "0f45458e6d97dc392ed1324b270f1d25c4002ea67598f6b65d2a3b143161082b",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/admin/internal/data/operation_audit.go",
+      "sha256": "846e11ef2d48a0bcfe8395f00f6facf4733873be77005f7d16f5277b53b47d44",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/admin/internal/service/operation_audit.go",
+      "sha256": "74cd54dd9826ddb2736f9880186c3add08a0e5fed15056a3d96aaabb58a4d438",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/admin/internal/writeauditclient/source.go",
+      "sha256": "a85de64ea66711f36837dee44109f1dfc100d4828c8f0b6a4e57237ede92c6d1",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/billing/cmd/billing/wire.go",
+      "sha256": "3500c3a74cb296f664a4528f5c627f212d5dd1c6035ed271c56748e93fe5b9ce",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/billing/internal/biz/billing.go",
+      "sha256": "a803e07e0b3e3775b419e3841759c926e0be83a30cffe9471b4dde74bccf4bc1",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/billing/internal/biz/write_audit.go",
+      "sha256": "a515ab2e3e3bdb8625cbf07246eb78ab746b5bd7dfc1ef3976f3d6d22a0c304d",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/billing/internal/data/write_audit.go",
+      "sha256": "a5936d0dfef95c7e10dae65517da8df2e4c7b5915bbf94192e88f8787606476c",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/billing/internal/server/grpc.go",
+      "sha256": "e03a8e518dc8778897e0b770205a60f34ef85c736f8c4f292dd5b87c242479f1",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/billing/internal/service/write_audit.go",
+      "sha256": "b669d9451d63627bf6ff3ae89f73c9b6d3ff1d4b59dbe0fe370eafdbbbaac836",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/channel/cmd/channel/wire.go",
+      "sha256": "d57e5b877c627a24611b4b80940f7b34486fbc7804a637654cb737d6d34a527d",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/channel/internal/biz/write_audit.go",
+      "sha256": "a2ac900f14b133f6d8bbd6acc3f73c19484a68320d554d66994249da2f2720d6",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/channel/internal/data/data.go",
+      "sha256": "00d9d3c6a04c46036e6ab4699c5c68bad4ac7dc44cd9b26da777602dddcd3659",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/channel/internal/data/write_audit.go",
+      "sha256": "d7388e0804f011e05b02f1f672f54e1a5a2eedee8ae76551d896e2e384272342",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/channel/internal/server/grpc.go",
+      "sha256": "a578b13294369b764449f3588751b477092b0564a0345c1a83944f95cf48eb4c",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/channel/internal/service/channel.go",
+      "sha256": "ab4ce60ad11dab868dc382704fb35b6b9dfefcc0cab635464be5ce3353eaf0d0",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/channel/internal/service/write_audit.go",
+      "sha256": "fd44fce2115f69c374e0a3ced65d9ed646bde7ec394ece3d57abac80b5b54110",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "app/config/cmd/config/wire.go",
+      "sha256": "b9897b55c3ff2c785d8b5f357ab1b15561f74a076911813a2ddd36eb07374d17",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/config/internal/biz/write_audit.go",
+      "sha256": "a2ac900f14b133f6d8bbd6acc3f73c19484a68320d554d66994249da2f2720d6",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/config/internal/data/write_audit.go",
+      "sha256": "b8f96fff888203e7eb2d40dd07ba0565b5b59d395781711419966d9ea5d36cf4",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/config/internal/server/grpc.go",
+      "sha256": "c5f738ecc11b106808ea79355e9327ce41434a2a66ef6629874ceb8cb0a71178",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/config/internal/service/config.go",
+      "sha256": "d27d25ecac3524a4526c786461af12aaf38bd73149899addae10afb36c87e957",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/config/internal/service/write_audit.go",
+      "sha256": "dbe21301470995ad652cb3ac334f57b2fdb3549e9b5d409670785387a7a461bf",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/log/cmd/log/wire.go",
+      "sha256": "9cfde939ffc0b74f8198a7064f38a945a2f247cbe8084b8e277b3859013b9931",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/log/internal/biz/write_audit.go",
+      "sha256": "a2ac900f14b133f6d8bbd6acc3f73c19484a68320d554d66994249da2f2720d6",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/log/internal/data/write_audit.go",
+      "sha256": "3ad38a1b6d6a45a287b90fc6baedf4efb360652bea513fb3e6d391196f775e39",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/log/internal/server/grpc.go",
+      "sha256": "7e09b0cb66b9f3392597daebef9400c66fcef7bae8ab894c7ab1718cd5b9b8a8",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/log/internal/service/log.go",
+      "sha256": "02674bc614d0c32a74badf5c0f6d4f7cd622a755b0ce69722cc97664744f5e5b",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/log/internal/service/write_audit.go",
+      "sha256": "7b8d9c60ee2918992d3133acdc3d9fce5a4c92042e3066cebe66401e9e6a131e",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/monitor/cmd/monitor/wire.go",
+      "sha256": "2cbea1b2e0da698385a6a0b7e9e12440be05065f13b9a2f6564228d85fbab588",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/monitor/internal/biz/write_audit.go",
+      "sha256": "a2ac900f14b133f6d8bbd6acc3f73c19484a68320d554d66994249da2f2720d6",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/monitor/internal/data/write_audit.go",
+      "sha256": "11c60d4ef5134928a46cbd70c986f4867d02127376c8e73f24679e7470b9096f",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/monitor/internal/server/grpc.go",
+      "sha256": "3b381feb8791239fba37e88fe8301fa961ebbc60a734f58db5eb3a99d1c41c54",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/monitor/internal/service/monitor.go",
+      "sha256": "5517ef683c233effdce5e17aa67e194a8956f5636c69b4271ca118e2169ee21b",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/monitor/internal/service/write_audit.go",
+      "sha256": "adf15354a718b9589f6e6725eb545b574fa05476f8d7f848fcfdb73c48cbd923",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/notify/cmd/notify/wire.go",
+      "sha256": "00ce409845bec1b36beaf67a16201077d174a82d7cc3b09bf171facd262c1315",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/notify/internal/biz/write_audit.go",
+      "sha256": "a2ac900f14b133f6d8bbd6acc3f73c19484a68320d554d66994249da2f2720d6",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/notify/internal/data/write_audit.go",
+      "sha256": "c88a3917f921772a5ae3c42b450d59ecf4956016c65b65d77bc8d98f8bce6ebb",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/notify/internal/server/grpc.go",
+      "sha256": "ceba28b1439850d29dd46ca7b0892e78bc9033a74602661c948ce20bb4de3b57",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/notify/internal/service/notify.go",
+      "sha256": "cd234169aa2c7c9b3b8d67af8326f430dcb6b1aec9c91f23da1664990c98ea1e",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "app/notify/internal/service/write_audit.go",
+      "sha256": "b10366e9f9fde1764d97edf0bf78e4c04f23b00d065901d82a3bdbbed0c1b118",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "deployments/docker-compose/docker-compose.lite.yml",
+      "sha256": "9d5ff95974485f24bea7b7c66c9a907dbaf320cf6ab26a4ed430e2e4d21b1098",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "deployments/docker-compose/docker-compose.postgres.yml",
+      "sha256": "e0f58738760757cc43de29a5af65086b0cb481044a071ff875d020f81a3e8704",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "deployments/docker-compose/docker-compose.yml",
+      "sha256": "2133108c2de87473f31ebf0e91e6928aec072297661e10e0f9783296242d1919",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "deployments/k8s/admin-api.yaml",
+      "sha256": "2686b459dc6dd81125f35f6f00eb94339ff173418887d7d57d5c34acc13ccc30",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "deployments/k8s/deployment.yaml",
+      "sha256": "68548eb290f78a8dafa7f506e0065a753244504cdad768aee868c81a782757b9",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "deployments/k8s/network-policies.yaml",
+      "sha256": "1128d9330346f19689a803f0ed894139151237595a26ae4d142b6dff0945c45a",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "migrations/151_retire_legacy_abilities.sql",
+      "sha256": "b2426c73ec057ce2b46b58cbe5d19b2ca6f27a1597ab01efe07d4d272928ba6b",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "migrations/postgres/151_retire_legacy_abilities.sql",
+      "sha256": "bc707c9a9decd56708f071e3105362cb0fc565d3b2adbfaacf87d5cf9154ffe9",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "migrations/sqlite/151_retire_legacy_abilities.sql",
+      "sha256": "4b04686dfae3fb15d085dde3ba4640ff5d1084a8ca3292a5fd2eb55baa7f02c4",
+      "review_mode": "ocr_delegate_host_review"
+    },
+    {
+      "path": "platform/database/writeaudit/store_id.go",
+      "sha256": "244ba805f5ec9e42eee25add809534226d8747ed90b64e3cebeb0e5222696477",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "platform/security/serviceidentity/registry.go",
+      "sha256": "4118cd2c81ed579c8c03ddea75f819aeacea036ae49823ca507b89377e917e40",
+      "review_mode": "provider_completed_unchanged"
+    },
+    {
+      "path": "scripts/check-deployment-docs.sh",
+      "sha256": "e0668e92a9253d21ed73f33ec4687f1244590a112baf886508dedcc39bea038d",
+      "review_mode": "ocr_delegate_host_review"
+    }
+  ],
+  "checks": {
+    "make_verify": "passed",
+    "go_build": "passed",
+    "go_vet": "passed",
+    "rbac_contract_rows": 974,
+    "kubeconform_valid": 42,
+    "kubeconform_invalid": 0,
+    "kubeconform_errors": 0,
+    "kubeconform_skipped": 0,
+    "amd64_candidate_images": 7
+  },
+  "production": "not_deployed_yet"
+}

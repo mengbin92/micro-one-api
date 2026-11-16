@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.44.1] - 2026-11-16
+
+v0.44.1 是 **PATCH 修复版本**：补齐结算恢复的服务身份授权，修正迁移 151 的旧路由回填/重放与并发建模边界，并修复跨 owner 操作审计的漏读、共享库重复计数和用户名超时。新增内部 RPC 仅补全已有审计读取链路，无新增用户功能、迁移编号或前端变更；已经登记 151 的环境不重跑迁移。详见 [release-v0.44.1.md](docs/releases/release-v0.44.1.md)。
+
+### Fixed
+
+- **结算恢复服务身份契约（code review 2026-11-15 P1）**：billing `ListRequestAttempts` 的 registry policy 授予 `relay` system capability。此前 relay 的 commit 补偿恢复在真实 gRPC 拦截器上被 `PermissionDenied` 拒绝，已扣款请求只能退回保守 `commit_error` 路径；现 relay 专用身份可沿 transport → biz → data 链读取权威结算状态（含 `actual_cost`），恢复路径完整生效。v0.44.0 的「仅部署 relay-gateway」升级说明已更正为 relay 与 billing 需同 commit（或含本修复的 commit）一起部署。
+- **迁移 151 回填复活已删路由（code review P2）**：三方言的 mapping 回填均按父资源当前清单校验旧投影——渠道 ability 的模型须仍在该渠道 `models` CSV，订阅 ability 的模型须仍在账号 `models` CSV、且 group 须仍在账号 `group` CSV；三方言只归一 CSV token 边界空白，保留合法内部空格；SQLite 逐 token 拆分后按字面比较，`_`、`%` 不再被当作通配符；分组保持大小写语义。切换窗口内删除的模型/分组不再被旧投影插回；手工 mapping 不受影响，运行时仍不强制 mapping ⊆ 父资源 `Models`。
+- **迁移 151 MySQL 重放安全（code review P2）**：MySQL 上所有读取两张旧表的回填段（catalog 两段 + mapping 两段）增加 `information_schema` + `PREPARE` 源表存在性守卫。DROP 已提交但版本登记失败的运行可安全重放（守卫段变为 no-op），不再卡在 `abilities doesn't exist`；PostgreSQL/SQLite DDL 随 runner 事务回滚，天然可重放。
+- **订阅账号并发创建模型 25P02（code review P2）**：`ensureModelRegistryRowTx` 由「捕获唯一键冲突后在同一事务重查」改为「`OnConflict DoNothing` 插入 + 读取获胜行」；并发创建同一新模型的两个事务均成功复用同一 registry 行，PostgreSQL 不再整笔回滚，MySQL REPEATABLE READ 下冲突路径改用加锁读避免首读快照 miss；以返回的非零模型 ID 判断插入结果，避免生产默认 `clientFoundRows=true` 把冲突 no-op 误判为新插入并返回 ID 0。
+- **操作审计台漏读其它 owner 数据库（code review P2）**：channel/billing/config/log/monitor/notify 新增受 registry 保护的只读 `ListWriteAudits` RPC（仅 admin system identity，usecase 内二次校验 capability，调用前剥离 operator 凭证），admin 侧聚合本地与各 owner 的 `resource_write_audits`，按实际审计库身份去重并统一按 `occurred_at/event_id` 排序分页，避免共享数据库重复计数；仅读取各源所需前缀，超出全局前 5000 条窗口返回 400 并提示缩小筛选；任一 owner 读取失败或返回不完整批次均明确报错，不再静默当作无操作。开发 memory 模式缺少审计存储时返回不可用错误，避免 nil DB panic。
+- **审计页用户名补充串行超时（code review P2）**：整页共享一个 2s context 预算，预算耗尽立即停止 enrichment 并返回已有数据（数字 ID 降级），不再为每个 actor 新建 2s deadline；去重、权限拒绝提前终止、数字 ID 降级保留。
+
+### Added
+
+- 回归测试：真实拦截器的 relay 恢复能力用例（xgrpc + billing biz）、MySQL/PostgreSQL/SQLite 三方言迁移 151 窗口删除与 MySQL DROP 后重放集成测试、双库并发模型创建测试（barrier 确定性复现 25P02 与 RR 快照 miss）、跨 owner 审计聚合（排序/total/错误传播）、writeauditclient 元数据剥离与 owner 全链路真实拦截器集成测试、审计页共享预算测试；RBAC 清单补齐新增 RPC 与源文件事实；验证结果见[本轮修复记录](docs/runbooks/code-review-fixes-v0.42-v0.44-2026-11-15.md)。
+
 ## [0.44.0] - 2026-11-15
 
 v0.44.0 是 v0.43.1 之后的 **MINOR 功能版本**：relay-gateway 的 orchestrator 执行路径新增全量切换开关 `relay_orchestrator.full_rollout`（默认关闭、fail-closed），并补齐 commit 结算失败后的有界重试与按 reservation 状态的幂等恢复；默认行为零变化，无新增迁移、无 API 与计费契约变更。详见 [release-v0.44.0.md](docs/releases/release-v0.44.0.md)。
