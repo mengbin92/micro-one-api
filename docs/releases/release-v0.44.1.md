@@ -68,7 +68,7 @@ v0.44.1 是 v0.44.0 之后的 **PATCH 修复版本**，收口最近三个 MINOR 
 6. 已运行 v0.44.0 恢复代码的 relay-gateway可保留原镜像；核验 billing 已包含 relay system capability。若现网 relay 版本更旧，再与 billing 一并更新。保持既有 `RELAY_ORCHESTRATOR_FULL_ROLLOUT` 设置。
 7. 核验容器状态、重启次数、健康端点与日志；使用获授权账号查询跨 owner 审计，验证 global 权限、排序、共享库不重复计数及故障显式失败。结算恢复验收应使用受控测试，未经授权不制造真实生产账务故障。
 
-**回滚**：按本次预先保存的镜像标签回退 admin 与 owner 服务，并同步回退复用 channel 镜像的 worker；没有新增迁移需要逆向执行。已经应用 151 的数据库继续保留 marker，不恢复已删除旧表、不重放迁移；若从 v0.43.0 之前的 schema 升级，则沿用该版本的数据库备份恢复边界。
+**回滚**：本次统一旧镜像标签为 `rollback-20261116-082329`，配置变更前另保存 `rollback-pre-v0.44.1-20261116-082307`。按本次预先保存的镜像标签回退 admin 与 owner 服务，并同步回退复用 channel 镜像的 worker；没有新增迁移需要逆向执行。已经应用 151 的数据库继续保留 marker，不恢复已删除旧表、不重放迁移；若从 v0.43.0 之前的 schema 升级，则沿用该版本的数据库备份恢复边界。
 
 ## 验证
 
@@ -81,8 +81,9 @@ v0.44.1 是 v0.44.0 之后的 **PATCH 修复版本**，收口最近三个 MINOR 
 - [x] `go build ./...` 与 `make verify` 全绿，含 756 项前端全量测试、196 项 critical tests、lint/typecheck/build；7 个 linux/amd64 候选镜像构建并核对源码摘要。
 - [x] 按项目允许的 OCR delegate 模式补齐未完成/后续变更的 35 项，加上已完成且未变的 27 项，共 62 项逐路径 hash 核验，P0/P1 为 0。外部模型两轮结果仍为 partial/failed，不冒充其通过；[门禁证据](../runbooks/evidence/release-v0.44.1-gates.json)。
 - [x] 临时使用官方固定版本验证工具完成完整部署检查：kubeconform 42 个资源 valid，0 invalid/error/skip；4 组 Compose、89 项引用与 routing gates 全绿。
-- [ ] develop/main CI 与 Release：待发布后回填。
-- [ ] 生产部署、健康检查、跨 owner 审计和结算恢复验收：待执行后回填。
+- [x] develop 提交 `7b49f928` 的 [CI](https://github.com/mengbin92/micro-one-api/actions/runs/43779090089) 16 项必需任务（含 9 个 amd64 构建）与[安全检查](https://github.com/mengbin92/micro-one-api/actions/runs/43779090025)通过；不以 arm64 作为部署等待条件。
+- [ ] main/tag 的发布流水线与 GitHub Release：推送后回填。
+- [x] 2026-11-16 生产更新：7 个服务 + account-ops profile worker 同一源码摘要，重启 0；7 个健康端点 200，启动日志 panic/schema/ERROR 为 0；6 个 owner 审计读取成功，既有 committed 记录的成本字段可见且与持久化金额一致。迁移 151 marker 保留，未重跑迁移、未更新宿主机前端。HTTP 无凭据请求 401、兄弟路径 404；没有可用用户登录态，完整浏览器验收未执行。[脱敏验收证据](../runbooks/evidence/release-v0.44.1-production.json)。
 
 ## 完整变更日志
 
@@ -91,6 +92,7 @@ v0.44.1 是 v0.44.0 之后的 **PATCH 修复版本**，收口最近三个 MINOR 
 - `08d8a2c3` fix(billing): authorize relay settlement recovery
 - `b3864ac5` fix(channel): make registry migration and concurrent creation safe
 - `1ecc47e6` fix(admin): complete cross-owner operation audit reads
-- `docs(release): v0.44.1`
+- `7b49f928` docs(release): v0.44.1
+- `docs(release): record v0.44.1 production verification`
 
 发布后完整范围：`git log v0.44.0..v0.44.1`。

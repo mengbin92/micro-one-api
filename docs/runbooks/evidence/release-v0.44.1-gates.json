@@ -333,5 +333,8 @@
     "kubeconform_skipped": 0,
     "amd64_candidate_images": 7
   },
-  "production": "not_deployed_yet"
+  "production": {
+    "status": "verified",
+    "evidence": "release-v0.44.1-production.json"
+  }
 }

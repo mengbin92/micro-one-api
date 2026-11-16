@@ -1,6 +1,6 @@
 # v0.42–v0.44 评审问题修复记录
 
-修复日期：2026 年 11 月 15 日；提交/发布门禁核验日期：2026 年 11 月 16 日（北京时间）。本记录覆盖本地修复和验证，不代表已经提交、发布或部署。
+修复日期：2026 年 11 月 15 日；提交/发布门禁核验日期：2026 年 11 月 16 日（北京时间）。本记录覆盖本地修复与后续提交/部署验证；尚未完成的发布步骤以清单明确标记。
 
 ## 1. 修复结果
 
@@ -42,7 +42,7 @@
 | Kubernetes 静态检查 | ✅ `kubectl kustomize`、89 项 Secret/ConfigMap 引用、目标 Pod/TCP egress、routing defaults |
 | Kubernetes schema 校验 | ✅ 官方固定版本工具临时安装到 `/tmp`，42 valid、0 invalid/error/skip，完整部署检查通过 |
 | 独立构建 | ✅ `go build ./...`、完整 `make verify` 与 7 个 amd64 候选镜像通过 |
-| 生产验证 | [ ] 待实际部署后回填 |
+| 生产验证 | ✅ 7 服务与 profile worker、健康、6 owner RPC 与既有结算读取通过；[脱敏证据](evidence/release-v0.44.1-production.json) |
 
 详细临时日志位于评审机器 `/tmp/micro-one-api-review-fixes/`；跨库审计日志位于 `/tmp/writeaudit-integration-5714215r/`，迁移边界红绿日志位于 `/tmp/retirement-boundaries-evidence/`。这些目录可能被系统清理，正式回归测试已贴近源码保留。
 
@@ -61,8 +61,8 @@ OCR 原始结果和意见处置分别保存在 `/tmp/micro-one-api-review-fixes/
 
 ## 5. 部署前提与下一步
 
-本轮没有执行部署。后续发布时，admin-api 与 channel/billing/config/log/monitor/notify 六个 owner 应使用包含本修复的同一版本；旧 owner 没有 RPC 或 StoreID 时会明确失败。
+本轮已在 2026-11-16 更新生产，未重跑已登记迁移。发布升级时，admin-api 与 channel/billing/config/log/monitor/notify 六个 owner 应使用包含本修复的同一版本；旧 owner 没有 RPC 或 StoreID 时会明确失败。
 
 各 owner 必须信任 admin 专用服务凭据；共享服务 token 不授予审计 system capability。Compose 已补齐地址，Kubernetes 已补齐 ConfigMap/env 与限定目标端口的 egress；身份 Secret 由实际环境提供，不在仓库生成或记录真实凭据。
 
-本轮按 PATCH v0.44.1 提交和发布，理由与步骤见[发布文档](../releases/release-v0.44.1.md)。源码门禁已就绪；实际提交、线上验证和 tag 状态以发布文档后续回填为准，尚未发生的步骤不提前勾选。
+本轮按 PATCH v0.44.1 提交和发布，理由与步骤见[发布文档](../releases/release-v0.44.1.md)。三个独立修复提交与生产验证已完成；main/tag 与发布状态以发布文档清单回填为准，尚未发生的步骤不提前勾选。
