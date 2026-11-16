@@ -220,6 +220,8 @@ data:
   billing-http-endpoint: "http://billing-service:8004"
   channel-http-endpoint: "http://channel-service:8002"
   log-grpc-endpoint: "log-service:9006"
+  config-grpc-endpoint: "config-service:9005"
+  monitor-grpc-endpoint: "monitor-worker:9007"
   log-http-endpoint: "http://log-service:8006"
   notify-grpc-endpoint: "notify-worker:9008"
   notify-http-endpoint: "http://notify-worker:8008"

@@ -17,6 +17,7 @@ import (
 
 // NotifyService is the transport layer entry for notify-worker.
 type NotifyService struct {
+	writeAuditUC       *biz.WriteAuditUsecase
 	ownerAuthorization *authz.Client
 	notifyv1.UnimplementedNotifyServiceServer
 	uc *biz.NotifyUsecase

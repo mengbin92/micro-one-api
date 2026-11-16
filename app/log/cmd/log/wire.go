@@ -25,6 +25,8 @@ import (
 
 var ProviderSet = wire.NewSet(
 	newRepo,
+	data.NewWriteAuditRepo,
+	biz.NewWriteAuditUsecase,
 	biz.NewLogUsecase,
 	service.NewLogService,
 	server.NewGRPCServer,
@@ -57,9 +59,10 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	))
 }
 
-func newApp(cfg *Config, repo *data.Repository, uc *biz.LogUsecase, svc *service.LogService, reg registrarResult) (*kratos.App, func()) {
+func newApp(cfg *Config, repo *data.Repository, uc *biz.LogUsecase, svc *service.LogService, reg registrarResult, writeAuditUC *biz.WriteAuditUsecase) (*kratos.App, func()) {
 	ownerAuth, _ := authz.FromEnvironment("log")
 	svc.SetAuthorization(ownerAuth)
+	svc.SetWriteAuditUsecase(writeAuditUC)
 	// Parse retention days with fallback to 30.
 	retentionDays := 30
 	if cfg.Bootstrap.LogSvc != nil && cfg.Bootstrap.LogSvc.RetentionDays > 0 {

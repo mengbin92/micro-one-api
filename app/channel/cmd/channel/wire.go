@@ -30,6 +30,8 @@ var ProviderSet = wire.NewSet(
 	biz.NewModelRoutingUsecase,
 	data.NewRoutingGroupRepo,
 	biz.NewRoutingGroupUsecase,
+	data.NewWriteAuditRepo,
+	biz.NewWriteAuditUsecase,
 	service.NewChannelService,
 	server.NewGRPCServer,
 	server.NewHTTPServer,
@@ -81,6 +83,7 @@ func newApp(
 	modelUC *biz.ModelUsecase,
 	routingUC *biz.ModelRoutingUsecase,
 	groupUC *biz.RoutingGroupUsecase,
+	writeAuditUC *biz.WriteAuditUsecase,
 	svc *service.ChannelService,
 	reg registrarResult,
 ) (*kratos.App, func()) {
@@ -96,6 +99,7 @@ func newApp(
 	svc.SetModelUsecase(modelUC)
 	svc.SetModelRoutingUsecase(routingUC)
 	svc.SetRoutingGroupUsecase(groupUC)
+	svc.SetWriteAuditUsecase(writeAuditUC)
 	routingUC.SetCacheInvalidator(uc)
 	uc.SetModelRoutingRepo(repo)
 	// Phase D #12: wire the cross-replica in-flight oracle so the

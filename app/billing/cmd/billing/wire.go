@@ -118,6 +118,9 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	uc.SetReceivableRepo(d.ReceivableRepo())
 	uc.SetPricingSnapshotRepo(d.PricingSnapshotRepo())
 	uc.SetVendorReconciliationRepo(data.NewVendorReconciliationRepo(d))
+	// Read-only resource_write_audits projection for the admin audit
+	// console aggregation (admin-only system capability in the registry).
+	uc.SetWriteAuditRepo(data.NewWriteAuditRepo(d))
 	// The settlement status query refines live reservation states with the
 	// async task position; it degrades to the reservation row alone when
 	// the store is unavailable.

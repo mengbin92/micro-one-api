@@ -27,6 +27,7 @@ func NewGRPCServer(addr string, svc *service.ConfigService) *kgrpc.Server {
 }
 
 var configReadyMethods = []string{
+	"/api.config.v1.ConfigService/ListWriteAudits",
 	"/api.config.v1.ConfigService/GetConfig",
 	"/api.config.v1.ConfigService/SetConfig",
 	"/api.config.v1.ConfigService/ListConfigs",

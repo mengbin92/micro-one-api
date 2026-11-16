@@ -330,6 +330,9 @@ services:
       - SUBSCRIPTION_SCHEMA=${SUBSCRIPTION_SCHEMA:-}
       - LOG_HTTP_ENDPOINT=http://log-service:8006
       - LOG_GRPC_ENDPOINT=log-service:9006
+      - CONFIG_GRPC_ENDPOINT=config-service:9005
+      - MONITOR_GRPC_ENDPOINT=monitor-worker:9007
+      - NOTIFY_GRPC_ENDPOINT=notify-worker:9008
       - ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN is required}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}

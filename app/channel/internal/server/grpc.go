@@ -40,7 +40,7 @@ var channelReadyMethods = func() []string {
 	for _, method := range []string{"ListUnpricedRoutedModels", "ListUpstreamContracts", "CreateUpstreamContract", "TransitionUpstreamContract", "ListChannelModelMappings", "UpsertChannelModelMapping", "DeleteChannelModelMapping", "ListSubscriptionModelMappings", "UpsertSubscriptionModelMapping", "DeleteSubscriptionModelMapping", "ListModelHealth", "ListUsageSemanticBlocks", "ResolveUsageSemanticBlock", "ListModelRoutings", "UpsertModelRouting", "DeleteModelRouting", "ExportModels", "ImportModels", "DryRunImportModels", "ListModels", "GetModel", "CreateModel", "UpdateModel", "DeleteModel", "ChangeModelStatus", "BatchModels", "ListModelAliases", "CreateModelAlias", "DeleteModelAlias", "ListModelUsageStats", "ExecuteChannelAction", "GetChannel", "ListChannels", "CreateChannel", "UpdateChannel", "DeleteChannel", "BatchDeleteChannels", "ExportChannels", "ChangeChannelStatus", "GetSubscriptionAccount", "ListSubscriptionAccounts", "CreateSubscriptionAccount", "UpdateSubscriptionAccount", "DeleteSubscriptionAccount", "ChangeSubscriptionAccountStatus", "ResetSubscriptionAccountQuota", "ClearSubscriptionAccountError", "ListRoutingGroups", "GetRoutingGroup", "CreateRoutingGroup", "SetRoutingGroupState", "SetRoutingGroupResourceOverrides", "ArchiveRoutingGroup", "ReplaceRoutingGroupMembers"} {
 		out = append(out, "/api.channel.v1.ChannelService/"+method)
 	}
-	for _, method := range []string{"CanonicalModelPreflight", "MergeCanonicalModels", "AggregateSubscriptionAccountQuotaEvents"} {
+	for _, method := range []string{"CanonicalModelPreflight", "MergeCanonicalModels", "AggregateSubscriptionAccountQuotaEvents", "ListWriteAudits"} {
 		out = append(out, "/api.channel.v1.ChannelService/"+method)
 	}
 	return out

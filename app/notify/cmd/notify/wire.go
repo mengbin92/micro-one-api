@@ -26,6 +26,8 @@ func newNotifyService(cfg *Config, uc *biz.NotifyUsecase) *service.NotifyService
 
 var ProviderSet = wire.NewSet(
 	newRepo,
+	data.NewWriteAuditRepo,
+	biz.NewWriteAuditUsecase,
 	biz.NewNotifyUsecase,
 	newNotifyService,
 	server.NewGRPCServer,
@@ -58,9 +60,10 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	))
 }
 
-func newApp(cfg *Config, uc *biz.NotifyUsecase, svc *service.NotifyService, reg registrarResult) (*kratos.App, func()) {
+func newApp(cfg *Config, uc *biz.NotifyUsecase, svc *service.NotifyService, reg registrarResult, writeAuditUC *biz.WriteAuditUsecase) (*kratos.App, func()) {
 	ownerAuth, _ := authz.FromEnvironment("notify")
 	svc.SetAuthorization(ownerAuth)
+	svc.SetWriteAuditUsecase(writeAuditUC)
 	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc)
 

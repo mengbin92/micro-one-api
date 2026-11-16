@@ -32,7 +32,9 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	configUsecase := biz.NewConfigUsecase(repository)
 	configService := service.NewConfigService(configUsecase)
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup := newApp(config, configService, mainRegistrarResult)
+	writeAuditRepo := data.NewWriteAuditRepo(repository)
+	writeAuditUsecase := biz.NewWriteAuditUsecase(writeAuditRepo)
+	app, cleanup := newApp(config, configService, mainRegistrarResult, writeAuditUsecase)
 	return app, func() {
 		cleanup()
 	}, nil
@@ -43,7 +45,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 // ProviderSet declares config-service providers. loadConfig lives in
 // config_loader.go so it is visible under both build tags.
 var ProviderSet = wire.NewSet(
-	newRepo, biz.NewConfigUsecase, service.NewConfigService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.ConfigRepo), new(*data.Repository)),
+	newRepo, data.NewWriteAuditRepo, biz.NewWriteAuditUsecase, biz.NewConfigUsecase, service.NewConfigService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.ConfigRepo), new(*data.Repository)),
 )
 
 // newRepo wraps data.NewRepositoryFromEnv so Wire can resolve it from a
@@ -68,9 +70,10 @@ func provideRegistrar(cfg *Config) registrarResult {
 	return registrarResult{Registrar: registrar}
 }
 
-func newApp(cfg *Config, svc *service.ConfigService, reg registrarResult) (*kratos.App, func()) {
+func newApp(cfg *Config, svc *service.ConfigService, reg registrarResult, writeAuditUC *biz.WriteAuditUsecase) (*kratos.App, func()) {
 	ownerAuth, _ := authz.FromEnvironment("config")
 	svc.SetAuthorization(ownerAuth)
+	svc.SetWriteAuditUsecase(writeAuditUC)
 	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc)
 	opts := []kratos.Option{kratos.Name("config-service"), kratos.Server(grpcSrv, httpSrv)}

@@ -239,6 +239,8 @@ spec:
     ports:
     - protocol: TCP
       port: 8006
+    - protocol: TCP
+      port: 9006
   - to:
     - podSelector:
         matchLabels:
@@ -246,6 +248,22 @@ spec:
     ports:
     - protocol: TCP
       port: 8008
+    - protocol: TCP
+      port: 9008
+  - to:
+    - podSelector:
+        matchLabels:
+          app: config-service
+    ports:
+    - protocol: TCP
+      port: 9005
+  - to:
+    - podSelector:
+        matchLabels:
+          app: monitor-worker
+    ports:
+    - protocol: TCP
+      port: 9007
   - to: []
     ports:
     - protocol: TCP

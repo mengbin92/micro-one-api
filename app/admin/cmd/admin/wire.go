@@ -21,6 +21,7 @@ import (
 	"micro-one-api/app/admin/internal/data/channelclient"
 	"micro-one-api/app/admin/internal/server"
 	"micro-one-api/app/admin/internal/service"
+	"micro-one-api/app/admin/internal/writeauditclient"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 	"micro-one-api/platform/audit"
@@ -69,8 +70,22 @@ func newSystemOptionsUsecase(r systemOptionsResult) *biz.SystemOptionsUsecase {
 	return biz.NewSystemOptionsUsecase(r.Repo)
 }
 
-func newOperationAuditUsecase(r systemOptionsResult) *biz.OperationAuditUsecase {
-	return r.OperationAuditUc
+func newOperationAuditUsecase(r systemOptionsResult, clients *clientsResult) *biz.OperationAuditUsecase {
+	if r.AuditRepo == nil {
+		return nil
+	}
+	// Aggregate every owner's resource_write_audits (independent schemas)
+	// behind the same usecase; an owner failure surfaces as an explicit
+	// error instead of reading as "no operations happened".
+	aggregated := biz.NewAggregatedOperationAuditRepo(r.AuditRepo,
+		writeauditclient.NewChannelSource(clients.channelClient),
+		writeauditclient.NewBillingSource(clients.billingClient),
+		writeauditclient.NewConfigSource(clients.configClient),
+		writeauditclient.NewLogSource(clients.logClient),
+		writeauditclient.NewMonitorSource(clients.monitorClient),
+		writeauditclient.NewNotifySource(clients.notifyClient),
+	)
+	return biz.NewOperationAuditUsecase(aggregated)
 }
 
 type registrarResult struct {
@@ -157,6 +172,9 @@ func newApp(
 			sub.Close()
 		}
 		if clients != nil {
+			for _, conn := range clients.auditConns {
+				_ = conn.Close()
+			}
 			clients.identityConn.Close()
 			clients.channelConn.Close()
 			clients.billingConn.Close()

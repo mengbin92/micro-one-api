@@ -7,6 +7,8 @@ import "google/api/annotations.proto";
 option go_package = "micro-one-api/api/monitor/v1;monitorv1";
 
 service MonitorService {
+ // Read-only audit source for the dedicated admin system identity.
+ rpc ListWriteAudits(ListWriteAuditsRequest) returns (ListWriteAuditsResponse);
  rpc ClaimProbePermit(ClaimProbePermitRequest) returns (ClaimProbePermitResponse);
   rpc SaveHealthCheck(SaveHealthCheckRequest) returns (SaveHealthCheckResponse) {
     option (google.api.http) = {
@@ -166,3 +168,39 @@ message DeleteAlertRuleResponse {
 
 message ClaimProbePermitRequest { string target_id = 1; string attempt_id = 2; string target_sha256 = 3; }
 message ClaimProbePermitResponse { bool allowed = 1; }
+
+// WriteAuditItem is one row of an owner's resource_write_audits table.
+message WriteAuditItem {
+ string event_id = 1;
+ int64 actor_user_id = 2;
+ string operation = 3;
+ string resource_id = 4;
+ string decision_versions = 5;
+ string reason = 6;
+ // Unix timestamp in milliseconds.
+ int64 occurred_at = 7;
+ string result = 8;
+}
+
+message ListWriteAuditsRequest {
+ int64 actor_user_id = 1;
+ // Operation is a prefix match, mirroring the admin console filter.
+ string operation = 2;
+ string resource_id = 3;
+ string result = 4;
+ int64 start_time_ms = 5;
+ int64 end_time_ms = 6;
+ // Zero-based page index.
+ int32 page = 7;
+ // Normalized to 1..5000; nonpositive or larger values use 5000.
+ int32 page_size = 8;
+}
+
+message ListWriteAuditsResponse {
+ // Ordered by occurred_at DESC, event_id DESC.
+ repeated WriteAuditItem items = 1;
+ // Complete count matching the filters, before pagination.
+ int64 total = 2;
+ // Nonempty hash identifying the physical audit table, shared by owners on the same database.
+ string store_id = 3;
+}

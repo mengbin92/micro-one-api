@@ -34,7 +34,9 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	notifyUsecase := biz.NewNotifyUsecase(repository)
 	notifyService := newNotifyService(config, notifyUsecase)
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup := newApp(config, notifyUsecase, notifyService, mainRegistrarResult)
+	writeAuditRepo := data.NewWriteAuditRepo(repository)
+	writeAuditUsecase := biz.NewWriteAuditUsecase(writeAuditRepo)
+	app, cleanup := newApp(config, notifyUsecase, notifyService, mainRegistrarResult, writeAuditUsecase)
 	return app, func() {
 		cleanup()
 	}, nil
@@ -47,7 +49,7 @@ func newNotifyService(cfg *Config, uc *biz.NotifyUsecase) *service.NotifyService
 }
 
 var ProviderSet = wire.NewSet(
-	newRepo, biz.NewNotifyUsecase, newNotifyService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.NotifyRepo), new(*data.Repository)),
+	newRepo, data.NewWriteAuditRepo, biz.NewWriteAuditUsecase, biz.NewNotifyUsecase, newNotifyService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.NotifyRepo), new(*data.Repository)),
 )
 
 func newRepo(cfg *Config) (*data.Repository, error) {
@@ -66,9 +68,10 @@ func provideRegistrar(cfg *Config) registrarResult {
 	return registrarResult{Registrar: registrar}
 }
 
-func newApp(cfg *Config, uc *biz.NotifyUsecase, svc *service.NotifyService, reg registrarResult) (*kratos.App, func()) {
+func newApp(cfg *Config, uc *biz.NotifyUsecase, svc *service.NotifyService, reg registrarResult, writeAuditUC *biz.WriteAuditUsecase) (*kratos.App, func()) {
 	ownerAuth, _ := authz.FromEnvironment("notify")
 	svc.SetAuthorization(ownerAuth)
+	svc.SetWriteAuditUsecase(writeAuditUC)
 	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc)
 

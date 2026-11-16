@@ -130,6 +130,8 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	uc.SetPricingSnapshotRepo(d.PricingSnapshotRepo())
 	uc.SetVendorReconciliationRepo(data.NewVendorReconciliationRepo(d))
 
+	uc.SetWriteAuditRepo(data.NewWriteAuditRepo(d))
+
 	uc.SetSettlementTaskStore(d.SettlementTaskStore())
 	closeRouting := func() {}
 	if biz.RequestSnapshotsEnabled() {
