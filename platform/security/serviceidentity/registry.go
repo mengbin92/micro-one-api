@@ -200,7 +200,7 @@ var rpcPolicies = map[string]RPCPolicy{
 	"/api.billing.v1.BillingService/GetRoutingCapabilities":                  {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{"relay"}},
 	"/api.billing.v1.BillingService/RecordExecutionEvidence":                 {Owner: "billing", UserCallers: []string{}, SystemCallers: []string{"relay"}},
 	"/api.billing.v1.BillingService/ReserveQuota":                            {Owner: "billing", UserCallers: []string{}, SystemCallers: []string{"relay"}},
-	"/api.billing.v1.BillingService/ListRequestAttempts":                     {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{}},
+	"/api.billing.v1.BillingService/ListRequestAttempts":                     {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{"relay"}},
 	"/api.billing.v1.BillingService/CommitQuota":                             {Owner: "billing", UserCallers: []string{}, SystemCallers: []string{"relay"}},
 	"/api.billing.v1.BillingService/ReleaseQuota":                            {Owner: "billing", UserCallers: []string{}, SystemCallers: []string{"relay"}},
 	"/api.billing.v1.BillingService/GetAccountSnapshot":                      {Owner: "billing", UserCallers: []string{"admin"}, SystemCallers: []string{"relay", "identity"}},
