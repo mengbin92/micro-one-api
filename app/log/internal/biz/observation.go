@@ -11,6 +11,7 @@ import (
 	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/upstream/evidence"
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/pkg/safecast"
 	"micro-one-api/platform/security/serviceidentity"
 
 	"github.com/go-kratos/kratos/v3/errors"
@@ -138,7 +139,11 @@ func (uc *UsageObservationUsecase) Record(ctx context.Context, eventID, sendID, 
 		ObservedAtMS: envelope.ObservedAt, ReceivedAtMS: time.Now().UnixMilli(),
 	}
 	if envelope.Record != nil {
-		row.HTTPStatus = int32(envelope.Record.HTTPStatus)
+		status, err := safecast.IntToInt32(envelope.Record.HTTPStatus)
+		if err != nil {
+			return nil, ErrInvalidUsageObservation
+		}
+		row.HTTPStatus = status
 		row.Stream = envelope.Record.Stream
 	}
 	duplicate, err := uc.repo.Record(ctx, row)

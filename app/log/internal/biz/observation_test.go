@@ -13,6 +13,7 @@ import (
 	logv1 "micro-one-api/api/log/v1"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/upstream/evidence"
+	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/grpc/xgrpc"
 	"micro-one-api/platform/security/serviceidentity"
 )
@@ -160,4 +161,17 @@ func TestRecordUsageObservationRefusesNonDurableConsumer(t *testing.T) {
 	receipt, err := uc.Record(ctx, eventID, sendID, observationID, "terminal", digest, 1, payload)
 	require.ErrorIs(t, err, ErrUsageObservationUnavailable)
 	require.Nil(t, receipt)
+}
+
+func TestRecordUsageObservationRejectsHTTPStatusOverflow(t *testing.T) {
+	_, _, _, _, payload := observationEnvelope(t)
+	var event evidence.SendEvent
+	require.NoError(t, jsonx.Unmarshal(payload, &event))
+	event.Record.HTTPStatus = 1 << 32
+	payload, digest, err := event.Encode()
+	require.NoError(t, err)
+	repo := &stubObservationRepo{}
+	_, err = NewUsageObservationUsecase(repo).Record(relayCapabilityContext(t), event.ID, event.Send.SendID, event.Send.ObservationID, event.Category, digest, event.Sequence, payload)
+	require.ErrorIs(t, err, ErrInvalidUsageObservation)
+	require.Empty(t, repo.rows)
 }

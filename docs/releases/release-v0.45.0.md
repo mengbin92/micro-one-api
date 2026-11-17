@@ -60,3 +60,4 @@
 - feat(relay): wire observation-only upstream evidence across execution paths
 - feat(ops): add usage observation alerts and safe deployment support
 - docs(release): v0.45.0
+- fix(log): reject overflowing observation HTTP status
