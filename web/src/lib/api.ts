@@ -2,7 +2,7 @@ import axios from 'axios';
 import { requestSecurityVerification } from '@/lib/security-verification';
 import { clearPlaygroundCredential } from '@/lib/playground-credential';
 import { toast } from 'sonner';
-import { protectedSignal, refreshAuthorization, prepareAdminRequest } from '@/lib/authorization-events';
+import { protectedSignal, refreshAuthorization, invalidateAuthorization, prepareAdminRequest } from '@/lib/authorization-events';
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -14,6 +14,15 @@ function requestPath(error: unknown): string {
 
 export function isSessionAuthPath(path: string) {
   return path.startsWith('/user/') || path === '/token' || path.startsWith('/token/');
+}
+
+// Axios serializes body-only IAM CAS tokens before response interceptors run.
+function carriesPolicyRevision(config: { method?: string; params?: unknown; data?: unknown } | undefined) {
+  if (!config || ['get', 'head', 'options'].includes((config.method ?? 'get').toLowerCase())) return false;
+  const carries = (bag: unknown) => !!bag && typeof bag === 'object' && (bag as Record<string, unknown>).expected_policy_revision !== undefined;
+  if (carries(config.params)) return true;
+  try { return carries(typeof config.data === 'string' ? JSON.parse(config.data) : config.data); }
+  catch { return false; }
 }
 
 function matchesCurrentSession(config: { headers?: { Authorization?: unknown } } | undefined) {
@@ -99,7 +108,13 @@ adminApiClient.interceptors.request.use(
 );
 
 adminApiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // IAM previews/checks carry CAS too, but do not advance the policy.
+    const path = response.config.url?.split('?')[0] ?? '';
+    const readOnly = path.startsWith('/v1/admin/iam/') && /(?:authorization:(?:check|explain|simulate)|\/preview|roles:preview)$/.test(path);
+    if (matchesCurrentSession(response.config) && !readOnly && carriesPolicyRevision(response.config)) invalidateAuthorization();
+    return response;
+  },
   async (error) => {
     const currentSession = matchesCurrentSession(error.config);
     if (currentSession && error.response?.status === 403 && error.response.data?.reason === 'STEP_UP_REQUIRED' && !error.config.securityRetried) {
@@ -109,8 +124,12 @@ adminApiClient.interceptors.response.use(
       if (localStorage.getItem('token') !== originalToken) throw new Error('Session changed during verification');
       return adminApiClient.request(error.config);
     }
-    if (error.response?.status === 403) {
+    if (currentSession && error.response?.status === 403) {
       refreshAuthorization();
+    }
+    // Even a read-only preview can expose a stale policy revision.
+    if (currentSession && error.response?.status === 409 && carriesPolicyRevision(error.config)) {
+      invalidateAuthorization();
     }
     if (currentSession && error.response?.status === 401) {
       clearUserSession();

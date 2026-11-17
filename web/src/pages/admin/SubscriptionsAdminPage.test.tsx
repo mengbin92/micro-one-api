@@ -38,6 +38,39 @@ function mockBaseEndpoints() {
 }
 
 describe('AdminSubscriptionsPage', () => {
+  it('prefills expiry from the selected policy and preserves a manual override on assignment', async () => {
+    mockBaseEndpoints();
+    const now = Math.floor(Date.now() / 60_000) * 60_000;
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    const captured = { groupId: 0, expiresAt: 0 };
+    server.use(
+      http.get('/api/v1/admin/subscription-groups', () => HttpResponse.json({ success: true, data: [
+        { id: 1, name: 'monthly', display_name: 'Monthly', duration_days: 30, daily_limit_usd: 10, weekly_limit_usd: null, monthly_limit_usd: 100 },
+        { id: 2, name: 'weekly', display_name: 'Weekly', duration_days: 7 },
+      ] })),
+      http.get('/api/v1/admin/routing-groups', () => HttpResponse.json({ success: true, data: { groups: [], next_page_token: '' } })),
+      http.post('/api/v1/admin/subscriptions/assign', async ({ request }) => {
+        const body = await request.json() as { group_id: number; expires_at: number };
+        captured.groupId = body.group_id;
+        captured.expiresAt = body.expires_at;
+        return HttpResponse.json({ success: true });
+      }),
+    );
+    renderWithQuery(<MemoryRouter><AdminSubscriptionsPage /></MemoryRouter>);
+    await screen.findByText('alice-pro');
+    await userEvent.click(screen.getByRole('button', { name: '分配订阅' }));
+    await userEvent.type(screen.getByLabelText('用户 ID'), '42');
+    await userEvent.selectOptions(screen.getByLabelText('订阅额度策略'), '1');
+    const expiry = screen.getByLabelText('到期时间') as HTMLInputElement;
+    expect(new Date(expiry.value).getTime()).toBe(now + 30 * 86400_000);
+    expect(screen.getByText('额度: 10 / 不限 / 100 (日/周/月 USD) · 有效期 30 天')).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('订阅额度策略'), '2');
+    expect(new Date(expiry.value).getTime()).toBe(now + 7 * 86400_000);
+    fireEvent.change(expiry, { target: { value: '2030-01-02T12:34' } });
+    await userEvent.click(screen.getByRole('button', { name: '分配' }));
+    await waitFor(() => expect(captured).toEqual({ groupId: 2, expiresAt: Math.floor(new Date('2030-01-02T12:34').getTime() / 1000) }));
+  });
+
   it('lists all subscriptions by default (no user_id required)', async () => {
     const captured = { url: null as string | null };
     server.use(

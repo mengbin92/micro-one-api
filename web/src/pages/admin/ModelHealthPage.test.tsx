@@ -15,6 +15,7 @@ function AuthenticatedShell() {
 
 describe('ModelHealthPage', () => {
   it('keeps a persistent owner 403 visible without repeatedly remounting or requesting the page', async () => {
+    localStorage.setItem('token', 'model-health-session');
     const requests = vi.fn();
     const authRequests = vi.fn();
     const snapshot = { authorization_mode: 'iam', session: { activation_state: 'active', revision: '1' }, versions: { policy_revision: '1' }, permitted_operations: ['admin.console.enter', 'monitor.health.model.read'], valid_until: new Date(Date.now() + 60_000).toISOString() };

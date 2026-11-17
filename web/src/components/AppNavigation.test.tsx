@@ -104,6 +104,7 @@ describe('AppNavigation', () => {
     expect(screen.getByText('用户与产品')).toBeInTheDocument();
     expect(screen.getByText('计费与财务')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '用户管理' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '订阅额度策略' })).toHaveAttribute('href', '/admin/subscription-groups');
     expect(screen.getByRole('link', { name: '系统设置' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '渠道管理' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '仪表盘' })).not.toBeInTheDocument();
@@ -112,6 +113,7 @@ describe('AppNavigation', () => {
     await user.click(screen.getByRole('button', { name: '资源与路由' }));
     expect(screen.getByRole('link', { name: '渠道管理' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '用户管理' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '订阅额度策略' })).not.toBeInTheDocument();
   });
 
   it.each([

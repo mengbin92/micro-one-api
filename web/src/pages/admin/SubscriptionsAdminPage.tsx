@@ -2,7 +2,7 @@ import { useAuthorizedQuery } from '@/lib/authorization';
 import { CoverageEditor, ContractSummary, type RoutingCoverage, type SubscriptionContract } from '@/components/SubscriptionContract';
 import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, Search, UserPlus } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
 import { PermissionButton as Button } from '@/components/admin/PermissionButton';
@@ -57,6 +57,10 @@ interface SubscriptionGroupOption {
   id: number;
   name: string;
   display_name: string;
+  duration_days: number;
+  daily_limit_usd?: number | null;
+  weekly_limit_usd?: number | null;
+  monthly_limit_usd?: number | null;
 }
 
 function formatTimestamp(unix: number) {
@@ -443,6 +447,23 @@ function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSu
   const [expiresAt, setExpiresAt] = useState('');
   const [metadata, setMetadata] = useState('');
 
+  const selectedGroup = useMemo(
+    () => groups.find((g) => g.id === Number(groupId)),
+    [groups, groupId],
+  );
+
+  // Selecting a quota policy auto-fills the expiry from its duration_days, so
+  // the operator does not have to compute "now + N days" by hand. The field
+  // stays editable (e.g. for comped trials that differ from the policy term).
+  const handleGroupChange = (nextGroupId: string) => {
+    setGroupId(nextGroupId);
+    const group = groups.find((g) => g.id === Number(nextGroupId));
+    if (group && group.duration_days > 0) {
+      const expiryUnix = Math.floor(Date.now() / 1000) + group.duration_days * 86400;
+      setExpiresAt(toDatetimeLocal(expiryUnix));
+    }
+  };
+
   const handleSubmit = () => {
     const parsedUser = parseInt(userId.trim(), 10);
     const parsedGroup = parseInt(groupId, 10);
@@ -494,7 +515,7 @@ function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSu
             <select
               id="assign-group"
               value={groupId}
-              onChange={(e) => setGroupId(e.target.value)}
+              onChange={(e) => handleGroupChange(e.target.value)}
               className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
             >
               <option value="">{t("请选择额度策略")}</option>
@@ -504,6 +525,12 @@ function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSu
                 </option>
               ))}
             </select>
+            {selectedGroup && (
+              <p className="text-xs text-muted-foreground">
+                {t("额度")}: {selectedGroup.daily_limit_usd ?? t("不限")} / {selectedGroup.weekly_limit_usd ?? t("不限")} / {selectedGroup.monthly_limit_usd ?? t("不限")} ({t("日/周/月 USD")})
+                {selectedGroup.duration_days > 0 && <> · {t("有效期")} {selectedGroup.duration_days} {t("天")}</>}
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="assign-name">{t("订阅名称(可选)")}</Label>

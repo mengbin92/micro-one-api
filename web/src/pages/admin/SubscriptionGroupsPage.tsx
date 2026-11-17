@@ -70,18 +70,12 @@ interface GroupPayload {
   duration_days: number;
 }
 
-// Keep in sync with the platforms accepted by the hybrid relay adaptor layer.
-const PLATFORM_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'anthropic', label: 'Anthropic / Claude' },
-  { value: 'openai', label: 'OpenAI / Codex' },
-  { value: 'gemini', label: 'Gemini' },
-];
-
 interface GroupDraft {
   id?: number;
   revision?: number;
   name: string;
   displayName: string;
+  // Deprecated in the UI; preserve the stored value until the API and DB remove it.
   platform: string;
   subscriptionType: string;
   dailyLimit: string;
@@ -106,10 +100,6 @@ const emptyDraft: GroupDraft = {
   price: '0',
   durationDays: '0',
 };
-
-function platformLabel(platform: string) {
-  return PLATFORM_OPTIONS.find((option) => option.value === platform)?.label ?? platform;
-}
 
 function formatLimit(value: number | null) {
   return value == null ? t("不限") : `$${value}`;
@@ -267,9 +257,9 @@ export function AdminSubscriptionGroupsPage() {
       />
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', t("名称"), t("平台"), t("类型"), t("日限额"), t("周限额"), t("月限额"), t("额度消耗倍率"), t("售价/有效期"), t("状态"), t("操作")]} />
+        <TableSkeleton columns={['ID', t("名称"), t("类型"), t("日限额"), t("周限额"), t("月限额"), t("额度消耗倍率"), t("售价/有效期"), t("状态"), t("操作")]} />
       ) : !groups || groups.length === 0 ? (
-        <EmptyState title={t("暂无订阅额度策略")} description={t("新建一个订阅额度策略以配置平台、配额限额与额度消耗倍率。")} />
+        <EmptyState title={t("暂无订阅额度策略")} description={t("新建一个订阅额度策略以配置配额限额与额度消耗倍率。")} />
       ) : visibleGroups.length === 0 ? (
         <EmptyState title={t("没有匹配的额度策略")} description={t("清除搜索条件以查看全部额度策略。")} />
       ) : (
@@ -279,7 +269,6 @@ export function AdminSubscriptionGroupsPage() {
               <TableRow>
                 <TableHead>ID</TableHead>
                 <SortableHeader<SubscriptionGroup> columnKey="name" sort={sort} onSortChange={setSort}>{t("名称")}</SortableHeader>
-                <SortableHeader<SubscriptionGroup> columnKey="platform" sort={sort} onSortChange={setSort}>{t("平台")}</SortableHeader>
                 <TableHead className="hidden lg:table-cell">{t("类型")}</TableHead>
                 <TableHead className="hidden lg:table-cell">{t("日限额")}</TableHead>
                 <TableHead className="hidden xl:table-cell">{t("周限额")}</TableHead>
@@ -298,7 +287,6 @@ export function AdminSubscriptionGroupsPage() {
                     <div>{group.display_name || group.name}</div>
                     <div className="text-xs text-muted-foreground">{group.name}</div>
                   </TableCell>
-                  <TableCell>{platformLabel(group.platform)}</TableCell>
                   <TableCell className="hidden lg:table-cell">{group.subscription_type}</TableCell>
                   <TableCell className="hidden lg:table-cell">{formatLimit(group.daily_limit_usd)}</TableCell>
                   <TableCell className="hidden xl:table-cell">{formatLimit(group.weekly_limit_usd)}</TableCell>
@@ -384,7 +372,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
     <DialogContent className="sm:max-w-lg">
       <DialogHeader>
         <DialogTitle>{mode === 'create' ? t("新建订阅额度策略") : t("编辑订阅额度策略")}</DialogTitle>
-        <DialogDescription>{t("配置平台、订阅类型、日/周/月 USD 配额限额(留空表示不限)、额度消耗倍率，以及用户自助购买的价格与有效期。")}</DialogDescription>
+        <DialogDescription>{t("配置订阅类型、日/周/月 USD 配额限额(留空表示不限)、额度消耗倍率，以及用户自助购买的价格与有效期。")}</DialogDescription>
       </DialogHeader>
       <div className="grid gap-4 pt-2 sm:grid-cols-2">
         <div className="space-y-2">
@@ -404,21 +392,6 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
             onChange={(e) => setForm({ ...form, displayName: e.target.value })}
             placeholder={t("Claude Pro 订阅")}
           />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="grp-platform">{t("平台")}</Label>
-          <select
-            id="grp-platform"
-            value={form.platform}
-            onChange={(e) => setForm({ ...form, platform: e.target.value })}
-            className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
-          >
-            {PLATFORM_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
         </div>
         <div className="space-y-2">
           <Label htmlFor="grp-type">{t("订阅类型")}</Label>
@@ -466,7 +439,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
             onChange={(e) => setForm({ ...form, rateMultiplier: e.target.value })}
           />
         </div>
-        <p className="text-xs text-muted-foreground sm:col-span-2">{t("额度消耗倍率只影响订阅额度消耗速度；用户请求的价格由模型价格和路由分组价格倍率决定。平台是策略描述，不限制可调用模型。")}</p>
+        <p className="text-xs text-muted-foreground sm:col-span-2">{t("额度消耗倍率只影响订阅额度消耗速度；用户请求的价格由模型价格和路由分组价格倍率决定。")}</p>
         <div className="space-y-2">
           <Label htmlFor="grp-price">{t("购买价格(CNY)")}</Label>
           <Input
