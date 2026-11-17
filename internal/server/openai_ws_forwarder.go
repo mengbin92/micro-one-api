@@ -823,8 +823,25 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			turnCommits++
 		}
 
+		observationEndpoint := ""
+		if target, err := url.Parse(wsURL); err == nil {
+			observationEndpoint = target.EscapedPath()
+		}
 		relayOptions := openAIWSRelayOptions{
-			timings: wsTimings(ctx),
+			timings:             wsTimings(ctx),
+			observationEndpoint: observationEndpoint,
+			observationVersion:  currentChannel.Config.APIVersion,
+			observationContext: func(turnCtx context.Context) context.Context {
+				turnCtx = relaybiz.WithObservationDelivery(turnCtx, s.observationDelivery)
+				v2Turns.mu.Lock()
+				active, channel := v2Turns.active, v2Turns.execution
+				v2Turns.mu.Unlock()
+				if active == nil || channel == nil {
+					return evidence.WithoutObservationSink(turnCtx)
+				}
+				turnCtx = requesttrace.WithVerifiedUser(turnCtx, plan.Auth.UserID)
+				return relaybiz.WithUsageObservation(turnCtx, channel, active.RequestId, relaybiz.ResolveChannelModel(channel, plan.BaseModel()))
+			},
 			// The callback also reports contracts when durable delivery is disabled.
 			durableHistoryLimit: reservation.GetExecutionDeliveryVersion() > 0,
 			writeTimeout:        s.openAIWSWriteTimeout(),

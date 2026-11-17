@@ -38,24 +38,25 @@ type tokenQuotaBlocker interface {
 // HTTPServer handles HTTP requests for relay-gateway.
 
 type HTTPServer struct {
-	timingExporter     *requesttrace.Exporter
-	executionActive    atomic.Int64
-	executionDelivery  *relaybiz.ExecutionDelivery
-	executionAttempts  sync.Map
-	identityClient     identityv1.IdentityServiceClient
-	channelClient      channelv1.ChannelServiceClient
-	billingClient      billingv1.BillingServiceClient
-	logClient          logv1.LogServiceClient
-	providerFactory    *relayprovider.ProviderFactory
-	relayUsecase       *relaybiz.RelayUsecase
-	responsesMu        sync.RWMutex
-	responseRoutes     map[string]responseRouteEntry
-	responsesLastSweep time.Time
-	wsTimeouts         openAIWSTimeouts
-	wsPool             *openAIWSConnPool
-	wsSticky           *openAIWSStickyStore
-	wsPoolCfg          openAIWSPoolConfig
-	wsScheduler        *OpenAIWSRoutingScheduler
+	timingExporter      *requesttrace.Exporter
+	executionActive     atomic.Int64
+	executionDelivery   *relaybiz.ExecutionDelivery
+	observationDelivery *relaybiz.ObservationDelivery
+	executionAttempts   sync.Map
+	identityClient      identityv1.IdentityServiceClient
+	channelClient       channelv1.ChannelServiceClient
+	billingClient       billingv1.BillingServiceClient
+	logClient           logv1.LogServiceClient
+	providerFactory     *relayprovider.ProviderFactory
+	relayUsecase        *relaybiz.RelayUsecase
+	responsesMu         sync.RWMutex
+	responseRoutes      map[string]responseRouteEntry
+	responsesLastSweep  time.Time
+	wsTimeouts          openAIWSTimeouts
+	wsPool              *openAIWSConnPool
+	wsSticky            *openAIWSStickyStore
+	wsPoolCfg           openAIWSPoolConfig
+	wsScheduler         *OpenAIWSRoutingScheduler
 	// wsConnTracker tracks active client WebSocket connections so the gateway
 	// can drain them gracefully on shutdown (Phase 3.3). nil until
 	// SetOpenAIWSConnPool wires it; all accessors are nil-safe so tests and

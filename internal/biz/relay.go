@@ -630,6 +630,9 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (result *Rel
 		return nil, err
 	}
 	requesttrace.BindUser(ctx, authSnapshot.UserID)
+	// Evidence ownership follows the verified snapshot, not the timing
+	// recorder: RELAY_REQUEST_TIMING_ENABLED=false must not anonymise users.
+	requesttrace.BindVerifiedUser(ctx, authSnapshot.UserID)
 	if err := uc.ResolveRoutingContext(ctx, authSnapshot, RoutingResolveOptions{SessionHash: req.SessionHash, Model: req.Model}); err != nil {
 		return nil, err
 	}

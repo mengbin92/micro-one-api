@@ -9,11 +9,15 @@ import (
 	"io"
 	"micro-one-api/domain/upstream/contract"
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/platform/metrics"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 type testTransport func(*http.Request) (*http.Response, error)
@@ -348,5 +352,92 @@ func TestP2ContractPinsSnapshotAndRejectsBeforeSupplierIO(t *testing.T) {
 		require.ErrorAs(t, err, &rejected)
 		require.True(t, rejected.BeforeUpstream())
 		require.Equal(t, 1, calls, "unexpected types must never reach the supplier")
+	}
+}
+
+// R02: protocol completeness and the financial metering verdict are separate
+// facts. A fully received SSE that carries an invalid usage object is a
+// complete capture with invalid usage, not a truncated stream.
+func TestHTTPObservationCompleteSSEWithInvalidUsageIsNotTruncated(t *testing.T) {
+	stream := "data: {\"usage\":{\"prompt_tokens\":\"not-a-number\",\"completion_tokens\":2}}\n\ndata: [DONE]\n\n"
+	var financial Record
+	sink := &recordingSink{}
+	ctx := WithObservationSink(context.Background(), sink)
+	ctx = WithRecorder(ctx, func(record Record) { financial = record })
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://example.com/chat/completions", nil)
+	client := &http.Client{Transport: testTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(stream))}, nil
+	})}
+	resp, err := Do(client, req, "openai_chat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+
+	if len(sink.terminal) != 1 {
+		t.Fatalf("expected one terminal observation, got %d", len(sink.terminal))
+	}
+	observation := sink.terminal[0]
+	if observation.Observation.Status != "invalid" {
+		t.Fatalf("expected invalid usage, got %+v", observation.Observation)
+	}
+	if !observation.Complete {
+		t.Fatalf("a [DONE]-terminated SSE is a complete capture even with invalid usage: %+v", observation)
+	}
+	if financial.Complete || financial.Execution != "incomplete" {
+		t.Fatalf("the financial verdict must keep its old semantics: %+v", financial)
+	}
+}
+
+func TestHTTPObservationRedirectPolicyErrorKeepsReceivedStatus(t *testing.T) {
+	failure := errors.New("redirect policy refused the next hop")
+	sink := &recordingSink{}
+	ctx := WithObservationSink(context.Background(), sink)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://fixture.invalid/start", nil)
+	require.NoError(t, err)
+	calls := 0
+	client := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error { return failure },
+		Transport: testTransport(func(*http.Request) (*http.Response, error) {
+			calls++
+			return &http.Response{StatusCode: http.StatusTemporaryRedirect, Header: http.Header{"Location": {"/next"}}, Body: io.NopCloser(strings.NewReader("redirect"))}, nil
+		}),
+	}
+	_, err = Do(client, req, "openai_chat")
+	require.ErrorIs(t, err, failure)
+	require.Equal(t, 1, calls, "the redirect policy still blocks the second send")
+	require.Len(t, sink.terminal, 1)
+	require.Equal(t, http.StatusTemporaryRedirect, sink.terminal[0].HTTPStatus, "the first hop returned a real response before redirect policy failed")
+	require.Equal(t, CaptureUpstreamRejected, ClassifyCapture(sink.terminal[0], false))
+}
+
+func TestHTTPObservationTransportCountIncludesEveryRedirectHop(t *testing.T) {
+	for _, observed := range []bool{false, true} {
+		t.Run(strconv.FormatBool(observed), func(t *testing.T) {
+			counter := metrics.UsageObservationTransportSend.WithLabelValues("openai_chat", "true", strconv.FormatBool(observed))
+			before := testutil.ToFloat64(counter)
+			ctx := WithObservationExpected(context.Background())
+			if observed {
+				ctx = WithObservationSink(ctx, &recordingSink{})
+			}
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://fixture.invalid/start", nil)
+			require.NoError(t, err)
+			calls := 0
+			client := &http.Client{Transport: testTransport(func(req *http.Request) (*http.Response, error) {
+				calls++
+				if req.URL.Path == "/start" {
+					return &http.Response{StatusCode: http.StatusTemporaryRedirect, Header: http.Header{"Location": {"/next"}}, Body: io.NopCloser(strings.NewReader("redirect"))}, nil
+				}
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"usage":{"prompt_tokens":1,"completion_tokens":1}}`))}, nil
+			})}
+			resp, err := Do(client, req, "openai_chat")
+			require.NoError(t, err)
+			_, err = io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			require.Equal(t, 2, calls)
+			require.Equal(t, float64(calls), testutil.ToFloat64(counter)-before, "the independent send counter must see each actual redirect hop even when the sink is missing")
+		})
 	}
 }

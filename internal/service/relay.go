@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	relayv1 "micro-one-api/api/relay/v1"
+	"micro-one-api/domain/upstream/evidence"
 	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
 	"micro-one-api/pkg/safecast"
@@ -32,9 +33,10 @@ import (
 
 // RelayGrpcService implements the gRPC RelayServiceServer interface.
 type RelayGrpcService struct {
-	timingExporter    *requesttrace.Exporter
-	executionDelivery *relaybiz.ExecutionDelivery
-	upstreamProbe     *relaybiz.UpstreamProbeUsecase
+	timingExporter      *requesttrace.Exporter
+	executionDelivery   *relaybiz.ExecutionDelivery
+	observationDelivery *relaybiz.ObservationDelivery
+	upstreamProbe       *relaybiz.UpstreamProbeUsecase
 	relayv1.UnimplementedRelayServiceServer
 	identityClient  identityv1.IdentityServiceClient
 	channelClient   channelv1.ChannelServiceClient
@@ -86,6 +88,10 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 	})
 	if err != nil {
 		return nil, err
+	}
+	ctx = requesttrace.WithVerifiedUser(ctx, plan.Auth.UserID)
+	if relaybiz.ObservationEnabled() {
+		ctx = evidence.WithObservationExpected(ctx)
 	}
 
 	providerReq := &relayprovider.ChatCompletionsRequest{
@@ -179,6 +185,10 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 			return slotErr
 		}
 		defer releaseChannel()
+		// Observation evidence is attached independently of the financial
+		// allowlist so an empty native-settlement list still leaves user proof.
+		ctx = relaybiz.WithObservationDelivery(ctx, s.observationDelivery)
+		ctx = relaybiz.WithUsageObservation(ctx, ch, requestID, resolvedModel)
 		resp, err = provider.ChatCompletions(ctx, providerReq)
 		if err != nil {
 			_, _ = s.billingClient.ReleaseQuota(ctx, &billingv1.ReleaseQuotaRequest{
@@ -413,6 +423,10 @@ func convertToGRPCResponse(resp *relayprovider.ChatCompletionsResponse) (*relayv
 
 func estimateTokensForGRPC(req *relayprovider.ChatCompletionsRequest) int64 {
 	return relayprovider.EstimateChatTokens(req)
+}
+
+func (s *RelayGrpcService) SetObservationDelivery(d *relaybiz.ObservationDelivery) {
+	s.observationDelivery = d
 }
 
 func (s *RelayGrpcService) SetTimingExporter(exporter *requesttrace.Exporter) {

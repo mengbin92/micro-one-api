@@ -355,6 +355,12 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		return nil, nil, err
 	}
 	httpServer.SetExecutionDelivery(delivery)
+	observationDelivery, stopObservation, err := newObservationDelivery(logClient)
+	if err != nil {
+		stopExecution()
+		return nil, nil, err
+	}
+	httpServer.SetObservationDelivery(observationDelivery)
 	httpServer.SetTokenQuotaBlocker(identityAdapter)
 	httpServer.SetHybridAdaptorEnabled(cfg.Bootstrap.HybridAdaptor.GetHybridAdaptorEnabled())
 	httpServer.SetSubscriptionSessionStickyEnabled(cfg.Bootstrap.SessionSticky.GetSessionStickyEnabled())
@@ -403,6 +409,9 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		appmiddleware.CORS(appmiddleware.RelayCORSConfig()),
 		appmiddleware.SecurityHeaders,
 		appmiddleware.RequestID,
+		// Observation expectation and the verified-user holder are established
+		// before auth/handlers so evidence attribution never depends on timing.
+		server.ObservationContextMiddleware(),
 	)
 	if cfg.Bootstrap.Subscription.GetSubscriptionEnabled() || subscriptionbiz.EntitlementsEnabled() {
 		subscriptionRepo, subErr := subscriptiondata.NewRepositoryFromEnv(os.Getenv("SQL_DRIVER"))
@@ -465,10 +474,12 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 
 	grpcSvc := relayservice.NewRelayGrpcService(identityClient, channelClient, logClient, billingClient, providerFactory, relayUsecase)
 	grpcSvc.SetExecutionDelivery(delivery)
+	grpcSvc.SetObservationDelivery(observationDelivery)
 	grpcSvc.SetTimingExporter(timingExporter)
 	targets, err := configuredUpstreamProbes()
 	if err != nil {
 		stopExecution()
+		stopObservation()
 		return nil, nil, err
 	}
 	stopPermit := func() {}
@@ -476,6 +487,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		permit, closePermit, err := newProbePermitClient()
 		if err != nil {
 			stopExecution()
+			stopObservation()
 			return nil, nil, err
 		}
 		stopPermit = closePermit
@@ -525,6 +537,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 			cancel()
 		}
 		stopExecution()
+		stopObservation()
 		stopPermit()
 		if modelReloadStop != nil {
 			modelReloadStop()

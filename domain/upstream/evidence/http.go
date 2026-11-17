@@ -5,6 +5,7 @@ import (
 	"io"
 	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/upstream/contract"
+	"micro-one-api/platform/metrics"
 	"net/http"
 	"os"
 	"strings"
@@ -94,8 +95,19 @@ func Do(client *http.Client, req *http.Request, protocol string) (*http.Response
 			return nil, &contract.Rejection{Err: err}
 		}
 	}
+	var sink Sink
+	var expected bool
+	if req != nil {
+		sink = ObservationSinkFrom(req.Context())
+		expected = ObservationExpected(req.Context())
+	}
 	if req != nil {
 		if err := CheckDurable(req.Context()); err != nil {
+			// The request reached the send boundary and was refused there. It is
+			// not a send: no started/terminal event is fabricated for it.
+			if sink != nil {
+				sink.NotSent(protocol, NotSentAdmissionRejected)
+			}
 			return nil, err
 		}
 		if HasDurableRecorder(req.Context()) {
@@ -106,10 +118,20 @@ func Do(client *http.Client, req *http.Request, protocol string) (*http.Response
 			copy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 			client = &copy
 		}
+		if sink != nil || expected {
+			client = withObservedSends(client, sink, protocol, expected)
+		} else {
+			metrics.RecordUsageObservationTransportSend(protocol, false, false)
+		}
 	}
 	startedAt := int64(0)
 	if parameterTrace != nil || os.Getenv("RELAY_UPSTREAM_EXECUTION_TIME_V1") == "true" {
 		startedAt = time.Now().UnixNano()
+	}
+	if sink != nil {
+		// Persist the minimal send identity synchronously before the supplier is
+		// called. Started never asserts that the supplier executed the request.
+		sink.Started(protocol, req.URL.EscapedPath(), apiVersion(req))
 	}
 	resp, err := timedHTTPDo(client, req, protocol) // #nosec G704 -- caller owns the existing URL/SSRF validation.
 	if req == nil {
@@ -118,11 +140,22 @@ func Do(client *http.Client, req *http.Request, protocol string) (*http.Response
 	recorder := RecorderFromContext(req.Context())
 	durable, _ := req.Context().Value(durableKey{}).(durableRecorder)
 	contractReporter := contractReporterFrom(req.Context())
-	if recorder == nil && durable.Record == nil && parameterTrace == nil {
+	if recorder == nil && durable.Record == nil && parameterTrace == nil && sink == nil {
 		return resp, err
 	}
 	if err != nil {
 		record := Record{ParameterContract: parameterTrace, StartedAtUnixNano: startedAt, Observation: Observation{Protocol: protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: "missing", Reason: "transport_error"}, Execution: "execution_unknown", UpstreamEndpoint: req.URL.EscapedPath(), APIVersion: apiVersion(req)}
+		if sink != nil {
+			observation := record
+			if resp != nil {
+				// CheckRedirect can reject a later hop after the current one
+				// returned a response; preserve that fact without changing err.
+				observation.HTTPStatus = resp.StatusCode
+				observation.Execution = "upstream_rejected"
+				observation.Observation.Reason = "redirect_policy_error"
+			}
+			sink.Terminal(observation)
+		}
 		if recorder != nil {
 			recorder(record)
 		}
@@ -136,6 +169,9 @@ func Do(client *http.Client, req *http.Request, protocol string) (*http.Response
 	stream := strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream")
 	if durable.Record != nil {
 		header := Record{ParameterContract: parameterTrace, StartedAtUnixNano: startedAt, Observation: Observation{Protocol: protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: "missing", Reason: "response_headers_only", ProviderRequestID: providerRequestID(resp.Header)}, Execution: "checkpoint", HTTPStatus: resp.StatusCode, Stream: stream, UpstreamEndpoint: req.URL.EscapedPath(), APIVersion: apiVersion(req)}
+		if sink != nil {
+			sink.Checkpoint(header)
+		}
 		if err := durable.Record(header); err != nil {
 			_ = resp.Body.Close()
 			// The supplier has already been called. Even if a header checkpoint
@@ -148,7 +184,7 @@ func Do(client *http.Client, req *http.Request, protocol string) (*http.Response
 		}
 	}
 	proofParse, proofTracker := selectedProof(req.Context(), parameterTrace)
-	resp.Body = &observedBody{contractReporter: contractReporter, parameterTrace: parameterTrace, proofParse: proofParse, proofTracker: proofTracker, startedAt: startedAt, ReadCloser: resp.Body, recorder: recorder, durable: durable.Record, protocol: protocol, status: resp.StatusCode, stream: stream, tracker: NewTracker(protocol), providerID: providerRequestID(resp.Header), endpoint: req.URL.EscapedPath(), apiVersion: apiVersion(req)}
+	resp.Body = &observedBody{contractReporter: contractReporter, parameterTrace: parameterTrace, proofParse: proofParse, proofTracker: proofTracker, startedAt: startedAt, ReadCloser: resp.Body, recorder: recorder, durable: durable.Record, sink: sink, protocol: protocol, status: resp.StatusCode, stream: stream, tracker: NewTracker(protocol), providerID: providerRequestID(resp.Header), endpoint: req.URL.EscapedPath(), apiVersion: apiVersion(req)}
 	return resp, nil
 }
 
@@ -185,6 +221,7 @@ type observedBody struct {
 	io.ReadCloser
 	recorder             Recorder
 	durable              func(Record) error
+	sink                 Sink
 	persistErr           error
 	protocol             string
 	status               int
@@ -231,7 +268,7 @@ func (b *observedBody) Read(p []byte) (int, error) {
 		b.readFailed = true
 	}
 	var checkpoint *Record
-	if b.durable != nil && b.stream && b.tracker.EventCount > b.checkpointEvents && b.checkpointEvents < MaxEvents && err == nil {
+	if (b.durable != nil || b.sink != nil) && b.stream && b.tracker.EventCount > b.checkpointEvents && b.checkpointEvents < MaxEvents && err == nil {
 		b.checkpointEvents = b.tracker.EventCount
 		checkpoint = &Record{ParameterContract: b.parameterTrace, StartedAtUnixNano: b.startedAt, Observation: b.tracker.Snapshot(), Execution: "checkpoint", HTTPStatus: b.status, Stream: true, Events: append([]Observation(nil), b.tracker.Events...), EventCount: b.tracker.EventCount, DroppedEvents: b.tracker.DroppedEvents, UpstreamEndpoint: b.endpoint, APIVersion: b.apiVersion}
 		if b.proofTracker != nil {
@@ -240,8 +277,13 @@ func (b *observedBody) Read(p []byte) (int, error) {
 	}
 	b.mu.Unlock()
 	if checkpoint != nil {
-		if failure := b.durable(*checkpoint); failure != nil {
-			return n, failure
+		if b.sink != nil {
+			b.sink.Checkpoint(*checkpoint)
+		}
+		if b.durable != nil {
+			if failure := b.durable(*checkpoint); failure != nil {
+				return n, failure
+			}
 		}
 	}
 	if err != nil {
@@ -310,6 +352,23 @@ func (b *observedBody) finish() {
 		}
 		b.body = nil
 		b.mu.Unlock()
+		if b.sink != nil {
+			// Observation completeness follows the received protocol terminator,
+			// not the financial verdict. A fully received SSE with invalid
+			// metering is a complete capture carrying invalid usage; using the
+			// financial Complete flag here would hide it as truncated.
+			observationRecord := r
+			if b.stream {
+				observationRecord.Complete = b.eof && !b.readFailed && b.tracker.ProtocolComplete()
+				if b.proofTracker != nil {
+					observationRecord.Complete = observationRecord.Complete && b.proofTracker.ProtocolComplete()
+				}
+				if observationRecord.Observation.Terminal == "failed" {
+					observationRecord.Complete = false
+				}
+			}
+			b.sink.Terminal(observationRecord)
+		}
 		if b.durable != nil {
 			b.persistErr = b.durable(r)
 		}
@@ -320,6 +379,52 @@ func (b *observedBody) finish() {
 			b.contractReporter(r)
 		}
 	})
+}
+
+// withObservedSends reports every real HTTP send on the client, including each
+// redirect hop, without changing the redirect policy or the SSRF checks. The
+// standard library does not expose the redirect response to CheckRedirect, so
+// the hop boundary is the transport round trip: the previous round trip's
+// status is known there and each new round trip is a distinct send.
+func withObservedSends(client *http.Client, sink Sink, protocol string, expected bool) *http.Client {
+	copy := *client
+	next := copy.Transport
+	if next == nil {
+		next = http.DefaultTransport
+	}
+	copy.Transport = &observedTransport{next: next, sink: sink, protocol: protocol, expected: expected}
+	return &copy
+}
+
+type observedTransport struct {
+	next     http.RoundTripper
+	sink     Sink
+	protocol string
+	expected bool
+	mu       sync.Mutex
+	hops     int
+	status   int
+}
+
+func (t *observedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.mu.Lock()
+	if t.hops > 0 && t.sink != nil {
+		// Do has already persisted started for the first hop; closing it and
+		// opening the next is the redirect boundary.
+		t.sink.Redirect(t.protocol, req.URL.EscapedPath(), apiVersion(req), t.status)
+	}
+	t.hops++
+	t.mu.Unlock()
+	metrics.RecordUsageObservationTransportSend(t.protocol, t.expected, t.sink != nil)
+	resp, err := t.next.RoundTrip(req)
+	t.mu.Lock()
+	if resp != nil {
+		t.status = resp.StatusCode
+	} else {
+		t.status = 0
+	}
+	t.mu.Unlock()
+	return resp, err
 }
 
 func HasDurableRecorder(ctx context.Context) bool {
