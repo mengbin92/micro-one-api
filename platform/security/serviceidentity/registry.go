@@ -28,9 +28,14 @@ var rpcPolicies = map[string]RPCPolicy{
 	"/api.identity.v1.IdentityService/ListPasskeys":              {Owner: "identity", UserCallers: []string{"admin"}},
 	"/api.identity.v1.IdentityService/DeletePasskey":             {Owner: "identity", UserCallers: []string{"admin"}},
 
-	"/api.billing.v1.BillingService/ResolveLedgerRequest":       {Owner: "billing", UserCallers: []string{"admin"}},
-	"/api.billing.v1.BillingService/GetSettlementStatus":        {Owner: "billing", UserCallers: []string{"admin"}},
-	"/api.log.v1.LogService/ListRequestTraces":                  {Owner: "log", UserCallers: []string{"admin"}},
+	"/api.billing.v1.BillingService/ResolveLedgerRequest": {Owner: "billing", UserCallers: []string{"admin"}},
+	"/api.billing.v1.BillingService/GetSettlementStatus":  {Owner: "billing", UserCallers: []string{"admin"}},
+	"/api.log.v1.LogService/ListRequestTraces":            {Owner: "log", UserCallers: []string{"admin"}},
+	// Observation-only upstream usage evidence: relay is the sole producer and
+	// the query is a restricted log read. Neither carries settlement authority.
+	"/api.log.v1.LogService/RecordUsageObservation":             {Owner: "log", UserCallers: []string{}, SystemCallers: []string{"relay"}},
+	"/api.log.v1.LogService/ListUsageObservations":              {Owner: "log", UserCallers: []string{"admin"}},
+	"/api.log.v1.LogService/GetUsageObservation":                {Owner: "log", UserCallers: []string{"admin"}},
 	"/api.log.v1.LogService/GetRequestTrace":                    {Owner: "log", UserCallers: []string{"admin"}},
 	"/api.channel.v1.ChannelService/ListPublicModels":           {Owner: "channel", SystemCallers: []string{"admin"}},
 	"/api.channel.v1.ChannelService/ListWriteAudits":            {Owner: "channel", UserCallers: []string{}, SystemCallers: []string{"admin"}},

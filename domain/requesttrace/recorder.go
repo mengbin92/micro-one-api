@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -85,6 +86,62 @@ func (r *Recorder) Update(fn func(*TimingSummary)) {
 	if !r.finished {
 		fn(&r.summary)
 	}
+}
+
+// ObservationID and UserID expose the trusted request observation identity to
+// tracing/evidence producers. They grant no authorization.
+func ObservationID(ctx context.Context) string {
+	r := Observation(ctx)
+	if r == nil {
+		return ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.summary.ObservationID
+}
+
+type verifiedUserKey struct{}
+type verifiedUserHolder struct{ id atomic.Int64 }
+type verifiedUserHolderKey struct{}
+
+// WithVerifiedUser carries an already authenticated user id independently of
+// request timing. Observation evidence needs the owner even when timing export
+// is disabled, and it must never infer an owner from a public header.
+func WithVerifiedUser(ctx context.Context, userID int64) context.Context {
+	if userID <= 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, verifiedUserKey{}, userID)
+}
+
+// WithVerifiedUserHolder installs a request-scoped mutable holder so the
+// authentication helper can bind the real owner without changing its signature
+// (the same pattern the audit middleware uses). The holder is created once per
+// request by middleware, never from request input.
+func WithVerifiedUserHolder(ctx context.Context) context.Context {
+	return context.WithValue(ctx, verifiedUserHolderKey{}, &verifiedUserHolder{})
+}
+
+// BindVerifiedUser records the authenticated owner. It is a no-op when no
+// middleware holder exists and the id is not positive.
+func BindVerifiedUser(ctx context.Context, userID int64) {
+	if userID <= 0 {
+		return
+	}
+	if holder, ok := ctx.Value(verifiedUserHolderKey{}).(*verifiedUserHolder); ok {
+		holder.id.Store(userID)
+	}
+}
+
+// VerifiedUser returns the authenticated user id, or 0 when unauthenticated.
+func VerifiedUser(ctx context.Context) int64 {
+	if holder, ok := ctx.Value(verifiedUserHolderKey{}).(*verifiedUserHolder); ok {
+		if id := holder.id.Load(); id > 0 {
+			return id
+		}
+	}
+	userID, _ := ctx.Value(verifiedUserKey{}).(int64)
+	return userID
 }
 
 func BindUser(ctx context.Context, userID int64) {

@@ -22,6 +22,7 @@ import (
 
 // LogService is the transport layer entry for log-service.
 type LogService struct {
+	observationUC      *biz.UsageObservationUsecase
 	writeAuditUC       *biz.WriteAuditUsecase
 	ownerAuthorization *authz.Client
 	logv1.UnimplementedLogServiceServer

@@ -9,3 +9,16 @@ enum RequestTimingErrorReason {
   REQUEST_TRACE_NOT_FOUND = 2;
   TRACE_UNAVAILABLE = 3;
 }
+
+// Observation-only upstream usage evidence. A duplicate event id with a
+// different digest is rejected, never overwritten.
+enum UsageObservationErrorReason {
+  USAGE_OBSERVATION_ERROR_UNSPECIFIED = 0;
+  INVALID_USAGE_OBSERVATION = 1;
+  USAGE_OBSERVATION_CONFLICT = 2;
+  USAGE_OBSERVATION_LIMIT = 3;
+  // The consumer cannot durably store evidence (for example an in-memory
+  // repository). It must not acknowledge, or the relay would delete its only
+  // durable copy.
+  USAGE_OBSERVATION_UNAVAILABLE = 4;
+}

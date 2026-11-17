@@ -172,6 +172,7 @@ services:
     - 137_add_request_timing_summaries
     - 139_add_request_trace_snapshot_indexes
     - 145_add_log_service_tier
+    - 152_create_upstream_usage_observations  # observation-only upstream usage evidence
 
   admin:
     - 148_create_announcements
