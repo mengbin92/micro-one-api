@@ -633,3 +633,251 @@ groups:
         annotations:
           summary: Async settlement/log carriers arrived with invalid trace context
           description: 'Tracing linkage for background tasks is lost for those items; settlement and billing semantics are unaffected. Investigate producer/consumer version skew.'
+
+  # === Observation-only upstream usage evidence (independent group) ===
+  # These rules only describe observation and delivery health. They never
+  # authorize, block or re-price traffic, and they never change the financial
+  # execution-outbox contract. A missing metric is never treated as healthy.
+  - name: usage-observation
+    interval: 30s
+    rules:
+      # A counter whose first sample is 1 is invisible to increase(). The
+      # producer stamps the event time into this gauge instead, so a single
+      # low-traffic anomaly alerts; the increase() branch keeps coverage across
+      # a restart that resets the gauge to its baseline.
+      - alert: UsageObservationAnomaly
+        expr: |
+          (
+            time() - max by (protocol, source_kind, status) (
+              micro_one_api_relay_usage_observation_last_anomaly_timestamp_seconds
+            ) < 15 * 60
+            and
+            max by (protocol, source_kind, status) (
+              micro_one_api_relay_usage_observation_last_anomaly_timestamp_seconds
+            ) > 0
+            and
+            max by (protocol, source_kind, status) (
+              micro_one_api_relay_usage_observation_last_anomaly_timestamp_seconds
+            ) <= time()
+          )
+          or
+          (
+            sum by (protocol, source_kind, status) (
+              increase(micro_one_api_relay_usage_observation_terminal_total{purpose="user",capture="complete",status!="verified"}[15m])
+            ) > 0
+          )
+        for: 5m
+        labels:
+          severity: warning
+          service: relay-gateway
+        annotations:
+          summary: 'A complete user response carried anomalous usage'
+          description: 'A complete user send was classified {{ $labels.status }} for protocol={{ $labels.protocol }} source_kind={{ $labels.source_kind }} within 15m. Inspect the controlled observation evidence before changing any allowlist or threshold.'
+
+      - alert: UsageObservationAnomalyRate
+        expr: |
+          (
+            sum by (protocol, source_kind, purpose) (
+              increase(micro_one_api_relay_usage_observation_terminal_total{purpose="user",capture="complete",status!="verified"}[15m])
+            )
+            /
+            sum by (protocol, source_kind, purpose) (
+              increase(micro_one_api_relay_usage_observation_terminal_total{purpose="user",capture="complete"}[15m])
+            )
+          ) > 0.01
+          and on(protocol, source_kind, purpose)
+          sum by (protocol, source_kind, purpose) (
+            increase(micro_one_api_relay_usage_observation_terminal_total{purpose="user",capture="complete"}[15m])
+          ) >= 100
+        for: 5m
+        labels:
+          severity: warning
+          service: relay-gateway
+        annotations:
+          summary: 'Complete user usage anomaly rate above 1%'
+          description: 'Complete user usage anomaly rate is above 1% for one protocol/source/purpose cohort. Investigate the controlled observation evidence; ratios are never combined across different protocols or sources.'
+
+      # Same first-sample problem as the anomaly rule: the producer records the
+      # gap kind and its event time, so one lost/limited/unobserved send fails
+      # the completeness window immediately.
+      - alert: UsageObservationCaptureGap
+        expr: |
+          (
+            time() - max by (kind) (
+              micro_one_api_relay_usage_observation_last_gap_timestamp_seconds
+            ) < 15 * 60
+            and
+            max by (kind) (micro_one_api_relay_usage_observation_last_gap_timestamp_seconds) > 0
+            and
+            max by (kind) (micro_one_api_relay_usage_observation_last_gap_timestamp_seconds) <= time()
+          )
+          or
+          sum(increase(micro_one_api_relay_usage_observation_delivery_total{result=~"lost|conflict|rejected"}[15m])) > 0
+          or
+          sum(increase(micro_one_api_relay_usage_observation_terminal_total{capture=~"limited|unknown"}[15m])) > 0
+          or
+          sum(increase(micro_one_api_relay_usage_observation_terminal_total{status="unobserved"}[15m])) > 0
+        labels:
+          severity: critical
+          service: relay-gateway
+        annotations:
+          summary: 'Usage evidence capture has a known gap'
+          description: 'A send was lost, conflicted, rejected or captured as limited/unknown/unobserved ({{ $labels.kind }}). The completeness window fails immediately; do not wait for a rate threshold and do not silence the rule.'
+
+      # Backlog is judged per target: max() over instances lets one healthy
+      # relay mask another target that is stuck.
+      - alert: UsageObservationBacklog
+        expr: |
+          (micro_one_api_relay_usage_observation_outbox_pending > 0)
+          and on (job, instance)
+          (micro_one_api_relay_usage_observation_outbox_oldest_age_seconds > 60)
+        for: 5m
+        labels:
+          severity: warning
+          service: relay-gateway
+        annotations:
+          summary: 'Observation evidence delivery is backing up'
+          description: 'Pending observation events on {{ $labels.instance }} are older than 60s. Check log-service availability and the observation outbox path.'
+
+      - alert: UsageObservationBacklogCritical
+        expr: |
+          (micro_one_api_relay_usage_observation_outbox_pending > 0)
+          and on (job, instance)
+          (micro_one_api_relay_usage_observation_outbox_oldest_age_seconds > 300)
+        for: 5m
+        labels:
+          severity: critical
+          service: relay-gateway
+        annotations:
+          summary: 'Observation evidence is stuck for more than five minutes'
+          description: 'Pending observation events on {{ $labels.instance }} exceed 300s. ACK is not making progress; user evidence is at risk even though traffic and billing continue.'
+
+      - alert: UsageObservationUnavailable
+        expr: |
+          (
+            (micro_one_api_relay_usage_observation_enabled == 1)
+            or
+            (micro_one_api_relay_usage_observation_ready == 1)
+          )
+          unless on (job, instance)
+          (
+            (micro_one_api_relay_usage_observation_ready == 1)
+            and on (job, instance)
+            (micro_one_api_relay_usage_observation_last_stats_timestamp_seconds > 0)
+            and on (job, instance)
+            ((time() - micro_one_api_relay_usage_observation_last_stats_timestamp_seconds) <= 60)
+            and on (job, instance)
+            (micro_one_api_relay_usage_observation_last_stats_timestamp_seconds <= time())
+          )
+        for: 5m
+        labels:
+          severity: warning
+          service: relay-gateway
+        annotations:
+          summary: 'Observation evidence producer or its statistics are unavailable'
+          description: '{{ $labels.instance }} has an observation producer or retained queue worker but is not ready, or its statistics are missing or older than 60s. Missing statistics are never treated as a zero backlog.'
+
+      # Expectation is its own configuration switch (RELAY_USAGE_OBSERVATION_EXPECTED),
+      # not the producer switch: a target that is up but silently stopped
+      # observing is distinguishable from a legitimately disabled deployment.
+      # A missing target is covered by the target-down rule plus NoData below.
+      - alert: UsageObservationTargetUnexpectedlyOff
+        expr: |
+          (
+            (up{job="micro-one-api"} == 1)
+            and on (job, instance)
+            (micro_one_api_relay_usage_observation_expected{job="micro-one-api"} == 1)
+          )
+          unless on (job, instance)
+          (micro_one_api_relay_usage_observation_enabled{job="micro-one-api"} == 1)
+        for: 5m
+        labels:
+          severity: critical
+          service: relay-gateway
+        annotations:
+          summary: 'Observation is expected on this target but is not running'
+          description: '{{ $labels.instance }} is scrapeable and configured as an observation target, but the producer is off or its metric is missing. Evidence for every user send is being dropped silently.'
+
+      # Independent send accounting: the transport seam counts real supplier
+      # sends even when no observation sink is attached, so a detached seam can
+      # no longer hide behind healthy outbox gauges.
+      - alert: UsageObservationSendSeamDetached
+        expr: |
+          sum by (instance) (
+            increase(micro_one_api_relay_usage_observation_transport_sends_total{expected="true",observed="false"}[15m])
+          ) > 0
+          or
+          (
+            (time() - max by (instance) (micro_one_api_relay_usage_observation_transport_last_missing_timestamp_seconds)) < 15 * 60
+            and
+            max by (instance) (micro_one_api_relay_usage_observation_transport_last_missing_timestamp_seconds) > 0
+            and
+            max by (instance) (micro_one_api_relay_usage_observation_transport_last_missing_timestamp_seconds) <= time()
+          )
+        for: 5m
+        labels:
+          severity: critical
+          service: relay-gateway
+        annotations:
+          summary: 'Supplier sends are not observed at the shared seam'
+          description: '{{ $labels.instance }} wrote upstream requests with observation expected but no sink attached. Counters and backlogs can still look healthy; check the caller wiring before trusting any coverage claim.'
+
+      # Financial evidence freshness is judged per target and only where a
+      # worker is actually expected: a legitimately disabled outbox exports
+      # worker_expected=0 and must never be reported as stale.
+      - alert: ExecutionOutboxBacklog
+        expr: |
+          (micro_one_api_relay_execution_outbox_pending > 0)
+          and on (job, instance)
+          (micro_one_api_relay_execution_outbox_oldest_age_seconds > 60)
+        for: 5m
+        labels:
+          severity: warning
+          service: relay-gateway
+        annotations:
+          summary: 'Financial execution evidence delivery is backing up'
+          description: 'Pending financial evidence on {{ $labels.instance }} has an oldest age of {{ $value }}s. This is the existing settlement evidence queue, not the observation queue.'
+
+      - alert: ExecutionOutboxStatisticsStale
+        expr: |
+          (
+            (micro_one_api_relay_execution_outbox_worker_expected == 1)
+            unless on (job, instance)
+            (
+              (micro_one_api_relay_execution_outbox_last_stats_timestamp_seconds > 0)
+              and
+              (micro_one_api_relay_execution_outbox_last_stats_timestamp_seconds >= time() - 60)
+              and
+              (micro_one_api_relay_execution_outbox_last_stats_timestamp_seconds <= time())
+            )
+          )
+          or
+          (
+            (up{job="micro-one-api",instance="relay-gateway:8080"} == 1)
+            unless on (job, instance)
+            micro_one_api_relay_execution_outbox_worker_expected{job="micro-one-api",instance="relay-gateway:8080"}
+          )
+        for: 5m
+        labels:
+          severity: warning
+          service: relay-gateway
+        annotations:
+          summary: 'Financial execution outbox statistics are stale'
+          description: 'The delivery loop on {{ $labels.instance }} has not refreshed execution outbox statistics for more than 60s. The backlog gauges may show stale values instead of zero; verify the outbox reader.'
+
+      - alert: UsageObservationNoData
+        expr: |
+          absent(up{job="micro-one-api",instance="relay-gateway:8080"})
+          or
+          (
+            (up{job="micro-one-api",instance="relay-gateway:8080"} == 1)
+            unless on (job, instance)
+            micro_one_api_relay_usage_observation_expected{job="micro-one-api",instance="relay-gateway:8080"}
+          )
+        for: 15m
+        labels:
+          severity: info
+          service: relay-gateway
+        annotations:
+          summary: 'Observation target or expectation metadata is missing'
+          description: 'The relay-gateway:8080 scrape target or its observation expectation metric is missing. Treat its coverage as unknown; verify the Prometheus target and producer version.'

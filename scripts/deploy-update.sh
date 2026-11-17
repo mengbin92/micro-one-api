@@ -115,6 +115,7 @@ docker compose config --quiet
 for service in "$@"; do
     if [[ "$service" == relay-gateway ]]; then
         install -d -m 0700 -o 65534 -g 65534 data/relay-outbox
+        install -d -m 0700 -o 65534 -g 65534 data/relay-observation
     fi
     cid=$(docker compose ps -q "$service")
     [[ -n "$cid" && "$cid" != *$'\n'* ]]

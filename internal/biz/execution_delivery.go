@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
 	"micro-one-api/domain/execution"
 	"micro-one-api/domain/requesttrace"
 	"micro-one-api/platform/metrics"
-	"os"
-	"strings"
-	"time"
 )
 
 var ErrExecutionReceipt = errors.New("durable execution receipt mismatch")
@@ -33,10 +35,15 @@ type ExecutionOutboxRepo interface {
 	Defer(context.Context, string, time.Time) error
 	Send(context.Context, execution.Event) (execution.Receipt, error)
 }
-type ExecutionDelivery struct{ repo ExecutionOutboxRepo }
+type ExecutionDelivery struct {
+	repo          ExecutionOutboxRepo
+	deliveryEvery time.Duration
+	statsEvery    time.Duration
+	statsBudget   time.Duration
+}
 
 func NewExecutionDelivery(r ExecutionOutboxRepo) *ExecutionDelivery {
-	return &ExecutionDelivery{repo: r}
+	return &ExecutionDelivery{repo: r, deliveryEvery: time.Second, statsEvery: 15 * time.Second, statsBudget: 2 * time.Second}
 }
 func (u *ExecutionDelivery) Put(ctx context.Context, e execution.Event) error {
 	return u.repo.Put(ctx, e)
@@ -58,25 +65,56 @@ func (u *ExecutionDelivery) Deliver(ctx context.Context, e execution.Event) (exe
 	}
 	return r, u.repo.Acknowledge(ctx, e.ID, d)
 }
+
+// Run delivers pending financial evidence while statistics refresh on an
+// independent, cancellable goroutine. A blocked Send can no longer starve the
+// stats loop and fake a stale/frozen queue.
 func (u *ExecutionDelivery) Run(ctx context.Context, onError func(error)) {
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
+	metrics.ExecutionOutboxWorkerExpected.Set(1)
+	defer func() {
+		if ctx.Err() != nil {
+			metrics.ExecutionOutboxWorkerExpected.Set(0)
+		}
+	}()
+	defer recoverLoop("execution delivery", onError)
+	statsCtx, stopStats := context.WithCancel(ctx)
+	var stats sync.WaitGroup
+	stats.Add(1)
+	go func() {
+		defer stats.Done()
+		defer recoverLoop("execution stats", onError)
+		u.statsLoop(statsCtx, onError)
+	}()
+	defer func() {
+		stopStats()
+		stats.Wait()
+	}()
+
+	u.deliveryLoop(ctx, onError)
+}
+
+func (u *ExecutionDelivery) statsLoop(ctx context.Context, onError func(error)) {
+	stats := time.NewTicker(u.statsEvery)
+	defer stats.Stop()
+	u.refreshStats(ctx, onError)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-tick.C:
-			count, oldest, statErr := u.repo.Stats(ctx)
-			if statErr != nil {
-				onError(statErr)
-				continue
-			}
-			metrics.ExecutionOutboxPending.Set(float64(count))
-			age := int64(0)
-			if oldest > 0 {
-				age = time.Now().Unix() - oldest
-			}
-			metrics.ExecutionOutboxOldestAge.Set(float64(age))
+		case <-stats.C:
+			u.refreshStats(ctx, onError)
+		}
+	}
+}
+
+func (u *ExecutionDelivery) deliveryLoop(ctx context.Context, onError func(error)) {
+	delivery := time.NewTicker(u.deliveryEvery)
+	defer delivery.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-delivery.C:
 			rows, err := u.repo.Pending(ctx, 64)
 			if err != nil {
 				onError(err)
@@ -114,4 +152,27 @@ func NativeUsageV2Enabled(sourceKind string, sourceID int64, model string) bool 
 		}
 	}
 	return false
+}
+
+// refreshStats reads the financial outbox depth under a two second budget. It
+// never zeroes a gauge on failure: the freshness timestamp is the failure
+// signal, so a stuck reader cannot look like an empty queue.
+func (u *ExecutionDelivery) refreshStats(parent context.Context, onError func(error)) {
+	ctx, cancel := context.WithTimeout(parent, u.statsBudget)
+	defer cancel()
+	count, oldest, err := u.repo.Stats(ctx)
+	if err != nil {
+		onError(fmt.Errorf("execution outbox stats: %w", err))
+		return
+	}
+	metrics.ExecutionOutboxPending.Set(float64(count))
+	age := int64(0)
+	if oldest > 0 {
+		age = time.Now().Unix() - oldest
+		if age < 0 {
+			age = 0
+		}
+	}
+	metrics.ExecutionOutboxOldestAge.Set(float64(age))
+	metrics.ExecutionOutboxLastStats.Set(float64(time.Now().Unix()))
 }
