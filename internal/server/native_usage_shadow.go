@@ -47,6 +47,9 @@ func withNativeUsageShadow(ctx context.Context, channel *relaybiz.Channel, reque
 	if channel != nil && os.Getenv("UPSTREAM_CONTRACTS_V1_ENABLED") == "true" {
 		ctx = contract.WithSelection(ctx, contract.Selection{Snapshots: channel.Contracts, Blocked: channel.ContractBlocked, Inbound: contract.Inbound(ctx)})
 	}
+	// Observation-only evidence is attached at the same send seam and stays
+	// independent of both the shadow and the financial capability.
+	ctx = relaybiz.WithUsageObservation(ctx, channel, requestID, model)
 	if os.Getenv("RELAY_USAGE_SHADOW") != "true" {
 		return ctx
 	}

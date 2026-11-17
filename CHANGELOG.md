@@ -7,6 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-11-17
+
+MINOR：新增独立上游 usage 留证、可靠 outbox、受限 Log 查询与异常告警；观察不改变收费。新增 Log 152，先迁移/消费者后 producer，新开关默认关闭。详见 [发布记录](docs/releases/release-v0.45.0.md)。
+
+### Added
+
+- 原始 usage 事件、按来源灰度、HTTP/WS/gRPC 留证、严格幂等与重启恢复，专用 Log 表与摘要/详情查询。
+- 首次事件、缺指标、多实例及队列告警，部署目录权限预检，三库迁移与回归。
+
+### Fixed
+
+- 观察范围继承、WS 身份和终态、详情权限、游标、清理、UTF-8 容量、坏行隔离与 PostgreSQL 整数标志兼容。
+
+
 ## [0.44.1] - 2026-11-16
 
 v0.44.1 是 **PATCH 修复版本**：补齐结算恢复的服务身份授权，修正迁移 151 的旧路由回填/重放与并发建模边界，并修复跨 owner 操作审计的漏读、共享库重复计数和用户名超时。新增内部 RPC 仅补全已有审计读取链路，无新增用户功能、迁移编号或前端变更；已经登记 151 的环境不重跑迁移。详见 [release-v0.44.1.md](docs/releases/release-v0.44.1.md)。

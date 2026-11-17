@@ -93,6 +93,9 @@ func (s *HTTPServer) getRawAuthSnapshot(ctx context.Context, token string) (*ide
 	reply, err := s.identityClient.GetAuthSnapshot(ctx, req)
 	if err == nil && reply != nil && reply.UserEnabled && reply.TokenEnabled {
 		requesttrace.BindUser(ctx, reply.UserId)
+		// Owner attribution for observation evidence is independent of request
+		// timing: RELAY_REQUEST_TIMING_ENABLED=false must not anonymise users.
+		requesttrace.BindVerifiedUser(ctx, reply.UserId)
 	}
 	if err != nil {
 		return nil, err

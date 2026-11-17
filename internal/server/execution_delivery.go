@@ -33,7 +33,10 @@ type durableAttempt struct {
 }
 
 func (s *HTTPServer) SetExecutionDelivery(d *relaybiz.ExecutionDelivery) { s.executionDelivery = d }
-func executionDeliveryEnabled() bool                                     { return os.Getenv("RELAY_EXECUTION_DELIVERY_V1") == "true" }
+func (s *HTTPServer) SetObservationDelivery(d *relaybiz.ObservationDelivery) {
+	s.observationDelivery = d
+}
+func executionDeliveryEnabled() bool { return os.Getenv("RELAY_EXECUTION_DELIVERY_V1") == "true" }
 func (s *HTTPServer) executionContext(ctx context.Context, requestID string) context.Context {
 	if requestID == "" {
 		requestID = requesttrace.FromContext(ctx).RootRequestID
@@ -90,6 +93,10 @@ func (s *HTTPServer) executionContext(ctx context.Context, requestID string) con
 	})
 }
 func (s *HTTPServer) observeNativeUsage(ctx context.Context, ch *relaybiz.Channel, requestID, model string) context.Context {
+	// Observation evidence is independent of the financial allowlist; the
+	// delivery handle travels in the context so attempt-scoped seams can rebuild
+	// per-source identity without server state.
+	ctx = relaybiz.WithObservationDelivery(ctx, s.observationDelivery)
 	ctx = withNativeUsageShadow(s.executionContext(ctx, requestID), ch, requestID, model)
 	return s.withContractResults(ctx, requestID)
 }

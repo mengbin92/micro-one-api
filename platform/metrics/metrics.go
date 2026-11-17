@@ -329,7 +329,13 @@ func init() {
 		RelayUpstreamPassthroughTotal,
 		TokenUsageParseAnomaly,
 		NativeUsageShadowTotal,
-		ExecutionOutboxPending, ExecutionOutboxOldestAge, UpstreamProbeRuns, UpstreamProbeCoverage,
+		ExecutionOutboxPending, ExecutionOutboxOldestAge, ExecutionOutboxLastStats, UpstreamProbeRuns, UpstreamProbeCoverage,
+		UsageObservationStarted, UsageObservationTerminal, UsageObservationDelivery, UsageObservationTransportSend,
+		UsageObservationTransportLastMissing,
+		UsageObservationOutboxPending, UsageObservationOutboxOldestAge, UsageObservationOutboxBytes,
+		UsageObservationLastStats, UsageObservationExpected, UsageObservationEnabled, UsageObservationReady,
+		UsageObservationLastAnomaly, UsageObservationLastGap,
+		ExecutionOutboxWorkerExpected,
 		TokenUsageShadowCost,
 		TokenUsageSemanticsTotal,
 		TokenUsageInvariantMismatchTotal,
@@ -355,6 +361,11 @@ func init() {
 		SubscriptionAccountRecoveryScanDuration,
 		SubscriptionQuotaAlertsTotal,
 	)
+
+	// Pre-create the finite observation series this deployment can produce so
+	// the first real anomaly is a step away from zero, not a new series that
+	// increase() cannot see.
+	InitUsageObservationBaselines()
 }
 
 // Handler returns an HTTP handler that serves Prometheus metrics.

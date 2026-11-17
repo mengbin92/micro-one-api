@@ -34,11 +34,13 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		return nil, nil, err
 	}
 	logUsecase := biz.NewLogUsecase(repository)
+	usageObservationRepo := newUsageObservationRepo(repository)
+	usageObservationUsecase := biz.NewUsageObservationUsecase(usageObservationRepo)
 	logService := service.NewLogService(logUsecase)
 	mainRegistrarResult := provideRegistrar(config)
 	writeAuditRepo := data.NewWriteAuditRepo(repository)
 	writeAuditUsecase := biz.NewWriteAuditUsecase(writeAuditRepo)
-	app, cleanup := newApp(config, repository, logUsecase, logService, mainRegistrarResult, writeAuditUsecase)
+	app, cleanup := newApp(config, repository, logUsecase, usageObservationUsecase, logService, mainRegistrarResult, writeAuditUsecase)
 	return app, func() {
 		cleanup()
 	}, nil
@@ -47,8 +49,14 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 // wire.go:
 
 var ProviderSet = wire.NewSet(
-	newRepo, data.NewWriteAuditRepo, biz.NewWriteAuditUsecase, biz.NewLogUsecase, service.NewLogService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.LogRepo), new(*data.Repository)),
+	newRepo, data.NewWriteAuditRepo, biz.NewWriteAuditUsecase, biz.NewLogUsecase, biz.NewUsageObservationUsecase, newUsageObservationRepo, service.NewLogService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.LogRepo), new(*data.Repository)),
 )
+
+// newUsageObservationRepo returns the interface on purpose: the observation
+// repo is a dedicated table, not a second LogRepo.
+func newUsageObservationRepo(r *data.Repository) biz.UsageObservationRepo {
+	return data.NewUsageObservationRepo(r)
+}
 
 func newRepo(cfg *Config) (*data.Repository, error) {
 	return data.NewRepositoryFromEnv(cfg.Bootstrap.Data.Database.Driver, cfg.Bootstrap.Data.Database.Source, cfg.Bootstrap.Data.Database.Schema)
@@ -66,9 +74,11 @@ func provideRegistrar(cfg *Config) registrarResult {
 	return registrarResult{Registrar: registrar}
 }
 
-func newApp(cfg *Config, repo *data.Repository, uc *biz.LogUsecase, svc *service.LogService, reg registrarResult, writeAuditUC *biz.WriteAuditUsecase) (*kratos.App, func()) {
+func newApp(cfg *Config, repo *data.Repository, uc *biz.LogUsecase, observationUC *biz.UsageObservationUsecase, svc *service.LogService, reg registrarResult, writeAuditUC *biz.WriteAuditUsecase) (*kratos.App, func()) {
 	ownerAuth, _ := authz.FromEnvironment("log")
 	svc.SetAuthorization(ownerAuth)
+	observationUC.SetAuthorization(ownerAuth)
+	svc.SetUsageObservationUsecase(observationUC)
 	svc.SetWriteAuditUsecase(writeAuditUC)
 
 	retentionDays := 30
@@ -78,7 +88,7 @@ func newApp(cfg *Config, repo *data.Repository, uc *biz.LogUsecase, svc *service
 	svc.SetRetentionDays(retentionDays)
 	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc)
-	cleanupRetention := startLogRetentionCleanup(uc, retentionDays)
+	cleanupRetention := startLogRetentionCleanup(uc, observationUC, retentionDays)
 
 	partitionCtx, partitionCancel := context.WithCancel(context.Background())
 	partitionStop := startPartitionMaintenance(partitionCtx, repo.DB(), cfg.Bootstrap.Partition, retentionDays, uc)

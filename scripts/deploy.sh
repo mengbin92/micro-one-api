@@ -421,6 +421,9 @@ if [ "${SKIP_RESTART}" != "1" ]; then
 set -euo pipefail
 cd "$1"
 
+install -d -m 0700 -o 65534 -g 65534 data/relay-outbox
+install -d -m 0700 -o 65534 -g 65534 data/relay-observation
+
 # 已通过 scp 上传新 compose；用 `up -d` 让它重新创建变更过的容器
 if docker-compose up -d; then
     :

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"micro-one-api/domain/requesttrace"
+	"micro-one-api/platform/metrics"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +22,9 @@ import (
 type openAIWSRelayOptions struct {
 	timings             *wsTimingSession
 	contractSelection   func() contract.Selection
+	observationContext  func(context.Context) context.Context
+	observationEndpoint string
+	observationVersion  string
 	durableRecord       func(evidence.Record) error
 	durableBefore       func() error
 	durableHistoryLimit bool
@@ -414,6 +418,10 @@ func relayOpenAIWSFrames(
 	state := newOpenAIWSRelayState()
 	relayCtx, relayCancel := context.WithCancel(ctx)
 	defer relayCancel()
+	observationVersion := opts.observationVersion
+	if observationVersion == "" {
+		observationVersion = "unknown"
+	}
 
 	lastActivity := atomic.Int64{}
 	turnStartedAt := atomic.Int64{}
@@ -422,16 +430,87 @@ func relayOpenAIWSFrames(
 		lastActivity.Store(nowFn().UnixNano())
 	}
 
+	// Observation identity is per WS turn. Each response.create opens a new
+	// send on that turn's session; the response pump attributes frames to the
+	// turn that is currently in flight (turns are serialized by the protocol).
+	var obsMu sync.Mutex
+	var obsSink evidence.Sink
+	obsTurn := int64(0)
+	obsFailure := ""
+	currentObsSink := func() evidence.Sink {
+		obsMu.Lock()
+		defer obsMu.Unlock()
+		return obsSink
+	}
+	beginObservationTurn := func(turnCtx context.Context, payload []byte) {
+		var frame struct {
+			Type string `json:"type"`
+		}
+		if jsonx.Unmarshal(payload, &frame) != nil || frame.Type != "response.create" {
+			return
+		}
+		obsMu.Lock()
+		obsTurn++
+		index := obsTurn
+		previous := obsSink
+		obsMu.Unlock()
+		var sink evidence.Sink
+		if opts.observationContext != nil {
+			turnCtx = opts.observationContext(turnCtx)
+			sink = evidence.ObservationSinkFrom(turnCtx)
+		} else {
+			sink, _ = relaybiz.ObservationTurn(turnCtx, index)
+		}
+		metrics.RecordUsageObservationTransportSend("responses", evidence.ObservationExpected(turnCtx), sink != nil)
+		if previous != nil {
+			// The protocol serialises turns; if a client nevertheless starts a
+			// new turn while the previous send has no terminal, close it
+			// explicitly instead of leaving an open send that never ends.
+			previous.TransportFail("responses", "turn_superseded")
+		}
+		obsMu.Lock()
+		obsSink = sink
+		obsMu.Unlock()
+		if sink != nil {
+			sink.Started("responses", opts.observationEndpoint, observationVersion)
+		}
+	}
+	noteObservationFailure := func(reason string) {
+		obsMu.Lock()
+		if obsFailure == "" {
+			obsFailure = reason
+		}
+		obsMu.Unlock()
+	}
+	// A send written to the supplier but never terminated still needs one
+	// explicit terminal; otherwise the outbox can look drained while the send
+	// has no outcome.
+	defer func() {
+		sink := currentObsSink()
+		if sink == nil {
+			return
+		}
+		reason := obsFailure
+		if reason == "" {
+			reason = "truncated"
+		}
+		sink.TransportFail("responses", reason)
+	}()
+
 	var traceMu sync.Mutex
 	var turnTrace *contract.Trace
 	writeUpstream := func(msgType coderws.MessageType, payload []byte, first bool) error {
 		turnCtx := relayCtx
+		observationTurnCtx := ctx
 		if opts.timings != nil {
 			if first {
 				turnCtx = opts.timings.SendFirst(relayCtx, payload)
 			} else {
 				turnCtx = opts.timings.Send(relayCtx, payload)
 			}
+			// The per-write child below is canceled when WriteFrame returns;
+			// the observation must retain the actual turn's client lifetime.
+			observationTurnCtx = turnCtx
 			// The recorder lives across failover attempts; I/O and admission
 			// still obey the current relay attempt's cancellation.
 			var cancelTurn context.CancelFunc
@@ -478,12 +557,16 @@ func relayOpenAIWSFrames(
 		defer cancel()
 		// Durable WS turns are serialized by beforeWriteUp. Capture the actual
 		// response.create send boundary, rather than reservation/inbox time.
-		if upstreamExecutionTimingEnabled() && opts.durableRecord != nil && msgType == coderws.MessageText {
+		if msgType == coderws.MessageText {
 			var frame struct {
 				Type string `json:"type"`
 			}
 			if jsonx.Unmarshal(payload, &frame) == nil && frame.Type == "response.create" {
-				turnStartedAt.Store(nowFn().UnixNano())
+				if upstreamExecutionTimingEnabled() && opts.durableRecord != nil {
+					turnStartedAt.Store(nowFn().UnixNano())
+				}
+				// Observation identity is per turn and per actual upstream send.
+				beginObservationTurn(observationTurnCtx, payload)
 			}
 		}
 		// A fast reply can finish the turn before WriteFrame returns.
@@ -506,6 +589,7 @@ func relayOpenAIWSFrames(
 	// Write the first response.create frame to the upstream before starting the
 	// pumps (Codex Responses WS protocol expects the create event first).
 	if err := writeUpstream(coderws.MessageText, firstClientMessage, true); err != nil {
+		noteObservationFailure("transport_error")
 		return result, &openAIWSRelayExit{stage: "write_first_upstream", err: err, wroteDownstream: false}
 	}
 	clientToUpstream.Add(1)
@@ -530,6 +614,7 @@ func relayOpenAIWSFrames(
 			}
 			markActivity()
 			if err := writeUpstream(msgType, payload, false); err != nil {
+				noteObservationFailure("transport_error")
 				exitCh <- openAIWSRelayExit{stage: "write_upstream", err: err}
 				return
 			}
@@ -544,11 +629,23 @@ func relayOpenAIWSFrames(
 		wroteDownstream := false
 		recorder := evidence.RecorderFromContext(relayCtx)
 		durable := opts.durableRecord
-		emit := func(record evidence.Record) error {
+		emit := func(record evidence.Record, protocolComplete bool) error {
 			record.StartedAtUnixNano = turnStartedAt.Load()
 			traceMu.Lock()
 			record.ParameterContract = turnTrace
 			traceMu.Unlock()
+			obsMu.Lock()
+			sink := obsSink
+			obsMu.Unlock()
+			if sink != nil {
+				observation := record
+				observation.Complete = protocolComplete
+				observation.UpstreamEndpoint = opts.observationEndpoint
+				observation.APIVersion = observationVersion
+				sink.Terminal(observation)
+			}
+			// Receiving a response and persisting its financial evidence are
+			// separate facts; a failed financial write must not erase the former.
 			if durable != nil {
 				if err := durable(record); err != nil {
 					return err
@@ -562,19 +659,23 @@ func relayOpenAIWSFrames(
 		var shadow *evidence.Tracker
 		var shadowResponseOrder []string
 		var seenShadowResponses map[string]bool
-		if recorder != nil || durable != nil {
+		// The observation sink alone must drive native parsing: an empty
+		// financial allowlist and the disabled shadow cannot suppress evidence.
+		observe := recorder != nil || durable != nil || currentObsSink() != nil
+		if observe {
 			shadow = evidence.NewTracker("responses")
 			seenShadowResponses = map[string]bool{}
 		}
 		defer func() {
-			if (recorder != nil || durable != nil) && shadow.EventCount > 0 {
+			if observe && shadow.EventCount > 0 {
 				o, _ := shadow.Finish()
-				_ = emit(evidence.Record{Observation: o, Execution: "incomplete", Stream: true, Events: shadow.Events, EventCount: shadow.EventCount, DroppedEvents: shadow.DroppedEvents})
+				_ = emit(evidence.Record{Observation: o, Execution: "incomplete", Stream: true, Events: shadow.Events, EventCount: shadow.EventCount, DroppedEvents: shadow.DroppedEvents}, false)
 			}
 		}()
 		for {
 			msgType, payload, err := upstreamConn.ReadFrame(relayCtx)
 			if err != nil {
+				noteObservationFailure("truncated")
 				exitCh <- openAIWSRelayExit{
 					stage:           "read_upstream",
 					err:             err,
@@ -584,13 +685,18 @@ func relayOpenAIWSFrames(
 				return
 			}
 			markActivity()
-			if (recorder != nil || durable != nil) && msgType == coderws.MessageText {
+			if observe && msgType == coderws.MessageText {
 				o := evidence.Parse(payload, "responses")
 				if o.ProviderRequestID == "" || !seenShadowResponses[o.ProviderRequestID] {
 					shadow.ObserveFrame(payload)
 					if o.Terminal != "" {
 						observation, complete := shadow.Finish()
-						if err := emit(evidence.Record{Observation: observation, Execution: "response_received", Stream: true, Complete: complete, Events: shadow.Events, EventCount: shadow.EventCount, DroppedEvents: shadow.DroppedEvents}); err != nil {
+						record := evidence.Record{Observation: observation, Execution: "response_received", Stream: true, Complete: complete, Events: shadow.Events, EventCount: shadow.EventCount, DroppedEvents: shadow.DroppedEvents}
+						protocolComplete := shadow.ProtocolComplete()
+						// Retire this terminal before callbacks: a failed financial
+						// write must not make the exit defer emit it a second time.
+						shadow = evidence.NewTracker("responses")
+						if err := emit(record, protocolComplete); err != nil {
 							exitCh <- openAIWSRelayExit{stage: "durable_evidence", err: err, wroteDownstream: wroteDownstream}
 							return
 						}
@@ -607,7 +713,6 @@ func relayOpenAIWSFrames(
 								shadowResponseOrder = shadowResponseOrder[1:]
 							}
 						}
-						shadow = evidence.NewTracker("responses")
 					}
 				}
 			}

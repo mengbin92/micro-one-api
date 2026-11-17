@@ -496,6 +496,11 @@ services:
       - RELAY_UPSTREAM_EXECUTION_TIME_V1=${RELAY_UPSTREAM_EXECUTION_TIME_V1:-false}
       - RELAY_NATIVE_USAGE_V2_ALLOWLIST=${RELAY_NATIVE_USAGE_V2_ALLOWLIST:-}
       - RELAY_EXECUTION_OUTBOX_PATH=/var/lib/relay-outbox/events.db
+      - RELAY_USAGE_OBSERVATION_V1=${RELAY_USAGE_OBSERVATION_V1:-false}
+      - RELAY_OBSERVATION_OUTBOX_PATH=/var/lib/relay-observation/observations.db
+      - RELAY_OBSERVATION_SCOPE=${RELAY_OBSERVATION_SCOPE:-}
+      - RELAY_USAGE_OBSERVATION_EXPECTED=${RELAY_USAGE_OBSERVATION_EXPECTED:-false}
+      - RELAY_OBSERVATION_MIN_FREE_BYTES=${RELAY_OBSERVATION_MIN_FREE_BYTES:-268435456}
       - MONITOR_GRPC_ENDPOINT=monitor-worker:9007
       - UPSTREAM_PROBES_ENABLED=${UPSTREAM_PROBES_ENABLED:-false}
       - UPSTREAM_CONTRACTS_V1_ENABLED=${UPSTREAM_CONTRACTS_V1_ENABLED:-false}
@@ -528,6 +533,7 @@ services:
       - no-new-privileges:true
     volumes:
       - ./data/relay-outbox:/var/lib/relay-outbox
+      - ./data/relay-observation:/var/lib/relay-observation
     read_only: true
     tmpfs:
       - /tmp

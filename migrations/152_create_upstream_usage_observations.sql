@@ -1,0 +1,38 @@
+-- Observation-only upstream usage evidence. This is NOT the consumption log:
+-- it never feeds usage aggregates, call counts, quota or charges, and it
+-- carries no settlement instruction, lease or writable amount.
+CREATE TABLE IF NOT EXISTS upstream_usage_observations (
+  event_id VARCHAR(255) COLLATE utf8mb4_bin PRIMARY KEY,
+  send_id VARCHAR(160) COLLATE utf8mb4_bin NOT NULL,
+  observation_id VARCHAR(64) COLLATE utf8mb4_bin NOT NULL,
+  category VARCHAR(16) NOT NULL,
+  sequence BIGINT NOT NULL,
+  payload_sha256 VARCHAR(64) NOT NULL,
+  payload LONGTEXT NOT NULL,
+  user_id BIGINT NOT NULL DEFAULT 0,
+  usage_protocol VARCHAR(64) NOT NULL DEFAULT '',
+  source_kind VARCHAR(32) NOT NULL DEFAULT '',
+  source_id BIGINT NOT NULL DEFAULT 0,
+  purpose VARCHAR(32) NOT NULL DEFAULT '',
+  upstream_model_id VARCHAR(255) NOT NULL DEFAULT '',
+  attempt_request_id VARCHAR(128) NOT NULL DEFAULT '',
+  root_request_id VARCHAR(128) NOT NULL DEFAULT '',
+  capture VARCHAR(32) NOT NULL DEFAULT '',
+  capture_reason VARCHAR(64) NOT NULL DEFAULT '',
+  usage_status VARCHAR(16) NOT NULL DEFAULT '',
+  parser_revision VARCHAR(64) NOT NULL DEFAULT '',
+  contract_revision VARCHAR(64) NOT NULL DEFAULT '',
+  build_revision VARCHAR(128) NOT NULL DEFAULT '',
+  http_status INT NOT NULL DEFAULT 0,
+  is_stream TINYINT(1) NOT NULL DEFAULT 0,
+  observed_at_ms BIGINT NOT NULL,
+  received_at_ms BIGINT NOT NULL,
+  INDEX idx_usage_observation_send (observation_id, category),
+  INDEX idx_usage_observation_send_id (send_id),
+  INDEX idx_usage_observation_user_time (user_id, observed_at_ms, event_id),
+  INDEX idx_usage_observation_observed (observed_at_ms, event_id),
+  INDEX idx_usage_observation_received (received_at_ms),
+  INDEX idx_usage_observation_capture (capture),
+  INDEX idx_usage_observation_status (usage_status),
+  INDEX idx_usage_observation_purpose (purpose)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

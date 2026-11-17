@@ -1,0 +1,31 @@
+{
+  "date": "2026-11-17",
+  "migration_152": "applied",
+  "runtime_grants": "SELECT/INSERT/DELETE",
+  "observation_enabled": false,
+  "services": [
+    {
+      "service": "log-service",
+      "running": true,
+      "restarts": 0,
+      "health": 200,
+      "panic_count": 0,
+      "image": "docker-compose-log-service:deploy-20261117-104253-dd21a792",
+      "digest": "010536cdba2b666a7255d63f12c78608836062337c385154a76388dc53de578e"
+    },
+    {
+      "service": "relay-gateway",
+      "running": true,
+      "restarts": 0,
+      "health": 200,
+      "panic_count": 0,
+      "image": "docker-compose-relay-gateway:deploy-20261117-104253-dd21a792",
+      "digest": "010536cdba2b666a7255d63f12c78608836062337c385154a76388dc53de578e"
+    }
+  ],
+  "new_alert_rules": 11,
+  "alert_rules_healthy": true,
+  "canonical_and_probe_flags_unchanged": true,
+  "rollback_tag": "rollback-20261117-101833",
+  "final_security_hook_fix": "checked integer narrowing; historical overlay fixtures kept as non-Go files"
+}

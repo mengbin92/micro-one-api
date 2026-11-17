@@ -9,6 +9,13 @@ option go_package = "micro-one-api/api/log/v1;logv1";
 service LogService {
  // Read-only audit source for the dedicated admin system identity.
  rpc ListWriteAudits(ListWriteAuditsRequest) returns (ListWriteAuditsResponse);
+  // Observation-only upstream usage evidence. The writer is relay-gateway only;
+  // the reader is a restricted log query. Neither path carries billing input.
+  rpc RecordUsageObservation(RecordUsageObservationRequest) returns (RecordUsageObservationResponse);
+  rpc ListUsageObservations(ListUsageObservationsRequest) returns (ListUsageObservationsResponse);
+  // Single-event detail. The list is summary-only so one page can never exceed
+  // the gRPC receive limit; payload bytes are fetched one event at a time.
+  rpc GetUsageObservation(GetUsageObservationRequest) returns (UsageObservationItem);
   rpc ListRequestTraces(ListRequestTracesRequest) returns (ListRequestTracesResponse);
   rpc GetRequestTrace(GetRequestTraceRequest) returns (RequestTrace);
   rpc ExportLogs(ExportLogsRequest) returns (ListLogsResponse) {
@@ -307,3 +314,78 @@ message ListWriteAuditsResponse {
  // Nonempty hash identifying the physical audit table, shared by owners on the same database.
  string store_id = 3;
 }
+
+// Observation-only upstream usage evidence. The payload is the canonical
+// envelope JSON produced by relay-gateway; the receiver recomputes its digest.
+message RecordUsageObservationRequest {
+  string event_id = 1;
+  string send_id = 2;
+  string observation_id = 3;
+  string category = 4; // started | checkpoint | terminal | not_sent
+  int64 sequence = 5;
+  string payload_sha256 = 6;
+  bytes payload = 7;
+}
+
+message RecordUsageObservationResponse {
+  bool accepted = 1;
+  // Same key, same bytes: already stored. No row is added.
+  bool duplicate = 2;
+  string status = 3; // stored | duplicate | rejected | conflict
+  string payload_sha256 = 4; // digest the receiver actually computed
+}
+
+message ListUsageObservationsRequest {
+  int64 start_time_ms = 1;
+  int64 end_time_ms = 2;
+  // Scope is re-checked at the owner; this only narrows an authorized query.
+  optional int64 user_id = 3;
+  string observation_id = 4;
+  string send_id = 5;
+  string capture = 6;
+  string status = 7;
+  string category = 8;
+  int32 page_size = 9;
+  string page_token = 10;
+}
+
+message UsageObservationItem {
+  string event_id = 1;
+  string send_id = 2;
+  string observation_id = 3;
+  string category = 4;
+  int64 sequence = 5;
+  // Unix milliseconds. The storage column and cursors share this precision, so
+  // a millisecond query window is exact instead of silently widened.
+  int64 observed_at_ms = 6;
+  string capture = 7;
+  string status = 8;
+  string protocol = 9;
+  string source_kind = 10;
+  int64 source_id = 11;
+  string upstream_model_id = 12;
+  string purpose = 13;
+  int64 user_id = 14;
+  int32 http_status = 15;
+  bool stream = 16;
+  repeated int64 buckets = 17;
+  string parser_revision = 18;
+  string contract_revision = 19;
+  int64 received_at_ms = 20;
+  string payload_sha256 = 21;
+  // Canonical envelope bytes for controlled reconciliation/export. Always
+  // empty in list responses; populated only by GetUsageObservation.
+  bytes payload = 22;
+  string requested_model = 23;
+  string attempt_request_id = 24;
+  string root_request_id = 25;
+  string build_revision = 26;
+  string capture_reason = 27;
+}
+
+message ListUsageObservationsResponse {
+  repeated UsageObservationItem items = 1;
+  string next_page_token = 2;
+}
+
+message GetUsageObservationRequest { string event_id = 1; }

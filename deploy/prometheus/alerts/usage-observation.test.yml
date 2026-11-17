@@ -1,0 +1,488 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+tests:
+  - name: a first detached send remains visible without a counter baseline
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_relay_usage_observation_transport_sends_total{instance="relay-first",protocol="responses",expected="true",observed="false"}'
+        values: '_ 1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_transport_last_missing_timestamp_seconds{instance="relay-first",protocol="responses"}'
+        values: '_ 60+0x29'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: UsageObservationSendSeamDetached
+        exp_alerts:
+          - exp_labels: {instance: relay-first, severity: critical, service: relay-gateway}
+            exp_annotations:
+              summary: 'Supplier sends are not observed at the shared seam'
+              description: 'relay-first wrote upstream requests with observation expected but no sink attached. Counters and backlogs can still look healthy; check the caller wiring before trusting any coverage claim.'
+      - eval_time: 20m
+        alertname: UsageObservationSendSeamDetached
+        exp_alerts: []
+
+  - name: a scrapeable target missing expectation metadata is not silently disabled
+    interval: 1m
+    input_series:
+      - series: 'up{job="micro-one-api",instance="relay-gateway:8080"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_expected{job="micro-one-api",instance="admin-api:8000"}'
+        values: '0+0x29'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: UsageObservationNoData
+        exp_alerts:
+          - exp_labels: {job: micro-one-api, instance: 'relay-gateway:8080', severity: info, service: relay-gateway}
+            exp_annotations:
+              summary: 'Observation target or expectation metadata is missing'
+              description: 'The relay-gateway:8080 scrape target or its observation expectation metric is missing. Treat its coverage as unknown; verify the Prometheus target and producer version.'
+
+  - name: a draining observation worker still needs fresh statistics
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_relay_usage_observation_enabled{instance="relay-draining"}'
+        values: '0+0x29'
+      - series: 'micro_one_api_relay_usage_observation_ready{instance="relay-draining"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_last_stats_timestamp_seconds{instance="relay-draining"}'
+        values: '0+0x29'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: UsageObservationUnavailable
+        exp_alerts:
+          - exp_labels: {instance: relay-draining, severity: warning, service: relay-gateway}
+            exp_annotations:
+              summary: 'Observation evidence producer or its statistics are unavailable'
+              description: 'relay-draining has an observation producer or retained queue worker but is not ready, or its statistics are missing or older than 60s. Missing statistics are never treated as a zero backlog.'
+
+  # R12: neither series exists until the one anomaly at minute 1. The event
+  # timestamp never advances again, and the alert must clear after 15 minutes.
+  - name: a single first-sample anomaly alerts from its timestamp then clears
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_relay_usage_observation_terminal_total{instance="relay-1",protocol="openai_chat",source_kind="channel",purpose="user",capture="complete",status="invalid"}'
+        values: '_ 1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_last_anomaly_timestamp_seconds{instance="relay-1",protocol="openai_chat",source_kind="channel",status="invalid"}'
+        values: '_ 60+0x29'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: UsageObservationAnomaly
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: UsageObservationAnomaly
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: relay-gateway
+              protocol: openai_chat
+              source_kind: channel
+              status: invalid
+            exp_annotations:
+              summary: 'A complete user response carried anomalous usage'
+              description: 'A complete user send was classified invalid for protocol=openai_chat source_kind=channel within 15m. Inspect the controlled observation evidence before changing any allowlist or threshold.'
+      - eval_time: 20m
+        alertname: UsageObservationAnomaly
+        exp_alerts: []
+
+  - name: the anomaly rate only fires with enough complete samples
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_relay_usage_observation_terminal_total{instance="relay-1",protocol="openai_chat",source_kind="channel",purpose="user",capture="complete",status="verified"}'
+        values: '0+10x29'
+      - series: 'micro_one_api_relay_usage_observation_terminal_total{instance="relay-1",protocol="openai_chat",source_kind="channel",purpose="user",capture="complete",status="invalid"}'
+        values: '0+1x29'
+      - series: 'micro_one_api_relay_usage_observation_terminal_total{instance="relay-2",protocol="openai_chat",source_kind="channel",purpose="user",capture="complete",status="verified"}'
+        values: '0+1x29'
+      - series: 'micro_one_api_relay_usage_observation_terminal_total{instance="relay-2",protocol="openai_chat",source_kind="channel",purpose="user",capture="complete",status="invalid"}'
+        values: '0+1x29'
+    alert_rule_test:
+      # relay-2 stays below the 100-sample floor even though its ratio is high.
+      - eval_time: 16m
+        alertname: UsageObservationAnomalyRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: relay-gateway
+              protocol: openai_chat
+              source_kind: channel
+              purpose: user
+            exp_annotations:
+              summary: 'Complete user usage anomaly rate above 1%'
+              description: 'Complete user usage anomaly rate is above 1% for one protocol/source/purpose cohort. Investigate the controlled observation evidence; ratios are never combined across different protocols or sources.'
+
+  # R12: one lost send on a quiet target still fails the completeness window.
+  - name: a single capture gap alerts without a rate threshold
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_relay_usage_observation_last_gap_timestamp_seconds{instance="relay-1",kind="lost"}'
+        values: '_ 60+0x29'
+      - series: 'micro_one_api_relay_usage_observation_last_gap_timestamp_seconds{instance="relay-1",kind="limited"}'
+        values: '-1000000+60x29'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: UsageObservationCaptureGap
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: relay-gateway
+              kind: lost
+            exp_annotations:
+              summary: 'Usage evidence capture has a known gap'
+              description: 'A send was lost, conflicted, rejected or captured as limited/unknown/unobserved (lost). The completeness window fails immediately; do not wait for a rate threshold and do not silence the rule.'
+      - eval_time: 20m
+        alertname: UsageObservationCaptureGap
+        exp_alerts: []
+
+  - name: the counter path still detects a gap after a restart resets the gauge
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_relay_usage_observation_delivery_total{instance="relay-1",result="lost"}'
+        values: '0 1x29'
+      - series: 'micro_one_api_relay_usage_observation_last_gap_timestamp_seconds{instance="relay-1",kind="lost"}'
+        values: '-1000000+60x29'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: UsageObservationCaptureGap
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: relay-gateway
+            exp_annotations:
+              summary: 'Usage evidence capture has a known gap'
+              description: 'A send was lost, conflicted, rejected or captured as limited/unknown/unobserved (). The completeness window fails immediately; do not wait for a rate threshold and do not silence the rule.'
+
+  # R14: backlog is judged per instance; a healthy target must not mask a
+  # stuck one.
+  - name: backlog escalates per instance and stays quiet when empty
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_relay_usage_observation_outbox_pending{instance="relay-1"}'
+        values: '0+0x4 1+0x25'
+      - series: 'micro_one_api_relay_usage_observation_outbox_oldest_age_seconds{instance="relay-1"}'
+        values: '0+0x4 120+0x10 400+0x15'
+      - series: 'micro_one_api_relay_usage_observation_outbox_pending{instance="relay-2"}'
+        values: '5+0x29'
+      - series: 'micro_one_api_relay_usage_observation_outbox_oldest_age_seconds{instance="relay-2"}'
+        values: '0+0x29'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: UsageObservationBacklog
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: UsageObservationBacklog
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: relay-gateway
+              instance: relay-1
+            exp_annotations:
+              summary: 'Observation evidence delivery is backing up'
+              description: 'Pending observation events on relay-1 are older than 60s. Check log-service availability and the observation outbox path.'
+      - eval_time: 21m
+        alertname: UsageObservationBacklogCritical
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: relay-gateway
+              instance: relay-1
+            exp_annotations:
+              summary: 'Observation evidence is stuck for more than five minutes'
+              description: 'Pending observation events on relay-1 exceed 300s. ACK is not making progress; user evidence is at risk even though traffic and billing continue.'
+
+  - name: stale statistics are unavailable per instance and never zero backlog
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_relay_usage_observation_enabled{instance="relay-1"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_ready{instance="relay-1"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_last_stats_timestamp_seconds{instance="relay-1"}'
+        values: '0+0x29'
+      - series: 'micro_one_api_relay_usage_observation_enabled{instance="relay-2"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_ready{instance="relay-2"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_last_stats_timestamp_seconds{instance="relay-2"}'
+        values: '0+60x29'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: UsageObservationUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: relay-gateway
+              instance: relay-1
+            exp_annotations:
+              summary: 'Observation evidence producer or its statistics are unavailable'
+              description: 'relay-1 has an observation producer or retained queue worker but is not ready, or its statistics are missing or older than 60s. Missing statistics are never treated as a zero backlog.'
+      - eval_time: 6m
+        alertname: UsageObservationBacklog
+        exp_alerts: []
+
+  # R13: expectation is a separate configuration switch, so a legitimately
+  # disabled deployment stays quiet while an expected target that stopped
+  # observing alerts.
+  - name: expected targets that stop observing alert
+    interval: 1m
+    input_series:
+      - series: 'up{job="micro-one-api",instance="relay-gateway:8080"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_expected{job="micro-one-api",instance="relay-gateway:8080"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_enabled{job="micro-one-api",instance="relay-gateway:8080"}'
+        values: '0+0x29'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: UsageObservationTargetUnexpectedlyOff
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: relay-gateway
+              job: micro-one-api
+              instance: relay-gateway:8080
+            exp_annotations:
+              summary: 'Observation is expected on this target but is not running'
+              description: 'relay-gateway:8080 is scrapeable and configured as an observation target, but the producer is off or its metric is missing. Evidence for every user send is being dropped silently.'
+
+  - name: a legitimately disabled observation target does not alert
+    interval: 1m
+    input_series:
+      - series: 'up{job="micro-one-api",instance="relay-gateway:8080"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_expected{job="micro-one-api",instance="relay-gateway:8080"}'
+        values: '0+0x29'
+      - series: 'micro_one_api_relay_usage_observation_enabled{job="micro-one-api",instance="relay-gateway:8080"}'
+        values: '0+0x29'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: UsageObservationTargetUnexpectedlyOff
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: UsageObservationUnavailable
+        exp_alerts: []
+
+  # Independent denominator: a send with observation expected but no sink
+  # attached must alert even though outbox gauges are healthy.
+  - name: a detached send seam alerts independently of outbox health
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_relay_usage_observation_transport_sends_total{instance="relay-1",protocol="openai_chat",expected="true",observed="false"}'
+        values: '0 1x29'
+      - series: 'micro_one_api_relay_usage_observation_transport_sends_total{instance="relay-1",protocol="openai_chat",expected="true",observed="true"}'
+        values: '0+10x29'
+      - series: 'micro_one_api_relay_usage_observation_outbox_pending{instance="relay-1"}'
+        values: '0+0x29'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: UsageObservationSendSeamDetached
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: relay-gateway
+              instance: relay-1
+            exp_annotations:
+              summary: 'Supplier sends are not observed at the shared seam'
+              description: 'relay-1 wrote upstream requests with observation expected but no sink attached. Counters and backlogs can still look healthy; check the caller wiring before trusting any coverage claim.'
+
+  # R14: financial staleness only applies where a worker is expected, per
+  # instance.
+  - name: financial outbox staleness is scoped to running workers
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_relay_execution_outbox_pending{instance="relay-1"}'
+        values: '0+0x29'
+      - series: 'micro_one_api_relay_execution_outbox_oldest_age_seconds{instance="relay-1"}'
+        values: '0+0x29'
+      - series: 'micro_one_api_relay_execution_outbox_last_stats_timestamp_seconds{instance="relay-1"}'
+        values: '0+0x29'
+      - series: 'micro_one_api_relay_execution_outbox_worker_expected{instance="relay-1"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_execution_outbox_worker_expected{instance="relay-2"}'
+        values: '0+0x29'
+      - series: 'micro_one_api_relay_execution_outbox_last_stats_timestamp_seconds{instance="relay-2"}'
+        values: '0+0x29'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: ExecutionOutboxStatisticsStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: relay-gateway
+              instance: relay-1
+            exp_annotations:
+              summary: 'Financial execution outbox statistics are stale'
+              description: 'The delivery loop on relay-1 has not refreshed execution outbox statistics for more than 60s. The backlog gauges may show stale values instead of zero; verify the outbox reader.'
+      - eval_time: 6m
+        alertname: UsageObservationAnomaly
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: UsageObservationBacklog
+        exp_alerts: []
+
+  - name: a removed target reports no_data instead of a healthy zero
+    interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: UsageObservationAnomaly
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: UsageObservationNoData
+        exp_alerts:
+          - exp_labels:
+              severity: info
+              service: relay-gateway
+              job: micro-one-api
+              instance: relay-gateway:8080
+            exp_annotations:
+              summary: 'Observation target or expectation metadata is missing'
+              description: 'The relay-gateway:8080 scrape target or its observation expectation metric is missing. Treat its coverage as unknown; verify the Prometheus target and producer version.'
+
+  - name: zero event baselines do not fabricate an anomaly or gap
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_relay_usage_observation_last_anomaly_timestamp_seconds{instance="relay-1",protocol="openai_chat",source_kind="channel",status="invalid"}'
+        values: '0+0x29'
+      - series: 'micro_one_api_relay_usage_observation_last_gap_timestamp_seconds{instance="relay-1",kind="lost"}'
+        values: '0+0x29'
+      - series: 'micro_one_api_relay_usage_observation_transport_last_missing_timestamp_seconds{instance="relay-1",protocol="openai_chat"}'
+        values: '0+0x29'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: UsageObservationAnomaly
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: UsageObservationCaptureGap
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: UsageObservationSendSeamDetached
+        exp_alerts: []
+
+  - name: counter reset preserves an observed anomaly without a timestamp
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_relay_usage_observation_terminal_total{instance="relay-reset",protocol="openai_chat",source_kind="subscription",purpose="user",capture="complete",status="ambiguous"}'
+        values: '0 1 1 0 1+0x25'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: UsageObservationAnomaly
+        exp_alerts:
+          - exp_labels: {protocol: openai_chat, source_kind: subscription, status: ambiguous, severity: warning, service: relay-gateway}
+            exp_annotations:
+              summary: 'A complete user response carried anomalous usage'
+              description: 'A complete user send was classified ambiguous for protocol=openai_chat source_kind=subscription within 15m. Inspect the controlled observation evidence before changing any allowlist or threshold.'
+      - eval_time: 25m
+        alertname: UsageObservationAnomaly
+        exp_alerts: []
+
+  - name: cancellations and probes do not enter user usage anomaly ratios
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_relay_usage_observation_terminal_total{protocol="responses",source_kind="channel",purpose="user",capture="client_cancel",status="missing"}'
+        values: '0+100x29'
+      - series: 'micro_one_api_relay_usage_observation_terminal_total{protocol="responses",source_kind="channel",purpose="health_probe",capture="complete",status="invalid"}'
+        values: '0+100x29'
+      - series: 'micro_one_api_relay_usage_observation_terminal_total{protocol="responses",source_kind="channel",purpose="health_probe",capture="upstream_rejected",status="missing"}'
+        values: '0+100x29'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: UsageObservationAnomaly
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: UsageObservationAnomalyRate
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: UsageObservationCaptureGap
+        exp_alerts: []
+
+  - name: missing observation freshness cannot borrow a healthy target's metric
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_relay_usage_observation_enabled{job="micro-one-api",instance="relay-missing"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_ready{job="micro-one-api",instance="relay-missing"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_enabled{job="micro-one-api",instance="relay-good"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_ready{job="micro-one-api",instance="relay-good"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_last_stats_timestamp_seconds{job="micro-one-api",instance="relay-good"}'
+        values: '0+60x29'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: UsageObservationUnavailable
+        exp_alerts:
+          - exp_labels: {job: micro-one-api, instance: relay-missing, severity: warning, service: relay-gateway}
+            exp_annotations:
+              summary: 'Observation evidence producer or its statistics are unavailable'
+              description: 'relay-missing has an observation producer or retained queue worker but is not ready, or its statistics are missing or older than 60s. Missing statistics are never treated as a zero backlog.'
+
+  - name: missing financial freshness cannot borrow a healthy target's metric
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_relay_execution_outbox_worker_expected{job="micro-one-api",instance="relay-missing"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_execution_outbox_worker_expected{job="micro-one-api",instance="relay-good"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_execution_outbox_last_stats_timestamp_seconds{job="micro-one-api",instance="relay-good"}'
+        values: '0+60x29'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: ExecutionOutboxStatisticsStale
+        exp_alerts:
+          - exp_labels: {job: micro-one-api, instance: relay-missing, severity: warning, service: relay-gateway}
+            exp_annotations:
+              summary: 'Financial execution outbox statistics are stale'
+              description: 'The delivery loop on relay-missing has not refreshed execution outbox statistics for more than 60s. The backlog gauges may show stale values instead of zero; verify the outbox reader.'
+
+  - name: healthy default-off services still expose their expectation metadata
+    interval: 1m
+    input_series:
+      - series: 'up{job="micro-one-api",instance="relay-gateway:8080"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_expected{job="micro-one-api",instance="relay-gateway:8080"}'
+        values: '0+0x29'
+      - series: 'micro_one_api_relay_execution_outbox_worker_expected{job="micro-one-api",instance="relay-gateway:8080"}'
+        values: '0+0x29'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: UsageObservationNoData
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: UsageObservationTargetUnexpectedlyOff
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: ExecutionOutboxStatisticsStale
+        exp_alerts: []
+
+  - name: a missing financial worker expectation is observable
+    interval: 1m
+    input_series:
+      - series: 'up{job="micro-one-api",instance="relay-gateway:8080"}'
+        values: '1+0x29'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: ExecutionOutboxStatisticsStale
+        exp_alerts:
+          - exp_labels: {job: micro-one-api, instance: 'relay-gateway:8080', severity: warning, service: relay-gateway}
+            exp_annotations:
+              summary: 'Financial execution outbox statistics are stale'
+              description: 'The delivery loop on relay-gateway:8080 has not refreshed execution outbox statistics for more than 60s. The backlog gauges may show stale values instead of zero; verify the outbox reader.'
+
+  - name: every expected relay instance is checked when its producer stops
+    interval: 1m
+    input_series:
+      - series: 'up{job="micro-one-api",instance="relay-2:8080"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_expected{job="micro-one-api",instance="relay-2:8080"}'
+        values: '1+0x29'
+      - series: 'micro_one_api_relay_usage_observation_enabled{job="micro-one-api",instance="relay-2:8080"}'
+        values: '0+0x29'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: UsageObservationTargetUnexpectedlyOff
+        exp_alerts:
+          - exp_labels: {job: micro-one-api, instance: 'relay-2:8080', severity: critical, service: relay-gateway}
+            exp_annotations:
+              summary: 'Observation is expected on this target but is not running'
+              description: 'relay-2:8080 is scrapeable and configured as an observation target, but the producer is off or its metric is missing. Evidence for every user send is being dropped silently.'

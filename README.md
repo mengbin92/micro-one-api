@@ -8,7 +8,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.44.1 发布公告](./docs/releases/release-v0.44.1.md)（PATCH：修复结算恢复授权、迁移 151 与并发建模边界、跨库操作审计；无新增迁移编号或前端改动，已应用 151 的环境不重跑） · 上一版 [v0.44.0](./docs/releases/release-v0.44.0.md) 引入 orchestrator 全量切换开关与结算恢复 · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.44.1)
+> 📣 **最新发布**：[v0.45.0 发布公告](./docs/releases/release-v0.45.0.md)（MINOR：独立 usage 留证、可靠投递与异常告警；Log 152；新开关默认关闭） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.45.0)
 
 ## 功能概览
 
@@ -186,6 +186,7 @@ make web-dist
 
 ## 发布与升级
 
+- [v0.45.0](./docs/releases/release-v0.45.0.md)：独立上游 usage 留证、受限查询与异常告警；可靠投递、三库回归和安全目录初始化；Log 152、新开关默认关闭，不改变收费。
 - [v0.44.1](./docs/releases/release-v0.44.1.md)：PATCH 修复结算恢复的 relay/billing 身份契约、迁移 151 回填与 MySQL 重放、订阅账号并发创建模型，以及七源操作审计漏读/共享库重复计数/用户名超时；admin 与六个 owner 同版升级，复用 channel 镜像的 worker 同步切换；无新增迁移编号或前端改动，已应用 151 的环境不重跑。
 - [v0.44.0](./docs/releases/release-v0.44.0.md)：relay-gateway orchestrator 新增 `RELAY_ORCHESTRATOR_FULL_ROLLOUT` 全量切换（仅在 `RELAY_ORCHESTRATOR_ENABLED=true` 时生效，忽略 token allowlist，鉴权仍在 executor 内完成），覆盖 Chat Completions / Responses POST / Messages POST；commit 结算 RPC 失败增加 3 次有界重试与按 reservation 状态的幂等恢复，非流式终态补齐 `final_attempt_semantics_missing` 异常计数；默认关闭、行为零变化，无迁移或公开 API 变更；结算恢复还需 [v0.44.1](./docs/releases/release-v0.44.1.md) 的 billing 服务身份修复。
 - [v0.43.1](./docs/releases/release-v0.43.1.md)：OpenTelemetry Go 依赖族 v1.46.0 → v1.47.0，修复 `GHSA-q7gw-24fr-5p69` 两条 medium 依赖告警并同步 README 发布信息；无新增迁移、无 API 变更，生产需重部署服务镜像。

@@ -248,7 +248,10 @@ func (h httpRelayLifecycleHooks) ReserveQuota(ctx context.Context, plan *relaybi
 	if err != nil {
 		return nil, err
 	}
-	return &Reservation{ID: reservation.ReservationId, Context: h.s.executionContext(ctx, req.RequestID)}, nil
+	// The observation delivery must be visible to the attempt-scoped send seams
+	// the orchestrator runs; otherwise the whole orchestrator path is unobserved.
+	attemptCtx := relaybiz.WithObservationDelivery(h.s.executionContext(ctx, req.RequestID), h.s.observationDelivery)
+	return &Reservation{ID: reservation.ReservationId, Context: attemptCtx}, nil
 }
 
 func (h httpRelayLifecycleHooks) CheckUserRateLimit(ctx context.Context, plan *relaybiz.RelayPlan, _ *RelayRequest) error {

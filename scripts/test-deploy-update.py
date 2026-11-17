@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 import shutil
+import re
 
 SCRIPT = Path(__file__).resolve().with_name("deploy-update.sh")
 
@@ -25,7 +26,8 @@ class DeployArgumentsTest(unittest.TestCase):
             original = ('services:\n  channel-service:\n    image: registry/channel:fixed-old\n'
                         '    labels:\n      micro-one-api.source.digest: ' + 'b' * 64 + '\n'
                         '    environment:\n      KEEP: untouched\n  billing-service:\n    image: registry/billing:fixed-old\n'
-                        '    labels:\n      micro-one-api.source.digest: ' + 'c' * 64 + '\n')
+                        '    labels:\n      micro-one-api.source.digest: ' + 'c' * 64 + '\n'
+                        '  relay-gateway:\n    image: registry/relay:fixed-old\n')
             old_label = '      micro-one-api.source.digest: ' + 'b' * 64 + '\n'
             if failure == 'duplicate-source':
                 original = original.replace(old_label, old_label * 2, 1)
@@ -35,6 +37,10 @@ class DeployArgumentsTest(unittest.TestCase):
             calls = root / "calls"
             stubs = {
                 "git": '#!/bin/bash\necho deadbeef\n',
+                "install": '''#!/bin/bash
+echo "install $*" >> "$DEPLOY_TEST_CALLS"
+if [[ "$DEPLOY_TEST_FAILURE" = observation-directory && "${!#}" = data/relay-observation ]]; then exit 1; fi
+''',
                 "scp": '#!/bin/bash\necho "scp $*" >> "$DEPLOY_TEST_CALLS"\n[[ "$DEPLOY_TEST_FAILURE" != upload ]]\n',
                 "ssh": '''#!/bin/bash
 while [[ "$1" = -o ]]; do shift 2; done
@@ -178,6 +184,45 @@ esac
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("Unknown service", result.stdout + result.stderr)
             self.assertFalse(calls.exists(), "invalid trailing service must not partially deploy preceding services")
+
+    def test_relay_private_bind_mounts_are_prepared_before_build(self):
+        result, calls, _, _ = self.run_deploy(services=("relay-gateway",))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for directory in ("relay-outbox", "relay-observation"):
+            preparation = f"install -d -m 0700 -o 65534 -g 65534 data/{directory}"
+            self.assertIn(preparation, calls)
+            self.assertLess(calls.index(preparation), calls.index("docker remote=0 buildx build"))
+
+    def test_relay_directory_failure_stops_before_build_or_restart(self):
+        result, calls, config, original = self.run_deploy(services=("relay-gateway",), failure="observation-directory")
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("buildx build", calls)
+        self.assertNotIn("compose up", calls)
+        self.assertEqual(config, original)
+
+    def test_legacy_restart_prepares_the_same_private_bind_mounts(self):
+        source = SCRIPT.with_name("deploy.sh").read_text()
+        remote = re.findall(r"<<'REMOTE_EOF'\n(.*?)^REMOTE_EOF$", source, re.M | re.S)[-1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            calls = root / "calls"
+            stubs = {
+                "install": '#!/bin/bash\necho "install $*" >> "$DEPLOY_TEST_CALLS"\n',
+                "docker-compose": '#!/bin/bash\necho "docker-compose $*" >> "$DEPLOY_TEST_CALLS"\n',
+                "docker": '#!/bin/bash\necho "docker $*" >> "$DEPLOY_TEST_CALLS"\n',
+            }
+            for name, body in stubs.items():
+                stub = root / name
+                stub.write_text(body)
+                stub.chmod(0o755)
+            env = {**os.environ, "PATH": f"{root}:{os.environ['PATH']}", "DEPLOY_TEST_CALLS": str(calls)}
+            result = subprocess.run(["bash", "-s", "--", str(root)], input=remote, capture_output=True, text=True, env=env, timeout=5)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            commands = calls.read_text()
+            for directory in ("relay-outbox", "relay-observation"):
+                preparation = f"install -d -m 0700 -o 65534 -g 65534 data/{directory}"
+                self.assertIn(preparation, commands)
+                self.assertLess(commands.index(preparation), commands.index("docker-compose up -d"))
 
 
 if __name__ == "__main__":
