@@ -49,6 +49,16 @@ interface SubscriptionPlan {
   updated_at: number;
 }
 
+interface PlanGroupOption {
+  id: number;
+  name: string;
+  display_name: string;
+  daily_limit_usd?: number | null;
+  weekly_limit_usd?: number | null;
+  monthly_limit_usd?: number | null;
+  duration_days: number;
+}
+
 interface PlanPayload {
   coverage?: RoutingCoverage[];
   revision?: number;
@@ -95,6 +105,16 @@ export function AdminSubscriptionPlansPage() {
       const params = forSale ? { for_sale: forSale } : {};
       const res = await adminApiClient.get('/v1/admin/subscription-plans', { params });
       return unwrapApiData<SubscriptionPlan[]>(res.data);
+    },
+  });
+
+  // Groups drive the quota policy a plan points at; the picker surfaces their
+  // limits so an admin is never choosing a group_id blind.
+  const { data: groups } = useAuthorizedQuery({
+    permission: 'subscription.quota_policy.list', queryKey: ['admin', 'subscription-groups'],
+    queryFn: async () => {
+      const res = await adminApiClient.get('/v1/admin/subscription-groups');
+      return unwrapApiData<PlanGroupOption[]>(res.data);
     },
   });
 
@@ -215,7 +235,7 @@ export function AdminSubscriptionPlansPage() {
               <TableRow key={p.id}>
                 <TableCell className="font-mono">{p.id}</TableCell>
                 <TableCell className="font-medium">{p.name}<ContractSummary contract={p.contract} /></TableCell>
-                <TableCell>{p.group_id}</TableCell>
+                <TableCell>{(groups ?? []).find((g) => g.id === p.group_id)?.display_name || (groups ?? []).find((g) => g.id === p.group_id)?.name || `#${p.group_id}`}</TableCell>
                 <TableCell>{formatCNY(p.price_quota)}</TableCell>
                 <TableCell>
                   {p.validity_days} {p.validity_unit === 'day' ? t("天") : p.validity_unit}
@@ -263,6 +283,7 @@ export function AdminSubscriptionPlansPage() {
             <PlanEditForm
               key={editing.id ?? 'new'}
               initial={editing}
+              groups={groups ?? []}
               saving={savePlan.isPending}
               onSave={(p) => savePlan.mutate(p)}
               onCancel={() => setEditing(null)}
@@ -276,11 +297,13 @@ export function AdminSubscriptionPlansPage() {
 
 function PlanEditForm({
   initial,
+  groups,
   saving,
   onSave,
   onCancel,
 }: {
   initial: PlanPayload;
+  groups: PlanGroupOption[];
   saving: boolean;
   onSave: (p: PlanPayload) => void;
   onCancel: () => void;
@@ -288,6 +311,8 @@ function PlanEditForm({
   const [form, setForm] = useState<PlanPayload>(initial);
   const set = <K extends keyof PlanPayload>(k: K, v: PlanPayload[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  const selectedGroup = groups.find((g) => g.id === form.group_id);
 
   return (
     <form
@@ -317,14 +342,27 @@ function PlanEditForm({
       <CoverageEditor value={form.coverage ?? []} onChange={(v) => set('coverage', v)} />
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label htmlFor="plan-group">{t("额度策略 ID")}</Label>
-          <Input
+          <Label htmlFor="plan-group">{t("额度策略")}</Label>
+          <select
             id="plan-group"
-            type="number"
-            value={form.group_id}
+            value={form.group_id || ''}
             onChange={(e) => set('group_id', Number(e.target.value))}
             required
-          />
+            className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25"
+          >
+            <option value="">{t("请选择额度策略")}</option>
+            {form.group_id > 0 && !selectedGroup && <option value={form.group_id}>#{form.group_id}</option>}
+            {groups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.display_name || group.name} (#{group.id})
+              </option>
+            ))}
+          </select>
+          {selectedGroup && (
+            <p className="text-xs text-muted-foreground">
+              {t("额度")}: {selectedGroup.daily_limit_usd ?? t("不限")} / {selectedGroup.weekly_limit_usd ?? t("不限")} / {selectedGroup.monthly_limit_usd ?? t("不限")} ({t("日/周/月 USD")})
+            </p>
+          )}
         </div>
         <div className="space-y-1">
           <Label htmlFor="plan-price">{t("价格 (CNY)")}</Label>
