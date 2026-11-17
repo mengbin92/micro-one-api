@@ -1,0 +1,29 @@
+{
+  "date": "2026-11-17",
+  "migration_152": "applied",
+  "runtime_grants": "SELECT/INSERT/DELETE",
+  "observation_enabled": false,
+  "services": [
+    {
+      "service": "log-service",
+      "health": 200,
+      "restarts": 0,
+      "panic": 0,
+      "error": 0,
+      "image": "docker-compose-log-service:deploy-20261117-103059-90d4cce2"
+    },
+    {
+      "service": "relay-gateway",
+      "health": 200,
+      "restarts": 0,
+      "panic": 0,
+      "error": 0,
+      "image": "docker-compose-relay-gateway:deploy-20261117-103059-90d4cce2",
+      "private_mount": true
+    }
+  ],
+  "new_alert_rules": 11,
+  "alert_rules_healthy": true,
+  "canonical_and_probe_flags_unchanged": true,
+  "rollback_tag": "rollback-20261117-101833"
+}
