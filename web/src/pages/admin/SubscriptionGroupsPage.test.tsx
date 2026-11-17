@@ -26,10 +26,10 @@ const group = {
 };
 
 describe('AdminSubscriptionGroupsPage', () => {
-  it('keeps the displayed revision when editing a quota policy', async () => {
+  it('keeps the displayed revision and hidden platform when editing a quota policy', async () => {
     const captured = { body: null as Record<string, unknown> | null };
     server.use(
-      http.get('/api/v1/admin/subscription-groups', () => HttpResponse.json({ success: true, data: [group] })),
+      http.get('/api/v1/admin/subscription-groups', () => HttpResponse.json({ success: true, data: [{ ...group, platform: 'gemini' }] })),
       http.put('/api/v1/admin/subscription-groups/1', async ({ request }) => {
         captured.body = await request.json() as Record<string, unknown>;
         return HttpResponse.json({ success: true });
@@ -38,9 +38,28 @@ describe('AdminSubscriptionGroupsPage', () => {
     renderWithQuery(<MemoryRouter><AdminSubscriptionGroupsPage /></MemoryRouter>);
     await screen.findByText('Claude Pro');
     await userEvent.click(screen.getByRole('button', { name: /编辑/ }));
+    expect(screen.queryByLabelText('平台')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /保存/ }));
     await waitFor(() => expect(captured.body).not.toBeNull());
     expect(captured.body?.expected_revision).toBe(7);
+    expect(captured.body?.platform).toBe('gemini');
+  });
+
+  it('hides the platform column while groups are loading', async () => {
+    let finishLoading!: () => void;
+    const loaded = new Promise<void>((resolve) => { finishLoading = resolve; });
+    server.use(http.get('/api/v1/admin/subscription-groups', async () => {
+      await loaded;
+      return HttpResponse.json({ success: true, data: [group] });
+    }));
+    renderWithQuery(<MemoryRouter><AdminSubscriptionGroupsPage /></MemoryRouter>);
+    try {
+      await screen.findByRole('columnheader', { name: '名称' });
+      expect(screen.queryByRole('columnheader', { name: '平台' })).not.toBeInTheDocument();
+    } finally {
+      finishLoading();
+    }
+    await screen.findByText('Claude Pro');
   });
   it('lists subscription groups and renders limits (null => 不限)', async () => {
     server.use(
@@ -58,7 +77,8 @@ describe('AdminSubscriptionGroupsPage', () => {
     const cell = await screen.findByText('Claude Pro');
     const row = cell.closest('tr');
     expect(row?.textContent).toContain('claude-pro');
-    expect(row?.textContent).toContain('Anthropic / Claude');
+    // platform column is deprecated/hidden; the row no longer renders it.
+    expect(row?.textContent).not.toContain('Anthropic / Claude');
     expect(row?.textContent).toContain('$10'); // daily limit
     expect(row?.textContent).toContain('不限'); // weekly limit is null
     expect(row?.textContent).toContain('¥10.00 / 30天');
@@ -83,7 +103,9 @@ describe('AdminSubscriptionGroupsPage', () => {
     );
 
     await screen.findByText('暂无订阅额度策略');
+    expect(screen.queryByText(/平台/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /新建额度策略/ }));
+    expect(screen.queryByText(/平台/)).not.toBeInTheDocument();
     await userEvent.type(screen.getByLabelText('名称(唯一)'), 'team-plan');
     await userEvent.clear(screen.getByLabelText('购买价格(CNY)'));
     await userEvent.type(screen.getByLabelText('购买价格(CNY)'), '10');

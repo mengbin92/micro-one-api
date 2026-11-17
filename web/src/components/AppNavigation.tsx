@@ -114,7 +114,6 @@ const adminNavGroups: AdminNavGroup[] = [
       { to: '/admin/models', label: '模型目录', icon: Boxes },
       { to: '/admin/subscription-accounts', label: '订阅账号', icon: IdCard },
       { to: '/admin/routing-groups', label: '分组', icon: Layers },
-      { to: '/admin/subscription-groups', label: '订阅额度策略', icon: Layers },
       { to: '/admin/routing-ops', label: '路由策略', icon: Route },
     ],
   },
@@ -133,6 +132,7 @@ const adminNavGroups: AdminNavGroup[] = [
     items: [
       { to: '/admin/users', label: '用户管理', icon: Users },
       { to: '/admin/subscription-plans', label: '订阅套餐', icon: Package },
+      { to: '/admin/subscription-groups', label: '订阅额度策略', icon: Layers },
       { to: '/admin/subscriptions', label: '用户订阅', icon: BadgeCheck },
       { to: '/admin/redemptions', label: '兑换码', icon: Ticket },
     ],
