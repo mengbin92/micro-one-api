@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { server } from '@/test/msw/server';
 import { authorizationKey, can, canAll, canAny, suspendProtectedQueries, useAuthorizedQuery, useAuthorizationLifecycle } from './authorization';
 import { adminApiClient } from './api';
-import { refreshAuthorization } from './authorization-events';
+import { refreshAuthorization, invalidateAuthorization, protectedSignal } from './authorization-events';
 import type { IAMReply } from './iam-types';
 import { prepareAdminRequest } from './authorization-events';
 import { AxiosHeaders } from 'axios';
@@ -275,5 +275,86 @@ describe('authorization lifecycle', () => {
   await screen.findByText('secret'); failed = true; act(() => refreshAuthorization());
   await waitFor(() => expect(client.getQueryCache().findAll({ queryKey: ['authorization'] })[0]?.state.status).toBe('error'));
   expect(screen.queryByText('secret')).not.toBeInTheDocument(); expect(requests).toHaveBeenCalledTimes(1); result.unmount(); client.clear();
+ });
+ it('version invalidation retains verified data and inflight requests while revalidating', async () => {
+  let calls = 0;
+  let release: (() => void) | undefined;
+  server.use(
+   http.get('/api/user/authorization', async () => {
+    if (++calls > 1) await new Promise<void>(resolve => { release = resolve; });
+    return HttpResponse.json(active(['channel.channel.list']));
+   }),
+   http.get('/api/test-protected', () => HttpResponse.json({ value: 'verified data' })),
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = mount(client);
+  try {
+   await screen.findByText('verified data');
+   const signal = protectedSignal();
+   const owner = client.getQueryCache().findAll({ queryKey: ['protected-list'] })[0];
+   act(() => invalidateAuthorization());
+   await waitFor(() => expect(calls).toBe(2));
+   expect(signal.aborted).toBe(false);
+   expect(screen.getByText('verified data')).toBeVisible();
+   expect(() => prepareAdminRequest({ url: '/user/disable/12', method: 'post', data: { reason: 'reviewed' }, headers: new AxiosHeaders() })).toThrow('授权状态不可用');
+   await act(async () => { release?.(); });
+   await waitFor(() => expect(client.isFetching({ queryKey: authorizationKey })).toBe(0));
+   expect(client.getQueryCache().findAll({ queryKey: ['protected-list'] })[0]).toBe(owner);
+   expect(signal.aborted).toBe(false);
+  } finally { release?.(); view.unmount(); client.clear(); }
+ });
+ it('version invalidation reloads the snapshot so the next write carries the new policy revision', async () => {
+  // A managed write (or a 409 conflict) bumps policy_revision. The invalidation
+  // event must re-fetch the authorization snapshot; otherwise a retry would
+  // reuse the stale expected_policy_revision and conflict again.
+  let policy = '1';
+  let authCalls = 0;
+  server.use(
+   http.get('/api/user/authorization', () => { authCalls++; return HttpResponse.json(active(['channel.channel.list'], policy)); }),
+   http.get('/api/test-protected', () => HttpResponse.json({ value: policy === '1' ? 'old data' : 'fresh data' })),
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 60_000 } } });
+  const result = mount(client);
+  try {
+   await screen.findByText('old data');
+   policy = '2'; // simulated global policy_revision bump from a successful write
+   act(() => invalidateAuthorization());
+   await waitFor(() => expect(authCalls).toBe(2));
+   // New policy version changes generation -> protected data reloads and the
+   // cached snapshot now carries policy_revision=2 for the next CAS write.
+   expect(await screen.findByText('fresh data')).toBeVisible();
+   await waitFor(() => expect(client.getQueryCache().findAll({ queryKey: authorizationKey })[0]?.state.fetchStatus).toBe('idle'));
+   const snapshot = client.getQueryData<IAMReply>(client.getQueryCache().findAll({ queryKey: authorizationKey })[0].queryKey);
+   expect(snapshot?.versions?.policy_revision).toBe('2');
+  } finally { result.unmount(); client.clear(); }
+ });
+ it.each([200, 409])('uses the renewed policy CAS on the next user write after %s', async status => {
+  localStorage.setItem('token', 'session');
+  let policy = 1;
+  const revisions: string[] = [];
+  server.use(
+   http.get('/api/user/authorization', () => HttpResponse.json(active(['channel.channel.list'], String(policy)))),
+   http.get('/api/test-protected', () => HttpResponse.json({ value: 'user write fixture' })),
+   http.post('/api/user/disable/:id', ({ request }) => {
+    revisions.push(new URL(request.url).searchParams.get('expected_policy_revision') ?? '');
+    policy++;
+    return HttpResponse.json({ success: true }, { status: revisions.length === 1 ? status : 200 });
+   }),
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = mount(client);
+  try {
+   await screen.findByText('user write fixture');
+   const first = adminApiClient.post('/user/disable/12', { reason: 'reviewed' });
+   if (status === 409) await expect(first).rejects.toMatchObject({ response: { status: 409 } });
+   else await first;
+   await waitFor(() => {
+    const state = client.getQueryCache().findAll({ queryKey: authorizationKey })[0]?.state;
+    expect(state?.fetchStatus).toBe('idle');
+    expect((state?.data as IAMReply)?.versions?.policy_revision).toBe('2');
+   });
+   await adminApiClient.post('/user/disable/13', { reason: 'reviewed' });
+   expect(revisions).toEqual(['1', '2']);
+  } finally { view.unmount(); client.clear(); }
  });
 });

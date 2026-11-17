@@ -4,7 +4,7 @@ import { prepareManagedWrite } from '@/lib/admin-write';
 import { apiClient } from '@/lib/api';
 import type { IAMReply } from '@/lib/iam-types';
 import { platformContext } from '@/lib/iam-types';
-import { AUTHORIZATION_REFRESH, stopProtectedRequests, setWritePreparer } from '@/lib/authorization-events';
+import { AUTHORIZATION_REFRESH, AUTHORIZATION_INVALIDATE, stopProtectedRequests, setWritePreparer } from '@/lib/authorization-events';
 
 export const authorizationKey = ['authorization', 'platform'] as const;
 // A credential change produces a new cache identity without putting a JWT in devtools.
@@ -105,9 +105,16 @@ export function useAuthorizationLifecycle() {
       suspendProtectedQueries(client);
       void client.resetQueries({ queryKey: authorizationKey });
     };
+    // Retain verified display data until the response establishes a new boundary.
+    const invalidate = () => { void client.refetchQueries({ queryKey: authorizationKey, type: 'active' }); };
     window.addEventListener(AUTHORIZATION_REFRESH, refresh);
+    window.addEventListener(AUTHORIZATION_INVALIDATE, invalidate);
     window.addEventListener('storage', refresh);
-    return () => { window.removeEventListener(AUTHORIZATION_REFRESH, refresh); window.removeEventListener('storage', refresh); };
+    return () => {
+      window.removeEventListener(AUTHORIZATION_REFRESH, refresh);
+      window.removeEventListener(AUTHORIZATION_INVALIDATE, invalidate);
+      window.removeEventListener('storage', refresh);
+    };
   }, [client]);
   useEffect(() => {
     if (!auth.displaySnapshot?.valid_until) return;
