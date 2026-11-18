@@ -1,10 +1,10 @@
 import { useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient, type QueryClient, type UseQueryOptions } from '@tanstack/react-query';
-import { prepareManagedWrite } from '@/lib/admin-write';
+import { prepareManagedWrite, refreshConflictingWrite } from '@/lib/admin-write';
 import { apiClient } from '@/lib/api';
 import type { IAMReply } from '@/lib/iam-types';
 import { platformContext } from '@/lib/iam-types';
-import { AUTHORIZATION_REFRESH, AUTHORIZATION_INVALIDATE, stopProtectedRequests, setWritePreparer } from '@/lib/authorization-events';
+import { AUTHORIZATION_REFRESH, AUTHORIZATION_INVALIDATE, stopProtectedRequests, setAdminWriteHandlers } from '@/lib/authorization-events';
 
 export const authorizationKey = ['authorization', 'platform'] as const;
 // A credential change produces a new cache identity without putting a JWT in devtools.
@@ -88,16 +88,18 @@ export function useAuthorizationLifecycle() {
   const client = useQueryClient();
   const auth = useAuthorization();
   useEffect(() => {
-    setWritePreparer(config => {
-      // Read the live cache state, not the last React render. A refresh or
-      // credential change must block writes before effects/buttons update.
-      const state = client.getQueryState<IAMReply>([...authorizationKey, identityKey()]);
-      const snapshot = state?.status === 'success' && state.fetchStatus === 'idle' ? currentSummary(state.data) : undefined;
-      const method = config.method?.toLowerCase() ?? 'get';
-      if (!['get', 'head', 'options'].includes(method) && (!snapshot || (snapshot.authorization_mode === 'iam' && snapshot.session?.activation_state !== 'active'))) throw new Error('授权状态不可用');
-      return prepareManagedWrite(config, snapshot, client);
+    setAdminWriteHandlers({
+      prepare: config => {
+        // A credential change must block writes before effects/buttons update.
+        const state = client.getQueryState<IAMReply>([...authorizationKey, identityKey()]);
+        const snapshot = state?.status === 'success' && state.fetchStatus === 'idle' ? currentSummary(state.data) : undefined;
+        const method = config.method?.toLowerCase() ?? 'get';
+        if (!['get', 'head', 'options'].includes(method) && (!snapshot || (snapshot.authorization_mode === 'iam' && snapshot.session?.activation_state !== 'active'))) throw new Error('授权状态不可用');
+        return prepareManagedWrite(config, snapshot, client);
+      },
+      refreshConflict: config => refreshConflictingWrite(config, client),
     });
-    return () => setWritePreparer(undefined);
+    return () => setAdminWriteHandlers();
   }, [client]);
   useEffect(() => {
     const refresh = (event: Event) => {

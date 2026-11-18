@@ -16,6 +16,11 @@ export function invalidateAuthorization() {
   window.dispatchEvent(new Event(AUTHORIZATION_INVALIDATE));
 }
 import type { InternalAxiosRequestConfig } from 'axios';
-let writePreparer: ((config: InternalAxiosRequestConfig) => InternalAxiosRequestConfig) | undefined;
-export function setWritePreparer(prepare?: typeof writePreparer) { writePreparer = prepare; }
-export function prepareAdminRequest(config: InternalAxiosRequestConfig) { return writePreparer?.(config) ?? config; }
+type AdminWriteHandlers = {
+  prepare: (config: InternalAxiosRequestConfig) => InternalAxiosRequestConfig;
+  refreshConflict?: (config: InternalAxiosRequestConfig) => Promise<void>;
+};
+let writeHandlers: AdminWriteHandlers | undefined;
+export function setAdminWriteHandlers(handlers?: AdminWriteHandlers) { writeHandlers = handlers; }
+export function prepareAdminRequest(config: InternalAxiosRequestConfig) { return writeHandlers?.prepare(config) ?? config; }
+export async function refreshAdminConflict(config: InternalAxiosRequestConfig) { await writeHandlers?.refreshConflict?.(config); }

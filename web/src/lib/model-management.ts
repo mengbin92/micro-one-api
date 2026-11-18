@@ -160,6 +160,7 @@ export interface CreateModelPayload {
 
 export interface UpdateModelPayload {
   preserve_pricing?: boolean;
+  expected_revision?: number;
   model_pk: number;
   display_name: string;
   description?: string;

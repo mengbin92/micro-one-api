@@ -4,6 +4,7 @@ import { KeyRound, Pencil, RotateCcw, Save } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
+import { numericRevision } from '@/lib/admin-write';
 import { PermissionButton as Button } from '@/components/admin/PermissionButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -50,6 +51,7 @@ import { formatSubscriptionUSD as formatUSD } from '@/lib/amount';
 // typed as optional and coerced to "" in toDraft().
 interface SubscriptionAccountInfo {
   id: number;
+  credential_revision?: string | number;
   name: string;
   platform: string;
   account_type: string;
@@ -86,6 +88,7 @@ interface SubscriptionAccountInfo {
 
 interface SubscriptionAccountEditDraft {
   id: number;
+  revision?: string | number;
   name: string;
   accountType: string;
   group: string;
@@ -144,6 +147,7 @@ interface CreatePayload {
 
 interface UpdatePayload {
   id: number;
+  expected_revision?: number;
   name: string;
   account_type: string;
   group: string;
@@ -435,6 +439,7 @@ function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
 function toDraft(account: SubscriptionAccountInfo): SubscriptionAccountEditDraft {
   return {
     id: account.id,
+    revision: account.credential_revision,
     // name/group/models/accountType are non-optional on the wire, but the
     // protobuf JSON encoder omits empty-string fields (omitempty), so a
     // minimal account (e.g. a freshly-created one with no models set) comes
@@ -554,6 +559,7 @@ export function AdminSubscriptionAccountsPage() {
       // leave them empty so the backend keeps the stored (encrypted) value.
       const payload: UpdatePayload = {
         id: draft.id,
+        expected_revision: draft.revision === undefined ? undefined : numericRevision(draft.revision),
         name: draft.name.trim(),
         account_type: draft.accountType,
         group: draft.group.trim(),

@@ -1,7 +1,6 @@
 import { CHANNEL_PROVIDER_NAMES as PROVIDER_NAMES, CHANNEL_CREATABLE_PROVIDERS } from '@/lib/channel-providers';
 import { useAuthorizedQuery } from '@/lib/authorization';
 import { useMutation,useQueryClient } from '@tanstack/react-query';
-import { isAxiosError } from 'axios';
 import { AlertTriangle, Pencil, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -135,15 +134,10 @@ export function AdminChannelsPage() {
   const [editingChannel, setEditingChannel] = useState<ChannelEditDraft | null>(null);
   const queryClient = useQueryClient();
   const invalidateChannelQueries = () => {
-    queryClient.invalidateQueries({ queryKey: ['admin-channels'] });
     queryClient.invalidateQueries({ queryKey: ['admin-channels-health'] });
     queryClient.invalidateQueries({ queryKey: ['admin-models'] });
     queryClient.invalidateQueries({ queryKey: ['admin-model-detail'] });
-  };
-  const refreshConflictingChannel = (error: unknown) => {
-    // Refresh the displayed CAS after rejection; never replay an action or
-    // replace the revision captured in an open edit draft.
-    if (isAxiosError(error) && error.response?.status === 409) invalidateChannelQueries();
+    return queryClient.invalidateQueries({ queryKey: ['admin-channels'] });
   };
   const sort = { key: sortKey as keyof Channel | null, direction: sortDirection } satisfies SortState<Channel>;
   const statusFilter = filters.status ?? '';
@@ -152,7 +146,7 @@ export function AdminChannelsPage() {
   exportParams.set('format', 'csv');
   const exportHref = `/channel/export?${exportParams}`;
 
-  const { data: channels, isLoading } = useAuthorizedQuery({
+  const { data: channels, isLoading, isFetching } = useAuthorizedQuery({
     permission: 'channel.channel.list', queryKey: ['admin-channels', page, pageSize, search, sortKey, sortDirection, filters],
     queryFn: async () => {
       const params = buildAdminListParams({
@@ -192,7 +186,6 @@ export function AdminChannelsPage() {
       ensureApiSuccess(res.data, t('创建渠道失败'));
     },
     onSuccess: () => {
-      invalidateChannelQueries();
       setIsCreateOpen(false);
       setNewChannelName('');
       setNewChannelType('1');
@@ -203,6 +196,7 @@ export function AdminChannelsPage() {
       setNewChannelPriority('0');
       setNewChannelWeight('1');
       toast.success(t('渠道已创建'));
+      return invalidateChannelQueries();
     },
   });
 
@@ -217,8 +211,8 @@ export function AdminChannelsPage() {
       ensureApiSuccess(res.data, t('更新渠道状态失败'));
     },
     onSuccess: () => {
-      invalidateChannelQueries();
       toast.success(t('渠道状态已更新'));
+      return invalidateChannelQueries();
     },
   });
 
@@ -238,9 +232,9 @@ export function AdminChannelsPage() {
       ensureApiSuccess(res.data, t('更新渠道失败'));
     },
     onSuccess: () => {
-      invalidateChannelQueries();
       setEditingChannel(null);
       toast.success(t('渠道配置已保存'));
+      return invalidateChannelQueries();
     },
   });
 
@@ -249,10 +243,9 @@ export function AdminChannelsPage() {
       const res = await adminApiClient.get(`/channel/update_balance/${id}`);
       ensureApiSuccess(res.data, t('刷新渠道余额失败'));
     },
-    onError: refreshConflictingChannel,
     onSuccess: () => {
-      invalidateChannelQueries();
       toast.success(t('渠道余额已刷新'));
+      return invalidateChannelQueries();
     },
   });
 
@@ -261,10 +254,9 @@ export function AdminChannelsPage() {
       const res = await adminApiClient.get(`/channel/test/${id}`);
       ensureApiSuccess(res.data, t('渠道健康检测失败'));
     },
-    onError: refreshConflictingChannel,
     onSuccess: () => {
-      invalidateChannelQueries();
       toast.success(t('渠道健康检测已完成'));
+      return invalidateChannelQueries();
     },
   });
 
@@ -274,10 +266,13 @@ export function AdminChannelsPage() {
       ensureApiSuccess(res.data, t('删除渠道失败'));
     },
     onSuccess: () => {
-      invalidateChannelQueries();
       toast.success(t('渠道已删除'));
+      return invalidateChannelQueries();
     },
   });
+
+  const rowWritePending = isFetching || toggleStatusMutation.isPending || updateMutation.isPending
+    || refreshBalanceMutation.isPending || testChannelMutation.isPending || deleteChannelMutation.isPending;
 
   const visibleChannels = useMemo(() => {
     return sortRows(channels ?? [], sort);
@@ -455,7 +450,7 @@ export function AdminChannelsPage() {
               </div>
               <Button permission="channel.channel.update"
                 onClick={handleUpdate}
-                disabled={updateMutation.isPending || !editingChannel.name.trim() || !editingChannel.group.trim() || (!!editingChannel.initialModels.trim() && !editingChannel.models.trim())}
+                disabled={rowWritePending || !editingChannel.name.trim() || !editingChannel.group.trim() || (!!editingChannel.initialModels.trim() && !editingChannel.models.trim())}
                 className="sm:col-span-2"
               >
                 <Save className="size-4" />
@@ -642,6 +637,7 @@ export function AdminChannelsPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => openEdit(ch)}
+                        disabled={rowWritePending}
                       >
                         <Pencil className="size-3.5" />
                         {t('编辑')}
@@ -650,7 +646,7 @@ export function AdminChannelsPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => refreshBalanceMutation.mutate(ch.id)}
-                        disabled={refreshBalanceMutation.isPending}
+                        disabled={rowWritePending}
                       >
                         <RefreshCw className="size-3.5" />
                         {t('刷新')}
@@ -659,7 +655,7 @@ export function AdminChannelsPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => testChannelMutation.mutate(ch.id)}
-                        disabled={testChannelMutation.isPending}
+                        disabled={rowWritePending}
                       >
                         {t('测试')}
                       </Button>
@@ -669,7 +665,7 @@ export function AdminChannelsPage() {
                         onClick={() =>
                           toggleStatusMutation.mutate({ id: ch.id, currentStatus: ch.status })
                         }
-                        disabled={toggleStatusMutation.isPending}
+                        disabled={rowWritePending}
                       >
                         {ch.status === 1 ? t('禁用') : t('启用')}
                       </Button>
@@ -681,7 +677,7 @@ export function AdminChannelsPage() {
                             deleteChannelMutation.mutate(ch.id);
                           }
                         }}
-                        disabled={deleteChannelMutation.isPending}
+                        disabled={rowWritePending}
                       >
                         <Trash2 className="size-3.5" />
                         {t('删除')}

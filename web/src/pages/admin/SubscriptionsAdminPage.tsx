@@ -39,6 +39,7 @@ import { locale, t } from '@/lib/i18n';
 interface UserSubscription {
   contract?: SubscriptionContract;
   id: number;
+  entitlement_revision?: number;
   user_id: number;
   group_id: number;
   subscription_name: string;
@@ -168,9 +169,10 @@ export function AdminSubscriptionsPage() {
   });
 
   const extendMutation = useMutation({
-    mutationFn: async ({ id, expiresAt }: { id: number; expiresAt: number }) => {
-      const res = await adminApiClient.post(`/v1/admin/subscriptions/${id}/extend`, {
+    mutationFn: async ({ subscription, expiresAt }: { subscription: UserSubscription; expiresAt: number }) => {
+      const res = await adminApiClient.post(`/v1/admin/subscriptions/${subscription.id}/extend`, {
         expires_at: expiresAt,
+        expected_revision: subscription.entitlement_revision,
       });
       ensureApiSuccess(res.data, t("延长订阅失败"));
     },
@@ -266,7 +268,7 @@ export function AdminSubscriptionsPage() {
           onOpenChange={(open) => {
             if (!open && !extendMutation.isPending) setExtendSubscription(null);
           }}
-          onSubmit={(expiresAt) => extendMutation.mutate({ id: extendSubscription.id, expiresAt })}
+          onSubmit={(expiresAt) => extendMutation.mutate({ subscription: extendSubscription, expiresAt })}
         />
       )}
 

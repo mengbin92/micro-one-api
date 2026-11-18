@@ -273,12 +273,12 @@ describe('AdminModelsPage', () => {
     expect(screen.getByDisplayValue('0.25')).toBeInTheDocument();
   });
 
-  it('preserves hidden prices even when pricing update is present for other objects', async () => {
+  it('keeps the detail version and preserves hidden prices when updating a model', async () => {
     let body: Record<string, unknown> | undefined;
     server.use(
       http.get('/api/user/authorization', () => HttpResponse.json({ authorization_mode: 'iam', session: { activation_state: 'active' }, permitted_operations: ['channel.model.list', 'channel.model.read', 'channel.model.update', 'billing.pricing.update'] })),
-      http.get('/api/admin/models', () => HttpResponse.json({ models: [{ ...model, price_fields_visible: false }], total: 1 })),
-      http.get('/api/admin/models/1', () => HttpResponse.json({ ...fullModel, model: { ...fullModel.model, price_fields_visible: false, pricing_input: 0, pricing_output: 0, pricing_cache_read: 0 } })),
+      http.get('/api/admin/models', () => HttpResponse.json({ models: [{ ...model, authorization_revision: '4', price_fields_visible: false }], total: 1 })),
+      http.get('/api/admin/models/1', () => HttpResponse.json({ ...fullModel, model: { ...fullModel.model, authorization_revision: '3', price_fields_visible: false, pricing_input: 0, pricing_output: 0, pricing_cache_read: 0 } })),
       http.put('/api/admin/models', async ({ request }) => { body = await request.json() as Record<string, unknown>; return HttpResponse.json({ success: true }); }),
     );
     const { userEvent } = await import('@testing-library/user-event');
@@ -291,6 +291,7 @@ describe('AdminModelsPage', () => {
     expect(screen.getByLabelText('输入价格 ($/1M tokens)')).toHaveDisplayValue('');
     await user.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(body).toBeDefined());
+    expect(body?.expected_revision).toBe(3);
     expect(body?.preserve_pricing).toBe(true);
     expect(body).not.toHaveProperty('pricing_input');
     expect(body).not.toHaveProperty('pricing_output');
