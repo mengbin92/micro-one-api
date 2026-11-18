@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router';
@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AdminSubscriptionsPage } from './SubscriptionsAdminPage';
 import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
+import { useAuthorizationLifecycle } from '@/lib/authorization';
 
 const subscription = {
   id: 3,
@@ -37,7 +38,56 @@ function mockBaseEndpoints() {
   );
 }
 
+function ManagedSubscriptions() {
+  useAuthorizationLifecycle();
+  return <AdminSubscriptionsPage />;
+}
+
 describe('AdminSubscriptionsPage', () => {
+  it('assigns and revokes under IAM through the real write interceptor with colliding contract ids', async () => {
+    mockBaseEndpoints();
+    const writes: { action: string; body: Record<string, unknown>; revision: string | null }[] = [];
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({
+        authorization_mode: 'iam', session: { activation_state: 'active' },
+        versions: { policy_revision: '1' },
+        permitted_operations: ['subscription.user_subscription.list', 'subscription.quota_policy.list', 'subscription.user_subscription.assign', 'subscription.user_subscription.revoke'],
+      })),
+      http.get('/api/v1/admin/subscriptions', () => HttpResponse.json({ success: true, data: [
+        { ...subscription, entitlement_revision: 4, contract: {
+          version: 2, digest: 'digest', coverage_mode: 'selected_groups', coverage: [],
+          quota_policy: { id: 7, version: '9f2c7b1ad0e4', rate_multiplier: 1, daily_limit_usd: null, weekly_limit_usd: null, monthly_limit_usd: null },
+        } },
+        { ...subscription, id: 7, subscription_name: 'bob-pro', entitlement_revision: 6 },
+      ] })),
+      http.get('/api/v1/admin/routing-groups', () => HttpResponse.json({ success: true, data: { groups: [], next_page_token: '' } })),
+      http.post('/api/v1/admin/subscriptions/assign', async ({ request }) => {
+        writes.push({ action: 'assign', body: await request.json() as Record<string, unknown>, revision: new URL(request.url).searchParams.get('expected_revision') });
+        return HttpResponse.json({ success: true });
+      }),
+      http.post('/api/v1/admin/subscriptions/7/revoke', async ({ request }) => {
+        writes.push({ action: 'revoke', body: await request.json() as Record<string, unknown>, revision: new URL(request.url).searchParams.get('expected_revision') });
+        return HttpResponse.json({ success: true });
+      }),
+    );
+    vi.spyOn(window, 'prompt').mockReturnValue('运营复核');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderWithQuery(<MemoryRouter><ManagedSubscriptions /></MemoryRouter>);
+    await screen.findByText('bob-pro');
+    await userEvent.click(screen.getByRole('button', { name: '分配订阅' }));
+    await userEvent.type(screen.getByLabelText('用户 ID'), '3');
+    await userEvent.selectOptions(screen.getByLabelText('订阅额度策略'), '1');
+    fireEvent.change(screen.getByLabelText('到期时间'), { target: { value: '2030-01-02T12:34' } });
+    await userEvent.click(screen.getByRole('button', { name: '分配' }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]).toMatchObject({ action: 'assign', body: { user_id: 3, reason: '运营复核' }, revision: null });
+    expect(writes[0].body).not.toHaveProperty('expected_revision');
+    const row = screen.getByText('bob-pro').closest('tr')!;
+    await userEvent.click(within(row).getByRole('button', { name: '撤销' }));
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(writes[1]).toMatchObject({ action: 'revoke', body: { expected_revision: 6, reason: '运营复核' }, revision: '6' });
+  });
+
   it('prefills expiry from the selected policy and preserves a manual override on assignment', async () => {
     mockBaseEndpoints();
     const now = Math.floor(Date.now() / 60_000) * 60_000;

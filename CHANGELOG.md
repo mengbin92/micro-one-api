@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- 订阅分配不再从缓存推断 CAS；撤销、延期和重置配额仅从订阅行读取权益版本，忽略 ID 碰撞的嵌套合同策略。补齐 IAM 写入拦截器页面回归，排障见[订阅生产 Runbook](docs/runbooks/subscription-production-runbook.md#611-管理订阅报版本值无效或缺少写入版本)。
+
 ## [0.45.1] - 2026-11-17
 
 PATCH：修复管理侧订阅操作的前端缺陷——连续管理写复用陈旧 policy CAS 版本导致 409 冲突，订阅分配需手工计算到期时间、套餐编辑器盲选额度策略。订阅额度策略归位「用户与产品」，隐藏已失效的平台字段。仅 Web 前端变更，无 Go 服务、API 契约或数据库迁移改动。详见 [发布记录](docs/releases/release-v0.45.1.md)。

@@ -35,6 +35,8 @@ export function prepareManagedWrite(config: InternalAxiosRequestConfig, snapshot
   config.headers.delete('x-authorization-reason');
   data.reason = reason.trim();
   params.reason = reason.trim();
+  // Assignment creates a row and its user_id is not a subscription CAS identity.
+  const createsWithoutCas = /\/v1\/admin\/subscriptions\/assign(?:[/?]|$)/.test(url);
   const ownerKey = /\/channel(?:\/|$)/.test(url) ? 'admin-channels' : /\/admin\/models/.test(url) ? 'admin-model' : /\/user(?:\/|$)/.test(url) ? 'admin-users' : /subscription-accounts/.test(url) ? 'admin-subscription-accounts' : /subscription-plans/.test(url) ? 'subscription-plans' : /subscription-groups/.test(url) ? 'admin-subscription-groups' : /subscriptions/.test(url) ? 'admin-subscriptions' : /routing-groups/.test(url) ? 'admin-routing-group' : /\/redemption/.test(url) ? 'admin-redemptions' : /upstream-costs/.test(url) ? 'admin-upstream-costs' : '';
   const modelRelation = /\/admin\/models\/\d+\/(aliases|channel-mappings|subscription-mappings)/.test(url);
   // A prior filter cache may still contain this row; relation edits display
@@ -46,10 +48,15 @@ export function prepareManagedWrite(config: InternalAxiosRequestConfig, snapshot
   const id = data.id ?? data.channel_id ?? data.account_id ?? data.model_pk ?? data.user_id ?? data.subscription_id ?? pathId;
   const code = url.startsWith('/redemption/') ? decodeURIComponent(url.split('/').at(-1) ?? '') : undefined;
   const key = data.key ?? params.key;
-  const row = cached.find(item => code ? item.code === code : key ? item.key === key : String(item.id ?? item.model_pk) === String(id));
-  if (data.expected_revision === undefined && (id || code || key) && revision(row) !== undefined) data.expected_revision = numericRevision(revision(row));
+  const row = cached.find(item => {
+    // Nested contract policies have their own IDs but do not own subscription CAS.
+    if (ownerKey === 'admin-subscriptions' && item.entitlement_revision === undefined && item.entitlementRevision === undefined) return false;
+    return code ? item.code === code : key ? item.key === key : String(item.id ?? item.model_pk) === String(id);
+  });
+  const displayed = ownerKey === 'admin-subscriptions' ? row?.entitlement_revision ?? row?.entitlementRevision : revision(row);
+  if (!createsWithoutCas && data.expected_revision === undefined && (id || code || key) && displayed !== undefined) data.expected_revision = numericRevision(displayed);
   if (Array.isArray(data.model_pks) && !data.expected_revisions) data.expected_revisions = Object.fromEntries(data.model_pks.map((pk: unknown) => [String(pk), numericRevision(revision(cached.find(item => String(item.id) === String(pk))) ?? '0')]));
-  if (modelRelation && revision(row) !== undefined) data.expected_model_revision ??= numericRevision(revision(row));
+  if (modelRelation && displayed !== undefined) data.expected_model_revision ??= numericRevision(displayed);
   for (const field of ['account_ids', 'channel_ids']) if (Array.isArray(data[field]) && !data.expected_revisions) data.expected_revisions = Object.fromEntries(data[field].map((pk: unknown) => [String(pk), numericRevision(revision(cached.find(item => String(item.id) === String(pk))) ?? '0')]));
   if (url.includes('/upstream-costs')) {
     const view = cached.find(item => item.revision !== undefined && Array.isArray(item.entries));

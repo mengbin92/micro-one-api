@@ -384,6 +384,21 @@ go test ./internal/integration -run TestIAMSubscriptionPaymentThroughRealOwners 
 
 该测试覆盖真实 HTTP/RPC/IAM/订单仓储、服务器定价、幂等重放、下架套餐及跨用户拒绝，外部支付 provider 为 mock。生产健康检查或无效会话探针不能替代实际支付、回调和权益发放验收。部署与回滚记录见 [IAM 用户侧修复记录](./iam-self-service-hotfix-2026-10-07.md)。
 
+### 6.11 管理订阅报「版本值无效」或缺少写入版本
+
+若分配订阅时报「版本值无效，请重新加载数据」，先查看浏览器 Network 是否发出请求。合同的 `quota_policy.version` 是哈希，`quota_policy.id` 可能与输入的用户 ID 相同；递归展开缓存后误匹配该策略，会在 axios 请求拦截器内抛错，服务端收不到请求。
+
+分配接口创建订阅，不读取 `expected_revision`。撤销、延期、重置配额需匹配带 `entitlement_revision` 的订阅行，并读取该权益版本；仅忽略 `version` 字段仍不够，前一条订阅的策略 ID 也可能抢先匹配后一条订阅，导致漏带 CAS。合同格式版本和策略哈希均不可作为订阅 CAS。
+
+此修复只涉及前端；无需数据库迁移或服务重启。更新 Web 静态资源后强刷浏览器。保留显式提交的旧版本交由服务端判定冲突，非数字或超出安全整数的权益版本仍拒绝发送。
+
+本地回归（页面用例包含真实 IAM 写入拦截器，HTTP 服务为 mock）：
+
+```bash
+cd web
+npm test -- src/lib/admin-write.test.ts src/lib/admin-write.chinese.test.ts src/pages/admin/SubscriptionsAdminPage.test.tsx
+```
+
 ## 八、订阅文档索引
 
 | 文档 | 范围 |
