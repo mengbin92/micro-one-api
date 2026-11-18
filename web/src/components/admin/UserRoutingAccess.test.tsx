@@ -7,6 +7,37 @@ import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 
 describe('UserRoutingAccess', () => {
+  it('grants access with the target routing and IAM revisions', async () => {
+    let submitted: unknown;
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({
+        authorization_mode: 'iam', permitted_operations: ['identity.routing_access.read', 'identity.routing_access.grant', 'channel.routing_group.list'],
+        session: { activation_state: 'active' }, versions: { policy_revision: '99' }, valid_until: new Date(Date.now() + 60_000).toISOString(),
+      })),
+      http.get('/api/v1/admin/routing-access/9', () => HttpResponse.json({
+        success: true, data: { default_routing_group_id: 2, revision: 4, authorization_revision: '15', authorization_policy_revision: '37', public_group_access: 'explicit_only', grants: [] },
+      })),
+      http.get('/api/v1/admin/routing-access/9/available', () => HttpResponse.json({ success: true, data: { groups: [], next_page_token: '' } })),
+      http.get('/api/v1/admin/routing-groups', () => HttpResponse.json({
+        success: true, data: { groups: [{ id: 6, key: 'private', display_name: 'Private', status: 'enabled' }], next_page_token: '' },
+      })),
+      http.patch('/api/v1/admin/routing-access/9', async ({ request }) => {
+        submitted = await request.json();
+        return HttpResponse.json({ success: true });
+      }),
+    );
+    renderWithQuery(<UserRoutingAccess userId="9" />);
+    await userEvent.click(await screen.findByRole('button', { name: '分组授权' }));
+    const target = await screen.findByRole('combobox', { name: '目标分组' });
+    await within(target).findByRole('option', { name: 'Private' });
+    await userEvent.selectOptions(target, '6');
+    await userEvent.click(screen.getByRole('button', { name: '授予访问' }));
+    await waitFor(() => expect(submitted).toMatchObject({
+      operation: 'grant', routing_group_id: 6, expected_revision: 4,
+      expected_user_revision: '15', expected_policy_revision: '37',
+    }));
+  });
+
   it('enables public group access using the registered IAM operation', async () => {
     server.use(
       http.get('/api/user/authorization', () => HttpResponse.json({ authorization_mode: 'iam', permitted_operations: ['identity.routing_access.read', 'identity.routing_access.public_access.update'], session: { activation_state: 'active' }, versions: { policy_revision: '1' }, valid_until: new Date(Date.now() + 60_000).toISOString() })),
