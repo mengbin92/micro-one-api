@@ -347,16 +347,16 @@ func TestWebSocketLaterRecoveryProbeRequiresNewConnection(t *testing.T) {
 	require.Equal(t, "connection-probe", channel.HealthProbeID, "turn-local lease must not mutate connection projection")
 }
 
-func TestOneAPIProxyClaimsConfigurationAndDoesNotRecoverFromDiscovery(t *testing.T) {
+func TestOneAPIProxyClaimsConfigurationOnlyForInference(t *testing.T) {
 	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 	for _, tc := range []struct {
-		name string
-		path string
-		body string
-		want provider.HealthOutcome
+		name   string
+		path   string
+		body   string
+		status int
 	}{
-		{"inference", "chat/completions", `{"model":"gpt-5","messages":[]}`, provider.HealthSuccess},
-		{"model discovery", "models", `{}`, provider.HealthNeutral},
+		{"inference", "chat/completions", `{"model":"gpt-5","messages":[]}`, http.StatusOK},
+		{"model discovery", "models", `{}`, http.StatusNotImplemented},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -372,11 +372,16 @@ func TestOneAPIProxyClaimsConfigurationAndDoesNotRecoverFromDiscovery(t *testing
 			req.Header.Set("Authorization", "Bearer user-token")
 			recorder := httptest.NewRecorder()
 			server.handleOneAPIProxy(recorder, req)
-			require.Equal(t, http.StatusOK, recorder.Code)
+			require.Equal(t, tc.status, recorder.Code)
+			if tc.status != http.StatusOK {
+				require.Empty(t, control.claims)
+				require.Empty(t, control.observations)
+				return
+			}
 			require.Len(t, control.claims, 1)
 			require.Equal(t, "current-v2", control.claims[0].ConfigurationRevision)
 			require.Len(t, control.observations, 1)
-			require.Equal(t, tc.want, control.observations[0].Outcome)
+			require.Equal(t, provider.HealthSuccess, control.observations[0].Outcome)
 		})
 	}
 }

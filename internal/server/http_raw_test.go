@@ -1846,9 +1846,11 @@ func TestHTTPServerOneAPIProxyForwardsExplicitChannel(t *testing.T) {
 	var gotMethod string
 	var gotPath string
 	var gotModel string
+	var headers http.Header
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
+		headers = r.Header.Clone()
 		body, _ := io.ReadAll(r.Body)
 		gotModel = extractRawModel(body)
 		_, _ = w.Write([]byte(`{"ok":true}`))
@@ -1871,9 +1873,13 @@ func TestHTTPServerOneAPIProxyForwardsExplicitChannel(t *testing.T) {
 	srv := khttp.NewServer()
 	httpServer.RegisterRoutes(srv)
 
-	req := httptest.NewRequest(http.MethodPatch, "/v1/oneapi/proxy/11/custom/path", strings.NewReader(`{"model":"deepseek-v4-pro-0813[1M]"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/oneapi/proxy/11/chat/completions", strings.NewReader(`{"model":"deepseek-v4-pro-0813[1M]"}`))
 	req.Header.Set("Authorization", "Bearer user-token")
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "text/plain")
+	req.Header.Set("Cookie", "session=local")
+	req.Header.Add("Anthropic-Beta", "first-feature")
+	req.Header.Add("Anthropic-Beta", "second-feature")
+	req.Header.Set("Anthropic-Version", "2023-06-01")
 	rec := httptest.NewRecorder()
 
 	srv.ServeHTTP(rec, req)
@@ -1881,14 +1887,18 @@ func TestHTTPServerOneAPIProxyForwardsExplicitChannel(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
 	}
-	if gotMethod != http.MethodPatch {
+	if gotMethod != http.MethodPost {
 		t.Fatalf("method = %q", gotMethod)
 	}
-	if gotPath != "/v1/custom/path" {
+	if gotPath != "/v1/chat/completions" {
 		t.Fatalf("path = %q", gotPath)
 	}
 	if gotModel != "DeepSeek-V4-Pro-0813" {
 		t.Fatalf("upstream model = %q, want channel spelling", gotModel)
+	}
+	if headers.Get("Content-Type") != "application/json" || headers.Get("Authorization") != "Bearer sk-upstream" || headers.Get("Cookie") != "" ||
+		headers.Get("Anthropic-Version") != "2023-06-01" || !slices.Equal(headers.Values("Anthropic-Beta"), []string{"first-feature", "second-feature"}) {
+		t.Fatal("upstream headers must preserve protocol features while isolating gateway credentials")
 	}
 	if len(billingClient.commitRequests) != 1 || billingClient.commitRequests[0].SourceKind != relaybiz.UpstreamSourceChannel || billingClient.commitRequests[0].UpstreamModelId != "DeepSeek-V4-Pro-0813" {
 		t.Fatalf("billing source attribution mismatch: %#v", billingClient.commitRequests)

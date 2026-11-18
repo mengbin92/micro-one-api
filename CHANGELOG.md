@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.45.4] - 2026-11-18
+
+PATCH 修复 Relay Gateway 指定渠道代理入口的路由授权，详见 [发布记录](docs/releases/release-v0.45.4.md)。
+
+### Fixed
+
+- 指定渠道代理在读取渠道凭据和预留额度前校验 API Key 模型权限、路由组和目标渠道映射，仅转发可按模型授权的 POST 推理请求。
+
 ## [0.45.3] - 2026-11-18
 
 PATCH 修复管理后台连续操作复用旧资源版本以及写入版本取错资源的问题。仅更新 Web 前端，沿用现有 API 和数据库契约。详见 [发布记录](docs/releases/release-v0.45.3.md)。
