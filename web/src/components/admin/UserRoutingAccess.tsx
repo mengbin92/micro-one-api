@@ -57,7 +57,12 @@ export function UserRoutingAccess({ userId }: { userId: string }) {
     if (!facts.data) return;
     setSaving(true);
     try {
-      const res = await adminApiClient.patch(`/v1/admin/routing-access/${userId}`, { ...body, expected_revision: facts.data.revision });
+      const res = await adminApiClient.patch(`/v1/admin/routing-access/${userId}`, {
+        ...body,
+        expected_revision: facts.data.revision,
+        expected_user_revision: facts.data.authorization_revision,
+        expected_policy_revision: facts.data.authorization_policy_revision,
+      });
       ensureApiSuccess(res.data, t('修改授权失败'));
       await Promise.all([facts.refetch(), available.refetch()]);
       await queryClient.invalidateQueries({ queryKey: ['available-routing-groups'] });

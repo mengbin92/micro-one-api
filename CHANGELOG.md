@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.45.5] - 2026-11-18
+
+PATCH 修复管理台用户分组授权写入缺少 IAM 版本的问题。详见 [发布记录](docs/releases/release-v0.45.5.md)。
+
+### Fixed
+
+- 用户分组管理通过目标用户的回读结果提交路由访问、用户和授权策略版本。
+
 ## [0.45.4] - 2026-11-18
 
 PATCH 修复 Relay Gateway 指定渠道代理入口的路由授权，详见 [发布记录](docs/releases/release-v0.45.4.md)。
