@@ -6,7 +6,7 @@ import { AdminRoutingGroupsPage } from './RoutingGroupsPage';
 import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 
-const group = { id: 2, key: 'vip', display_name: 'VIP', status: 'disabled', access_mode: 'restricted', model_access_mode: 'all_authorized', description: '' };
+const group = { id: 2, key: 'vip', display_name: 'VIP', status: 'disabled', access_mode: 'restricted', model_access_mode: 'all_authorized', description: '', revision: 7 };
 const billingPolicy = { version: 1, billing_mode: 'subscription_first', price_ratio: 1.5 };
 const billingHandler = () => HttpResponse.json({ success: true, data: billingPolicy });
 describe('AdminRoutingGroupsPage', () => {
@@ -25,7 +25,37 @@ describe('AdminRoutingGroupsPage', () => {
     await userEvent.click(await screen.findByRole('button', { name: '查看分组 vip' }));
     expect(await screen.findByLabelText('优先级覆盖')).toHaveValue('7');
     await userEvent.click(screen.getByRole('button', { name: '保存覆盖' }));
-    await waitFor(() => expect(posted).toEqual([{ source_kind: 'channel', source_id: 1, priority_override: 7, weight_override: 5 }]));
+    await waitFor(() => expect(posted).toEqual([{ source_kind: 'channel', source_id: 1, priority_override: 7, weight_override: 5, expected_revision: '7' }]));
+  });
+  it.each([[1, '8'], [2, '7']] as const)('keeps the other draft and advances its revision only after a single confirmed write (delta %s)', async (delta, expected) => {
+    let revision = 7;
+    const attempts: Record<string, unknown>[] = [];
+    const resources = [1, 2].map(source_id => ({ source_kind: 'channel', source_id, priority: 7, weight: 5 }));
+    server.use(
+      http.get('/api/v1/admin/routing-groups', () => HttpResponse.json({ success: true, data: { groups: [group], next_page_token: '' } })),
+      http.get('/api/v1/admin/routing-groups/2', () => HttpResponse.json({ success: true, data: { group: { ...group, revision }, resources, model_grants: [] } })),
+      http.get('/api/v1/admin/routing-groups/2/billing', billingHandler),
+      http.put('/api/v1/admin/routing-groups/2/resource-overrides', async ({ request }) => {
+        const body = await request.json() as Record<string, unknown>;
+        attempts.push(body);
+        if (body.expected_revision !== String(revision)) return HttpResponse.json({ message: 'revision conflict' }, { status: 409 });
+        revision += delta;
+        return HttpResponse.json({ success: true });
+      }),
+    );
+    renderWithQuery(<AdminRoutingGroupsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: '查看分组 vip' }));
+    const priorities = await screen.findAllByLabelText('优先级覆盖');
+    await userEvent.type(priorities[0], '3');
+    await userEvent.type(priorities[1], '4');
+    const saves = screen.getAllByRole('button', { name: '保存覆盖' });
+    await userEvent.click(saves[0]);
+    await waitFor(() => expect(attempts).toHaveLength(1));
+    await waitFor(() => expect(saves[1]).toBeEnabled());
+    expect(priorities[1]).toHaveValue('4');
+    await userEvent.click(saves[1]);
+    await waitFor(() => expect(attempts).toHaveLength(2));
+    expect(attempts[1]).toMatchObject({ source_id: 2, priority_override: 4, expected_revision: expected });
   });
   it('keeps model-only grants separate from members and lists mixed source IDs', async () => {
     server.use(http.get('/api/v1/admin/routing-groups', () => HttpResponse.json({ success: true, data: { groups: [group], next_page_token: '' } })),

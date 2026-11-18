@@ -2,7 +2,7 @@ import axios from 'axios';
 import { requestSecurityVerification } from '@/lib/security-verification';
 import { clearPlaygroundCredential } from '@/lib/playground-credential';
 import { toast } from 'sonner';
-import { protectedSignal, refreshAuthorization, invalidateAuthorization, prepareAdminRequest } from '@/lib/authorization-events';
+import { protectedSignal, refreshAuthorization, invalidateAuthorization, prepareAdminRequest, refreshAdminConflict } from '@/lib/authorization-events';
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -127,9 +127,10 @@ adminApiClient.interceptors.response.use(
     if (currentSession && error.response?.status === 403) {
       refreshAuthorization();
     }
-    // Even a read-only preview can expose a stale policy revision.
-    if (currentSession && error.response?.status === 409 && carriesPolicyRevision(error.config)) {
-      invalidateAuthorization();
+    if (currentSession && error.response?.status === 409) {
+      // Even a read-only preview can expose a stale policy revision.
+      if (carriesPolicyRevision(error.config)) invalidateAuthorization();
+      await refreshAdminConflict(error.config);
     }
     if (currentSession && error.response?.status === 401) {
       clearUserSession();

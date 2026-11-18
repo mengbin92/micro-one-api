@@ -3,14 +3,14 @@ import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it } from 'vitest';
 import { adminApiClient } from './api';
 import { prepareManagedWrite } from './admin-write';
-import { setWritePreparer } from './authorization-events';
+import { setAdminWriteHandlers } from './authorization-events';
 import { activateRoles, writeIAM } from './iam-api';
 import { server } from '@/test/msw/server';
 import type { IAMReply } from './iam-types';
 
 const reason = '上游缺货，调整配置 ✅';
 const snapshot: IAMReply = { authorization_mode: 'iam', session: { activation_state: 'active' } };
-afterEach(() => setWritePreparer(undefined));
+afterEach(() => setAdminWriteHandlers());
 
 describe('Chinese reasons across management transports', () => {
   it.each([
@@ -49,7 +49,7 @@ describe('Chinese reasons across management transports', () => {
       if (method !== 'get' && method !== 'delete') body = await request.json() as Record<string, unknown>;
       return HttpResponse.json({ success: true });
     }));
-    setWritePreparer(config => prepareManagedWrite(config, snapshot, client, () => reason));
+    setAdminWriteHandlers({ prepare: config => prepareManagedWrite(config, snapshot, client, () => reason) });
     try {
       await adminApiClient.request({ url, method, ...(method !== 'get' && method !== 'delete' ? { data: { expected_revision: 3 } } : {}) });
       expect(received).toBeDefined();
@@ -69,7 +69,7 @@ describe('Chinese reasons across management transports', () => {
       if (method !== 'delete') body = await request.json() as Record<string, unknown>;
       return HttpResponse.json({});
     }));
-    setWritePreparer(config => prepareManagedWrite(config, snapshot, client, () => { throw new Error('unexpected prompt'); }));
+    setAdminWriteHandlers({ prepare: config => prepareManagedWrite(config, snapshot, client, () => { throw new Error('unexpected prompt'); }) });
     try {
       await writeIAM('/roles/7', method, { reason, expected_revision: '3' });
       expect(received!.headers.has('x-authorization-reason')).toBe(false);

@@ -24,6 +24,7 @@ import {
 } from '@/lib/model-draft';
 import { useAdminTableState } from '@/hooks/useAdminTableState';
 import { buildAdminListParams } from '@/lib/admin-table-query';
+import { numericRevision } from '@/lib/admin-write';
 import { sortRows, type SortState } from '@/lib/table-utils';
 import {
   listModels,
@@ -167,7 +168,7 @@ export function AdminModelsPage() {
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState<ModelDraft>(emptyDraft);
-  const [editingModel, setEditingModel] = useState<{ pk: number; draft: ModelDraft; pricesVisible: boolean } | null>(null);
+  const [editingModel, setEditingModel] = useState<{ pk: number; draft: ModelDraft; pricesVisible: boolean; revision?: string } | null>(null);
   const [editLoading, setEditLoading] = useState(false);
   const [detailModelPk, setDetailModelPk] = useState<number | null>(null);
   const [exchangeOpen, setExchangeOpen] = useState(false);
@@ -233,7 +234,8 @@ export function AdminModelsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (payload: UpdateModelPayload) => updateModel(payload),
+    mutationFn: ({ payload, revision }: { payload: UpdateModelPayload; revision?: string }) =>
+      updateModel({ ...payload, expected_revision: revision === undefined ? undefined : numericRevision(revision) }),
     onSuccess: (resp) => {
       if (!resp.success) { toast.error(resp.message || t("更新失败")); return; }
       toast.success(t("模型已更新"));
@@ -296,7 +298,7 @@ export function AdminModelsPage() {
     if (metadataError) { toast.error(metadataError); return; }
     const payload = draftToUpdatePayload(editingModel.pk, editingModel.draft);
     if (!editingModel.pricesVisible || !auth.can('billing.pricing.update')) { payload.preserve_pricing = true; delete payload.pricing_input; delete payload.pricing_output; delete payload.pricing_cache_read; }
-    updateMutation.mutate(payload);
+    updateMutation.mutate({ payload, revision: editingModel.revision });
   };
 
   const handleDelete = (pk: number) => {
@@ -345,7 +347,7 @@ export function AdminModelsPage() {
     setEditingModel({ pk: model.id, draft: emptyDraft, pricesVisible: false });
     try {
       const detail = await getModel(model.id);
-      setEditingModel({ pk: model.id, draft: modelInfoToDraft(detail.model), pricesVisible: auth.displaySnapshot?.authorization_mode === 'legacy' || detail.model.price_fields_visible === true });
+      setEditingModel({ pk: model.id, draft: modelInfoToDraft(detail.model), pricesVisible: auth.displaySnapshot?.authorization_mode === 'legacy' || detail.model.price_fields_visible === true, revision: detail.model.authorization_revision });
     } catch (err) {
       toast.error((err as Error).message || t("加载模型详情失败"));
       setEditingModel(null);

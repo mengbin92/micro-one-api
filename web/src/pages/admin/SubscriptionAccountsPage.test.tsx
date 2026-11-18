@@ -311,10 +311,10 @@ describe('AdminSubscriptionAccountsPage', () => {
 
     server.use(
       http.get('/api/subscription-accounts', () =>
-        HttpResponse.json({ accounts: [baseAccount], total: 1 }),
+        HttpResponse.json({ accounts: [{ ...baseAccount, credentialRevision: '4' }], total: 1 }),
       ),
       http.get('/api/subscription-accounts/:id', () =>
-        HttpResponse.json(detailAccount),
+        HttpResponse.json({ ...detailAccount, credential_revision: '3' }),
       ),
       http.put('/api/subscription-accounts/:id', async ({ request }) => {
         updates.push((await request.json()) as Record<string, unknown>);
@@ -344,6 +344,7 @@ describe('AdminSubscriptionAccountsPage', () => {
     // The update payload must use snake_case keys. The models field
     // is managed by ModelMultiSelect and carried through from the row.
     expect(updates[0]).toMatchObject({
+      expected_revision: 3,
       account_type: 'oauth',
       base_url: '',
       account_id: 'acct-123',

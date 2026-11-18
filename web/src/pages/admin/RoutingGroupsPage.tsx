@@ -52,7 +52,7 @@ export function AdminRoutingGroupsPage() {
     permission: 'billing.routing_policy.read', queryKey: ['routing-billing', selected], enabled: selected !== null, retry: false,
     queryFn: async () => unwrapApiData<{ version: number; billing_mode: string; price_ratio: number }>((await adminApiClient.get(`/v1/admin/routing-groups/${selected}/billing`)).data),
   });
-  const [overrideDrafts, setOverrideDrafts] = useState<Record<string, { priority: string; weight: string }>>({});
+  const [overrideDrafts, setOverrideDrafts] = useState<Record<string, { priority: string; weight: string; revision: number }>>({});
   const [createOpen, setCreateOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState({ key: '', displayName: '', description: '', accessMode: 'restricted' });
   const [creating, setCreating] = useState(false);
@@ -64,9 +64,12 @@ export function AdminRoutingGroupsPage() {
   };
   const saveOverrides = async (sourceKind: string, sourceID: number) => {
     if (!detail.data) return;
+    const group = detail.data.group;
     const resource = detail.data.resources.find((r) => r.source_kind === sourceKind && r.source_id === sourceID);
     if (!resource) return;
-    const draft = overrideDrafts[`${sourceKind}:${sourceID}`] || { priority: resource.priority_override?.toString() ?? '', weight: resource.weight_override?.toString() ?? '' };
+    const prefix = `${group.id}:`;
+    const key = `${prefix}${sourceKind}:${sourceID}`;
+    const draft = overrideDrafts[key] ?? { priority: resource.priority_override?.toString() ?? '', weight: resource.weight_override?.toString() ?? '', revision: group.revision };
     const parse = (value: string) => {
       const trimmed = value.trim();
       if (!trimmed) return null;
@@ -81,11 +84,22 @@ export function AdminRoutingGroupsPage() {
     }
     setSaving(true);
     try {
-      const res = await adminApiClient.put(`/v1/admin/routing-groups/${detail.data.group.id}/resource-overrides`, { source_kind: sourceKind, source_id: sourceID, priority_override: priority, weight_override: weight });
+      const res = await adminApiClient.put(`/v1/admin/routing-groups/${group.id}/resource-overrides`, { source_kind: sourceKind, source_id: sourceID, priority_override: priority, weight_override: weight, expected_revision: String(draft.revision) });
       ensureApiSuccess(res.data, t('保存覆盖失败'));
-      await detail.refetch();
+      const latest = (await detail.refetch()).data?.group;
+      setOverrideDrafts(drafts => {
+        const remaining = { ...drafts };
+        if (remaining[key] === draft) delete remaining[key];
+        // A single revision increment belongs to this write on one row.
+        if (latest?.id === group.id && latest.revision === draft.revision + 1) {
+          for (const [otherKey, pending] of Object.entries(remaining)) {
+            if (otherKey.startsWith(prefix) && pending.revision === draft.revision) remaining[otherKey] = { ...pending, revision: latest.revision };
+          }
+        }
+        return remaining;
+      });
       toast.success(t('资源覆盖已更新'));
-    } catch (error) { toast.error(error instanceof Error ? error.message : t('保存覆盖失败')); }
+    } catch (error) { toast.error(getApiErrorMessage(error, t('保存覆盖失败'))); }
     finally { setSaving(false); }
   };
   const createGroup = async (event: React.FormEvent) => {
@@ -193,7 +207,7 @@ export function AdminRoutingGroupsPage() {
         <h4 className="font-medium">{t('资源成员')}</h4>
         <p className="text-sm text-muted-foreground">{t('优先级和权重继承资源配置；具体模型仍需通过模型授权检查。组内覆盖只替换该分组选路时的值，空值继承，不影响同一资源在其他分组的表现。')}</p>
         {!detail.data.resources.length ? <p>{t('暂无资源成员')}</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>{t('资源类型')}</TableHead><TableHead>ID</TableHead><TableHead>{t('优先级')}</TableHead><TableHead>{t('权重')}</TableHead><TableHead>{t('组内覆盖（空=继承）')}</TableHead><TableHead>{t('操作')}</TableHead></TableRow></TableHeader><TableBody>
-          {detail.data.resources.map((r) => { const key = `${r.source_kind}:${r.source_id}`; const draft = overrideDrafts[key] || { priority: r.priority_override?.toString() ?? '', weight: r.weight_override?.toString() ?? '' }; return <TableRow key={key}><TableCell>{r.source_kind === 'channel' ? t('API 渠道') : t('上游订阅账号')}</TableCell><TableCell>{r.source_id}</TableCell><TableCell>{r.priority}{r.priority_override != null ? `（覆盖 ${r.priority_override}）` : ''}</TableCell><TableCell>{r.weight}{r.weight_override != null ? `（覆盖 ${r.weight_override}）` : ''}</TableCell>
+          {detail.data.resources.map((r) => { const key = `${detail.data.group.id}:${r.source_kind}:${r.source_id}`; const draft = overrideDrafts[key] ?? { priority: r.priority_override?.toString() ?? '', weight: r.weight_override?.toString() ?? '', revision: detail.data.group.revision }; return <TableRow key={key}><TableCell>{r.source_kind === 'channel' ? t('API 渠道') : t('上游订阅账号')}</TableCell><TableCell>{r.source_id}</TableCell><TableCell>{r.priority}{r.priority_override != null ? `（覆盖 ${r.priority_override}）` : ''}</TableCell><TableCell>{r.weight}{r.weight_override != null ? `（覆盖 ${r.weight_override}）` : ''}</TableCell>
             <TableCell><div className="flex gap-1"><Input aria-label="优先级覆盖" className="w-20" placeholder="继承" value={draft.priority} onChange={(e) => setOverrideDrafts((d) => ({ ...d, [key]: { ...draft, priority: e.target.value } }))} /><Input aria-label="权重覆盖" className="w-20" placeholder="继承" value={draft.weight} onChange={(e) => setOverrideDrafts((d) => ({ ...d, [key]: { ...draft, weight: e.target.value } }))} /></div></TableCell>
             <TableCell><Button permission="channel.routing_group.resource_override.update" size="sm" variant="outline" disabled={saving || detail.data.group.status === 'archived'} onClick={() => saveOverrides(r.source_kind, r.source_id)}>{t('保存覆盖')}</Button></TableCell></TableRow>; })}
         </TableBody></Table></div>}

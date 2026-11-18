@@ -10,6 +10,7 @@ import { useAuthorizationLifecycle } from '@/lib/authorization';
 
 const subscription = {
   id: 3,
+  entitlement_revision: 4,
   user_id: 42,
   group_id: 1,
   subscription_name: 'alice-pro',
@@ -247,11 +248,12 @@ describe('AdminSubscriptionsPage', () => {
 
   it('opens a date-time picker when extending a subscription and submits Unix seconds', async () => {
     mockBaseEndpoints();
-    const captured = { expiresAt: 0 };
+    const captured = { expiresAt: 0, revision: 0 };
     server.use(
       http.post('/api/v1/admin/subscriptions/3/extend', async ({ request }) => {
-        const body = (await request.json()) as { expires_at: number };
+        const body = (await request.json()) as { expires_at: number; expected_revision: number };
         captured.expiresAt = body.expires_at;
+        captured.revision = body.expected_revision;
         return HttpResponse.json({ success: true });
       }),
     );
@@ -271,5 +273,6 @@ describe('AdminSubscriptionsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: '保存到期时间' }));
 
     await waitFor(() => expect(captured.expiresAt).toBe(Math.floor(new Date('2030-01-02T12:34').getTime() / 1000)));
+    expect(captured.revision).toBe(4);
   });
 });
