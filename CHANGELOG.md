@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.45.2] - 2026-11-18
+
+PATCH：修复管理侧手动分配订阅报「版本值无效，请重新加载数据」、请求无法发出的缺陷——订阅合同内嵌策略的哈希版本被误当作 CAS 版本。订阅写操作改为只读取 `entitlement_revision`，分配接口不再注入 CAS；其它端点校验不变，无 Go 服务、API 契约或数据库迁移改动。详见 [发布记录](docs/releases/release-v0.45.2.md)。
+
 ### Fixed
 
 - 订阅分配不再从缓存推断 CAS；撤销、延期和重置配额仅从订阅行读取权益版本，忽略 ID 碰撞的嵌套合同策略。补齐 IAM 写入拦截器页面回归，排障见[订阅生产 Runbook](docs/runbooks/subscription-production-runbook.md#611-管理订阅报版本值无效或缺少写入版本)。

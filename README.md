@@ -8,7 +8,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.45.1 发布公告](./docs/releases/release-v0.45.1.md)（PATCH：管理写后重校验授权版本、订阅分配与套餐编辑可用性修复、额度策略归位） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.45.1)
+> 📣 **最新发布**：[v0.45.2 发布公告](./docs/releases/release-v0.45.2.md)（PATCH：修复管理订阅分配「版本值无效」导致请求无法发出，订阅写操作只读取权益版本） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.45.2)
 
 ## 功能概览
 
@@ -186,6 +186,7 @@ make web-dist
 
 ## 发布与升级
 
+- [v0.45.2](./docs/releases/release-v0.45.2.md)：PATCH 修复管理订阅分配报「版本值无效」——合同内嵌额度策略的哈希版本被误当作 CAS 版本，请求在浏览器侧即被拦截；分配接口不再注入 CAS，订阅写操作只读取 `entitlement_revision` 并防止 ID 碰撞导致静默漏带；仅前端与文档改动，无服务、契约或迁移变更，无需重启容器。
 - [v0.45.1](./docs/releases/release-v0.45.1.md)：PATCH 修复管理侧订阅操作前端缺陷——连续管理写复用陈旧 policy CAS 版本导致 409、订阅分配需手工计算到期时间、套餐编辑器盲选额度策略；额度策略归位「用户与产品」并隐藏失效的平台字段；仅前端改动，无服务、契约或迁移变更，无需重启容器。
 - [v0.45.0](./docs/releases/release-v0.45.0.md)：独立上游 usage 留证、受限查询与异常告警；可靠投递、三库回归和安全目录初始化；Log 152、新开关默认关闭，不改变收费。
 - [v0.44.1](./docs/releases/release-v0.44.1.md)：PATCH 修复结算恢复的 relay/billing 身份契约、迁移 151 回填与 MySQL 重放、订阅账号并发创建模型，以及七源操作审计漏读/共享库重复计数/用户名超时；admin 与六个 owner 同版升级，复用 channel 镜像的 worker 同步切换；无新增迁移编号或前端改动，已应用 151 的环境不重跑。
