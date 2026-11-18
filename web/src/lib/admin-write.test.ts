@@ -8,6 +8,63 @@ const snapshot: IAMReply = { authorization_mode: 'iam', session: { activation_st
 function config(url: string, method = 'put', data?: unknown): InternalAxiosRequestConfig { return { url, method, data, headers: new AxiosHeaders() }; }
 function client() { const c = new QueryClient(); c.setQueryDefaults(['admin-channels'], { meta: { protected: true } }); c.setQueryData(['admin-channels', 'authorization', 'platform', '12'], [{ id: 7, revision: '3' }]); return c; }
 describe('owner write preconditions', () => {
+ it.each([1, 3])('assigns a subscription without inferring CAS from a cached object with id %s', (userId) => {
+  const c = new QueryClient();
+  c.setQueryDefaults(['admin-subscriptions'], { meta: { protected: true } });
+  // The cache holds a v2 contract: quota_policy.version is a hash, and its id
+  // can equal the user id typed in the assign dialog.
+  c.setQueryData(['admin-subscriptions', null], [{
+   id: 3,
+   user_id: 1,
+   entitlement_revision: 4,
+   contract: { version: 2, digest: 'digest', coverage_mode: 'selected_groups', coverage: [], quota_policy: { id: 1, version: '9f2c7b1ad0e4', rate_multiplier: 1, daily_limit_usd: null, weekly_limit_usd: null, monthly_limit_usd: null } },
+  }]);
+  const out = prepareManagedWrite(
+   config('/v1/admin/subscriptions/assign', 'post', { user_id: userId, group_id: 1, coverage: [], expires_at: 1800000000, reason: '运营补偿' }),
+   snapshot,
+   c,
+  );
+  expect(out.data).toMatchObject({ user_id: userId, group_id: 1, reason: '运营补偿' });
+  expect((out.data as Record<string, unknown>).expected_revision).toBeUndefined();
+  expect(out.params.expected_revision).toBeUndefined();
+ });
+ it('uses entitlement_revision for subscription writes despite cached contract hash versions', () => {
+  const c = new QueryClient();
+  c.setQueryDefaults(['admin-subscriptions'], { meta: { protected: true } });
+  c.setQueryData(['admin-subscriptions', null], [{
+   id: 7,
+   version: 2,
+   entitlement_revision: 4,
+   contract: { version: 2, digest: 'hash', coverage_mode: 'selected_groups', coverage: [], quota_policy: { id: 7, version: '9f2c7b1ad0e4', rate_multiplier: 1, daily_limit_usd: null, weekly_limit_usd: null, monthly_limit_usd: null } },
+  }]);
+  const out = prepareManagedWrite(config('/v1/admin/subscriptions/7/revoke', 'post', { reason: 'policy violation' }), snapshot, c);
+  expect(out.data.expected_revision).toBe(4);
+ });
+ it.each(['revoke', 'extend', 'reset-quota'])('ignores a preceding contract policy with the same id when preparing %s', (action) => {
+  const c = new QueryClient();
+  c.setQueryDefaults(['admin-subscriptions'], { meta: { protected: true } });
+  c.setQueryData(['admin-subscriptions', null], [
+   { id: 3, entitlement_revision: 8, contract: { quota_policy: { id: 7, version: '9f2c7b1ad0e4' } } },
+   { id: 7, entitlement_revision: 4 },
+  ]);
+  const out = prepareManagedWrite(config(`/v1/admin/subscriptions/7/${action}`, 'post', { reason: 'reviewed' }), snapshot, c);
+  expect(out.data.expected_revision).toBe(4);
+  expect(out.params.expected_revision).toBe(4);
+ });
+ it('preserves an explicit stale subscription revision for owner CAS', () => {
+  const c = new QueryClient();
+  c.setQueryDefaults(['admin-subscriptions'], { meta: { protected: true } });
+  c.setQueryData(['admin-subscriptions', null], [{ id: 7, entitlement_revision: 4 }]);
+  const out = prepareManagedWrite(config('/v1/admin/subscriptions/7/revoke', 'post', { reason: 'reviewed', expected_revision: 2 }), snapshot, c);
+  expect(out.data.expected_revision).toBe(2);
+  expect(out.params.expected_revision).toBe(2);
+ });
+ it.each(['9f2c7b1ad0e4', '9007199254740993'])('rejects invalid subscription entitlement revision %s', (entitlementRevision) => {
+  const c = new QueryClient();
+  c.setQueryDefaults(['admin-subscriptions'], { meta: { protected: true } });
+  c.setQueryData(['admin-subscriptions', null], [{ id: 7, entitlement_revision: entitlementRevision }]);
+  expect(() => prepareManagedWrite(config('/v1/admin/subscriptions/7/revoke', 'post', { reason: 'reviewed' }), snapshot, c)).toThrow('版本值无效，请重新加载数据');
+ });
  it('keeps all displayed pricing versions together and preserves stale batch preconditions', () => {
   const c = client();
   c.setQueryData(['admin-options'], [{ key: 'ModelPrice', revision: '7' }, { key: 'ModelRatio', revision: '8' }, { key: 'CompletionRatio', revision: '9' }]);
