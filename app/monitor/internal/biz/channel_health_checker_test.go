@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	relayprovider "micro-one-api/domain/upstream/provider"
 	"micro-one-api/platform/metrics"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -144,5 +145,22 @@ func TestChannelHealthChecker_CheckOnceSkipsUnsupportedProvider(t *testing.T) {
 
 	if len(client.healthReqs) != 0 {
 		t.Fatalf("health requests = %+v, want none", client.healthReqs)
+	}
+}
+
+func TestModelsProbeRequiresAnArray(t *testing.T) {
+	for _, tc := range []struct {
+		body      string
+		wantError bool
+	}{
+		{body: `{"data":null}`, wantError: true},
+		{body: `{"models":null}`, wantError: true},
+		{body: `{"data":[]}`},
+		{body: `{"data":null,"models":[]}`},
+	} {
+		err := validateModelsProbeResponse(&relayprovider.RawResponse{Body: []byte(tc.body)})
+		if (err != nil) != tc.wantError {
+			t.Errorf("validateModelsProbeResponse(%s) = %v, want error %t", tc.body, err, tc.wantError)
+		}
 	}
 }
