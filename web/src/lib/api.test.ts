@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+import { QueryClient } from '@tanstack/react-query';
 import { apiClient, adminApiClient, isSessionAuthPath } from './api';
-import { AUTHORIZATION_INVALIDATE, AUTHORIZATION_REFRESH, protectedSignal } from './authorization-events';
+import { prepareManagedWrite } from './admin-write';
+import { AUTHORIZATION_INVALIDATE, AUTHORIZATION_REFRESH, protectedSignal, setAdminWriteHandlers } from './authorization-events';
+import { subscribeSecurityVerification } from './security-verification';
 
 describe('api auth path handling', () => {
   it('treats user session endpoints as login-expiring paths', () => {
@@ -50,6 +53,30 @@ it('rejects a bound request before dispatch if its session was replaced', async 
       headers: { Authorization: 'Bearer old-session' }, adapter,
     })).rejects.toThrow('Session changed before request');
     expect(adapter).not.toHaveBeenCalled();
+  }
+});
+
+it('preserves the managed write body across security verification', async () => {
+  localStorage.setItem('token', 'session');
+  const queryClient = new QueryClient();
+  setAdminWriteHandlers({ prepare: config => prepareManagedWrite(config, {
+    authorization_mode: 'iam', session: { activation_state: 'active' },
+  }, queryClient) });
+  const unsubscribe = subscribeSecurityVerification(request => request.resolve());
+  const body = { billing_mode: 'wallet_only', price_ratio: 1.5, version: 8, reason: 'Reviewed ratio' };
+  let attempts = 0;
+  try {
+    await adminApiClient.patch('/v1/admin/routing-groups/12/billing', body, { adapter: async config => {
+      expect(JSON.parse(config.data)).toEqual(body);
+      attempts++;
+      if (attempts === 1) throw { config, response: { status: 403, data: { reason: 'STEP_UP_REQUIRED' } } };
+      return { data: {}, status: 200, statusText: 'OK', headers: {}, config };
+    } });
+    expect(attempts).toBe(2);
+  } finally {
+    unsubscribe();
+    setAdminWriteHandlers();
+    localStorage.removeItem('token');
   }
 });
 

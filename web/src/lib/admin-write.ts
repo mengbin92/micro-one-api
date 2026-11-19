@@ -86,7 +86,8 @@ export function prepareManagedWrite(config: InternalAxiosRequestConfig, snapshot
   if (snapshot.authorization_mode === 'legacy') return config;
   if (!snapshot.session || snapshot.session.activation_state !== 'active' || (snapshot.valid_until && Date.parse(snapshot.valid_until) <= Date.now())) throw new Error(t('授权状态不可用'));
 
-  const data = { ...object(config.data) };
+  // Axios has already serialized the JSON body when retrying after verification.
+  const data = { ...object(typeof config.data === 'string' && config.data.trim() ? JSON.parse(config.data) : config.data) };
   const params = { ...config.params };
   const reason = data.reason ?? params.reason ?? config.headers.get('x-authorization-reason') ?? askReason(t('请输入此次变更的原因'));
   if (typeof reason !== 'string' || !reason.trim()) throw new Error(t('变更原因不能为空'));
