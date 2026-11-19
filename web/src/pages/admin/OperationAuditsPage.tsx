@@ -31,6 +31,7 @@ interface OperationAuditPage {
   total?: number;
   page?: number;
   page_size?: number;
+  has_next_page?: boolean;
 }
 
 const MINUTE_MS = 60_000;
@@ -104,7 +105,8 @@ export function OperationAuditsPage() {
 
   const items = useMemo(() => query.data?.items ?? [], [query.data?.items]);
   const total = query.data?.total ?? 0;
-  const hasNextPage = page * pageSize < total;
+  const hasMoreRecords = page * pageSize < total;
+  const hasNextPage = query.data?.has_next_page ?? hasMoreRecords;
   const resetFilters = () => {
     setPage(1);
     setActorUserID('');
@@ -153,7 +155,7 @@ export function OperationAuditsPage() {
         </TableRow>)}</TableBody>
       </Table>
     </div>}
-    {query.data && <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground"><span>{t('共 {count} 条', { count: total })}</span></div>}
+    {query.data && <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground"><span>{t('共 {count} 条', { count: total })}</span>{hasMoreRecords && !hasNextPage && <span>{t('请缩小时间范围或添加筛选条件以查看更多记录。')}</span>}</div>}
     {query.data && <AdminPagination page={page} pageSize={pageSize} hasNextPage={hasNextPage} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} />}
 
     <Dialog open={!!selected} onOpenChange={open => { if (!open) setSelected(undefined); }}>

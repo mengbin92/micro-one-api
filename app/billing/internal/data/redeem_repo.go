@@ -106,7 +106,7 @@ func (r *redeemRepo) ListRedeemCodes(ctx context.Context, page, pageSize int32) 
 	var models []redeemCodeModel
 	var total int64
 
-	offset := (page - 1) * pageSize
+	offset := max(int64(page)-1, 0) * int64(pageSize)
 
 	query, err := authzquery.ApplyContext(ctx, r.data.db.WithContext(ctx).Model(&redeemCodeModel{}), authzquery.Columns{Resource: "id"}, "billing.redemption.list", "billing.redemption.export")
 	if err != nil {
@@ -115,8 +115,11 @@ func (r *redeemRepo) ListRedeemCodes(ctx context.Context, page, pageSize int32) 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
+	if offset >= total {
+		return nil, total, nil
+	}
 
-	if err := query.Order("created_at DESC").
+	if err := query.Order("created_at DESC, id DESC").
 		Limit(int(pageSize)).
 		Offset(int(offset)).
 		Find(&models).Error; err != nil {

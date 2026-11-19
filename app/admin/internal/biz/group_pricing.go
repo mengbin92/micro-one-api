@@ -21,7 +21,11 @@ type RoutingGroupRatio struct {
 const groupRatioOption = "GroupRatio"
 
 func (uc *SystemOptionsUsecase) ListRoutingGroupRatios(ctx context.Context) ([]RoutingGroupRatio, error) {
-	ratios, err := uc.routingGroupRatios(ctx)
+	raw, err := uc.Get(ctx, groupRatioOption)
+	if err != nil {
+		return nil, err
+	}
+	ratios, err := parseRoutingGroupRatios(raw)
 	if err != nil {
 		return nil, err
 	}
@@ -46,12 +50,9 @@ func (uc *SystemOptionsUsecase) UpsertRoutingGroupRatio(ctx context.Context, gro
 	if ratio <= 0 || math.IsNaN(ratio) || math.IsInf(ratio, 0) {
 		return nil, fmt.Errorf("ratio must be finite and greater than 0")
 	}
-	ratios, err := uc.routingGroupRatios(ctx)
-	if err != nil {
-		return nil, err
-	}
-	ratios[group] = ratio
-	if err := uc.saveRoutingGroupRatios(ctx, ratios); err != nil {
+	if err := uc.mutateRoutingGroupRatios(ctx, func(ratios map[string]float64) {
+		ratios[group] = ratio
+	}); err != nil {
 		return nil, err
 	}
 	return &RoutingGroupRatio{Group: group, Ratio: ratio}, nil
@@ -65,14 +66,12 @@ func (uc *SystemOptionsUsecase) DeleteRoutingGroupRatio(ctx context.Context, gro
 	if group == routing.DefaultGroup {
 		return nil, fmt.Errorf("default group cannot be deleted")
 	}
-	ratios, err := uc.routingGroupRatios(ctx)
-	if err != nil {
-		return nil, err
-	}
-	ratio := ratios[group]
-	delete(ratios, group)
-	ensureDefaultGroupRatio(ratios)
-	if err := uc.saveRoutingGroupRatios(ctx, ratios); err != nil {
+	var ratio float64
+	if err := uc.mutateRoutingGroupRatios(ctx, func(ratios map[string]float64) {
+		ratio = ratios[group]
+		delete(ratios, group)
+		ensureDefaultGroupRatio(ratios)
+	}); err != nil {
 		return nil, err
 	}
 	return &RoutingGroupRatio{Group: group, Ratio: ratio}, nil
@@ -84,11 +83,7 @@ func ensureDefaultGroupRatio(ratios map[string]float64) {
 	}
 }
 
-func (uc *SystemOptionsUsecase) routingGroupRatios(ctx context.Context) (map[string]float64, error) {
-	raw, err := uc.Get(ctx, groupRatioOption)
-	if err != nil {
-		return nil, err
-	}
+func parseRoutingGroupRatios(raw string) (map[string]float64, error) {
 	ratios := map[string]float64{}
 	if strings.TrimSpace(raw) != "" {
 		if err := jsonx.Unmarshal([]byte(raw), &ratios); err != nil {
@@ -101,13 +96,17 @@ func (uc *SystemOptionsUsecase) routingGroupRatios(ctx context.Context) (map[str
 	return ratios, nil
 }
 
-func (uc *SystemOptionsUsecase) saveRoutingGroupRatios(ctx context.Context, ratios map[string]float64) error {
+func (uc *SystemOptionsUsecase) mutateRoutingGroupRatios(ctx context.Context, apply func(map[string]float64)) error {
 	if uc == nil || uc.repo == nil {
 		return fmt.Errorf("system options storage not configured")
 	}
-	payload, err := jsonx.Marshal(ratios)
-	if err != nil {
-		return err
-	}
-	return uc.Set(ctx, groupRatioOption, string(payload))
+	return uc.Mutate(ctx, groupRatioOption, func(raw string) (string, error) {
+		ratios, err := parseRoutingGroupRatios(raw)
+		if err != nil {
+			return "", err
+		}
+		apply(ratios)
+		payload, err := jsonx.Marshal(ratios)
+		return string(payload), err
+	})
 }

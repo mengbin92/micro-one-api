@@ -125,6 +125,16 @@ describe('owner write preconditions', () => {
   expect(current.data).toMatchObject({ expected_revision: 3, reason: 'reviewed reason' }); expect(current.params.expected_revision).toBe(3);
   expect(prepareManagedWrite(config('/channel', 'put', { id: 7, expected_revision: 2 }), snapshot, c, () => 'reason').data.expected_revision).toBe(2);
  });
+ it('preserves the serialized request body and its reviewed revision after verification', () => {
+  const body = { id: 7, name: 'updated channel', expected_revision: 2, reason: 'reviewed' };
+  const out = prepareManagedWrite(config('/channel', 'put', JSON.stringify(body)), snapshot, client());
+  expect(out.data).toEqual(body);
+  expect(out.params.expected_revision).toBe(2);
+ });
+ it('treats a blank serialized action body as empty', () => {
+  const out = prepareManagedWrite(config('/channel/disable/7', 'post', ' '), snapshot, client(), () => 'disable');
+  expect(out.data).toMatchObject({ reason: 'disable', expected_revision: 3 });
+ });
  it('preserves a caller-supplied query revision in both transports', () => {
   const request = { ...config('/channel', 'put', { id: 7, reason: 'reviewed' }), params: { expected_revision: 2 } };
   const result = prepareManagedWrite(request, snapshot, client());

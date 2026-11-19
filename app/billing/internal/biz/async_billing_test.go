@@ -428,6 +428,47 @@ func (s *memorySettlementTaskStore) MarkFailed(context.Context, string, string, 
 	return nil
 }
 
+type waitingSettlementStore struct {
+	memorySettlementTaskStore
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *waitingSettlementStore) ListPending(ctx context.Context, _ int) ([]*SettleTask, error) {
+	s.started <- struct{}{}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-s.release:
+		return nil, nil
+	}
+}
+
+func TestAsyncBillingCloseCancelsRecoveryScan(t *testing.T) {
+	uc := NewAsyncBillingUsecase(nil, nil, 1, 1, time.Hour)
+	store := &waitingSettlementStore{started: make(chan struct{}, 1), release: make(chan struct{})}
+	uc.SetTaskStore(store)
+	t.Cleanup(func() {
+		close(store.release)
+		_ = uc.Close()
+	})
+	select {
+	case <-store.started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("settlement recovery did not start")
+	}
+	closed := make(chan error, 1)
+	go func() { closed <- uc.Close() }()
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("close is blocked by an in-flight recovery scan")
+	}
+}
+
 func TestAsyncBillingPersistsAcceptedSettlementBeforeQueueing(t *testing.T) {
 	uc := NewAsyncBillingUsecase(nil, nil, 1, 1, time.Hour)
 	defer func() { _ = uc.Close() }()

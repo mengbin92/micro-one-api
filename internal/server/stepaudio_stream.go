@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	billingv1 "micro-one-api/api/billing/v1"
 	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
 	"micro-one-api/pkg/jsonx"
@@ -39,7 +40,7 @@ func stepAudioSpeechSuccess(resp *relayprovider.RawResponse) bool {
 	return kind == "application/json" && jsonx.Unmarshal(resp.Body, &response) == nil && strings.HasPrefix(response.Data.URL, "https://")
 }
 
-func (s *HTTPServer) forwardStepAudioSSE(ctx context.Context, w http.ResponseWriter, provider relayprovider.Provider, req *relayprovider.RawRequest, terminal, reservationID string, log usageLogInput, started time.Time) (bool, error) {
+func (s *HTTPServer) forwardStepAudioSSE(ctx context.Context, w http.ResponseWriter, provider relayprovider.Provider, req *relayprovider.RawRequest, terminal string, reservation *billingv1.ReserveQuotaResponse, log usageLogInput, started time.Time) (bool, error) {
 	resp, err := provider.ForwardStream(ctx, req)
 	if err != nil {
 		return false, err
@@ -47,7 +48,7 @@ func (s *HTTPServer) forwardStepAudioSSE(ctx context.Context, w http.ResponseWri
 	defer resp.Body.Close()
 	contentType, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 	if err != nil || contentType != "text/event-stream" {
-		return false, fmt.Errorf("upstream audio stream is not SSE")
+		return false, relaybiz.MarkUnverifiedResponseError(fmt.Errorf("upstream audio stream is not SSE"))
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -56,51 +57,75 @@ func (s *HTTPServer) forwardStepAudioSSE(ctx context.Context, w http.ResponseWri
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
 
+	log.applyReservation(reservation)
+	releaseReason := "audio stream ended without completion"
+	defer func() {
+		if releaseReason != "" {
+			_ = s.releaseQuota(ctx, reservation.ReservationId, releaseReason)
+		}
+	}()
+
+	const maxEventBytes = 2 << 20
 	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 4096), 2<<20)
+	scanner.Buffer(make([]byte, 4096), maxEventBytes)
 	controller := http.NewResponseController(w)
+	var frame, data bytes.Buffer
 	for scanner.Scan() {
 		line := scanner.Bytes()
-		data, ok := bytes.CutPrefix(line, []byte("data:"))
-		if ok {
-			var event struct {
-				Type string `json:"type"`
+		if frame.Len()+len(line)+1 > maxEventBytes {
+			return true, relaybiz.MarkUnverifiedResponseError(fmt.Errorf("upstream audio SSE event exceeds %d bytes", maxEventBytes))
+		}
+		frame.Write(line)
+		frame.WriteByte('\n')
+		if len(line) != 0 {
+			if value, ok := bytes.CutPrefix(line, []byte("data:")); ok {
+				data.Write(bytes.TrimPrefix(value, []byte(" ")))
+				data.WriteByte('\n')
 			}
-			data = bytes.TrimSpace(data)
-			if jsonx.Unmarshal(data, &event) == nil {
-				switch event.Type {
-				case terminal:
-					u := extractRawUsage(data, 0)
-					log.Quota, log.PromptTokens, log.CompletionTokens = u.TotalTokens, u.PromptTokens, u.CompletionTokens
-					log.ElapsedTime = time.Since(started).Milliseconds()
-					if err := s.commitQuota(ctx, reservationID, u.TotalTokens, true, log); err != nil {
-						return true, relaybiz.MarkPostForwardError(err)
-					}
-					s.ingestUsageLog(ctx, log)
-					if _, err := fmt.Fprintf(w, "%s\n\n", line); err != nil {
-						return true, relaybiz.MarkPostForwardError(err)
-					}
-					if terminal == "speech.audio.done" {
-						_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
-					}
-					_ = controller.Flush()
-					return true, nil
-				case "error", "speech.audio.error":
-					_ = s.releaseQuota(ctx, reservationID, "upstream audio stream failed")
-					_, _ = fmt.Fprintf(w, "%s\n\n", line)
-					_ = controller.Flush()
-					return true, relaybiz.MarkPostForwardError(fmt.Errorf("upstream audio stream failed"))
-				}
+			continue
+		}
+
+		var event struct {
+			Type string `json:"type"`
+		}
+		payload := bytes.TrimSpace(data.Bytes())
+		if bytes.Equal(payload, []byte("[DONE]")) {
+			break
+		}
+		if jsonx.Unmarshal(payload, &event) == nil && event.Type == terminal {
+			// A complete upstream terminal proves metered work. If commit is
+			// uncertain, leave recovery to Billing rather than releasing it.
+			releaseReason = ""
+			u := extractRawUsage(payload, 0)
+			log.Quota, log.PromptTokens, log.CompletionTokens = u.TotalTokens, u.PromptTokens, u.CompletionTokens
+			log.ElapsedTime = time.Since(started).Milliseconds()
+			if err := s.commitQuota(ctx, reservation.ReservationId, u.TotalTokens, true, log); err != nil {
+				return true, relaybiz.MarkPostForwardError(err)
+			}
+			s.ingestUsageLogAfterResponse(log, ctx)
+			if terminal == "speech.audio.done" {
+				frame.WriteString("data: [DONE]\n\n")
 			}
 		}
-		if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
-			_ = s.releaseQuota(ctx, reservationID, "audio response canceled")
-			return true, relaybiz.MarkPostForwardError(err)
+		_, writeErr := w.Write(frame.Bytes())
+		if writeErr == nil {
+			writeErr = controller.Flush()
 		}
-		if len(line) == 0 {
-			_ = controller.Flush()
+		switch {
+		case releaseReason == "":
+			return true, relaybiz.MarkPostForwardError(writeErr)
+		case event.Type == "error" || event.Type == "speech.audio.error":
+			releaseReason = "upstream audio stream failed"
+			return true, relaybiz.MarkUnverifiedResponseError(fmt.Errorf("upstream audio stream failed"))
+		case writeErr != nil:
+			releaseReason = "audio response canceled"
+			return true, relaybiz.MarkUnverifiedResponseError(writeErr)
 		}
+		frame.Reset()
+		data.Reset()
 	}
-	_ = s.releaseQuota(ctx, reservationID, "audio stream ended without completion")
-	return true, relaybiz.MarkPostForwardError(fmt.Errorf("audio stream ended without completion"))
+	if err := scanner.Err(); err != nil {
+		return true, relaybiz.MarkUnverifiedResponseError(fmt.Errorf("read upstream audio stream: %w", err))
+	}
+	return true, relaybiz.MarkUnverifiedResponseError(fmt.Errorf("audio stream ended without completion"))
 }

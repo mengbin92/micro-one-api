@@ -5,8 +5,43 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"micro-one-api/app/identity/internal/biz"
 )
+
+func TestMemoryTokenIDsAreNotReusedAfterDelete(t *testing.T) {
+	ctx := context.Background()
+	repo := newMemoryRepository()
+	first := &biz.Token{Key: "first", Name: "first", UserID: 1}
+	second := &biz.Token{Key: "second", Name: "second", UserID: 1}
+	require.NoError(t, repo.CreateToken(ctx, first))
+	require.NoError(t, repo.CreateToken(ctx, second))
+	require.NoError(t, repo.DeleteToken(ctx, 1, first.ID))
+	third := &biz.Token{Key: "third", Name: "third", UserID: 1}
+	require.NoError(t, repo.CreateToken(ctx, third))
+	require.Greater(t, third.ID, second.ID)
+	got, err := repo.FindTokenByID(ctx, 1, second.ID)
+	require.NoError(t, err)
+	require.Equal(t, "second", got.Name)
+}
+
+func TestMemoryUserAndTokenPagination(t *testing.T) {
+	ctx := context.Background()
+	repo := newMemoryRepository()
+	repo.usersByID[1] = &biz.User{ID: 1}
+	repo.usersByID[2] = &biz.User{ID: 2}
+	users, total, err := repo.ListUsers(ctx, 2, 1, "", "", 0)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, total)
+	require.Len(t, users, 1)
+	require.EqualValues(t, 1, users[0].ID)
+
+	require.NoError(t, repo.CreateToken(ctx, &biz.Token{Key: "first", Name: "first", UserID: 1}))
+	tokens, total, err := repo.ListTokens(ctx, 1, 1+(1<<30), 4, "")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Empty(t, tokens)
+}
 
 func TestNewRepositoryFromEnvRequiresDSNUnlessMemoryModeEnabled(t *testing.T) {
 	t.Setenv("IDENTITY_SQL_DSN", "")
@@ -345,10 +380,11 @@ func TestCreateToken_Success(t *testing.T) {
 
 func TestCreateToken_IDAssigned(t *testing.T) {
 	repo := newTestRepo()
-	repo.tokensByHash[biz.HashTokenKey("k1")] = &biz.Token{ID: 1, Key: "k1"}
+	ctx := context.Background()
+	require.NoError(t, repo.CreateToken(ctx, &biz.Token{Key: "k1"}))
 
 	token := &biz.Token{Key: "k2", UserID: 1, Status: biz.TokenStatusEnabled}
-	repo.CreateToken(context.Background(), token)
+	require.NoError(t, repo.CreateToken(ctx, token))
 	if token.ID != 2 {
 		t.Fatalf("expected ID=2, got: %d", token.ID)
 	}

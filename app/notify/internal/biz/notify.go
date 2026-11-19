@@ -62,7 +62,7 @@ type NotifyRepo interface {
 // the same time. Repositories that do not implement it retain the old
 // single-worker behavior for tests and in-memory deployments.
 type NotificationClaimer interface {
-	ClaimPending(ctx context.Context, limit int32, maxRetry int) ([]*Notification, error)
+	ClaimPending(ctx context.Context, n *Notification, maxRetry int) (bool, error)
 	RecoverProcessing(ctx context.Context) error
 }
 
@@ -163,10 +163,14 @@ func (uc *NotifyUsecase) ListPending(ctx context.Context, limit int32, maxRetry 
 	if maxRetry < 1 {
 		maxRetry = 3
 	}
-	if claimer, ok := uc.repo.(NotificationClaimer); ok {
-		return claimer.ClaimPending(ctx, limit, maxRetry)
-	}
 	return uc.repo.ListPending(ctx, limit, maxRetry)
+}
+
+func (uc *NotifyUsecase) ClaimPending(ctx context.Context, n *Notification, maxRetry int) (bool, error) {
+	if claimer, ok := uc.repo.(NotificationClaimer); ok {
+		return claimer.ClaimPending(ctx, n, maxRetry)
+	}
+	return true, nil
 }
 
 func (uc *NotifyUsecase) RecoverProcessing(ctx context.Context) error {

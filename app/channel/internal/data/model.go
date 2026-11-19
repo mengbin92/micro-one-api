@@ -413,7 +413,10 @@ func (r *Repository) listModelsDB(ctx context.Context, page, pageSize int32, fil
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	offset := (page - 1) * pageSize
+	offset := pageOffset(page, pageSize)
+	if offset >= total {
+		return []*biz.Model{}, total, nil
+	}
 	var pos []modelModel
 	if err := query.Order("id DESC").Offset(int(offset)).Limit(int(pageSize)).Find(&pos).Error; err != nil {
 		return nil, 0, err
@@ -1118,7 +1121,10 @@ func (r *Repository) ListModelUsageStats(ctx context.Context, modelPK int64, sta
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	offset := (page - 1) * pageSize
+	offset := pageOffset(page, pageSize)
+	if offset >= total {
+		return []*biz.ModelUsageStat{}, total, nil
+	}
 	var pos []modelUsageStatModel
 	if err := query.Order("date DESC, id DESC").Offset(int(offset)).Limit(int(pageSize)).Find(&pos).Error; err != nil {
 		return nil, 0, err
@@ -1215,8 +1221,11 @@ func (r *Repository) ListModelHealth(ctx context.Context, page, pageSize int32, 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
+	offset := pageOffset(page, pageSize)
+	if offset >= total {
+		return []*biz.ModelHealthState{}, total, nil
+	}
 	var rows []modelHealthStateModel
-	offset := (page - 1) * pageSize
 	if err := query.Order("last_checked_at DESC, id DESC").Offset(int(offset)).Limit(int(pageSize)).Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
@@ -1392,13 +1401,8 @@ func (r *Repository) listModelsMemory(page, pageSize int32, filter biz.ListModel
 			filtered = append(filtered, cloned)
 		}
 	}
-	total := int64(len(filtered))
-	start := int((page - 1) * pageSize)
-	if start >= len(filtered) {
-		return []*biz.Model{}, total, nil
-	}
-	end := min(start+int(pageSize), len(filtered))
-	return filtered[start:end], total, nil
+	sort.Slice(filtered, func(i, j int) bool { return filtered[i].ID > filtered[j].ID })
+	return pageRows(filtered, page, pageSize), int64(len(filtered)), nil
 }
 
 func (r *Repository) getModelMemory(modelPK int64) (*biz.Model, error) {
@@ -1810,13 +1814,7 @@ func (r *Repository) listModelUsageStatsMemory(modelPK int64, startDate, endDate
 		}
 		return filtered[i].ID > filtered[j].ID
 	})
-	total := int64(len(filtered))
-	start := int((page - 1) * pageSize)
-	if start >= len(filtered) {
-		return []*biz.ModelUsageStat{}, total, nil
-	}
-	end := min(start+int(pageSize), len(filtered))
-	return filtered[start:end], total, nil
+	return pageRows(filtered, page, pageSize), int64(len(filtered)), nil
 }
 
 func (r *Repository) recordModelHealthMemory(outcome *biz.ModelHealthOutcome) error {
@@ -1868,13 +1866,7 @@ func (r *Repository) listModelHealthMemory(page, pageSize int32, filter biz.List
 		}
 		return result[i].ID > result[j].ID
 	})
-	total := int64(len(result))
-	start := int((page - 1) * pageSize)
-	if start >= len(result) {
-		return []*biz.ModelHealthState{}, total, nil
-	}
-	end := min(start+int(pageSize), len(result))
-	return result[start:end], total, nil
+	return pageRows(result, page, pageSize), int64(len(result)), nil
 }
 
 // ── Memory helpers ─────────────────────────────────────────────────────────

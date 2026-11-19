@@ -26,6 +26,7 @@ import (
 	relaybiz "micro-one-api/internal/biz"
 	servererrors "micro-one-api/pkg/errors"
 	applogger "micro-one-api/platform/logging"
+	appws "micro-one-api/platform/websocket"
 )
 
 // OpenAI Responses WebSocket protocol constants. The OpenAI-Beta header value
@@ -81,6 +82,23 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 	defer func() {
 		_ = wsConn.CloseNow()
 	}()
+	requestID := generateRequestID()
+	var tracked *appws.Connection
+	if s.wsConnTracker != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		defer cancel()
+		tracked = s.wsConnTracker.NewConnection(requestID, func() error {
+			cancel()
+			return wsConn.CloseNow()
+		})
+		if tracked == nil {
+			closeOpenAIWSClientConn(wsConn, coderws.StatusTryAgainLater, "server is draining websocket connections")
+			return
+		}
+		tracked.SetMetadata("endpoint", "/v1/responses")
+		defer tracked.Unregister()
+	}
 	wsConn.SetReadLimit(openAIWSClientReadLimitBytes)
 
 	clientFrameConn := &coderWSFrameConn{conn: wsConn}
@@ -125,7 +143,6 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 	// is JSON-rewritten with the resolved upstream model before dialing.
 	//
 	var plan *relaybiz.RelayPlan
-	requestID := generateRequestID()
 	// Keep the WS selection event and every reservation attempt under the same
 	// durable root. Stored/session routes may bypass RelayUsecase.Plan, so the
 	// context remains the fallback correlation source for those paths.
@@ -156,6 +173,10 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 		if s.wsScheduler != nil {
 			s.wsScheduler.BindSession(ctx, plan, sessionHash)
 		}
+	}
+	if tracked != nil {
+		tracked.SetMetadata("model", clientModel)
+		tracked.SetMetadata("user_id", fmt.Sprintf("%d", plan.Auth.UserID))
 	}
 	execution := responsesWSExecutionOutcome{resultLabel: "error", finalChannel: plan.Channel}
 	defer func() {
@@ -207,36 +228,6 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 	// relay error before any data reached the client) we switch to a different
 	// channel and retry, up to the configured switch limit.
 	maxSwitches := s.openAIWSFailoverMaxSwitches()
-
-	// Register the client connection with the graceful-drain tracker (Phase
-	// 3.3). DrainWSConnections, called from a BeforeStop hook on shutdown,
-	// waits for tracked relays to complete (or force-closes them after the
-	// drain timeout). The close func delegates to wsConn.CloseNow so the
-	// tracker never touches coderws internals directly. Unregister happens
-	// automatically when the connection closes; here we also defer an explicit
-	// Unregister so a relay that returns without the close func firing (e.g.
-	// context cancel) is removed from the active set.
-	if s.wsConnTracker != nil {
-		tracked := s.wsConnTracker.NewConnection(requestID, func() error {
-			return wsConn.CloseNow()
-		})
-		if tracked == nil {
-			// NewConnection returns nil when the tracker is already draining or
-			// its capacity is exhausted. The connection is then invisible to the
-			// drain logic, so DrainWSConnections will not wait for or force-close
-			// it — the process exit will cut it off. Surface it as a warning so
-			// an operator knows the drain window excluded an active relay.
-			applogger.Log.Warn("openai ws connection not tracked; drain will not wait for it",
-				zap.String("request_id", requestID),
-				zap.String("model", clientModel),
-			)
-		} else {
-			tracked.SetMetadata("endpoint", "/v1/responses")
-			tracked.SetMetadata("model", clientModel)
-			tracked.SetMetadata("user_id", fmt.Sprintf("%d", plan.Auth.UserID))
-			defer tracked.Unregister()
-		}
-	}
 
 	timings.Identity(plan.Auth.UserID, requestID)
 	execution = s.runResponsesWSRelayWithFailover(ctx, wsConn, clientFrameConn, r, clientModel, sessionHash, plan, firstMessage, reservation, requestID, maxSwitches)

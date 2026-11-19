@@ -242,17 +242,24 @@ func (r *reconciliationRepo) ListActiveSubscriptions(ctx context.Context) ([]*bi
 	return out, nil
 }
 
-func (r *reconciliationRepo) SumSubscriptionCostSince(ctx context.Context, subscriptionID int64, since time.Time) (int64, error) {
-	var total int64
+func (r *reconciliationRepo) SumSubscriptionWindowCosts(ctx context.Context, subscriptionID, quotaPolicyID int64, window string, start int64) (biz.SubscriptionWindowCosts, error) {
+	var costs biz.SubscriptionWindowCosts
+	// A late commit can land in the current window. Evidence from another policy does not say whether its usage still applies.
 	err := r.data.db.WithContext(ctx).
 		Table("billing_ledgers AS l").
 		Joins("JOIN billing_reservations r ON r.reservation_id = l.reference_id").
+		Joins("LEFT JOIN subscription_window_charges w ON w.reservation_id = r.reservation_id").
 		Where("r.subscription_id = ?", subscriptionID).
 		Where("l.type = ? AND l.cost_source = ?", biz.LedgerTypeConsume, biz.CostSourceSubscription).
-		Where("l.created_at >= ?", since).
-		Select("COALESCE(SUM(l.subscription_cost), 0)").
-		Scan(&total).Error
-	return total, err
+		Where("(w.reservation_id IS NULL AND l.created_at >= ?) OR w.created_at >= ?", time.Unix(start, 0).UTC(), start).
+		Select(`COALESCE(SUM(l.subscription_cost), 0) AS ledger_cost,
+			COALESCE(SUM(CASE WHEN w.reservation_id IS NULL THEN l.subscription_cost ELSE 0 END), 0) AS legacy_cost,
+			COALESCE(SUM(CASE WHEN w.quota_policy_id = ? AND
+				(CASE ? WHEN 'daily' THEN w.daily_window_start WHEN 'weekly' THEN w.weekly_window_start WHEN 'monthly' THEN w.monthly_window_start END) BETWEEN 1 AND ?
+				THEN w.accounting_usd ELSE 0 END), 0) AS frozen_accounting_usd,
+			COALESCE(MAX(CASE WHEN w.quota_policy_id <> ? THEN 1 ELSE 0 END), 0) AS unresolved_policy`, quotaPolicyID, window, start, quotaPolicyID).
+		Scan(&costs).Error
+	return costs, err
 }
 
 func (r *reconciliationRepo) SumPendingReceivables(ctx context.Context) (int64, error) {

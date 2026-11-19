@@ -95,11 +95,9 @@ func (m *mockReconRepo) ListActiveSubscriptions(ctx context.Context) ([]*Subscri
 	return m.activeSubscriptions, nil
 }
 
-func (m *mockReconRepo) SumSubscriptionCostSince(ctx context.Context, subscriptionID int64, since time.Time) (int64, error) {
-	if windows := m.subscriptionCosts[subscriptionID]; windows != nil {
-		return windows[since.Unix()], nil
-	}
-	return 0, nil
+func (m *mockReconRepo) SumSubscriptionWindowCosts(_ context.Context, subscriptionID, _ int64, _ string, start int64) (SubscriptionWindowCosts, error) {
+	cost := m.subscriptionCosts[subscriptionID][start]
+	return SubscriptionWindowCosts{LedgerCost: cost, LegacyCost: cost}, nil
 }
 
 func (m *mockReconRepo) SumPendingReceivables(ctx context.Context) (int64, error) {

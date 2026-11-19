@@ -1,6 +1,7 @@
 package biz
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -143,7 +144,7 @@ func validateModelsProbeResponse(resp *relayprovider.RawResponse) error {
 		return fmt.Errorf("invalid models response: %w", err)
 	}
 	raw := payload.Data
-	if len(raw) == 0 {
+	if len(raw) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		raw = payload.Models
 	}
 	if len(raw) == 0 {
@@ -152,6 +153,9 @@ func validateModelsProbeResponse(resp *relayprovider.RawResponse) error {
 	var models []jsonx.RawMessage
 	if err := jsonx.Unmarshal(raw, &models); err != nil {
 		return fmt.Errorf("invalid models response: model list: %w", err)
+	}
+	if models == nil {
+		return fmt.Errorf("invalid models response: missing data or models list")
 	}
 	return nil
 }

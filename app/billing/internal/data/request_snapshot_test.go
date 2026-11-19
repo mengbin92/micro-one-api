@@ -161,6 +161,12 @@ func TestRequestSnapshotFrozenSubscription(t *testing.T) {
 			var charge struct{ AccountingUSD float64 }
 			require.NoError(t, db.Table("subscription_window_charges").Where("reservation_id = ?", first.ReservationID).Take(&charge).Error)
 			require.InDelta(t, 0.2, charge.AccountingUSD, 1e-12)
+			reconciliation := biz.NewReconciliationUsecase(d.accountRepo, d.reservationRepo, NewReconciliationRepo(d), nil)
+			result, err := reconciliation.RunReconciliation(ctx)
+			require.NoError(t, err)
+			require.Equal(t, "completed", result.Status, result.ErrorMessage)
+			require.Equal(t, 1, result.TotalSubscriptions)
+			require.Empty(t, result.SubscriptionInconsistencies)
 			account, err := d.accountRepo.GetAccountSnapshot(ctx, "7001")
 			require.NoError(t, err)
 			require.EqualValues(t, 1000000, account.Balance)
@@ -229,6 +235,16 @@ func TestRequestSnapshotOriginalSubscriptionWindows(t *testing.T) {
 				require.Equal(t, r.SubscriptionID, charge.SubscriptionID)
 				require.Equal(t, r.SubscriptionDailyWindowStart, charge.DailyWindowStart)
 				require.InDelta(t, 0.2, charge.AccountingUSD, 1e-12)
+				reconciliation := biz.NewReconciliationUsecase(d.accountRepo, d.reservationRepo, NewReconciliationRepo(d), nil)
+				result, err := reconciliation.RunReconciliation(ctx)
+				require.NoError(t, err)
+				if change == "replace_policy" {
+					require.Equal(t, "partial", result.Status)
+					require.Contains(t, result.ErrorMessage, "charges from another quota policy")
+				} else {
+					require.Equal(t, "completed", result.Status, result.ErrorMessage)
+				}
+				require.Empty(t, result.SubscriptionInconsistencies)
 				if replacement != nil {
 					fresh, err := repo.GetSubscriptionByID(ctx, replacement.ID)
 					require.NoError(t, err)

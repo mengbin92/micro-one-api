@@ -157,6 +157,30 @@ func TestWSDrain_HTTPServerDrainClosesTrackedConn(t *testing.T) {
 	}
 }
 
-// Ensure the coderws import is used in the drain-rejects-upgrade test path
-// (it builds the request the forwarder would see).
-var _ = coderws.MessageText
+func TestWSDrain_TracksUpgradeBeforeFirstFrame(t *testing.T) {
+	s := &HTTPServer{}
+	s.SetOpenAIWSDrainConfig(&appws.DrainConfig{
+		DrainTimeout: 20 * time.Millisecond, CloseTimeout: time.Second, MaxConcurrentClose: 1,
+	})
+	h := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.handleResponsesWebSocket(r.Context(), w, r)
+	}))
+	defer h.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	conn, _, err := coderws.Dial(ctx, "ws"+h.URL[len("http"):], nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	waitFor(t, 250*time.Millisecond, func() bool { return s.wsConnTracker.ActiveCount() == 1 })
+	if got := s.wsConnTracker.ActiveCount(); got != 1 {
+		t.Fatalf("tracked connections before first frame = %d, want 1", got)
+	}
+	if err := s.DrainWSConnections(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.Read(ctx); err == nil || ctx.Err() != nil {
+		t.Fatalf("expected drain to close the idle WebSocket, read error = %v", err)
+	}
+}

@@ -2,11 +2,118 @@ package data
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"micro-one-api/app/notify/internal/biz"
+	dbtest "micro-one-api/platform/database/testutil"
 )
+
+type notificationSenderFunc func(context.Context, *biz.Notification) error
+
+func (f notificationSenderFunc) Send(ctx context.Context, n *biz.Notification) error {
+	return f(ctx, n)
+}
+
+func TestDispatcherRecoversExpiredLeaseBeforeEachPoll(t *testing.T) {
+	ctx := t.Context()
+	repo := &Repository{db: dbtest.RoutingContextDB(t, "sqlite")}
+	n := &biz.Notification{Type: biz.NotifyTypeEvent, Status: biz.NotifyStatusPending, CreatedAt: time.Now()}
+	require.NoError(t, repo.Create(ctx, n))
+	require.NoError(t, repo.db.Model(&notificationModel{}).Where("id = ?", n.ID).Updates(map[string]any{
+		"status": biz.NotifyStatusProcessing, "processing_at": time.Now().Add(-processingLease - time.Minute).Unix(),
+	}).Error)
+	sent := 0
+	dispatcher := biz.NewDispatcher(biz.NewNotifyUsecase(repo), notificationSenderFunc(func(_ context.Context, item *biz.Notification) error {
+		require.Equal(t, n.ID, item.ID)
+		sent++
+		return nil
+	}), time.Second, 20, 3)
+	require.NoError(t, dispatcher.DispatchOnce(ctx))
+	require.Equal(t, 1, sent)
+	stored, err := repo.Get(ctx, n.ID)
+	require.NoError(t, err)
+	require.Equal(t, biz.NotifyStatusSent, stored.Status)
+}
+
+func TestDispatcherClaimsOnlyTheNotificationItIsSending(t *testing.T) {
+	ctx := t.Context()
+	repo := &Repository{db: dbtest.RoutingContextDB(t, "sqlite")}
+	first := &biz.Notification{Type: biz.NotifyTypeEvent, Status: biz.NotifyStatusPending, CreatedAt: time.Now()}
+	second := *first
+	require.NoError(t, repo.Create(ctx, first))
+	require.NoError(t, repo.Create(ctx, &second))
+	dispatcher := biz.NewDispatcher(biz.NewNotifyUsecase(repo), notificationSenderFunc(func(ctx context.Context, item *biz.Notification) error {
+		stored, err := repo.Get(ctx, item.ID)
+		require.NoError(t, err)
+		require.Equal(t, biz.NotifyStatusProcessing, stored.Status)
+		require.Equal(t, stored.ProcessingAt, item.ProcessingAt)
+		if item.ID == first.ID {
+			waiting, err := repo.Get(ctx, second.ID)
+			require.NoError(t, err)
+			require.Equal(t, biz.NotifyStatusPending, waiting.Status)
+		}
+		return nil
+	}), time.Second, 20, 3)
+	require.NoError(t, dispatcher.DispatchOnce(ctx))
+	for _, id := range []int64{first.ID, second.ID} {
+		stored, err := repo.Get(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, biz.NotifyStatusSent, stored.Status)
+	}
+}
+
+func TestDispatcherPersistsAcknowledgedDeliveryOnShutdown(t *testing.T) {
+	repo := &Repository{db: dbtest.RoutingContextDB(t, "sqlite")}
+	n := &biz.Notification{Type: biz.NotifyTypeEvent, Status: biz.NotifyStatusPending, CreatedAt: time.Now()}
+	require.NoError(t, repo.Create(t.Context(), n))
+	sending := make(chan struct{})
+	dispatcher := biz.NewDispatcher(biz.NewNotifyUsecase(repo), notificationSenderFunc(func(ctx context.Context, _ *biz.Notification) error {
+		close(sending)
+		<-ctx.Done()
+		return nil
+	}), time.Second, 20, 3)
+	stop := dispatcher.Start(t.Context())
+	t.Cleanup(stop)
+	select {
+	case <-sending:
+	case <-time.After(time.Second):
+		t.Fatal("dispatcher did not start delivery")
+	}
+	stop()
+	stored, err := repo.Get(t.Context(), n.ID)
+	require.NoError(t, err)
+	require.Equal(t, biz.NotifyStatusSent, stored.Status)
+}
+
+func TestNotificationPaginationPreservesOrderAndLargeOffset(t *testing.T) {
+	for _, name := range []string{"memory", "sqlite"} {
+		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
+			repo := newMemoryRepository()
+			if name == "sqlite" {
+				repo = &Repository{db: dbtest.RoutingContextDB(t, name)}
+			}
+			first := &biz.Notification{Type: biz.NotifyTypeEvent, Status: biz.NotifyStatusPending, CreatedAt: time.Now()}
+			second := *first
+			require.NoError(t, repo.Create(ctx, first))
+			require.NoError(t, repo.Create(ctx, &second))
+			for i, want := range []int64{second.ID, first.ID} {
+				rows, total, err := repo.List(ctx, int32(i+1), 1, biz.NotifyTypeEvent, "")
+				require.NoError(t, err)
+				require.EqualValues(t, 2, total)
+				require.Len(t, rows, 1)
+				require.Equal(t, want, rows[0].ID)
+			}
+			rows, total, err := repo.List(ctx, math.MaxInt32, 100, biz.NotifyTypeEvent, "")
+			require.NoError(t, err)
+			require.EqualValues(t, 2, total)
+			require.Empty(t, rows)
+		})
+	}
+}
 
 func TestMemoryRepository_CreateAndGet(t *testing.T) {
 	repo := newMemoryRepository()
@@ -179,21 +286,24 @@ func TestMemoryRepository_ClaimAndCompleteProcessingLease(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	claimed, err := repo.ClaimPending(context.Background(), 20, 3)
-	if err != nil || len(claimed) != 1 {
-		t.Fatalf("ClaimPending() = %d, %v; want one claim", len(claimed), err)
-	}
-	if _, err := repo.ClaimPending(context.Background(), 20, 3); err != nil {
-		t.Fatal(err)
-	} else if got, _ := repo.Get(context.Background(), n.ID); got.Status != biz.NotifyStatusProcessing {
+	claimed, err := repo.Get(t.Context(), n.ID)
+	require.NoError(t, err)
+	other := *claimed
+	ok, err := repo.ClaimPending(t.Context(), claimed, 3)
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = repo.ClaimPending(t.Context(), &other, 3)
+	require.NoError(t, err)
+	require.False(t, ok)
+	if got, _ := repo.Get(context.Background(), n.ID); got.Status != biz.NotifyStatusProcessing {
 		t.Fatalf("second claim changed status to %q", got.Status)
 	}
 
-	stale := claimed[0].ProcessingAt.Add(-time.Second)
+	stale := claimed.ProcessingAt.Add(-time.Second)
 	if err := repo.CompleteProcessing(context.Background(), n.ID, stale, biz.NotifyStatusSent, 3, ""); err != biz.ErrNotificationLeaseLost {
 		t.Fatalf("stale completion error = %v, want ErrNotificationLeaseLost", err)
 	}
-	if err := repo.CompleteProcessing(context.Background(), n.ID, claimed[0].ProcessingAt, biz.NotifyStatusSent, 3, ""); err != nil {
+	if err := repo.CompleteProcessing(context.Background(), n.ID, claimed.ProcessingAt, biz.NotifyStatusSent, 3, ""); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := repo.Get(context.Background(), n.ID)

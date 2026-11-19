@@ -2,11 +2,13 @@ package events
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/metrics"
@@ -29,6 +31,7 @@ type StreamEventBus struct {
 	redis         *redis.Client
 	consumerID    string
 	consumerGroup string
+	ephemeral     bool
 	handlers      map[string][]Handler
 	handlersMu    sync.RWMutex
 	maxlen        int64
@@ -36,7 +39,7 @@ type StreamEventBus struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	wg            sync.WaitGroup
-	claimers      map[string]struct{}
+	started       map[string]struct{}
 	processingMu  sync.Mutex
 	processing    map[string]struct{}
 	closed        bool
@@ -56,9 +59,17 @@ func NewStreamEventBus(redisClient *redis.Client, consumerID string) *StreamEven
 		readTimeout:   5 * time.Second,
 		ctx:           ctx,
 		cancel:        cancel,
-		claimers:      make(map[string]struct{}),
+		started:       make(map[string]struct{}),
 		processing:    make(map[string]struct{}),
 	}
+}
+
+// NewEphemeralStreamEventBus gives a process-local subscriber an independent,
+// expiring group. Its handlers must be safe to replay after a lease lapses.
+func NewEphemeralStreamEventBus(redisClient *redis.Client, consumerID string) *StreamEventBus {
+	bus := NewStreamEventBus(redisClient, consumerID+"-"+uuid.NewString())
+	bus.ephemeral = true
+	return bus
 }
 
 // deriveConsumerGroup returns the per-service consumer group name. The consumerID
@@ -98,7 +109,7 @@ func (b *StreamEventBus) Publish(ctx context.Context, topic string, payload any)
 		return fmt.Errorf("publish event to stream %s: %w", topic, err)
 	}
 
-	if err := b.redis.Eval(ctx, trimAcknowledgedStreamScript, []string{topic}, b.maxlen).Err(); err != nil {
+	if err := b.redis.Eval(ctx, trimAcknowledgedStreamScript, streamLeaseKeys(topic), b.maxlen).Err(); err != nil {
 		metrics.EventStreamFailures.WithLabelValues(topic, "trim_error").Inc()
 	}
 	return nil
@@ -117,6 +128,10 @@ func (b *StreamEventBus) Subscribe(topic string, handler Handler) {
 	b.handlersMu.Lock()
 	b.handlers[topic] = append(b.handlers[topic], handler)
 	b.handlersMu.Unlock()
+	if _, exists := b.started[topic]; exists {
+		return
+	}
+	b.started[topic] = struct{}{}
 
 	// Ensure consumer group exists
 	if err := b.ensureGroup(b.ctx, topic); err != nil {
@@ -124,20 +139,37 @@ func (b *StreamEventBus) Subscribe(topic string, handler Handler) {
 		fmt.Printf("failed to ensure consumer group for %s: %v\n", topic, err)
 	}
 
-	// Start consume loop if not already running for this topic
-	b.wg.Add(1)
+	b.wg.Add(2)
 	go b.consumeLoop(topic)
-	if _, exists := b.claimers[topic]; !exists {
-		b.claimers[topic] = struct{}{}
-		b.wg.Add(1)
-		go b.claimLoop(topic)
+	go b.claimLoop(topic)
+	if b.ephemeral {
+		b.wg.Go(func() { b.renewGroupLease(topic) })
 	}
 }
 
 const (
 	pendingClaimInterval = 10 * time.Second
 	pendingClaimIdle     = 30 * time.Second
+	ephemeralGroupTTL    = time.Minute
 )
+
+func (b *StreamEventBus) renewGroupLease(topic string) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-b.ctx.Done():
+			return
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(b.ctx, 5*time.Second)
+			err := b.ensureGroup(ctx, topic)
+			cancel()
+			if err != nil && b.ctx.Err() == nil {
+				metrics.EventStreamFailures.WithLabelValues(topic, "lease_error").Inc()
+			}
+		}
+	}
+}
 
 // claimLoop reclaims messages whose consumer died before ACK. The idle
 // threshold is longer than the normal read timeout so a live slow handler is
@@ -188,9 +220,15 @@ func (b *StreamEventBus) consumeLoop(topic string) {
 				// No new messages, continue
 				continue
 			}
-			// Log error and continue
+			if redis.HasErrorPrefix(err, "NOGROUP") && b.ensureGroup(b.ctx, topic) == nil {
+				continue
+			}
 			fmt.Printf("error reading from stream %s: %v\n", topic, err)
-			time.Sleep(time.Second)
+			select {
+			case <-b.ctx.Done():
+				return
+			case <-time.After(time.Second):
+			}
 			continue
 		}
 
@@ -205,23 +243,12 @@ func (b *StreamEventBus) consumeLoop(topic string) {
 
 // processMessage processes a single message from a stream.
 func (b *StreamEventBus) processMessage(topic string, msg *redis.XMessage) {
-	ctx, cancel := context.WithTimeout(b.ctx, 30*time.Second)
-	defer cancel()
-	pending, err := b.redis.XPendingExt(ctx, &redis.XPendingExtArgs{Stream: topic, Group: b.consumerGroup, Start: msg.ID, End: msg.ID, Count: 1}).Result()
-	if err != nil {
-		metrics.EventStreamFailures.WithLabelValues(topic, "pending_error").Inc()
-		return
-	}
-	if len(pending) > 0 && pending[0].RetryCount > 10 {
-		if err := b.redis.Eval(ctx, deadLetterStreamScript, []string{topic, topic + ".dlq"}, b.consumerGroup, msg.ID, fmt.Sprint(msg.Values["payload"])).Err(); err != nil {
-			metrics.EventStreamFailures.WithLabelValues(topic, "dead_letter_error").Inc()
-		} else {
-			metrics.EventStreamFailures.WithLabelValues(topic, "dead_letter").Inc()
-		}
-		return
-	}
 	key := topic + ":" + msg.ID
 	b.processingMu.Lock()
+	if _, exists := b.processing[key]; exists {
+		b.processingMu.Unlock()
+		return
+	}
 	b.processing[key] = struct{}{}
 	b.processingMu.Unlock()
 	defer func() {
@@ -230,6 +257,24 @@ func (b *StreamEventBus) processMessage(topic string, msg *redis.XMessage) {
 		b.processingMu.Unlock()
 	}()
 
+	ctx, cancel := context.WithTimeout(b.ctx, 30*time.Second)
+	defer cancel()
+	pending, err := b.redis.XPendingExt(ctx, &redis.XPendingExtArgs{Stream: topic, Group: b.consumerGroup, Start: msg.ID, End: msg.ID, Count: 1}).Result()
+	if err != nil {
+		metrics.EventStreamFailures.WithLabelValues(topic, "pending_error").Inc()
+		return
+	}
+	if len(pending) == 0 {
+		return
+	}
+	if pending[0].RetryCount > 10 {
+		if err := b.redis.Eval(ctx, deadLetterStreamScript, []string{topic, topic + ".dlq"}, b.consumerGroup, msg.ID, fmt.Sprint(msg.Values["payload"])).Err(); err != nil {
+			metrics.EventStreamFailures.WithLabelValues(topic, "dead_letter_error").Inc()
+		} else {
+			metrics.EventStreamFailures.WithLabelValues(topic, "dead_letter").Inc()
+		}
+		return
+	}
 	// Extract payload
 	payloadData, ok := msg.Values["payload"].(string)
 	if !ok {
@@ -294,6 +339,9 @@ func invokeHandler(ctx context.Context, handler Handler, event Event) (err error
 // BUSYGROUP (group already exists) is treated as success, any other error is
 // returned.
 func (b *StreamEventBus) ensureGroup(ctx context.Context, stream string) error {
+	if b.ephemeral {
+		return b.redis.Eval(ctx, renewGroupLeaseScript, streamLeaseKeys(stream), b.consumerGroup, int64(ephemeralGroupTTL/time.Second)).Err()
+	}
 	// Try to create the consumer group with MKSTREAM so the stream is created on
 	// first use. Redis replies with BUSYGROUP when the group already exists.
 	createErr := b.redis.Do(ctx, "XGROUP", "CREATE", stream, b.consumerGroup, "0", "MKSTREAM").Err()
@@ -338,7 +386,18 @@ func (b *StreamEventBus) Close() error {
 	b.cancel()
 	b.wg.Wait()
 
-	return nil
+	if !b.ephemeral {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var closeErr error
+	for topic := range b.started {
+		if err := b.redis.Eval(ctx, destroyGroupLeaseScript, streamLeaseKeys(topic), b.consumerGroup).Err(); err != nil {
+			closeErr = errors.Join(closeErr, fmt.Errorf("destroy ephemeral group for %s: %w", topic, err))
+		}
+	}
+	return closeErr
 }
 
 // StreamStats holds statistics for a stream.
@@ -408,7 +467,6 @@ func (b *StreamEventBus) Stats(ctx context.Context) ([]*StreamStats, error) {
 // This must only be called for topics that have been Subscribe'd (and thus
 // have a consumer group).
 func (b *StreamEventBus) ClaimPending(ctx context.Context, topic string, minIdleTime time.Duration) (int, error) {
-	const batchSize = "100"
 	cursor := "0-0"
 	claimed := 0
 
@@ -425,29 +483,15 @@ func (b *StreamEventBus) ClaimPending(ctx context.Context, topic string, minIdle
 			return claimed, fmt.Errorf("xautoclaim on %s: %w", topic, err)
 		}
 
+		claimed += len(msgs)
 		for i := range msgs {
-			key := topic + ":" + msgs[i].ID
-			b.processingMu.Lock()
-			inFlight := false
-			if _, ok := b.processing[key]; ok {
-				inFlight = true
-			}
-			b.processingMu.Unlock()
-			if inFlight {
-				continue
-			}
 			b.processMessage(topic, &msgs[i])
-			claimed++
 		}
 
+		if next == "" || next == "0-0" || next == cursor {
+			break
+		}
 		cursor = next
-		if next == "" || next == "0-0" {
-			break
-		}
-		if len(msgs) == 0 {
-			break
-		}
-		_ = batchSize // batchSize kept for documentation; Count is hardcoded above
 	}
 
 	return claimed, nil
@@ -467,8 +511,35 @@ func (b *StreamEventBus) ReadLast(ctx context.Context, topic string, start, stop
 	return b.redis.XRevRange(ctx, topic, start, stop).Result()
 }
 
-// Preserve every group's unread and pending messages, even above maxlen.
+func streamLeaseKeys(topic string) []string {
+	return []string{topic, "event-stream:ephemeral-groups:" + topic}
+}
+
+const renewGroupLeaseScript = `
+local now=redis.call('TIME')
+redis.call('ZADD',KEYS[2],'+inf','enabled',tonumber(now[1])+tonumber(ARGV[2]),ARGV[1])
+local created=redis.pcall('XGROUP','CREATE',KEYS[1],ARGV[1],'0','MKSTREAM')
+if type(created)=='table' and created.err and not string.find(created.err,'BUSYGROUP',1,true) then return created end
+return 1
+`
+
+const destroyGroupLeaseScript = `
+if redis.call('ZSCORE',KEYS[2],ARGV[1]) and redis.call('EXISTS',KEYS[1])~=0 then
+ redis.call('XGROUP','DESTROY',KEYS[1],ARGV[1])
+end
+return redis.call('ZREM',KEYS[2],ARGV[1])
+`
+
+// Preserve unread and pending messages for each group with a live subscriber or durable history.
 const trimAcknowledgedStreamScript = `
+local ephemeral=redis.call('ZSCORE',KEYS[2],'enabled')
+if ephemeral and redis.call('EXISTS',KEYS[1])~=0 then
+ local now=redis.call('TIME')
+ for _,group in ipairs(redis.call('ZRANGEBYSCORE',KEYS[2],'-inf',now[1],'LIMIT',0,100)) do
+  redis.call('XGROUP','DESTROY',KEYS[1],group)
+  redis.call('ZREM',KEYS[2],group)
+ end
+end
 if redis.call('XLEN',KEYS[1]) <= tonumber(ARGV[1]) then return 0 end
 local groups=redis.call('XINFO','GROUPS',KEYS[1])
 local floor=nil
@@ -488,6 +559,7 @@ for _,group in ipairs(groups) do
  if not floor or earlier(delivered,floor) then floor=delivered end
 end
 if floor then return redis.call('XTRIM',KEYS[1],'MINID',floor) end
+if ephemeral then return redis.call('XTRIM',KEYS[1],'MAXLEN',ARGV[1]) end
 return 0
 `
 const deadLetterStreamScript = `

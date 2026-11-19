@@ -33,7 +33,6 @@ type ConnectionTracker struct {
 	draining      atomic.Bool
 	stopCh        chan struct{}
 	stopCloseOnce sync.Once
-	wg            sync.WaitGroup
 	config        *DrainConfig
 	metrics       *drainMetrics
 }
@@ -89,12 +88,13 @@ type Connection struct {
 	tracker    *ConnectionTracker
 	closeFunc  func() error
 	closeOnce  sync.Once
+	forced     atomic.Bool
 	createdAt  time.Time
 	metadataMu sync.RWMutex
 	metadata   map[string]string
 }
 
-// NewConnection creates a new tracked connection.
+// NewConnection creates a tracked connection or returns nil once draining starts.
 func (ct *ConnectionTracker) NewConnection(id string, closeFunc func() error) *Connection {
 	c := &Connection{
 		id:        id,
@@ -106,11 +106,13 @@ func (ct *ConnectionTracker) NewConnection(id string, closeFunc func() error) *C
 	c.state.Store(int32(StateActive))
 
 	ct.mu.Lock()
+	if ct.draining.Load() {
+		ct.mu.Unlock()
+		return nil
+	}
 	ct.connections[c] = true
-	ct.connections[c] = true // Track the connection
-	ct.mu.Unlock()
-
 	ct.metrics.totalConnections.Add(1)
+	ct.mu.Unlock()
 
 	applogger.Log.Debug("WebSocket connection registered",
 		zap.String("connection_id", id),
@@ -122,8 +124,22 @@ func (ct *ConnectionTracker) NewConnection(id string, closeFunc func() error) *C
 
 // Unregister removes the connection from tracking.
 func (c *Connection) Unregister() {
+	c.unregister(true)
+}
+
+func (c *Connection) unregister(closed bool) {
 	c.tracker.mu.Lock()
-	delete(c.tracker.connections, c)
+	if c.tracker.connections[c] {
+		delete(c.tracker.connections, c)
+		c.SetState(StateClosed)
+		if closed {
+			if c.forced.Load() {
+				c.tracker.metrics.closedByForce.Add(1)
+			} else {
+				c.tracker.metrics.closedGracefully.Add(1)
+			}
+		}
+	}
 	c.tracker.mu.Unlock()
 
 	applogger.Log.Debug("WebSocket connection unregistered",
@@ -143,14 +159,15 @@ func (c *Connection) SetState(state ConnectionState) {
 
 // Close closes the connection gracefully.
 func (c *Connection) Close() error {
+	return c.close(false)
+}
+
+func (c *Connection) close(forced bool) error {
 	var err error
 	c.closeOnce.Do(func() {
+		c.forced.Store(forced)
 		err = c.closeFunc()
-		c.SetState(StateClosed)
-		if err == nil {
-			c.tracker.metrics.closedGracefully.Add(1)
-		}
-		c.Unregister()
+		c.unregister(err == nil)
 	})
 	return err
 }
@@ -187,7 +204,7 @@ func (c *Connection) IsActive() bool {
 //
 // The drain process:
 // 1. Sets draining flag (stops accepting new connections)
-// 2. Notifies all connections of impending close
+// 2. Marks all connections as draining
 // 3. Waits for connections to close naturally
 // 4. Force-closes remaining connections after timeout
 func (ct *ConnectionTracker) Drain(ctx context.Context) error {
@@ -196,71 +213,35 @@ func (ct *ConnectionTracker) Drain(ctx context.Context) error {
 	}
 
 	ct.metrics.drainStartTime.Store(time.Now().Unix())
-	defer ct.metrics.drainCompleteTime.Store(time.Now().Unix())
+	defer func() { ct.metrics.drainCompleteTime.Store(time.Now().Unix()) }()
 
 	applogger.Log.Info("Starting WebSocket connection drain",
 		zap.Int64("connections", ct.metrics.totalConnections.Load()),
 	)
 
-	// Get all connections to drain
 	ct.mu.RLock()
-	conns := make([]*Connection, 0, len(ct.connections))
 	for conn := range ct.connections {
-		conns = append(conns, conn)
+		conn.state.CompareAndSwap(int32(StateActive), int32(StateDraining))
 	}
 	ct.mu.RUnlock()
-
-	// Set all connections to draining state
-	for _, conn := range conns {
-		conn.SetState(StateDraining)
-	}
 
 	// Wait for connections to close or timeout
 	drainCtx, cancel := context.WithTimeout(ctx, ct.config.DrainTimeout)
 	defer cancel()
 
-	// Start goroutine to monitor drain progress
-	doneCh := make(chan struct{})
-	go func() {
-		ct.waitForClose(doneCh)
-	}()
-
-	select {
-	case <-doneCh:
-		applogger.Log.Info("WebSocket drain completed gracefully",
-			zap.Int64("closed", ct.metrics.closedGracefully.Load()),
-		)
-		return nil
-	case <-drainCtx.Done():
-		// Timeout: force close remaining connections
-		return ct.forceCloseRemaining()
-	}
-}
-
-// waitForClose waits for all connections to close.
-func (ct *ConnectionTracker) waitForClose(doneCh chan<- struct{}) {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
-	defer close(doneCh)
-
-	for {
+	for ct.ActiveCount() > 0 {
 		select {
 		case <-ticker.C:
-			ct.mu.RLock()
-			remaining := len(ct.connections)
-			ct.mu.RUnlock()
-
-			if remaining == 0 {
-				return
-			}
-
-			applogger.Log.Debug("Waiting for connections to close",
-				zap.Int("remaining", remaining),
-			)
+		case <-drainCtx.Done():
+			return ct.forceCloseRemaining()
 		case <-ct.stopCh:
-			return
+			return nil
 		}
 	}
+	applogger.Log.Info("WebSocket drain completed gracefully", zap.Int64("closed", ct.metrics.closedGracefully.Load()))
+	return nil
 }
 
 // forceCloseRemaining forcefully closes any remaining connections.
@@ -276,25 +257,17 @@ func (ct *ConnectionTracker) forceCloseRemaining() error {
 		zap.Int("count", len(remaining)),
 	)
 
-	// Close remaining connections with concurrency limit
-	sem := make(chan struct{}, ct.config.MaxConcurrentClose)
+	var next atomic.Int64
 	var wg sync.WaitGroup
-
-	for _, conn := range remaining {
-		wg.Add(1)
-		go func(c *Connection) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			if err := c.Close(); err != nil {
-				applogger.Log.Warn("Failed to close connection",
-					zap.String("connection_id", c.id),
-					zap.Error(err),
-				)
-				ct.metrics.closedByForce.Add(1)
+	for range min(max(ct.config.MaxConcurrentClose, 1), len(remaining)) {
+		wg.Go(func() {
+			for i := next.Add(1) - 1; i < int64(len(remaining)); i = next.Add(1) - 1 {
+				conn := remaining[i]
+				if err := conn.close(true); err != nil {
+					applogger.Log.Warn("Failed to close connection", zap.String("connection_id", conn.id), zap.Error(err))
+				}
 			}
-		}(conn)
+		})
 	}
 
 	// Wait with timeout
@@ -315,11 +288,7 @@ func (ct *ConnectionTracker) forceCloseRemaining() error {
 	}
 }
 
-// Close releases the tracker's stop signal channel. It is idempotent and
-// safe to call multiple times. Closing stopCh lets waitForClose exit promptly
-// instead of relying solely on the connection map draining (platform-L8:
-// previously stopCh had no closer and waitForClose only exited once the map was
-// empty, which was incidental).
+// Close stops waiting for natural close. It is safe to call multiple times.
 func (ct *ConnectionTracker) Close() {
 	ct.stopCloseOnce.Do(func() { close(ct.stopCh) })
 }

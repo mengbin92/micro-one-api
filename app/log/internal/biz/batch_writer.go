@@ -125,9 +125,12 @@ func (w *BatchLogWriter) IngestLog(ctx context.Context, entry *LogEntry) error {
 		return w.repo.Create(ctx, entry)
 	}
 
+	// Only the batch owns IDs assigned by the asynchronous database write.
+	snapshot := *entry
+	snapshot.RequestTiming = entry.RequestTiming.Clone()
 	w.inflight.Add(1)
 	select {
-	case w.queue <- entry:
+	case w.queue <- &snapshot:
 		metrics.UsageLogIngestTotal.WithLabelValues("queued").Inc()
 		return nil
 	default:

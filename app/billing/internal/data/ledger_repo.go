@@ -205,7 +205,7 @@ func (r *ledgerRepo) ListLedgers(ctx context.Context, userID string, page, pageS
 	var models []ledgerModel
 	var total int64
 
-	offset := (page - 1) * pageSize
+	offset := max(int64(page)-1, 0) * int64(pageSize)
 
 	query := r.data.db.WithContext(ctx).Model(&ledgerModel{})
 	var queryScopeErr error
@@ -219,6 +219,9 @@ func (r *ledgerRepo) ListLedgers(ctx context.Context, userID string, page, pageS
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
+	}
+	if offset >= total {
+		return nil, total, nil
 	}
 
 	fetchQuery := r.data.db.WithContext(ctx).Model(&ledgerModel{}).
@@ -234,7 +237,7 @@ func (r *ledgerRepo) ListLedgers(ctx context.Context, userID string, page, pageS
 	}
 
 	if err := fetchQuery.
-		Order("billing_ledgers.created_at DESC").
+		Order("billing_ledgers.created_at DESC, billing_ledgers.id DESC").
 		Limit(int(pageSize)).
 		Offset(int(offset)).
 		Find(&models).Error; err != nil {
@@ -257,7 +260,7 @@ func (r *ledgerRepo) ListLedgersWithFilters(ctx context.Context, userID string, 
 }
 
 func (r *ledgerRepo) ListLedgersWithOptions(ctx context.Context, options biz.LedgerListOptions) ([]*biz.Ledger, int64, error) {
-	offset := max(int((options.Page-1)*options.PageSize), 0)
+	offset := max(int64(options.Page)-1, 0) * int64(options.PageSize)
 	query := r.data.db.WithContext(ctx).Model(&ledgerModel{})
 	var queryScopeErr error
 	query, queryScopeErr = authzquery.ApplyContext(ctx, query, authzquery.Columns{Resource: "billing_ledgers.user_id", User: "billing_ledgers.user_id", UserText: true}, "billing.account.ledger.read", "billing.report.export")
@@ -283,6 +286,9 @@ func (r *ledgerRepo) ListLedgersWithOptions(ctx context.Context, options biz.Led
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
+	if offset >= total {
+		return nil, total, nil
+	}
 	fetchQuery := query.Select("billing_ledgers.*, users.username AS username").Joins(r.ledgerUserJoin())
 	orderColumn := map[string]string{
 		"id": "billing_ledgers.id", "user_id": "billing_ledgers.user_id",
@@ -299,7 +305,7 @@ func (r *ledgerRepo) ListLedgersWithOptions(ctx context.Context, options biz.Led
 	}
 	var models []ledgerModel
 	if err := fetchQuery.Order(orderColumn + " " + direction).Order("billing_ledgers.id " + direction).
-		Limit(int(options.PageSize)).Offset(offset).Find(&models).Error; err != nil {
+		Limit(int(options.PageSize)).Offset(int(offset)).Find(&models).Error; err != nil {
 		return nil, 0, err
 	}
 	ledgers := make([]*biz.Ledger, len(models))
@@ -313,7 +319,7 @@ func (r *ledgerRepo) listLedgersInternal(ctx context.Context, userID string, pag
 	var models []ledgerModel
 	var total int64
 
-	offset := max(int((page-1)*pageSize), 0)
+	offset := max(int64(page)-1, 0) * int64(pageSize)
 
 	query := r.data.db.WithContext(ctx).Model(&ledgerModel{})
 	var queryScopeErr error
@@ -335,6 +341,9 @@ func (r *ledgerRepo) listLedgersInternal(ctx context.Context, userID string, pag
 	}
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
+	}
+	if offset >= total {
+		return nil, total, nil
 	}
 
 	fetchQuery := r.data.db.WithContext(ctx).Model(&ledgerModel{}).
@@ -358,9 +367,9 @@ func (r *ledgerRepo) listLedgersInternal(ctx context.Context, userID string, pag
 		fetchQuery = fetchQuery.Where("billing_ledgers.created_at <= ?", endTime)
 	}
 	if err := fetchQuery.
-		Order("billing_ledgers.created_at DESC").
+		Order("billing_ledgers.created_at DESC, billing_ledgers.id DESC").
 		Limit(int(pageSize)).
-		Offset(offset).
+		Offset(int(offset)).
 		Find(&models).Error; err != nil {
 		return nil, 0, err
 	}
@@ -376,7 +385,7 @@ func (r *ledgerRepo) ListLedgersBySubscriptionAccount(ctx context.Context, subsc
 	var models []ledgerModel
 	var total int64
 
-	offset := max(int((page-1)*pageSize), 0)
+	offset := max(int64(page)-1, 0) * int64(pageSize)
 
 	query := r.data.db.WithContext(ctx).Model(&ledgerModel{}).
 		Where("subscription_account_id = ?", subscriptionAccountID)
@@ -389,12 +398,15 @@ func (r *ledgerRepo) ListLedgersBySubscriptionAccount(ctx context.Context, subsc
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
+	if offset >= total {
+		return nil, total, nil
+	}
 
 	if err := query.Select("billing_ledgers.*, users.username AS username").
 		Joins(r.ledgerUserJoin()).
-		Order("billing_ledgers.created_at DESC").
+		Order("billing_ledgers.created_at DESC, billing_ledgers.id DESC").
 		Limit(int(pageSize)).
-		Offset(offset).
+		Offset(int(offset)).
 		Find(&models).Error; err != nil {
 		return nil, 0, err
 	}

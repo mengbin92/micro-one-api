@@ -945,6 +945,7 @@ export const EN_US_MESSAGES: Record<string, string> = {
   '资源': 'Resource',
   '查看': 'View',
   '共 {count} 条': '{count} records',
+  '请缩小时间范围或添加筛选条件以查看更多记录。': 'Narrow the time range or add filters to see more records.',
   '操作审计详情': 'Operation audit details',
   '事件 ID': 'Event ID',
   '未填写': 'Not provided',

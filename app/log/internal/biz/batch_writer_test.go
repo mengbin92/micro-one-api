@@ -7,6 +7,25 @@ import (
 	"time"
 )
 
+func TestBatchLogWriterOwnsQueuedEntry(t *testing.T) {
+	repo := newBatchMockLogRepo()
+	writer := NewBatchLogWriter(repo, 100, time.Hour)
+	entry := &LogEntry{Message: "original"}
+	if err := writer.IngestLog(context.Background(), entry); err != nil {
+		t.Fatal(err)
+	}
+	entry.Message = "caller changed message"
+	writer.Stop()
+
+	stored, err := repo.Get(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Message != "original" || entry.ID != 0 {
+		t.Fatalf("batch and caller share entry state: persisted message=%q caller ID=%d", stored.Message, entry.ID)
+	}
+}
+
 func TestBatchLogWriterConcurrentStopKeepsAcceptedEntries(t *testing.T) {
 	for attempt := range 2000 {
 		repo := newBatchMockLogRepo()

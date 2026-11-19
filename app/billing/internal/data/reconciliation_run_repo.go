@@ -136,11 +136,15 @@ func (r *reconciliationRunRepo) ListRuns(ctx context.Context, page, pageSize int
 	if err := r.data.db.WithContext(ctx).Model(&reconciliationRunModel{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
+	offset := (int64(page) - 1) * int64(pageSize)
+	if offset >= total {
+		return nil, total, nil
+	}
 	var models []reconciliationRunModel
 	if err := r.data.db.WithContext(ctx).
-		Order("run_at DESC").
+		Order("run_at DESC, id DESC").
 		Limit(int(pageSize)).
-		Offset(int((page - 1) * pageSize)).
+		Offset(int(offset)).
 		Find(&models).Error; err != nil {
 		return nil, 0, err
 	}

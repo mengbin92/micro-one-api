@@ -350,7 +350,22 @@ func (uc *SubscriptionUsecase) Extend(ctx context.Context, id int64, newExpiresA
 	if authErr != nil {
 		return authErr
 	}
-	subscription, err := uc.repo.GetSubscriptionByID(ctx, id)
+	if uc.txRunner != nil {
+		return uc.txRunner.RunInTx(ctx, func(ctx context.Context, tx Tx) error {
+			return uc.extend(ctx, tx, id, newExpiresAt)
+		})
+	}
+	return uc.extend(ctx, nil, id, newExpiresAt)
+}
+
+func (uc *SubscriptionUsecase) extend(ctx context.Context, tx Tx, id, newExpiresAt int64) error {
+	var subscription *UserSubscription
+	var err error
+	if tx != nil {
+		subscription, err = uc.repo.GetByIDInTx(ctx, tx, id)
+	} else {
+		subscription, err = uc.repo.GetSubscriptionByID(ctx, id)
+	}
 	if err != nil {
 		return err
 	}
@@ -380,6 +395,9 @@ func (uc *SubscriptionUsecase) Extend(ctx context.Context, id int64, newExpiresA
 	// full UpdateSubscription wrote from a read snapshot and would clobber a
 	// concurrent AddUsage increment committed between the read and the write
 	// — the same hazard the assignOrExtend path was fixed to avoid.
+	if tx != nil {
+		return uc.repo.UpdateSubscriptionFieldsInTx(ctx, tx, subscription, fields)
+	}
 	return uc.repo.UpdateSubscriptionFields(ctx, subscription, fields)
 }
 

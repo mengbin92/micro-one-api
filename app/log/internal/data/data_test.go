@@ -8,9 +8,39 @@ import (
 
 	"micro-one-api/app/log/internal/biz"
 
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestLogRepositoryPagination(t *testing.T) {
+	ctx := context.Background()
+	for _, backend := range []string{"memory", "sqlite"} {
+		t.Run(backend, func(t *testing.T) {
+			repo := NewMemoryRepositoryForTest()
+			if backend == "sqlite" {
+				db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+				require.NoError(t, err)
+				require.NoError(t, db.AutoMigrate(&logModel{}))
+				repo = &Repository{db: db}
+			}
+			for range 2 {
+				require.NoError(t, repo.Create(ctx, &biz.LogEntry{UserID: 1, Source: "test"}))
+			}
+
+			logs, total, err := repo.List(ctx, 1+(1<<30), 4, "", "", "")
+			require.NoError(t, err)
+			require.EqualValues(t, 2, total)
+			require.Empty(t, logs)
+
+			logs, total, err = repo.ListByUser(ctx, 1, 2, 1, "", "")
+			require.NoError(t, err)
+			require.EqualValues(t, 2, total)
+			require.Len(t, logs, 1)
+			require.EqualValues(t, 1, logs[0].ID)
+		})
+	}
+}
 
 func TestMemoryRepository_CreateAndGet(t *testing.T) {
 	repo := newMemoryRepository()

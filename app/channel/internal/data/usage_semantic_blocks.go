@@ -289,15 +289,16 @@ func (r *Repository) ListUsageSemanticBlocks(ctx context.Context, onlyBlocked bo
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	if page < 1 {
-		page = 1
-	}
 	if pageSize <= 0 || pageSize > 200 {
 		pageSize = 50
 	}
+	offset := pageOffset(page, pageSize)
+	if offset >= total {
+		return []biz.UsageSemanticBlock{}, total, nil
+	}
 	var rows []usageSemanticSourceBlockModel
-	err := query.Order("updated_at DESC").
-		Offset(int((page - 1) * pageSize)).Limit(int(pageSize)).
+	err := query.Order("updated_at DESC, id DESC").
+		Offset(int(offset)).Limit(int(pageSize)).
 		Find(&rows).Error
 	if err != nil {
 		return nil, 0, err

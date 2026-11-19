@@ -177,6 +177,37 @@ func TestRunner_Incremental_OnlyAppliesNew(t *testing.T) {
 	assert.True(t, tableExists(t, db, "b"))
 }
 
+func TestRunner_BrownfieldBaselineRollsBackOnMetadataWriteFailure(t *testing.T) {
+	ctx := context.Background()
+	db := openSqlite(t)
+	_, err := db.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY);
+		CREATE TABLE channels (id INTEGER PRIMARY KEY);
+		CREATE TABLE schema_migrations (version TEXT PRIMARY KEY);
+		CREATE TRIGGER metadata_write_failure BEFORE INSERT ON schema_migrations
+		WHEN NEW.version = '002_create_channels'
+		BEGIN SELECT RAISE(ABORT, 'metadata write failed'); END;
+	`)
+	require.NoError(t, err)
+	dir := t.TempDir()
+	writeMigration(t, dir, "001_create_users.sql", "CREATE TABLE users (id INTEGER PRIMARY KEY);")
+	writeMigration(t, dir, "002_create_channels.sql", "CREATE TABLE channels (id INTEGER PRIMARY KEY);")
+	writeMigration(t, dir, "003_add_widget.sql", "CREATE TABLE widgets (id INTEGER PRIMARY KEY);")
+	runner := NewWithDriver(db, dir, "sqlite").WithBaseline("002_create_channels")
+
+	_, err = runner.Apply(ctx)
+	require.ErrorContains(t, err, "baseline mark 002_create_channels")
+	require.Empty(t, appliedVersions(t, db))
+	require.False(t, tableExists(t, db, "widgets"))
+
+	_, err = db.Exec("DROP TRIGGER metadata_write_failure")
+	require.NoError(t, err)
+	applied, err := runner.Apply(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{"003_add_widget"}, applied)
+	require.Equal(t, []string{"001_create_users", "002_create_channels", "003_add_widget"}, appliedVersions(t, db))
+}
+
 func TestRunner_BrownfieldBaseline_SkipsExistingMigrations(t *testing.T) {
 	// Simulate a database where someone already ran docker-entrypoint-initdb.d:
 	// `users` already exists, but `schema_migrations` does NOT.

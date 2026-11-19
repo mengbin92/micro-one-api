@@ -300,6 +300,33 @@ func TestRepository_ListModelsFiltering(t *testing.T) {
 	assert.Equal(t, "anthropic-1", models[0].ModelID)
 }
 
+func TestRepository_ListModelsStablePagesAndLargeOffset(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		newRepository func(*testing.T) *Repository
+	}{
+		{"sqlite", setupModelTestDB},
+		{"memory", func(*testing.T) *Repository { return &Repository{models: make(map[int64]*biz.Model)} }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := tt.newRepository(t)
+			ctx := context.Background()
+			for _, id := range []string{"older", "newer"} {
+				require.NoError(t, repo.CreateModel(ctx, &biz.Model{ModelID: id, DisplayName: id}))
+			}
+			models, total, err := repo.ListModels(ctx, 1<<30+1, 4, biz.ListModelsFilter{})
+			require.NoError(t, err)
+			require.EqualValues(t, 2, total)
+			require.Empty(t, models)
+
+			models, _, err = repo.ListModels(ctx, 1, 1, biz.ListModelsFilter{})
+			require.NoError(t, err)
+			require.Len(t, models, 1)
+			require.Equal(t, "newer", models[0].ModelID)
+		})
+	}
+}
+
 func TestRepository_ListModelsAggregatesSupplierNames(t *testing.T) {
 	repo := setupModelTestDB(t)
 	ctx := context.Background()

@@ -50,57 +50,21 @@ type operationAuditRow struct {
 	Result           string
 }
 
-func escapeAuditPrefix(value string) string {
-	return strings.NewReplacer("!", "!!", "%", "!%", "_", "!_").Replace(value) + "%"
-}
-
 func (r *operationAuditRepo) List(ctx context.Context, filter biz.OperationAuditFilter) (biz.OperationAuditBatch, error) {
 	if r == nil || r.db == nil {
 		return biz.OperationAuditBatch{}, biz.ErrOperationAuditUnavailable
 	}
-	storeID, err := writeaudit.StoreID(ctx, r.db)
+	page, err := writeaudit.ReadPage[operationAuditRow](ctx, r.db, writeaudit.Filter(filter))
 	if err != nil {
 		return biz.OperationAuditBatch{}, errors.Join(biz.ErrOperationAuditUnavailable, err)
 	}
-	base := func() *gorm.DB {
-		query := r.db.WithContext(ctx).Table("resource_write_audits")
-		if filter.ActorUserID > 0 {
-			query = query.Where("actor_user_id = ?", filter.ActorUserID)
-		}
-		if filter.Operation != "" {
-			query = query.Where("operation LIKE ? ESCAPE '!'", escapeAuditPrefix(filter.Operation))
-		}
-		if filter.ResourceID != "" {
-			query = query.Where("resource_id = ?", filter.ResourceID)
-		}
-		if filter.Result != "" {
-			query = query.Where("result = ?", filter.Result)
-		}
-		if filter.StartTimeMS > 0 {
-			query = query.Where("occurred_at >= ?", filter.StartTimeMS)
-		}
-		if filter.EndTimeMS > 0 {
-			query = query.Where("occurred_at <= ?", filter.EndTimeMS)
-		}
-		return query
-	}
-
-	var total int64
-	if err := base().Count(&total).Error; err != nil {
-		return biz.OperationAuditBatch{}, errors.Join(biz.ErrOperationAuditUnavailable, err)
-	}
-	var rows []operationAuditRow
-	if err := base().Select("event_id, actor_user_id, operation, resource_id, decision_versions, reason, occurred_at, result").
-		Order("occurred_at DESC, event_id DESC").Offset(filter.Offset).Limit(filter.Limit).Scan(&rows).Error; err != nil {
-		return biz.OperationAuditBatch{}, errors.Join(biz.ErrOperationAuditUnavailable, err)
-	}
-	items := make([]biz.OperationAudit, 0, len(rows))
-	for _, row := range rows {
+	items := make([]biz.OperationAudit, 0, len(page.Items))
+	for _, row := range page.Items {
 		items = append(items, biz.OperationAudit{
 			EventID: row.EventID, ActorUserID: row.ActorUserID, Operation: row.Operation,
 			ResourceID: row.ResourceID, DecisionVersions: row.DecisionVersions,
 			Reason: row.Reason, OccurredAt: row.OccurredAt, Result: row.Result,
 		})
 	}
-	return biz.OperationAuditBatch{Items: items, Total: total, StoreID: storeID}, nil
+	return biz.OperationAuditBatch{Items: items, Total: page.Total, StoreID: page.StoreID}, nil
 }

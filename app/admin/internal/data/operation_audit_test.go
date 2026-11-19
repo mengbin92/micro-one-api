@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 	adminbiz "micro-one-api/app/admin/internal/biz"
 	dbtest "micro-one-api/platform/database/testutil"
 )
@@ -66,4 +67,33 @@ func TestOperationAuditAggregationReadsSharedStoreOnce(t *testing.T) {
 	require.EqualValues(t, 1, page.Total)
 	require.Len(t, page.Items, 1)
 	require.Equal(t, "shared-event", page.Items[0].EventID)
+}
+
+func TestOperationAuditPageUsesOneSnapshot(t *testing.T) {
+	db := dbtest.RoutingContextDB(t, "sqlite")
+	require.NoError(t, db.Exec("PRAGMA journal_mode = WAL").Error)
+	var inserted bool
+	require.NoError(t, db.Callback().Row().Before("gorm:row").Register("test:insert_audit_after_count", func(tx *gorm.DB) {
+		if tx.Statement.Table != "resource_write_audits" || inserted {
+			return
+		}
+		inserted = true
+		require.NoError(t, db.Table("resource_write_audits").Create(map[string]any{
+			"event_id": "concurrent-write", "actor_user_id": 7, "operation": "channel.channel.update", "resource_id": "1",
+			"decision_versions": "{}", "reason": "reviewed", "occurred_at": 100, "result": "success",
+		}).Error)
+	}))
+	uc := adminbiz.NewOperationAuditUsecase(adminbiz.NewAggregatedOperationAuditRepo(&operationAuditRepo{db: db}))
+
+	page, err := uc.List(context.Background(), adminbiz.OperationAuditFilter{}, 1, 20)
+	require.NoError(t, err)
+	require.True(t, inserted)
+	require.Zero(t, page.Total)
+	require.Empty(t, page.Items)
+
+	page, err = uc.List(context.Background(), adminbiz.OperationAuditFilter{}, 1, 20)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, page.Total)
+	require.Len(t, page.Items, 1)
+	require.Equal(t, "concurrent-write", page.Items[0].EventID)
 }
