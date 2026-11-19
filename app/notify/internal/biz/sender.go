@@ -238,19 +238,36 @@ func NewDispatcher(uc *NotifyUsecase, sender Sender, interval time.Duration, bat
 
 func (d *Dispatcher) Start(ctx context.Context) func() {
 	runCtx, cancel := context.WithCancel(ctx)
-	if err := d.uc.RecoverProcessing(runCtx); err != nil {
-		applogger.Log.Warn("notification processing recovery failed", zap.Error(err))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		d.loop(runCtx)
+	}()
+	return func() {
+		cancel()
+		<-done
 	}
-	go d.loop(runCtx)
-	return cancel
 }
 
 func (d *Dispatcher) DispatchOnce(ctx context.Context) error {
+	if err := d.uc.RecoverProcessing(ctx); err != nil {
+		return fmt.Errorf("recover notification processing: %w", err)
+	}
 	items, err := d.uc.ListPending(ctx, d.batch, d.maxRetry)
 	if err != nil {
 		return err
 	}
 	for _, n := range items {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		claimed, err := d.uc.ClaimPending(ctx, n, d.maxRetry)
+		if err != nil {
+			return err
+		}
+		if !claimed {
+			continue
+		}
 		if err := d.sender.Send(ctx, n); err != nil {
 			result := "error"
 			if errors.Is(err, ErrNotificationSenderNotReady) {
@@ -263,7 +280,10 @@ func (d *Dispatcher) DispatchOnce(ctx context.Context) error {
 			continue
 		}
 		metrics.NotificationDelivery.WithLabelValues("sent").Inc()
-		if err := d.uc.CompleteProcessing(ctx, n, NotifyStatusSent, d.maxRetry, ""); err != nil {
+		finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		err = d.uc.CompleteProcessing(finishCtx, n, NotifyStatusSent, d.maxRetry, "")
+		cancel()
+		if err != nil {
 			return err
 		}
 	}

@@ -117,55 +117,36 @@ func (r *Repository) ListPending(ctx context.Context, limit int32, maxRetry int)
 	return r.listPendingMemory(limit, maxRetry), nil
 }
 
-// ClaimPending atomically changes pending rows to processing before returning
-// them. A second worker observing the same row gets zero affected rows and
-// therefore cannot send it concurrently.
-func (r *Repository) ClaimPending(ctx context.Context, limit int32, maxRetry int) ([]*biz.Notification, error) {
-	if limit < 1 {
-		limit = 20
-	}
-	if maxRetry < 1 {
-		maxRetry = 3
-	}
+// ClaimPending starts the lease only when a worker is ready to send the row.
+func (r *Repository) ClaimPending(ctx context.Context, n *biz.Notification, maxRetry int) (bool, error) {
+	processingAt := time.Now().Truncate(time.Second)
 	if r.db == nil {
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		items := make([]*biz.Notification, 0, limit)
-		for _, n := range r.mem {
-			if n.Status != biz.NotifyStatusPending || n.RetryCount >= maxRetry || len(items) >= int(limit) {
-				continue
-			}
-			n.Revision++
-			n.Status = biz.NotifyStatusProcessing
-			n.ProcessingAt = time.Now()
-			cloned := *n
-			items = append(items, &cloned)
+		stored := r.mem[n.ID]
+		if stored == nil || stored.Status != biz.NotifyStatusPending || stored.Revision != n.Revision || stored.RetryCount >= maxRetry {
+			return false, nil
 		}
-		return items, nil
+		stored.Revision++
+		stored.Status = biz.NotifyStatusProcessing
+		stored.ProcessingAt = processingAt
+		*n = *stored
+		return true, nil
 	}
-	var candidates []notificationModel
-	if err := r.db.WithContext(ctx).Where("status = ? AND retry_count < ?", biz.NotifyStatusPending, maxRetry).Order("id ASC").Limit(int(limit)).Find(&candidates).Error; err != nil {
-		return nil, err
+	result := r.db.WithContext(ctx).Model(&notificationModel{}).
+		Where("id = ? AND status = ? AND revision = ? AND retry_count < ?", n.ID, biz.NotifyStatusPending, n.Revision, maxRetry).
+		Updates(map[string]any{"revision": gorm.Expr("revision + 1"), "status": biz.NotifyStatusProcessing, "processing_at": processingAt.Unix()})
+	if result.Error != nil || result.RowsAffected != 1 {
+		return false, result.Error
 	}
-	items := make([]*biz.Notification, 0, len(candidates))
-	for _, m := range candidates {
-		res := r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ? AND status = ?", m.ID, biz.NotifyStatusPending).Updates(map[string]any{"revision": gorm.Expr("revision + 1"), "status": biz.NotifyStatusProcessing, "processing_at": time.Now().Unix()})
-		if res.Error != nil {
-			return nil, res.Error
-		}
-		if res.RowsAffected != 1 {
-			continue
-		}
-		m.Status = biz.NotifyStatusProcessing
-		m.Revision++
-		m.ProcessingAt = time.Now().Unix()
-		items = append(items, notificationFromModel(m))
-	}
-	return items, nil
+	n.Revision++
+	n.Status = biz.NotifyStatusProcessing
+	n.ProcessingAt = processingAt
+	return true, nil
 }
 
 // RecoverProcessing makes rows claimed by a worker that exited before send
-// visible again after restart. External delivery may have succeeded before the
+// visible again once the lease expires. External delivery may have succeeded before the
 // crash, so senders must tolerate a bounded duplicate.
 func (r *Repository) RecoverProcessing(ctx context.Context) error {
 	if r.db != nil {
