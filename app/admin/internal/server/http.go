@@ -4427,14 +4427,29 @@ type successErrorMessage interface {
 	GetErrorMessage() string
 }
 
+func writeSecurityVerificationError(w http.ResponseWriter, reason string) bool {
+	var message string
+	switch reason {
+	case "STEP_UP_REQUIRED":
+		message = "需要完成安全验证"
+	case "MFA_ENROLLMENT_REQUIRED":
+		message = "请先在安全中心启用多因素验证"
+	default:
+		return false
+	}
+	payload := apiResponse(false, message, nil)
+	payload["reason"] = reason
+	writeJSON(w, http.StatusForbidden, payload)
+	return true
+}
+
 func writeServiceResponse(w http.ResponseWriter, resp any, err error) {
 	if err != nil {
+		if writeSecurityVerificationError(w, kerrors.FromError(err).Reason) {
+			return
+		}
 		if code, ok := resourceHTTPErrorCode(err); ok {
-			payload := apiResponse(false, sanitizeAdminError(err), nil)
-			if reason := kerrors.FromError(err).Reason; reason == "STEP_UP_REQUIRED" || reason == "MFA_ENROLLMENT_REQUIRED" {
-				payload["reason"] = reason
-			}
-			writeJSON(w, code, payload)
+			writeJSON(w, code, apiResponse(false, sanitizeAdminError(err), nil))
 			return
 		}
 		// A gRPC AlreadyExists from a downstream service is an idempotency

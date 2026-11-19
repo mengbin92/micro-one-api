@@ -2,13 +2,16 @@ package server
 
 import (
 	"context"
+	kerrors "github.com/go-kratos/kratos/v3/errors"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
 	commonv1 "micro-one-api/api/common/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/app/admin/internal/biz"
 	"micro-one-api/app/admin/internal/service"
 	"micro-one-api/domain/routing"
+	"micro-one-api/pkg/jsonx"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -31,6 +34,7 @@ type routingAccessHTTPFake struct {
 	user      int64
 	self      bool
 	createErr error
+	tokenErr  error
 }
 
 // CreateGroup implements the optional creation capability the group POST
@@ -65,11 +69,40 @@ func (f *routingAccessHTTPFake) Change(_ context.Context, c biz.RoutingAccessCha
 func (f *routingAccessHTTPFake) CreateToken(_ context.Context, u int64, n, m string, g int64, groupIDs []int64) (*biz.RoutingToken, error) {
 	f.calls++
 	f.user = u
+	if f.tokenErr != nil {
+		return nil, f.tokenErr
+	}
 	return &biz.RoutingToken{ID: 5, Name: n, Mode: m, GroupID: g, GroupIDs: groupIDs, Key: "created-once", Revision: 1}, nil
 }
 func (f *routingAccessHTTPFake) SetToken(context.Context, int64, int64, string, int64, int64, []int64) (int64, error) {
 	return 0, biz.ErrRoutingAccessDenied
 }
+
+func TestRoutingTokenHTTPPreservesSecurityVerificationReason(t *testing.T) {
+	for _, reason := range []string{"STEP_UP_REQUIRED", "MFA_ENROLLMENT_REQUIRED", "ROUTING_ACCESS_DENIED"} {
+		t.Run(reason, func(t *testing.T) {
+			downstream := status.ErrorProto(status.Convert(kerrors.Forbidden(reason, "verification required")).Proto())
+			svc := service.NewAdminService(nil, routingSessionFake{}, nil, nil)
+			svc.SetRoutingAccessUsecase(&routingAccessHTTPFake{tokenErr: downstream})
+			r := httptest.NewRequest(http.MethodPost, "/api/v1/routing-tokens",
+				strings.NewReader(`{"name":"temporary","routing_mode":"fixed","routing_group_id":6}`))
+			r.Header.Set("Authorization", "Bearer user-session")
+			w := httptest.NewRecorder()
+			handleRoutingToken(w, r, svc)
+			require.Equal(t, http.StatusForbidden, w.Code)
+			var response map[string]any
+			require.NoError(t, jsonx.Unmarshal(w.Body.Bytes(), &response))
+			require.Equal(t, false, response["success"])
+			if reason == "ROUTING_ACCESS_DENIED" {
+				require.NotContains(t, response, "reason")
+				require.Equal(t, "无权使用此分组", response["message"])
+			} else {
+				require.Equal(t, reason, response["reason"])
+			}
+		})
+	}
+}
+
 func TestRoutingAccessHTTPUsesAuthenticatedPrincipal(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-system")
 	f := &routingAccessHTTPFake{}
