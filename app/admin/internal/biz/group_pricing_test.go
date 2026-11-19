@@ -15,6 +15,17 @@ type groupPricingRepo struct {
 	writes int
 }
 
+type transactionalGroupPricingRepo struct{ groupPricingRepo }
+
+func (r *transactionalGroupPricingRepo) Mutate(ctx context.Context, key string, change func(string) (string, error)) error {
+	// Another administrator changed an independent group before this writer locked the option.
+	value, err := change(`{"vip":0.3,"team":0.8}`)
+	if err != nil {
+		return err
+	}
+	return r.Set(ctx, key, value)
+}
+
 func (r *groupPricingRepo) Get(context.Context, string) (string, error) { return r.raw, r.err }
 func (r *groupPricingRepo) Set(_ context.Context, _ string, value string) error {
 	r.writes++
@@ -39,6 +50,29 @@ func TestRoutingGroupRatiosCompatibility(t *testing.T) {
 	require.JSONEq(t, `{"default":1,"vip":0.5}`, repo.raw)
 	_, err = uc.DeleteRoutingGroupRatio(ctx, "default")
 	require.Error(t, err)
+}
+
+func TestRoutingGroupRatioWritesUseTheCurrentValue(t *testing.T) {
+	ctx := context.Background()
+	for _, test := range []struct {
+		name   string
+		change func(*SystemOptionsUsecase) (*RoutingGroupRatio, error)
+		want   string
+	}{
+		{"upsert", func(uc *SystemOptionsUsecase) (*RoutingGroupRatio, error) {
+			return uc.UpsertRoutingGroupRatio(ctx, "team", 0.7)
+		}, `{"vip":0.3,"team":0.7}`},
+		{"delete", func(uc *SystemOptionsUsecase) (*RoutingGroupRatio, error) {
+			return uc.DeleteRoutingGroupRatio(ctx, "team")
+		}, `{"default":1,"vip":0.3}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repo := &transactionalGroupPricingRepo{groupPricingRepo{raw: `{"vip":0.5,"team":0.8}`}}
+			_, err := test.change(NewSystemOptionsUsecase(repo))
+			require.NoError(t, err)
+			require.JSONEq(t, test.want, repo.raw)
+		})
+	}
 }
 
 func TestRoutingGroupRatiosRejectInvalidWrites(t *testing.T) {
