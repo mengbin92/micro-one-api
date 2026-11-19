@@ -292,8 +292,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	// to every L1 cache, not load-balance across gateway replicas.
 	var routingEvents *events.StreamEventBus
 	if redisClient != nil && biz.RoutingContextV2Enabled() {
-		host, _ := os.Hostname()
-		routingEvents = events.NewStreamEventBus(redisClient, fmt.Sprintf("relay-routing-%s-%d", host, os.Getpid()))
+		routingEvents = events.NewEphemeralStreamEventBus(redisClient, "relay-routing")
 		routingEvents.Subscribe(routingoutbox.Topic, routingoutbox.Invalidator(func(ctx context.Context, change routingoutbox.Change) error {
 			if change.Owner == "identity" || change.Owner == "subscription" {
 				return authCache.InvalidateAll(ctx)
@@ -519,7 +518,10 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		}
 		if authCache != nil {
 			if routingEvents != nil {
-				_ = routingEvents.Close()
+				if err := routingEvents.Close(); err != nil {
+					logger.Log.
+						Warn("close routing invalidation stream", zap.Error(err))
+				}
 			}
 			_ = authCache.Close()
 		}
