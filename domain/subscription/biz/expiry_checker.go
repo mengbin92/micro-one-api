@@ -14,10 +14,15 @@ const (
 )
 
 type SubscriptionExpiryChecker struct {
-	repo     SubscriptionRepository
+	repo     SubscriptionExpiryRepository
 	now      func() time.Time
 	notifier ExpiryNotifier
 	notified map[string]struct{}
+}
+
+type SubscriptionExpiryRepository interface {
+	ListActiveSubscriptions(context.Context) ([]*UserSubscription, error)
+	ExpireSubscriptionIfDue(ctx context.Context, id, cutoff int64) error
 }
 
 type ExpiryNotification struct {
@@ -34,7 +39,7 @@ type ExpiryNotifier interface {
 	NotifyExpiry(ctx context.Context, notification ExpiryNotification) error
 }
 
-func NewSubscriptionExpiryChecker(repo SubscriptionRepository) *SubscriptionExpiryChecker {
+func NewSubscriptionExpiryChecker(repo SubscriptionExpiryRepository) *SubscriptionExpiryChecker {
 	return &SubscriptionExpiryChecker{
 		repo:     repo,
 		now:      time.Now,
@@ -125,11 +130,7 @@ func (c *SubscriptionExpiryChecker) Tick(ctx context.Context) ([]ExpiryNotificat
 			continue
 		}
 		if sub.ExpiresAt <= now {
-			sub.Status = SubscriptionStatusExpired
-			sub.UpdatedAt = now
-			// domain-H1: write only status (+ updated_at). The expiry transition
-			// must not clobber a concurrent AddUsage's usage/window increments.
-			if err := c.repo.UpdateSubscriptionFields(ctx, sub, []SubscriptionField{SubscriptionFieldStatus}); err != nil {
+			if err := c.repo.ExpireSubscriptionIfDue(ctx, sub.ID, now); err != nil {
 				return nil, err
 			}
 			continue

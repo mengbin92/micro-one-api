@@ -83,6 +83,66 @@ func setupSubscriptionTestDB(t *testing.T) *Repository {
 	return &Repository{db: db}
 }
 
+type subscriptionExpiryScanRepo struct {
+	*Repository
+	afterList func()
+}
+
+func (r subscriptionExpiryScanRepo) ListActiveSubscriptions(ctx context.Context) ([]*biz.UserSubscription, error) {
+	active, err := r.Repository.ListActiveSubscriptions(ctx)
+	r.afterList()
+	return active, err
+}
+
+type subscriptionExtendReadRepo struct {
+	*Repository
+	afterRead func()
+}
+
+func (r subscriptionExtendReadRepo) GetSubscriptionByID(ctx context.Context, id int64) (*biz.UserSubscription, error) {
+	sub, err := r.Repository.GetSubscriptionByID(ctx, id)
+	r.afterRead()
+	return sub, err
+}
+
+func TestSubscriptionRenewalAndExpiryUseCurrentState(t *testing.T) {
+	for _, expiryReadsFirst := range []bool{true, false} {
+		name := "expiry reads first"
+		if !expiryReadsFirst {
+			name = "extension reads first"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
+			repo := setupSubscriptionTestDB(t)
+			now := time.Now()
+			sub := &biz.UserSubscription{UserID: 1, GroupID: 1, Status: biz.SubscriptionStatusActive, ExpiresAt: now.Add(-time.Minute).Unix()}
+			require.NoError(t, repo.CreateSubscription(ctx, sub))
+			newExpiry := now.Add(time.Hour).Unix()
+			if expiryReadsFirst {
+				usecase := biz.NewSubscriptionUsecase(repo, repo)
+				usecase.SetTxRunner(NewTxRunner(repo))
+				checker := biz.NewSubscriptionExpiryChecker(subscriptionExpiryScanRepo{Repository: repo, afterList: func() {
+					require.NoError(t, usecase.Extend(ctx, sub.ID, newExpiry))
+				}})
+				_, err := checker.Tick(ctx)
+				require.NoError(t, err)
+			} else {
+				checker := biz.NewSubscriptionExpiryChecker(repo)
+				usecase := biz.NewSubscriptionUsecase(subscriptionExtendReadRepo{Repository: repo, afterRead: func() {
+					_, err := checker.Tick(ctx)
+					require.NoError(t, err)
+				}}, repo)
+				usecase.SetTxRunner(NewTxRunner(repo))
+				require.NoError(t, usecase.Extend(ctx, sub.ID, newExpiry))
+			}
+			stored, err := repo.GetSubscriptionByID(ctx, sub.ID)
+			require.NoError(t, err)
+			require.Equal(t, newExpiry, stored.ExpiresAt)
+			require.Equal(t, biz.SubscriptionStatusActive, stored.Status)
+		})
+	}
+}
+
 func TestSubscriptionRepository_PlanCRUD(t *testing.T) {
 	repo := setupSubscriptionTestDB(t)
 	ctx := context.Background()

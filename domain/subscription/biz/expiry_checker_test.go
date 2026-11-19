@@ -12,6 +12,14 @@ func (f expiryNotifierFunc) NotifyExpiry(ctx context.Context, n ExpiryNotificati
 	return f(ctx, n)
 }
 
+func (m *mockSubscriptionRepo) ExpireSubscriptionIfDue(_ context.Context, id, cutoff int64) error {
+	if sub := m.subscriptions[id]; sub != nil && sub.Status == SubscriptionStatusActive && sub.ExpiresAt <= cutoff {
+		sub.Status = SubscriptionStatusExpired
+		sub.UpdatedAt = cutoff
+	}
+	return nil
+}
+
 func TestExpiryCheckerPrunesNotifiedSubscriptions(t *testing.T) {
 	repo := newMockSubscriptionRepo()
 	now := time.Unix(10000, 0)

@@ -107,6 +107,33 @@ func (r *Repository) ListActiveSubscriptions(ctx context.Context) ([]*biz.UserSu
 	return r.listActiveSubscriptionsMemory(ctx)
 }
 
+func (r *Repository) ExpireSubscriptionIfDue(ctx context.Context, id, cutoff int64) error {
+	if r.db == nil {
+		r.lock.Lock()
+		defer r.lock.Unlock()
+		if sub := r.subscriptions[id]; sub != nil && sub.Status == biz.SubscriptionStatusActive && sub.ExpiresAt <= cutoff {
+			sub.Status = biz.SubscriptionStatusExpired
+			sub.UpdatedAt = cutoff
+		}
+		return nil
+	}
+	return runSubscriptionTx(ctx, r.db, func(ctx context.Context, tx *gorm.DB) error {
+		sub, err := r.getByIDInTxDB(ctx, tx, id)
+		if errors.Is(err, biz.ErrSubscriptionNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if sub.Status != biz.SubscriptionStatusActive || sub.ExpiresAt > cutoff {
+			return nil
+		}
+		sub.Status = biz.SubscriptionStatusExpired
+		sub.UpdatedAt = cutoff
+		return updateSubscriptionFieldsWithTx(ctx, tx, sub, []biz.SubscriptionField{biz.SubscriptionFieldStatus})
+	})
+}
+
 func (r *Repository) ListAllSubscriptions(ctx context.Context) ([]*biz.UserSubscription, error) {
 	if r.db != nil {
 		return r.listAllSubscriptionsDB(ctx)
