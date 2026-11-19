@@ -3,11 +3,13 @@ package server
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/mail"
 	"strings"
 	"testing"
 	"time"
@@ -169,6 +171,7 @@ func (s *fakeSMTPServer) handle(conn net.Conn) {
 		case line == "DATA":
 			write("354 go ahead")
 			var msg strings.Builder
+			lineTooLong := false
 			for {
 				dataLine, err := r.ReadString('\n')
 				if err != nil {
@@ -177,7 +180,12 @@ func (s *fakeSMTPServer) handle(conn net.Conn) {
 				if dataLine == ".\r\n" {
 					break
 				}
+				lineTooLong = lineTooLong || len(dataLine) > 1000
 				msg.WriteString(dataLine)
+			}
+			if lineTooLong {
+				write("500 Line too long")
+				continue
 			}
 			s.message <- msg.String()
 			write("250 queued")
@@ -213,7 +221,8 @@ func TestAlertmanagerEmailDelivery(t *testing.T) {
 		SMTPFrom: "sender@example.com",
 	}), time.Second, 20, 1)
 	for _, state := range []string{"firing", "resolved"} {
-		body := `{"status":"` + state + `","alerts":[{"status":"` + state + `","labels":{"alertname":"RedisOutboxBacklog"},"annotations":{"summary":"outbox backlog"}}]}`
+		description := strings.Repeat("合并告警 = outbox backlog. ", 45)
+		body := fmt.Sprintf(`{"status":%q,"alerts":[{"status":%q,"labels":{"alertname":"RedisOutboxBacklog"},"annotations":{"description":%q}},{"status":%q,"labels":{"alertname":"RedisOutboxBacklog"},"annotations":{"summary":"another instance"}}]}`, state, state, description, state)
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/v1/alerts/alertmanager", strings.NewReader(body))
 		req.Header.Set("Authorization", "Bearer test-monitor-token")
@@ -228,10 +237,15 @@ func TestAlertmanagerEmailDelivery(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, biz.NotifyTypeEmail, n.Type)
 		require.Equal(t, recipient, n.Recipient)
-		require.Equal(t, biz.NotifyStatusSent, n.Status)
-		msg := <-smtp.message
-		require.Contains(t, msg, "To: "+recipient)
-		require.Contains(t, msg, "Subject: [monitor:"+state+"] 1 alerts")
-		require.Contains(t, msg, `"status":"`+state+`"`)
+		require.Greater(t, len(n.Content), 998)
+		require.Equal(t, biz.NotifyStatusSent, n.Status, n.LastError)
+		msg, err := mail.ReadMessage(strings.NewReader(<-smtp.message))
+		require.NoError(t, err)
+		require.Equal(t, recipient, msg.Header.Get("To"))
+		require.Equal(t, "[monitor:"+state+"] 2 alerts", msg.Header.Get("Subject"))
+		require.Equal(t, "base64", msg.Header.Get("Content-Transfer-Encoding"))
+		decoded, err := io.ReadAll(base64.NewDecoder(base64.StdEncoding, msg.Body))
+		require.NoError(t, err)
+		require.Equal(t, n.Content, string(decoded))
 	}
 }
