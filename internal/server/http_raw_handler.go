@@ -136,7 +136,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 			}
 			if audioInput != nil && audioInput.streamEvent != "" {
 				request.Header.Set("Accept", "text/event-stream")
-				start, streamErr := s.forwardStepAudioSSE(ctx, w, provider, request, audioInput.streamEvent, reservation.ReservationId, usageLogInput{
+				start, streamErr := s.forwardStepAudioSSE(ctx, w, provider, request, audioInput.streamEvent, reservation, usageLogInput{
 					UserID: plan.Auth.UserID, TokenID: plan.Auth.TokenID, TokenName: plan.Auth.TokenName,
 					RequestID: requestID, ModelName: billingModel, Endpoint: upstreamPath, ChannelID: ch.ID, IsStream: true,
 					SourceKind: relaybiz.UpstreamSourceChannel, UpstreamModelID: currentResolvedModel,

@@ -13,6 +13,7 @@ import (
 
 	coderws "github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
+	billingv1 "micro-one-api/api/billing/v1"
 	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
 	relaydata "micro-one-api/internal/data"
@@ -98,28 +99,42 @@ func (p stepAudioSSEProvider) ForwardStream(context.Context, *relayprovider.RawR
 }
 
 func TestStepAudioASRStreamSettlesOnlyOnTerminal(t *testing.T) {
-	for _, completed := range []bool{false, true} {
-		const delta = "data: {\"type\":\"transcript.text.delta\",\"delta\":\"ok\"}\n\n"
-		lines := delta
-		if completed {
-			lines += "data: {\"type\":\"transcript.text.done\",\"text\":\"ok\",\"usage\":{\"input_tokens\":25,\"output_tokens\":2,\"total_tokens\":27}}\n\n"
-		}
-		billing := &rawBillingClient{}
-		server := NewHTTPServer(nil, nil, billing, nil, nil)
-		w := httptest.NewRecorder()
-		started, err := server.forwardStepAudioSSE(context.Background(), w, stepAudioSSEProvider{lines: lines}, &relayprovider.RawRequest{}, "transcript.text.done", "audio-reservation", usageLogInput{}, time.Now())
-		require.True(t, started)
-		require.Contains(t, w.Body.String(), delta)
-		if completed {
-			require.NoError(t, err)
-			require.Len(t, billing.commitRequests, 1)
-			require.EqualValues(t, 27, billing.commitRequests[0].ActualTokens)
-			require.Zero(t, billing.releases)
-		} else {
-			require.Error(t, err)
-			require.Empty(t, billing.commitRequests)
-			require.Equal(t, 1, billing.releases)
-		}
+	const delta = "data: {\"type\":\"transcript.text.delta\",\"delta\":\"ok\"}\n\n"
+	const terminal = "data: {\"type\":\"transcript.text.done\",\"text\":\"ok\",\"usage\":{\"input_tokens\":25,\"output_tokens\":2,\"total_tokens\":27}}\n"
+	for _, tc := range []struct {
+		name, suffix string
+		completed    bool
+	}{
+		{"no terminal", "", false},
+		{"unterminated event", terminal, false},
+		{"terminal", terminal + "\n", true},
+		{"multiline terminal", strings.Replace(terminal, `,"usage"`, ",\ndata: \"usage\"", 1) + "\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			billing := &rawBillingClient{}
+			server := NewHTTPServer(nil, nil, billing, nil, nil)
+			logs := &rawLogClient{}
+			server.logClient = logs
+			w := httptest.NewRecorder()
+			reservation := &billingv1.ReserveQuotaResponse{ReservationId: "audio-reservation", RootRequestId: "audio-root", AttemptNumber: 2}
+			started, err := server.forwardStepAudioSSE(context.Background(), w, stepAudioSSEProvider{lines: delta + tc.suffix}, &relayprovider.RawRequest{}, "transcript.text.done", reservation, usageLogInput{}, time.Now())
+			require.True(t, started)
+			require.Contains(t, w.Body.String(), delta)
+			if tc.completed {
+				require.NoError(t, err)
+				require.Len(t, billing.commitRequests, 1)
+				require.EqualValues(t, 27, billing.commitRequests[0].ActualTokens)
+				require.Zero(t, billing.releases)
+				require.Len(t, logs.entries, 1)
+				require.Equal(t, "audio-reservation", logs.entries[0].ReservationId)
+				require.Equal(t, "audio-root", logs.entries[0].RootRequestId)
+				require.EqualValues(t, 2, logs.entries[0].AttemptNumber)
+			} else {
+				require.Error(t, err)
+				require.Empty(t, billing.commitRequests)
+				require.Equal(t, 1, billing.releases)
+			}
+		})
 	}
 }
 

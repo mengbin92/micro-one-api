@@ -259,7 +259,7 @@ func (s *HTTPServer) relayStepAudioEvents(ctx context.Context, client, upstream 
 			if err := s.commitQuota(ctx, reservation.ReservationId, u.Total, true, info); err != nil {
 				return err
 			}
-			s.ingestUsageLog(ctx, info)
+			s.ingestUsageLogAfterResponse(info, ctx)
 		}
 		if err := s.writeStepAudioFrame(ctx, client, kind, payload); err != nil {
 			return err
