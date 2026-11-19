@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -85,6 +86,33 @@ func TestDispatcherPersistsAcknowledgedDeliveryOnShutdown(t *testing.T) {
 	stored, err := repo.Get(t.Context(), n.ID)
 	require.NoError(t, err)
 	require.Equal(t, biz.NotifyStatusSent, stored.Status)
+}
+
+func TestNotificationPaginationPreservesOrderAndLargeOffset(t *testing.T) {
+	for _, name := range []string{"memory", "sqlite"} {
+		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
+			repo := newMemoryRepository()
+			if name == "sqlite" {
+				repo = &Repository{db: dbtest.RoutingContextDB(t, name)}
+			}
+			first := &biz.Notification{Type: biz.NotifyTypeEvent, Status: biz.NotifyStatusPending, CreatedAt: time.Now()}
+			second := *first
+			require.NoError(t, repo.Create(ctx, first))
+			require.NoError(t, repo.Create(ctx, &second))
+			for i, want := range []int64{second.ID, first.ID} {
+				rows, total, err := repo.List(ctx, int32(i+1), 1, biz.NotifyTypeEvent, "")
+				require.NoError(t, err)
+				require.EqualValues(t, 2, total)
+				require.Len(t, rows, 1)
+				require.Equal(t, want, rows[0].ID)
+			}
+			rows, total, err := repo.List(ctx, math.MaxInt32, 100, biz.NotifyTypeEvent, "")
+			require.NoError(t, err)
+			require.EqualValues(t, 2, total)
+			require.Empty(t, rows)
+		})
+	}
 }
 
 func TestMemoryRepository_CreateAndGet(t *testing.T) {

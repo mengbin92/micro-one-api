@@ -183,7 +183,10 @@ func (r *paymentRepo) ListOrders(ctx context.Context, req biz.ListPaymentOrdersR
 		orderBy = "id ASC"
 	}
 	var rows []PaymentOrder
-	offset := (page - 1) * pageSize
+	offset := (int64(page) - 1) * int64(pageSize)
+	if offset >= total {
+		return nil, total, nil
+	}
 	if err := query.Offset(int(offset)).Limit(int(pageSize)).Order(orderBy).Find(&rows).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to list payment orders: %w", err)
 	}

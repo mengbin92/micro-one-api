@@ -1,6 +1,7 @@
 package data
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -376,6 +377,9 @@ func (r *Repository) ListSubscriptionCandidates(ctx context.Context, group, mode
 }
 
 func (r *Repository) ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*biz.SubscriptionAccount, int64, error) {
+	if pageSize <= 0 {
+		pageSize = 20
+	}
 	if r.db == nil {
 		if _, iam := authorization.QueryScopeFromContext(ctx, "channel.account.list"); iam {
 			return nil, 0, authorization.ErrDenied
@@ -387,10 +391,18 @@ func (r *Repository) ListSubscriptionAccounts(ctx context.Context, page, pageSiz
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	var result []*biz.SubscriptionAccount
+	keyword = strings.ToLower(keyword)
 	for _, account := range r.subAccounts {
-		result = append(result, account)
+		if (group != "" && account.Group != group) || (status != 0 && account.Status != status) || (platform != "" && account.Platform != platform) {
+			continue
+		}
+		if !strings.Contains(strings.ToLower(account.Name), keyword) && !strings.Contains(strings.ToLower(account.AccountID), keyword) {
+			continue
+		}
+		result = append(result, cloneSubscriptionAccount(account))
 	}
-	return result, int64(len(result)), nil
+	slices.SortFunc(result, func(a, b *biz.SubscriptionAccount) int { return cmp.Compare(a.ID, b.ID) })
+	return pageRows(result, page, pageSize), int64(len(result)), nil
 }
 
 func (r *Repository) ListOAuthRefreshCandidates(ctx context.Context, within time.Duration) ([]int64, error) {
@@ -758,6 +770,9 @@ func (r *Repository) ListAvailableModels(ctx context.Context, group string) ([]s
 }
 
 func (r *Repository) ListChannels(ctx context.Context, page, pageSize int32, keyword, group string, status, chType int32) ([]*biz.Channel, int64, error) {
+	if pageSize <= 0 {
+		pageSize = 20
+	}
 	if r.db == nil {
 		if _, iam := authorization.QueryScopeFromContext(ctx, "channel.channel.list"); iam {
 			return nil, 0, authorization.ErrDenied
@@ -769,10 +784,25 @@ func (r *Repository) ListChannels(ctx context.Context, page, pageSize int32, key
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	var result []*biz.Channel
+	keyword = strings.ToLower(keyword)
 	for _, ch := range r.channels {
-		result = append(result, ch)
+		if (group != "" && ch.Group != group) || (status != 0 && ch.Status != status) || (chType != 0 && ch.Type != chType) || !strings.Contains(strings.ToLower(ch.Name), keyword) {
+			continue
+		}
+		result = append(result, cloneChannel(ch))
 	}
-	return result, int64(len(result)), nil
+	slices.SortFunc(result, func(a, b *biz.Channel) int { return cmp.Compare(a.ID, b.ID) })
+	return pageRows(result, page, pageSize), int64(len(result)), nil
+}
+
+func pageOffset(page, pageSize int32) int64 {
+	return (int64(max(page, 1)) - 1) * int64(max(pageSize, 0))
+}
+
+func pageRows[T any](rows []T, page, pageSize int32) []T {
+	total := int64(len(rows))
+	start := min(pageOffset(page, pageSize), total)
+	return rows[start:min(start+int64(max(pageSize, 0)), total)]
 }
 
 func (r *Repository) CreateChannel(ctx context.Context, channel *biz.Channel) error {
@@ -956,9 +986,12 @@ func (r *Repository) listSubscriptionAccountsDB(ctx context.Context, page, pageS
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	offset := (page - 1) * pageSize
+	offset := pageOffset(page, pageSize)
+	if offset >= total {
+		return []*biz.SubscriptionAccount{}, total, nil
+	}
 	var models []subscriptionAccountModel
-	if err := query.Offset(int(offset)).Limit(int(pageSize)).Find(&models).Error; err != nil {
+	if err := query.Order("id ASC").Offset(int(offset)).Limit(int(pageSize)).Find(&models).Error; err != nil {
 		return nil, 0, err
 	}
 	result := make([]*biz.SubscriptionAccount, len(models))
@@ -1816,9 +1849,12 @@ func (r *Repository) listChannelsDB(ctx context.Context, page, pageSize int32, k
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	offset := (page - 1) * pageSize
+	offset := pageOffset(page, pageSize)
+	if offset >= total {
+		return []*biz.Channel{}, total, nil
+	}
 	var models []channelModel
-	if err := query.Offset(int(offset)).Limit(int(pageSize)).Find(&models).Error; err != nil {
+	if err := query.Order("id ASC").Offset(int(offset)).Limit(int(pageSize)).Find(&models).Error; err != nil {
 		return nil, 0, err
 	}
 	result := make([]*biz.Channel, len(models))

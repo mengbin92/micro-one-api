@@ -199,7 +199,10 @@ func (r *Repository) listDB(ctx context.Context, namespace string, page, pageSiz
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	offset := (page - 1) * pageSize
+	offset := (int64(page) - 1) * int64(pageSize)
+	if offset >= total {
+		return []*biz.ConfigEntry{}, total, nil
+	}
 	var models []configModel
 	if err := query.Offset(int(offset)).Limit(int(pageSize)).Order("id DESC").Find(&models).Error; err != nil {
 		return nil, 0, err
@@ -337,12 +340,12 @@ func (r *Repository) listMemory(namespace string, page, pageSize int32) ([]*biz.
 		all = append(all, &cloned)
 	}
 	total := int64(len(all))
-	start := int((page - 1) * pageSize)
-	if start >= len(all) {
+	start := (int64(page) - 1) * int64(pageSize)
+	if start >= total {
 		return nil, total, nil
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].ID > all[j].ID })
-	end := min(start+int(pageSize), len(all))
+	end := min(start+int64(pageSize), total)
 	return all[start:end], total, nil
 }
 

@@ -25,6 +25,24 @@ func TestMemoryTokenIDsAreNotReusedAfterDelete(t *testing.T) {
 	require.Equal(t, "second", got.Name)
 }
 
+func TestMemoryUserAndTokenPagination(t *testing.T) {
+	ctx := context.Background()
+	repo := newMemoryRepository()
+	repo.usersByID[1] = &biz.User{ID: 1}
+	repo.usersByID[2] = &biz.User{ID: 2}
+	users, total, err := repo.ListUsers(ctx, 2, 1, "", "", 0)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, total)
+	require.Len(t, users, 1)
+	require.EqualValues(t, 1, users[0].ID)
+
+	require.NoError(t, repo.CreateToken(ctx, &biz.Token{Key: "first", Name: "first", UserID: 1}))
+	tokens, total, err := repo.ListTokens(ctx, 1, 1+(1<<30), 4, "")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Empty(t, tokens)
+}
+
 func TestNewRepositoryFromEnvRequiresDSNUnlessMemoryModeEnabled(t *testing.T) {
 	t.Setenv("IDENTITY_SQL_DSN", "")
 	t.Setenv("SQL_DSN", "")

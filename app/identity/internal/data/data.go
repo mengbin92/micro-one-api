@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -494,17 +495,15 @@ func (r *Repository) FindTokenByID(ctx context.Context, userID, tokenID int64) (
 }
 
 func (r *Repository) ListTokens(ctx context.Context, userID int64, page, pageSize int32, keyword string) ([]*biz.Token, int64, error) {
+	page = max(page, 1)
+	if pageSize <= 0 {
+		pageSize = 20
+	}
 	if r.db != nil {
 		return r.listTokensDB(ctx, userID, page, pageSize, keyword)
 	}
 	r.identityLock.RLock()
 	defer r.identityLock.RUnlock()
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 20
-	}
 	var tokens []*biz.Token
 	for _, token := range r.tokensByHash {
 		if token.UserID != userID {
@@ -521,11 +520,12 @@ func (r *Repository) ListTokens(ctx context.Context, userID int64, page, pageSiz
 		tokens = append(tokens, &cloned)
 	}
 	total := int64(len(tokens))
-	start := int((page - 1) * pageSize)
-	if start >= len(tokens) {
+	start := (int64(page) - 1) * int64(pageSize)
+	if start >= total {
 		return []*biz.Token{}, total, nil
 	}
-	end := min(start+int(pageSize), len(tokens))
+	sort.Slice(tokens, func(i, j int) bool { return tokens[i].ID > tokens[j].ID })
+	end := min(start+int64(pageSize), total)
 	return tokens[start:end], total, nil
 }
 
@@ -661,6 +661,10 @@ func (r *Repository) DeleteToken(ctx context.Context, userID, tokenID int64) err
 }
 
 func (r *Repository) ListUsers(ctx context.Context, page, pageSize int32, keyword, group string, status int32) ([]*biz.User, int64, error) {
+	page = max(page, 1)
+	if pageSize <= 0 {
+		pageSize = 20
+	}
 	if r.db != nil {
 		return r.listUsersDB(ctx, page, pageSize, keyword, group, status)
 	}
@@ -683,7 +687,14 @@ func (r *Repository) ListUsers(ctx context.Context, page, pageSize int32, keywor
 		cloned := *u
 		users = append(users, &cloned)
 	}
-	return users, int64(len(users)), nil
+	total := int64(len(users))
+	start := (int64(page) - 1) * int64(pageSize)
+	if start >= total {
+		return []*biz.User{}, total, nil
+	}
+	sort.Slice(users, func(i, j int) bool { return users[i].ID > users[j].ID })
+	end := min(start+int64(pageSize), total)
+	return users[start:end], total, nil
 }
 
 func (r *Repository) findTokenByKeyDB(ctx context.Context, key string) (*biz.Token, error) {
@@ -896,12 +907,6 @@ func (r *Repository) createTokenDB(ctx context.Context, token *biz.Token) error 
 }
 
 func (r *Repository) listTokensDB(ctx context.Context, userID int64, page, pageSize int32, keyword string) ([]*biz.Token, int64, error) {
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 20
-	}
 	var models []tokenModel
 	query := r.db.WithContext(ctx).Model(&tokenModel{}).Where("user_id = ? AND TRIM(COALESCE(name, '')) <> ''", userID)
 	if keyword != "" {
@@ -913,7 +918,10 @@ func (r *Repository) listTokensDB(ctx context.Context, userID int64, page, pageS
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	offset := (page - 1) * pageSize
+	offset := (int64(page) - 1) * int64(pageSize)
+	if offset >= total {
+		return []*biz.Token{}, total, nil
+	}
 	if err := query.Order("id DESC").Offset(int(offset)).Limit(int(pageSize)).Find(&models).Error; err != nil {
 		return nil, 0, err
 	}
@@ -1097,8 +1105,11 @@ func (r *Repository) listUsersDB(ctx context.Context, page, pageSize int32, keyw
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	offset := (page - 1) * pageSize
-	if err := query.Offset(int(offset)).Limit(int(pageSize)).Find(&models).Error; err != nil {
+	offset := (int64(page) - 1) * int64(pageSize)
+	if offset >= total {
+		return []*biz.User{}, total, nil
+	}
+	if err := query.Order("id DESC").Offset(int(offset)).Limit(int(pageSize)).Find(&models).Error; err != nil {
 		return nil, 0, err
 	}
 	users := make([]*biz.User, len(models))

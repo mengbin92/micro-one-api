@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"micro-one-api/app/config/internal/biz"
+	dbtest "micro-one-api/platform/database/testutil"
 )
 
 func TestMemoryRepository_Get(t *testing.T) {
@@ -91,6 +92,23 @@ func TestMemoryRepository_List(t *testing.T) {
 	}
 	if len(entries) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+}
+
+func TestConfigRepositoryListBeyondEnd(t *testing.T) {
+	ctx := context.Background()
+	for _, backend := range []string{"memory", "sqlite"} {
+		t.Run(backend, func(t *testing.T) {
+			repo := newMemoryRepository()
+			if backend == "sqlite" {
+				repo = &Repository{db: dbtest.RoutingContextDB(t, "sqlite")}
+			}
+			require.NoError(t, repo.Set(ctx, &biz.ConfigEntry{Namespace: "test", Key: "theme", Value: "light", UpdatedAt: time.Now()}))
+			entries, total, err := repo.List(ctx, "test", 1+(1<<30), 4)
+			require.NoError(t, err)
+			require.EqualValues(t, 1, total)
+			require.Empty(t, entries)
+		})
 	}
 }
 

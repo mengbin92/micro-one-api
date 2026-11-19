@@ -6,6 +6,7 @@ import (
 	"micro-one-api/domain/authorization"
 	"micro-one-api/platform/database/authzquery"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -213,7 +214,10 @@ func (r *Repository) listHealthChecksDB(ctx context.Context, serviceName string,
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	offset := (page - 1) * pageSize
+	offset := max(int64(page)-1, 0) * int64(pageSize)
+	if offset >= total {
+		return nil, total, nil
+	}
 	var models []healthCheckModel
 	if err := query.Offset(int(offset)).Limit(int(pageSize)).Order("id DESC").Find(&models).Error; err != nil {
 		return nil, 0, err
@@ -320,7 +324,10 @@ func (r *Repository) listAlertRulesDB(ctx context.Context, page, pageSize int32)
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	offset := (page - 1) * pageSize
+	offset := max(int64(page)-1, 0) * int64(pageSize)
+	if offset >= total {
+		return nil, total, nil
+	}
 	var models []alertRuleModel
 	if err := query.Offset(int(offset)).Limit(int(pageSize)).Order("id DESC").Find(&models).Error; err != nil {
 		return nil, 0, err
@@ -434,10 +441,12 @@ func (r *Repository) listHealthChecksMemory(ctx context.Context, serviceName str
 		all = append(all, &cloned)
 	}
 	total := int64(len(all))
-	start := int((page - 1) * pageSize)
-	if start >= len(all) {
+	offset := max(int64(page)-1, 0) * int64(pageSize)
+	if offset >= total {
 		return nil, total, nil
 	}
+	sort.Slice(all, func(i, j int) bool { return all[i].ID > all[j].ID })
+	start := int(offset)
 	end := min(start+int(pageSize), len(all))
 	return all[start:end], total, nil
 }
@@ -499,10 +508,12 @@ func (r *Repository) listAlertRulesMemory(ctx context.Context, page, pageSize in
 		all = append(all, &cloned)
 	}
 	total := int64(len(all))
-	start := int((page - 1) * pageSize)
-	if start >= len(all) {
+	offset := max(int64(page)-1, 0) * int64(pageSize)
+	if offset >= total {
 		return nil, total, nil
 	}
+	sort.Slice(all, func(i, j int) bool { return all[i].ID > all[j].ID })
+	start := int(offset)
 	end := min(start+int(pageSize), len(all))
 	return all[start:end], total, nil
 }

@@ -77,15 +77,11 @@ func (r *Repository) ListSubscriptionAccountsByRecovery(ctx context.Context, pag
 		}
 		return 0
 	})
-	if page < 1 {
-		page = 1
-	}
 	if pageSize < 1 || pageSize > 1000 {
 		pageSize = 20
 	}
 	total := int64(len(filtered))
-	start := min(int64(page-1)*int64(pageSize), total)
-	items := filtered[start:min(start+int64(pageSize), total)]
+	items := pageRows(filtered, page, pageSize)
 	if r.db != nil {
 		if err := r.attachAccountQuotaSnapshots(ctx, items); err != nil {
 			return nil, 0, err

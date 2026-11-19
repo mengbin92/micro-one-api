@@ -328,7 +328,10 @@ func (r *Repository) listDB(ctx context.Context, page, pageSize int32, level, so
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	offset := (page - 1) * pageSize
+	offset := (int64(page) - 1) * int64(pageSize)
+	if offset >= total {
+		return []*biz.LogEntry{}, total, nil
+	}
 	var models []logModel
 	if err := query.Offset(int(offset)).Limit(int(pageSize)).Order("id DESC").Find(&models).Error; err != nil {
 		return nil, 0, err
@@ -366,7 +369,10 @@ func (r *Repository) listByUserDB(ctx context.Context, userID int64, page, pageS
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	offset := (page - 1) * pageSize
+	offset := (int64(page) - 1) * int64(pageSize)
+	if offset >= total {
+		return []*biz.LogEntry{}, total, nil
+	}
 	var models []logModel
 	if err := query.Offset(int(offset)).Limit(int(pageSize)).Order("id DESC").Find(&models).Error; err != nil {
 		return nil, 0, err
@@ -750,11 +756,12 @@ func (r *Repository) listMemory(ctx context.Context, page, pageSize int32, level
 		all = append(all, &cloned)
 	}
 	total := int64(len(all))
-	start := int((page - 1) * pageSize)
-	if start >= len(all) {
+	start := (int64(page) - 1) * int64(pageSize)
+	if start >= total {
 		return nil, total, nil
 	}
-	end := min(start+int(pageSize), len(all))
+	sort.Slice(all, func(i, j int) bool { return all[i].ID > all[j].ID })
+	end := min(start+int64(pageSize), total)
 	return all[start:end], total, nil
 }
 
@@ -783,11 +790,12 @@ func (r *Repository) listByUserMemory(ctx context.Context, userID int64, page, p
 		all = append(all, &cloned)
 	}
 	total := int64(len(all))
-	start := int((page - 1) * pageSize)
-	if start >= len(all) {
+	start := (int64(page) - 1) * int64(pageSize)
+	if start >= total {
 		return nil, total, nil
 	}
-	end := min(start+int(pageSize), len(all))
+	sort.Slice(all, func(i, j int) bool { return all[i].ID > all[j].ID })
+	end := min(start+int64(pageSize), total)
 	return all[start:end], total, nil
 }
 
