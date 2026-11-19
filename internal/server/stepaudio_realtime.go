@@ -69,9 +69,15 @@ func (s *HTTPServer) handleStepAudioRealtime(w http.ResponseWriter, r *http.Requ
 	}
 	defer client.CloseNow()
 	if s.wsConnTracker != nil {
-		tracked := s.wsConnTracker.NewConnection(rootRequestID(r), client.CloseNow)
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		defer cancel()
+		tracked := s.wsConnTracker.NewConnection(rootRequestID(r), func() error {
+			cancel()
+			return client.CloseNow()
+		})
 		if tracked == nil {
-			closeOpenAIWSClientConn(client, coderws.StatusTryAgainLater, "realtime connection tracker full")
+			closeOpenAIWSClientConn(client, coderws.StatusTryAgainLater, "server is draining websocket connections")
 			return
 		}
 		tracked.SetMetadata("endpoint", "/v1/realtime")

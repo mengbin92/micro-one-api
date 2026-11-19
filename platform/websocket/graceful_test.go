@@ -114,8 +114,8 @@ func TestDrain(t *testing.T) {
 	if metrics.TotalConnections != 5 {
 		t.Errorf("Expected TotalConnections=5, got %d", metrics.TotalConnections)
 	}
-	if metrics.ClosedGracefully < 5 {
-		t.Errorf("Expected at least 5 gracefully closed, got %d", metrics.ClosedGracefully)
+	if metrics.ClosedByForce != 5 || metrics.ClosedGracefully != 0 {
+		t.Errorf("Expected 5 force-closed and no graceful closes, got %+v", metrics)
 	}
 }
 
@@ -195,6 +195,19 @@ func TestIsDraining(t *testing.T) {
 
 	if !tracker.IsDraining() {
 		t.Error("Tracker should be draining")
+	}
+}
+
+func TestDrainRejectsLateRegistration(t *testing.T) {
+	tracker := NewConnectionTracker(DefaultDrainConfig())
+	if err := tracker.Drain(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if conn := tracker.NewConnection("late-upgrade", func() error { return nil }); conn != nil {
+		t.Fatal("connection registered after drain returned")
+	}
+	if got := tracker.ActiveCount(); got != 0 {
+		t.Fatalf("active connections after drain = %d, want 0", got)
 	}
 }
 
