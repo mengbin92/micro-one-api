@@ -11,9 +11,8 @@
 //
 // Brownfield: if the schema_migrations table is empty but core tables
 // already exist (e.g. docker-entrypoint-initdb.d already initialised the DB),
-// every existing .sql file is silently registered as applied — without
-// executing it — so subsequent .sql files added later can be applied
-// incrementally without re-running historical DDL.
+// the configured baseline is registered atomically without executing its
+// files, then subsequent migrations are applied normally.
 package migrate
 
 import (
@@ -225,15 +224,8 @@ func (r *Runner) Apply(ctx context.Context) ([]string, error) {
 			if r.BaselineVersion == "" {
 				return nil, fmt.Errorf("brownfield database detected (one of %v exists) but BaselineVersion is not set; refusing to re-run historical migrations", brownfieldMarkerTables)
 			}
-			for _, f := range files {
-				v := versionOf(f)
-				if v > r.BaselineVersion {
-					continue
-				}
-				if err := r.markApplied(ctx, v); err != nil {
-					return nil, fmt.Errorf("baseline mark %s: %w", v, err)
-				}
-				applied[v] = struct{}{}
+			if err := r.markBaseline(ctx, files, applied); err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -438,10 +430,28 @@ func (r *Runner) preflightSchemaMigrationsInsert(ctx context.Context) error {
 	return nil
 }
 
-func (r *Runner) markApplied(ctx context.Context, version string) error {
+func (r *Runner) markBaseline(ctx context.Context, files []string, applied map[string]struct{}) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin baseline transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
 	stmt := rebind("INSERT INTO schema_migrations (version) VALUES (?)", r.usePgPlaceholder())
-	_, err := r.db.ExecContext(ctx, stmt, version)
-	return err
+	for _, file := range files {
+		version := versionOf(file)
+		if version > r.BaselineVersion {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, stmt, version); err != nil {
+			return fmt.Errorf("baseline mark %s: %w", version, err)
+		}
+		applied[version] = struct{}{}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit baseline: %w", err)
+	}
+	return nil
 }
 
 // applyOne executes one migration file in a transaction. The statements in
