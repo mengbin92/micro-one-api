@@ -8,7 +8,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.46.2 发布公告](./docs/releases/release-v0.46.2.md)（PATCH 修复实时语音双向连接） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.46.2)
+> 📣 **最新发布**：[v0.46.3 发布公告](./docs/releases/release-v0.46.3.md)（PATCH 修复结算、语音网关、管理台和后台任务） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.46.3)
 
 ## 功能概览
 
@@ -186,6 +186,7 @@ make web-dist
 
 ## 发布与升级
 
+- [v0.46.3](./docs/releases/release-v0.46.3.md) 修复订阅结算、语音流与连接停机、管理台写入重试和后台任务。无新增数据库迁移。
 - [v0.46.2](./docs/releases/release-v0.46.2.md) 修复实时语音上游的 WebSocket 双向连接。升级 Relay Gateway。
 - [v0.46.1](./docs/releases/release-v0.46.1.md) 修复创建固定路由组 Key 时的安全验证提示。升级 Admin。
 - [v0.46.0](./docs/releases/release-v0.46.0.md) 增加语音合成、流式识别和实时语音对话。升级 Billing、Admin 和 Relay Gateway。

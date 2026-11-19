@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.46.3] - 2026-11-19
+
+PATCH 修复订阅与用量结算、语音网关、管理台和后台任务。无新增数据库迁移。详见 [发布记录](docs/releases/release-v0.46.3.md)。
+
 ### Fixed
 
 - 分页统一在放宽整数位宽后计算偏移。内存模式的用户、令牌、配置、日志等列表按稳定顺序分页，删除令牌或配置后新增记录使用新 ID。渠道健康更新返回独立副本，调用方修改返回值时不会改写存储。
