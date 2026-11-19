@@ -8,7 +8,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.45.5 发布公告](./docs/releases/release-v0.45.5.md)（PATCH 修复用户分组授权的 IAM 版本缺失） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.45.5)
+> 📣 **最新发布**：[v0.46.0 发布公告](./docs/releases/release-v0.46.0.md)（MINOR 增加语音合成、识别和实时对话计费） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.46.0)
 
 ## 功能概览
 
@@ -186,6 +186,7 @@ make web-dist
 
 ## 发布与升级
 
+- [v0.46.0](./docs/releases/release-v0.46.0.md) 增加语音合成、流式识别和实时语音对话。升级 Billing、Admin 和 Relay Gateway。
 - [v0.45.5](./docs/releases/release-v0.45.5.md) 修复用户分组管理的 IAM 版本提交。升级管理台 Web 静态产物。
 - [v0.45.4](./docs/releases/release-v0.45.4.md) 修复指定渠道代理的模型和路由授权。升级 Relay Gateway。
 - [v0.45.3](./docs/releases/release-v0.45.3.md) 修复渠道测试后紧接启用的 409，以及订阅、模型和路由分组管理的写入版本问题。升级时替换前端静态产物即可。
