@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	coderws "github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
 	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
@@ -49,6 +50,38 @@ func TestStepAudioRealtimeRejectsUnmeteredAutomaticResponses(t *testing.T) {
 	require.Equal(t, "official", v["session"].(map[string]any)["voice"])
 	require.Contains(t, v["session"].(map[string]any), "turn_detection")
 	require.Nil(t, v["session"].(map[string]any)["turn_detection"])
+}
+
+func TestStepAudioRealtimeUpstreamUsesBidirectionalTransport(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer fixture" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		conn, err := coderws.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.CloseNow()
+		kind, data, err := conn.Read(r.Context())
+		if err == nil {
+			_ = conn.Write(r.Context(), kind, data)
+		}
+	}))
+	defer upstream.Close()
+
+	srv := NewHTTPServer(nil, nil, nil, relayprovider.NewProviderFactory(time.Second), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := srv.dialStepAudioRealtime(ctx, "ws"+strings.TrimPrefix(upstream.URL, "http"), "fixture")
+	require.NoError(t, err)
+	defer conn.CloseNow()
+	require.NoError(t, conn.Write(ctx, coderws.MessageText, []byte("test turn")))
+	kind, data, err := conn.Read(ctx)
+	require.NoError(t, err)
+	require.Equal(t, coderws.MessageText, kind)
+	require.Equal(t, "test turn", string(data))
 }
 
 type stepAudioSSEProvider struct {
