@@ -261,6 +261,9 @@ func (s *observationSession) Terminal(record evidence.Record) {
 	s.eventSeq++
 	canceled := s.downstreamCanceledLocked()
 	capture := evidence.ClassifyCapture(record, canceled)
+	if capture == evidence.CaptureComplete && s.base.SourceKind == UpstreamSourceChannel && s.base.SourceID == 1 {
+		record.Observation = record.ChannelOneChatObservation()
+	}
 	send := s.withProtocolLocked(record)
 	event := evidence.NewSendEvent(send, "terminal", s.eventSeq, &record, capture, record.Observation.Reason, time.Now())
 	s.mu.Unlock()

@@ -290,6 +290,75 @@ func TestObservationCaptureKeepsCompleteStreamWithInvalidUsage(t *testing.T) {
 	}
 }
 
+func TestObservationChannelOneChatUsageAliases(t *testing.T) {
+	t.Setenv("RELAY_USAGE_OBSERVATION_V1", "true")
+	const aliases = `{"usage":{"prompt_tokens":10,"input_tokens":10,"completion_tokens":3,"output_tokens":3,"total_tokens":13,"prompt_tokens_details":{"cached_tokens":4},"input_tokens_details":{"cached_tokens":4},"completion_tokens_details":{"reasoning_tokens":2},"output_tokens_details":{"reasoning_tokens":2}}}`
+	const partition = `,"prompt_cache_hit_tokens":4,"prompt_cache_miss_tokens":6`
+	cacheWrite := strings.ReplaceAll(aliases, `"cached_tokens":4`, `"cached_tokens":4,"cache_write_tokens":5`)
+	conflict := strings.Replace(aliases, `"input_tokens":10`, `"input_tokens":11`, 1)
+	for _, tc := range []struct {
+		name, body, status string
+		channel            Channel
+		stream             bool
+	}{
+		{name: "matching aliases", body: aliases, channel: Channel{ID: 1}, status: "verified"},
+		{name: "cache partition", body: strings.Replace(aliases, `"total_tokens":13`, `"total_tokens":13`+partition, 1), channel: Channel{ID: 1}, status: "verified"},
+		{name: "cache write in SSE", body: cacheWrite, channel: Channel{ID: 1}, stream: true, status: "verified"},
+		{name: "partial earlier SSE frame", body: `{"usage":{"input_tokens":10,"prompt_tokens":10}}` + "\n\ndata: " + aliases, channel: Channel{ID: 1}, stream: true, status: "verified"},
+		{name: "conflicting counts", body: conflict, channel: Channel{ID: 1}, status: "unsupported"},
+		{name: "conflicting earlier SSE frame", body: conflict + "\n\ndata: " + aliases, channel: Channel{ID: 1}, stream: true, status: "unsupported"},
+		{name: "invalid alias type", body: strings.Replace(aliases, `"input_tokens":10`, `"input_tokens":"10"`, 1), channel: Channel{ID: 1}, status: "unsupported"},
+		{name: "conflicting cache partition", body: strings.Replace(aliases, `"total_tokens":13`, `"total_tokens":13,"prompt_cache_hit_tokens":4,"prompt_cache_miss_tokens":7`, 1), channel: Channel{ID: 1}, status: "unsupported"},
+		{name: "conflicting cache write", body: strings.Replace(cacheWrite, `"cache_write_tokens":5`, `"cache_write_tokens":6`, 1), channel: Channel{ID: 1}, status: "unsupported"},
+		{name: "unknown dimension", body: strings.Replace(aliases, `"output_tokens":3`, `"output_tokens":3,"new_meter":2`, 1), channel: Channel{ID: 1}, status: "unsupported"},
+		{name: "other channel", body: aliases, channel: Channel{ID: 2}, status: "unsupported"},
+		{name: "subscription with same id", body: aliases, channel: Channel{ID: 1, SubscriptionAccountID: 1}, status: "unsupported"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body, contentType := tc.body, "application/json"
+			if tc.stream {
+				body, contentType = "data: "+body+"\n\ndata: [DONE]\n\n", "text/event-stream"
+			}
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", contentType)
+				_, _ = io.WriteString(w, body)
+			}))
+			defer upstream.Close()
+			repo := &fakeObservationRepo{}
+			ctx := WithObservationDelivery(context.Background(), NewObservationDelivery(repo, nil))
+			ctx = WithUsageObservation(ctx, &tc.channel, "req-aliases", "exact-model")
+			var durable evidence.Record
+			ctx = evidence.WithDurableRecorder(ctx, nil, func(record evidence.Record) error {
+				durable = record
+				return nil
+			})
+			response, err := sendObservedRequest(t, ctx, upstream)
+			if err != nil || response != body {
+				t.Fatalf("response changed: %q, %v", response, err)
+			}
+			events := repo.recorded()
+			if len(events) == 0 {
+				t.Fatal("no observation events")
+			}
+			terminal := events[len(events)-1]
+			if terminal.Category != "terminal" || terminal.Capture != evidence.CaptureComplete || terminal.Record == nil {
+				t.Fatalf("missing complete terminal: %+v", events)
+			}
+			got := terminal.Record.Observation
+			if got.Status != tc.status {
+				t.Fatalf("observation = %s/%s, want %s", got.Status, got.Reason, tc.status)
+			}
+			original := durable.Observation
+			if original.Status != "unsupported" || original.Buckets != nil || string(got.Usage) != string(original.Usage) || got.UsageDigest != original.UsageDigest {
+				t.Fatalf("durable verdict or raw evidence changed: original=%+v, observation=%+v", original, got)
+			}
+			if tc.status == "verified" && (got.Buckets == nil || *got.Buckets != [5]int64{6, 4, 0, 0, 3} || got.ContractRevision == original.ContractRevision) {
+				t.Fatalf("expected scoped compatibility revision and native buckets, got %+v", got)
+			}
+		})
+	}
+}
+
 // R08: one client.Do that follows a redirect performs two real HTTP sends. The
 // observation seam must show both hops; the redirect policy itself is unchanged.
 func TestObservationRecordsRedirectHopsAsSeparateSends(t *testing.T) {

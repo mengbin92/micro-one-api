@@ -48,6 +48,43 @@ type Observation struct {
 // Parse only follows native protocol locations, never recursively searches
 // model-generated content for an object that happens to look like usage.
 func Parse(body []byte, protocol string) Observation {
+	return parse(body, protocol, false)
+}
+
+// ChannelOneChatObservation checks duplicate usage fields for observation only.
+func (r Record) ChannelOneChatObservation() Observation {
+	o := r.Observation
+	if o.Protocol != "openai_chat" || o.Status != "unsupported" || o.Reason != "unknown_usage_field" || r.DroppedEvents > 0 {
+		return o
+	}
+	// A later cumulative snapshot can overwrite an earlier alias conflict.
+	for _, frame := range r.Events {
+		if frame.Status != "unsupported" {
+			continue
+		}
+		checked := checkChannelOneChatUsage(frame)
+		if checked.Status != "verified" && checked.Status != "missing" {
+			return o
+		}
+	}
+	checked := checkChannelOneChatUsage(o)
+	if checked.Status == "verified" {
+		o.Status, o.Reason, o.Buckets, o.Semantics = checked.Status, checked.Reason, checked.Buckets, checked.Semantics
+		o.ParserRevision = ParserRevision + "+channel1-chat.1"
+		o.ContractRevision = ContractRevision + "+channel1-chat.1"
+	}
+	return o
+}
+
+func checkChannelOneChatUsage(o Observation) Observation {
+	body, err := jsonx.Marshal(map[string]jsonx.RawMessage{"usage": o.Usage})
+	if err != nil {
+		return o
+	}
+	return parse(body, o.Protocol, true)
+}
+
+func parse(body []byte, protocol string, channelOneChatAliases bool) Observation {
 	o := Observation{Protocol: protocol, ParserRevision: ParserRevision, ContractRevision: ContractRevision, Status: "missing", Reason: "usage_absent"}
 	if len(body) > MaxFrameBytes {
 		o.Status, o.Reason = "unobserved", "frame_limit"
@@ -196,6 +233,42 @@ func Parse(body []byte, protocol string) Observation {
 		for _, p := range []string{details + "/audio_tokens", outDetails + "/audio_tokens"} {
 			if n, _ := read(p); n != 0 {
 				unsupported = "audio_metering"
+			}
+		}
+	}
+	if channelOneChatAliases && protocol == "openai_chat" {
+		for _, path := range []string{"/input_tokens_details", "/output_tokens_details"} {
+			known[path] = true
+			if value, present := flat[path]; present {
+				if _, ok := value.(map[string]any); !ok {
+					invalid = "detail_not_object"
+				}
+			}
+		}
+		for _, pair := range [][2]string{
+			{"/prompt_tokens", "/input_tokens"},
+			{"/completion_tokens", "/output_tokens"},
+			{"/prompt_tokens_details/cached_tokens", "/input_tokens_details/cached_tokens"},
+			{"/completion_tokens_details/reasoning_tokens", "/output_tokens_details/reasoning_tokens"},
+		} {
+			alias, hasAlias := read(pair[1])
+			if native, hasNative := read(pair[0]); hasAlias && (!hasNative || alias != native) {
+				invalid = "usage_alias_conflict"
+			}
+		}
+		// Keep the reported cache writes in Usage. The aliases prove equality,
+		// but do not specify a cache lifetime for either canonical creation bucket.
+		writes, hasWrites := read("/prompt_tokens_details/cache_write_tokens")
+		aliasWrites, hasAliasWrites := read("/input_tokens_details/cache_write_tokens")
+		if hasWrites != hasAliasWrites || writes != aliasWrites {
+			invalid = "cache_write_alias_conflict"
+		}
+		hit, hasHit := read("/prompt_cache_hit_tokens")
+		miss, hasMiss := read("/prompt_cache_miss_tokens")
+		if hasHit || hasMiss {
+			_, hasCached := flat["/prompt_tokens_details/cached_tokens"]
+			if !hasHit || !hasMiss || !hasInput || !hasCached || hit != b[1] || hit < 0 || hit > b[0] || miss != b[0]-hit {
+				invalid = "cache_partition_conflict"
 			}
 		}
 	}
