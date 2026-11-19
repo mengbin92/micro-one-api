@@ -70,11 +70,12 @@ func applyRequestBudget(r *http.Request, body []byte) {
 	}
 	state.applied = true
 	var probe struct {
-		Stream bool `json:"stream"`
+		Stream       bool   `json:"stream"`
+		StreamFormat string `json:"stream_format"`
 	}
 	_ = jsonx.Unmarshal(body, &probe)
 	duration := state.nonstream
-	if probe.Stream {
+	if probe.Stream || r.URL.Path == "/v1/audio/asr/sse" || (r.URL.Path == "/v1/audio/speech" && probe.StreamFormat == "sse") {
 		duration = state.stream
 	}
 	if duration <= 0 {

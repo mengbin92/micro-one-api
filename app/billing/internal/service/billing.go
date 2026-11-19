@@ -124,7 +124,7 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 	}
 	ctx = billingdomain.WithServiceTierRequest(ctx, billingdomain.ServiceTierRequest{RequestedServiceTier: req.RequestedServiceTier, Protocol: req.ServiceTierProtocol, InputTokenBound: req.InputTokenBound, OutputTokenBound: req.OutputTokenBound, Version: req.ServiceTierPricingVersion})
 	if req.CostBound != nil {
-		ctx = routing.WithCostBound(ctx, routing.CostBound{Protocol: req.CostBound.Protocol, InputTokens: req.CostBound.InputTokens, UpstreamModel: req.CostBound.UpstreamModel})
+		ctx = routing.WithCostBound(ctx, routing.CostBound{Protocol: req.CostBound.Protocol, InputTokens: req.CostBound.InputTokens, UpstreamModel: req.CostBound.UpstreamModel, AudioUnits: req.CostBound.AudioUnits})
 	}
 	if req.AttemptNumber < 0 || len(req.RootRequestId) > 128 || len(req.UpstreamModelId) > 255 || (req.SourceKind != "" && req.SourceKind != "channel" && req.SourceKind != "subscription") {
 		return nil, biz.ErrRoutingContextInvalid
@@ -235,7 +235,7 @@ func (s *BillingService) GetRoutingCapabilities(ctx context.Context, _ *billingv
 	if s.asyncUc != nil && s.uc.ExecutionAvailable(ctx) {
 		executionVersion, usageVersion, policy = 1, 2, execution.Policy
 	}
-	return &billingv1.GetRoutingCapabilitiesResponse{ServiceTierPricingVersion: 1, ExecutionDeliveryVersion: executionVersion, UsageContractVersion: usageVersion, SettlementPolicyVersion: policy, SettlementReceiptVersion: receiptVersion, RequestSnapshotVersion: version, FixedRouting: version == 2, SubscriptionContracts: version == 2 && subscriptionbiz.EntitlementsEnabled(), UserPriceOverrides: version == 2 && subscriptionbiz.EntitlementsEnabled()}, nil
+	return &billingv1.GetRoutingCapabilitiesResponse{ServiceTierPricingVersion: 1, AudioInputPricingVersion: 1, ExecutionDeliveryVersion: executionVersion, UsageContractVersion: usageVersion, SettlementPolicyVersion: policy, SettlementReceiptVersion: receiptVersion, RequestSnapshotVersion: version, FixedRouting: version == 2, SubscriptionContracts: version == 2 && subscriptionbiz.EntitlementsEnabled(), UserPriceOverrides: version == 2 && subscriptionbiz.EntitlementsEnabled()}, nil
 }
 
 func (s *BillingService) SetUserRoutingPrice(ctx context.Context, req *billingv1.SetUserRoutingPriceRequest) (*billingv1.SetUserRoutingPriceReply, error) {

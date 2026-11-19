@@ -41,6 +41,15 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 		}
 
 		clientModel := extractRawModel(body)
+		audioInput, err := parseStepAudioInput(upstreamPath, clientModel, body)
+		if err != nil {
+			s.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if audioInput != nil {
+			clientModel = audioInput.bound.UpstreamModel
+			body = audioInput.body
+		}
 		if clientModel == "" {
 			clientModel = defaultRawModel(upstreamPath)
 		}
@@ -65,6 +74,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 		upstreamBody := rewriteRawModel(body, plan.ResolvedModel)
 
 		var upstreamResp *relayprovider.RawResponse
+		var streamed bool
 		retryStartedAt := time.Now()
 		retryExecutor := s.relayUsecase.NewRetryExecutor()
 		result := retryExecutor.ExecuteWithCandidates(r.Context(), plan, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
@@ -76,7 +86,13 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 			retriedBody := rewriteRawModel(upstreamBody, currentResolvedModel)
 			// P3 #6: derive the billing model name from billing_model_source.
 			billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)
-			if bound := embeddingCostBound(upstreamPath, ch.Type, currentResolvedModel, retriedBody); bound.Valid() {
+			if audioInput != nil {
+				if currentResolvedModel != audioInput.bound.UpstreamModel || !stepAudioChannel(ch) || r.URL.RawQuery != "" {
+					return relayprovider.BeforeForward(fmt.Errorf("metered audio requires the configured OpenAI-compatible source"))
+				}
+				retriedBody = audioInput.body
+				ctx = routing.WithCostBound(ctx, audioInput.bound)
+			} else if bound := embeddingCostBound(upstreamPath, ch.Type, currentResolvedModel, retriedBody); bound.Valid() {
 				ctx = routing.WithCostBound(ctx, bound)
 			}
 			reservation, reserveErr := s.reserveQuota(
@@ -108,19 +124,43 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 			}
 			defer releaseChannel()
 			ctx = s.observeNativeUsage(ctx, ch, requestID, currentResolvedModel)
-			resp, forwardErr := provider.Forward(ctx, &relayprovider.RawRequest{
+			request := &relayprovider.RawRequest{
 				Method: r.Method,
 				Path:   upstreamPath,
 				Query:  r.URL.RawQuery,
 				Header: r.Header.Clone(),
 				Body:   retriedBody,
-			})
+			}
+			if audioInput != nil {
+				request.Header = http.Header{"Content-Type": {"application/json"}}
+			}
+			if audioInput != nil && audioInput.streamEvent != "" {
+				request.Header.Set("Accept", "text/event-stream")
+				start, streamErr := s.forwardStepAudioSSE(ctx, w, provider, request, audioInput.streamEvent, reservation.ReservationId, usageLogInput{
+					UserID: plan.Auth.UserID, TokenID: plan.Auth.TokenID, TokenName: plan.Auth.TokenName,
+					RequestID: requestID, ModelName: billingModel, Endpoint: upstreamPath, ChannelID: ch.ID, IsStream: true,
+					SourceKind: relaybiz.UpstreamSourceChannel, UpstreamModelID: currentResolvedModel,
+				}, startedAt)
+				streamed = start
+				if streamErr != nil && !start {
+					_ = s.releaseQuota(ctx, reservation.ReservationId, "audio upstream did not start")
+				}
+				return streamErr
+			}
+			resp, forwardErr := provider.Forward(ctx, request)
 			if forwardErr != nil {
 				_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream error")
 				return forwardErr
 			}
+			if audioInput != nil && !stepAudioSpeechSuccess(resp) {
+				_ = s.releaseQuota(ctx, reservation.ReservationId, "invalid audio response")
+				return fmt.Errorf("invalid upstream audio response")
+			}
 
-			usage := extractRawUsage(resp.Body, estimateRawTokens(body))
+			var usage rawUsage
+			if audioInput == nil {
+				usage = extractRawUsage(resp.Body, estimateRawTokens(body))
+			}
 			logInput := usageLogInput{
 				UserID:           plan.Auth.UserID,
 				TokenID:          plan.Auth.TokenID,
@@ -144,8 +184,10 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 			logInput.applyChannelInputs(ch)
 			logInput.applyReservation(reservation)
 			logUpstreamUsage(logInput)
-			logInput.applyEnvelope(envelopeFromRawUsage(usage))
-			compareNativeUsageShadow(ctx, logInput.Usage)
+			if audioInput == nil {
+				logInput.applyEnvelope(envelopeFromRawUsage(usage))
+				compareNativeUsageShadow(ctx, logInput.Usage)
+			}
 			if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				return relaybiz.MarkPostForwardError(err)
 			}
@@ -156,6 +198,9 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 
 		// Finalize routing selection outcome (code review #1/#2).
 		s.finalizeSelectionFromResult(plan, result, time.Since(retryStartedAt))
+		if streamed {
+			return
+		}
 
 		if result.Err != nil {
 			setErrorChannel(w, result.Channel)

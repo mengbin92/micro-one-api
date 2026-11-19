@@ -57,6 +57,12 @@ func (t *routingWSTurns) beforeWrite(ctx context.Context, kind coderws.MessageTy
 	return rewritten, nil
 }
 
+func (t *routingWSTurns) hasActive() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.active != nil
+}
+
 func (t *routingWSTurns) take() *billingv1.ReserveQuotaResponse {
 	r, _ := t.takeExecution()
 	return r

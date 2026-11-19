@@ -192,7 +192,10 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 	}
 	bound := routing.GetCostBound(ctx)
 	if bound.Valid() {
-		req.CostBound = &billingv1.RequestCostBound{Protocol: bound.Protocol, InputTokens: bound.InputTokens, UpstreamModel: bound.UpstreamModel}
+		if bound.AudioUnits > 0 && (routingContext == nil || billingCaps.GetAudioInputPricingVersion() != 1) {
+			return nil, fmt.Errorf("billing metered audio capability unavailable")
+		}
+		req.CostBound = &billingv1.RequestCostBound{Protocol: bound.Protocol, InputTokens: bound.InputTokens, UpstreamModel: bound.UpstreamModel, AudioUnits: bound.AudioUnits}
 	}
 	pilot := executionPilot(trace.SourceKind, channelID, subscriptionAccountID, trace.UpstreamModelID)
 	if pilot {

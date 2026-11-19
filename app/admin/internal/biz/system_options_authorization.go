@@ -263,7 +263,7 @@ func (uc *SystemOptionsUsecase) AuthorizeUpstreamCostMigration(ctx context.Conte
 
 func IsPricingMapOption(key string) bool {
 	switch key {
-	case "ModelPrice", "ModelRatio", "CompletionRatio", "GroupRatio", "UpstreamModelPrice":
+	case "ModelPrice", "ModelRatio", "CompletionRatio", "GroupRatio", "UpstreamModelPrice", "AudioInputPrice":
 		return true
 	}
 	return false

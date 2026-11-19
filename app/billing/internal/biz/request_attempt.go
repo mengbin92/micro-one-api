@@ -12,6 +12,14 @@ import (
 
 func validateAttemptReplay(ctx context.Context, r *Reservation, model, channelID string, subscriptionAccountID int64, routingContext *routing.ResolvedRoutingContext) error {
 	a := requesttrace.FromContext(ctx)
+	bound := routing.GetCostBound(ctx)
+	if r.RequestSnapshot != nil && r.RequestSnapshot.AudioInput != nil {
+		if r.RequestSnapshot.CostBound == nil || *r.RequestSnapshot.CostBound != bound || r.ChannelID != channelID {
+			return ErrRoutingContextConflict
+		}
+	} else if bound.AudioUnits != 0 {
+		return ErrRoutingContextConflict
+	}
 	if r.RequestSnapshot != nil && r.RequestSnapshot.ServiceTier != nil {
 		if r.RequestSnapshot.ServiceTier.Request != billingdomain.GetServiceTierRequest(ctx) || r.ChannelID != channelID || parseInt64Default(r.SubscriptionAccountID, 0) != subscriptionAccountID {
 			return ErrRoutingContextConflict

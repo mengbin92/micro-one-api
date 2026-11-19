@@ -50,6 +50,10 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		s.writeRequestBodyError(w, r, err)
 		return
 	}
+	if relaybiz.RelayModelName(extractRawModel(originalBody)) == "stepaudio-2.5-chat" {
+		s.handleChatCompletionsOrchestratedBody(w, r, token, originalBody)
+		return
+	}
 	var req relayprovider.ChatCompletionsRequest
 	if err := jsonx.Unmarshal(originalBody, &req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
