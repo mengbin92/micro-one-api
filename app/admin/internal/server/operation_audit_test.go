@@ -15,6 +15,7 @@ import (
 
 type operationAuditHandlerRepo struct {
 	filter adminbiz.OperationAuditFilter
+	total  int64
 }
 
 func (r *operationAuditHandlerRepo) List(_ context.Context, filter adminbiz.OperationAuditFilter) (adminbiz.OperationAuditBatch, error) {
@@ -23,7 +24,7 @@ func (r *operationAuditHandlerRepo) List(_ context.Context, filter adminbiz.Oper
 		EventID: "event-1", ActorUserID: 7, ActorUsername: "admin", Operation: "billing.pricing.update",
 		ResourceID: "1001", DecisionVersions: `{"policy":"3"}`, Reason: "reviewed",
 		OccurredAt: 1700000000000, Result: "success",
-	}}, Total: 1, StoreID: "test-store"}, nil
+	}}, Total: max(1, r.total), StoreID: "test-store"}, nil
 }
 
 func TestHandleOperationAuditsReturnsFilteredPage(t *testing.T) {
@@ -109,4 +110,29 @@ func TestHandleOperationAuditsRejectsPageOutsideAggregationWindow(t *testing.T) 
 	handleOperationAudits(rec, req, svc)
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Contains(t, rec.Body.String(), "narrow the time range or filters")
+}
+
+func TestHandleOperationAuditsReportsNextPageWithinAggregationWindow(t *testing.T) {
+	svc := service.NewAdminService(nil, nil, nil, nil)
+	svc.SetOperationAuditUsecase(adminbiz.NewOperationAuditUsecase(&operationAuditHandlerRepo{total: 6000}))
+	for _, tc := range []struct {
+		query string
+		next  bool
+	}{
+		{"page=293&page_size=17", true},
+		{"page=294&page_size=17", false},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/operation-audits?"+tc.query, nil)
+			rec := httptest.NewRecorder()
+			handleOperationAudits(rec, req, svc)
+			require.Equal(t, http.StatusOK, rec.Code)
+			var body struct {
+				Data operationAuditPageResponse `json:"data"`
+			}
+			require.NoError(t, jsonx.Unmarshal(rec.Body.Bytes(), &body))
+			require.EqualValues(t, 6000, body.Data.Total)
+			require.Equal(t, tc.next, body.Data.HasNextPage)
+		})
+	}
 }

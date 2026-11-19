@@ -25,10 +25,11 @@ type operationAuditResponse struct {
 }
 
 type operationAuditPageResponse struct {
-	Items    []operationAuditResponse `json:"items"`
-	Total    int64                    `json:"total"`
-	Page     int                      `json:"page"`
-	PageSize int                      `json:"page_size"`
+	Items       []operationAuditResponse `json:"items"`
+	Total       int64                    `json:"total"`
+	Page        int                      `json:"page"`
+	PageSize    int                      `json:"page_size"`
+	HasNextPage bool                     `json:"has_next_page"`
 }
 
 func handleOperationAudits(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -97,8 +98,10 @@ func handleOperationAudits(w http.ResponseWriter, r *http.Request, svc *service.
 			Reason: item.Reason, OccurredAt: item.OccurredAt, Result: item.Result,
 		})
 	}
+	pageEnd := result.Page * result.PageSize
 	writeJSON(w, http.StatusOK, apiResponse(true, "", operationAuditPageResponse{
 		Items: items, Total: result.Total, Page: result.Page, PageSize: result.PageSize,
+		HasNextPage: int64(pageEnd) < result.Total && pageEnd+result.PageSize <= adminbiz.AggregatedOperationAuditCap,
 	}))
 }
 

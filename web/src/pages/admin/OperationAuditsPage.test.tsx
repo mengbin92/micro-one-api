@@ -68,6 +68,24 @@ describe('OperationAuditsPage', () => {
     expect(url.searchParams.get('result')).toBe('failure');
   });
 
+  it('stops pagination at the server window while showing the full total', async () => {
+    server.use(
+      http.get('/api/user/authorization', () => HttpResponse.json({
+        authorization_mode: 'iam', session: { activation_state: 'active' },
+        permitted_operations: ['iam.audit.read'],
+      })),
+      http.get('/api/v1/admin/operation-audits', () => HttpResponse.json({
+        success: true, data: { items: [], total: 6_000, page: 1, page_size: 20, has_next_page: false },
+      })),
+    );
+
+    renderWithQuery(<OperationAuditsPage />);
+
+    expect(await screen.findByText('共 6000 条')).toBeVisible();
+    expect(screen.getByRole('button', { name: '下一页' })).toBeDisabled();
+    expect(screen.getByText('请缩小时间范围或添加筛选条件以查看更多记录。')).toBeVisible();
+  });
+
   it('includes the whole selected end minute in the time range', async () => {
     let requestURL = '';
     server.use(
