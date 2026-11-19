@@ -159,6 +159,14 @@ esac
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(calls, "")
 
+    def test_failed_transfer_discards_local_archive(self):
+        result, calls, _, _ = self.run_deploy(failure="upload")
+        self.assertNotEqual(result.returncode, 0)
+        upload = next(line for line in calls.splitlines() if line.startswith("scp "))
+        archive = Path(upload.split()[1])
+        self.addCleanup(archive.unlink, missing_ok=True)
+        self.assertFalse(archive.exists())
+
     def test_failures_stop_deployment(self):
         for failure in ("save", "upload", "backup", "load", "override", "source-override", "duplicate-source", "health"):
             with self.subTest(failure=failure):

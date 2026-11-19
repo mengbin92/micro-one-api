@@ -133,11 +133,12 @@ SOURCE_DIGEST=$(python3 "${PROJECT_ROOT}/scripts/rbac-source-digest.py")
 [[ "$SOURCE_DIGEST" =~ ^[a-f0-9]{64}$ ]]
 
 # Function to build and deploy a service
-deploy_service() {
+deploy_service() (
     local service=$1
     local image_name="docker-compose-${service}:${DEPLOY_TAG}"
     local temp_file
     temp_file=$(mktemp "/tmp/${service}-image.tar.gz.XXXXXX")
+    trap 'rm -f "$temp_file"' EXIT
 
     log_step "========================================"
     log_step "Building ${service} (linux/amd64)..."
@@ -173,8 +174,9 @@ deploy_service() {
     log_info "Deploying on server (rollback tag: ${ROLLBACK_TAG})..."
     ssh "$SERVER" bash -s -- "$COMPOSE_DIR" "$service" "$image_name" "$expected_id" "$ROLLBACK_TAG" "${temp_file##*/}" "$SOURCE_DIGEST" <<'REMOTE'
 set -euo pipefail
-cd "$1"
 service=$2; image=$3; expected=$4; rollback=$5; archive="/tmp/$6"; source_digest=$7
+trap 'rm -f "$archive"' EXIT
+cd "$1"
 cid=$(docker compose ps -q "$service")
 [[ -n "$cid" && "$cid" != *$'\n'* ]]
 old=$(docker inspect "$cid" --format '{{.Image}}')
@@ -247,15 +249,11 @@ for attempt in {1..30}; do
     test "$attempt" -lt 30
     sleep 2
 done
-rm -f "$archive"
 REMOTE
-
-    # Cleanup local temp file
-    rm -f "$temp_file"
 
     log_info "${service} deployed successfully!"
     echo ""
-}
+)
 
 for svc in "${SERVICES[@]}"; do
     deploy_service "${svc}"
