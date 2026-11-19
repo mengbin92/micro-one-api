@@ -80,12 +80,7 @@ func (s *HTTPServer) handleStepAudioRealtime(w http.ResponseWriter, r *http.Requ
 	}
 	client.SetReadLimit(8 << 20)
 	upstreamURL := "wss://" + strings.TrimPrefix(strings.TrimRight(channel.BaseURL, "/"), "https://") + "/realtime?" + q.Encode()
-	dialCtx, stopDial := context.WithTimeout(ctx, 15*time.Second)
-	upstream, _, err := coderws.Dial(dialCtx, upstreamURL, &coderws.DialOptions{
-		HTTPClient: s.apiKeyStreamHTTPClient,
-		HTTPHeader: http.Header{"Authorization": {"Bearer " + channel.Key}},
-	})
-	stopDial()
+	upstream, err := s.dialStepAudioRealtime(ctx, upstreamURL, channel.Key)
 	if err != nil {
 		closeOpenAIWSClientConn(client, coderws.StatusTryAgainLater, "upstream realtime unavailable")
 		return
@@ -131,6 +126,16 @@ func (s *HTTPServer) handleStepAudioRealtime(w http.ResponseWriter, r *http.Requ
 	if err != nil && !errors.Is(err, context.Canceled) && coderws.CloseStatus(err) == -1 {
 		closeOpenAIWSClientConn(client, coderws.StatusPolicyViolation, "realtime turn rejected or incomplete")
 	}
+}
+
+func (s *HTTPServer) dialStepAudioRealtime(ctx context.Context, upstreamURL, key string) (*coderws.Conn, error) {
+	dialCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	upstream, _, err := coderws.Dial(dialCtx, upstreamURL, &coderws.DialOptions{
+		HTTPClient: s.apiKeyHTTPClient,
+		HTTPHeader: http.Header{"Authorization": {"Bearer " + key}},
+	})
+	return upstream, err
 }
 
 const relayRealtimeOutputReserve int64 = 8192
