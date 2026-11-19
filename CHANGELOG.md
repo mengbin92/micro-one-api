@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.46.1] - 2026-11-19
+
+PATCH 修复管理台创建固定路由组 Key 时丢失安全验证原因的问题。详见 [发布记录](docs/releases/release-v0.46.1.md)。
+
+### Fixed
+
+- 分组接口保留 Identity 返回的安全验证原因，使管理台能弹出验证框并在验证成功后重试创建。
+
 ## [0.46.0] - 2026-11-19
 
 MINOR 增加语音合成、流式语音识别和实时语音对话，并按对应接口的实际用量结算。详见 [发布记录](docs/releases/release-v0.46.0.md)。
