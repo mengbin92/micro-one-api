@@ -36,9 +36,8 @@ type ReconciliationRepo interface {
 	// reservation-side absorber totals match the subscription's running
 	// counters.
 	ListActiveSubscriptions(ctx context.Context) ([]*SubscriptionUsageSnapshot, error)
-	// SumSubscriptionCostSince returns the unmultiplied fixed-point
-	// subscription cost for one subscription inside a single usage window.
-	SumSubscriptionCostSince(ctx context.Context, subscriptionID int64, since time.Time) (int64, error)
+	// SumSubscriptionWindowCosts returns ledger quota and the frozen accounting amount for one window.
+	SumSubscriptionWindowCosts(ctx context.Context, subscriptionID, quotaPolicyID int64, window string, start int64) (SubscriptionWindowCosts, error)
 	// SumPendingReceivables returns the total pending (un-settled)
 	// overdue_quota across all users. Used by reconciliation to verify
 	// the receivables mirror matches the user-wallets with negative
@@ -151,6 +150,12 @@ type SubscriptionUsageSnapshot struct {
 	WeeklyWindowStart  int64
 	MonthlyWindowStart int64
 	RateMultiplier     float64
+}
+
+type SubscriptionWindowCosts struct {
+	LedgerCost, LegacyCost int64
+	FrozenAccountingUSD    float64
+	UnresolvedPolicy       bool
 }
 
 // SubscriptionInconsistency captures a mismatch between the
@@ -575,13 +580,17 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 				if window.start <= 0 {
 					continue
 				}
-				ledgerCost, sumErr := uc.reconRepo.SumSubscriptionCostSince(ctx, sub.SubscriptionID, time.Unix(window.start, 0))
+				costs, sumErr := uc.reconRepo.SumSubscriptionWindowCosts(ctx, sub.SubscriptionID, sub.GroupID, window.name, window.start)
 				if sumErr != nil {
 					apploggerError(sumErr, "sum subscription window for reconciliation")
 					markPartial("subscription window", sumErr)
 					continue
 				}
-				expectedUSD := float64(ledgerCost) / float64(AmountScale) * multiplier
+				if costs.UnresolvedPolicy {
+					markPartial("subscription window", fmt.Errorf("subscription %d %s has charges from another quota policy", sub.SubscriptionID, window.name))
+					continue
+				}
+				expectedUSD := costs.FrozenAccountingUSD + float64(costs.LegacyCost)/float64(AmountScale)*multiplier
 				difference := window.used - expectedUSD
 				// The subscription columns store four decimal places. Permit one
 				// fixed-point unit plus a small float representation epsilon.
@@ -592,7 +601,7 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 						Window:                 window.name,
 						WindowStart:            window.start,
 						SubscriptionUsedUSD:    window.used,
-						LedgerSubscriptionCost: ledgerCost,
+						LedgerSubscriptionCost: costs.LedgerCost,
 						Difference:             difference,
 					})
 				}
