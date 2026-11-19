@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"micro-one-api/app/config/internal/biz"
 )
 
@@ -91,4 +92,27 @@ func TestMemoryRepository_List(t *testing.T) {
 	if len(entries) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(entries))
 	}
+}
+
+func TestMemoryConfigRepositoryKeepsDistinctKeysAndIDs(t *testing.T) {
+	ctx := context.Background()
+	repo := newMemoryRepository()
+	first := &biz.ConfigEntry{Namespace: "a", Key: "b/c", Value: "first"}
+	second := &biz.ConfigEntry{Namespace: "a/b", Key: "c", Value: "second"}
+	require.NoError(t, repo.Set(ctx, first))
+	require.NoError(t, repo.Set(ctx, second))
+	got, err := repo.Get(ctx, first.Namespace, first.Key)
+	require.NoError(t, err)
+	require.Equal(t, first.Value, got.Value)
+	require.NoError(t, repo.Delete(ctx, first.Namespace, first.Key))
+
+	replacement := &biz.ConfigEntry{Namespace: first.Namespace, Key: first.Key}
+	require.NoError(t, repo.Set(ctx, replacement))
+	require.Greater(t, replacement.ID, second.ID)
+	require.Greater(t, replacement.Revision, first.Revision)
+	entries, total, err := repo.List(ctx, "", 1, 1)
+	require.NoError(t, err)
+	require.EqualValues(t, 3, total)
+	require.Len(t, entries, 1)
+	require.Equal(t, replacement.ID, entries[0].ID)
 }

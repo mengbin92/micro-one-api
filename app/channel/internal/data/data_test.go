@@ -870,6 +870,25 @@ func TestAggregateSubscriptionAccountQuotaEvents(t *testing.T) {
 	assert.InDelta(t, 0.6, rows[1].ChargedUSD, 0.000001)
 }
 
+func TestMemoryRecordHealthReturnsIndependentChannel(t *testing.T) {
+	repo := newMemoryRepository()
+	ctx := context.Background()
+	channel := &biz.Channel{
+		Name: "health-copy", Group: "default", Status: biz.ChannelStatusEnabled,
+		Models: []string{"model"}, PermittedActions: []string{"read"},
+	}
+	require.NoError(t, repo.CreateChannel(ctx, channel))
+
+	updated, err := repo.RecordHealth(ctx, biz.ChannelHealthEvent{ChannelID: channel.ID, Success: true}, 1, time.Minute)
+	require.NoError(t, err)
+	updated.Models[0] = "changed"
+	updated.PermittedActions[0] = "changed"
+	stored, err := repo.FindByID(ctx, channel.ID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"model"}, stored.Models)
+	require.Equal(t, []string{"read"}, stored.PermittedActions)
+}
+
 func TestRecordHealth_OpensAndResetsCircuit(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()

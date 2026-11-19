@@ -880,9 +880,7 @@ func (r *Repository) RecordHealth(ctx context.Context, event biz.ChannelHealthEv
 		return nil, biz.ErrChannelNotFound
 	}
 	applyHealthEvent(channel, event, threshold, cooldown)
-	cloned := *channel
-	cloned.Models = append([]string(nil), channel.Models...)
-	return &cloned, nil
+	return cloneChannel(channel), nil
 }
 
 func (r *Repository) DeleteChannel(ctx context.Context, channelID int64) error {
@@ -1713,9 +1711,14 @@ func (r *Repository) findByIDMemory(_ context.Context, channelID int64) (*biz.Ch
 	if !ok {
 		return nil, biz.ErrChannelNotFound
 	}
+	return cloneChannel(channel), nil
+}
+
+func cloneChannel(channel *biz.Channel) *biz.Channel {
 	cloned := *channel
-	cloned.Models = append([]string(nil), channel.Models...)
-	return &cloned, nil
+	cloned.Models = slices.Clone(channel.Models)
+	cloned.PermittedActions = slices.Clone(channel.PermittedActions)
+	return &cloned
 }
 
 func (r *Repository) listChannelCandidatesMemory(_ context.Context, group, model string) ([]biz.RoutingCandidate, error) {

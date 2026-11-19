@@ -33,6 +33,7 @@ type Repository struct {
 	tokensByHash        map[string]*biz.Token
 	oauthIdentities     map[string]*biz.OAuthIdentity
 	nextOAuthIdentityID int64
+	lastTokenID         int64
 	nextUserID          int64
 	systemOptions       map[string]string
 	identityLock        sync.RWMutex
@@ -465,7 +466,8 @@ func (r *Repository) CreateToken(ctx context.Context, token *biz.Token) error {
 	}
 	r.identityLock.Lock()
 	defer r.identityLock.Unlock()
-	token.ID = int64(len(r.tokensByHash) + 1)
+	r.lastTokenID++
+	token.ID = r.lastTokenID
 	// L6: memory store keys by hash to mirror the DB. The DO keeps the
 	// plaintext Key so CreateAccessToken can return it once to the caller.
 	if token.KeyHash == "" {

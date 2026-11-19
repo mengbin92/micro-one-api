@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -21,8 +22,14 @@ type Repository struct {
 	db          *gorm.DB
 	redis       *redis.Client
 	mu          sync.RWMutex
-	memVersions map[string]int64
-	mem         map[string]*biz.ConfigEntry // key = "namespace/key"
+	memNextID   int64
+	memVersions map[configKey]int64
+	mem         map[configKey]*biz.ConfigEntry
+}
+
+type configKey struct {
+	namespace string
+	key       string
 }
 
 type configModel struct {
@@ -91,8 +98,9 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 
 func newMemoryRepository() *Repository {
 	return &Repository{
-		mem: map[string]*biz.ConfigEntry{
-			"default/theme": {
+		memNextID: 2,
+		mem: map[configKey]*biz.ConfigEntry{
+			{namespace: "default", key: "theme"}: {
 				ID:        1,
 				Namespace: "default",
 				Key:       "theme",
@@ -308,7 +316,7 @@ func (r *Repository) deleteDB(ctx context.Context, namespace, key string) error 
 func (r *Repository) getMemory(namespace, key string) (*biz.ConfigEntry, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	k := namespace + "/" + key
+	k := configKey{namespace: namespace, key: key}
 	entry, ok := r.mem[k]
 	if !ok {
 		return nil, biz.ErrConfigNotFound
@@ -333,6 +341,7 @@ func (r *Repository) listMemory(namespace string, page, pageSize int32) ([]*biz.
 	if start >= len(all) {
 		return nil, total, nil
 	}
+	sort.Slice(all, func(i, j int) bool { return all[i].ID > all[j].ID })
 	end := min(start+int(pageSize), len(all))
 	return all[start:end], total, nil
 }
@@ -340,7 +349,7 @@ func (r *Repository) listMemory(namespace string, page, pageSize int32) ([]*biz.
 func (r *Repository) setMemory(ctx context.Context, entry *biz.ConfigEntry) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	k := entry.Namespace + "/" + entry.Key
+	k := configKey{namespace: entry.Namespace, key: entry.Key}
 	if _, iam := authorization.QueryScopeFromContext(ctx, biz.ConfigWriteOperation(entry.Namespace, entry.Key)); iam {
 		expected, ok := authorization.ExpectedResourceRevision(ctx)
 		revision := int64(0)
@@ -355,10 +364,11 @@ func (r *Repository) setMemory(ctx context.Context, entry *biz.ConfigEntry) erro
 		entry.ID = existing.ID
 		entry.Revision = existing.Revision
 	} else {
-		entry.ID = int64(len(r.mem) + 1)
+		entry.ID = r.memNextID
+		r.memNextID++
 	}
 	if r.memVersions == nil {
-		r.memVersions = map[string]int64{}
+		r.memVersions = map[configKey]int64{}
 	}
 	entry.Revision = max(entry.Revision, r.memVersions[k]) + 1
 	r.memVersions[k] = entry.Revision
@@ -370,7 +380,7 @@ func (r *Repository) setMemory(ctx context.Context, entry *biz.ConfigEntry) erro
 func (r *Repository) deleteMemory(ctx context.Context, namespace, key string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	k := namespace + "/" + key
+	k := configKey{namespace: namespace, key: key}
 	if _, ok := r.mem[k]; !ok {
 		return biz.ErrConfigNotFound
 	}
@@ -382,7 +392,7 @@ func (r *Repository) deleteMemory(ctx context.Context, namespace, key string) er
 		}
 	}
 	if r.memVersions == nil {
-		r.memVersions = map[string]int64{}
+		r.memVersions = map[configKey]int64{}
 	}
 	r.memVersions[k] = r.mem[k].Revision + 1
 	delete(r.mem, k)

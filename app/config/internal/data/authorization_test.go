@@ -21,7 +21,7 @@ func TestIAMB4ConfigDeleteRejectsWrappedRevision(t *testing.T) {
 			}
 			require.NoError(t, r.Set(context.Background(), &biz.ConfigEntry{Namespace: "system", Key: "notice", Value: "keep"}))
 			if driver == "memory" {
-				r.mem["system/notice"].Revision = -1
+				r.mem[configKey{namespace: "system", key: "notice"}].Revision = -1
 			} else {
 				require.NoError(t, r.db.Model(&configModel{}).Where(map[string]any{"namespace": "system", "key": "notice"}).Update("revision", -1).Error)
 			}

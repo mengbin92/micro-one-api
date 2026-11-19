@@ -5,8 +5,25 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"micro-one-api/app/identity/internal/biz"
 )
+
+func TestMemoryTokenIDsAreNotReusedAfterDelete(t *testing.T) {
+	ctx := context.Background()
+	repo := newMemoryRepository()
+	first := &biz.Token{Key: "first", Name: "first", UserID: 1}
+	second := &biz.Token{Key: "second", Name: "second", UserID: 1}
+	require.NoError(t, repo.CreateToken(ctx, first))
+	require.NoError(t, repo.CreateToken(ctx, second))
+	require.NoError(t, repo.DeleteToken(ctx, 1, first.ID))
+	third := &biz.Token{Key: "third", Name: "third", UserID: 1}
+	require.NoError(t, repo.CreateToken(ctx, third))
+	require.Greater(t, third.ID, second.ID)
+	got, err := repo.FindTokenByID(ctx, 1, second.ID)
+	require.NoError(t, err)
+	require.Equal(t, "second", got.Name)
+}
 
 func TestNewRepositoryFromEnvRequiresDSNUnlessMemoryModeEnabled(t *testing.T) {
 	t.Setenv("IDENTITY_SQL_DSN", "")
@@ -345,10 +362,11 @@ func TestCreateToken_Success(t *testing.T) {
 
 func TestCreateToken_IDAssigned(t *testing.T) {
 	repo := newTestRepo()
-	repo.tokensByHash[biz.HashTokenKey("k1")] = &biz.Token{ID: 1, Key: "k1"}
+	ctx := context.Background()
+	require.NoError(t, repo.CreateToken(ctx, &biz.Token{Key: "k1"}))
 
 	token := &biz.Token{Key: "k2", UserID: 1, Status: biz.TokenStatusEnabled}
-	repo.CreateToken(context.Background(), token)
+	require.NoError(t, repo.CreateToken(ctx, token))
 	if token.ID != 2 {
 		t.Fatalf("expected ID=2, got: %d", token.ID)
 	}
