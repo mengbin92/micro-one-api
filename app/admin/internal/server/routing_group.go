@@ -13,6 +13,9 @@ import (
 
 func routingGroupError(w http.ResponseWriter, err error) {
 	e := errors.FromError(err)
+	if writeSecurityVerificationError(w, e.Reason) {
+		return
+	}
 	code, message := int(e.Code), "分组服务暂不可用"
 	if mapped, ok := resourceHTTPErrorCode(err); ok {
 		code = mapped
