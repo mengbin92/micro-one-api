@@ -502,9 +502,7 @@ func isLogDuplicateKeyErr(err error) bool {
 // CreateInBatches. It implements the biz.LogRepoBatch optional interface so
 // BatchLogWriter can flush a whole batch with one INSERT rather than N.
 // When the repository is backed by the in-memory store it appends directly.
-// The per-entry IDs returned by the DB are written back onto the input
-// entries so callers (e.g. the gRPC IngestLog response) observe the same IDs
-// they would on the synchronous path.
+// The IDs returned by the DB are written back to the batch's input entries.
 func (r *Repository) CreateBatch(ctx context.Context, entries []*biz.LogEntry) error {
 	if len(entries) == 0 {
 		return nil
