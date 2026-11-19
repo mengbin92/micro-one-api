@@ -21,21 +21,16 @@ import (
 // AsyncBillingUsecase provides a non-blocking billing path.
 // It uses a local quota check + async settlement.
 type AsyncBillingUsecase struct {
-	syncUc       *BillingUsecase    // Fallback to sync billing
-	localCache   *QuotaCache        // L1: in-memory quota snapshot
-	redis        *redis.Client      // L2: distributed quota counter
-	settleQueue  chan *SettleTask   // async settlement queue
-	batchWriter  *BatchLedgerWriter // batch ledger persistence
-	workerWg     sync.WaitGroup
-	workerCtx    context.Context
-	workerCancel context.CancelFunc
-	taskMu       sync.RWMutex
-	// closed is set by Close() before workerCancel fires. Once true, Settle
-	// stops enqueuing onto settleQueue (the worker is draining / has exited)
-	// and falls back to the synchronous commit pipeline so no settlement is
-	// silently lost when the process is shutting down. atomic so Settle (hot
-	// path, many goroutines) reads it lock-free.
-	closed         atomic.Bool
+	syncUc         *BillingUsecase    // Fallback to sync billing
+	localCache     *QuotaCache        // L1: in-memory quota snapshot
+	redis          *redis.Client      // L2: distributed quota counter
+	settleQueue    chan *SettleTask   // async settlement queue
+	batchWriter    *BatchLedgerWriter // batch ledger persistence
+	workerWg       sync.WaitGroup
+	workerCtx      context.Context
+	workerCancel   context.CancelFunc
+	taskMu         sync.RWMutex
+	closed         bool    // Protected by taskMu during both enqueue and shutdown.
 	quotaLuaScript *string // Cached Lua script
 	taskStore      SettlementTaskStore
 	reporter       SettlementSideEffectReporter
@@ -386,18 +381,19 @@ func (uc *AsyncBillingUsecase) Settle(ctx context.Context, task *SettleTask) err
 	}
 	if store := uc.getTaskStore(); store != nil {
 		var persistErr error
+		var receipt *SettlementReceipt
+		persistCtx, cancel := detachedSettleContext(ctx)
 		if intake, ok := store.(DurableSettlementTaskStore); ok {
-			var receipt *SettlementReceipt
-			receipt, persistErr = intake.AcceptTask(context.WithoutCancel(ctx), task)
-			if persistErr == nil && receipt != nil && !receipt.SettlementAccepted {
+			receipt, persistErr = intake.AcceptTask(persistCtx, task)
+		} else {
+			persistErr = store.SaveTask(persistCtx, task)
+		}
+		cancel()
+		if persistErr == nil && receipt != nil {
+			if !receipt.SettlementAccepted {
 				return ErrSettlementReservationClosed
 			}
-			if persistErr == nil && receipt != nil {
-				// Recovery claims the immutable stored payload.
-				return nil
-			}
-		} else {
-			persistErr = store.SaveTask(context.WithoutCancel(ctx), task)
+			return nil // Recovery claims the immutable stored payload.
 		}
 		if err := persistErr; err != nil {
 			metrics.AsyncBillingDroppedFlushes.Inc()
@@ -420,26 +416,28 @@ func (uc *AsyncBillingUsecase) Settle(ctx context.Context, task *SettleTask) err
 	// values (tracing) but drops cancellation: by the time this runs during
 	// shutdown the caller's ctx is often already canceled, which would
 	// silently skip billing for a served request.
-	if uc.closed.Load() {
-		metrics.AsyncBillingFallbackToSync.WithLabelValues().Inc()
-		fallbackCtx, cancel := detachedSettleContext(ctx)
-		fallbackErr := uc.settleSync(fallbackCtx, task)
-		cancel()
-		return fallbackErr
+	if uc.enqueueSettlement(task) {
+		metrics.AsyncBillingQueueSize.WithLabelValues().Set(float64(len(uc.settleQueue)))
+		return nil
+	}
+	metrics.AsyncBillingFallbackToSync.WithLabelValues().Inc()
+	fallbackCtx, cancel := detachedSettleContext(ctx)
+	defer cancel()
+	return uc.settleSync(fallbackCtx, task)
+}
+
+func (uc *AsyncBillingUsecase) enqueueSettlement(task *SettleTask) bool {
+	uc.taskMu.RLock()
+	defer uc.taskMu.RUnlock()
+	if uc.closed {
+		return false
 	}
 	select {
 	case uc.settleQueue <- task:
-		metrics.AsyncBillingQueueSize.WithLabelValues().Set(float64(len(uc.settleQueue)))
+		return true
 	default:
-		// Queue full: fallback to synchronous settle, preserving values but
-		// not cancellation (see above).
-		metrics.AsyncBillingFallbackToSync.WithLabelValues().Inc()
-		fallbackCtx, cancel := detachedSettleContext(ctx)
-		fallbackErr := uc.settleSync(fallbackCtx, task)
-		cancel()
-		return fallbackErr
+		return false
 	}
-	return nil
 }
 
 // detachedSettleContext keeps the caller's context values (trace spans) but
@@ -579,18 +577,23 @@ func (uc *AsyncBillingUsecase) settlementRecoveryWorker() {
 			if store == nil {
 				continue
 			}
-			tasks, err := store.ListPending(context.WithoutCancel(uc.workerCtx), cap(uc.settleQueue))
+			ctx, cancel := context.WithTimeout(uc.workerCtx, 30*time.Second)
+			tasks, err := store.ListPending(ctx, cap(uc.settleQueue))
 			if err != nil {
-				applogger.Log.Error("load pending async settlements", zap.Error(err))
+				cancel()
+				if uc.workerCtx.Err() == nil {
+					applogger.Log.Error("load pending async settlements", zap.Error(err))
+				}
 				continue
 			}
 			for _, task := range tasks {
 				select {
 				case uc.settleQueue <- task:
 				default:
-					_ = store.MarkFailed(context.Background(), task.ReservationID, "settlement queue full", time.Now().Add(time.Second))
+					_ = store.MarkFailed(ctx, task.ReservationID, "settlement queue full", time.Now().Add(time.Second))
 				}
 			}
+			cancel()
 		}
 	}
 }
@@ -685,18 +688,12 @@ func (uc *AsyncBillingUsecase) processSettlement(task *SettleTask) {
 
 // Close closes the async billing use case and waits for workers to finish.
 func (uc *AsyncBillingUsecase) Close() error {
-	// Flip the drain flag first so concurrent Settle callers stop
-	// enqueuing and fall back to the synchronous path. Without this,
-	// a task enqueued in the window between workerCancel() and
-	// wg.Wait() would sit in settleQueue with no consumer and be lost.
-	uc.closed.Store(true)
+	uc.taskMu.Lock()
+	uc.closed = true
+	uc.taskMu.Unlock()
 	uc.workerCancel()
 	uc.workerWg.Wait()
-	// Drain any tasks that raced in after closed was set but before the
-	// worker exited. The worker also drains on its way out, but a task
-	// could have arrived between the worker's final select and
-	// wg.Wait() returning. Process inline so Close never returns with
-	// un-settled work in the queue.
+	// The recovery worker may have queued tasks while the settlement worker was draining.
 	for {
 		select {
 		case task := <-uc.settleQueue:
