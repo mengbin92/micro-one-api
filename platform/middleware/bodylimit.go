@@ -52,7 +52,7 @@ func RequestBodyLimitForPath(path string) int64 {
 		path == "/v1/messages", path == "/v1/responses",
 		strings.HasPrefix(path, "/v1/responses/"):
 		return JSONRequestBodyLimit
-	case path == "/v1/audio/transcriptions", path == "/v1/audio/translations",
+	case path == "/v1/audio/transcriptions", path == "/v1/audio/translations", path == "/v1/audio/asr/sse",
 		path == "/v1/images/edits", path == "/v1/images/variations",
 		strings.HasPrefix(path, "/v1/oneapi/proxy/"):
 		return LargeRequestBodyLimit

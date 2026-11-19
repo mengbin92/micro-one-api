@@ -684,6 +684,8 @@ func safeRawContentType(contentType, fallback string) string {
 		mediaType == "application/x-ndjson",
 		mediaType == "application/octet-stream",
 		mediaType == "text/event-stream",
+		mediaType == "audio/wav", mediaType == "audio/x-wav", mediaType == "audio/mpeg",
+		mediaType == "audio/flac", mediaType == "audio/ogg", mediaType == "audio/opus", mediaType == "audio/pcm",
 		strings.HasSuffix(mediaType, "+json"):
 		return contentType
 	default:

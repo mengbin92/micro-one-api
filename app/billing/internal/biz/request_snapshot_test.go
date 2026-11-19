@@ -6,7 +6,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	billingdomain "micro-one-api/domain/billing"
 	"micro-one-api/domain/execution"
+	"micro-one-api/domain/requesttrace"
+	"micro-one-api/domain/routing"
 )
 
 func TestNativeCommittedReplaySurvivesEvidenceDeadline(t *testing.T) {
@@ -77,4 +80,33 @@ func TestRequestSnapshotReleasedRequestCannotBeReused(t *testing.T) {
 	require.ErrorIs(t, err, ErrRoutingContextConflict)
 	_, err = uc.ReserveQuota(context.Background(), "42", "released", 1, "m", "1", 0)
 	require.ErrorIs(t, err, ErrReservationReleased)
+}
+
+func TestMeteredAudioReservesMeasuresAndSettlesFrozenTariff(t *testing.T) {
+	t.Setenv("BILLING_REQUEST_SNAPSHOT_V2", "true")
+	const model = "stepaudio-2.5-asr"
+	ledger := &mockLedgerRepo{}
+	uc := NewBillingUsecaseWithPricing(&mockAccountRepo{account: &Account{UserID: "42", Group: "default", Balance: 10_000}},
+		&mockReservationRepo{reservations: map[string]*Reservation{}}, ledger, nil, PricingConfig{})
+	uc.SetRoutingGroupReader(pricingGroupReader{})
+	uc.pricingStore = capturedPricingStore{PricingConfig{AudioInputPrices: map[string]billingdomain.AudioInputPrice{model: {Yuan: "0.45", YuanPerUSD: "6.8"}}}}
+	selected := &routing.ResolvedRoutingContext{Version: 2, UserID: 42, TokenID: 7, GroupID: 10, GroupKey: "default", TokenMode: "fixed",
+		TokenRevision: 1, UserAccessRevision: 1, GroupRevision: 1, SelectionSource: "token_fixed"}
+	ctx := requesttrace.WithAttempt(context.Background(), requesttrace.Attempt{RootRequestID: "asr", Number: 1, SourceKind: "channel", UpstreamModelID: model})
+	_, err := uc.ReserveQuota(ctx, "42", "asr", 100, model, "13", 0, selected)
+	require.ErrorIs(t, err, ErrRoutingContextInvalid, "generic token estimates must not admit measured models")
+
+	bound := routing.CostBound{Protocol: "stepaudio_asr_sse", UpstreamModel: model, AudioUnits: 60_000_000}
+	r, err := uc.ReserveQuota(routing.WithCostBound(ctx, bound), "42", "asr", 0, model, "13", 0, selected)
+	require.NoError(t, err)
+	require.EqualValues(t, 11, r.Amount)
+	bound.AudioUnits *= 2
+	_, err = uc.ReserveQuota(routing.WithCostBound(ctx, bound), "42", "asr", 0, model, "13", 0, selected)
+	require.ErrorIs(t, err, ErrRoutingContextConflict)
+
+	uc.pricingStore = capturedPricingStore{PricingConfig{}}
+	cost, _, err := uc.CommitQuotaWithUsage(ctx, r.ReservationID, 9999, true, LedgerUsage{PromptTokens: 9999})
+	require.NoError(t, err)
+	require.EqualValues(t, 11, cost)
+	require.EqualValues(t, -11, ledger.ledgers[len(ledger.ledgers)-1].Amount)
 }

@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"micro-one-api/domain/authorization"
+	billingdomain "micro-one-api/domain/billing"
 )
 
 // SystemOption is the domain object for a system configuration entry.
@@ -62,10 +63,19 @@ func (uc *SystemOptionsUsecase) Get(ctx context.Context, key string) (string, er
 // Set upserts a key-value pair.
 func (uc *SystemOptionsUsecase) Set(ctx context.Context, key, value string) error {
 	if uc == nil || uc.repo == nil {
-		if key == "ServiceTierPricing" {
+		if key == "ServiceTierPricing" || key == billingdomain.AudioInputPriceOption {
 			return authorization.ErrWriteStorageUnavailable
 		}
 		return nil
+	}
+	if key == billingdomain.AudioInputPriceOption {
+		if _, err := billingdomain.ParseAudioInputPrices(value); err != nil {
+			return ErrPricingOptionsInvalid
+		}
+		if _, supplied := ExpectedOptionRevision(ctx); !supplied {
+			return ErrSystemOptionConflict
+		}
+		return uc.Mutate(ctx, key, func(string) (string, error) { return value, nil })
 	}
 	if key == "ServiceTierPricing" {
 		if err := validateServiceTierOption(value); err != nil {

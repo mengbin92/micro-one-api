@@ -43,6 +43,10 @@ func (s *HTTPServer) handleChatCompletionsWithOrchestrator(w http.ResponseWriter
 		return
 	}
 
+	s.handleChatCompletionsOrchestratedBody(w, r, token, body)
+}
+
+func (s *HTTPServer) handleChatCompletionsOrchestratedBody(w http.ResponseWriter, r *http.Request, token string, body []byte) {
 	var req chatOrchestratorRequest
 	if err := jsonx.Unmarshal(body, &req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")

@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.46.0] - 2026-11-19
+
+MINOR 增加语音合成、流式语音识别和实时语音对话，并按对应接口的实际用量结算。详见 [发布记录](docs/releases/release-v0.46.0.md)。
+
+### Added
+
+- 语音合成按字符、流式识别按 PCM 音频时长计费，预扣时冻结单价、汇率和分组倍率。
+- 实时语音支持 WebSocket 单轮对话，每轮重新校验路由资格并按终态 token 用量结算。
+- 语音对话支持 Chat Completions 原生音频输入数组。
+
 ## [0.45.5] - 2026-11-18
 
 PATCH 修复管理台用户分组授权写入缺少 IAM 版本的问题。详见 [发布记录](docs/releases/release-v0.45.5.md)。

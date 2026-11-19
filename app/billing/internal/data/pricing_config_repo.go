@@ -23,7 +23,7 @@ func (r *PricingConfigRepo) GetPricingConfig(ctx context.Context) (biz.PricingCo
 	rows, err := r.data.db.WithContext(ctx).
 		Table("system_options").
 		Select("option_key, option_value").
-		Where("option_key IN ?", []string{"GroupRatio", "ModelRatio", "CompletionRatio", "ModelPrice", "UpstreamModelPrice", "AmountPerUnit", "QuotaPerUnit", "ServiceTierPricing"}).
+		Where("option_key IN ?", []string{"GroupRatio", "ModelRatio", "CompletionRatio", "ModelPrice", "UpstreamModelPrice", "AmountPerUnit", "QuotaPerUnit", "ServiceTierPricing", billingdomain.AudioInputPriceOption}).
 		Rows()
 	if err != nil {
 		return biz.PricingConfig{}, fmt.Errorf("list pricing options: %w", err)
@@ -46,6 +46,7 @@ func (r *PricingConfigRepo) GetPricingConfig(ctx context.Context) (biz.PricingCo
 		return biz.PricingConfig{}, err
 	}
 	return biz.PricingConfig{
+		AudioInputPrices: audioInputPrices(values[billingdomain.AudioInputPriceOption]),
 		ServiceTier:      tier,
 		GroupRatios:      parseRatioOption(values["GroupRatio"]),
 		ModelRatios:      parseRatioOption(values["ModelRatio"]),
@@ -54,6 +55,15 @@ func (r *PricingConfigRepo) GetPricingConfig(ctx context.Context) (biz.PricingCo
 		UpstreamPrices:   parseModelPriceOption(values["UpstreamModelPrice"]),
 		AmountPerUnit:    parseFloatOption(firstNonEmpty(values["AmountPerUnit"], values["QuotaPerUnit"])),
 	}, nil
+}
+
+// A broken tariff disables the new audio models without blocking other traffic.
+func audioInputPrices(raw string) map[string]billingdomain.AudioInputPrice {
+	prices, err := billingdomain.ParseAudioInputPrices(raw)
+	if err != nil {
+		return nil
+	}
+	return prices
 }
 
 func firstNonEmpty(values ...string) string {

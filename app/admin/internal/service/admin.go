@@ -2148,6 +2148,7 @@ var oneAPIOptionDefaults = map[string]string{
 	"ModelRatio":                     "{}",
 	"ModelPrice":                     "{}",
 	"ServiceTierPricing":             "{\"enabled\":false}",
+	"AudioInputPrice":                "{}",
 	"GroupRatio":                     "{}",
 	"CompletionRatio":                "{}",
 	"TopUpLink":                      "",

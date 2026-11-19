@@ -29,6 +29,7 @@ import (
 
 type PricingConfig struct {
 	ServiceTier      billingdomain.ServiceTierConfig
+	AudioInputPrices map[string]billingdomain.AudioInputPrice
 	GroupRatios      map[string]float64
 	ModelRatios      map[string]float64
 	CompletionRatios map[string]float64
@@ -382,6 +383,9 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 	cost := calculator.calculateCost(ctx, priceGroup, model, estimatedTokens, 0, 0, false)
 	if snapshot != nil && snapshot.ServiceTier != nil {
 		cost = snapshot.ServiceTier.MaxCost
+	}
+	if snapshot != nil && snapshot.AudioInput != nil {
+		cost = snapshot.MaxCost
 	}
 	if cost <= 0 {
 		cost = 1
@@ -2399,6 +2403,7 @@ func (uc *BillingUsecase) pricingConfig(ctx context.Context) PricingConfig {
 		return config
 	}
 	config.ServiceTier = dynamic.ServiceTier
+	config.AudioInputPrices = dynamic.AudioInputPrices
 	if len(dynamic.GroupRatios) > 0 {
 		config.GroupRatios = normalizePositiveRatios(dynamic.GroupRatios)
 	}

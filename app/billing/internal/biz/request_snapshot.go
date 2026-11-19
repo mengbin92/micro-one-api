@@ -15,6 +15,8 @@ import (
 
 	"github.com/go-kratos/kratos/v3/errors"
 	billingv1 "micro-one-api/api/billing/v1"
+	billingdomain "micro-one-api/domain/billing"
+	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"micro-one-api/pkg/jsonx"
@@ -115,10 +117,11 @@ func (uc *BillingUsecase) frozenSubscriptionAbsorbUSD(ctx context.Context, tx su
 // readable and unchanged. The legacy_live policy is captured per request, not
 // retroactively applied to the customer's purchased contract.
 type RequestSnapshot struct {
-	ServiceTier          *FrozenServiceTier `json:",omitempty"`
-	Execution            *execution.Intent  `json:",omitempty"`
-	CostBound            *routing.CostBound `json:",omitempty"`
-	MaxCost              int64              `json:",omitempty"`
+	AudioInput           *billingdomain.AudioInputPrice `json:",omitempty"`
+	ServiceTier          *FrozenServiceTier             `json:",omitempty"`
+	Execution            *execution.Intent              `json:",omitempty"`
+	CostBound            *routing.CostBound             `json:",omitempty"`
+	MaxCost              int64                          `json:",omitempty"`
 	Version              int32
 	Routing              *routing.ResolvedRoutingContext
 	GroupKey             string
@@ -243,6 +246,18 @@ func (s *RequestSnapshot) Validate() (err error) {
 	if s.Routing != nil && (s.Routing.Validate() != nil || s.Routing.GroupKey != s.GroupKey) {
 		return ErrRequestSnapshotInvalid
 	}
+	if (s.AudioInput != nil) != (s.CostBound != nil && s.CostBound.AudioUnits != 0) {
+		return ErrRequestSnapshotInvalid
+	}
+	if s.AudioInput != nil {
+		if s.Routing == nil || s.CostBound == nil || s.ServiceTier != nil {
+			return ErrRequestSnapshotInvalid
+		}
+		cost, err := s.AudioInput.Quota(*s.CostBound, s.Pricing.GroupRatio, AmountScale)
+		if err != nil || cost != s.MaxCost {
+			return ErrRequestSnapshotInvalid
+		}
+	}
 	if s.BillingMode == routing.SubscriptionOnly && (s.CostBound == nil || !s.CostBound.Valid() || s.MaxCost < 0) {
 		return ErrRequestSnapshotInvalid
 	}
@@ -295,6 +310,16 @@ func (uc *BillingUsecase) prepareRequestSnapshot(ctx context.Context, userID, le
 		pricingUC.pricingStore = capturedPricingStore{config}
 	}
 	config := pricingUC.pricingConfig(ctx)
+	bound := routing.GetCostBound(ctx)
+	upstreamModel := requesttrace.FromContext(ctx).UpstreamModelID
+	meteredAudio := routing.AudioInputProtocol(upstreamModel) != "" || routing.AudioInputProtocol(model) != "" || bound.AudioUnits != 0
+	realtimeAudio := upstreamModel == "stepaudio-2.5-realtime" || model == "stepaudio-2.5-realtime"
+	if realtimeAudio && (!RequestSnapshotsEnabled() || routingContext == nil) {
+		return nil, ErrRequestSnapshotUnavailable
+	}
+	if meteredAudio && (!RequestSnapshotsEnabled() || routingContext == nil || bound.AudioUnitsPerPrice() == 0 || bound.UpstreamModel != upstreamModel) {
+		return nil, ErrRoutingContextInvalid
+	}
 	if !RequestSnapshotsEnabled() {
 		if _, err := uc.freezeServiceTier(ctx, config.ServiceTier, 1); err != nil {
 			return nil, err
@@ -326,6 +351,11 @@ func (uc *BillingUsecase) prepareRequestSnapshot(ctx context.Context, userID, le
 		p.Method = "model_price"
 		p.Price = &price
 	}
+	if realtimeAudio {
+		if p.Price == nil || !finitePositive(p.Price.InputPrice) || !finitePositive(p.Price.OutputPrice) || p.Price.CacheReadPrice == nil || !finitePositive(*p.Price.CacheReadPrice) {
+			return nil, ErrRequestSnapshotUnavailable
+		}
+	}
 	version, err := snapshotDigest(p)
 	if err != nil {
 		return nil, ErrRequestSnapshotInvalid
@@ -353,8 +383,18 @@ func (uc *BillingUsecase) prepareRequestSnapshot(ctx context.Context, userID, le
 			applyUserPriceOverride(s, override)
 		}
 	}
+	if meteredAudio {
+		rate, ok := config.AudioInputPrices[upstreamModel]
+		if !ok {
+			return nil, ErrRequestSnapshotUnavailable
+		}
+		cost, err := rate.Quota(bound, s.Pricing.GroupRatio, AmountScale)
+		if err != nil {
+			return nil, ErrRequestSnapshotInvalid
+		}
+		s.AudioInput, s.CostBound, s.MaxCost = &rate, &bound, cost
+	}
 	if s.BillingMode == routing.SubscriptionOnly {
-		bound := routing.GetCostBound(ctx)
 		if !bound.Valid() {
 			return nil, ErrSubscriptionBoundRequired
 		}
@@ -414,6 +454,9 @@ func (uc *BillingUsecase) reservationCostWithPricing(ctx context.Context, pricin
 	if r.RequestSnapshot != nil {
 		if err := r.RequestSnapshot.Validate(); err != nil {
 			return 0, canonicalCostBreakdown{}, ledgerUsageAudit{}, err
+		}
+		if r.RequestSnapshot.AudioInput != nil {
+			return r.RequestSnapshot.MaxCost, canonicalCostBreakdown{}, ledgerUsageAudit{}, nil
 		}
 		calculator := uc.requestCalculator(r.RequestSnapshot)
 		if tier := r.RequestSnapshot.ServiceTier; tier != nil {
