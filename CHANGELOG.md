@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.46.2] - 2026-11-19
+
+PATCH 修复实时语音上游的 WebSocket 双向连接。详见 [发布记录](docs/releases/release-v0.46.2.md)。
+
+### Fixed
+
+- Realtime 使用保留双向读写能力的上游客户端，维持现有连接超时、地址限制和结算规则。
+
 ## [0.46.1] - 2026-11-19
 
 PATCH 修复管理台创建固定路由组 Key 时丢失安全验证原因的问题。详见 [发布记录](docs/releases/release-v0.46.1.md)。
