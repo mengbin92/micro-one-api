@@ -2,6 +2,37 @@ rule_files:
   - alerts.yml
 evaluation_interval: 1m
 tests:
+  - name: relay sums every status for the same method and path before testing the 5xx rate
+    interval: 1m
+    input_series:
+      - series: 'micro_one_api_http_requests_total{service="relay-gateway",instance="relay",method="POST",path="/v1/chat/completions",status="200"}'
+        values: '0+90x13'
+      - series: 'micro_one_api_http_requests_total{service="relay-gateway",instance="relay",method="POST",path="/v1/chat/completions",status="400"}'
+        values: '0+4x13'
+      - series: 'micro_one_api_http_requests_total{service="relay-gateway",instance="relay",method="POST",path="/v1/chat/completions",status="502"}'
+        values: '0+3x6 18+0x6'
+      - series: 'micro_one_api_http_requests_total{service="relay-gateway",instance="relay",method="POST",path="/v1/chat/completions",status="503"}'
+        values: '0+3x6 18+0x6'
+      - series: 'micro_one_api_http_requests_total{service="relay-gateway",instance="relay",method="POST",path="/v1/messages",status="200"}'
+        values: '0+97x13'
+      - series: 'micro_one_api_http_requests_total{service="relay-gateway",instance="relay",method="POST",path="/v1/messages",status="502"}'
+        values: '0+3x13'
+      - series: 'micro_one_api_http_requests_total{service="relay-gateway",instance="relay",method="GET",path="/v1/chat/completions",status="200"}'
+        values: '0+100x13'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: HighRelayErrorRate
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: HighRelayErrorRate
+        exp_alerts:
+          - exp_labels: {service: relay-gateway, instance: relay, method: POST, path: /v1/chat/completions, severity: critical}
+            exp_annotations:
+              summary: 'Relay gateway error rate > 5%'
+              description: Relay gateway is experiencing 6% error rate over the last 5 minutes
+      - eval_time: 12m
+        alertname: HighRelayErrorRate
+        exp_alerts: []
   - name: one pending payment repeatedly fails and then recovers
     interval: 1m
     input_series:

@@ -8,8 +8,8 @@ groups:
     rules:
       - alert: HighRelayErrorRate
         expr: |
-          rate(micro_one_api_http_requests_total{service="relay-gateway",status=~"5.."}[5m])
-          / rate(micro_one_api_http_requests_total{service="relay-gateway"}[5m]) > 0.05
+          sum without (status) (rate(micro_one_api_http_requests_total{service="relay-gateway",status=~"5.."}[5m]))
+          / sum without (status) (rate(micro_one_api_http_requests_total{service="relay-gateway"}[5m])) > 0.05
         for: 5m
         labels:
           severity: critical
