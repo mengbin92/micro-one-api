@@ -62,7 +62,11 @@ v0.46.3 是 **PATCH 修复版本**。本版修复订阅到期与续期的并发�
 - [x] SQLite 隔离 Compose 全阶段通过。审计快照与冻结扣费对账在 SQLite、MySQL、PostgreSQL 验证。
 - [x] 前端 807 项单测通过。Playwright 桌面与移动 121 项通过、1 项按配置跳过，另有 28 项 CSP 和 10 项真实 IAM 浏览器用例通过。
 - [x] 自建网关 OCR 覆盖全部 46 个可审查文件，复核后 P0/P1 均为零。
-- [ ] 本版本生产部署与验收待执行。
+- [x] 2026-11-20 生产部分交付及烟测。Identity、Channel、Config、Log、Monitor、Admin 和同源 Channel worker 保留 v0.46.3 镜像，Web 公网入口摘要与本地制品一致。Relay、Notify 沿用 `09ad6874`。公网健康和状态为 200，匿名操作审计为 401，已留 Compose、镜像和 Web 回滚快照。
+- [x] Billing 生产热修复。原启动对账 #1448 因排序规则冲突新增 6 次 MySQL 1267。单独回滚后 #1449 恢复 `completed`。修正的新 JOIN 经生产只读 `EXPLAIN` 验证，冻结明细仍用主键 `eq_ref`。三库混合排序规则回归、Billing 全包测试及 vet 通过。11:16 单独部署 v0.46.3 加本补丁的 linux/amd64 制品 `v0.46.3-recon-19601c2c5aca`，自然启动对账 #1450 为 `completed`，新增 1267 为零，既有 `ledger_log_consume`、`receivable_mirror` 两条差异与 #1449 相同。健康检查通过，其他服务及 Web 未切换。
+- [ ] 生产真实业务验收。续期与窗口对账、完整/截断语音流、二次验证后的管理写和审计翻页、通知与 Redis 恢复待补真实样本。隔离环境回归与上线烟测已有记录。
+
+- [ ] 通用发行前验证 MySQL 新装执行计划。外部 OCR 发现固定排序规则的性能边界。隔离 MySQL 8.4.11 中两列均为 `utf8mb4_0900_ai_ci` 时，本补丁使冻结明细由主键查找变为全表扫描。当前生产冻结明细列为 `utf8mb4_unicode_ci`，已实测仍使用主键。热修复制品当前用于本生产环境。
 
 ## 完整变更日志
 

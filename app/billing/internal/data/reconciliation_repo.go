@@ -244,11 +244,16 @@ func (r *reconciliationRepo) ListActiveSubscriptions(ctx context.Context) ([]*bi
 
 func (r *reconciliationRepo) SumSubscriptionWindowCosts(ctx context.Context, subscriptionID, quotaPolicyID int64, window string, start int64) (biz.SubscriptionWindowCosts, error) {
 	var costs biz.SubscriptionWindowCosts
+	frozenChargeJoin := "LEFT JOIN subscription_window_charges w ON w.reservation_id = r.reservation_id"
+	if r.data.db.Dialector.Name() == "mysql" {
+		// Align upgraded tables while keeping the frozen charge primary key indexable.
+		frozenChargeJoin += " COLLATE utf8mb4_unicode_ci"
+	}
 	// A late commit can land in the current window. Evidence from another policy does not say whether its usage still applies.
 	err := r.data.db.WithContext(ctx).
 		Table("billing_ledgers AS l").
 		Joins("JOIN billing_reservations r ON r.reservation_id = l.reference_id").
-		Joins("LEFT JOIN subscription_window_charges w ON w.reservation_id = r.reservation_id").
+		Joins(frozenChargeJoin).
 		Where("r.subscription_id = ?", subscriptionID).
 		Where("l.type = ? AND l.cost_source = ?", biz.LedgerTypeConsume, biz.CostSourceSubscription).
 		Where("(w.reservation_id IS NULL AND l.created_at >= ?) OR w.created_at >= ?", time.Unix(start, 0).UTC(), start).

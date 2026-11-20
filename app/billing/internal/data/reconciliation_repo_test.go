@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -32,6 +33,41 @@ func TestGetLedgerConsumeSummaryCollapsesDualTrackRows(t *testing.T) {
 	require.Len(t, channels, 1)
 	require.Equal(t, int64(123), channels[0].Quota)
 	require.Equal(t, int64(45), channels[0].UpstreamCost)
+}
+
+func TestSumSubscriptionWindowCostsJoinsFrozenCharges(t *testing.T) {
+	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(driver, func(t *testing.T) {
+			db := dbtest.RoutingContextDB(t, driver)
+			if driver == "mysql" {
+				// Match the collations of the existing production tables.
+				require.NoError(t, db.Exec("ALTER TABLE billing_ledgers MODIFY reference_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci").Error)
+				require.NoError(t, db.Exec("ALTER TABLE billing_reservations MODIFY reservation_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL").Error)
+				require.NoError(t, db.Exec("ALTER TABLE subscription_window_charges MODIFY reservation_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL").Error)
+			}
+
+			const subscriptionID, quotaPolicyID, start = 42, 7, 1_700_000_000
+			frozenID, legacyID := "frozen", "legacy"
+			require.NoError(t, db.Create([]reservationModel{
+				{ReservationID: frozenID, RequestID: frozenID, UserID: "1", SubscriptionID: subscriptionID, Status: biz.ReservationStatusCommitted},
+				{ReservationID: legacyID, RequestID: legacyID, UserID: "1", SubscriptionID: subscriptionID, Status: biz.ReservationStatusCommitted},
+			}).Error)
+			createdAt := time.Unix(start+1, 0).UTC()
+			require.NoError(t, db.Create([]ledgerModel{
+				{UserID: "1", ReferenceID: &frozenID, Type: biz.LedgerTypeConsume, CostSource: biz.CostSourceSubscription, SubscriptionCost: 200, LedgerDedupeKey: frozenID, CreatedAt: createdAt},
+				{UserID: "1", ReferenceID: &legacyID, Type: biz.LedgerTypeConsume, CostSource: biz.CostSourceSubscription, SubscriptionCost: 30, LedgerDedupeKey: legacyID, CreatedAt: createdAt},
+			}).Error)
+			require.NoError(t, db.Table("subscription_window_charges").Create(map[string]any{
+				"reservation_id": frozenID, "subscription_id": subscriptionID, "quota_policy_id": quotaPolicyID,
+				"daily_window_start": start, "weekly_window_start": start, "monthly_window_start": start,
+				"accounting_usd": 0.125, "created_at": createdAt.Unix(),
+			}).Error)
+
+			costs, err := NewReconciliationRepo(&Data{db: db}).SumSubscriptionWindowCosts(context.Background(), subscriptionID, quotaPolicyID, "daily", start)
+			require.NoError(t, err)
+			require.Equal(t, biz.SubscriptionWindowCosts{LedgerCost: 230, LegacyCost: 30, FrozenAccountingUSD: 0.125}, costs)
+		})
+	}
 }
 
 func TestListRefundReconciliationsPairsTradeAndUserAndFindsOrphans(t *testing.T) {
