@@ -22,7 +22,8 @@ docs/
 |---------|--------|
 | 个人单机，创建首个渠道和 Token | [quickstart-lite.md](./quickstart-lite.md) |
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
-| 查看下一阶段计划及 N1–N4、C1/C2 验收状态 | [design/next-stage-plan-2026-11-08.md](./design/next-stage-plan-2026-11-08.md) |
+| 查看未实现、待验收与未立项清单 | [当前路线图](./design/next-stage-plan-2026-11-08.md) · [项目 TODO](./TODO.md) |
+| 查看最新版本及生产验收要求 | [v0.46.3](./releases/release-v0.46.3.md) |
 | 接入原生 Gemini 文本/函数调用及核对部署状态 | [B2 契约](./design/b2-native-gemini-contract-2026-10-30.md) · [B2 验收](./runbooks/b2-native-gemini-acceptance-2026-10-30.md) |
 | 查看告警修复、生产容量基线与 executor 同窗复核 | [runbooks/post-v0.36.0-acceptance-2026-10-18.md](./runbooks/post-v0.36.0-acceptance-2026-10-18.md) |
 | 查看原生镜像提速与真实 Log RPC/SQL 容量边界 | [构建与 SQL 链路验收](./runbooks/build-timing-sql-acceptance-2026-10-18.md) |
@@ -35,7 +36,6 @@ docs/
 | 查看 N2 异机备份、生产归档隔离恢复与日调度观察 | [runbooks/n2-offsite-recovery-2026-11-09.md](./runbooks/n2-offsite-recovery-2026-11-09.md) |
 | 查看 N1 当前价格、兜底边界及七天账本核账 | [runbooks/n1-pricing-readonly-2026-11-08.md](./runbooks/n1-pricing-readonly-2026-11-08.md) |
 | 查看 N1 兜底治理、档位/长上下文及最终实扣证据 | [runbooks/n1-pricing-closure-2026-11-14.md](./runbooks/n1-pricing-closure-2026-11-14.md) |
-| 查看当前待办和历史完成记录 | [TODO.md](./TODO.md) |
 | 查看 Playground 安全 Markdown、字体与关键分支验收 | [D7 本地验收记录](./runbooks/d7-experience-acceptance-2026-10-07.md) |
 | 排查控制台周期性闪刷和数据等待 | [权限轮询诊断与本地修复](./runbooks/console-authorization-refresh-2026-10-07.md) |
 | 查看产品界面预览 | [根 README 界面预览](../README.md#界面预览) |
@@ -54,11 +54,21 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——本表明确指向且头部标注「当前执行入口」的计划。未定发布版本时使用 `design/next-stage-plan-YYYY-MM-DD.md`，已定版本时使用 `design/vX.Y-roadmap.md`。新阶段立项时：新建计划 → 旧路线图标为「已归档」并指回新入口 → 同步本表、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-最新发布登记：[v0.44.1](./releases/release-v0.44.1.md)（2026-11-16），PATCH 修复结算恢复授权、迁移 151/并发建模与跨 owner 操作审计；无新增迁移编号或前端改动，已应用 151 的环境不重跑；[v0.44.0](./releases/release-v0.44.0.md)（2026-11-15），relay-gateway orchestrator 全量切换开关与 commit 结算闭环补偿，默认关闭、行为零变化，无新增迁移或 API 变更；[v0.43.1](./releases/release-v0.43.1.md)（2026-11-15）OpenTelemetry Go 整族升级到 v1.47.0，修复 `GHSA-q7gw-24fr-5p69` 两条 medium 依赖告警，并同步 README 发布信息；无新增迁移或 API 变更。[v0.43.0](./releases/release-v0.43.0.md)（2026-11-14）为破坏性版本：退役 legacy `abilities` 与 catch-all，registry mapping 成为唯一路由来源，生产已按迁移 151 上线。[v0.42.0](./releases/release-v0.42.0.md)（2026-11-12）新增只读业务操作审计页与 `GET /api/v1/admin/operation-audits`；v0.41.0（2026-11-12）包含 Passkey 与 `/v1/rerank` 工程交付，相关真实验收缺口见 C1/C2 记录。N1 的后续生产证据另见核账/验收记录，不代表重新核验发布 CI。
+**最新发布**为 v0.46.3。2026-11-20（北京时间）生产 6 个服务、同源 Channel worker 与 Web 已升级。Relay、Notify 沿用 `09ad6874` 制品。Billing 的生产对账回归经单服务补丁修复，自然对账 #1450 完成。 [v0.46.3 发布说明](./releases/release-v0.46.3.md#验证)
 
-**当前排期（2026-11-14，N1 除跨时段外已闭环、跨时段定时待执行，N2/N3/N4 已完成验收；C1/C2 真实验收待补）**：上一轮 A1–A4、B1–B4 工程和生产部署已落地。N1 已完成只读核账、价格治理、三库专项、分时闲时付费、兜底治理、档位/长上下文合同核对及上游最终实扣，见 [闭环记录](./runbooks/n1-pricing-closure-2026-11-14.md)；仅跨时段实测待 2026-11-17 执行。N2 已完成首备、异机读回、真实归档隔离恢复及两次实际日调度，执行余量转运维跟踪，见 [N2 记录](./runbooks/n2-offsite-recovery-2026-11-09.md)。N3 已完成密码登录、GitHub 真实 OAuth、实际手机验证器扫码、恢复码消费、无效证明拒绝及两个全局强制策略验收，见 [N3 记录](./runbooks/n3-mfa-auth-acceptance-2026-11-11.md)。N4 已完成公告与本人模型真实管理/用户旅程，见 [N4 记录](./runbooks/n4-announcements-acceptance-2026-11-12.md)。C1 Passkey 真实设备验收待配置 RP/Origin，C2 Rerank 真实付费调用待确认上游渠道、计价和小额预算，分别见 [C1 记录](./runbooks/c1-passkey-acceptance-2026-11-12.md) 与 [C2 记录](./runbooks/c2-rerank-acceptance-2026-11-12.md)。当前计划入口见 [下一阶段计划](./design/next-stage-plan-2026-11-08.md)。
+## 当前工作状态（2026-11-20）
 
-**以下为前阶段历史记录**，其中“待验证/已开启/当前”等表述仅对应各条登记时间；最新状态见上方发布记录与当前排期。
+| 状态 / 优先级 | 当前范围 |
+| --- | --- |
+| ⚠️ 已实现，待验收 / P1 | C1 Passkey 已启用并通过公网挑战，待真实设备验收。C2 生产尚无 Rerank 模型及价目。v0.46.3 待真实业务验收，A1 Turnstile 待启用条件。 |
+| ⚠️ 已实现，待验收 / P2 | 上游 usage 原窗口跨三个版本，待新的完整 48 小时证据、性能与收件验收。Executor 复核缺同窗对照，七天未起算。微信 Native、原生 Gemini、订阅账号和供应商账单取证见路线图的外部条件。 |
+| ❌ 未实现 / P2 | Realtime 服务端 VAD 自动响应、独立输入转写、TTS 专用 WebSocket、usage 留证覆盖和 Kimi OAuth/PKCE 授权绑定。 |
+| ❌ 未实现 / P3（范围外） | PostgreSQL/SQLite 后台备份、Redis Cluster/副本、在线备份、生产覆盖恢复及 PITR。 |
+| ⏸️ 未立项 / P2–P3 候选 | 建议先评估 P2 候选 C3/C4 原生上游和订阅平台。P3 候选 C5–C9 涵盖排队、持续返佣、图片编辑与异步任务、视频/音乐和插件计价。立项时确认优先级与排期。[候选范围](./design/next-stage-plan-2026-10-26.md) |
+
+N1 跨时段计价、N2 异机备份与恢复、N3 MFA 和 N4 公告与本人模型已验收。N2 的 24 小时备份余量转运维跟踪。实时语音单轮模式已完成生产调用与账本核对。短期固定组 Key 已上线，支持到期、有限 Token 配额和白名单。 [N1 跨时段证据](./runbooks/n1-pricing-closure-2026-11-14.md) · [当前路线图](./design/next-stage-plan-2026-11-08.md) · [短期 Key](./runbooks/routing-groups-runbook.md#56-签发短期固定组-key)
+
+**以下为前阶段历史记录**，其中“待验证/已开启/当前”等表述仅对应各条登记时间。最新状态见上方发布记录与当前工作状态。
 
 **历史实施（2026-10-21）**：N1 最大输入/恢复与 SQL 语句预算、N2 供应商核验只读详情已完成验收并于 2026-10-20 [部署生产](./runbooks/p1-production-deployment-2026-10-20.md)。v0.36.3 完整 Release、分支 CI 与安全检查全部通过；当时 N3/N4 已完成生产只读条件核对，等待真实来源/账期与已审候选/reviewer/预算。见 [归档计划](./design/next-stage-plan-2026-10-20.md)、[实施记录](./runbooks/p1-memory-vendor-evidence-2026-10-20.md)和 [发布及剩余材料记录](./runbooks/post-v0.36.3-followups-2026-10-21.md)。
 
@@ -120,7 +130,9 @@ docs/
 - [v0.33.0](./releases/release-v0.33.0.md) · [v0.33.1](./releases/release-v0.33.1.md) · [v0.33.2](./releases/release-v0.33.2.md) · [v0.33.3](./releases/release-v0.33.3.md) · [v0.33.4](./releases/release-v0.33.4.md) · [v0.33.5](./releases/release-v0.33.5.md) · [v0.33.6](./releases/release-v0.33.6.md)
 - [v0.34.0](./releases/release-v0.34.0.md) · [v0.34.1](./releases/release-v0.34.1.md) · [v0.34.2](./releases/release-v0.34.2.md) · [v0.34.3](./releases/release-v0.34.3.md) · [v0.34.4](./releases/release-v0.34.4.md) · [v0.34.5 中止候选](./releases/release-v0.34.5.md) · [v0.34.6](./releases/release-v0.34.6.md) · [v0.34.7](./releases/release-v0.34.7.md) · [v0.34.8 中止候选](./releases/release-v0.34.8.md) · [v0.34.9](./releases/release-v0.34.9.md) · [v0.34.10](./releases/release-v0.34.10.md) · [v0.34.11](./releases/release-v0.34.11.md) · [v0.34.12 中止候选](./releases/release-v0.34.12.md) · [v0.34.13 中止候选](./releases/release-v0.34.13.md) · [v0.34.14 中止候选](./releases/release-v0.34.14.md) · [v0.34.15](./releases/release-v0.34.15.md) · [v0.34.16](./releases/release-v0.34.16.md) · [v0.34.17](./releases/release-v0.34.17.md) · [v0.34.18](./releases/release-v0.34.18.md) · [v0.35.0](./releases/release-v0.35.0.md) · [v0.35.1](./releases/release-v0.35.1.md) · [v0.35.2](./releases/release-v0.35.2.md) · [v0.36.0](./releases/release-v0.36.0.md) · [v0.36.1](./releases/release-v0.36.1.md) · [v0.36.2](./releases/release-v0.36.2.md) · [v0.36.3](./releases/release-v0.36.3.md) · [v0.36.4](./releases/release-v0.36.4.md) · [v0.36.5](./releases/release-v0.36.5.md) · [v0.36.6](./releases/release-v0.36.6.md)
 
-- [v0.37.0](./releases/release-v0.37.0.md) · [v0.37.1](./releases/release-v0.37.1.md) · [v0.38.0](./releases/release-v0.38.0.md) · [v0.38.1](./releases/release-v0.38.1.md) · [v0.39.0](./releases/release-v0.39.0.md) · [v0.39.1](./releases/release-v0.39.1.md) · [v0.39.2](./releases/release-v0.39.2.md) · [v0.39.3](./releases/release-v0.39.3.md) · [v0.40.0](./releases/release-v0.40.0.md) · [v0.41.0](./releases/release-v0.41.0.md) · [v0.42.0](./releases/release-v0.42.0.md) · [v0.43.0](./releases/release-v0.43.0.md) · [v0.43.1](./releases/release-v0.43.1.md) · [v0.44.0](./releases/release-v0.44.0.md) · [v0.44.1](./releases/release-v0.44.1.md)（最新）
+- [v0.37.0](./releases/release-v0.37.0.md) · [v0.37.1](./releases/release-v0.37.1.md) · [v0.38.0](./releases/release-v0.38.0.md) · [v0.38.1](./releases/release-v0.38.1.md) · [v0.39.0](./releases/release-v0.39.0.md) · [v0.39.1](./releases/release-v0.39.1.md) · [v0.39.2](./releases/release-v0.39.2.md) · [v0.39.3](./releases/release-v0.39.3.md) · [v0.40.0](./releases/release-v0.40.0.md) · [v0.41.0](./releases/release-v0.41.0.md) · [v0.42.0](./releases/release-v0.42.0.md) · [v0.43.0](./releases/release-v0.43.0.md) · [v0.43.1](./releases/release-v0.43.1.md) · [v0.44.0](./releases/release-v0.44.0.md) · [v0.44.1](./releases/release-v0.44.1.md)
+- [v0.45.0](./releases/release-v0.45.0.md) · [v0.45.1](./releases/release-v0.45.1.md) · [v0.45.2](./releases/release-v0.45.2.md) · [v0.45.3](./releases/release-v0.45.3.md) · [v0.45.4](./releases/release-v0.45.4.md) · [v0.45.5](./releases/release-v0.45.5.md)
+- [v0.46.0](./releases/release-v0.46.0.md) · [v0.46.1](./releases/release-v0.46.1.md) · [v0.46.2](./releases/release-v0.46.2.md) · [v0.46.3](./releases/release-v0.46.3.md)（最新）
 
 ### runbooks/ — 运维操作手册
 
@@ -161,7 +173,7 @@ docs/
 | [v0.23-roadmap.md](./design/v0.23-roadmap.md) | v0.23 路线图：上线观察与 Relay executor 首切片（已归档） |
 | [v0.23-executor-observation.md](./design/v0.23-executor-observation.md) | executor 新旧路径 7 天生产观察与回滚事实源 |
 | [v0.24-web-release-readiness.md](./design/v0.24-web-release-readiness.md) | v0.24 双语 Web、中国法律协议与发布隔离准备清单 |
-| [next-stage-plan-2026-11-08.md](./design/next-stage-plan-2026-11-08.md) | 当前计划：N1 除跨时段外已闭环，N2/N3/N4 已交付；C1/C2 工程已发布但真实设备/付费验收待补 |
+| [next-stage-plan-2026-11-08.md](./design/next-stage-plan-2026-11-08.md) | 当前执行路线图，按优先级记录待验收、未实现与未立项事项 |
 | [next-stage-plan-2026-10-26.md](./design/next-stage-plan-2026-10-26.md) | 已归档：用户自助、安全认证与计价补齐；保留 A/B 工程交付及历史证据 |
 | [next-stage-plan-2026-10-20.md](./design/next-stage-plan-2026-10-20.md) | 已归档：计时内存预算与供应商证据可读性；保留 N3/N4 历史证据 |
 | [next-stage-plan-2026-10-18.md](./design/next-stage-plan-2026-10-18.md) | 已归档：v0.36.0 运行验收、证据收口与双语入口；保留独立生产结论 |
