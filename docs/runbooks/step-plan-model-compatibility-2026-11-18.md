@@ -56,3 +56,29 @@ Realtime 首次使用临时 Key 的公网握手返回 101，旧版 Relay 随后�
 ## 2026-11-20 待验收模型复核
 
 三款新增文本模型和语音 Chat 的专属映射、渠道健康与价目均核对通过，暂未找到生产消费账本或可用固定组 Key。维护者授权最多 4 次、合计不超过 1 CNY。短请求夹具已准备，正式调用待能签发匹配权限的 Key 并确认预算上限。本轮新调用 0 次，实扣 0 CNY。
+
+## 语音扩展本地验证
+
+| 功能 | 接入方式 | 结算边界 |
+| --- | --- | --- |
+| 自动响应 | `/v1/realtime?model=stepaudio-2.5-realtime` 的 `session.update` 配置 `turn_detection.type=server_vad`。Relay 识别 PCM16 单声道 24 kHz 的语音和静音，每次处理一个在途回复 | 检测到语音结束后先复核授权并预扣，再向上游发送音频、commit 和 `response.create`。收到有完整用量的 `response.done` 时结算 |
+| 独立输入转写 | `session.update` 配置 `input_audio_transcription.model=stepaudio-2.5-asr`，按 PCM16 输入逐段 append 后 commit。VAD 模式在对应话轮自动转写 | API Key 及当前渠道需同时允许 ASR。转写单独按音频时长预扣和结算，最多 30 秒。单独转写的 commit 会返回转写事件 |
+| 流式合成 | `/v1/realtime/audio?model=stepaudio-2.5-tts`。按 `tts.create`、多帧 `tts.text.delta`、`tts.text.done` 的顺序发送，可使用 `tts.text.flush` 加速分段输出 | 每连接最多 1000 字符，首次发送文本前预扣额度上限。收到对应会话的音频终态后按实际计费字符结算一次，未完成时释放预扣 |
+
+本地回归覆盖音频分帧、自动生成前的预扣、独立 ASR 时长、多帧 TTS 在输入结束前输出音频，以及冻结价率结算和拒绝超出预扣上限的计量。生产升级时由 Billing 先提供实际字符结算能力，再升级 Relay 并在公网反代接入新的 WebSocket 路径。真实上游音频、账本与断线验收待补。
+
+VAD 联动转写使用上游确认的输入条目 ID。有待处理音频时，先清空缓冲区再切换 VAD 或转写配置。下游断线后，已发出的 Realtime 轮次最多等候 10 秒，WebSocket ASR 和符合收尾条件的 TTS 最多等候 5 秒，且仍受原上游截止时间限制。只对可验证的终态结算。语音入口使用现有计费路径，若同一来源和模型被加入 native execution 计费 pilot，Relay 会在发送前拒绝。
+
+## 2026-11-20 增量部署
+
+北京时间 19:49 起按 Billing、Channel、Relay、Web 的顺序切换。本机 `make verify` 通过。维护者明确授权仅本次跳过未完成的 OCR 门禁。三个后端镜像的源码摘要为 `1a82a277f2444ca2edcb8a723a42595c231d84f43cd3440a600e75c21bb0e6df`，各服务 `/healthz` 均返回 200。
+
+| 验证项 | 结果 |
+| --- | --- |
+| Realtime 无凭据 WebSocket 握手 | Relay 直连和公网均返回 401 |
+| TTS 无凭据 WebSocket 握手 | Relay 直连返回 401。公网入口原返回 400，19:56 在独立 Nginx 增加精确匹配和升级头透传后返回 401 |
+| Web 静态资源 | Admin 直连及公网控制台首页 SHA-256 与候选包一致，9 个公开资源逐个校验通过 |
+
+生产回滚点为 `rollback-20261120-194928`，包括三服务旧镜像、Compose 备份和 Web 挂载目录备份。独立 Nginx 配置备份为 `/var/backups/micro-one-api-nginx-tts.2otisa/api-vhost.conf`，语法检查和热加载通过。本轮未发起付费语音调用，真实音频、账本和断线行为待验。
+
+同日经维护者确认，应用机删除 27 个旧 Compose 备份、10 个旧 Web 备份及 130 个历史部署镜像标签，实测释放 2.60 GiB。复核保留的回滚组、生产容器镜像和公网健康检查均通过。域名机保留唯一的 Nginx 回滚副本，异地数据库备份沿用既定保留策略。
