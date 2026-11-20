@@ -4,7 +4,7 @@
 >
 > **当前执行入口**为 [计价核验、备份恢复与真实用户验收](./design/next-stage-plan-2026-11-08.md)。
 >
-> **发布基线**为 [v0.47.0](./releases/release-v0.47.0.md)。11 月 20 日 19:49 已增量部署 Billing、Channel、Relay 和 Web，生产状态以[部署验证](./runbooks/step-plan-model-compatibility-2026-11-18.md#2026-11-20-增量部署)为准。
+> **发布基线**为 [v0.48.0](./releases/release-v0.48.0.md)。11 月 20 日已增量部署 Billing、Channel、Relay 和 Web，生产状态以[语音部署验证](./runbooks/step-plan-model-compatibility-2026-11-18.md#2026-11-20-增量部署)及[令牌页上线记录](./runbooks/routing-groups-runbook.md#56-签发短期固定组-key)为准。
 
 ## 当前阶段待办
 

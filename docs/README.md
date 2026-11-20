@@ -23,7 +23,7 @@ docs/
 | 个人单机，创建首个渠道和 Token | [quickstart-lite.md](./quickstart-lite.md) |
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
 | 查看未实现、待验收与未立项清单 | [当前路线图](./design/next-stage-plan-2026-11-08.md) · [项目 TODO](./TODO.md) |
-| 查看最新版本及生产验收要求 | [v0.47.0](./releases/release-v0.47.0.md) |
+| 查看最新版本及生产验收要求 | [v0.48.0](./releases/release-v0.48.0.md) |
 | 接入原生 Gemini 文本/函数调用及核对部署状态 | [B2 契约](./design/b2-native-gemini-contract-2026-10-30.md) · [B2 验收](./runbooks/b2-native-gemini-acceptance-2026-10-30.md) |
 | 查看告警修复、生产容量基线与 executor 同窗复核 | [runbooks/post-v0.36.0-acceptance-2026-10-18.md](./runbooks/post-v0.36.0-acceptance-2026-10-18.md) |
 | 查看原生镜像提速与真实 Log RPC/SQL 容量边界 | [构建与 SQL 链路验收](./runbooks/build-timing-sql-acceptance-2026-10-18.md) |
@@ -54,7 +54,7 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——本表明确指向且头部标注「当前执行入口」的计划。未定发布版本时使用 `design/next-stage-plan-YYYY-MM-DD.md`，已定版本时使用 `design/vX.Y-roadmap.md`。新阶段立项时：新建计划 → 旧路线图标为「已归档」并指回新入口 → 同步本表、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-**最新发布**为 v0.47.0，包含短期固定组 Key 和 MySQL 对账索引修复。2026-11-20（北京时间）短期 Key 已在 Identity、Admin 和 Web 上线，Billing 最终修复制品已通过生产健康检查和自然对账 #1455。 [v0.47.0 发布说明](./releases/release-v0.47.0.md#验证)
+**最新发布**为 v0.48.0，覆盖实时语音、Kimi 设备码绑定、探针留证与令牌列表。生产已核对语音公网握手和令牌页资源，真实语音账本、Log ACK 与 Kimi 授权待验。 [v0.48.0 发布说明](./releases/release-v0.48.0.md#验证)
 
 ## 当前工作状态（2026-11-20）
 
@@ -62,11 +62,11 @@ docs/
 | --- | --- |
 | ⚠️ 已实现，待验收 / P1 | C1 Passkey 已启用并通过公网挑战，待真实设备验收。C2 生产尚无 Rerank 模型及价目。v0.46.3 待真实业务验收，A1 Turnstile 待启用条件。 |
 | ⚠️ 已实现，待验收 / P2 | 上游 usage 原窗口跨三个版本，待新的完整 48 小时证据、性能与收件验收。Executor 复核缺同窗对照，七天未起算。微信 Native、原生 Gemini、订阅账号和供应商账单取证见路线图的外部条件。 |
-| ❌ 未实现 / P2 | Realtime 服务端 VAD 自动响应、独立输入转写、TTS 专用 WebSocket、usage 留证覆盖和 Kimi OAuth/PKCE 授权绑定。 |
+| ⚠️ 已实现，待验收 / P2 | Realtime VAD、独立转写和 TTS 已部署，真实音频及账本待验。运营探针留证待核对生产 ACK。Kimi 设备码绑定待注册客户端及真实授权。 |
 | ❌ 未实现 / P3（范围外） | PostgreSQL/SQLite 后台备份、Redis Cluster/副本、在线备份、生产覆盖恢复及 PITR。 |
 | ⏸️ 未立项 / P2–P3 候选 | 建议先评估 P2 候选 C3/C4 原生上游和订阅平台。P3 候选 C5–C9 涵盖排队、持续返佣、图片编辑与异步任务、视频/音乐和插件计价。立项时确认优先级与排期。[候选范围](./design/next-stage-plan-2026-10-26.md) |
 
-N1 跨时段计价、N2 异机备份与恢复、N3 MFA 和 N4 公告与本人模型已验收。N2 的 24 小时备份余量转运维跟踪。实时语音单轮模式已完成生产调用与账本核对。短期固定组 Key 已上线，支持到期、有限 Token 配额和白名单。 [N1 跨时段证据](./runbooks/n1-pricing-closure-2026-11-14.md) · [当前路线图](./design/next-stage-plan-2026-11-08.md) · [短期 Key](./runbooks/routing-groups-runbook.md#56-签发短期固定组-key)
+N1 跨时段计价、N2 异机恢复演练、N3 MFA 和 N4 公告与本人模型已有验收记录。维护者于 11 月 20 日停用生产异地备份。实时语音单轮已有生产账本证据，短期固定组 Key 可在令牌列表查看限制。 [N1 跨时段证据](./runbooks/n1-pricing-closure-2026-11-14.md) · [当前路线图](./design/next-stage-plan-2026-11-08.md) · [短期 Key](./runbooks/routing-groups-runbook.md#56-签发短期固定组-key)
 
 **以下为前阶段历史记录**，其中“待验证/已开启/当前”等表述仅对应各条登记时间。最新状态见上方发布记录与当前工作状态。
 
@@ -132,7 +132,7 @@ N1 跨时段计价、N2 异机备份与恢复、N3 MFA 和 N4 公告与本人模
 
 - [v0.37.0](./releases/release-v0.37.0.md) · [v0.37.1](./releases/release-v0.37.1.md) · [v0.38.0](./releases/release-v0.38.0.md) · [v0.38.1](./releases/release-v0.38.1.md) · [v0.39.0](./releases/release-v0.39.0.md) · [v0.39.1](./releases/release-v0.39.1.md) · [v0.39.2](./releases/release-v0.39.2.md) · [v0.39.3](./releases/release-v0.39.3.md) · [v0.40.0](./releases/release-v0.40.0.md) · [v0.41.0](./releases/release-v0.41.0.md) · [v0.42.0](./releases/release-v0.42.0.md) · [v0.43.0](./releases/release-v0.43.0.md) · [v0.43.1](./releases/release-v0.43.1.md) · [v0.44.0](./releases/release-v0.44.0.md) · [v0.44.1](./releases/release-v0.44.1.md)
 - [v0.45.0](./releases/release-v0.45.0.md) · [v0.45.1](./releases/release-v0.45.1.md) · [v0.45.2](./releases/release-v0.45.2.md) · [v0.45.3](./releases/release-v0.45.3.md) · [v0.45.4](./releases/release-v0.45.4.md) · [v0.45.5](./releases/release-v0.45.5.md)
-- [v0.46.0](./releases/release-v0.46.0.md) · [v0.46.1](./releases/release-v0.46.1.md) · [v0.46.2](./releases/release-v0.46.2.md) · [v0.46.3](./releases/release-v0.46.3.md) · [v0.47.0](./releases/release-v0.47.0.md)（最新）
+- [v0.46.0](./releases/release-v0.46.0.md) · [v0.46.1](./releases/release-v0.46.1.md) · [v0.46.2](./releases/release-v0.46.2.md) · [v0.46.3](./releases/release-v0.46.3.md) · [v0.47.0](./releases/release-v0.47.0.md) · [v0.48.0](./releases/release-v0.48.0.md)（最新）
 
 ### runbooks/ — 运维操作手册
 

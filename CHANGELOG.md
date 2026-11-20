@@ -7,6 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-11-20
+
+MINOR 新增实时语音扩展、Kimi 设备码绑定和运营探针 usage 留证，并补齐令牌页的限制展示。无新增数据库迁移。详见 [发布记录](docs/releases/release-v0.48.0.md)。
+
+### Added
+
+- Realtime 支持 Relay VAD 和独立输入转写。TTS WebSocket 接收多帧文本，按实际计费字符结算。
+- 管理台支持通过已注册的 Kimi 设备码客户端绑定订阅账号。
+- 逐轮记录 Realtime 终态，将健康探针、canary 与内部测试纳入独立用量留证。
+
+### Fixed
+
+- 令牌列表显示到期时间、剩余和已用 Token 额度及模型白名单，并区分过期、耗尽与禁用。
+- 实时语音拒绝无法关联的用量终态，并在下游断线后短时等待上游终态。
+
 ## [0.47.0] - 2026-11-20
 
 MINOR 新增短期固定组 API Key，修复 MySQL 订阅窗口对账、上游 usage 留证、Relay 5xx 告警及长邮件投递。无新增数据库迁移。详见 [发布记录](docs/releases/release-v0.47.0.md)。
