@@ -6,14 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogClose,
@@ -26,7 +19,6 @@ import {
 } from '@/components/ui/dialog';
 import { apiClient } from '@/lib/api';
 import { EmptyState } from '@/components/EmptyState';
-import { TableSkeleton } from '@/components/LoadingStates';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { CCSwitchDialog } from '@/components/CCSwitchDialog';
 import { setPlaygroundCredential } from '@/lib/playground-credential';
@@ -46,6 +38,7 @@ interface Token {
   created_time: number;
   expired_time?: number;
   remain_quota?: number;
+  used_quota?: number;
   unlimited_quota?: boolean;
   models?: string[];
 }
@@ -108,6 +101,52 @@ function tokenForList(token: Token): Token {
   };
 }
 
+function tokenStatus(token: Token, observedAt: number) {
+  if (token.status === 3) return t('已过期');
+  if (token.status === 4) return t('额度已耗尽');
+  if (token.status !== 1) return t('禁用');
+  if (typeof token.expired_time === 'number' && token.expired_time > 0 && token.expired_time < observedAt) return t('已过期');
+  if (token.unlimited_quota === false && typeof token.remain_quota === 'number' && token.remain_quota <= 0) return t('额度已耗尽');
+  return t('启用');
+}
+
+function TokenLimits({ token }: { token: Token }) {
+  const expiration = token.expired_time;
+  const date = typeof expiration === 'number' && expiration > 0 ? new Date(expiration * 1000) : null;
+  const validDate = date && Number.isFinite(date.getTime());
+  const remaining = token.unlimited_quota === true ? t('不限额') : token.remain_quota?.toLocaleString(locale()) ?? '—';
+
+  return (
+    <dl className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
+      <div className="col-span-2 sm:col-span-1">
+        <dt className="text-xs text-muted-foreground">{t('到期时间（本地时间）')}</dt>
+        <dd className="mt-1 font-medium">
+          {validDate ? <time dateTime={date.toISOString()}>{date.toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' })}</time>
+            : typeof expiration === 'number' && expiration <= 0 ? t('无期限') : '—'}
+        </dd>
+      </div>
+      <div>
+        <dt className="text-xs text-muted-foreground">{t('剩余额度（Token）')}</dt>
+        <dd className="mt-1 font-medium tabular-nums">{remaining}</dd>
+      </div>
+      {token.unlimited_quota === false && (
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('已用额度（Token）')}</dt>
+          <dd className="mt-1 font-medium tabular-nums">{token.used_quota?.toLocaleString(locale()) ?? '—'}</dd>
+        </div>
+      )}
+      <div className="col-span-full">
+        <dt className="text-xs text-muted-foreground">{t('允许调用的模型')}</dt>
+        <dd className="mt-1 flex flex-wrap gap-1">
+          {token.models?.length ? token.models.map((model) => (
+            <span key={model} className="max-w-full break-all rounded-md bg-muted px-2 py-0.5 font-mono text-xs">{model}</span>
+          )) : <span className="text-muted-foreground">{t('未设置白名单')}</span>}
+        </dd>
+      </div>
+    </dl>
+  );
+}
+
 export function TokensPage() {
   const [deleteTarget, setDeleteTarget] = useState<Token | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -142,7 +181,7 @@ export function TokensPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const { data: tokens, isLoading } = useQuery({
+  const { data: tokens, dataUpdatedAt, isLoading } = useQuery({
     queryKey: ['tokens'],
     queryFn: async () => {
       const res = await apiClient.get('/token');
@@ -440,60 +479,59 @@ export function TokensPage() {
       </section>}
       {available.isError && <p className="mb-4 text-sm text-muted-foreground">{t('可用分组暂不可用，无法修改分组设置。')}</p>}
       {isLoading ? (
-        <TableSkeleton columns={[t('名称'), t('密钥'), t('状态'), t('创建时间'), t('操作')]} />
+        <div aria-busy="true" className="space-y-3">
+          <Skeleton className="h-40 w-full rounded-lg" />
+        </div>
       ) : !tokens || tokens.length === 0 ? (
         <EmptyState title={t('暂无 API 密钥')} description={t('创建一个 Token 后即可开始调用 API。')} />
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('名称')}</TableHead>
-                <TableHead>{t('密钥')}</TableHead>
-                <TableHead>{t('路由分组')}</TableHead>
-                <TableHead>{t('状态')}</TableHead>
-                <TableHead>{t('创建时间')}</TableHead>
-                <TableHead className="text-right">{t('操作')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tokens.map((token) => (
-                <TableRow key={token.id}>
-                  <TableCell className="font-medium">{token.name}</TableCell>
-                  <TableCell className="font-mono text-sm">{token.masked_key || t('已隐藏')}</TableCell>
-                  <TableCell>{token.routing_mode === 'ordered' ? `有序候选组（${(token.routing_group_ids || available.data?.facts.tokens?.find((item) => item.id === token.id)?.group_ids || []).length} 个）` : token.routing_mode === 'fixed' ? (available.data?.groups.find((g) => g.id === token.routing_group_id)?.display_name || `固定分组 #${token.routing_group_id}（当前不可用）`) : t('跟随默认分组')}</TableCell>
-                  <TableCell>
-                    <span
-                      className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        token.status === 1
-                          ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                          : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                      }`}
-                    >
-                      {token.status === 1 ? t('启用') : t('禁用')}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    {token.created_time ? new Date(token.created_time * 1000).toLocaleDateString(locale()) : '—'}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {available.data && token.routing_revision && <Button variant="outline" size="sm" onClick={() => { const fromFacts = available.data.facts.tokens?.find((item) => item.id === token.id); const ids = token.routing_group_ids || fromFacts?.group_ids || []; setSelectedGroup(token.routing_mode === 'ordered' ? 'ordered' : token.routing_mode === 'fixed' ? String(token.routing_group_id) : 'inherit'); setOrderedGroupIDs(ids); setEditingToken(token); }}>分组设置</Button>}
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => setDeleteTarget(token)}
-                        disabled={deleteMutation.isPending}
-                      >
-                        {t('删除')}
-                      </Button>
+        <ul aria-label={t('API 密钥')} className="divide-y rounded-lg border">
+          {tokens.map((token) => {
+            const group = available.data?.groups.find((g) => g.id === token.routing_group_id);
+            const facts = available.data?.facts.tokens?.find((item) => item.id === token.id);
+            const groupIds = token.routing_group_ids || facts?.group_ids || [];
+            const groupName = token.routing_mode === 'ordered' ? t('有序候选组（{count} 个）', { count: groupIds.length })
+              : token.routing_mode === 'fixed' ? (group?.display_name || group?.key || t('固定分组 #{id}（当前不可用）', { id: token.routing_group_id ?? '—' }))
+              : t('跟随默认分组');
+            const status = tokenStatus(token, Math.floor(dataUpdatedAt / 1000));
+            return (
+              <li key={token.id} aria-labelledby={`token-name-${token.id}`}
+                className="grid min-w-0 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.9fr)_auto] lg:items-start">
+                <div className="min-w-0 space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 id={`token-name-${token.id}`} className="min-w-0 break-all font-semibold">{token.name}</h3>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${status === t('启用')
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                      : 'bg-muted text-muted-foreground'}`}>{status}</span>
+                  </div>
+                  <p className="break-all font-mono text-sm text-muted-foreground">{token.masked_key || t('已隐藏')}</p>
+                  <dl className="space-y-1 text-xs">
+                    <div className="flex flex-wrap gap-x-2">
+                      <dt className="text-muted-foreground">{t('路由分组')}</dt><dd className="break-all">{groupName}</dd>
                     </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+                    {token.created_time > 0 && <div className="flex flex-wrap gap-x-2">
+                      <dt className="text-muted-foreground">{t('创建时间')}</dt>
+                      <dd>{new Date(token.created_time * 1000).toLocaleDateString(locale())}</dd>
+                    </div>}
+                  </dl>
+                </div>
+                <TokenLimits token={token} />
+                <div className="flex flex-wrap gap-2 lg:justify-end">
+                  {!!(available.data && token.routing_revision) && (
+                    <Button variant="outline" size="sm" onClick={() => {
+                      setSelectedGroup(token.routing_mode === 'ordered' ? 'ordered' : token.routing_mode === 'fixed' ? String(token.routing_group_id) : 'inherit');
+                      setOrderedGroupIDs(groupIds);
+                      setEditingToken(token);
+                    }}>{t('分组设置')}</Button>
+                  )}
+                  <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(token)} disabled={deleteMutation.isPending}>
+                    {t('删除')}
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
 
       <Dialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>

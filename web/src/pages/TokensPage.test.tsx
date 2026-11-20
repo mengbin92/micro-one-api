@@ -96,6 +96,38 @@ describe('TokensPage', () => {
     expect(screen.queryByText('sess********oken')).not.toBeInTheDocument();
   });
 
+  it('shows saved key restrictions, expiry and exhausted quotas in the list', async () => {
+    const future = Date.UTC(2030, 0, 2, 4, 34) / 1000;
+    server.use(
+      http.get('/api/v1/routing-groups/available', () => HttpResponse.json({ success: true, data: { default_available: true, groups: [] } })),
+      http.get('/api/token', () => HttpResponse.json({ success: true, data: { items: [
+      { id: 21, name: '受限测试', status: 1, routing_mode: 'fixed', routing_group_id: 2,
+        masked_key: 'sk-s********ture', expired_time: future, remain_quota: 1536, used_quota: 512,
+        unlimited_quota: false, models: ['model-vip', 'model-next'] },
+      { id: 22, name: '过期测试', status: 1, expired_time: 1, remain_quota: 256, unlimited_quota: false },
+      { id: 23, name: '额度耗尽测试', status: 4, remain_quota: 0, used_quota: 2048, unlimited_quota: false },
+      { id: 24, name: '普通测试', status: 1, expired_time: -1, remain_quota: 99999, unlimited_quota: true },
+    ] } })));
+
+    renderTokensPage();
+
+    const card = (name: string) => within(screen.getByRole('listitem', { name }));
+    await screen.findByRole('listitem', { name: '受限测试' });
+    expect(card('受限测试').getByText('到期时间（本地时间）')).toBeVisible();
+    expect(card('受限测试').getByText(/2030/)).toBeVisible();
+    expect(card('受限测试').getByText('剩余额度（Token）')).toBeVisible();
+    expect(card('受限测试').getByText('1,536', { exact: true })).toBeVisible();
+    expect(card('受限测试').getByText('已用额度（Token）')).toBeVisible();
+    expect(card('受限测试').getByText('512', { exact: true })).toBeVisible();
+    expect(card('受限测试').getByText('model-vip', { exact: true })).toBeVisible();
+    expect(card('受限测试').getByText('model-next', { exact: true })).toBeVisible();
+    expect(card('过期测试').getByText('已过期', { exact: true })).toBeVisible();
+    expect(card('额度耗尽测试').getByText('额度已耗尽', { exact: true })).toBeVisible();
+    expect(card('额度耗尽测试').getByText('0', { exact: true })).toBeVisible();
+    expect(card('普通测试').getByText('不限额', { exact: true })).toBeVisible();
+    expect(card('普通测试').queryByText('99,999')).not.toBeInTheDocument();
+  });
+
   it('requires explicit confirmation to delete a key and translates the warning', async () => {
     let deletes = 0;
     server.use(
@@ -193,6 +225,7 @@ describe('fixed routing keys', () => {
 
   beforeEach(() => {
     server.use(
+      http.get('/api/status', () => HttpResponse.json({ success: true, data: {} })),
       http.get('/api/v1/routing-groups/available', () => HttpResponse.json(available)),
       http.get('/api/token', () => HttpResponse.json({ success: true, data: [] })),
       http.get('/api/pricing', () => HttpResponse.json({ success: true, data: { prices: [] } })),
@@ -279,8 +312,9 @@ describe('fixed routing keys', () => {
     const expected = { name: 'short key', routing_mode: 'fixed', routing_group_id: 2,
       restrictions: { expire_at: expireAt, remain_quota: 4096, models: ['model-vip'] } };
     expect(bodies).toEqual([expected, expected]);
-    expect(screen.getByText('4096')).toBeVisible();
-    expect(screen.getByText('model-vip')).toBeVisible();
+    const result = within(screen.getByRole('dialog', { name: 'Token 已创建' }));
+    expect(result.getByText('4096')).toBeVisible();
+    expect(result.getByText('model-vip')).toBeVisible();
   });
 
   it('clears selected models on group changes and resets the form on close', async () => {
