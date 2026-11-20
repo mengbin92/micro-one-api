@@ -35,6 +35,7 @@ type routingAccessHTTPFake struct {
 	self      bool
 	createErr error
 	tokenErr  error
+	limits    *biz.RoutingTokenRestrictions
 }
 
 // CreateGroup implements the optional creation capability the group POST
@@ -66,13 +67,42 @@ func (f *routingAccessHTTPFake) Change(_ context.Context, c biz.RoutingAccessCha
 	f.self = self
 	return nil, biz.ErrRoutingAccessDenied
 }
-func (f *routingAccessHTTPFake) CreateToken(_ context.Context, u int64, n, m string, g int64, groupIDs []int64) (*biz.RoutingToken, error) {
+func (f *routingAccessHTTPFake) CreateToken(_ context.Context, u int64, n, m string, g int64, groupIDs []int64, restrictions *biz.RoutingTokenRestrictions) (*biz.RoutingToken, error) {
 	f.calls++
 	f.user = u
+	f.limits = restrictions
 	if f.tokenErr != nil {
 		return nil, f.tokenErr
 	}
 	return &biz.RoutingToken{ID: 5, Name: n, Mode: m, GroupID: g, GroupIDs: groupIDs, Key: "created-once", Revision: 1}, nil
+}
+
+func TestRoutingTokenRestrictedHTTPCreatesOnlyWithExplicitLimits(t *testing.T) {
+	f := &routingAccessHTTPFake{}
+	svc := service.NewAdminService(nil, routingSessionFake{}, nil, nil)
+	svc.SetRoutingAccessUsecase(f)
+	srv := NewHTTPServer(":0", svc, nil)
+	call := func(path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		r.Header.Set("Authorization", "Bearer user-session")
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, r)
+		return w
+	}
+	const base = `/api/v1/routing-tokens`
+	const prefix = `{"name":"n1","routing_mode":"fixed","routing_group_id":2`
+	const limits = `,"restrictions":{"expire_at":1800000000,"remain_quota":1488,"models":["model-vip"]}`
+	for _, body := range []string{prefix + "}", prefix + `,"restrictions":null}`, prefix + limits + `,"user_id":99}`, prefix + limits + "} {}"} {
+		require.Equal(t, http.StatusBadRequest, call(base+"/restricted", body).Code, body)
+	}
+	require.Equal(t, http.StatusBadRequest, call(base, prefix+limits+"}").Code)
+	require.Zero(t, f.calls)
+	w := call(base+"/restricted", prefix+limits+"}")
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+	require.EqualValues(t, 42, f.user)
+	require.Equal(t, &biz.RoutingTokenRestrictions{ExpireAt: 1_800_000_000, RemainQuota: 1488, Models: []string{"model-vip"}}, f.limits)
+	require.JSONEq(t, `{"success":true,"message":"","data":{"id":5,"key":"created-once","name":"n1","routing_mode":"fixed","routing_group_id":2,"routing_group_ids":null,"routing_revision":1,"status":1,"created_time":0,"unlimited_quota":false,"remain_quota":1488,"expired_time":1800000000,"models":["model-vip"]}}`, w.Body.String())
 }
 func (f *routingAccessHTTPFake) SetToken(context.Context, int64, int64, string, int64, int64, []int64) (int64, error) {
 	return 0, biz.ErrRoutingAccessDenied

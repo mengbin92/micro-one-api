@@ -561,6 +561,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 		handleRoutingAccess(w, r, svc, user, false)
 	}))
 	srv.HandleFunc("/api/v1/routing-tokens", func(w http.ResponseWriter, r *http.Request) { handleRoutingToken(w, r, svc) })
+	srv.HandleFunc("/api/v1/routing-tokens/restricted", func(w http.ResponseWriter, r *http.Request) { handleRoutingToken(w, r, svc) })
 	srv.HandlePrefix("/api/v1/routing-tokens/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { handleRoutingToken(w, r, svc) }))
 	srv.HandleFunc("/api/v1/admin/routing-groups", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleRoutingGroups(w, r, svc)

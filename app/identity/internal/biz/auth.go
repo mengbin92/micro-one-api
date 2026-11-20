@@ -17,11 +17,14 @@ import (
 	"sync"
 	"time"
 
+	kerrors "github.com/go-kratos/kratos/v3/errors"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 
+	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/domain/routing"
+	"micro-one-api/domain/upstream/provider"
 	"micro-one-api/platform/audit"
 	sessionauth "micro-one-api/platform/security/auth"
 )
@@ -797,6 +800,23 @@ type UpdateAccessTokenOptions struct {
 	RemainQuota    int64
 	UnlimitedQuota *bool
 	Subnet         *string
+}
+
+var ErrRestrictedRoutingTokenInvalid = kerrors.BadRequest(identityv1.RoutingIdentityErrorReason_RESTRICTED_ROUTING_TOKEN_INVALID.String(), "a fixed group, explicit model IDs, future expiration in Unix seconds and positive quota are required")
+
+func (uc *IdentityUsecase) CreateRestrictedRoutingToken(ctx context.Context, userID int64, name string, groupID int64, models []string, expireAt, remainQuota int64) (*Token, error) {
+	// Stay within the representable calendar range and reject millisecond timestamps.
+	const maxUnixSecond = 253402300799 // 9999-12-31T23:59:59Z
+	if userID <= 0 || strings.TrimSpace(name) == "" || groupID <= 0 || len(models) == 0 || expireAt <= uc.now().Unix() || expireAt > maxUnixSecond || remainQuota <= 0 {
+		return nil, ErrRestrictedRoutingTokenInvalid
+	}
+	for _, model := range models {
+		// Token models are stored as CSV and matched one ID at a time by Relay.
+		if provider.ModelName(model) == "" || strings.TrimSpace(model) != model || strings.ContainsAny(model, ",\x00\r\n") {
+			return nil, ErrRestrictedRoutingTokenInvalid
+		}
+	}
+	return uc.CreateAccessToken(ctx, userID, name, models, expireAt, CreateAccessTokenOptions{RoutingMode: "fixed", RoutingGroupID: groupID, RemainQuota: remainQuota})
 }
 
 func (uc *IdentityUsecase) CreateAccessToken(ctx context.Context, userID int64, name string, models []string, expireAt int64, opts ...CreateAccessTokenOptions) (*Token, error) {

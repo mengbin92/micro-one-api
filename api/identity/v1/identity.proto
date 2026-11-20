@@ -32,6 +32,7 @@ service IdentityService {
   rpc Login(LoginRequest) returns (LoginResponse);
   rpc Register(RegisterRequest) returns (RegisterResponse);
   rpc CreateAccessToken(CreateAccessTokenRequest) returns (CreateAccessTokenResponse);
+  rpc CreateRestrictedRoutingToken(CreateRestrictedRoutingTokenRequest) returns (CreateAccessTokenResponse);
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
   rpc ExportUsers(ExportUsersRequest) returns (ExportUsersReply);
   rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
@@ -121,6 +122,15 @@ message CreateAccessTokenRequest {
   string name = 2;
   repeated string models = 3;
   int64 expire_at = 4;
+}
+
+message CreateRestrictedRoutingTokenRequest {
+  int64 user_id = 1;
+  string name = 2;
+  int64 routing_group_id = 3;
+  repeated string models = 4;
+  int64 expire_at = 5;
+  int64 remain_quota = 6;
 }
 
 message CreateAccessTokenResponse {

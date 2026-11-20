@@ -29,7 +29,7 @@ func TestRoutingAcceptance(t *testing.T) {
 		for _, test := range []struct {
 			name string
 			run  func()
-		}{{"fixed_and_revocation", s.fixed}, {"frozen_price_and_idempotency", s.frozenPrice}, {"ordered", s.ordered}, {"contracts_and_settlement", s.contracts}, {"sessions", s.sessions}, {"raw_contracts", s.rawContracts}} {
+		}{{"fixed_and_revocation", s.fixed}, {"restricted_fixed_token", s.restrictedFixedToken}, {"frozen_price_and_idempotency", s.frozenPrice}, {"ordered", s.ordered}, {"contracts_and_settlement", s.contracts}, {"sessions", s.sessions}, {"raw_contracts", s.rawContracts}} {
 			if !t.Run(test.name, func(t *testing.T) { s.t = t; test.run() }) {
 				return
 			}
@@ -172,6 +172,30 @@ func (s *suite) frozenPrice() {
 	require.Equal(s.t, before, s.balance(), "duplicate request must not debit twice")
 	require.EqualValues(s.t, 1, s.scalar("SELECT COUNT(*) FROM billing_ledgers l JOIN billing_reservations r ON l.reference_id = r.reservation_id WHERE r.request_id = ? AND l.type = 'consume'", s.state.Requests["routing-new-price"]))
 	s.adminAPI("DELETE", url, nil)
+}
+
+func (s *suite) restrictedFixedToken() {
+	group := s.state.Groups["p0-wallet"]
+	expiry := time.Now().Add(time.Hour).Unix()
+	token := s.api("POST", "/api/v1/routing-tokens/restricted", s.state.Session, object{
+		"name": "e2e-restricted-fixed", "routing_mode": "fixed", "routing_group_id": group,
+		"restrictions": object{"expire_at": expiry, "remain_quota": 120, "models": []string{"gpt-3.5-turbo"}},
+	}, "")
+	require.EqualValues(s.t, group, num(token["routing_group_id"]))
+	require.EqualValues(s.t, expiry, num(token["expired_time"]))
+	require.Equal(s.t, false, token["unlimited_quota"])
+	id := num(token["id"])
+	require.EqualValues(s.t, 1, s.scalar("SELECT COUNT(*) FROM tokens WHERE id=? AND routing_group_id=? AND expired_time=? AND remain_quota=120 AND NOT unlimited_quota AND models=?", id, group, expiry, "gpt-3.5-turbo"))
+	key := token["key"].(string)
+	before := s.calls()
+	status, _, err := send("POST", s.relay+"/v1/embeddings", key, object{"model": "text-embedding-3-small", "input": "fixture"}, "routing-restricted-disallowed")
+	require.NoError(s.t, err)
+	require.GreaterOrEqual(s.t, status, 400)
+	require.Equal(s.t, before, s.calls(), "a model outside the whitelist must never call upstream")
+	s.chat(key, "routing-restricted-allowed", false)
+	s.settled("routing-restricted-allowed")
+	require.Eventually(s.t, func() bool { return s.scalar("SELECT remain_quota FROM tokens WHERE id=?", id) <= 0 }, 5*time.Second, 100*time.Millisecond)
+	s.reject(key, "routing-restricted-exhausted")
 }
 func (s *suite) ordered() {
 	empty := s.group("p0-empty", "wallet_only", false)

@@ -7,6 +7,7 @@ enum RoutingIdentityErrorReason {
   ROUTING_DEFAULT_INVALID = 2;
   ROUTING_ACCESS_CONFLICT = 3;
  ROUTING_ACCESS_DENIED = 4;
+  RESTRICTED_ROUTING_TOKEN_INVALID = 5;
 }
 
 // 401: identity/session; 409: revision; other authorization failures: 403.

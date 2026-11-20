@@ -11,8 +11,13 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/app/identity/internal/biz"
+	"micro-one-api/app/identity/internal/service"
 	"micro-one-api/domain/authorization"
+	"micro-one-api/platform/security/serviceidentity"
 	"micro-one-api/platform/security/totp"
 )
 
@@ -35,6 +40,80 @@ func loginChallenge(t *testing.T, uc *biz.IdentityUsecase) string {
 	require.ErrorAs(t, err, &mfa)
 	require.Empty(t, raw)
 	return mfa.Challenge
+}
+
+func TestCreateRestrictedRoutingTokenRequiresOwnerAndStepUp(t *testing.T) {
+	f := newIAMA4Fixture(t, "sqlite")
+	user := f.register("restricted-token-owner")
+	f.mode("legacy", "idle")
+	uc := securityReplica(t, f, miniredis.RunT(t))
+	t.Setenv("IDENTITY_ROUTING_V2", "true")
+	t.Setenv("IDENTITY_STEP_UP_ENABLED", "true")
+	svc := service.NewIdentityService(uc)
+	now := time.Now()
+	raw := f.token(user.ID, "restricted-token-session", 0, now.Add(time.Hour))
+	request := func() *identityv1.CreateRestrictedRoutingTokenRequest {
+		return &identityv1.CreateRestrictedRoutingTokenRequest{UserId: user.ID, Name: "restricted", RoutingGroupId: 2, Models: []string{"deepseek-flash"}, ExpireAt: now.Add(time.Minute).Unix(), RemainQuota: 1500}
+	}
+	const method = identityv1.IdentityService_CreateRestrictedRoutingToken_FullMethodName
+	base := serviceidentity.WithRPCMethod(service.ServiceAuthenticatedContext(f.ctx), method)
+	admin := serviceidentity.WithPrincipal(base, serviceidentity.Principal{Name: "admin", Dedicated: true})
+	owner := service.WithOperatorCredential(admin, raw, false)
+	for _, tc := range []struct {
+		name string
+		ctx  context.Context
+		code codes.Code
+	}{
+		{"direct call", service.WithOperatorCredential(f.ctx, raw, false), codes.Unauthenticated},
+		{"shared service token", service.WithOperatorCredential(base, raw, false), codes.PermissionDenied},
+		{"another dedicated caller", service.WithOperatorCredential(serviceidentity.WithPrincipal(base, serviceidentity.Principal{Name: "relay", Dedicated: true}), raw, false), codes.PermissionDenied},
+		{"no owner session", admin, codes.Unauthenticated},
+		{"system credential", service.WithOperatorCredential(admin, raw, true), codes.Unauthenticated},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := svc.CreateRestrictedRoutingToken(tc.ctx, request())
+			require.Equal(t, tc.code, status.Code(err))
+		})
+	}
+	other := request()
+	other.UserId++
+	_, err := svc.CreateRestrictedRoutingToken(owner, other)
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+	_, err = svc.CreateRestrictedRoutingToken(owner, request())
+	require.ErrorIs(t, err, biz.ErrStepUpRequired)
+	require.NoError(t, uc.VerifyStepUp(f.ctx, raw, "password123", ""))
+
+	for _, change := range []func(*identityv1.CreateRestrictedRoutingTokenRequest){
+		func(r *identityv1.CreateRestrictedRoutingTokenRequest) { r.RoutingGroupId = 0 },
+		func(r *identityv1.CreateRestrictedRoutingTokenRequest) { r.Models = nil },
+		func(r *identityv1.CreateRestrictedRoutingTokenRequest) { r.Models = []string{" "} },
+		func(r *identityv1.CreateRestrictedRoutingTokenRequest) { r.Models = []string{"allowed,injected"} },
+		func(r *identityv1.CreateRestrictedRoutingTokenRequest) { r.ExpireAt = now.Unix() },
+		func(r *identityv1.CreateRestrictedRoutingTokenRequest) { r.ExpireAt *= 1000 },
+		func(r *identityv1.CreateRestrictedRoutingTokenRequest) { r.RemainQuota = 0 },
+	} {
+		r := request()
+		change(r)
+		_, err := svc.CreateRestrictedRoutingToken(owner, r)
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+	}
+	var count int64
+	require.NoError(t, f.db.Model(&tokenModel{}).Where("user_id = ? AND name = ?", user.ID, "restricted").Count(&count).Error)
+	require.Zero(t, count)
+
+	r := request()
+	resp, err := svc.CreateRestrictedRoutingToken(owner, r)
+	require.NoError(t, err)
+	require.True(t, resp.GetSuccess())
+	require.NotEmpty(t, resp.GetToken())
+	var persisted tokenModel
+	require.NoError(t, f.db.First(&persisted, "id = ?", resp.GetTokenId()).Error)
+	require.Equal(t, "fixed", persisted.RoutingMode)
+	require.Equal(t, &r.RoutingGroupId, persisted.RoutingGroupID)
+	require.Equal(t, r.Models, biz.SplitCSVPtr(persisted.Models))
+	require.Equal(t, r.ExpireAt, persisted.ExpiredTime)
+	require.Equal(t, r.RemainQuota, persisted.RemainQuota)
+	require.Zero(t, persisted.UnlimitedQuota)
 }
 
 func TestSecurityMFADialects(t *testing.T) {

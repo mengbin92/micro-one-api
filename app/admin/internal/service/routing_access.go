@@ -16,7 +16,7 @@ type routingAccessUsecase interface {
 	Facts(context.Context, int64) (*routing.SubjectFacts, error)
 	Available(context.Context, int64, routing.GroupListRequest) (*biz.AvailableRoutingGroups, error)
 	Change(context.Context, biz.RoutingAccessChange, bool) (*routing.SubjectFacts, error)
-	CreateToken(context.Context, int64, string, string, int64, []int64) (*biz.RoutingToken, error)
+	CreateToken(context.Context, int64, string, string, int64, []int64, *biz.RoutingTokenRestrictions) (*biz.RoutingToken, error)
 	SetToken(context.Context, int64, int64, string, int64, int64, []int64) (int64, error)
 }
 
@@ -95,11 +95,18 @@ type RoutingAccessRequest struct {
 	PublicGroupAccess      string `json:"public_group_access"`
 }
 type RoutingTokenRequest struct {
-	Name             string  `json:"name"`
-	Mode             string  `json:"routing_mode"`
-	GroupID          int64   `json:"routing_group_id"`
-	GroupIDs         []int64 `json:"routing_group_ids,omitempty"`
-	ExpectedRevision int64   `json:"expected_revision"`
+	Name             string                    `json:"name"`
+	Mode             string                    `json:"routing_mode"`
+	GroupID          int64                     `json:"routing_group_id"`
+	GroupIDs         []int64                   `json:"routing_group_ids,omitempty"`
+	ExpectedRevision int64                     `json:"expected_revision"`
+	Restrictions     *RoutingTokenRestrictions `json:"restrictions"`
+}
+
+type RoutingTokenRestrictions struct {
+	ExpireAt    int64    `json:"expire_at"`
+	RemainQuota int64    `json:"remain_quota"`
+	Models      []string `json:"models"`
 }
 
 func (s *AdminService) RoutingFacts(ctx context.Context, user int64) (*RoutingFacts, error) {
@@ -160,11 +167,22 @@ func (s *AdminService) CreateRoutingToken(ctx context.Context, user int64, r Rou
 	if s.routingAccessUc == nil {
 		return nil, biz.ErrRoutingGroupUnavailable
 	}
-	t, err := s.routingAccessUc.CreateToken(ctx, user, r.Name, r.Mode, r.GroupID, r.GroupIDs)
+	var restrictions *biz.RoutingTokenRestrictions
+	if r.Restrictions != nil {
+		restrictions = &biz.RoutingTokenRestrictions{ExpireAt: r.Restrictions.ExpireAt, RemainQuota: r.Restrictions.RemainQuota, Models: r.Restrictions.Models}
+	}
+	t, err := s.routingAccessUc.CreateToken(ctx, user, r.Name, r.Mode, r.GroupID, r.GroupIDs, restrictions)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"id": t.ID, "key": t.Key, "name": t.Name, "routing_mode": t.Mode, "routing_group_id": t.GroupID, "routing_group_ids": t.GroupIDs, "routing_revision": t.Revision, "status": 1, "created_time": t.CreatedAt}, nil
+	out := map[string]any{"id": t.ID, "key": t.Key, "name": t.Name, "routing_mode": t.Mode, "routing_group_id": t.GroupID, "routing_group_ids": t.GroupIDs, "routing_revision": t.Revision, "status": 1, "created_time": t.CreatedAt}
+	if restrictions != nil {
+		out["expired_time"] = restrictions.ExpireAt
+		out["remain_quota"] = restrictions.RemainQuota
+		out["unlimited_quota"] = false
+		out["models"] = restrictions.Models
+	}
+	return out, nil
 }
 func (s *AdminService) SetRoutingToken(ctx context.Context, user, token int64, r RoutingTokenRequest) (map[string]any, error) {
 	ctx = operatorRPCContext(ctx)

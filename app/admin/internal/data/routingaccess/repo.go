@@ -58,8 +58,17 @@ func (r *repo) Change(ctx context.Context, c biz.RoutingAccessChange) (*routing.
 	}
 	return f, nil
 }
-func (r *repo) CreateToken(ctx context.Context, id int64, name, mode string, group int64, groupIDs []int64) (*biz.RoutingToken, error) {
-	p, err := r.identity.CreateAccessToken(ctx, &identityv1.CreateAccessTokenRequest{UserId: id, Name: name, RoutingMode: mode, RoutingGroupId: group, RoutingGroupIds: groupIDs})
+func (r *repo) CreateToken(ctx context.Context, id int64, name, mode string, group int64, groupIDs []int64, restrictions *biz.RoutingTokenRestrictions) (*biz.RoutingToken, error) {
+	var p *identityv1.CreateAccessTokenResponse
+	var err error
+	if restrictions == nil {
+		p, err = r.identity.CreateAccessToken(ctx, &identityv1.CreateAccessTokenRequest{UserId: id, Name: name, RoutingMode: mode, RoutingGroupId: group, RoutingGroupIds: groupIDs})
+	} else {
+		p, err = r.identity.CreateRestrictedRoutingToken(ctx, &identityv1.CreateRestrictedRoutingTokenRequest{
+			UserId: id, Name: name, RoutingGroupId: group, Models: restrictions.Models,
+			ExpireAt: restrictions.ExpireAt, RemainQuota: restrictions.RemainQuota,
+		})
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- 固定路由组支持签发短期 API Key，可设置到期时间、有限 Token 配额和模型白名单。新入口沿用本人会话与二次验证，限制随 Key 一次写入。
+
 ## [0.46.3] - 2026-11-19
 
 PATCH 修复订阅与用量结算、语音网关、管理台和后台任务。无新增数据库迁移。详见 [发布记录](docs/releases/release-v0.46.3.md)。

@@ -275,6 +275,16 @@ D 阶段起纳入日常看板。
 
 若 IAM 模式下 `/tokens` 的可用分组查询出现「无权使用此分组」，先确认运行的是 v0.34.8 或等价修复，并检查 admin、channel、billing 的专用 caller 凭证和实际镜像 ID。不要通过给普通用户补管理权限来修复内部依赖读取。可执行 `TestRoutingAvailableIAMMember` 和 `TestRoutingManagementKeepsOperatorPermissionChecks` 检查两类入口，见 [2026-10-07 修复与生产证据](./iam-self-service-hotfix-2026-10-07.md)。
 
+### 5.6 签发短期固定组 Key
+
+在「API 密钥 → 创建 Token」选择有权限的固定组，勾选「短期 Key」，填写本地到期时间、正整数 Token 配额，并选择该组的模型。签发沿用二次验证。返回后核对分组、到期、额度和白名单，密钥仅在创建时显示。可点「在在线调试中使用」直接在应用内交接。
+
+受限签发使用 `POST /api/v1/routing-tokens/restricted`。请求包含固定组和 `restrictions`，三项为 `expire_at`（未来 Unix 秒）、`remain_quota`（Token 数）和 `models`（非空模型 ID 数组）。现有普通签发与有序组入口保持原行为。
+
+部署顺序为 Identity、Admin、Web，复用现有 Token 字段，无数据库迁移。受限请求遇到旧服务会失败。Token 额度在实际结算后扣减，用尽后拒绝后续请求。生产付费验证还需按选路、请求和重试上限独立核对金额预算。
+
+2026-11-20 已按上述顺序更新生产，双服务健康、Web 公网摘要与本地制品一致。验证覆盖 SQLite 上的 Admin → Identity → Relay 完整链路、Identity 持久化和 owner 二次验证、桌面和移动浏览器。外部 OCR 覆盖部分文件，独立宿主复核确认无未解决 P0/P1。 [N1 预检](n1-pricing-closure-2026-11-14.md)
+
 ## 六、回退与排空
 
 **通用原则**：保留 additive 字段与历史证据，永不以删表/删列回滚；回退目标必须是

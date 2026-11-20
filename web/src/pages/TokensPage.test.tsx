@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -8,6 +8,7 @@ import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 import { takePlaygroundCredential } from '@/lib/playground-credential';
 import { LanguageToggle } from '@/components/LanguageToggle';
+import { SecurityVerificationDialog } from '@/components/SecurityVerificationDialog';
 
 function renderTokensPage() {
   return renderWithQuery(
@@ -189,18 +190,25 @@ describe('TokensPage', () => {
 
 describe('fixed routing keys', () => {
   const available = { success: true, data: { creation_enabled: true, default_available: false, next_page_token: '', facts: { default_routing_group_id: 1, revision: 3, public_group_access: 'explicit_only', grants: [] }, groups: [{ id: 2, key: 'vip', display_name: 'VIP', price_ratio: 0.8, price_source: 'user_routing_price_override', price_version: 'user_routing_price:2:9:1', billing_mode: 'subscription_first', subscription_covered: false, models: ['model-vip'], sources: [{ source_type: 'admin', source_ref: 'manual', expires_at: 0 }] }] } };
-  it('shows the invalid default and sends the selected fixed group', async () => {
-    const user = userEvent.setup();
-    let body: unknown;
+
+  beforeEach(() => {
     server.use(
       http.get('/api/v1/routing-groups/available', () => HttpResponse.json(available)),
       http.get('/api/token', () => HttpResponse.json({ success: true, data: [] })),
       http.get('/api/pricing', () => HttpResponse.json({ success: true, data: { prices: [] } })),
+    );
+  });
+
+  it('shows the invalid default and sends the selected fixed group', async () => {
+    const user = userEvent.setup();
+    let body: unknown;
+    server.use(
       http.post('/api/v1/routing-tokens', async ({ request }) => { body = await request.json(); return HttpResponse.json({ success: true, data: { id: 20, key: 'sk-fixed-secret', name: 'vip-key', status: 1, routing_mode: 'fixed', routing_group_id: 2, routing_revision: 1 } }); }),
     );
     renderTokensPage();
     expect(await screen.findByRole('alert')).toHaveTextContent('默认分组失效');
     await user.click(screen.getByRole('button', { name: '创建 Token' }));
+    expect(screen.queryByRole('checkbox', { name: '短期 Key' })).not.toBeInTheDocument();
     await user.type(screen.getByLabelText('Token 名称'), 'vip-key');
     expect(screen.getByRole('button', { name: '创建' })).toBeDisabled();
     const routingSelect = screen.getByLabelText('路由分组') as HTMLSelectElement;
@@ -212,5 +220,96 @@ describe('fixed routing keys', () => {
     await user.click(screen.getByRole('button', { name: '创建' }));
     await waitFor(() => expect(body).toEqual({ name: 'vip-key', routing_mode: 'fixed', routing_group_id: 2 }));
     expect(await screen.findByDisplayValue('sk-fixed-secret')).toBeInTheDocument();
+  });
+
+  it('requires valid restrictions and preserves the exact restricted request through step-up', async () => {
+    const user = userEvent.setup();
+    const expiry = '2030-01-02T12:34';
+    const expireAt = new Date(expiry).getTime() / 1000;
+    const bodies: unknown[] = [];
+    let verified = false;
+    localStorage.setItem('token', 'session-fixture');
+    server.use(
+      http.post('/api/v1/routing-tokens/restricted', async ({ request }) => {
+        bodies.push(await request.json());
+        if (!verified) return HttpResponse.json({ reason: 'STEP_UP_REQUIRED' }, { status: 403 });
+        return HttpResponse.json({ success: true, data: {
+          id: 22, name: 'short key', key: 'sk-short-fixture', status: 1, routing_mode: 'fixed', routing_group_id: 2,
+          routing_revision: 1, expired_time: expireAt, remain_quota: 4096, unlimited_quota: false, models: ['model-vip'],
+        } });
+      }),
+      http.get('/api/user/security', () => HttpResponse.json({ enabled: true })),
+      http.post('/api/user/security/verify', async ({ request }) => {
+        verified = request.headers.get('authorization') === 'Bearer session-fixture'
+          && (await request.json() as { code: string }).code === '123456';
+        return HttpResponse.json({}, { status: verified ? 200 : 400 });
+      }),
+    );
+    renderWithQuery(<MemoryRouter><TokensPage /><SecurityVerificationDialog /></MemoryRouter>);
+    await screen.findByRole('alert');
+    await user.click(screen.getByRole('button', { name: '创建 Token' }));
+    await user.selectOptions(screen.getByLabelText('路由分组'), '2');
+    await user.type(screen.getByLabelText('Token 名称'), 'short key');
+    await user.click(screen.getByRole('checkbox', { name: '短期 Key' }));
+
+    const create = screen.getByRole('button', { name: '创建' });
+    const expiryInput = screen.getByLabelText('到期时间（本地时间）');
+    const quotaInput = screen.getByLabelText('配额（Token）');
+    expect(create).toBeDisabled();
+    expect(within(screen.getByLabelText('路由分组')).getByRole('option', { name: /跟随默认分组/ })).toBeDisabled();
+    fireEvent.change(expiryInput, { target: { value: expiry } });
+    fireEvent.change(quotaInput, { target: { value: '4096' } });
+    expect(create).toBeDisabled();
+    await user.click(screen.getByRole('checkbox', { name: 'model-vip' }));
+    for (const invalidQuota of ['0', '1.5', '9007199254740992']) {
+      fireEvent.change(quotaInput, { target: { value: invalidQuota } });
+      expect(create).toBeDisabled();
+    }
+    fireEvent.change(quotaInput, { target: { value: '4096' } });
+    fireEvent.change(expiryInput, { target: { value: '2000-01-01T00:00' } });
+    expect(create).toBeDisabled();
+    expect(bodies).toHaveLength(0);
+    fireEvent.change(expiryInput, { target: { value: expiry } });
+    await user.click(create);
+
+    const stepUp = await screen.findByRole('dialog', { name: '安全验证' });
+    await user.type(await within(stepUp).findByLabelText('验证码或恢复码'), '123456');
+    await user.click(within(stepUp).getByRole('button', { name: '验证并继续' }));
+    expect(await screen.findByDisplayValue('sk-short-fixture')).toBeInTheDocument();
+    const expected = { name: 'short key', routing_mode: 'fixed', routing_group_id: 2,
+      restrictions: { expire_at: expireAt, remain_quota: 4096, models: ['model-vip'] } };
+    expect(bodies).toEqual([expected, expected]);
+    expect(screen.getByText('4096')).toBeVisible();
+    expect(screen.getByText('model-vip')).toBeVisible();
+  });
+
+  it('clears selected models on group changes and resets the form on close', async () => {
+    const user = userEvent.setup();
+    const otherGroup = { ...available.data.groups[0], id: 3, display_name: 'Second VIP', models: ['model-vip', 'model-next'] };
+    server.use(http.get('/api/v1/routing-groups/available', () => HttpResponse.json({
+      ...available, data: { ...available.data, groups: [...available.data.groups, otherGroup] },
+    })));
+    renderTokensPage();
+    await screen.findByRole('alert');
+    const open = screen.getByRole('button', { name: '创建 Token' });
+    await user.click(open);
+    await user.selectOptions(screen.getByLabelText('路由分组'), '2');
+    await user.click(screen.getByRole('checkbox', { name: '短期 Key' }));
+    await user.click(screen.getByRole('checkbox', { name: 'model-vip' }));
+    await user.type(screen.getByLabelText('配额（Token）'), '4096');
+    await user.selectOptions(screen.getByLabelText('路由分组'), '3');
+    expect(screen.getByRole('checkbox', { name: 'model-vip' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'model-next' })).toBeInTheDocument();
+    expect(screen.getByLabelText('配额（Token）')).toHaveValue(4096);
+
+    await user.click(screen.getByRole('button', { name: '关闭' }));
+    await user.click(open);
+    expect(screen.getByLabelText('路由分组')).toHaveValue('inherit');
+    await user.selectOptions(screen.getByLabelText('路由分组'), '2');
+    expect(screen.getByRole('checkbox', { name: '短期 Key' })).not.toBeChecked();
+    await user.click(screen.getByRole('checkbox', { name: '短期 Key' }));
+    expect(screen.getByLabelText('配额（Token）')).toHaveValue(null);
+    expect(screen.getByLabelText('到期时间（本地时间）')).toHaveValue('');
+    expect(screen.getByRole('checkbox', { name: 'model-vip' })).not.toBeChecked();
   });
 });
