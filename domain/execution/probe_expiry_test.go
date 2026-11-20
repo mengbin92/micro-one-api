@@ -28,3 +28,16 @@ func TestProbeExpirationIsValidatedAndBoundToTargetDigest(t *testing.T) {
 	require.True(t, bounded.Expired(time.Unix(bounded.ExpiresAt+1, 0)))
 	require.False(t, unbounded.Expired(time.Unix(bounded.ExpiresAt+1, 0)))
 }
+
+func TestInternalProbePurposeIsBoundToAnInferenceTarget(t *testing.T) {
+	const target = `[{"id":"probe","source_kind":"channel","source_id":11,"model":"deepseek-flash","protocol":"openai_chat","calls_per_day":4,"input_tokens_per_day":512,"output_tokens_per_day":64,"max_output_tokens":16,"unknown_cost_calls_per_day":4%s}]`
+	before, err := DecodeProbeTargets(fmt.Sprintf(target, ""))
+	require.NoError(t, err)
+	internal, err := DecodeProbeTargets(fmt.Sprintf(target, `,"purpose":"internal_test"`))
+	require.NoError(t, err)
+	require.NotEqual(t, before[0].Digest(), internal[0].Digest())
+	_, err = DecodeProbeTargets(fmt.Sprintf(target, `,"purpose":"internal_test","inventory":true`))
+	require.Error(t, err)
+	_, err = DecodeProbeTargets(fmt.Sprintf(target, `,"purpose":"user"`))
+	require.Error(t, err)
+}

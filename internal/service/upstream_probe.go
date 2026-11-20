@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+
 	relayv1 "micro-one-api/api/relay/v1"
 	relaybiz "micro-one-api/internal/biz"
 	"micro-one-api/pkg/jsonx"
@@ -13,6 +14,7 @@ func (s *RelayGrpcService) ProbeUpstream(ctx context.Context, req *relayv1.Probe
 	if s.upstreamProbe == nil || req == nil {
 		return nil, fmt.Errorf("upstream probe unavailable")
 	}
+	ctx = relaybiz.WithObservationDelivery(ctx, s.observationDelivery)
 	r, err := s.upstreamProbe.Probe(ctx, req.TargetId, req.AttemptId)
 	if err != nil {
 		return nil, err

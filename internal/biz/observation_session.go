@@ -2,6 +2,8 @@ package biz
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"reflect"
 	"strconv"
@@ -55,9 +57,6 @@ type observationDeliveryKey struct{}
 // attempt-scoped send seams. It is a value, not server state, so tests and
 // multiple servers cannot leak a delivery into each other.
 func WithObservationDelivery(ctx context.Context, delivery *ObservationDelivery) context.Context {
-	if delivery == nil {
-		return ctx
-	}
 	// A disabled producer keeps its delivery only to drain retained evidence;
 	// it must not mark live requests as "expected to be observed", or a
 	// legitimate rollback would trip the detached-seam alert.
@@ -65,6 +64,9 @@ func WithObservationDelivery(ctx context.Context, delivery *ObservationDelivery)
 		return ctx
 	}
 	ctx = evidence.WithObservationExpected(ctx)
+	if delivery == nil {
+		return ctx
+	}
 	return context.WithValue(ctx, observationDeliveryKey{}, delivery)
 }
 
@@ -84,24 +86,6 @@ func (d *ObservationDelivery) AllowsSource(kind string, id int64, model string) 
 // independent of RELAY_NATIVE_USAGE_V2_ALLOWLIST and RELAY_EXECUTION_DELIVERY_V1:
 // an empty financial allowlist must still leave user evidence.
 func WithUsageObservation(ctx context.Context, channel *Channel, requestID, model string) context.Context {
-	if !ObservationEnabled() {
-		return ctx
-	}
-	delivery := ObservationDeliveryFrom(ctx)
-	if delivery == nil {
-		return ctx
-	}
-	trace := requesttrace.FromContext(ctx)
-	observationID := requesttrace.ObservationID(ctx)
-	if observationID == "" {
-		if requestID != "" {
-			observationID = requestID
-		} else if trace.RootRequestID != "" {
-			observationID = trace.RootRequestID
-		} else {
-			observationID = uuid.NewString()
-		}
-	}
 	source, id := evidence.SourceKindUnknown, int64(0)
 	if channel != nil {
 		source, id = UpstreamSourceChannel, channel.ID
@@ -109,7 +93,35 @@ func WithUsageObservation(ctx context.Context, channel *Channel, requestID, mode
 			source, id = UpstreamSourceSubscription, channel.SubscriptionAccountID
 		}
 	}
-	if !delivery.AllowsSource(source, id, model) {
+	trace := requesttrace.FromContext(ctx)
+	purpose := evidence.PurposeUser
+	if trace.HealthProbeID != "" {
+		purpose = evidence.PurposeHealthProbe
+	}
+	// The verified owner is available even when request timing is disabled.
+	return withUsageObservation(ctx, evidence.SendRef{
+		RequestID: requestID, RootRequestID: trace.RootRequestID, AttemptNumber: trace.Number,
+		UserID: requesttrace.VerifiedUser(ctx), Purpose: purpose, SourceKind: source, SourceID: id, Model: model,
+	})
+}
+
+// WithProbeUsageObservation attributes a send to its admitted operator target.
+func WithProbeUsageObservation(ctx context.Context, attemptID, purpose, source string, id int64, model string) context.Context {
+	return withUsageObservation(ctx, evidence.SendRef{
+		RequestID: attemptID, RootRequestID: attemptID, AttemptNumber: 1,
+		Purpose: purpose, SourceKind: source, SourceID: id, Model: model,
+	})
+}
+
+func withUsageObservation(ctx context.Context, base evidence.SendRef) context.Context {
+	if !ObservationEnabled() {
+		return ctx
+	}
+	delivery := ObservationDeliveryFrom(ctx)
+	if delivery == nil {
+		return ctx
+	}
+	if !delivery.AllowsSource(base.SourceKind, base.SourceID, base.Model) {
 		// A deliberately excluded source must not be counted as an expected
 		// send: that would turn the detached-seam alert into a false positive
 		// during a per-source rollout.
@@ -117,20 +129,25 @@ func WithUsageObservation(ctx context.Context, channel *Channel, requestID, mode
 		return evidence.WithoutObservationSink(evidence.WithoutObservationExpected(ctx))
 	}
 	ctx = evidence.WithObservationExpected(ctx)
-	purpose := evidence.PurposeUser
-	if trace.HealthProbeID != "" {
-		purpose = evidence.PurposeHealthProbe
+	base.ObservationID = requesttrace.ObservationID(ctx)
+	if base.ObservationID == "" {
+		base.ObservationID = base.RequestID
+		if base.ObservationID == "" {
+			base.ObservationID = base.RootRequestID
+		}
+		switch {
+		case base.ObservationID == "":
+			base.ObservationID = uuid.NewString()
+		case len(base.ObservationID) > 64:
+			digest := sha256.Sum256([]byte(base.ObservationID))
+			base.ObservationID = hex.EncodeToString(digest[:])
+		}
 	}
-	// The verified user identity travels separately from request timing: a
-	// deployment may disable RELAY_REQUEST_TIMING_ENABLED without turning
-	// authenticated users into anonymous evidence owners.
-	base := evidence.SendRef{ObservationID: observationID, RequestID: requestID, RootRequestID: trace.RootRequestID,
-		AttemptNumber: trace.Number, UserID: requesttrace.VerifiedUser(ctx), Purpose: purpose, SourceKind: source, SourceID: id, Model: model}
 	if base.AttemptNumber < 1 {
 		base.AttemptNumber = 1
 	}
 	if old, ok := ctx.Value(observationKey{}).(*observationSession); ok && old != nil {
-		if old.base.RequestID == base.RequestID && old.base.SourceKind == base.SourceKind && old.base.SourceID == base.SourceID && old.base.Model == base.Model && old.base.ObservationID == base.ObservationID && old.base.AttemptNumber == base.AttemptNumber && old.base.UserID == base.UserID {
+		if old.base == base {
 			return ctx
 		}
 	}
@@ -293,6 +310,7 @@ func (s *observationSession) TransportFail(protocol, reason string) {
 	record := evidence.Record{
 		Observation:      evidence.Observation{Protocol: protocol, ParserRevision: evidence.ParserRevision, ContractRevision: evidence.ContractRevision, Status: "missing", Reason: reason},
 		Execution:        "execution_unknown",
+		Stream:           protocol == evidence.StepAudioRealtime,
 		UpstreamEndpoint: s.endpoint,
 		APIVersion:       s.apiVersion,
 	}
@@ -435,7 +453,7 @@ func (s *observationSession) record(event evidence.SendEvent) {
 // bug cannot create unbounded label cardinality.
 func protocolLabel(protocol string) string {
 	switch protocol {
-	case "openai_chat", "responses", "anthropic_messages", "gemini", "embeddings", "other":
+	case "openai_chat", "responses", "anthropic_messages", "gemini", "embeddings", evidence.StepAudioRealtime, "other":
 		return protocol
 	}
 	return "other"

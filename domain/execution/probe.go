@@ -21,6 +21,7 @@ type ProbeTarget struct {
 	Protocol               string   `json:"protocol"`
 	Stream                 bool     `json:"stream"`
 	Inventory              bool     `json:"inventory"`
+	Purpose                string   `json:"purpose,omitempty"`
 	CallsPerDay            int64    `json:"calls_per_day"`
 	InputTokensPerDay      int64    `json:"input_tokens_per_day"`
 	OutputTokensPerDay     int64    `json:"output_tokens_per_day"`
@@ -47,6 +48,9 @@ func DecodeProbeTargets(raw string) ([]ProbeTarget, error) {
 	seen := map[string]bool{}
 	budgets := map[string]ProbeTarget{}
 	for _, t := range targets {
+		if t.Purpose != "" && (t.Purpose != "internal_test" || t.Inventory || t.ContractRevision != "") {
+			return nil, fmt.Errorf("internal test purpose requires an inference probe without a candidate contract")
+		}
 		if t.ExpiresAt < 0 {
 			return nil, fmt.Errorf("probe expiration must be a nonnegative UTC timestamp")
 		}

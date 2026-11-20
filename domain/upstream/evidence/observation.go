@@ -333,6 +333,14 @@ func ClassifyCapture(r Record, downstreamCanceled bool) string {
 	if r.HTTPStatus != 0 && (r.HTTPStatus < 200 || r.HTTPStatus >= 300) {
 		return CaptureUpstreamRejected
 	}
+	if r.Observation.Protocol == StepAudioRealtime {
+		if stepAudioUnsuccessful(r.Observation.Terminal) {
+			return CaptureUpstreamFailed
+		}
+		if r.Observation.Terminal == "unknown" {
+			return CaptureUnknown
+		}
+	}
 	if r.Observation.Terminal == "failed" || r.Execution == "upstream_rejected" {
 		return CaptureUpstreamRejected
 	}

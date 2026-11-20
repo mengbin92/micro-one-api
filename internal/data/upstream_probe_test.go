@@ -96,6 +96,7 @@ func TestDeepSeekCanaryKeepsNativeIntentAndPersistsIndependentProof(t *testing.T
 }
 
 func TestInventoryProbeUsesBodylessGET(t *testing.T) {
+	t.Setenv("RELAY_USAGE_OBSERVATION_V1", "true")
 	calls := 0
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
@@ -112,11 +113,63 @@ func TestInventoryProbeUsesBodylessGET(t *testing.T) {
 	require.NoError(t, err)
 	defer cleanup()
 	repo := NewUpstreamProbeRepo(&probeChannelFixture{url: upstream.URL}, biz.NewExecutionDelivery(NewExecutionOutboxRepo(d, path)), provider.NewProviderFactory(0))
-	result, err := repo.Probe(context.Background(), execution.ProbeTarget{ID: "inventory", SourceKind: "channel", SourceID: 1, Inventory: true, Protocol: "openai_chat", MaxOutputTokens: 1}, "inventory-bodyless")
+	ctx, observations := probeObservationContext(t)
+	target := execution.ProbeTarget{ID: "inventory", SourceKind: "channel", SourceID: 1, Inventory: true, Protocol: "openai_chat", MaxOutputTokens: 1}
+	result, err := repo.Probe(ctx, target, "inventory-bodyless")
 	require.NoError(t, err)
 	require.Equal(t, "inventory_observed", result.Outcome)
 	require.Equal(t, []string{"deepseek-flash"}, result.Inventory)
 	require.Equal(t, 1, calls)
+	checkProbeObservations(t, ctx, observations, evidence.PurposeHealthProbe, "inventory-bodyless")
+
+	target.ManualModelIDs = []string{"operator-recorded"}
+	result, err = repo.Probe(ctx, target, "manual-inventory")
+	require.NoError(t, err)
+	require.Equal(t, "inventory_manual", result.Outcome)
+	require.Equal(t, 1, calls)
+	pending, err := observations.Pending(ctx, 20)
+	require.NoError(t, err)
+	for _, item := range pending {
+		require.NotEqual(t, "manual-inventory", item.Event.Send.RequestID)
+	}
+}
+
+func probeObservationContext(t *testing.T) (context.Context, biz.UsageObservationRepo) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "observations.db")
+	data, cleanup, err := NewObservationData(path, nil)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+	repo, err := NewObservationOutboxRepo(data, path)
+	require.NoError(t, err)
+	return biz.WithObservationDelivery(context.Background(), biz.NewObservationDelivery(repo, nil)), repo
+}
+
+func checkProbeObservations(t *testing.T, ctx context.Context, repo biz.UsageObservationRepo, purpose, attempt string) {
+	t.Helper()
+	pending, err := repo.Pending(ctx, 20)
+	require.NoError(t, err)
+	var categories []string
+	var sendID string
+	for _, item := range pending {
+		event := item.Event
+		if event.Send.RequestID != attempt {
+			continue
+		}
+		require.Equal(t, purpose, event.Send.Purpose)
+		require.Equal(t, attempt, event.Send.RootRequestID)
+		require.Zero(t, event.Send.UserID)
+		require.EqualValues(t, 1, event.Send.SourceID)
+		if sendID == "" {
+			sendID = event.Send.SendID
+		}
+		require.Equal(t, sendID, event.Send.SendID)
+		if event.Category != "checkpoint" {
+			categories = append(categories, event.Category)
+		}
+	}
+	require.NotEmpty(t, sendID)
+	require.ElementsMatch(t, []string{"started", "terminal"}, categories)
 }
 
 func (f *probeBillingFixture) Send(_ context.Context, e execution.Event) (execution.Receipt, error) {
@@ -142,6 +195,7 @@ func (f *probeChannelFixture) RecordProbeInventory(context.Context, string, int6
 	return nil
 }
 func TestCanaryUsesDurableIntentNativeParserAndNeverUserQuota(t *testing.T) {
+	t.Setenv("RELAY_USAGE_OBSERVATION_V1", "true")
 	calls := 0
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
@@ -163,11 +217,13 @@ func TestCanaryUsesDurableIntentNativeParserAndNeverUserQuota(t *testing.T) {
 	channels := &probeChannelFixture{url: upstream.URL, models: "operator-authorized"}
 	repo := NewUpstreamProbeRepo(channels, delivery, factory)
 	target := execution.ProbeTarget{ID: "probe", SourceKind: "channel", SourceID: 1, Model: "vendor/Exact", Protocol: "openai_chat", MaxOutputTokens: 16}
-	result, err := repo.Probe(context.Background(), target, "internal-attempt")
+	ctx, observations := probeObservationContext(t)
+	result, err := repo.Probe(ctx, target, "canary-attempt")
 	require.NoError(t, err)
 	require.Equal(t, "contract_verified", result.Outcome)
 	require.True(t, result.ValidContractProbe)
 	require.Equal(t, 1, calls)
+	checkProbeObservations(t, ctx, observations, evidence.PurposeCanary, "canary-attempt")
 	require.Equal(t, "operator-authorized", channels.models)
 	require.Len(t, billing.events, 2)
 	for _, e := range billing.events {
@@ -181,7 +237,23 @@ func TestCanaryUsesDurableIntentNativeParserAndNeverUserQuota(t *testing.T) {
 	require.Len(t, pending, 1)
 	require.Equal(t, "checkpoint", pending[0].Event.Category)
 	require.Equal(t, "provider-id", billing.events[1].Record.Observation.ProviderRequestID)
-	_, err = repo.Probe(context.Background(), target, "internal-attempt")
+	_, err = repo.Probe(ctx, target, "canary-attempt")
 	require.ErrorIs(t, err, biz.ErrExecutionAlreadyAdmitted)
 	require.Equal(t, 1, calls, "repeated attempt must never resend upstream")
+
+	wrongSource := target
+	wrongSource.SourceID = 2
+	_, err = repo.Probe(ctx, wrongSource, "wrong-source")
+	require.ErrorContains(t, err, "probe source identity changed")
+	require.Equal(t, 1, calls, "a mismatched source must be rejected before sending")
+	require.Len(t, billing.events, 2, "a mismatched source must not create admitted execution evidence")
+
+	target.Purpose = evidence.PurposeInternal
+	result, err = repo.Probe(ctx, target, "internal-attempt")
+	require.NoError(t, err)
+	require.Equal(t, "internal_test_observed", result.Outcome)
+	require.False(t, result.ValidContractProbe, "an internal test must not contribute to Monitor contract drift incidents")
+	require.Equal(t, 2, calls)
+	checkProbeObservations(t, ctx, observations, evidence.PurposeInternal, "internal-attempt")
+	require.Equal(t, evidence.PurposeInternal, billing.events[len(billing.events)-1].Intent.Purpose)
 }

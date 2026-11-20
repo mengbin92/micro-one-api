@@ -431,6 +431,41 @@ func TestDisabledProducerDoesNotMarkRequestsExpected(t *testing.T) {
 	}
 }
 
+func TestEnabledProducerReportsMissingDeliveryAtSendBoundary(t *testing.T) {
+	t.Setenv("RELAY_USAGE_OBSERVATION_V1", "true")
+	ctx := WithObservationDelivery(context.Background(), nil)
+	ctx = WithProbeUsageObservation(ctx, "attempt", evidence.PurposeCanary, "channel", 7, "model")
+	if !evidence.ObservationExpected(ctx) || evidence.ObservationSinkFrom(ctx) != nil {
+		t.Fatal("missing observation delivery must be visible as an expected send without a sink")
+	}
+}
+
+func TestLongProbeAttemptReusesObservationIdentity(t *testing.T) {
+	t.Setenv("RELAY_USAGE_OBSERVATION_V1", "true")
+	repo := &fakeObservationRepo{}
+	ctx := WithObservationDelivery(context.Background(), NewObservationDelivery(repo, nil))
+	attemptID := strings.Repeat("r", 128)
+	first := WithProbeUsageObservation(ctx, attemptID, evidence.PurposeInternal, "channel", 7, "model")
+	second := WithProbeUsageObservation(first, attemptID, evidence.PurposeInternal, "channel", 7, "model")
+	if evidence.ObservationSinkFrom(first) != evidence.ObservationSinkFrom(second) {
+		t.Fatal("reattaching observation to the same long probe attempt changed its identity")
+	}
+}
+
+func TestRealtimeTruncationKeepsStreamEvidence(t *testing.T) {
+	t.Setenv("RELAY_USAGE_OBSERVATION_V1", "true")
+	repo := &fakeObservationRepo{}
+	ctx := WithObservationDelivery(context.Background(), NewObservationDelivery(repo, nil))
+	ctx = WithUsageObservation(ctx, &Channel{ID: 7}, "turn", "stepaudio-2.5-realtime")
+	sink := evidence.ObservationSinkFrom(ctx)
+	sink.Started(evidence.StepAudioRealtime, "/v1/realtime", "")
+	sink.TransportFail(evidence.StepAudioRealtime, "truncated")
+	events := repo.recorded()
+	if len(events) != 2 || events[1].Capture != evidence.CaptureTruncated || events[1].Record == nil || !events[1].Record.Stream {
+		t.Fatalf("realtime truncation did not keep stream evidence: %+v", events)
+	}
+}
+
 func TestObservationScopeReselectionClearsInheritedSink(t *testing.T) {
 	t.Setenv("RELAY_USAGE_OBSERVATION_V1", "true")
 	scope, err := NewObservationScope("channel:7:exact-model")

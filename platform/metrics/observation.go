@@ -128,9 +128,9 @@ var ExecutionOutboxLastStats = prometheus.NewGauge(prometheus.GaugeOpts{
 	Help: "Unix time of the last successful execution outbox statistics refresh",
 })
 
-var observationProtocols = []string{"openai_chat", "responses", "anthropic_messages", "gemini", "embeddings", "other"}
+var observationProtocols = []string{"openai_chat", "responses", "anthropic_messages", "gemini", "embeddings", "stepaudio_realtime", "other"}
 var observationSourceKinds = []string{"channel", "subscription", "unknown"}
-var observationPurposes = []string{"user", "health_probe"}
+var observationPurposes = []string{"user", "health_probe", "canary", "internal_test"}
 var observationStatuses = []string{"verified", "missing", "invalid", "ambiguous", "unsupported", "unobserved"}
 
 // observationAnomalyStatuses is the subset that can be reported as a complete
