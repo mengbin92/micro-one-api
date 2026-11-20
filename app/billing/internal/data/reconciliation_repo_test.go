@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"micro-one-api/app/billing/internal/biz"
+	"micro-one-api/pkg/jsonx"
 	dbtest "micro-one-api/platform/database/testutil"
 )
 
@@ -36,14 +38,29 @@ func TestGetLedgerConsumeSummaryCollapsesDualTrackRows(t *testing.T) {
 }
 
 func TestSumSubscriptionWindowCostsJoinsFrozenCharges(t *testing.T) {
-	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
-		t.Run(driver, func(t *testing.T) {
-			db := dbtest.RoutingContextDB(t, driver)
-			if driver == "mysql" {
-				// Match the collations of the existing production tables.
+	for _, tc := range []struct{ name, driver, frozenCollation string }{
+		{name: "sqlite", driver: "sqlite"},
+		{name: "mysql_fresh", driver: "mysql", frozenCollation: "utf8mb4_0900_ai_ci"},
+		{name: "mysql_upgraded", driver: "mysql", frozenCollation: "utf8mb4_unicode_ci"},
+		{name: "postgres", driver: "postgres"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := dbtest.RoutingContextDB(t, tc.driver)
+			var query string
+			var vars []any
+			var metadataReads int
+			if tc.driver == "mysql" {
 				require.NoError(t, db.Exec("ALTER TABLE billing_ledgers MODIFY reference_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci").Error)
 				require.NoError(t, db.Exec("ALTER TABLE billing_reservations MODIFY reservation_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL").Error)
-				require.NoError(t, db.Exec("ALTER TABLE subscription_window_charges MODIFY reservation_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL").Error)
+				require.NoError(t, db.Exec("ALTER TABLE subscription_window_charges MODIFY reservation_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE "+tc.frozenCollation+" NOT NULL").Error)
+				require.NoError(t, db.Callback().Row().After("gorm:row").Register("test:capture_window_costs", func(tx *gorm.DB) {
+					if strings.Contains(tx.Statement.SQL.String(), "information_schema.COLUMNS") {
+						metadataReads++
+					}
+					if sql := tx.Statement.SQL.String(); strings.Contains(sql, "LEFT JOIN subscription_window_charges w") {
+						query, vars = sql, append([]any(nil), tx.Statement.Vars...)
+					}
+				}))
 			}
 
 			const subscriptionID, quotaPolicyID, start = 42, 7, 1_700_000_000
@@ -62,12 +79,68 @@ func TestSumSubscriptionWindowCostsJoinsFrozenCharges(t *testing.T) {
 				"daily_window_start": start, "weekly_window_start": start, "monthly_window_start": start,
 				"accounting_usd": 0.125, "created_at": createdAt.Unix(),
 			}).Error)
+			if tc.driver == "mysql" {
+				otherCharges := make([]map[string]any, 512)
+				for i := range otherCharges {
+					otherCharges[i] = map[string]any{
+						"reservation_id": fmt.Sprintf("other-%d", i), "subscription_id": subscriptionID + 1,
+						"quota_policy_id": quotaPolicyID, "daily_window_start": start,
+						"weekly_window_start": start, "monthly_window_start": start,
+						"accounting_usd": 1, "created_at": createdAt.Unix(),
+					}
+				}
+				require.NoError(t, db.Table("subscription_window_charges").Create(&otherCharges).Error)
+			}
 
-			costs, err := NewReconciliationRepo(&Data{db: db}).SumSubscriptionWindowCosts(context.Background(), subscriptionID, quotaPolicyID, "daily", start)
+			repo := NewReconciliationRepo(&Data{db: db})
+			if tc.driver == "mysql" {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				_, err := repo.SumSubscriptionWindowCosts(ctx, subscriptionID, quotaPolicyID, "daily", start)
+				require.ErrorIs(t, err, context.Canceled)
+				metadataReads = 0
+			}
+			costs, err := repo.SumSubscriptionWindowCosts(context.Background(), subscriptionID, quotaPolicyID, "daily", start)
 			require.NoError(t, err)
 			require.Equal(t, biz.SubscriptionWindowCosts{LedgerCost: 230, LegacyCost: 30, FrozenAccountingUSD: 0.125}, costs)
+			if tc.driver == "mysql" {
+				requireFrozenChargePrimaryKey(t, db, query, vars)
+				weekCosts, err := repo.SumSubscriptionWindowCosts(context.Background(), subscriptionID, quotaPolicyID, "weekly", start)
+				require.NoError(t, err)
+				require.Equal(t, costs, weekCosts)
+				require.Equal(t, 1, metadataReads, "reuse the successful MySQL metadata lookup across windows")
+			}
 		})
 	}
+}
+
+func requireFrozenChargePrimaryKey(t *testing.T, db *gorm.DB, query string, vars []any) {
+	t.Helper()
+	require.NotEmpty(t, query)
+	conn, err := db.DB()
+	require.NoError(t, err)
+	var explanation []byte
+	require.NoError(t, conn.QueryRow("EXPLAIN FORMAT=JSON "+query, vars...).Scan(&explanation))
+	var plan struct {
+		QueryBlock struct {
+			NestedLoop []struct {
+				Table struct {
+					Name       string `json:"table_name"`
+					Key        string `json:"key"`
+					AccessType string `json:"access_type"`
+				} `json:"table"`
+			} `json:"nested_loop"`
+		} `json:"query_block"`
+	}
+	require.NoError(t, jsonx.Unmarshal(explanation, &plan))
+	for _, step := range plan.QueryBlock.NestedLoop {
+		if step.Table.Name == "w" {
+			require.Equal(t, "eq_ref", step.Table.AccessType, "frozen-charge table access type")
+			require.Equal(t, "PRIMARY", step.Table.Key)
+			return
+		}
+	}
+	t.Fatal("missing frozen-charge table in MySQL execution plan")
 }
 
 func TestListRefundReconciliationsPairsTradeAndUserAndFindsOrphans(t *testing.T) {

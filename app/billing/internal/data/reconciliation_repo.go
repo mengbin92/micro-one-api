@@ -3,7 +3,9 @@ package data
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"gorm.io/gorm"
@@ -11,7 +13,8 @@ import (
 )
 
 type reconciliationRepo struct {
-	data *Data
+	data                  *Data
+	mysqlFrozenChargeJoin atomic.Pointer[string]
 }
 
 // NewReconciliationRepo creates a new ReconciliationRepo.
@@ -244,16 +247,15 @@ func (r *reconciliationRepo) ListActiveSubscriptions(ctx context.Context) ([]*bi
 
 func (r *reconciliationRepo) SumSubscriptionWindowCosts(ctx context.Context, subscriptionID, quotaPolicyID int64, window string, start int64) (biz.SubscriptionWindowCosts, error) {
 	var costs biz.SubscriptionWindowCosts
-	frozenChargeJoin := "LEFT JOIN subscription_window_charges w ON w.reservation_id = r.reservation_id"
-	if r.data.db.Dialector.Name() == "mysql" {
-		// Align upgraded tables while keeping the frozen charge primary key indexable.
-		frozenChargeJoin += " COLLATE utf8mb4_unicode_ci"
+	join, err := r.frozenChargeJoin(ctx)
+	if err != nil {
+		return costs, err
 	}
 	// A late commit can land in the current window. Evidence from another policy does not say whether its usage still applies.
-	err := r.data.db.WithContext(ctx).
+	err = r.data.db.WithContext(ctx).
 		Table("billing_ledgers AS l").
 		Joins("JOIN billing_reservations r ON r.reservation_id = l.reference_id").
-		Joins(frozenChargeJoin).
+		Joins(join).
 		Where("r.subscription_id = ?", subscriptionID).
 		Where("l.type = ? AND l.cost_source = ?", biz.LedgerTypeConsume, biz.CostSourceSubscription).
 		Where("(w.reservation_id IS NULL AND l.created_at >= ?) OR w.created_at >= ?", time.Unix(start, 0).UTC(), start).
@@ -265,6 +267,41 @@ func (r *reconciliationRepo) SumSubscriptionWindowCosts(ctx context.Context, sub
 			COALESCE(MAX(CASE WHEN w.quota_policy_id <> ? THEN 1 ELSE 0 END), 0) AS unresolved_policy`, quotaPolicyID, window, start, quotaPolicyID).
 		Scan(&costs).Error
 	return costs, err
+}
+
+var mysqlCollationIdentifier = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+
+func (r *reconciliationRepo) frozenChargeJoin(ctx context.Context) (string, error) {
+	const join = "LEFT JOIN subscription_window_charges w ON w.reservation_id = r.reservation_id"
+	if dialectorName(r.data.db) != "mysql" {
+		return join, nil
+	}
+	if cached := r.mysqlFrozenChargeJoin.Load(); cached != nil {
+		return *cached, nil
+	}
+	var reservationCharset, reservationCollation, frozenCharset, frozenCollation string
+	err := r.data.db.WithContext(ctx).Raw(`SELECT r.CHARACTER_SET_NAME, r.COLLATION_NAME, w.CHARACTER_SET_NAME, w.COLLATION_NAME
+		FROM information_schema.COLUMNS w
+		JOIN information_schema.COLUMNS r ON r.TABLE_SCHEMA = w.TABLE_SCHEMA
+		  AND r.TABLE_NAME = 'billing_reservations' AND r.COLUMN_NAME = 'reservation_id'
+		WHERE w.TABLE_SCHEMA = DATABASE() AND w.TABLE_NAME = 'subscription_window_charges' AND w.COLUMN_NAME = 'reservation_id'`).
+		Row().Scan(&reservationCharset, &reservationCollation, &frozenCharset, &frozenCollation)
+	if err != nil {
+		return "", fmt.Errorf("read frozen charge key collation: %w", err)
+	}
+	if reservationCharset != frozenCharset {
+		return "", fmt.Errorf("reservation and frozen charge keys use different character sets")
+	}
+	mysqlJoin := join
+	if reservationCollation != frozenCollation {
+		if !mysqlCollationIdentifier.MatchString(frozenCollation) {
+			return "", fmt.Errorf("invalid collation for the frozen charge key")
+		}
+		// Collate the lookup value so MySQL can use the frozen charge primary key.
+		mysqlJoin += " COLLATE " + frozenCollation
+	}
+	r.mysqlFrozenChargeJoin.Store(&mysqlJoin)
+	return mysqlJoin, nil
 }
 
 func (r *reconciliationRepo) SumPendingReceivables(ctx context.Context) (int64, error) {

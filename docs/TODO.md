@@ -18,7 +18,6 @@ P1–P3 表示建议处理顺序。完整退出条件及证据见[当前路线�
 - [ ] **P1（启用时）· A1 Turnstile**。11 月 20 日生产回读为关闭，site key 和 secret 均未注入。配置后补真实挑战验收。 [A1 记录](./runbooks/a1-self-service-acceptance-2026-10-27.md)
 - [ ] **P2 · 独立 usage 留证**。原窗口跨 3 个版本，完整 Chat 终态均为 `unsupported`。新版本的 48 个初样均为 `verified`，待同版本及配置 48 小时、协议与样本量、amd64 性能、真实收件及 ACK。 [观察手册](./runbooks/upstream-usage-observation.md#8-未完成与未验证)
 - [ ] **P2 · Executor 全量准入**。11 月 20 日生产复核仍缺同入口、协议及时段的可比流量，正式七天未起算。 [观察手册](./design/v0.23-executor-observation.md)
-- [ ] **P2 · Billing 通用发行前核对 MySQL 执行计划**。当前生产已验证主键查找。新装 MySQL 两列默认 `utf8mb4_0900_ai_ci` 时，显式排序规则会使冻结明细全表扫描，已在隔离库复现。 [发布验收](./releases/release-v0.46.3.md#验证)
 - [ ] **P2（外部条件）· 微信 Native、原生 Gemini、订阅账号**。微信待真实商户实付回调与发放。Gemini 采用 Go SDK 最新稳定版，账号待确认。订阅账号待真实 OAuth 轮换及多副本故障切换，专属组待固定组令牌及生产端到端证据。 [路线图](./design/next-stage-plan-2026-11-08.md#3-已实现待验收)
 - [ ] **P2（保留）· 上游供应商账单证据**。扫描按既有决定停用，历史核验保留 `pending`。新核验须具备最终报告、执行覆盖及 owner。渠道 1 未提供记账接口，接口对账为 `N/A`，实际采购扣费保留 `unknown`。 [账务证据](./runbooks/vendor-evidence-overdue-2026-10-26.md#2026-11-20-渠道-1-账务证据)
 
@@ -44,6 +43,7 @@ A1–A4、B1–B4 工程和生产部署已完成。B1 日历已延至 2027-12-31
 
 - [x] **P2 · 受限固定组 Key**。支持到期时间、有限 Token 配额和白名单，沿用二次验证。隔离链路及桌面、移动验证通过，Identity、Admin、Web 已更新生产。 [签发说明](./runbooks/routing-groups-runbook.md#56-签发短期固定组-key)
 - [x] **P1 · N1 跨时段计价**。13:59:57.146 预扣，14:00:01.420 收到完整终态，唯一账本按闲时价结算订阅 49 quota，钱包扣 0。上游原始数字与账本一致，独立观察解析问题继续单列。 [N1 记录](./runbooks/n1-pricing-closure-2026-11-14.md)
+- [x] **P2 · Billing MySQL 对账索引回归**。冻结费用 JOIN 采用实际列排序规则，新装和生产同款混合排序规则的隔离库均使用 `PRIMARY / eq_ref`，三库金额回归通过。 [发布验收](./releases/release-v0.46.3.md#验证)
 - [x] 核对远端分支/tag 与既有证据，建立新规划草案并同步入口。
 - [x] 维护者授权 N1 只读核账；完成逐模型分类、2,971 笔七天账本及监控取证。
 - [x] N2 异机直连、当前停写窗口、每 24h/保留 7 份已获维护者确认。
