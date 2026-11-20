@@ -23,7 +23,7 @@ docs/
 | 个人单机，创建首个渠道和 Token | [quickstart-lite.md](./quickstart-lite.md) |
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
 | 查看未实现、待验收与未立项清单 | [当前路线图](./design/next-stage-plan-2026-11-08.md) · [项目 TODO](./TODO.md) |
-| 查看最新版本及生产验收要求 | [v0.46.3](./releases/release-v0.46.3.md) |
+| 查看最新版本及生产验收要求 | [v0.47.0](./releases/release-v0.47.0.md) |
 | 接入原生 Gemini 文本/函数调用及核对部署状态 | [B2 契约](./design/b2-native-gemini-contract-2026-10-30.md) · [B2 验收](./runbooks/b2-native-gemini-acceptance-2026-10-30.md) |
 | 查看告警修复、生产容量基线与 executor 同窗复核 | [runbooks/post-v0.36.0-acceptance-2026-10-18.md](./runbooks/post-v0.36.0-acceptance-2026-10-18.md) |
 | 查看原生镜像提速与真实 Log RPC/SQL 容量边界 | [构建与 SQL 链路验收](./runbooks/build-timing-sql-acceptance-2026-10-18.md) |
@@ -54,7 +54,7 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——本表明确指向且头部标注「当前执行入口」的计划。未定发布版本时使用 `design/next-stage-plan-YYYY-MM-DD.md`，已定版本时使用 `design/vX.Y-roadmap.md`。新阶段立项时：新建计划 → 旧路线图标为「已归档」并指回新入口 → 同步本表、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-**最新发布**为 v0.46.3。2026-11-20（北京时间）生产 6 个服务、同源 Channel worker 与 Web 已升级。Relay、Notify 沿用 `09ad6874` 制品。Billing 的生产对账回归经单服务补丁修复，自然对账 #1450 完成。 [v0.46.3 发布说明](./releases/release-v0.46.3.md#验证)
+**最新发布**为 v0.47.0，包含短期固定组 Key 和 MySQL 对账索引修复。2026-11-20（北京时间）短期 Key 已在 Identity、Admin 和 Web 上线，Billing 最终修复制品已通过生产健康检查和自然对账 #1455。 [v0.47.0 发布说明](./releases/release-v0.47.0.md#验证)
 
 ## 当前工作状态（2026-11-20）
 
@@ -132,7 +132,7 @@ N1 跨时段计价、N2 异机备份与恢复、N3 MFA 和 N4 公告与本人模
 
 - [v0.37.0](./releases/release-v0.37.0.md) · [v0.37.1](./releases/release-v0.37.1.md) · [v0.38.0](./releases/release-v0.38.0.md) · [v0.38.1](./releases/release-v0.38.1.md) · [v0.39.0](./releases/release-v0.39.0.md) · [v0.39.1](./releases/release-v0.39.1.md) · [v0.39.2](./releases/release-v0.39.2.md) · [v0.39.3](./releases/release-v0.39.3.md) · [v0.40.0](./releases/release-v0.40.0.md) · [v0.41.0](./releases/release-v0.41.0.md) · [v0.42.0](./releases/release-v0.42.0.md) · [v0.43.0](./releases/release-v0.43.0.md) · [v0.43.1](./releases/release-v0.43.1.md) · [v0.44.0](./releases/release-v0.44.0.md) · [v0.44.1](./releases/release-v0.44.1.md)
 - [v0.45.0](./releases/release-v0.45.0.md) · [v0.45.1](./releases/release-v0.45.1.md) · [v0.45.2](./releases/release-v0.45.2.md) · [v0.45.3](./releases/release-v0.45.3.md) · [v0.45.4](./releases/release-v0.45.4.md) · [v0.45.5](./releases/release-v0.45.5.md)
-- [v0.46.0](./releases/release-v0.46.0.md) · [v0.46.1](./releases/release-v0.46.1.md) · [v0.46.2](./releases/release-v0.46.2.md) · [v0.46.3](./releases/release-v0.46.3.md)（最新）
+- [v0.46.0](./releases/release-v0.46.0.md) · [v0.46.1](./releases/release-v0.46.1.md) · [v0.46.2](./releases/release-v0.46.2.md) · [v0.46.3](./releases/release-v0.46.3.md) · [v0.47.0](./releases/release-v0.47.0.md)（最新）
 
 ### runbooks/ — 运维操作手册
 
