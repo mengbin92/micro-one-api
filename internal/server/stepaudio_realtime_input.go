@@ -164,6 +164,7 @@ func (input *stepAudioRealtimeInput) push(pcm []byte, speechStarted func(string,
 	}
 	vad := input.vad
 	const frameBytes = realtimePCMPerMS * realtimeVADFrameMS
+	const pcm16SignBit = 1 << 15
 	pcm = append(vad.tail, pcm...)
 	vad.tail = nil
 	for len(pcm) >= frameBytes {
@@ -172,7 +173,8 @@ func (input *stepAudioRealtimeInput) push(pcm []byte, speechStarted func(string,
 		vad.elapsedMS += realtimeVADFrameMS
 		var energy int64
 		for offset := 0; offset < frameBytes; offset += 2 {
-			sample := int64(int16(binary.LittleEndian.Uint16(frame[offset:])))
+			// Recover the signed PCM16 value without narrowing the sample.
+			sample := int64(binary.LittleEndian.Uint16(frame[offset:])^pcm16SignBit) - pcm16SignBit
 			energy += sample * sample
 		}
 		voiced := energy > vad.threshold*vad.threshold*(frameBytes/2)

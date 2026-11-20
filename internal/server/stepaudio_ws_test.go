@@ -159,7 +159,10 @@ func TestStepAudioRelayVADReservesBeforeFirstAudioWrite(t *testing.T) {
 	require.JSONEq(t, `{"type":"session.update","session":{"turn_detection":null}}`, waitStepAudioFrame(t, ctx, upstream.out))
 	pcm := make([]byte, 30*realtimePCMPerMS)
 	for i := 0; i < 10*realtimePCMPerMS; i += 2 {
-		binary.LittleEndian.PutUint16(pcm[i:], 6000)
+		binary.LittleEndian.PutUint16(pcm[i:], (1<<16)-6000)
+	}
+	for i := 10 * realtimePCMPerMS; i < len(pcm); i += 2 {
+		binary.LittleEndian.PutUint16(pcm[i:], (1<<16)-1)
 	}
 	for _, slice := range [][]byte{pcm[:240], pcm[240:]} {
 		client.in <- stepAudioTextFrame(fmt.Sprintf(`{"type":"input_audio_buffer.append","audio":%q}`, base64.StdEncoding.EncodeToString(slice)))
