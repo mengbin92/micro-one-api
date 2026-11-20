@@ -95,17 +95,10 @@ func TestShouldMimic(t *testing.T) {
 	if ShouldMimic(PlatformMinimax, true, header("User-Agent", "claude-cli/1.0")) {
 		t.Fatal("MiniMax OAuth + genuine CC client should not mimic")
 	}
-	// Kimi: only a genuine Kimi CLI client skips mimicry; everything else
-	// (including a Claude Code UA, which is NOT a safe passthrough for Kimi)
-	// is mimicked.
-	if ShouldMimic(PlatformKimi, true, header("User-Agent", "kimi-cli/0.1.0")) {
-		t.Fatal("Kimi OAuth + genuine Kimi CLI client should not mimic")
-	}
-	if !ShouldMimic(PlatformKimi, true, header("User-Agent", "claude-cli/1.0")) {
-		t.Fatal("Kimi OAuth + Claude Code UA should still mimic (not a safe passthrough)")
-	}
-	if !ShouldMimic(PlatformKimi, true, header("User-Agent", "python")) {
-		t.Fatal("Kimi OAuth + third-party client should mimic")
+	for _, ua := range []string{"kimi-cli/0.1.0", "claude-cli/1.0", "python"} {
+		if ShouldMimic(PlatformKimi, true, header("User-Agent", ua)) {
+			t.Fatalf("Kimi must keep the caller User-Agent %q", ua)
+		}
 	}
 }
 

@@ -15,10 +15,11 @@ import (
 )
 
 const (
-	ParserRevision   = "native-shadow-2026-10-13.1"
-	ContractRevision = "native-static-2026-10-13.1"
-	MaxFrameBytes    = 1 << 20
-	MaxUsageBytes    = 32 << 10
+	ParserRevision    = "native-shadow-2026-10-13.1"
+	ContractRevision  = "native-static-2026-10-13.1"
+	StepAudioRealtime = "stepaudio_realtime"
+	MaxFrameBytes     = 1 << 20
+	MaxUsageBytes     = 32 << 10
 )
 
 // BuildRevision is embedded by the relay image build because .git is excluded
@@ -108,9 +109,14 @@ func parse(body []byte, protocol string, channelOneChatAliases bool) Observation
 		o.Event = "other"
 	}
 	parent := root
-	if protocol == "responses" {
+	if protocol == "responses" || protocol == StepAudioRealtime {
 		if nested, ok := root["response"].(map[string]any); ok {
 			parent = nested
+		} else if protocol == StepAudioRealtime {
+			if o.Event == "response.done" {
+				o.Status, o.Reason, o.Terminal = "invalid", "response_not_object", "unknown"
+			}
+			return o
 		}
 	} else if protocol == "anthropic_messages" {
 		if nested, ok := root["message"].(map[string]any); ok {
@@ -182,7 +188,7 @@ func parse(body []byte, protocol string, channelOneChatAliases bool) Observation
 	switch protocol {
 	case "openai_chat":
 		input, output = "/prompt_tokens", "/completion_tokens"
-	case "responses":
+	case "responses", StepAudioRealtime:
 		input, output = "/input_tokens", "/output_tokens"
 	case "anthropic_messages":
 		input, output = "/input_tokens", "/output_tokens"
@@ -236,6 +242,33 @@ func parse(body []byte, protocol string, channelOneChatAliases bool) Observation
 			}
 		}
 	}
+	if protocol == StepAudioRealtime {
+		const inputDetails = "/input_token_details"
+		for _, detail := range []struct {
+			path  string
+			limit int64
+			known bool
+		}{
+			{inputDetails, b[0], hasInput},
+			{"/output_token_details", b[4], hasOutput},
+		} {
+			known[detail.path] = true
+			if value, present := flat[detail.path]; present {
+				if _, ok := value.(map[string]any); !ok {
+					invalid = "detail_not_object"
+				}
+			}
+			audio, _ := read(detail.path + "/audio_tokens")
+			text, _ := read(detail.path + "/text_tokens")
+			if invalid == "" && detail.known && (audio > detail.limit || text > detail.limit-audio) {
+				invalid = "realtime_token_detail_conflict"
+			}
+		}
+		b[1], _ = read(inputDetails + "/cached_tokens")
+		if invalid == "" && hasInput && b[1] > b[0] {
+			invalid = "cached_exceeds_reported_prompt"
+		}
+	}
 	if channelOneChatAliases && protocol == "openai_chat" {
 		for _, path := range []string{"/input_tokens_details", "/output_tokens_details"} {
 			known[path] = true
@@ -276,7 +309,11 @@ func parse(body []byte, protocol string, channelOneChatAliases bool) Observation
 	if protocol == "gemini" {
 		totalPath = "/totalTokenCount"
 	}
-	read(totalPath) // Reported total remains audit-only.
+	total, hasTotal := read(totalPath)
+	if protocol == StepAudioRealtime && invalid == "" && hasInput && hasOutput &&
+		(!hasTotal || total == 0 && !stepAudioUnsuccessful(o.Terminal) || b[4] > total || b[0] != total-b[4]) {
+		invalid = "realtime_total_conflict"
+	}
 	if value, present := flat["/cache_creation"]; present && protocol == "anthropic_messages" {
 		if _, ok := value.(map[string]any); !ok {
 			invalid = "detail_not_object"
@@ -332,8 +369,30 @@ func parse(body []byte, protocol string, channelOneChatAliases bool) Observation
 	return o
 }
 
+func stepAudioUnsuccessful(terminal string) bool {
+	switch terminal {
+	case "failed", "cancelled", "incomplete":
+		return true
+	default:
+		return false
+	}
+}
+
 func terminalState(root, parent map[string]any, protocol, event string) string {
 	status, _ := parent["status"].(string)
+	if protocol == StepAudioRealtime && event == "response.done" {
+		if _, exists := parent["status"]; !exists {
+			return "completed"
+		}
+		switch status {
+		case "completed", "failed", "incomplete", "cancelled":
+			return status
+		case "canceled":
+			return "cancelled"
+		default:
+			return "unknown"
+		}
+	}
 	switch status {
 	case "failed", "incomplete", "cancelled", "canceled":
 		return "failed"

@@ -16,15 +16,33 @@ type Session struct {
 	CodeVerifier     string
 	RedirectURI      string
 	CreatedAt        time.Time
+	Device           *DeviceSession `json:",omitempty"`
+}
+
+type DeviceSession struct {
+	Code      string
+	ClientID  string
+	ExpiresAt time.Time
+	PollAt    time.Time
+	Interval  time.Duration
 }
 
 type SessionRepository interface {
 	Set(*Session) error
 	Pop(string, time.Time) (*Session, bool)
 	Get(string, time.Time) (*Session, bool)
+	CompareAndSwap(current, next *Session, now time.Time) (bool, error)
 	Delete(string)
 	Cleanup(time.Time)
 	TTL() time.Duration
+}
+
+func (s *Session) ExpiresAt(ttl time.Duration) time.Time {
+	end := s.CreatedAt.Add(ttl)
+	if s.Device != nil && s.Device.ExpiresAt.Before(end) {
+		end = s.Device.ExpiresAt
+	}
+	return end
 }
 
 func (s *SessionStore) TTL() time.Duration { return s.ttl }
@@ -51,6 +69,11 @@ func (s *SessionStore) Set(session *Session) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	for id, previous := range s.sessions {
+		if !session.CreatedAt.Before(previous.ExpiresAt(s.ttl)) {
+			delete(s.sessions, id)
+		}
+	}
 	s.sessions[session.ID] = session
 	return nil
 }
@@ -69,7 +92,7 @@ func (s *SessionStore) Pop(id string, now time.Time) (*Session, bool) {
 	if now.IsZero() {
 		now = time.Now()
 	}
-	if now.Sub(session.CreatedAt) > s.ttl {
+	if !now.Before(session.ExpiresAt(s.ttl)) {
 		return nil, false
 	}
 	return session, true
@@ -88,11 +111,25 @@ func (s *SessionStore) Get(id string, now time.Time) (*Session, bool) {
 	if now.IsZero() {
 		now = time.Now()
 	}
-	if now.Sub(session.CreatedAt) > s.ttl {
-		s.Delete(id)
+	if !now.Before(session.ExpiresAt(s.ttl)) {
 		return nil, false
 	}
 	return session, true
+}
+
+// CompareAndSwap replaces a session snapshot or consumes it when next is nil.
+func (s *SessionStore) CompareAndSwap(current, next *Session, now time.Time) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.sessions[current.ID] != current || !now.Before(current.ExpiresAt(s.ttl)) {
+		return false, nil
+	}
+	if next == nil {
+		delete(s.sessions, current.ID)
+	} else {
+		s.sessions[current.ID] = next
+	}
+	return true, nil
 }
 
 func (s *SessionStore) Delete(id string) {
@@ -114,7 +151,7 @@ func (s *SessionStore) Cleanup(now time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for id, session := range s.sessions {
-		if now.Sub(session.CreatedAt) > s.ttl {
+		if !now.Before(session.ExpiresAt(s.ttl)) {
 			delete(s.sessions, id)
 		}
 	}

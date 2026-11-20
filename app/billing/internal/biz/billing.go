@@ -370,6 +370,9 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 		if snapshot == nil {
 			return nil, ErrRequestSnapshotUnavailable
 		}
+		if snapshot.AudioInput != nil {
+			return nil, ErrSettlementReceiptInvalid
+		}
 		copy := *i
 		snapshot.Execution = &copy
 	}
@@ -982,7 +985,7 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 			BalanceAfter:          balanceAfter,
 			Type:                  LedgerTypeConsume,
 			ReferenceID:           reservationID,
-			Remark:                fmt.Sprintf("model=%s, tokens=%d", reservation.Model, actualTokens),
+			Remark:                consumeLedgerRemark(reservation.Model, actualTokens, usage.ActualAudioUnits),
 			TokenName:             usage.TokenName,
 			ModelName:             reservation.Model,
 			Quota:                 actualTokens,
@@ -1103,7 +1106,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 				resultRefundAmount = 0
 				return nil
 			case ReservationStatusReleased, ReservationStatusExpired:
-				if usage.UsageContractVersion == 2 {
+				if usage.UsageContractVersion == 2 || usage.ActualAudioUnits != 0 {
 					return ErrSettlementReservationClosed
 				}
 				resultActualCost = 0
@@ -1223,7 +1226,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 			).Inc()
 		}
 		resolvedSubAccountID := resolveSubscriptionAccountID(usage.SubscriptionAccountID, reservation.SubscriptionAccountID)
-		commonRemark := fmt.Sprintf("model=%s, tokens=%d", reservation.Model, actualTokens)
+		commonRemark := consumeLedgerRemark(reservation.Model, actualTokens, usage.ActualAudioUnits)
 		if actualSubscriptionAmount > 0 {
 			subLedger := &Ledger{
 				UserID: reservation.UserID,

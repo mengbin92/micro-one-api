@@ -24,6 +24,7 @@ import (
 const (
 	PlatformClaude = "claude"
 	PlatformCodex  = "codex"
+	PlatformKimi   = "kimi"
 
 	claudeAuthorizeURL = "https://claude.ai/oauth/authorize"
 	claudeRedirectURI  = "https://platform.claude.com/oauth/code/callback"
@@ -46,7 +47,11 @@ var (
 	chatGPTPrivacyURL       = "https://chatgpt.com/backend-api/settings/user"
 )
 
-var ErrInvalidSession = errors.New("invalid oauth session")
+var (
+	ErrInvalidSession        = errors.New("invalid oauth session")
+	ErrDevicePending         = errors.New("device authorization pending")
+	ErrKimiDeviceUnavailable = errors.New("Kimi device OAuth requires a registered client ID")
+)
 
 type ChannelUsecase interface {
 	CreateSubscriptionAccount(ctx context.Context, account *biz.SubscriptionAccount) error
@@ -58,7 +63,9 @@ type Service struct {
 	client *http.Client
 	now    func() time.Time
 
-	tokenURLs map[string]string
+	tokenURLs          map[string]string
+	deviceURL          string
+	kimiDeviceClientID string
 }
 
 type AuthURLRequest struct {
@@ -71,6 +78,7 @@ type AuthURLResult struct {
 	SessionID string
 	State     string
 	ExpiresAt int64
+	UserCode  string
 }
 
 type ExchangeRequest struct {
@@ -117,7 +125,9 @@ func NewService(uc ChannelUsecase, opts ...Option) *Service {
 		tokenURLs: map[string]string{
 			PlatformClaude: relaycredential.ClaudeTokenRefreshURL,
 			PlatformCodex:  relaycredential.CodexTokenRefreshURL,
+			PlatformKimi:   relaycredential.KimiDeviceTokenURL,
 		},
+		deviceURL: relaycredential.KimiDeviceOAuthHost + "/api/oauth/device_authorization",
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -160,7 +170,12 @@ func WithTokenURL(platform, tokenURL string) Option {
 	}
 }
 
+func WithKimiDeviceClientID(clientID string) Option {
+	return func(s *Service) { s.kimiDeviceClientID = relaycredential.RegisteredKimiDeviceClientID(clientID) }
+}
+
 func (s *Service) AuthURL(ctx context.Context, platform string, req AuthURLRequest) (*AuthURLResult, error) {
+	req.Group = oauthGroup(req.Group)
 	var err error
 	if guard, ok := s.uc.(interface {
 		AuthorizeOAuth(context.Context, string) (context.Context, error)
@@ -182,34 +197,40 @@ func (s *Service) AuthURL(ctx context.Context, platform string, req AuthURLReque
 	if err != nil {
 		return nil, err
 	}
-	verifier, err := codeVerifier(platform)
-	if err != nil {
-		return nil, err
-	}
-	redirectURI := strings.TrimSpace(req.RedirectURI)
-	if redirectURI == "" {
-		redirectURI = defaultRedirectURI(platform)
-	}
 	session := &Session{
 		ID:               sessionID,
 		Platform:         platform,
 		State:            state,
-		CodeVerifier:     verifier,
-		RedirectURI:      redirectURI,
 		CreatedAt:        s.now(),
 		CredentialDigest: oauthCredentialDigest(ctx),
 		Group:            req.Group,
 	}
-	if err := s.store.Set(session); err != nil {
-		return nil, fmt.Errorf("store oauth session: %w", err)
+	result := &AuthURLResult{SessionID: sessionID, State: state, ExpiresAt: session.CreatedAt.Add(s.store.TTL()).Unix()}
+	if platform == PlatformKimi {
+		if s.kimiDeviceClientID == "" {
+			return nil, ErrKimiDeviceUnavailable
+		}
+		if req.RedirectURI != "" {
+			return nil, fmt.Errorf("device authorization does not accept a redirect URI")
+		}
+		if err := s.startKimiDevice(ctx, session, result); err != nil {
+			return nil, err
+		}
+	} else {
+		session.CodeVerifier, err = codeVerifier(platform)
+		if err != nil {
+			return nil, err
+		}
+		session.RedirectURI = strings.TrimSpace(req.RedirectURI)
+		if session.RedirectURI == "" {
+			session.RedirectURI = defaultRedirectURI(platform)
+		}
+		result.AuthURL = buildAuthURL(platform, state, codeChallenge(session.CodeVerifier), session.RedirectURI)
 	}
-	authURL := buildAuthURL(platform, state, codeChallenge(verifier), redirectURI)
-	return &AuthURLResult{
-		AuthURL:   authURL,
-		SessionID: sessionID,
-		State:     state,
-		ExpiresAt: session.CreatedAt.Add(s.store.TTL()).Unix(),
-	}, nil
+	if err := s.store.Set(session); err != nil {
+		return nil, authorization.ErrWriteStorageUnavailable
+	}
+	return result, nil
 }
 
 func (s *Service) Exchange(ctx context.Context, platform string, req ExchangeRequest) (*ExchangeResult, error) {
@@ -232,14 +253,8 @@ func (s *Service) Exchange(ctx context.Context, platform string, req ExchangeReq
 	if session.CredentialDigest != oauthCredentialDigest(ctx) {
 		return nil, ErrInvalidSession
 	}
-	targetGroup := session.Group
-	if targetGroup == "" {
-		targetGroup = "default"
-	}
-	if req.Group == "" {
-		req.Group = "default"
-	}
-	if authorization.External(ctx) && req.Group != targetGroup {
+	req.Group = oauthGroup(req.Group)
+	if (platform == PlatformKimi || authorization.External(ctx)) && req.Group != oauthGroup(session.Group) {
 		return nil, ErrInvalidSession
 	}
 	if guard, ok := s.uc.(interface {
@@ -252,20 +267,52 @@ func (s *Service) Exchange(ctx context.Context, platform string, req ExchangeReq
 		}
 	}
 	code := callback.Code
-	if code == "" {
+	if platform == PlatformKimi {
+		if s.kimiDeviceClientID == "" {
+			return nil, ErrKimiDeviceUnavailable
+		}
+		if code != "" || (req.BaseURL != "" && req.BaseURL != relaycredential.KimiCodingBaseURL) {
+			return nil, fmt.Errorf("invalid Kimi device binding input")
+		}
+		if session.Device == nil || session.Device.ClientID != s.kimiDeviceClientID {
+			return nil, ErrInvalidSession
+		}
+	} else if code == "" {
 		return nil, fmt.Errorf("oauth code is required")
 	}
-	// Claim only after actor, target and current policy validation. Concurrent
-	// exchanges cannot redeem the same authorization code twice.
-	if _, ok := s.store.Pop(req.SessionID, s.now()); !ok {
-		return nil, ErrInvalidSession
+	if guard, ok := s.uc.(interface {
+		AuthorizeSubscriptionAccountCreate(context.Context, string) (context.Context, error)
+	}); ok {
+		var err error
+		ctx, err = guard.AuthorizeSubscriptionAccountCreate(ctx, req.Group)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	token, err := s.exchangeCode(ctx, session, code)
+	var token *tokenResponse
+	var err error
+	if platform == PlatformKimi {
+		token, err = s.pollKimiDevice(ctx, session)
+		req.BaseURL = relaycredential.KimiCodingBaseURL
+	} else {
+		// Concurrent exchanges cannot redeem the same authorization code twice.
+		session, ok = s.store.Pop(req.SessionID, s.now())
+		if !ok {
+			return nil, ErrInvalidSession
+		}
+		token, err = s.exchangeCode(ctx, session, code)
+	}
 	if err != nil {
 		return nil, err
 	}
 	account := s.subscriptionAccountFromToken(ctx, platform, token, req)
+	if platform == PlatformKimi {
+		// The upstream grant was consumed. Finish the save if the browser disconnects.
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+	}
 	if err := s.uc.CreateSubscriptionAccount(ctx, account); err != nil {
 		return nil, err
 	}
@@ -274,6 +321,13 @@ func (s *Service) Exchange(ctx context.Context, platform string, req ExchangeReq
 		Platform:  platform,
 		Metadata:  account.Metadata,
 	}, nil
+}
+
+func oauthGroup(group string) string {
+	if groups := biz.SplitCSV(group); len(groups) != 0 {
+		return strings.Join(groups, ",")
+	}
+	return "default"
 }
 
 type oauthCallbackInput struct {
@@ -358,9 +412,10 @@ func (s *Service) exchangeCode(ctx context.Context, session *Session, code strin
 func (s *Service) subscriptionAccountFromToken(ctx context.Context, platform string, token *tokenResponse, req ExchangeRequest) *biz.SubscriptionAccount {
 	metadata := metadataMap(req.Metadata)
 	accountID := ""
-	if platform == PlatformClaude {
+	switch platform {
+	case PlatformClaude:
 		accountID = claudeAccountID(token)
-	} else {
+	case PlatformCodex:
 		accountID, metadata = codexAccountInfo(ctx, s.client, token.AccessToken, token.IDToken, metadata)
 		disableOpenAITraining(ctx, s.client, token.AccessToken)
 	}
@@ -408,6 +463,8 @@ func normalizePlatform(platform string) string {
 		return PlatformClaude
 	case PlatformCodex, "openai":
 		return PlatformCodex
+	case PlatformKimi:
+		return PlatformKimi
 	default:
 		return ""
 	}
@@ -483,8 +540,11 @@ func defaultRedirectURI(platform string) string {
 }
 
 func defaultModels(platform string) []string {
-	if platform == PlatformClaude {
+	switch platform {
+	case PlatformClaude:
 		return []string{"claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-3-5-sonnet-20241022"}
+	case PlatformKimi:
+		return []string{"kimi-for-coding"}
 	}
 	return []string{"gpt-5", "gpt-5-codex", "codex-mini-latest", "o4-mini"}
 }

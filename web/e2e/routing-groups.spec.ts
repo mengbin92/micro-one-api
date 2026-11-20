@@ -39,7 +39,7 @@ test.describe('short-term routing keys', () => {
     const maskedKey = 'sk-s*************ture';
     const expiry = Date.UTC(2030, 0, 2, 4, 34) / 1000;
     const models = ['test-model'];
-    const token = { id: 21, name: 'short test key', status: 1, routing_mode: 'fixed', routing_group_id: 2,
+    const token = { id: 21, name: 'short test key', status: 1, routing_mode: 'fixed', routing_group_id: 2, used_quota: 0,
       routing_revision: 1, expired_time: expiry, remain_quota: 2048, unlimited_quota: false, models };
     const bodies: unknown[] = [];
     let verified = false;
@@ -92,6 +92,15 @@ test.describe('short-term routing keys', () => {
     expect(bodies).toEqual([expected, expected]);
     await result.getByRole('button', { name: '完成' }).click();
     await expect(result).toHaveCount(0);
-    await expect(page.getByText(maskedKey, { exact: true })).toBeVisible();
+    const saved = page.getByRole('listitem', { name: token.name });
+    await expect(saved.getByText(maskedKey, { exact: true })).toBeVisible();
+    await expect(saved.getByText('到期时间（本地时间）')).toBeVisible();
+    await expect(saved.locator('time')).toHaveAttribute('datetime', new Date(expiry * 1000).toISOString());
+    await expect(saved.getByText('剩余额度（Token）')).toBeVisible();
+    await expect(saved.getByText('2,048', { exact: true })).toBeVisible();
+    await expect(saved.getByText('test-model', { exact: true })).toBeVisible();
+    await expect(page.locator('#created-token-key')).toHaveCount(0);
+    await expect(saved).not.toContainText(key);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 });

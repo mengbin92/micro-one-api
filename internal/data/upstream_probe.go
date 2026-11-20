@@ -43,9 +43,15 @@ func (r *upstreamProbeRepo) Probe(ctx context.Context, t execution.ProbeTarget, 
 	}
 	if source.Channel != nil {
 		c := source.Channel
+		if t.SourceKind != "channel" || c.ID != t.SourceID {
+			return result, fmt.Errorf("probe source identity changed")
+		}
 		typ, base, key, version = c.Type, c.BaseURL, c.Key, c.Config.APIVersion
 	} else if source.Account != nil {
 		c := source.Account
+		if t.SourceKind != "subscription" || c.ID != t.SourceID {
+			return result, fmt.Errorf("probe source identity changed")
+		}
 		base, key = c.BaseURL, c.AccessToken
 		account = &adaptor.AccountRef{ID: c.ID, Platform: c.Platform, AccountType: c.AccountType, GroupID: c.Group, AccessToken: c.AccessToken, AccountID: c.AccountID, Fingerprint: c.Fingerprint}
 		switch c.Platform {
@@ -84,9 +90,12 @@ func (r *upstreamProbeRepo) Probe(ctx context.Context, t execution.ProbeTarget, 
 		ctx = contract.WithSelection(ctx, contract.Selection{Snapshots: []contract.Snapshot{contractLease.Snapshot}, Inbound: t.Protocol})
 	}
 	now := time.Now()
-	purpose := "canary"
-	if t.Inventory {
-		purpose = "health_probe"
+	purpose := evidence.PurposeCanary
+	switch {
+	case t.Inventory:
+		purpose = evidence.PurposeHealthProbe
+	case t.Purpose == evidence.PurposeInternal:
+		purpose = evidence.PurposeInternal
 	}
 	i := execution.Intent{RequestID: attemptID, RootRequestID: attemptID, AttemptNumber: 1, Purpose: purpose, SourceKind: t.SourceKind, SourceID: t.SourceID, Model: t.Model, Policy: execution.Policy, LeaseUntil: now.Add(time.Minute).Unix(), EvidenceDeadline: now.Add(24 * time.Hour).Unix(), CostBasis: "unknown"}
 	if t.Inventory {
@@ -101,6 +110,7 @@ func (r *upstreamProbeRepo) Probe(ctx context.Context, t execution.ProbeTarget, 
 	if _, err = r.delivery.Deliver(ctx, e); err != nil {
 		return result, err
 	}
+	ctx = biz.WithProbeUsageObservation(ctx, attemptID, purpose, t.SourceKind, t.SourceID, i.Model)
 	var mu sync.Mutex
 	var native *evidence.Record
 	var persistedErr error
@@ -250,7 +260,7 @@ func (r *upstreamProbeRepo) Probe(ctx context.Context, t execution.ProbeTarget, 
 		if biz.UpstreamStatus(err) >= 400 {
 			result.Outcome = "upstream_rejected"
 		}
-		if !t.Inventory && biz.UpstreamStatus(err) == 400 {
+		if purpose == evidence.PurposeCanary && biz.UpstreamStatus(err) == 400 {
 			result.ValidContractProbe = true
 			result.Outcome = "contract_probe_rejected"
 		}
@@ -262,6 +272,10 @@ func (r *upstreamProbeRepo) Probe(ctx context.Context, t execution.ProbeTarget, 
 			return result, err
 		}
 		result.Outcome = "inventory_observed"
+		return result, nil
+	}
+	if purpose == evidence.PurposeInternal {
+		result.Outcome = "internal_test_observed"
 		return result, nil
 	}
 	result.ValidContractProbe = true

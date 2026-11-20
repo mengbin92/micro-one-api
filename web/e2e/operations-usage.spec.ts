@@ -43,3 +43,66 @@ test('manual recovery filter queries the server and shows the reason', async ({ 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
   await page.screenshot({ path: testInfo.outputPath('manual-recovery.png'), fullPage: true });
 });
+
+test('Kimi device binding retains pending authorization and the chosen group', async ({ page }) => {
+  const polls: unknown[] = [];
+  const authRequests: unknown[] = [];
+  await page.context().route('https://auth.kimi.com/device-fixture', (route) => route.fulfill({ body: 'Device authorization fixture' }));
+  await page.route('**/api/v1/admin/accounts/subscription/oauth/kimi/auth-url', (route) => {
+    authRequests.push(route.request().postDataJSON());
+    return route.fulfill({ json: {
+      auth_url: 'https://auth.kimi.com/device-fixture', session_id: 'fixture-session', state: 'fixture-state', user_code: 'CODE-123',
+      expires_at: Math.floor(Date.now() / 1000) + 300,
+    } });
+  });
+  await page.route('**/api/v1/admin/accounts/subscription/oauth/kimi/exchange', (route) => {
+    polls.push(route.request().postDataJSON());
+    return route.fulfill(polls.length === 1
+      ? { status: 202, json: { pending: true } }
+      : { json: { success: true, account_id: 42, platform: 'kimi' } });
+  });
+  await page.goto('/admin/subscription-accounts');
+  await page.getByRole('button', { name: 'OAuth 授权绑定' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('平台', { exact: true }).selectOption('kimi');
+  await dialog.getByLabel('路由分组').fill('coding');
+  await dialog.getByRole('button', { name: '生成授权链接', exact: true }).click();
+  await expect(dialog.getByLabel('设备码')).toHaveValue('CODE-123');
+  await expect(dialog.getByRole('link', { name: '打开授权链接' })).toHaveAttribute('href', 'https://auth.kimi.com/device-fixture');
+  await expect(dialog.getByLabel('路由分组')).toBeDisabled();
+  await expect(dialog.getByLabel('授权码 / 回调 URL')).toHaveCount(0);
+  await dialog.getByRole('button', { name: '完成绑定' }).click();
+  await expect(page.getByText('设备授权尚未完成，请在授权页确认后重试。')).toBeVisible();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: '完成绑定' }).click();
+  await expect(dialog).not.toBeVisible();
+  expect(authRequests).toEqual([{ group: 'coding' }]);
+  expect(polls).toHaveLength(2);
+  expect(polls[1]).toMatchObject({ group: 'coding', code: '', session_id: 'fixture-session', state: 'fixture-state' });
+});
+
+test('closing the OAuth dialog discards the prior authorization response', async ({ page }) => {
+  let completeRequest!: () => void;
+  const deferred = new Promise<void>(resolve => { completeRequest = resolve; });
+  await page.route('**/api/v1/admin/accounts/subscription/oauth/kimi/auth-url', async (route) => {
+    await deferred;
+    await route.fulfill({ json: {
+      auth_url: 'https://auth.kimi.com/device-fixture', session_id: 'discarded', state: 'fixture-state', user_code: 'STALE-CODE',
+      expires_at: Math.floor(Date.now() / 1000) + 300,
+    } });
+  });
+  await page.goto('/admin/subscription-accounts');
+  await page.getByRole('button', { name: 'OAuth 授权绑定' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('平台', { exact: true }).selectOption('kimi');
+  const requested = page.waitForRequest('**/api/v1/admin/accounts/subscription/oauth/kimi/auth-url');
+  await dialog.getByRole('button', { name: '生成授权链接', exact: true }).click();
+  await requested;
+  await expect(dialog.getByLabel('平台', { exact: true })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible();
+  await page.getByRole('button', { name: 'OAuth 授权绑定' }).click();
+  completeRequest();
+  await expect(dialog.getByRole('button', { name: '生成授权链接', exact: true })).toBeEnabled();
+  await expect(dialog.getByLabel('设备码')).toHaveCount(0);
+});

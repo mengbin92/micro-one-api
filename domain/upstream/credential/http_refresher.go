@@ -49,12 +49,19 @@ func (r *refresher) refresh(ctx context.Context, refreshURL, refreshToken string
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := r.httpClient.Do(req)
+	client := *r.httpClient
+	// Redirects may forward the refresh token in a POST body to another origin.
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: transport failure", ErrRefreshFailed)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MiB safety cap
+	const maxResponseBytes = 1 << 20
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+	if err != nil || len(body) > maxResponseBytes {
+		return nil, fmt.Errorf("%w: invalid token response size", ErrRefreshFailed)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// domain-H2: the previous error dropped the response body, so the
 		// caller's "invalid_grant" / "invalid refresh" string check in
@@ -73,6 +80,9 @@ func (r *refresher) refresh(ctx context.Context, refreshURL, refreshToken string
 	}
 	if tr.AccessToken == "" {
 		return nil, fmt.Errorf("%w: empty access_token", ErrRefreshFailed)
+	}
+	if tr.ExpiresIn < 0 || tr.ExpiresIn > 366*86400 {
+		return nil, fmt.Errorf("%w: invalid expires_in", ErrRefreshFailed)
 	}
 	newRefresh := tr.RefreshToken
 	if newRefresh == "" {

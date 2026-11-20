@@ -24,13 +24,13 @@ func TestObservationBaselinesExistAtZero(t *testing.T) {
 	}
 
 	for name, want := range map[string]int{
-		"micro_one_api_relay_usage_observation_started_total":                            6 * 3 * 2,
-		"micro_one_api_relay_usage_observation_terminal_total":                           6 * 3 * 2 * 6,
-		"micro_one_api_relay_usage_observation_last_anomaly_timestamp_seconds":           6 * 3 * 5,
+		"micro_one_api_relay_usage_observation_started_total":                            7 * 3 * 4,
+		"micro_one_api_relay_usage_observation_terminal_total":                           7 * 3 * 4 * 6,
+		"micro_one_api_relay_usage_observation_last_anomaly_timestamp_seconds":           7 * 3 * 5,
 		"micro_one_api_relay_usage_observation_last_gap_timestamp_seconds":               7,
 		"micro_one_api_relay_usage_observation_delivery_total":                           7,
-		"micro_one_api_relay_usage_observation_transport_sends_total":                    6 * 2 * 2,
-		"micro_one_api_relay_usage_observation_transport_last_missing_timestamp_seconds": 6,
+		"micro_one_api_relay_usage_observation_transport_sends_total":                    7 * 2 * 2,
+		"micro_one_api_relay_usage_observation_transport_last_missing_timestamp_seconds": 7,
 	} {
 		family := byName[name]
 		if family == nil {

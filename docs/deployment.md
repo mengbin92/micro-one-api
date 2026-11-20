@@ -2,12 +2,12 @@
 
 ## 1. 架构概览
 
-Micro-One-API 由 9 个微服务组成：
+Micro-One-API 由 9 个常驻应用角色组成。服务职责和数据归属见 [当前架构设计](./design/current-architecture.md)。下表为容器监听端口。
 
 | 服务 | HTTP 端口 | gRPC 端口 | 职责 |
 |------|----------|----------|------|
-| relay-gateway | 8080 | - | OpenAI 兼容 API 网关 |
-| admin-api | 3000 | 9000 | 管理端 BFF |
+| relay-gateway | 8080 | 9003 | 模型 API 网关 |
+| admin-api | 8000 | 9000 | 管理端 BFF，参考 Compose 将 HTTP 映射到宿主 3000 |
 | identity-service | 8001 | 9001 | 用户认证与鉴权 |
 | channel-service | 8002 | 9002 | 渠道管理与路由 |
 | billing-service | 8004 | 9004 | 钱包账务 |
@@ -18,7 +18,7 @@ Micro-One-API 由 9 个微服务组成：
 
 基础设施依赖：
 - MySQL 8.0 — 主存储
-- Redis 7 — 缓存与分布式限流
+- Redis 8.4（参考 Compose）— 缓存、分布式限流和事件流
 
 ### 1.1 部署与文档漂移检查
 

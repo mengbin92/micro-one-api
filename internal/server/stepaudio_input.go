@@ -27,7 +27,7 @@ func parseStepAudioInput(path, model string, body []byte) (*stepAudioInput, erro
 	if path == stepAudioASRPath {
 		return parseStepAudioASR(body)
 	}
-	if path != stepAudioSpeechPath || model != "stepaudio-2.5-tts" {
+	if path != stepAudioSpeechPath || model != routing.StepAudioTTSModel {
 		return nil, nil
 	}
 	var payload map[string]jsonx.RawMessage
@@ -43,6 +43,18 @@ func parseStepAudioInput(path, model string, body []byte) (*stepAudioInput, erro
 	if raw := payload["stream_format"]; raw != nil && (jsonx.Unmarshal(raw, &streamFormat) != nil || (streamFormat != "" && streamFormat != "audio" && streamFormat != "sse")) {
 		return nil, fmt.Errorf("invalid speech stream format")
 	}
+	clean, err := jsonx.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	result := &stepAudioInput{bound: routing.CostBound{Protocol: routing.AudioInputProtocol(model), UpstreamModel: model, AudioUnits: stepAudioSpeechUnits(input)}, body: clean}
+	if streamFormat == "sse" {
+		result.streamEvent = "speech.audio.done"
+	}
+	return result, nil
+}
+
+func stepAudioSpeechUnits(input string) int64 {
 	units := int64(0)
 	for _, char := range input {
 		units++
@@ -50,15 +62,7 @@ func parseStepAudioInput(path, model string, body []byte) (*stepAudioInput, erro
 			units++
 		}
 	}
-	clean, err := jsonx.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-	result := &stepAudioInput{bound: routing.CostBound{Protocol: routing.AudioInputProtocol(model), UpstreamModel: model, AudioUnits: units}, body: clean}
-	if streamFormat == "sse" {
-		result.streamEvent = "speech.audio.done"
-	}
-	return result, nil
+	return units
 }
 
 type stepAudioASRFormat struct {

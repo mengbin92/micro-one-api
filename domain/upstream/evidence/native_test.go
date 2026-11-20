@@ -64,6 +64,51 @@ func TestNativeStrictInput(t *testing.T) {
 	}
 }
 
+func TestStepAudioRealtimeTerminalPreservesUpstreamOutcome(t *testing.T) {
+	for _, tc := range []struct {
+		status, terminal, capture string
+	}{
+		{"completed", "completed", CaptureComplete},
+		{"cancelled", "cancelled", CaptureUpstreamFailed},
+		{"incomplete", "incomplete", CaptureUpstreamFailed},
+		{"failed", "failed", CaptureUpstreamFailed},
+		{"in_progress", "unknown", CaptureUnknown},
+	} {
+		t.Run(tc.status, func(t *testing.T) {
+			body := `{"type":"response.done","response":{"status":"` + tc.status + `","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`
+			observation := Parse([]byte(body), StepAudioRealtime)
+			if observation.Terminal != tc.terminal {
+				t.Fatalf("terminal = %q, want %q", observation.Terminal, tc.terminal)
+			}
+			if got := ClassifyCapture(Record{Observation: observation, Complete: true, Stream: true}, false); got != tc.capture {
+				t.Fatalf("capture = %q, want %q", got, tc.capture)
+			}
+		})
+	}
+}
+
+func TestStepAudioRealtimeRejectsContradictoryUsageDetails(t *testing.T) {
+	for _, details := range []string{
+		`"input_token_details":{"audio_tokens":5}`,
+		`"input_token_details":{"cached_tokens":5}`,
+		`"input_token_details":{"audio_tokens":3,"text_tokens":2}`,
+		`"output_token_details":{"audio_tokens":1,"text_tokens":1}`,
+	} {
+		body := `{"type":"response.done","response":{"usage":{"input_tokens":4,"output_tokens":1,"total_tokens":5,` + details + `}}}`
+		if got := Parse([]byte(body), StepAudioRealtime); got.Status != "invalid" || got.Buckets != nil {
+			t.Fatalf("contradictory usage became canonical: %+v", got)
+		}
+	}
+}
+
+func TestStepAudioRealtimeAcceptsZeroUsageOnUnsuccessfulTurn(t *testing.T) {
+	body := []byte(`{"type":"response.done","response":{"status":"cancelled","usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}`)
+	got := Parse(body, StepAudioRealtime)
+	if got.Status != "verified" || got.Buckets == nil || *got.Buckets != [5]int64{} {
+		t.Fatalf("cancelled turn's explicit zero usage rejected: %+v", got)
+	}
+}
+
 func TestNativeFingerprintPresenceAndRedaction(t *testing.T) {
 	zero := Parse([]byte(`{"usage":{"prompt_tokens":0,"completion_tokens":0}}`), "openai_chat")
 	missing := Parse([]byte(`{"usage":{"completion_tokens":0}}`), "openai_chat")

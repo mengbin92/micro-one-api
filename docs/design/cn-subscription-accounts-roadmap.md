@@ -22,7 +22,7 @@ channel (type=32/33) ──► lazyOAuthAdaptor (internal/adaptor/register_oauth
 |------|----------|----------|--------------|----------|
 | 智谱 GLM | GLM Coding Plan | 长期 API Key（无 refresh） | Anthropic 兼容 `https://open.bigmodel.cn/api/anthropic` | **静态 token**，复用 Claude OAuth adaptor 路径 |
 | MiniMax | MiniMax Coding Plan | 长期 API Key（无 refresh） | Anthropic 兼容 `https://api.minimax.io/anthropic` | **静态 token**，同上 |
-| Kimi | Kimi For Coding | OAuth PKCE（refresh token 续期） | Anthropic 兼容（Kimi CLI 端点） | **OAuth refresh**，复用 baseTokenProvider |
+| Kimi | Kimi For Coding | RFC 8628 设备码 OAuth（refresh token 续期） | Anthropic 兼容 | **OAuth refresh**，复用 baseTokenProvider |
 
 关键设计判断：
 
@@ -137,29 +137,19 @@ channel (type=32/33) ──► lazyOAuthAdaptor (internal/adaptor/register_oauth
 1. **ChannelType**：`ChannelTypeKimiOAuth int32 = 36`，platform `kimi`。
 
 2. **KimiTokenProvider**
-   - 新文件 `domain/upstream/credential/kimi_token_provider.go`，复用
-     `baseTokenProvider`（与 Claude/OpenAI provider 同构，~30 行）：
-     - 常量：`KimiOAuthClientID`、`KimiTokenRefreshURL`（Kimi CLI 的 token
-       endpoint，需从 Kimi CLI 实际流量/公开资料确认；做成 config 可覆盖，
-       因为这类端点不稳定）。
-   - `http_refresher.go` 的 refresh 请求体若与标准 OAuth refresh grant 有差异，
-     按 Kimi 实际格式扩展（保持 refresher 可注入）。
+   - `domain/upstream/credential/kimi_token_provider.go` 复用 `baseTokenProvider`，
+     使用登记到部署环境的客户端 ID 执行 refresh。
 
 3. **OAuth 授权录入链路**
-   - 现状 Claude/Codex 的授权码换 token 录入流程（channel-service 侧
-     `CreateSubscriptionAccount` 上游的管理端逻辑）需要支持 Kimi 的 PKCE 授权：
-     authorize URL 生成、callback 换 token、写入 access/refresh/expires。
-   - 若 Kimi CLI 采用 device code 或本地 callback 模式，管理端提供"粘贴
-     refresh token"的手工录入兜底（MVP 可先只支持手工录入）。
+   - 管理台设备码授权要求上游为本应用批准的客户端注册。Channel owner 申请设备会话并兑换 token，
+     复用 `CreateSubscriptionAccount` 写入 access token、refresh token 和到期时间。
+     实操见[绑定手册](../runbooks/subscription-oauth-binding-runbook.md#34-kimi-设备码授权)。
 
 4. **Adaptor 注册**：同 P1，`build` 增加 `PlatformKimi` case，复用 Claude
    adaptor；BaseURL 指向 Kimi 的 Anthropic 兼容端点。
 
 5. **Identity / 指纹**
-   - `ShouldMimic` 对 `PlatformKimi` 采用 Kimi CLI 的 User-Agent 伪装
-     （Kimi 限定自家 CLI，透传 Claude Code UA 有被风控风险）。
-   - 新增 Kimi 指纹快照样例，参考 `claude_code_detector.go` 的实现方式；
-     `RestoreFromSnapshot` 支持 `PlatformKimi`。
+   - Kimi 转发保留真实调用方 User-Agent 和请求正文。按上游为本应用批准的登记要求验证设备 OAuth。
 
 6. **RefreshTask**：wire.go 的 refresh map 增加
    `relaycredential.PlatformKimi: kimiTokenProvider`，走周期刷新。

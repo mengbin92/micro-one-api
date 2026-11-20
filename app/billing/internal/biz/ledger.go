@@ -1,10 +1,18 @@
 package biz
 
 import (
+	"fmt"
 	"time"
 
 	billingdomain "micro-one-api/domain/billing"
 )
+
+func consumeLedgerRemark(model string, tokens, audioUnits int64) string {
+	if audioUnits > 0 {
+		return fmt.Sprintf("model=%s, tokens=%d, actual_audio_units=%d", model, tokens, audioUnits)
+	}
+	return fmt.Sprintf("model=%s, tokens=%d", model, tokens)
+}
 
 const (
 	LedgerTypeConsume      = "consume"

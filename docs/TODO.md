@@ -4,7 +4,7 @@
 >
 > **当前执行入口**为 [计价核验、备份恢复与真实用户验收](./design/next-stage-plan-2026-11-08.md)。
 >
-> **发布基线**为 [v0.47.0](./releases/release-v0.47.0.md)。本轮生产 Billing 制品来自 `develop@2899bdf4`，自然对账 #1455 完成，生产冻结明细使用主键查找。生产状态以分服务验收记录为准。
+> **发布基线**为 [v0.48.0](./releases/release-v0.48.0.md)。11 月 20 日已增量部署 Billing、Channel、Relay 和 Web，生产状态以[语音部署验证](./runbooks/step-plan-model-compatibility-2026-11-18.md#2026-11-20-增量部署)及[令牌页上线记录](./runbooks/routing-groups-runbook.md#56-签发短期固定组-key)为准。
 
 ## 当前阶段待办
 
@@ -17,15 +17,15 @@ P1–P3 表示建议处理顺序。完整退出条件及证据见[当前路线�
 - [ ] **P1 · v0.46.3 真实业务验收**。生产交付与 Billing 对账热修复已通过。待真实续期、语音终态与截断、管理写与审计翻页、通知及 Redis 恢复场景。 [发布验收](./releases/release-v0.46.3.md#验证)
 - [ ] **P1（启用时）· A1 Turnstile**。11 月 20 日生产回读为关闭，site key 和 secret 均未注入。配置后补真实挑战验收。 [A1 记录](./runbooks/a1-self-service-acceptance-2026-10-27.md)
 - [ ] **P2 · 独立 usage 留证**。原窗口跨 3 个版本，完整 Chat 终态均为 `unsupported`。新版本的 48 个初样均为 `verified`，待同版本及配置 48 小时、协议与样本量、amd64 性能、真实收件及 ACK。 [观察手册](./runbooks/upstream-usage-observation.md#8-未完成与未验证)
+- [ ] **P2 · 新增 usage producer 生产验收**。Relay 已部署逐轮留证和探针接线，待验证生产 Log 收件与 ACK。 [观察手册](./runbooks/upstream-usage-observation.md)
+- [ ] **P2 · 实时语音扩展生产验收**。Billing、Relay 和 TTS 公网反代已部署，Realtime 与 TTS 的公网无凭据握手均返回 401。待核对真实音频、逐轮账本及截断释放。 [语音验收](./runbooks/step-plan-model-compatibility-2026-11-18.md#2026-11-20-增量部署)
+- [ ] **P2 · Kimi 设备码 OAuth 生产验收**。Channel 和 Web 已部署，设备码客户端尚未配置。待上游批准注册后验证真实授权、refresh token 轮换和选路。 [绑定手册](./runbooks/subscription-oauth-binding-runbook.md#34-kimi-设备码授权)
 - [ ] **P2 · Executor 全量准入**。11 月 20 日生产复核仍缺同入口、协议及时段的可比流量，正式七天未起算。 [观察手册](./design/v0.23-executor-observation.md)
 - [ ] **P2（外部条件）· 微信 Native、原生 Gemini、订阅账号**。微信待真实商户实付回调与发放。Gemini 采用 Go SDK 最新稳定版，账号待确认。订阅账号待真实 OAuth 轮换及多副本故障切换，专属组待固定组令牌及生产端到端证据。 [路线图](./design/next-stage-plan-2026-11-08.md#3-已实现待验收)
 - [ ] **P2（保留）· 上游供应商账单证据**。扫描按既有决定停用，历史核验保留 `pending`。新核验须具备最终报告、执行覆盖及 owner。渠道 1 未提供记账接口，接口对账为 `N/A`，实际采购扣费保留 `unknown`。 [账务证据](./runbooks/vendor-evidence-overdue-2026-10-26.md#2026-11-20-渠道-1-账务证据)
 
 ### 未实现
 
-- [ ] **P2 · 上游 usage 留证覆盖**。新增语音 Realtime 的逐轮终态、监控探针尚未接入独立留证。`canary` / `internal_test` 尚无对应 producer。 [观察手册](./runbooks/upstream-usage-observation.md) · [Realtime 处理代码](../internal/server/stepaudio_realtime.go#L224)
-- [ ] **P2 · 实时语音扩展**。现有单轮已通过生产结算，仍缺服务端 VAD 自动响应、独立输入转写和 TTS 专用 WebSocket。 [语音支持范围](./releases/release-v0.46.0.md) · [生产验收](./runbooks/step-plan-model-compatibility-2026-11-18.md)
-- [ ] **P2 · Kimi OAuth/PKCE**。静态 Key 已可用，管理台授权码绑定待实现。 [订阅设计](./design/cn-subscription-accounts-roadmap.md)
 - **P3（范围外）· 管理化备份扩展**。PostgreSQL/SQLite 后台备份、Redis Cluster/副本、在线备份、生产覆盖恢复和 PITR 尚未覆盖。 [B3 契约](./design/b3-managed-backup-contract-2026-10-30.md)
 
 ### 未立项
@@ -38,6 +38,8 @@ P1–P3 表示建议处理顺序。完整退出条件及证据见[当前路线�
 候选优先级用于安排评估，正式优先级与排期在立项时确认。 [候选池](./design/next-stage-plan-2026-11-08.md#5-未立项)
 
 ### 已完成与运维跟踪
+
+- [x] **N2 异地备份下线**。11 月 20 日经维护者确认，异地备份 worker 与独立 MinIO 均已停止并取消自动启动。下线时没有活动备份任务，异地归档目录已缺失。 [下线记录](./runbooks/n2-offsite-recovery-2026-11-09.md#异地备份下线)
 
 A1–A4、B1–B4 工程和生产部署已完成。B1 日历已延至 2027-12-31。 [归档计划](./design/next-stage-plan-2026-10-26.md)
 

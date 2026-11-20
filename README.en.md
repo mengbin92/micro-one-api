@@ -14,14 +14,11 @@ multi-channel API distribution and [sub2api](https://github.com/Wei-Shaw/sub2api
 for subscription windows, account pools, rate limits and usage management.
 You provide your own authorized upstream accounts and API keys.
 
-> Latest release: [v0.44.1](./docs/releases/release-v0.44.1.md) — PATCH fixes for
-> billing recovery authorization, migration 151 and concurrent model creation,
-> plus complete cross-owner operation audits with shared-database deduplication.
-> No new migration number or frontend change; do not rerun migration 151 where
-> it is already recorded. Upgrade admin and all six audit owners together.
-> Previous: [v0.44.0](./docs/releases/release-v0.44.0.md), which introduced the
-> orchestrator full-rollout switch and billing commit recovery.
-> [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.44.1)
+> Latest release: [v0.48.0](./docs/releases/release-v0.48.0.md) — MINOR release
+> with metered realtime speech, Kimi device authorization, and upstream probe
+> evidence. The API key list now shows saved expiration, quota, and model limits.
+> Previous release: [v0.47.0](./docs/releases/release-v0.47.0.md).
+> [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.48.0)
 
 ## Features
 

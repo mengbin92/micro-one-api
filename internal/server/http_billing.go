@@ -191,13 +191,19 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 		}
 	}
 	bound := routing.GetCostBound(ctx)
+	if bound.Protocol == routing.StepAudioTTSWSProtocol && (!bound.Valid() || !billingCaps.GetAudioInputActualUnits()) {
+		return nil, fmt.Errorf("billing streaming audio capability unavailable")
+	}
+	pilot := executionPilot(trace.SourceKind, channelID, subscriptionAccountID, trace.UpstreamModelID)
+	if pilot && bound.AudioUnits > 0 {
+		return nil, fmt.Errorf("metered audio does not support the native execution pilot")
+	}
 	if bound.Valid() {
 		if bound.AudioUnits > 0 && (routingContext == nil || billingCaps.GetAudioInputPricingVersion() != 1) {
 			return nil, fmt.Errorf("billing metered audio capability unavailable")
 		}
 		req.CostBound = &billingv1.RequestCostBound{Protocol: bound.Protocol, InputTokens: bound.InputTokens, UpstreamModel: bound.UpstreamModel, AudioUnits: bound.AudioUnits}
 	}
-	pilot := executionPilot(trace.SourceKind, channelID, subscriptionAccountID, trace.UpstreamModelID)
 	if pilot {
 		if s.executionDelivery == nil {
 			return nil, fmt.Errorf("durable execution storage unavailable")
@@ -232,6 +238,10 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 	if resp == nil || !resp.GetSuccess() {
 		recordRelayQuotaOutcome(ctx, "reserve_error")
 		return resp, stderrors.New(billingErrorMessage(resp, "reserve quota failed"))
+	}
+	if bound.AudioUnits > 0 && strings.TrimSpace(resp.ReservationId) == "" {
+		recordRelayQuotaOutcome(ctx, "reserve_error")
+		return nil, fmt.Errorf("billing returned no metered audio reservation ID")
 	}
 	if expectsTierContract && (resp.GetServiceTierContractVersion() != billingdomain.ServiceTierPricingVersion || ((tier.RequestedServiceTier == "priority" || tier.RequestedServiceTier == "flex") && resp.GetServiceTierPricingVersion() != billingdomain.ServiceTierPricingVersion)) {
 		if resp.ReservationId != "" {
@@ -302,6 +312,7 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 	}
 	if len(details) > 0 {
 		detail := details[0]
+		req.ActualAudioUnits = detail.ActualAudioUnits
 		req.TokenName = usageTokenName(detail)
 		req.Endpoint = detail.Endpoint
 		req.PromptTokens = detail.PromptTokens

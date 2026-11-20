@@ -451,11 +451,23 @@ func (uc *BillingUsecase) reservationCost(ctx context.Context, r *Reservation, l
 // reservationCostWithPricing keeps legacy pricing reads outside the settlement
 // transaction while honoring the immutable pricing on snapshot reservations.
 func (uc *BillingUsecase) reservationCostWithPricing(ctx context.Context, pricing PricingConfig, r *Reservation, legacyGroup string, tokens int64, usage LedgerUsage) (int64, canonicalCostBreakdown, ledgerUsageAudit, error) {
+	if usage.ActualAudioUnits != 0 && (r.RequestSnapshot == nil || r.RequestSnapshot.CostBound == nil || r.RequestSnapshot.CostBound.Protocol != routing.StepAudioTTSWSProtocol) {
+		return 0, canonicalCostBreakdown{}, ledgerUsageAudit{}, ErrRoutingContextInvalid
+	}
 	if r.RequestSnapshot != nil {
 		if err := r.RequestSnapshot.Validate(); err != nil {
 			return 0, canonicalCostBreakdown{}, ledgerUsageAudit{}, err
 		}
 		if r.RequestSnapshot.AudioInput != nil {
+			bound := *r.RequestSnapshot.CostBound
+			if bound.Protocol == routing.StepAudioTTSWSProtocol {
+				if usage.ActualAudioUnits <= 0 || usage.ActualAudioUnits > bound.AudioUnits {
+					return 0, canonicalCostBreakdown{}, ledgerUsageAudit{}, ErrRoutingContextInvalid
+				}
+				bound.AudioUnits = usage.ActualAudioUnits
+				cost, err := r.RequestSnapshot.AudioInput.Quota(bound, r.RequestSnapshot.Pricing.GroupRatio, AmountScale)
+				return cost, canonicalCostBreakdown{}, ledgerUsageAudit{}, err
+			}
 			return r.RequestSnapshot.MaxCost, canonicalCostBreakdown{}, ledgerUsageAudit{}, nil
 		}
 		calculator := uc.requestCalculator(r.RequestSnapshot)

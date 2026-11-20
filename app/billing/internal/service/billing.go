@@ -235,7 +235,7 @@ func (s *BillingService) GetRoutingCapabilities(ctx context.Context, _ *billingv
 	if s.asyncUc != nil && s.uc.ExecutionAvailable(ctx) {
 		executionVersion, usageVersion, policy = 1, 2, execution.Policy
 	}
-	return &billingv1.GetRoutingCapabilitiesResponse{ServiceTierPricingVersion: 1, AudioInputPricingVersion: 1, ExecutionDeliveryVersion: executionVersion, UsageContractVersion: usageVersion, SettlementPolicyVersion: policy, SettlementReceiptVersion: receiptVersion, RequestSnapshotVersion: version, FixedRouting: version == 2, SubscriptionContracts: version == 2 && subscriptionbiz.EntitlementsEnabled(), UserPriceOverrides: version == 2 && subscriptionbiz.EntitlementsEnabled()}, nil
+	return &billingv1.GetRoutingCapabilitiesResponse{ServiceTierPricingVersion: 1, AudioInputPricingVersion: 1, AudioInputActualUnits: true, ExecutionDeliveryVersion: executionVersion, UsageContractVersion: usageVersion, SettlementPolicyVersion: policy, SettlementReceiptVersion: receiptVersion, RequestSnapshotVersion: version, FixedRouting: version == 2, SubscriptionContracts: version == 2 && subscriptionbiz.EntitlementsEnabled(), UserPriceOverrides: version == 2 && subscriptionbiz.EntitlementsEnabled()}, nil
 }
 
 func (s *BillingService) SetUserRoutingPrice(ctx context.Context, req *billingv1.SetUserRoutingPriceRequest) (*billingv1.SetUserRoutingPriceReply, error) {
@@ -317,7 +317,7 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 	// request (Success=false) we never enqueue: a release must be
 	// synchronous so the caller observes the released reservation and does
 	// not proceed against a frozen amount.
-	if s.asyncUc != nil && req.Success {
+	if s.asyncUc != nil && req.Success && req.ActualAudioUnits == 0 {
 		// Code-review 2026-07-30 billing-L2: a missing reservation_id on the
 		// success path is a client contract violation that previously let the
 		// request through with a provisional success while the worker's

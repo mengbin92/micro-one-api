@@ -3,10 +3,12 @@ package data
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/redis/go-redis/v9"
+
 	channeloauth "micro-one-api/app/channel/internal/biz/oauth"
 	"micro-one-api/pkg/jsonx"
-	"time"
 )
 
 type oauthSessionRepo struct{ redis *redis.Client }
@@ -22,13 +24,17 @@ func (r *oauthSessionRepo) Set(s *channeloauth.Session) error {
 	if r.redis == nil {
 		return fmt.Errorf("oauth sessions require Redis with persistent storage")
 	}
+	ttl := time.Until(s.ExpiresAt(r.TTL()))
+	if ttl <= 0 {
+		return channeloauth.ErrInvalidSession
+	}
 	b, err := jsonx.Marshal(s)
 	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	return r.redis.Set(ctx, "channel:oauth:session:"+s.ID, b, time.Until(s.CreatedAt.Add(r.TTL()))).Err()
+	return r.redis.Set(ctx, "channel:oauth:session:"+s.ID, b, ttl).Err()
 }
 func (r *oauthSessionRepo) load(id string, now time.Time, pop bool) (*channeloauth.Session, bool) {
 	if r.redis == nil || id == "" {
@@ -53,10 +59,44 @@ func (r *oauthSessionRepo) load(id string, now time.Time, pop bool) (*channeloau
 	if now.IsZero() {
 		now = time.Now()
 	}
-	if !now.Before(s.CreatedAt.Add(r.TTL())) {
+	if !now.Before(s.ExpiresAt(r.TTL())) {
 		return nil, false
 	}
 	return &s, true
+}
+
+var swapOAuthSession = redis.NewScript(`
+if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
+if ARGV[2] == '' then
+  redis.call('DEL', KEYS[1])
+else
+  redis.call('SET', KEYS[1], ARGV[2], 'KEEPTTL')
+end
+return 1
+`)
+
+func (r *oauthSessionRepo) CompareAndSwap(current, next *channeloauth.Session, now time.Time) (bool, error) {
+	if r.redis == nil {
+		return false, fmt.Errorf("oauth sessions require Redis with persistent storage")
+	}
+	if !now.Before(current.ExpiresAt(r.TTL())) {
+		return false, nil
+	}
+	previous, err := jsonx.Marshal(current)
+	if err != nil {
+		return false, err
+	}
+	var replacement []byte
+	if next != nil {
+		replacement, err = jsonx.Marshal(next)
+		if err != nil {
+			return false, err
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	changed, err := swapOAuthSession.Run(ctx, r.redis, []string{"channel:oauth:session:" + current.ID}, previous, string(replacement)).Int()
+	return changed == 1, err
 }
 func (r *oauthSessionRepo) Get(id string, now time.Time) (*channeloauth.Session, bool) {
 	return r.load(id, now, false)

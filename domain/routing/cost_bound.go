@@ -2,6 +2,12 @@ package routing
 
 import "context"
 
+const (
+	StepAudioTTSModel      = "stepaudio-2.5-tts"
+	StepAudioTTSWSProtocol = "stepaudio_tts_ws"
+	StepAudioTTSMaxUnits   = 2_000
+)
+
 // CostBound is produced by a trusted protocol adapter, never decoded from a
 // public request as billing authority. Audio input uses separate measured units.
 type CostBound struct {
@@ -33,7 +39,7 @@ func (b CostBound) Valid() bool {
 // transcription. The protocol and upstream model must agree.
 func AudioInputProtocol(model string) string {
 	switch model {
-	case "stepaudio-2.5-tts":
+	case StepAudioTTSModel:
 		return "stepaudio_tts"
 	case "stepaudio-2.5-asr":
 		return "stepaudio_asr_sse"
@@ -43,12 +49,18 @@ func AudioInputProtocol(model string) string {
 }
 
 func (b CostBound) AudioUnitsPerPrice() int64 {
-	if b.AudioUnits <= 0 || b.InputTokens != 0 || b.Protocol != AudioInputProtocol(b.UpstreamModel) {
+	if b.AudioUnits <= 0 || b.InputTokens != 0 {
+		return 0
+	}
+	if b.Protocol == StepAudioTTSWSProtocol && b.UpstreamModel == StepAudioTTSModel && b.AudioUnits <= StepAudioTTSMaxUnits {
+		return 2_000_000
+	}
+	if b.Protocol != AudioInputProtocol(b.UpstreamModel) {
 		return 0
 	}
 	switch b.Protocol {
 	case "stepaudio_tts":
-		if b.AudioUnits <= 2_000 {
+		if b.AudioUnits <= StepAudioTTSMaxUnits {
 			return 2_000_000
 		}
 	case "stepaudio_asr_sse":

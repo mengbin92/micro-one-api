@@ -14,6 +14,7 @@ import (
 	coderws "github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
 	billingv1 "micro-one-api/api/billing/v1"
+	"micro-one-api/domain/upstream/evidence"
 	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
 	relaydata "micro-one-api/internal/data"
@@ -39,18 +40,36 @@ func TestStepAudioMeteringUsesInputBytesAndCharacters(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestStepAudioRealtimeRejectsUnmeteredAutomaticResponses(t *testing.T) {
-	_, err := stepAudioRealtimeClientEvent([]byte(`{"type":"session.update","session":{"turn_detection":{"type":"server_vad"}}}`))
+func TestStepAudioRealtimeKeepsDetectionAndTranscriptionInRelay(t *testing.T) {
+	var input stepAudioRealtimeInput
+	_, _, err := stepAudioRealtimeClientEvent([]byte(`{"type":"session.update","session":{"turn_detection":{"type":"server_vad","create_response":true}}}`), &input)
 	require.Error(t, err)
-	_, err = stepAudioRealtimeClientEvent([]byte(`{"type":"session.update","session":{"input_audio_transcription":{"model":"other"}}}`))
+	_, _, err = stepAudioRealtimeClientEvent([]byte(`{"type":"session.update","session":{"input_audio_transcription":{"model":"other"}}}`), &input)
 	require.Error(t, err)
-	out, err := stepAudioRealtimeClientEvent([]byte(`{"type":"session.update","session":{"voice":"official"}}`))
+	_, out, err := stepAudioRealtimeClientEvent([]byte(`{"type":"session.update","session":{"voice":"official","turn_detection":{"type":"server_vad"},"input_audio_transcription":{"model":"stepaudio-2.5-asr"}}}`), &input)
 	require.NoError(t, err)
+	require.NotNil(t, input.vad)
+	require.True(t, input.transcribe)
 	var v map[string]any
 	require.NoError(t, jsonx.Unmarshal(out, &v))
 	require.Equal(t, "official", v["session"].(map[string]any)["voice"])
 	require.Contains(t, v["session"].(map[string]any), "turn_detection")
 	require.Nil(t, v["session"].(map[string]any)["turn_detection"])
+	require.NotContains(t, v["session"], "input_audio_transcription")
+}
+
+func TestStepAudioRealtimeSessionUpdatePreservesBufferedAudio(t *testing.T) {
+	var input stepAudioRealtimeInput
+	const update = `{"type":"session.update","session":{"turn_detection":{"type":"server_vad"}}}`
+	_, _, err := stepAudioRealtimeClientEvent([]byte(update), &input)
+	require.NoError(t, err)
+	input.pcm = []byte{0, 0}
+	_, _, err = stepAudioRealtimeClientEvent([]byte(update), &input)
+	require.NoError(t, err)
+	require.Equal(t, []byte{0, 0}, input.pcm)
+	_, _, err = stepAudioRealtimeClientEvent([]byte(`{"type":"session.update","session":{"turn_detection":null}}`), &input)
+	require.Error(t, err)
+	require.NotNil(t, input.vad)
 }
 
 func TestStepAudioRealtimeUpstreamUsesBidirectionalTransport(t *testing.T) {
@@ -85,6 +104,74 @@ func TestStepAudioRealtimeUpstreamUsesBidirectionalTransport(t *testing.T) {
 	require.Equal(t, "test turn", string(data))
 }
 
+func TestStepAudioRealtimeObservesSettledAndTruncatedTurns(t *testing.T) {
+	t.Setenv("RELAY_USAGE_OBSERVATION_V1", "true")
+	t.Setenv("RELAY_ROUTING_CONTEXT_V2", "false")
+	t.Setenv("RELAY_NATIVE_USAGE_V2_ALLOWLIST", "")
+	billing := &rawBillingClient{}
+	channel := &relaybiz.Channel{ID: 11, Config: relaybiz.ChannelConfig{APIVersion: "fixture"}}
+	channelClient := rawChannelClient{}
+	server := NewHTTPServer(nil, channelClient, billing, nil, nil)
+	repo := &observingRepo{}
+	server.SetObservationDelivery(relaybiz.NewObservationDelivery(repo, nil))
+	plan := &relaybiz.RelayPlan{Auth: &relaybiz.AuthSnapshot{UserID: 42, Group: "default"}}
+	client, upstream := newFakeFrameConn(4), newFakeFrameConn(4)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- server.bridgeStepAudioRealtime(ctx, client, upstream, stepAudioSession{plan: plan, channel: channel, endpoint: "/step_plan/v1/realtime"})
+	}()
+	read := func(ch <-chan fakeFrame) string {
+		select {
+		case frame := <-ch:
+			return string(frame.payload)
+		case <-ctx.Done():
+			t.Fatal("missing relayed frame")
+			return ""
+		}
+	}
+	require.Contains(t, read(upstream.out), "session.update")
+	create := fakeFrame{msgType: coderws.MessageText, payload: []byte(`{"type":"response.create"}`)}
+	client.in <- create
+	require.JSONEq(t, string(create.payload), read(upstream.out))
+	terminal := `{"type":"response.done","response":{"id":"resp-first","output":[{"text":"private"}],"usage":{"input_tokens":12,"output_tokens":3,"total_tokens":15,"input_token_details":{"cached_tokens":2}}}}`
+	upstream.in <- fakeFrame{msgType: coderws.MessageText, payload: []byte(terminal)}
+	require.Equal(t, terminal, read(client.out))
+	client.in <- create
+	require.JSONEq(t, string(create.payload), read(upstream.out))
+	close(upstream.in)
+	require.Error(t, <-done)
+
+	events := repo.snapshot()
+	require.Len(t, events, 4)
+	for _, event := range events {
+		require.NoError(t, event.Validate())
+		require.Equal(t, evidence.StepAudioRealtime, event.Send.Protocol)
+		require.EqualValues(t, 42, event.Send.UserID)
+		require.Equal(t, evidence.PurposeUser, event.Send.Purpose)
+		require.Equal(t, "/step_plan/v1/realtime", event.Send.Endpoint)
+	}
+	require.Equal(t, "started", events[0].Category)
+	require.Equal(t, "terminal", events[1].Category)
+	require.Equal(t, events[0].Send, events[1].Send)
+	require.Equal(t, evidence.CaptureComplete, events[1].Capture)
+	require.Equal(t, "verified", events[1].Record.Observation.Status)
+	require.Equal(t, &[5]int64{10, 2, 0, 0, 3}, events[1].Record.Observation.Buckets)
+	require.NotContains(t, string(events[1].Record.Observation.Usage), "private")
+	require.Equal(t, "started", events[2].Category)
+	require.Equal(t, "terminal", events[3].Category)
+	require.Equal(t, events[2].Send, events[3].Send)
+	require.Equal(t, evidence.CaptureTruncated, events[3].Capture)
+	require.NotEqual(t, events[0].Send.SendID, events[2].Send.SendID)
+	require.Len(t, billing.reserveRequests, 2)
+	require.Len(t, billing.commitRequests, 1)
+	require.EqualValues(t, 15, billing.commitRequests[0].ActualTokens)
+	require.Equal(t, 1, billing.releases)
+	require.Equal(t, billing.reserveRequests[0].RequestId, events[0].Send.RequestID)
+	require.Equal(t, billing.reserveRequests[1].RequestId, events[2].Send.RequestID)
+}
+
 type stepAudioSSEProvider struct {
 	relayprovider.Provider
 	lines string
@@ -107,6 +194,7 @@ func TestStepAudioASRStreamSettlesOnlyOnTerminal(t *testing.T) {
 	}{
 		{"no terminal", "", false},
 		{"unterminated event", terminal, false},
+		{"malformed transcript", "data: {\"type\":\"transcript.text.done\",\"text\":123}\n\n", false},
 		{"terminal", terminal + "\n", true},
 		{"multiline terminal", strings.Replace(terminal, `,"usage"`, ",\ndata: \"usage\"", 1) + "\n", true},
 	} {

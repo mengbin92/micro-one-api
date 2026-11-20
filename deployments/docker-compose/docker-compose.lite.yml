@@ -161,6 +161,7 @@ services:
         SERVICE_NAME: channel-service
         SERVICE_PATH: ./app/channel/cmd/channel
     environment:
+      - KIMI_OAUTH_CLIENT_ID=${KIMI_OAUTH_CLIENT_ID:-}
       - UPSTREAM_PROBES_ENABLED=${UPSTREAM_PROBES_ENABLED:-false}
       - UPSTREAM_CONTRACTS_V1_ENABLED=${UPSTREAM_CONTRACTS_V1_ENABLED:-false}
       - UPSTREAM_REPAIR_REVIEW_KEYS=${UPSTREAM_REPAIR_REVIEW_KEYS:-}
@@ -493,6 +494,7 @@ services:
         SERVICE_NAME: relay-gateway
         SERVICE_PATH: ./cmd/relay-gateway
     environment:
+      - KIMI_OAUTH_CLIENT_ID=${KIMI_OAUTH_CLIENT_ID:-}
       # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
       - RELAY_ROUTING_CONTEXT_V2=${RELAY_ROUTING_CONTEXT_V2:-false}
       - RELAY_ROUTING_ORDERED=${RELAY_ROUTING_ORDERED:-false}

@@ -19,7 +19,7 @@
 ## 2. 链路
 
 ```
-HTTP / SSE / WS / gRPC
+HTTP / SSE / Responses WS / Realtime WS / gRPC / 监控探针
   → internal/biz.WithUsageObservation（共享发送接缝，按 send 建身份）
   → evidence.WithObservationSink → evidence.Do / WS emit
   → Relay 本地观测 outbox（SQLite/WAL，独立文件与预算）
@@ -47,6 +47,12 @@ WS 每轮、每个 redirect 跳都会生成新的 `send_id`，因此不会共用
 <send_id>/<category>/<sequence>`；`not_sent` 与 `unmatched` 是请求级事件，按
 `<observation_id>/<SendRef 身份摘要>/<category>/<sequence>` 计键，区分同一请求下的不同尝试，**不生成 send_id**。重投复用原字节与 digest。
 `observed_at_ms` 全程毫秒精度，查询窗口直接比较，不做秒级 floor/ceil。
+
+Realtime 的每个 `response.create` 在预扣后开始独立留证，关联该轮请求、用户和渠道。观测读取
+`response.done` 的原始 usage，断线无终态时记录截断。探针使用已获执行许可的目标和尝试 ID，模型清单
+请求记 `health_probe`，推理探针默认记 `canary`。在 Relay 与 Monitor 的同一
+`UPSTREAM_PROBE_TARGETS_JSON` 中，将普通推理目标显式设为 `"purpose":"internal_test"` 可采集
+`internal_test`，仍使用原配额门禁。探针在发出前校验许可目标与实际来源一致，`internal_test` 使用独立结果并保留留证。手工录入的模型清单没有上游发送，因此没有观察事件。
 
 ## 3. 配置
 
@@ -223,9 +229,5 @@ docker run --rm --entrypoint /bin/promtool -v "$PWD/deploy/prometheus/alerts:/ru
 - 同一版本与配置的 48h 完整窗口、逐 send 对账、每 cohort 至少 100 样本、财务开关对照及回滚演练。
 - HTTP 自动重发（同一 `http.Client.Do` 内由 Go 触发的隐式重发）仍按一次 send 记账；
   redirect 已逐跳拆分，但“TCP 重传不新增业务 send”的口径未在真实网络故障下核对。
-- canary / internal_test purpose 目前没有 relay 生产者；health_probe 依据
-  `requesttrace.HealthProbeID` 判定。
-- 监控探针路径（`internal/data/upstream_probe.go`）尚未挂载 observation sink，
-  探针发送暂不计入观察覆盖。
-- 新增语音 `/v1/realtime` 使用单独的 WebSocket 桥接，逐轮终态尚未接入独立观察。
+- Realtime 与监控探针的新增 producer 已通过本地回归，生产窗口、Log 收件及 ACK 待验。
 - 告警恢复已覆盖“事件持久化并 ACK 后、首次 scrape 前重启”的场景；不可写本地盘且立即崩溃的信号不在该保证内。

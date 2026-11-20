@@ -59,6 +59,9 @@ v0.47.0 按 MINOR 发行，纳入短期固定组 Key 新入口。Billing 执行�
 | P1 | v0.46.3 真实业务验收 | 部署及健康检查通过，Billing 冻结订阅对账回归已修，生产自然对账完成。待补真实续期、完整及截断语音流、管理写入与审计翻页、通知与 Redis 恢复。 [发布验收](../releases/release-v0.46.3.md#验证) |
 | P1（启用时） | A1 Turnstile | 11 月 20 日生产回读为关闭，site key 和 secret 均未注入。启用时使用真实服务配置和测试账号完成挑战验收。 [A1 验收](../runbooks/a1-self-service-acceptance-2026-10-27.md) |
 | P2 | 独立 usage 留证 | 原窗口跨 3 个 Relay 版本，1,289 个 send 在 Log 有唯一配对，1,244 个完整终态均为 Chat `unsupported`。新版本 48 个完整 Chat 初样均 `verified`。待同版本及配置的 48h、逐 send 覆盖、每 cohort 至少 100 样本、财务开关对照、真实收件及 ACK、amd64 性能与容量。 [生产复核](../runbooks/upstream-usage-observation.md#8-未完成与未验证) |
+| P2 | 新增 usage producer | Relay 已部署独立留证接线，覆盖 Realtime 逐轮终态及 `health_probe`、`canary` 和显式配置的 `internal_test`。待生产 Log 配对及 ACK。 [观察手册](../runbooks/upstream-usage-observation.md) |
+| P2 | 实时语音扩展 | Billing、Relay 和 TTS 公网反代已部署。Realtime 与 TTS 的公网无凭据握手均返回 401，真实音频和账本待验。 [语音验收](../runbooks/step-plan-model-compatibility-2026-11-18.md#2026-11-20-增量部署) |
+| P2 | Kimi 管理台绑定 | Channel 和 Web 已部署，设备码客户端尚未配置。待取得上游批准的客户端注册并验证真实授权、凭据轮换和选路。 [绑定手册](../runbooks/subscription-oauth-binding-runbook.md#34-kimi-设备码授权) |
 | P2 | Executor 全量准入 | 11 月 20 日生产复核确认全量开关关闭、两枚 Token 灰度，只有编排器非流式 Chat 增量。仍缺同入口、协议及时段的可比 cohort，正式七天未起算。原独立运行 48h 窗口仍为 FAIL，自动任务仍为 PAUSED。 [观察手册](v0.23-executor-observation.md) · [原独立验收](../runbooks/post-v0.36.0-acceptance-2026-10-18.md) |
 | P2（外部条件） | A4 微信 Native、B2 原生 Gemini | 微信新单关闭，生产商户配置未注入，订单为 0，待正式商户、实付回调及余额发放。Gemini 隔离回归通过，真实验收使用 Go SDK 最新稳定版，账号和生产渠道、模型价格及预算待确认。 [A4 验收](../runbooks/a4-wechat-native-acceptance-2026-10-28.md) · [B2 验收](../runbooks/b2-native-gemini-acceptance-2026-10-30.md) |
 | P2（外部条件） | 订阅账号与专属组 | 多副本隔离回归通过。生产单 Relay、单 Channel，OAuth 账号为 0，待真实凭据轮换及多 Relay 切换。专属组四款新增文本和语音 Chat 模型已配置来源及售价，待可用的固定组令牌与生产端到端证据。 [多副本记录](../runbooks/subscription-redis-multi-replica-runbook.md) · [专属组验收](../runbooks/step-plan-model-compatibility-2026-11-18.md) |
@@ -70,9 +73,6 @@ N2 的 24h 执行与上传余量继续跟踪备份年龄及失败告警。A3/B1 
 
 | 优先级 | 事项 | 当前覆盖与剩余范围 |
 | --- | --- | --- |
-| P2 | 上游 usage 留证覆盖 | Responses WS 已接入独立留证。新增语音 `/v1/realtime` 逐轮终态及监控探针尚未接入，`canary` / `internal_test` 尚无对应 producer。Go HTTP 隐式重发目前仍按一次 send 统计。 [Realtime 处理代码](../../internal/server/stepaudio_realtime.go#L224) · [观察手册](../runbooks/upstream-usage-observation.md#8-未完成与未验证) |
-| P2 | 实时语音扩展 | TTS HTTP、ASR SSE 与 Realtime 单轮已有生产结算证据。Realtime 的服务端 VAD 自动响应、独立输入转写，以及 TTS 专用 WebSocket 仍未实现。 [语音支持范围](../releases/release-v0.46.0.md#兼容性说明) · [生产验收](../runbooks/step-plan-model-compatibility-2026-11-18.md) |
-| P2 | Kimi 管理台 OAuth/PKCE 绑定 | Kimi 静态 Key 已可用。管理台的授权码绑定仍只支持 Claude/Codex，待补 Kimi 的授权、换 token 和凭据录入。 [订阅设计](cn-subscription-accounts-roadmap.md) · [授权平台代码](../../app/channel/internal/biz/oauth/service.go#L405) |
 | P3（范围外） | 管理化备份扩展 | 当前 worker 覆盖 MySQL + 单实例 Redis。PostgreSQL/SQLite 后台备份、Redis Cluster/副本、在线备份、生产覆盖恢复及 binlog/PITR 尚未覆盖。 [B3 契约](b3-managed-backup-contract-2026-10-30.md) |
 
 ## 5. 未立项

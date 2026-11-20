@@ -50,3 +50,33 @@ func TestOAuthSessionSharedAndConsumedOnce(t *testing.T) {
 	require.False(t, ok)
 	require.NoError(t, rdb.Ping(context.Background()).Err())
 }
+
+func TestOAuthDevicePollClaimPreservesSessionAndExpiry(t *testing.T) {
+	srv := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: srv.Addr()})
+	t.Cleanup(func() { rdb.Close() })
+	first := NewOAuthSessionRepo(&Repository{redis: rdb})
+	second := NewOAuthSessionRepo(&Repository{redis: rdb})
+	now := time.Now()
+	session := &channeloauth.Session{ID: "device", CreatedAt: now, Device: &channeloauth.DeviceSession{ExpiresAt: now.Add(time.Minute)}}
+	require.NoError(t, first.Set(session))
+	original, ok := first.Get(session.ID, now)
+	require.True(t, ok)
+	srv.FastForward(5 * time.Second)
+	claimed := *original
+	device := *original.Device
+	device.PollAt = now.Add(20 * time.Second)
+	claimed.Device = &device
+	ok, err := first.CompareAndSwap(original, &claimed, now.Add(5*time.Second))
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = second.CompareAndSwap(original, nil, now.Add(5*time.Second))
+	require.NoError(t, err)
+	require.False(t, ok, "an obsolete snapshot cannot consume a claimed session")
+	current, ok := second.Get(session.ID, now.Add(5*time.Second))
+	require.True(t, ok)
+	require.True(t, current.Device.PollAt.Equal(device.PollAt))
+	srv.FastForward(56 * time.Second)
+	_, ok = first.Get(session.ID, now.Add(5*time.Second))
+	require.False(t, ok, "claiming a poll preserves the Redis TTL")
+}

@@ -54,6 +54,7 @@ func (in *usageLogInput) applyChannelInputs(channel *relaybiz.Channel) {
 }
 
 type usageLogInput struct {
+	ActualAudioUnits      int64
 	SettlementOutcome     string
 	RequestedServiceTier  string
 	ActualServiceTier     string
@@ -232,6 +233,9 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 		return
 	}
 	message := applogger.Sanitize(fmt.Sprintf("model=%s quota=%d prompt_tokens=%d completion_tokens=%d cache_read_tokens=%d channel=%d", in.ModelName, in.Quota, in.PromptTokens, in.CompletionTokens, in.CacheReadTokens, in.ChannelID))
+	if in.ActualAudioUnits > 0 {
+		message += fmt.Sprintf(" actual_audio_units=%d", in.ActualAudioUnits)
+	}
 	if in.SettlementOutcome != "" {
 		message += " settlement_outcome=" + in.SettlementOutcome
 	}

@@ -107,6 +107,7 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	s.handlePrefix(srv, "/v1/containers/", unsupportedRoute(), http.HandlerFunc(s.handleUnsupportedOpenAIRoute("containers")))
 	s.handlePrefix(srv, "/v1/fine_tuning/alpha/graders/", unsupportedRoute(), http.HandlerFunc(s.handleUnsupportedOpenAIRoute("graders")))
 	s.handleFunc(srv, "/v1/realtime", executionRoute("/v1/realtime", relayExecutionPathRaw), s.handleStepAudioRealtime)
+	s.handleFunc(srv, "/v1/realtime/audio", executionRoute(stepAudioTTSEndpoint, relayExecutionPathRaw), s.handleStepAudioTTS)
 	s.handlePrefix(srv, "/v1/realtime/", unsupportedRoute(), http.HandlerFunc(s.handleUnsupportedOpenAIRoute("realtime")))
 	s.handleFunc(srv, "/v1/conversations", unsupportedRoute(), s.handleUnsupportedOpenAIRoute("conversations"))
 	s.handlePrefix(srv, "/v1/conversations/", unsupportedRoute(), http.HandlerFunc(s.handleUnsupportedOpenAIRoute("conversations")))
