@@ -22,7 +22,7 @@
 4. **管理员凭证**：`deployments/docker-compose/.env` 的 `ADMIN_TOKEN`（管理后台 Basic Auth / Bearer token）。
 5. **上游订阅本身**：一个已登录的 Claude Code（`claude` 平台）或 ChatGPT Plus/Pro（`codex` 平台）账号，用于在浏览器里完成授权。
 
-> 单副本部署可直接使用本 runbook。多副本部署（≥2 个 channel-service 实例）必须读 §六 的 session sticky 注意事项。
+> 多副本部署需要共享 Redis 会话存储，见 §六。
 
 ## 二、必填配置
 
@@ -135,6 +135,21 @@ Codex 流程完全对称，把 `claude` 换成 `codex` 即可。Codex 的 `excha
 
 `web/src/pages/admin/OAuthBindDialog.tsx` 封装了上述两步：选平台 → 申请 auth_url → 浏览器授权 → 粘贴回调 URL → 交换。入口在「订阅账号」管理页。无需手动 curl。
 
+### 3.4 Kimi 设备码授权
+
+上游公开文档规定第三方工具使用 API Key。设备码流程须有上游为本应用批准的客户端注册，并满足该注册的设备身份和端点契约。
+使用默认端点且已有批准的注册时，在部署环境给 Channel 和 Relay 设置相同的 `KIMI_OAUTH_CLIENT_ID`。
+未配置时 OAuth 入口返回 HTTP 503。API Key 接入继续可用。
+
+在「订阅账号 → OAuth 授权绑定」选择 Kimi，先填写目标路由分组，再生成链接。
+点击「打开授权链接」，在新标签页核对设备码并授权，回到管理台点击「完成绑定」。授权仍等待时可稍后重试，流程按上游返回的
+轮询间隔及限速信号控制请求。同一会话同时只发起一轮兑换，成功获取凭据后消费会话并通过 Channel owner 保存账号。
+
+HTTP 客户端向 `/api/v1/admin/accounts/subscription/oauth/kimi/auth-url` 提交 `group`。
+兑换使用相同前缀下的 `/exchange`，提交 `session_id`、`state`、同一 `group` 及账号参数。
+待授权或另一请求正在轮询时返回 HTTP 202。暂时无法访问上游时返回 HTTP 503 并保留有效会话。
+完成时返回账号 ID。Relay 刷新使用同一注册的客户端 ID。使用过 Relay YAML 显式覆盖项的环境应核对其与 Channel 注册一致。
+
 ## 四、验证
 
 ### 4.1 库内确认
@@ -234,19 +249,12 @@ docker exec mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" oneapi -e \
 
 ## 六、多副本部署注意事项
 
-OAuth session 存在 channel-service **进程内**（`SessionStore`，TTL 5min），不落 Redis。因此多副本部署时：
-
-- `exchange` **必须回到生成 `auth-url` 的同一 channel-service 副本**。否则 session 不存在，返回 `invalid oauth session`。
-- 实现方式：
-  - 单副本绑定后再扩容；或
-  - 在 admin-api 代理层做 session 亲和（按 `session_id` hash 路由到固定副本）；或
-  - 每个副本独立完成绑定（不推荐，会产生多条 `subscription_accounts` 行）。
-
-绑定完成后，`subscription_accounts` 行在数据库里，所有副本共享，后续请求不再依赖 session store。详见 [Redis 多副本部署 Runbook](./subscription-redis-multi-replica-runbook.md)。
+持久化部署将 OAuth 会话保存在共享 Redis，最长保留 5 分钟。各 Channel 副本使用同一 Redis，
+由原子读取并删除保证同一会话只由一个请求兑换。绑定后的账号由 Channel owner 存库。详见 [Redis 多副本部署 Runbook](./subscription-redis-multi-replica-runbook.md)。
 
 ## 七、安全注意
 
-- `access_token` / `refresh_token` 是明文存储在 `subscription_accounts` 表，确保数据库访问受控。
+- 数据库写入凭据前走 Channel 凭据加密配置。设备码及 OAuth 会话仅保存在受控的短期会话存储。
 - 脚本 `scripts/import-subscription-creds.py` 生成的 payload 文件 `subscription-account.*.payload.json` 含明文 token，已加入 `.gitignore`，确认 `git check-ignore` 命中后再操作。
 - `exchange` 对 Codex 会调上游 `settings/user` 关闭训练，属于账号级副作用，知情后使用。
 - OAuth `client_id` 是公开值（Claude Code / codex_cli_rs 发布的 client_id），不是密钥。

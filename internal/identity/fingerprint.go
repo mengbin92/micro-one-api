@@ -117,28 +117,9 @@ func DefaultCodexFingerprint() Fingerprint {
 	}
 }
 
-// DefaultKimiCLIFingerprint builds a Fingerprint that resembles the Kimi CLI
-// (kimi-cli) client. Kimi For Coding limits use to its own CLI, so the relay
-// must present a Kimi-CLI identity rather than a Claude Code one. The version
-// strings are placeholders pending capture from real Kimi CLI traffic (roadmap
-// P3 §5); they are overridable via the FingerprintSnapshot stored on the
-// account so operators can update them without a code change.
-func DefaultKimiCLIFingerprint() Fingerprint {
-	return Fingerprint{
-		ClientID:                randomClientID(),
-		UserAgent:               "kimi-cli/0.1.0 (external, cli)",
-		StainlessLang:           "js",
-		StainlessPackageVersion: "0.1.0",
-		StainlessOS:             stainlessOS(),
-		StainlessArch:           stainlessArch(),
-		StainlessRuntime:        "node",
-		StainlessRuntimeVersion: "v22.11.0",
-	}
-}
-
 // DefaultFingerprintForPlatform returns a fresh default fingerprint for the
 // given platform. Zhipu and MiniMax officially support Claude Code clients, so
-// they reuse the Claude Code fingerprint. Kimi uses the Kimi CLI fingerprint.
+// they reuse the Claude Code fingerprint.
 func DefaultFingerprintForPlatform(p Platform) Fingerprint {
 	switch p {
 	case PlatformCodex:
@@ -147,7 +128,7 @@ func DefaultFingerprintForPlatform(p Platform) Fingerprint {
 		// Officially-supported Claude Code clients.
 		return DefaultClaudeCodeFingerprint()
 	case PlatformKimi:
-		return DefaultKimiCLIFingerprint()
+		return Fingerprint{ClientID: randomClientID(), UserAgent: "micro-one-api"}
 	default:
 		return DefaultClaudeCodeFingerprint()
 	}

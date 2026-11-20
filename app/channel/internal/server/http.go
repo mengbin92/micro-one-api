@@ -35,7 +35,7 @@ func NewHTTPServerWithOAuthSessions(addr string, uc *biz.ChannelUsecase, store c
 }
 
 func newOAuthHTTPServer(srv *khttp.Server, uc *biz.ChannelUsecase, store channeloauth.SessionRepository) *khttp.Server {
-	oauthSvc := channeloauth.NewService(uc, channeloauth.WithSessionStore(store))
+	oauthSvc := channeloauth.NewService(uc, channeloauth.WithSessionStore(store), channeloauth.WithKimiDeviceClientID(os.Getenv("KIMI_OAUTH_CLIENT_ID")))
 	registerAccountOpsHealth(srv)
 	registerOAuthRoutes(srv, oauthSvc, uc)
 	registerSelectorStatsRoute(srv, uc)
@@ -76,6 +76,8 @@ func registerOAuthRoutes(srv *khttp.Server, oauthSvc *channeloauth.Service, uc *
 	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/claude/exchange", guard(oauthExchangeHandler(oauthSvc, channeloauth.PlatformClaude)))
 	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/codex/auth-url", guard(oauthAuthURLHandler(oauthSvc, channeloauth.PlatformCodex)))
 	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/codex/exchange", guard(oauthExchangeHandler(oauthSvc, channeloauth.PlatformCodex)))
+	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/kimi/auth-url", guard(oauthAuthURLHandler(oauthSvc, channeloauth.PlatformKimi)))
+	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/kimi/exchange", guard(oauthExchangeHandler(oauthSvc, channeloauth.PlatformKimi)))
 }
 
 type oauthAuthURLRequest struct {
@@ -97,6 +99,7 @@ type oauthExchangeRequest struct {
 
 func oauthAuthURLHandler(oauthSvc *channeloauth.Service, platform string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 			return
@@ -115,20 +118,29 @@ func oauthAuthURLHandler(oauthSvc *channeloauth.Service, platform string) http.H
 				authz.WriteHTTPError(w, err)
 				return
 			}
+			if errors.Is(err, channeloauth.ErrKimiDeviceUnavailable) {
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"reason": "KIMI_DEVICE_OAUTH_UNAVAILABLE", "error": err.Error()})
+				return
+			}
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
+		response := map[string]any{
 			"auth_url":   result.AuthURL,
 			"session_id": result.SessionID,
 			"state":      result.State,
 			"expires_at": result.ExpiresAt,
-		})
+		}
+		if result.UserCode != "" {
+			response["user_code"] = result.UserCode
+		}
+		writeJSON(w, http.StatusOK, response)
 	}
 }
 
 func oauthExchangeHandler(oauthSvc *channeloauth.Service, platform string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 			return
@@ -152,6 +164,18 @@ func oauthExchangeHandler(oauthSvc *channeloauth.Service, platform string) http.
 		if err != nil {
 			if authz.IsAuthorizationError(err) {
 				authz.WriteHTTPError(w, err)
+				return
+			}
+			if errors.Is(err, channeloauth.ErrDevicePending) {
+				writeJSON(w, http.StatusAccepted, map[string]bool{"pending": true})
+				return
+			}
+			if errors.Is(err, channeloauth.ErrKimiDeviceRetryable) || errors.Is(err, channeloauth.ErrKimiDeviceUnavailable) {
+				reason := "KIMI_DEVICE_OAUTH_RETRYABLE"
+				if errors.Is(err, channeloauth.ErrKimiDeviceUnavailable) {
+					reason = "KIMI_DEVICE_OAUTH_UNAVAILABLE"
+				}
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"reason": reason, "error": err.Error()})
 				return
 			}
 			status := http.StatusBadGateway

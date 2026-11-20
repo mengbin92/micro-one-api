@@ -262,6 +262,32 @@ func TestClaudeOAuth_BuildUpstreamRequest_Mimicry(t *testing.T) {
 	}
 }
 
+func TestKimiSubscriptionKeepsClientIdentityAndCredential(t *testing.T) {
+	for _, accountType := range []string{"oauth", "static_key"} {
+		t.Run(accountType, func(t *testing.T) {
+			ad := NewClaudeOAuthAdaptor(nil, nil, nil)
+			rc := &RelayContext{
+				Account:       &AccountRef{Platform: "kimi", AccountType: accountType, AccessToken: "fixture"},
+				Channel:       &ChannelRef{BaseURL: credential.KimiCodingBaseURL},
+				InboundHeader: http.Header{"User-Agent": {"my-client/1.0"}},
+			}
+			original := `{"model":"kimi-for-coding","messages":[{"role":"user","content":"hi"}]}`
+			req, err := ad.BuildUpstreamRequest(t.Context(), rc, FormatAnthropicMessages, []byte(original))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer req.Body.Close()
+			if req.Header.Get("User-Agent") != "my-client/1.0" || req.Header.Get("Authorization") != "Bearer fixture" {
+				t.Fatal("expected the caller's identity with the upstream account credential")
+			}
+			body, err := io.ReadAll(req.Body)
+			if err != nil || string(body) != original {
+				t.Fatalf("unexpected request rewrite: %s (%v)", body, err)
+			}
+		})
+	}
+}
+
 func TestClaudeOAuth_BuildUpstreamRequest_UsesInlineAccessToken(t *testing.T) {
 	ad := NewClaudeOAuthAdaptor(nil, nil, nil)
 	ctx := accountCtx(provider.ChannelTypeClaudeOAuth, FormatAnthropicMessages, []byte(`{"model":"claude-sonnet-4-20250514","messages":[]}`))

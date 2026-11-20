@@ -2,12 +2,22 @@ package credential
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func setKimiRefreshFixture(t *testing.T, url string) {
+	t.Helper()
+	previousURL, previousClientID := KimiTokenRefreshURL, KimiOAuthClientID
+	KimiTokenRefreshURL, KimiOAuthClientID = url, "registered-kimi-test-client"
+	t.Cleanup(func() { KimiTokenRefreshURL, KimiOAuthClientID = previousURL, previousClientID })
+}
 
 // TestKimiTokenProvider_RefreshSuccess exercises the full refresh path:
 // stored token is stale -> provider POSTs to the token endpoint -> new token
@@ -33,9 +43,7 @@ func TestKimiTokenProvider_RefreshSuccess(t *testing.T) {
 		ExpiresAt:    time.Now().Add(-time.Hour), // already expired
 	}
 
-	prevURL := KimiTokenRefreshURL
-	KimiTokenRefreshURL = srv.URL
-	defer func() { KimiTokenRefreshURL = prevURL }()
+	setKimiRefreshFixture(t, srv.URL)
 
 	p := NewKimiTokenProviderWithHTTPClient(lookup, srv.Client())
 	tok, err := p.GetAccessToken(context.Background(), 1)
@@ -71,9 +79,7 @@ func TestKimiTokenProvider_RefreshFailure(t *testing.T) {
 		ExpiresAt:    time.Now().Add(-time.Hour),
 	}
 
-	prevURL := KimiTokenRefreshURL
-	KimiTokenRefreshURL = srv.URL
-	defer func() { KimiTokenRefreshURL = prevURL }()
+	setKimiRefreshFixture(t, srv.URL)
 
 	p := NewKimiTokenProviderWithHTTPClient(lookup, srv.Client())
 	_, err := p.GetAccessToken(context.Background(), 2)
@@ -104,9 +110,7 @@ func TestKimiTokenProvider_ConcurrentDedup(t *testing.T) {
 		ExpiresAt:    time.Now().Add(-time.Hour),
 	}
 
-	prevURL := KimiTokenRefreshURL
-	KimiTokenRefreshURL = srv.URL
-	defer func() { KimiTokenRefreshURL = prevURL }()
+	setKimiRefreshFixture(t, srv.URL)
 
 	p := NewKimiTokenProviderWithHTTPClient(lookup, srv.Client())
 
@@ -130,3 +134,47 @@ func TestKimiTokenProvider_ConcurrentDedup(t *testing.T) {
 		t.Fatalf("expected exactly one upstream refresh, got %d", got)
 	}
 }
+
+func TestKimiTokenProviderMissingClientDoesNotRefresh(t *testing.T) {
+	previousClientID := KimiOAuthClientID
+	KimiOAuthClientID = ""
+	t.Cleanup(func() { KimiOAuthClientID = previousClientID })
+	lookup := newFakeLookup()
+	lookup.store[1] = &AccountCredentials{AccessToken: "valid", RefreshToken: "fixture", ExpiresAt: time.Now().Add(time.Hour)}
+	client := &http.Client{Transport: refreshRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("unconfigured client reached the provider")
+		return nil, nil
+	})}
+	p := NewKimiTokenProviderWithHTTPClient(lookup, client)
+	if token, err := p.GetAccessToken(t.Context(), 1); err != nil || token != "valid" {
+		t.Fatalf("valid token = %q, %v", token, err)
+	}
+	if err := p.Refresh(t.Context(), 1); !errors.Is(err, ErrRefreshFailed) {
+		t.Fatalf("refresh = %v, want ErrRefreshFailed", err)
+	}
+}
+
+func TestKimiTokenProviderDoesNotRedirectRefresh(t *testing.T) {
+	setKimiRefreshFixture(t, "https://auth.example/token")
+	lookup := newFakeLookup()
+	lookup.store[1] = &AccountCredentials{RefreshToken: "fixture"}
+	client := &http.Client{Transport: refreshRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		defer r.Body.Close()
+		if r.URL.Host != "auth.example" {
+			t.Fatal("refresh was forwarded to another host")
+		}
+		return &http.Response{
+			StatusCode: http.StatusTemporaryRedirect,
+			Header:     http.Header{"Location": {"https://other.example/token"}},
+			Body:       io.NopCloser(strings.NewReader("")),
+		}, nil
+	})}
+	p := NewKimiTokenProviderWithHTTPClient(lookup, client)
+	if err := p.Refresh(t.Context(), 1); !errors.Is(err, ErrRefreshFailed) {
+		t.Fatalf("refresh = %v, want ErrRefreshFailed", err)
+	}
+}
+
+type refreshRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f refreshRoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

@@ -149,6 +149,7 @@ services:
         SERVICE_PATH: ./app/channel/cmd/channel
     container_name: channel-service
     environment:
+      - KIMI_OAUTH_CLIENT_ID=${KIMI_OAUTH_CLIENT_ID:-}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       - OTEL_GO_X_OBSERVABILITY=true
       - UPSTREAM_PROBES_ENABLED=${UPSTREAM_PROBES_ENABLED:-false}
@@ -563,6 +564,7 @@ services:
         SERVICE_PATH: ./cmd/relay-gateway
     container_name: relay-gateway
     environment:
+      - KIMI_OAUTH_CLIENT_ID=${KIMI_OAUTH_CLIENT_ID:-}
       - RELAY_REQUEST_TIMING_ENABLED=${RELAY_REQUEST_TIMING_ENABLED:-false}
       - OTEL_GO_X_OBSERVABILITY=true
       # Routing v2: enable by stage after migration/backfill (routing-groups runbook).

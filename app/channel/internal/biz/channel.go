@@ -988,7 +988,7 @@ func (uc *ChannelUsecase) AutoPauseAccount(ctx context.Context, accountID int64,
 
 func (uc *ChannelUsecase) CreateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error {
 	var err error
-	ctx, err = uc.authorizeCreate(ctx, "channel.accounts.create", "channel.account.create", account.Group)
+	ctx, err = uc.AuthorizeSubscriptionAccountCreate(ctx, account.Group)
 	if err != nil {
 		return err
 	}

@@ -181,6 +181,10 @@ func (uc *ChannelUsecase) AuthorizeOAuth(ctx context.Context, group string) (con
 	return uc.authorizeCreate(ctx, "channel.accounts.oauth", "channel.account.oauth.bind", group)
 }
 
+func (uc *ChannelUsecase) AuthorizeSubscriptionAccountCreate(ctx context.Context, group string) (context.Context, error) {
+	return uc.authorizeCreate(ctx, "channel.accounts.create", "channel.account.create", group)
+}
+
 func (uc *ChannelUsecase) ReadSelectorStats(ctx context.Context) (map[int64]ChannelStats, error) {
 	ctx, err := uc.authorize(ctx, "channel.health", "monitor.health.selector.read")
 	if err != nil {

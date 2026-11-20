@@ -31,25 +31,9 @@
 
 ### Kimi（OAuth）
 
-Kimi 采用 OAuth refresh-token 流程。MVP 阶段先支持「粘贴 refresh token」的手工
-录入（同 Claude/Codex 的 CreateAccountDialog），后续再补齐 PKCE 授权码换 token
-的前端流程。
-
-1. 平台选择 `Kimi`，账号类型为 `oauth`。
-2. 填入 access_token、refresh_token、expires_at（Unix 秒）。
-3. Kimi 的 token endpoint 与 client_id 不稳定，通过
-   `configs/config.yaml` 的 `bootstrap.hybrid_adaptor.kimi` 覆盖：
-
-   ```yaml
-   bootstrap:
-     hybrid_adaptor:
-       kimi:
-         token_refresh_url: "https://kimi.moonshot.cn/api/oauth/token"
-         client_id: "kimi-coding-cli"
-   ```
-
-4. Kimi 账号会被加入 `RefreshTask`，到期前自动刷新；refresh token 失效时
-   账号置错误态（`SetSubscriptionAccountError`），运营需重新授权录入。
+设备码 OAuth 需上游为本应用批准的客户端注册。Channel 与 Relay 使用同一 `KIMI_OAUTH_CLIENT_ID`，见[订阅账号 OAuth 绑定手册](./subscription-oauth-binding-runbook.md#34-kimi-设备码授权)。
+绑定后由 `RefreshTask` 在到期前自动刷新。已设置 `bootstrap.hybrid_adaptor.kimi` 覆盖项的部署需核对注册一致性。
+refresh token 失效后重新授权。
 
 ## 指纹与伪装
 
@@ -57,10 +41,9 @@ Kimi 采用 OAuth refresh-token 流程。MVP 阶段先支持「粘贴 refresh to
 |---------|---------------------------------------------------------------------|
 | GLM     | 官方支持 Claude Code 客户端，沿用 Claude Code UA/指纹透传           |
 | MiniMax | 同 GLM                                                              |
-| Kimi    | 限定 Kimi CLI，使用 `DefaultKimiCLIFingerprint` 伪装；Claude Code UA 不安全 |
+| Kimi    | 保留真实调用方 User-Agent 和请求正文 |
 
-`ShouldMimic` 对 GLM/MiniMax 复用 `IsClaudeCodeClient` 检测；对 Kimi 使用
-`IsKimiCLIClient`（UA 含 `kimi-cli` 或 `x-app: kimi`）。
+`ShouldMimic` 对 GLM/MiniMax 复用 `IsClaudeCodeClient` 检测。
 
 ## 配额与熔断
 
@@ -82,7 +65,7 @@ Kimi 采用 OAuth refresh-token 流程。MVP 阶段先支持「粘贴 refresh to
 |------------------------------|----------------------------------------------------------------------|
 | GLM/MiniMax 请求 401         | Coding Plan Key 失效，更换 Key；账号被 `SetSubscriptionAccountError` 标记，需 `ClearSubscriptionAccountError` |
 | Kimi 刷新失败                | 查看 `RefreshTask` 日志；refresh_token 失效需重新授权录入            |
-| Kimi 风控 403                | 指纹/UA 不符，确认 `DefaultKimiCLIFingerprint` 或账号 `fingerprint` 快照 |
+| Kimi 授权 403                | 核对凭据适用的接口和上游批准的客户端登记。对第三方工具使用控制台签发的 API Key |
 | 上游 429 频发                | 降低账号优先级/权重；检查本地 RPM/窗口配额；必要时调大 `runtime_block.rate_limited_duration` |
 | 模型不支持                   | 确认 channel `models` 与上游实际支持的模型一致                       |
 

@@ -3,6 +3,7 @@ package credential
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"micro-one-api/platform/metrics"
@@ -144,6 +145,9 @@ func (b *baseTokenProvider) resolveDistributedOnce(ctx context.Context, id int64
 	}
 	if current.RefreshToken == "" {
 		return "", ErrNoRefreshToken
+	}
+	if b.refresher.clientID == "" {
+		return "", fmt.Errorf("%w: OAuth client ID is not configured", ErrRefreshFailed)
 	}
 	if err := lease.Check(ctx); err != nil {
 		return "", err

@@ -3,10 +3,11 @@ package credential
 import (
 	"context"
 	"net/http"
+	"strings"
 )
 
 // KimiTokenProvider implements TokenProvider for Kimi For Coding
-// subscription accounts. Kimi uses an OAuth refresh-token flow (PKCE) against
+// subscription accounts. Kimi uses the OAuth refresh-token grant against
 // its own token endpoint, so the provider is structurally identical to the
 // Claude and OpenAI providers: it embeds baseTokenProvider and only
 // contributes the platform-specific client ID and refresh URL.
@@ -23,16 +24,28 @@ type KimiTokenProvider struct {
 	baseTokenProvider
 }
 
-// KimiOAuthClientID is the OAuth client_id used by the Kimi CLI. It is
-// intentionally a var so deployments can override it without rebuilding.
-// The default is a placeholder; the real value is confirmed from Kimi CLI
-// traffic and set in config (see roadmap P3 §2).
-var KimiOAuthClientID = "kimi-coding-cli"
+const (
+	KimiDeviceOAuthHost = "https://auth.kimi.com"
+	KimiDeviceTokenURL  = KimiDeviceOAuthHost + "/api/oauth/token"
+	KimiCodingBaseURL   = "https://api.kimi.com/coding"
+)
+
+// KimiOAuthClientID is the operator-configured OAuth client ID used for refresh.
+var KimiOAuthClientID string
 
 // KimiTokenRefreshURL is the OAuth token endpoint the Kimi CLI refreshes
 // against. Overridable for the same reason as KimiOAuthClientID.
 // #nosec G101 -- public OAuth endpoint pattern, not a credential.
-var KimiTokenRefreshURL = "https://kimi.moonshot.cn/api/oauth/token"
+var KimiTokenRefreshURL = KimiDeviceTokenURL
+
+// RegisteredKimiDeviceClientID rejects an implicit or first-party registration.
+func RegisteredKimiDeviceClientID(clientID string) string {
+	clientID = strings.TrimSpace(clientID)
+	if strings.EqualFold(clientID, "17e5f671-d194-4dfb-9706-5516cb48c098") || strings.EqualFold(clientID, "kimi-coding-cli") {
+		return ""
+	}
+	return clientID
+}
 
 // NewKimiTokenProvider builds a Kimi token provider backed by the given
 // account lookup. The refresh HTTP client defaults to 30s; pass a custom
@@ -47,7 +60,7 @@ func NewKimiTokenProvider(lookup AccountLookup) *KimiTokenProvider {
 // wire layer constructs the provider once at boot).
 func NewKimiTokenProviderWithHTTPClient(lookup AccountLookup, hc *http.Client) *KimiTokenProvider {
 	return &KimiTokenProvider{
-		baseTokenProvider: newBaseTokenProvider(lookup, hc, KimiOAuthClientID, KimiTokenRefreshURL),
+		baseTokenProvider: newPlatformTokenProvider(lookup, hc, KimiOAuthClientID, KimiTokenRefreshURL, "kimi"),
 	}
 }
 

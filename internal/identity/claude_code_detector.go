@@ -48,31 +48,10 @@ func IsCodexCLIClient(header http.Header) bool {
 	return false
 }
 
-// IsKimiCLIClient inspects the inbound request headers to determine whether
-// the caller is a genuine Kimi CLI client. Kimi For Coding is limited to the
-// Kimi CLI, so only a genuine Kimi CLI request is forwarded as-is; all other
-// clients are mimicked to look like a Kimi CLI session.
-//
-// Detection signals (any one is sufficient):
-//   - User-Agent contains "kimi-cli"
-//   - x-app: "kimi" header
-func IsKimiCLIClient(header http.Header) bool {
-	if header == nil {
-		return false
-	}
-	if ua := header.Get("User-Agent"); strings.Contains(strings.ToLower(ua), "kimi-cli") {
-		return true
-	}
-	if app := strings.ToLower(strings.TrimSpace(header.Get("x-app"))); app == "kimi" {
-		return true
-	}
-	return false
-}
-
 // IsMimickableAccountType reports whether the account credential shape
 // carries an upstream-recognised client identity that the relay should
-// present to the upstream. OAuth accounts (Claude/Codex/Kimi) and static-key
-// Coding-Plan accounts (GLM/MiniMax) both need mimicry; plain API-key accounts
+// present to the upstream. OAuth accounts (Claude/Codex) and static-key
+// Coding-Plan accounts (GLM/MiniMax) can use mimicry; plain API-key accounts
 // (empty or "api_key") do not. This is the single source of truth for the
 // accountIsOAuth parameter ShouldMimic consumes.
 func IsMimickableAccountType(accountType string) bool {
@@ -98,9 +77,7 @@ func IsMimickableAccountType(accountType string) bool {
 //   - Claude / Zhipu / MiniMax: these upstreams officially support Claude
 //     Code, so the Claude Code client-detection + fingerprint path applies
 //     unchanged. Mimic unless the inbound is a genuine Claude Code client.
-//   - Kimi: the upstream limits use to its own CLI, so the Claude Code UA is
-//     NOT a safe passthrough. Mimic unless the inbound is a genuine Kimi CLI
-//     client.
+//   - Kimi: preserve the actual client identity required by the upstream.
 func ShouldMimic(platform Platform, accountIsOAuth bool, header http.Header) bool {
 	if !accountIsOAuth {
 		return false
@@ -109,7 +86,7 @@ func ShouldMimic(platform Platform, accountIsOAuth bool, header http.Header) boo
 	case PlatformCodex:
 		return !IsCodexCLIClient(header)
 	case PlatformKimi:
-		return !IsKimiCLIClient(header)
+		return false
 	case PlatformClaude, PlatformZhipu, PlatformMinimax:
 		return !IsClaudeCodeClient(header)
 	default:

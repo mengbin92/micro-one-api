@@ -3,6 +3,7 @@ package credential
 import (
 	"context"
 	"errors"
+	"fmt"
 	"go.uber.org/zap"
 	"micro-one-api/domain/requesttrace"
 	applogger "micro-one-api/platform/logging"
@@ -113,6 +114,9 @@ func (b *baseTokenProvider) resolve(ctx context.Context, accountID int64, force 
 		// cannot be used until it is re-authorized. Surface the sentinel so the
 		// caller can mark the account temporarily unschedulable.
 		return "", ErrNoRefreshToken
+	}
+	if b.refresher.clientID == "" {
+		return "", fmt.Errorf("%w: OAuth client ID is not configured", ErrRefreshFailed)
 	}
 	refreshURL := creds.RefreshURL
 	if refreshURL == "" {

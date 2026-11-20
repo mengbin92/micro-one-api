@@ -98,8 +98,8 @@ func (l *lazyOAuthAdaptor) build(rc *RelayContext) (Adaptor, error) {
 		return NewCodexOAuthAdaptor(tp, globalIdentityService, models), nil
 	case identity.PlatformZhipu, identity.PlatformMinimax, identity.PlatformKimi:
 		// All three domestic vendors expose an Anthropic-compatible Messages
-		// API, so the Claude OAuth adaptor's request construction, header
-		// mimicry and response/stream conversion apply unchanged. The vendor
+		// API, so the Claude OAuth adaptor's request construction and
+		// response/stream conversion apply unchanged. The vendor
 		// endpoint is selected via the channel's BaseURL (set at channel
 		// creation); the token provider is resolved by the platform-tagged
 		// factory wired in cmd/relay-gateway/wire.go.
