@@ -39,6 +39,7 @@ type UsageEnvelopeData struct {
 type LedgerUsage struct {
 	ActualServiceTier string `json:",omitempty"`
 	ServiceTierStatus string `json:",omitempty"`
+	ActualAudioUnits  int64  `json:",omitempty"`
 	// FrozenServiceTier is resolved by the Billing owner from its reservation.
 	// It is never part of the producer payload or settlement digest.
 	FrozenServiceTier     *ServiceTierConfig `json:"-"`

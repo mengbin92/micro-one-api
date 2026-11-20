@@ -41,6 +41,27 @@ func stepAudioSpeechSuccess(resp *relayprovider.RawResponse) bool {
 }
 
 func (s *HTTPServer) forwardStepAudioSSE(ctx context.Context, w http.ResponseWriter, provider relayprovider.Provider, req *relayprovider.RawRequest, terminal string, reservation *billingv1.ReserveQuotaResponse, log usageLogInput, started time.Time) (bool, error) {
+	controller := http.NewResponseController(w)
+	return s.relayStepAudioSSE(ctx, provider, req, terminal, reservation, log, started, func() {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("X-Accel-Buffering", "no")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.WriteHeader(http.StatusOK)
+	}, func(event string, _, frame []byte) error {
+		if _, err := w.Write(frame); err != nil {
+			return err
+		}
+		if event == "speech.audio.done" {
+			if _, err := fmt.Fprint(w, "data: [DONE]\n\n"); err != nil {
+				return err
+			}
+		}
+		return controller.Flush()
+	})
+}
+
+func (s *HTTPServer) relayStepAudioSSE(ctx context.Context, provider relayprovider.Provider, req *relayprovider.RawRequest, terminal string, reservation *billingv1.ReserveQuotaResponse, log usageLogInput, started time.Time, onStart func(), onFrame func(string, []byte, []byte) error) (bool, error) {
 	resp, err := provider.ForwardStream(ctx, req)
 	if err != nil {
 		return false, err
@@ -51,11 +72,9 @@ func (s *HTTPServer) forwardStepAudioSSE(ctx context.Context, w http.ResponseWri
 		return false, relaybiz.MarkUnverifiedResponseError(fmt.Errorf("upstream audio stream is not SSE"))
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.WriteHeader(http.StatusOK)
+	if onStart != nil {
+		onStart()
+	}
 
 	log.applyReservation(reservation)
 	releaseReason := "audio stream ended without completion"
@@ -68,7 +87,6 @@ func (s *HTTPServer) forwardStepAudioSSE(ctx context.Context, w http.ResponseWri
 	const maxEventBytes = 2 << 20
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 4096), maxEventBytes)
-	controller := http.NewResponseController(w)
 	var frame, data bytes.Buffer
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -93,6 +111,14 @@ func (s *HTTPServer) forwardStepAudioSSE(ctx context.Context, w http.ResponseWri
 			break
 		}
 		if jsonx.Unmarshal(payload, &event) == nil && event.Type == terminal {
+			if terminal == "transcript.text.done" {
+				var fields map[string]jsonx.RawMessage
+				var text *string
+				if jsonx.ValidateUnique(payload) != nil || jsonx.Unmarshal(payload, &fields) != nil ||
+					jsonx.Unmarshal(fields["text"], &text) != nil || text == nil {
+					return true, relaybiz.MarkUnverifiedResponseError(fmt.Errorf("invalid upstream transcription terminal"))
+				}
+			}
 			// A complete upstream terminal proves metered work. If commit is
 			// uncertain, leave recovery to Billing rather than releasing it.
 			releaseReason = ""
@@ -103,14 +129,8 @@ func (s *HTTPServer) forwardStepAudioSSE(ctx context.Context, w http.ResponseWri
 				return true, relaybiz.MarkPostForwardError(err)
 			}
 			s.ingestUsageLogAfterResponse(log, ctx)
-			if terminal == "speech.audio.done" {
-				frame.WriteString("data: [DONE]\n\n")
-			}
 		}
-		_, writeErr := w.Write(frame.Bytes())
-		if writeErr == nil {
-			writeErr = controller.Flush()
-		}
+		writeErr := onFrame(event.Type, payload, frame.Bytes())
 		switch {
 		case releaseReason == "":
 			return true, relaybiz.MarkPostForwardError(writeErr)
