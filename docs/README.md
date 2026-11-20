@@ -44,7 +44,7 @@ docs/
 | charge 后监控告警与 SQL 口径 | [runbooks/cache-creation-charge-monitoring.md](./runbooks/cache-creation-charge-monitoring.md) |
 | 发布后强制失败验证（§9.2） | [runbooks/post-release-forced-failure-verification.md](./runbooks/post-release-forced-failure-verification.md) |
 | 确认关键测试能发现故意制造的回归 | [runbooks/test-health-self-check.md](./runbooks/test-health-self-check.md) |
-| 理解整体架构 | [design/ARCHITECTURE_REFACTOR.md](./design/ARCHITECTURE_REFACTOR.md) |
+| 理解当前架构、服务边界与设计取舍 | [当前架构设计](./design/current-architecture.md) |
 | 了解大模型如何计费 | [design/llm-billing-explained.md](./design/llm-billing-explained.md) |
 | 理解路由分组、价格倍率与订阅额度策略 | [design/group-concepts-and-implementation.md](./design/group-concepts-and-implementation.md) |
 | 清点分组数据、检查模型与来源授权 | [design/group-audit-and-routing-authorization.md](./design/group-audit-and-routing-authorization.md) |
@@ -163,6 +163,8 @@ N1 跨时段计价、N2 异机备份与恢复、N3 MFA 和 N4 公告与本人模
 
 | 文档 | 主题 |
 |------|------|
+| [current-architecture.md](./design/current-architecture.md) | 当前拓扑、服务与数据归属、核心请求链路及架构取舍 |
+| [ARCHITECTURE_REFACTOR.md](./design/ARCHITECTURE_REFACTOR.md) | 历史架构诊断与重构方案 |
 | [v0.11.0-roadmap.md](./design/v0.11.0-roadmap.md) | v0.11 路线图：计费准确性、模型治理与路由运营闭环（已收尾） |
 | [v0.16-roadmap.md](./design/v0.16-roadmap.md) | v0.16 路线图：上线收尾、契约加固、运营增强与工程卫生（已收尾） |
 | [v0.17-roadmap.md](./design/v0.17-roadmap.md) | v0.17 路线图：工程收尾、运营闭环与按需增强（已收尾） |

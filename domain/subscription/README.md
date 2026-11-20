@@ -57,10 +57,11 @@ per-service `internal/biz` + `internal/data` layers.
 | **billing**    | `newApp` in `wire.go` (billing)                    |
 | **relay-gateway** | `newApp` in `wire.go` (relay-gateway)            |
 
-Each consumer independently constructs its own
-`subscriptiondata.NewRepository(...)` (or `NewRepositoryFromEnv`) using its
-own config's `Data.Database` settings. The `Repository` value is then wired
-into `biz.NewSubscriptionUsecase`, `NewGroupUsecase`, `NewPlanUsecase`, etc.
+Billing passes its DB and Redis clients directly to `subscriptiondata.NewRepository`.
+Admin supplies its resolved DSN to `NewRepositoryFromEnv`. Relay uses the same
+constructor with environment-derived settings when subscription or entitlement
+support is enabled. Configure all participating processes to use the same
+authoritative subscription database.
 
 ## Subscription-account platforms
 
@@ -85,9 +86,9 @@ so they reuse the `ClaudeOAuthAdaptor` request construction; only the
 
 ### Schema owner
 
-The subscription schema is **owned by the shared migration set** in the
-repository root `migrations/` directory, not by any single service. The
-relevant migrations are:
+The repository root `migrations/` directory maintains the subscription schema.
+[`ownership.yaml`](../../migrations/ownership.yaml) assigns these migrations to
+Billing in deployments with per-service schemas. Examples include the following files.
 
 - `039_create_user_subscriptions.sql`
 - `040_create_subscription_groups.sql`
@@ -97,29 +98,22 @@ relevant migrations are:
 - `049_backfill_subscription_usage_from_ledgers.sql`
 - `059_enforce_single_active_subscription.sql`
 
-SQLite equivalents live under `migrations/sqlite/`.
-
-There is **no single service** that exclusively owns subscription schema
-migrations. Migrations are run once per database, typically by a
-centralized deploy/migrate job (see the root `migrations/` directory and
-`Makefile` `migrate` target), not by any individual service at startup.
+SQLite and PostgreSQL equivalents live under `migrations/sqlite/` and
+`migrations/postgres/`. The deployment migration job applies the appropriate
+migration set before service startup.
 
 ### Write ownership
 
-| Table                        | Primary writer(s)                 |
-|------------------------------|-----------------------------------|
-| `user_subscriptions`         | admin (create/revoke), billing (renewal) |
-| `subscription_groups`        | admin                             |
-| `subscription_plans`         | admin                             |
-| `subscription_usage_windows` | relay-gateway (quota middleware), billing (commit pipeline) |
+| Data | Primary writers |
+| ---- | --------------- |
+| `user_subscriptions` lifecycle | Admin for manual management and legacy fulfillment. Billing for contract purchases and changes, payment fulfillment, refunds and expiry |
+| `subscription_groups`, `subscription_plans` | Admin |
+| Settled usage in `user_subscriptions` and `subscription_window_charges` | Billing settlement transactions |
 
-Because the library is shared in-process, all three services operate against
-the same database. Row-level locking (`AddUsageByIDInTx`,
-`GetByIDInTx`) is used where concurrent writes can occur (e.g.,
-relay-gateway's quota middleware and billing's dual-track commit pipeline
-both write usage to the same subscription row). This is safe under the
-modular-monolith model where all three services point at the same DB
-instance.
+Relay reads entitlements for admission. The optional legacy quota middleware
+records precheck metrics and continues to the request handler. Billing applies
+the final usage, using transaction-scoped locking and deduplication when settling
+wallet and subscription charges. [Relay precheck](../../internal/server/subscription_middleware.go) · [Billing settlement](../../app/billing/internal/biz/billing.go) · [Frozen usage](data/frozen_usage.go)
 
 ### When to reconsider this boundary
 
