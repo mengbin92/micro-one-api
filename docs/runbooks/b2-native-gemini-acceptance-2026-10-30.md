@@ -2,6 +2,8 @@
 
 > 日期：2026-10-30（Asia/Shanghai）。范围：[B2 冻结契约](../design/b2-native-gemini-contract-2026-10-30.md)。状态：已部署生产，真实来源/SDK/付费验收保留。维护者确认没有指定 Gemini 客户端、模型或测试渠道；工程使用官方 REST 形状及隔离来源，生产完成鉴权、拒绝分支和健康验收。
 
+2026-11-20 补验。隔离 JSON/SSE 回归通过。正式验收采用验收当日 Go SDK 最新稳定版，本次核对为 `google.golang.org/genai v1.79.1`。生产没有 Gemini 渠道、模型或价目，维护者确认当前没有 Gemini 账号，真实来源及付费验收标为待确认。 [Go SDK 发布记录](https://github.com/googleapis/go-genai/releases/tag/v1.79.1)
+
 ## 1. 实现
 
 - `/v1beta/models/{model}:generateContent` / `streamGenerateContent` 接入既有 staged executor、Identity/Channel 鉴权和模型映射、Billing 预扣/结算、Log canonical 用量。

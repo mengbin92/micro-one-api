@@ -1,15 +1,49 @@
 # 项目 TODO
 
-> 最后更新：2026-11-14（北京时间）
+> 最后更新为 2026-11-20（北京时间）。
 >
-> **当前执行入口（N1 除跨时段外已闭环、跨时段定时待执行，N2/N3/N4 已完成验收；C1/C2 工程交付、真实验收待补；RPO 余量转运维跟踪）**：[计价核验、备份恢复与真实用户验收](./design/next-stage-plan-2026-11-08.md)。N1 已完成获准的只读核账、三项配置治理、价格发布三库专项、分时闲时付费、兜底治理、档位/长上下文合同核对及上游最终实扣，见 [闭环记录](./runbooks/n1-pricing-closure-2026-11-14.md)；仅跨时段实测待 2026-11-17 执行。N2 已完成首备、异机读回、真实归档隔离恢复及两次实际日调度，见 [N2 记录](./runbooks/n2-offsite-recovery-2026-11-09.md)。N3/N4 已完成真实验收，见 [N3 记录](./runbooks/n3-mfa-auth-acceptance-2026-11-11.md) 与 [N4 记录](./runbooks/n4-announcements-acceptance-2026-11-12.md)。C1 真实设备验收待配置 RP，C2 真实付费调用待确认上游渠道与计价，分别见 [C1 记录](./runbooks/c1-passkey-acceptance-2026-11-12.md) 与 [C2 记录](./runbooks/c2-rerank-acceptance-2026-11-12.md)。
+> **当前执行入口**为 [计价核验、备份恢复与真实用户验收](./design/next-stage-plan-2026-11-08.md)。
 >
-> **已完成基线**：A1–A4、B1–B4 工程与生产部署落地，最新发布为 [v0.42.0](./releases/release-v0.42.0.md)；B1 日历已在 11 月 5 日延至 2027-12-31。原 12 周计划已归档，不重复开发。
->
-> **真实验收缺口**：N1 仅剩跨时段生产实测，其余兜底治理、档位/长上下文合同及上游最终实扣已闭环；C1 Passkey 待配置 RP/Origin 后完成真实设备注册、登录及吊销；C2 Rerank 待确认上游渠道、模型价格与小额预算后完成真实付费调用。N2 仅保留 24h 周期无执行/上传余量的运维跟踪；N3/N4 已完成退出条件。账单证据扫描停用、历史核验 pending、有限契约灰度及 executor/独立验收原边界继续保留。
+> **发布基线**为 [v0.47.0](./releases/release-v0.47.0.md)。本轮生产 Billing 制品来自 `develop@2899bdf4`，自然对账 #1455 完成，生产冻结明细使用主键查找。生产状态以分服务验收记录为准。
 
-## 当前阶段待办（N1 除跨时段外已闭环、跨时段定时待执行，N2/N3/N4 已完成验收；C1/C2 真实验收待补）
+## 当前阶段待办
 
+P1–P3 表示建议处理顺序。完整退出条件及证据见[当前路线图](./design/next-stage-plan-2026-11-08.md)。
+
+### 已实现，待验收
+
+- [ ] **P1 · C1 Passkey**。生产 RP 已启用，公网挑战通过。待桌面与移动真实注册、登录、吊销。 [C1 记录](./runbooks/c1-passkey-acceptance-2026-11-12.md)
+- [ ] **P1 · C2 Rerank**。隔离回归通过。生产目录及价目无可用模型，待确认上游渠道、模型价格和小额预算，实测 quota、账单及 usage。 [C2 记录](./runbooks/c2-rerank-acceptance-2026-11-12.md)
+- [ ] **P1 · v0.46.3 真实业务验收**。生产交付与 Billing 对账热修复已通过。待真实续期、语音终态与截断、管理写与审计翻页、通知及 Redis 恢复场景。 [发布验收](./releases/release-v0.46.3.md#验证)
+- [ ] **P1（启用时）· A1 Turnstile**。11 月 20 日生产回读为关闭，site key 和 secret 均未注入。配置后补真实挑战验收。 [A1 记录](./runbooks/a1-self-service-acceptance-2026-10-27.md)
+- [ ] **P2 · 独立 usage 留证**。原窗口跨 3 个版本，完整 Chat 终态均为 `unsupported`。新版本的 48 个初样均为 `verified`，待同版本及配置 48 小时、协议与样本量、amd64 性能、真实收件及 ACK。 [观察手册](./runbooks/upstream-usage-observation.md#8-未完成与未验证)
+- [ ] **P2 · Executor 全量准入**。11 月 20 日生产复核仍缺同入口、协议及时段的可比流量，正式七天未起算。 [观察手册](./design/v0.23-executor-observation.md)
+- [ ] **P2（外部条件）· 微信 Native、原生 Gemini、订阅账号**。微信待真实商户实付回调与发放。Gemini 采用 Go SDK 最新稳定版，账号待确认。订阅账号待真实 OAuth 轮换及多副本故障切换，专属组待固定组令牌及生产端到端证据。 [路线图](./design/next-stage-plan-2026-11-08.md#3-已实现待验收)
+- [ ] **P2（保留）· 上游供应商账单证据**。扫描按既有决定停用，历史核验保留 `pending`。新核验须具备最终报告、执行覆盖及 owner。渠道 1 未提供记账接口，接口对账为 `N/A`，实际采购扣费保留 `unknown`。 [账务证据](./runbooks/vendor-evidence-overdue-2026-10-26.md#2026-11-20-渠道-1-账务证据)
+
+### 未实现
+
+- [ ] **P2 · 上游 usage 留证覆盖**。新增语音 Realtime 的逐轮终态、监控探针尚未接入独立留证。`canary` / `internal_test` 尚无对应 producer。 [观察手册](./runbooks/upstream-usage-observation.md) · [Realtime 处理代码](../internal/server/stepaudio_realtime.go#L224)
+- [ ] **P2 · 实时语音扩展**。现有单轮已通过生产结算，仍缺服务端 VAD 自动响应、独立输入转写和 TTS 专用 WebSocket。 [语音支持范围](./releases/release-v0.46.0.md) · [生产验收](./runbooks/step-plan-model-compatibility-2026-11-18.md)
+- [ ] **P2 · Kimi OAuth/PKCE**。静态 Key 已可用，管理台授权码绑定待实现。 [订阅设计](./design/cn-subscription-accounts-roadmap.md)
+- **P3（范围外）· 管理化备份扩展**。PostgreSQL/SQLite 后台备份、Redis Cluster/副本、在线备份、生产覆盖恢复和 PITR 尚未覆盖。 [B3 契约](./design/b3-managed-backup-contract-2026-10-30.md)
+
+### 未立项
+
+| 候选优先级 | 事项 |
+| --- | --- |
+| P2 | C3 原生 Bedrock/Vertex，C4 Gemini CLI/Code Assist 等订阅平台。先确认真实客户、授权来源和计价。 |
+| P3 | C5 账号有界排队，C6 持续返佣与推广中心，C7 图片编辑与异步图片任务，C8 视频/音乐任务，C9 插件运行时与表达式计价。 |
+
+候选优先级用于安排评估，正式优先级与排期在立项时确认。 [候选池](./design/next-stage-plan-2026-11-08.md#5-未立项)
+
+### 已完成与运维跟踪
+
+A1–A4、B1–B4 工程和生产部署已完成。B1 日历已延至 2027-12-31。 [归档计划](./design/next-stage-plan-2026-10-26.md)
+
+- [x] **P2 · 受限固定组 Key**。支持到期时间、有限 Token 配额和白名单，沿用二次验证。隔离链路及桌面、移动验证通过，Identity、Admin、Web 已更新生产。 [签发说明](./runbooks/routing-groups-runbook.md#56-签发短期固定组-key)
+- [x] **P1 · N1 跨时段计价**。13:59:57.146 预扣，14:00:01.420 收到完整终态，唯一账本按闲时价结算订阅 49 quota，钱包扣 0。上游原始数字与账本一致，独立观察解析问题继续单列。 [N1 记录](./runbooks/n1-pricing-closure-2026-11-14.md)
+- [x] **P2 · Billing MySQL 对账索引回归**。新装和混合排序规则的隔离库均使用 `PRIMARY / eq_ref`，三库金额回归通过。生产已上线并验证相同索引访问及自然对账 #1455。 [发布验收](./releases/release-v0.47.0.md#验证)
 - [x] 核对远端分支/tag 与既有证据，建立新规划草案并同步入口。
 - [x] 维护者授权 N1 只读核账；完成逐模型分类、2,971 笔七天账本及监控取证。
 - [x] N2 异机直连、当前停写窗口、每 24h/保留 7 份已获维护者确认。
@@ -24,22 +58,20 @@
 - [x] N1 兜底治理：所有启用渠道要求显式 registry mapping；未注册模型 503 且无 reservation/账本。
 - [x] N1 档位/长上下文：上游不支持真实三档切换；1M 统一费率，190,610 tokens 实测通过。
 - [x] N1 上游最终实扣：余额 43.66→43.47 CNY，平台账本 0.1908 CNY。
-- [ ] N1 跨时段：2026-11-17 08:59:55 定时发起，完成后回填。
 - [x] N2 / P1：异机直连、首个生产备份、异机独立读回、真实归档隔离恢复及原 owner 核对通过。
 - [x] N2 / P1：每天策略启用，首个实际日槽、writer 恢复、存储峰值与健康核对通过。
 - [x] N2 / P2：修复 MySQL 同槽空闲轮询 409 并部署 worker（`66709a1b`）；三库 9 项/race、单元门禁、OCR 及连续 ready 通过。
 - [x] N2 / P1：11 月 10 日第二个实际日槽成功，归档 31.674 MiB、整份读回摘要一致，日槽 2/2；本窗重建最大备份年龄 19h21m31s，见 [N2 记录](./runbooks/n2-offsite-recovery-2026-11-09.md)。
 - [x] N2 / P1：按原计划退出条件确认完成；首备、隔离恢复、异机读回、实测及两次实际日调度均已通过。
 - 运维跟踪（不阻塞 N2）：24h 周期无执行/上传余量，继续监测备份年龄和失败告警；长期 SLA 或频率调整另行确认，现有每天策略未改。
-- [ ] 阶段复核后选择一个有真实需求的新功能包（C3/C4 尚未拍板）。
 - [x] C1 / P1：Passkey 已随 v0.41.0 完成工程、生产迁移与暗开关验证，见 [C1 记录](./runbooks/c1-passkey-acceptance-2026-11-12.md)。
-- [ ] C1 / P1：配置生产 RP/Origin 后完成真实设备注册、登录及吊销验收。
 - [x] C2 / P1：Rerank 已随 v0.41.0 完成工程、生产部署、路由与鉴权验证，见 [C2 记录](./runbooks/c2-rerank-acceptance-2026-11-12.md)。
-- [ ] C2 / P1：确认上游渠道、模型价格与小额预算后完成真实付费调用和 quota/账单/usage 核验。
+- [x] v0.46.3 / P1。6 个生产服务、同源 Channel worker 和 Web 已升级并通过烟测。Relay、Notify 沿用 `09ad6874` 制品。 [发布验收](./releases/release-v0.46.3.md#验证)
+- [x] Billing / P1。热修复单独上线，生产自然对账 #1450 完成，无新增 1267，两条旧差异与回滚后的 #1449 一致。 [发布验收](./releases/release-v0.46.3.md#验证)
 
 ## 历史交付快照说明
 
-以下保留各条登记时间的过程，“未部署/未发版/待开始”不作为当前待办。A1–A4、B1–B4 后续交付见[已归档计划](./design/next-stage-plan-2026-10-26.md)，当前状态以本页顶部和新草案为准。
+以下保留各条登记时间的过程。当前状态以本页顶部和[当前路线图](./design/next-stage-plan-2026-11-08.md)为准。
 
 ## A1 历史交付（2026-10-27）
 

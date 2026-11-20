@@ -112,6 +112,7 @@ var rpcPolicies = map[string]RPCPolicy{
 	"/api.identity.v1.IdentityService/Login":                                 {Owner: "identity", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.identity.v1.IdentityService/Register":                              {Owner: "identity", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.identity.v1.IdentityService/CreateAccessToken":                     {Owner: "identity", UserCallers: []string{"admin"}, SystemCallers: []string{}},
+	"/api.identity.v1.IdentityService/CreateRestrictedRoutingToken":          {Owner: "identity", UserCallers: []string{"admin"}},
 	"/api.identity.v1.IdentityService/ListUsers":                             {Owner: "identity", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.identity.v1.IdentityService/CreateUser":                            {Owner: "identity", UserCallers: []string{"admin"}, SystemCallers: []string{}},
 	"/api.identity.v1.IdentityService/UpdateUser":                            {Owner: "identity", UserCallers: []string{"admin"}, SystemCallers: []string{}},

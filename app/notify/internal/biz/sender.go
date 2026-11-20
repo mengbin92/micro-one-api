@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -149,11 +150,12 @@ func (s *MultiSender) sendEmail(ctx context.Context, n *Notification) error {
 	}
 	addr := fmt.Sprintf("%s:%d", s.cfg.SMTPHost, port)
 	headers := map[string]string{
-		"From":         s.cfg.SMTPFrom,
-		"To":           n.Recipient,
-		"Subject":      n.Subject,
-		"MIME-Version": "1.0",
-		"Content-Type": "text/plain; charset=UTF-8",
+		"From":                      s.cfg.SMTPFrom,
+		"To":                        n.Recipient,
+		"Subject":                   n.Subject,
+		"MIME-Version":              "1.0",
+		"Content-Type":              "text/plain; charset=UTF-8",
+		"Content-Transfer-Encoding": "base64",
 	}
 	var msg strings.Builder
 	for k, v := range headers {
@@ -163,7 +165,13 @@ func (s *MultiSender) sendEmail(ctx context.Context, n *Notification) error {
 		msg.WriteString("\r\n")
 	}
 	msg.WriteString("\r\n")
-	msg.WriteString(n.Content)
+	// Each 57-byte chunk encodes to a MIME line of at most 76 characters.
+	const bytesPerLine = 57
+	for start := 0; start < len(n.Content); start += bytesPerLine {
+		end := min(start+bytesPerLine, len(n.Content))
+		msg.WriteString(base64.StdEncoding.EncodeToString([]byte(n.Content[start:end])))
+		msg.WriteString("\r\n")
+	}
 
 	var auth smtp.Auth
 	if s.cfg.SMTPUser != "" {

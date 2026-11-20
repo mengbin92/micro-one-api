@@ -1,12 +1,9 @@
 # 上游 usage 观察留证：实现、配置与回滚
 
-更新：2026-11-17（北京时间）。对应方案：`.codex/upstream-usage-observation-completion-plan-2026-11-16.md`
+更新为 2026-11-20（北京时间）。对应方案为 `.codex/upstream-usage-observation-completion-plan-2026-11-16.md`
 （本地规划文档，未纳入版本库）。
 
-状态：**M1–M3 已实现，R01–R22 的后续复核又发现跨尝试身份、WS、范围隔离、查询权限与故障恢复边界，已继续修复并补回归；本轮统一验证结果另行留证。
-M4 生产发布与 M5 48h 窗口验收尚未执行。**
-本文不表示生产已开启观察、尚未进行真实三库/性能/通知收件验证，也不代表任何协议或 cohort
-已被验收。未完成项见文末「未完成与未验证」。
+**M1–M4 已交付。** v0.45.0 发布及生产接线已完成，SQLite、MySQL、PostgreSQL 专项通过。11 月 17 日已开启观察。M5 的原 48 小时窗口跨了三个 Relay 版本，11 月 20 日回查仍无可放行的完整窗口。 [v0.45.0 验证](../releases/release-v0.45.0.md#验证)
 
 ## 1. 范围与不变量
 
@@ -106,6 +103,8 @@ SQL（`user_id` 列），请求里的 `user_id` 只能收窄；无法表达的�
 规则约定：
 - 异常/缺口规则同时看事件时间戳与 `increase()`：首样本为 1 的序列也能立刻告警，重启后靠
   counter 分支补位；时间戳为 0 表示“从未发生”，不会误报。
+- 渠道 1 的完整 Chat 观测会校验两套 token 字段是否等值，以及缓存命中与未命中是否合计为输入量。
+  缓存写入计数保留在原始 usage，账务继续使用独立的原生解析结果。别名冲突继续计入异常。
 - 积压、失联、财务新鲜度全部按 `instance` 组合判定，`max()` 不再让健康实例掩盖坏实例。
 - `expected=1` 但 `enabled!=1` 才告警“意外关闭”；合法默认关闭（`expected=0`）不误报。
 - `transport_sends_total{expected="true",observed="false"}` 及对应事件时间戳是 sink 漏挂的独立证据，
@@ -209,17 +208,24 @@ docker run --rm --entrypoint /bin/promtool -v "$PWD/deploy/prometheus/alerts:/ru
 
 ## 8. 未完成与未验证
 
-以下项目**尚未**完成，不能据本文宣称验收通过：
+**原窗口回查**。从 11 月 17 日 13:44:07 至 11 月 19 日 13:44:07，Log 存有 2,785 条事件，1,289 个 send 各有唯一的 started 与 terminal 记录，另有 207 条 checkpoint。窗口内实际覆盖三个 Relay 源码版本，1,244 个完整终态均为 Chat `unsupported`，Responses 缺完整终态。该窗口未达到 M5 放行条件。 [窗内换版](../releases/release-v0.45.4.md#验证)
 
-- 真实 MySQL/PostgreSQL 环境的迁移与唯一键冲突测试（本地只有 SQLite）。
+**当前版本初样**。按生产 `09ad6874` 源码过滤，11 月 20 日只读回查共 48 次完整 Chat send，全部 `verified`。样本量、协议范围和窗口时长仍待补。观察告警组 11 条规则健康，历史 firing 和 resolved 分别有 29、28 条 `sent`，各有 1 条失败，应用 ACK 和真实收件待确认。
+
+11 月 20 日 10:57 升级 Log 接收端。至 11:18:34，迁移 152 已登记，接收端 ready，ACK 数保持 24、pending 为 0，生产 Log 尚无升级后的自然观察事件。完整验收按新接收端版本边界重新留证。
+
+11 月 20 日 14:00 的 N1 受控样本已收到成对起点和完整终态。原始用量与控制台和账本一致，严格观察解析仍报 `unsupported / unknown_usage_field`。该样本可用于核实跨时段冻结计价，观察契约补齐及正式 48 小时验收继续单列。 [脱敏证据](evidence/n1-cross-period-2026-11-20.json)
+
+剩余验证包括以下内容。
+
 - linux/amd64 目标架构的 P95/P99、写盘耗时、CPU/RSS、WAL 增长与慢盘/接收端不可用测量。
-- 生产告警通知的实际收件/ACK 证据（隔离环境故障注入）。
-- 48h 完整窗口、逐 send 对账、cohort 最低 100 样本、财务开关对照。
-- 生产发布、镜像交叉构建、规则加载与回滚演练。
+- 生产告警通知的实际收件和 ACK 证据。
+- 同一版本与配置的 48h 完整窗口、逐 send 对账、每 cohort 至少 100 样本、财务开关对照及回滚演练。
 - HTTP 自动重发（同一 `http.Client.Do` 内由 Go 触发的隐式重发）仍按一次 send 记账；
   redirect 已逐跳拆分，但“TCP 重传不新增业务 send”的口径未在真实网络故障下核对。
 - canary / internal_test purpose 目前没有 relay 生产者；health_probe 依据
   `requesttrace.HealthProbeID` 判定。
 - 监控探针路径（`internal/data/upstream_probe.go`）尚未挂载 observation sink，
   探针发送暂不计入观察覆盖。
+- 新增语音 `/v1/realtime` 使用单独的 WebSocket 桥接，逐轮终态尚未接入独立观察。
 - 告警恢复已覆盖“事件持久化并 ACK 后、首次 scrape 前重启”的场景；不可写本地盘且立即崩溃的信号不在该保证内。

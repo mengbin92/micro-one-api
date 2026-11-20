@@ -7,6 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.47.0] - 2026-11-20
+
+MINOR 新增短期固定组 API Key，修复 MySQL 订阅窗口对账、上游 usage 留证、Relay 5xx 告警及长邮件投递。无新增数据库迁移。详见 [发布记录](docs/releases/release-v0.47.0.md)。
+
+### Added
+
+- 固定路由组支持签发短期 API Key，可设置到期时间、有限 Token 配额和模型白名单。新入口沿用本人会话与二次验证，限制随 Key 一次写入。
+
+### Fixed
+
+- MySQL 冻结订阅费用对账按实际列排序规则生成 JOIN，新装库与升级库均使用冻结明细主键查找。
+- Relay 的独立 Chat usage 留证校验并合并指定来源的等价字段，覆盖 JSON/SSE 和缓存分桶，保留原始报文与财务结算规则。
+- Prometheus 与 Grafana 按方法、路由和实例计算 Relay 5xx 比例。Notify 对长告警邮件正文使用折行的 MIME Base64 编码。
+
 ## [0.46.3] - 2026-11-19
 
 PATCH 修复订阅与用量结算、语音网关、管理台和后台任务。无新增数据库迁移。详见 [发布记录](docs/releases/release-v0.46.3.md)。

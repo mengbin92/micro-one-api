@@ -1,6 +1,7 @@
 package server
 
 import (
+	"io"
 	"micro-one-api/app/admin/internal/service"
 	"micro-one-api/domain/routing"
 	"micro-one-api/pkg/jsonx"
@@ -101,14 +102,23 @@ func handleRoutingToken(w http.ResponseWriter, r *http.Request, s *service.Admin
 	if !ok {
 		return
 	}
-	create := r.URL.Path == "/api/v1/routing-tokens"
+	restricted := r.URL.Path == "/api/v1/routing-tokens/restricted"
+	create := restricted || r.URL.Path == "/api/v1/routing-tokens"
 	if create && r.Method != http.MethodPost || !create && r.Method != http.MethodPatch {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	var body service.RoutingTokenRequest
-	if err := jsonx.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&body); err != nil {
+	decoder := jsonx.NewDecoder(http.MaxBytesReader(w, r.Body, 16384))
+	if restricted {
+		decoder.DisallowUnknownFields()
+	}
+	if err := decoder.Decode(&body); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if restricted != (body.Restrictions != nil) || restricted && decoder.Decode(&struct{}{}) != io.EOF {
+		writeJSON(w, http.StatusBadRequest, apiResponse(false, "无效的短期 Key 限制", nil))
 		return
 	}
 	var out map[string]any
@@ -127,6 +137,9 @@ func handleRoutingToken(w http.ResponseWriter, r *http.Request, s *service.Admin
 	if err != nil {
 		routingGroupError(w, err)
 		return
+	}
+	if create {
+		w.Header().Set("Cache-Control", "no-store")
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", out))
 }

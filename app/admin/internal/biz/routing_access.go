@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"math"
+	"slices"
 
 	"github.com/go-kratos/kratos/v3/errors"
 	identityv1 "micro-one-api/api/identity/v1"
@@ -53,10 +54,14 @@ type RoutingToken struct {
 	GroupID, Revision, CreatedAt int64
 	GroupIDs                     []int64
 }
+type RoutingTokenRestrictions struct {
+	ExpireAt, RemainQuota int64
+	Models                []string
+}
 type RoutingAccessRepo interface {
 	Facts(context.Context, int64) (*routing.SubjectFacts, error)
 	Change(context.Context, RoutingAccessChange) (*routing.SubjectFacts, error)
-	CreateToken(context.Context, int64, string, string, int64, []int64) (*RoutingToken, error)
+	CreateToken(context.Context, int64, string, string, int64, []int64, *RoutingTokenRestrictions) (*RoutingToken, error)
 	SetToken(context.Context, int64, int64, string, int64, int64, []int64) (int64, error)
 	Price(context.Context, int64, int64) (RoutingPrice, error)
 	Models(context.Context, int64, string) ([]string, error)
@@ -191,7 +196,7 @@ func (uc *RoutingAccessUsecase) validateOrderedCandidates(ctx context.Context, f
 	return nil
 }
 
-func (uc *RoutingAccessUsecase) CreateToken(ctx context.Context, userID int64, name, mode string, groupID int64, groupIDs []int64) (*RoutingToken, error) {
+func (uc *RoutingAccessUsecase) CreateToken(ctx context.Context, userID int64, name, mode string, groupID int64, groupIDs []int64, restrictions *RoutingTokenRestrictions) (*RoutingToken, error) {
 	if mode == "fixed" && !fixedCreationEnabled() {
 		return nil, ErrRoutingGroupUnavailable
 	}
@@ -205,6 +210,9 @@ func (uc *RoutingAccessUsecase) CreateToken(ctx context.Context, userID int64, n
 	} else if !routing.ValidPolicy(mode, groupID) || strings.TrimSpace(name) == "" || len(groupIDs) > 0 {
 		return nil, ErrRoutingGroupInvalid
 	}
+	if restrictions != nil && (mode != "fixed" || restrictions.ExpireAt <= time.Now().Unix() || restrictions.RemainQuota <= 0 || len(restrictions.Models) == 0) {
+		return nil, ErrRoutingGroupInvalid
+	}
 	if err := uc.repo.CheckCapabilities(ctx); err != nil {
 		return nil, err
 	}
@@ -216,10 +224,24 @@ func (uc *RoutingAccessUsecase) CreateToken(ctx context.Context, userID int64, n
 		if err := uc.validateOrderedCandidates(ctx, facts, groupIDs); err != nil {
 			return nil, err
 		}
-	} else if _, err := uc.eligible(ctx, userID, groupID); err != nil {
-		return nil, err
+	} else {
+		group, err := uc.eligible(ctx, userID, groupID)
+		if err != nil {
+			return nil, err
+		}
+		if restrictions != nil {
+			models, err := uc.repo.Models(withRoutingReferenceRead(ctx), group.ID, group.Key)
+			if err != nil {
+				return nil, err
+			}
+			for _, model := range restrictions.Models {
+				if !slices.Contains(models, model) {
+					return nil, ErrRoutingGroupInvalid
+				}
+			}
+		}
 	}
-	return uc.repo.CreateToken(ctx, userID, strings.TrimSpace(name), mode, groupID, groupIDs)
+	return uc.repo.CreateToken(ctx, userID, strings.TrimSpace(name), mode, groupID, groupIDs, restrictions)
 }
 func (uc *RoutingAccessUsecase) SetToken(ctx context.Context, userID, tokenID int64, mode string, groupID, revision int64, groupIDs []int64) (int64, error) {
 	if mode == "fixed" && !fixedCreationEnabled() {

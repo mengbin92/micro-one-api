@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"micro-one-api/domain/routing"
 	"testing"
+	"time"
 )
 
 type accessRepoFake struct {
@@ -14,16 +15,54 @@ type accessRepoFake struct {
 	writes    int
 	capErr    error
 	lastGroup int64
+	limits    *RoutingTokenRestrictions
 }
 
 func (r *accessRepoFake) Facts(context.Context, int64) (*routing.SubjectFacts, error) {
 	return r.facts, nil
 }
 func (r *accessRepoFake) CheckCapabilities(context.Context) error { return r.capErr }
-func (r *accessRepoFake) CreateToken(_ context.Context, _ int64, _ string, _ string, id int64, groupIDs []int64) (*RoutingToken, error) {
+func (r *accessRepoFake) CreateToken(_ context.Context, _ int64, _ string, _ string, id int64, groupIDs []int64, restrictions *RoutingTokenRestrictions) (*RoutingToken, error) {
 	r.writes++
 	r.lastGroup = id
+	r.limits = restrictions
 	return &RoutingToken{ID: 1, GroupID: id, GroupIDs: groupIDs}, nil
+}
+
+func TestRestrictedRoutingTokenChecksEligibilityAndModelsBeforeIssue(t *testing.T) {
+	t.Setenv("ADMIN_ROUTING_FIXED_KEYS", "true")
+	ctx := context.Background()
+	r := &accessRepoFake{facts: &routing.SubjectFacts{
+		DefaultGroupID: 2, AccessRevision: 1, PublicGroupAccess: "explicit_only",
+		Grants: []routing.UserGroupGrant{{GroupID: 2, Status: "active"}},
+	}}
+	uc := NewRoutingAccessUsecase(accessGroupsFake{groups: []*routing.Group{
+		{ID: 2, Key: "vip", Status: "enabled"}, {ID: 3, Key: "private", Status: "enabled"},
+	}}, r)
+	valid := RoutingTokenRestrictions{ExpireAt: time.Now().Add(time.Hour).Unix(), RemainQuota: 1488, Models: []string{"m"}}
+	for _, tt := range []struct {
+		name, mode string
+		group      int64
+		limits     RoutingTokenRestrictions
+		want       error
+	}{
+		{"wrong group", "fixed", 3, valid, ErrRoutingAccessDenied},
+		{"inherit", "inherit", 0, valid, ErrRoutingGroupInvalid},
+		{"expired", "fixed", 2, RoutingTokenRestrictions{ExpireAt: 1, RemainQuota: 1, Models: []string{"m"}}, ErrRoutingGroupInvalid},
+		{"zero quota", "fixed", 2, RoutingTokenRestrictions{ExpireAt: valid.ExpireAt, Models: valid.Models}, ErrRoutingGroupInvalid},
+		{"empty models", "fixed", 2, RoutingTokenRestrictions{ExpireAt: valid.ExpireAt, RemainQuota: 1}, ErrRoutingGroupInvalid},
+		{"unavailable model", "fixed", 2, RoutingTokenRestrictions{ExpireAt: valid.ExpireAt, RemainQuota: 1, Models: []string{"other"}}, ErrRoutingGroupInvalid},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := uc.CreateToken(ctx, 10, "n1", tt.mode, tt.group, nil, &tt.limits)
+			require.ErrorIs(t, err, tt.want)
+			require.Zero(t, r.writes)
+		})
+	}
+	_, err := uc.CreateToken(ctx, 10, "n1", "fixed", 2, nil, &valid)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.writes)
+	require.Equal(t, &valid, r.limits)
 }
 func (r *accessRepoFake) SetToken(_ context.Context, _ int64, _ int64, _ string, _ int64, _ int64, _ []int64) (int64, error) {
 	r.writes++
@@ -62,18 +101,18 @@ func TestRoutingAccessOrchestration(t *testing.T) {
 	r := &accessRepoFake{facts: &routing.SubjectFacts{DefaultGroupID: 1, AccessRevision: 1, PublicGroupAccess: "explicit_only", Grants: []routing.UserGroupGrant{{GroupID: 2, Status: "active"}}}}
 	g := accessGroupsFake{groups: []*routing.Group{{ID: 1, Key: "default", Status: "enabled"}, {ID: 2, Key: "vip", Status: "enabled"}, {ID: 3, Key: "public", Status: "enabled", AccessMode: "public"}}}
 	uc := NewRoutingAccessUsecase(g, r)
-	_, err := uc.CreateToken(ctx, 10, "k", "fixed", 3, nil)
+	_, err := uc.CreateToken(ctx, 10, "k", "fixed", 3, nil, nil)
 	require.Error(t, err)
 	require.Zero(t, r.writes)
-	_, err = uc.CreateToken(ctx, 10, "k", "inherit", 0, nil)
+	_, err = uc.CreateToken(ctx, 10, "k", "inherit", 0, nil, nil)
 	require.Error(t, err, "default alone grants nothing")
-	_, err = uc.CreateToken(ctx, 10, "k", "fixed", 2, nil)
+	_, err = uc.CreateToken(ctx, 10, "k", "fixed", 2, nil, nil)
 	require.NoError(t, err)
 	require.EqualValues(t, 2, r.lastGroup)
-	_, err = uc.CreateToken(ctx, 10, "k", "inherit", 2, nil)
+	_, err = uc.CreateToken(ctx, 10, "k", "inherit", 2, nil, nil)
 	require.Error(t, err)
 	r.capErr = fmt.Errorf("old billing")
-	_, err = uc.CreateToken(ctx, 10, "k", "fixed", 2, nil)
+	_, err = uc.CreateToken(ctx, 10, "k", "fixed", 2, nil, nil)
 	require.Error(t, err)
 	require.Equal(t, 1, r.writes)
 	r.capErr = nil
@@ -84,16 +123,16 @@ func TestRoutingAccessOrchestration(t *testing.T) {
 	_, err = uc.Change(ctx, RoutingAccessChange{UserID: 10, Operation: "grant", GroupID: 2}, true)
 	require.Error(t, err)
 	g.groups[1].Status = "disabled"
-	_, err = uc.CreateToken(ctx, 10, "k", "fixed", 2, nil)
+	_, err = uc.CreateToken(ctx, 10, "k", "fixed", 2, nil, nil)
 	require.Error(t, err)
 
 	// Closing creation must retain the directory, inherit creation and revoke.
 	g.groups[1].Status = "enabled"
 	r.facts.DefaultGroupID = 2
 	t.Setenv("ADMIN_ROUTING_FIXED_KEYS", "false")
-	_, err = uc.CreateToken(ctx, 10, "k", "fixed", 2, nil)
+	_, err = uc.CreateToken(ctx, 10, "k", "fixed", 2, nil, nil)
 	require.Error(t, err)
-	_, err = uc.CreateToken(ctx, 10, "k", "inherit", 0, nil)
+	_, err = uc.CreateToken(ctx, 10, "k", "inherit", 0, nil, nil)
 	require.NoError(t, err)
 	_, err = uc.Change(ctx, RoutingAccessChange{UserID: 10, Operation: "grant", GroupID: 2}, false)
 	require.Error(t, err)
@@ -119,36 +158,36 @@ func TestOrderedTokenCreationValidation(t *testing.T) {
 	uc := NewRoutingAccessUsecase(g, r)
 
 	// Gate off by default.
-	_, err := uc.CreateToken(ctx, 10, "k", "ordered", 0, []int64{2})
+	_, err := uc.CreateToken(ctx, 10, "k", "ordered", 0, []int64{2}, nil)
 	require.ErrorIs(t, err, ErrRoutingGroupUnavailable)
 	require.Zero(t, r.writes)
 
 	t.Setenv("ADMIN_ROUTING_ORDERED_KEYS", "true")
 
 	// Ordered requires a valid explicit list and no fixed group id.
-	_, err = uc.CreateToken(ctx, 10, "k", "ordered", 2, nil)
+	_, err = uc.CreateToken(ctx, 10, "k", "ordered", 2, nil, nil)
 	require.ErrorIs(t, err, ErrRoutingGroupInvalid)
-	_, err = uc.CreateToken(ctx, 10, "k", "ordered", 0, []int64{2, 2})
+	_, err = uc.CreateToken(ctx, 10, "k", "ordered", 0, []int64{2, 2}, nil)
 	require.ErrorIs(t, err, ErrRoutingGroupInvalid)
-	_, err = uc.CreateToken(ctx, 10, "k", "inherit", 0, []int64{2})
+	_, err = uc.CreateToken(ctx, 10, "k", "inherit", 0, []int64{2}, nil)
 	require.ErrorIs(t, err, ErrRoutingGroupInvalid, "non-ordered modes reject a candidate list")
 	require.Zero(t, r.writes)
 
 	// At least one currently eligible group; pre-listed inaccessible groups
 	// are allowed and become effective once granted.
-	tok, err := uc.CreateToken(ctx, 10, "k", "ordered", 0, []int64{2, 4})
+	tok, err := uc.CreateToken(ctx, 10, "k", "ordered", 0, []int64{2, 4}, nil)
 	require.NoError(t, err)
 	require.Equal(t, []int64{2, 4}, tok.GroupIDs)
 	require.EqualValues(t, 1, r.writes)
 
 	// Archived or unknown groups invalidate the list.
-	_, err = uc.CreateToken(ctx, 10, "k", "ordered", 0, []int64{2, 3})
+	_, err = uc.CreateToken(ctx, 10, "k", "ordered", 0, []int64{2, 3}, nil)
 	require.ErrorIs(t, err, ErrRoutingGroupInvalid)
-	_, err = uc.CreateToken(ctx, 10, "k", "ordered", 0, []int64{2, 9})
+	_, err = uc.CreateToken(ctx, 10, "k", "ordered", 0, []int64{2, 9}, nil)
 	require.ErrorIs(t, err, ErrRoutingGroupInvalid)
 
 	// A list with no currently eligible group is denied.
-	_, err = uc.CreateToken(ctx, 10, "k", "ordered", 0, []int64{4})
+	_, err = uc.CreateToken(ctx, 10, "k", "ordered", 0, []int64{4}, nil)
 	require.ErrorIs(t, err, ErrRoutingAccessDenied)
 
 	// SetToken follows the same rules.

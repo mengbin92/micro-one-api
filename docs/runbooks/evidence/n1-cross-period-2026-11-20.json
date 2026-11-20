@@ -1,0 +1,151 @@
+{
+  "status": "pending_or_partial",
+  "checked_at": "2026-11-20T14:00:42+08:00",
+  "fixture_ref": "0dd3460a1095",
+  "token_name": "n1-cross-20261120-r2",
+  "target": {
+    "model": "deepseek-flash",
+    "channel": 11,
+    "group": 2
+  },
+  "boundary_unix": 1795154400,
+  "expected_expiry_unix": 1795155300,
+  "bucket_order": [
+    "uncached_input",
+    "cache_read",
+    "cache_creation_5m",
+    "cache_creation_1h",
+    "output"
+  ],
+  "starts": 1,
+  "wallet_quota": 0,
+  "subscription_quota": 49,
+  "platform_amount_cny": "0.0049",
+  "ledger_upstream_estimate_quota": 0,
+  "independent_supplier_actual_cny": null,
+  "rows": [
+    {
+      "kind": "token",
+      "mode": "fixed",
+      "group": 2,
+      "finite": true,
+      "enabled": true,
+      "revision": 1,
+      "used_quota": 1252,
+      "expires_unix": 1795155300,
+      "matches_model": true,
+      "remaining_quota": 236
+    },
+    {
+      "kind": "reservation",
+      "status": "committed",
+      "attempt": 1,
+      "root_ref": "54448643e12a",
+      "created_utc": "2026-11-20 05:59:57.146000",
+      "group_ratio": 1,
+      "input_limit": 4560,
+      "updated_utc": "2026-11-20 06:00:01.769000",
+      "output_limit": 1200,
+      "reservation_ref": "cc02c5fe4067",
+      "settlement_mode": "subscription_first",
+      "snapshot_version": 2,
+      "actual_cost_quota": 49,
+      "pricing_time_band": "off_peak",
+      "pricing_time_unix": 1795154397,
+      "token_ledger_link": 1,
+      "tariff_config_version": 3,
+      "ledger_amount_verified": true,
+      "cross_period_observed": true,
+      "frozen_off_peak_verified": true,
+      "usage_matches": false
+    },
+    {
+      "kind": "ledger",
+      "canonical": 1,
+      "cost_source": "subscription",
+      "created_utc": "2026-11-20 06:00:01.767000",
+      "amount_quota": -49,
+      "wallet_quota": 0,
+      "usage_buckets": [
+        52,
+        0,
+        0,
+        0,
+        1200
+      ],
+      "reservation_ref": "cc02c5fe4067",
+      "cost_audit_status": "unpriced",
+      "pricing_time_band": "off_peak",
+      "pricing_time_unix": 1795154397,
+      "subscription_quota": 49,
+      "upstream_estimate_quota": 0
+    },
+    {
+      "kind": "observation",
+      "stream": 0,
+      "attempt": 1,
+      "capture": "",
+      "category": "started",
+      "complete": null,
+      "root_ref": "54448643e12a",
+      "send_ref": "10bae296ae0e",
+      "http_status": 0,
+      "usage_status": "unobserved",
+      "usage_buckets": null,
+      "usage_protocol": "openai_chat",
+      "observed_unix_ms": 1795154397158,
+      "received_unix_ms": 1795154397703
+    },
+    {
+      "kind": "observation",
+      "stream": 1,
+      "attempt": 1,
+      "capture": "complete",
+      "category": "terminal",
+      "complete": true,
+      "root_ref": "54448643e12a",
+      "send_ref": "10bae296ae0e",
+      "http_status": 200,
+      "usage_status": "unsupported",
+      "usage_buckets": null,
+      "usage_protocol": "openai_chat",
+      "observed_unix_ms": 1795154401420,
+      "received_unix_ms": 1795154401708
+    }
+  ],
+  "verdict": {
+    "cross_period_frozen_price": "pass",
+    "platform_usage_numeric_match": "pass",
+    "strict_observation_usage": "partial_unsupported",
+    "independent_supplier_actual": "unknown"
+  },
+  "numeric_observation_readback": {
+    "parser_status": "unsupported",
+    "parser_reason": "unknown_usage_field",
+    "prompt_tokens": 52,
+    "completion_tokens": 1200,
+    "total_tokens": 1252,
+    "cache_hit_tokens": 0,
+    "cache_miss_tokens": 52
+  },
+  "ledger_tier_readback": {
+    "service_tier_status": "missing",
+    "billed_service_tier": "max",
+    "prompt_cost_quota": 1,
+    "completion_cost_quota": 48,
+    "cache_read_cost_quota": 0
+  },
+  "configured_off_peak_rate_arithmetic_cny": "0.004852",
+  "supplement_checked_at": "2026-11-20T14:02:08+08:00",
+  "client": {
+    "dispatched_at": "2026-11-20T13:59:55.002+08:00",
+    "http_status": 200,
+    "finish_reason": "length",
+    "elapsed_ms": 6452,
+    "request_body_bytes": 232,
+    "max_output_tokens": 1200,
+    "input_tokens": 52,
+    "output_tokens": 1200,
+    "authorized_budget_cny": "0.20"
+  }
+}

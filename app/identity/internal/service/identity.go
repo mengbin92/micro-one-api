@@ -224,6 +224,32 @@ func (s *IdentityService) CreateAccessToken(ctx context.Context, req *identityv1
 	}, nil
 }
 
+func (s *IdentityService) CreateRestrictedRoutingToken(ctx context.Context, req *identityv1.CreateRestrictedRoutingTokenRequest) (*identityv1.CreateAccessTokenResponse, error) {
+	raw, err := securityCredential(ctx)
+	if err != nil {
+		return nil, err
+	}
+	const method = identityv1.IdentityService_CreateRestrictedRoutingToken_FullMethodName
+	if serviceidentity.RPCMethod(ctx) != method || !serviceidentity.FromContext(ctx).CanCall(method) {
+		return nil, status.Error(codes.PermissionDenied, "dedicated caller required")
+	}
+	if req.GetUserId() <= 0 {
+		return nil, mapIdentityErrorToGRPC(biz.ErrRestrictedRoutingTokenInvalid)
+	}
+	user, err := s.uc.ValidateSessionToken(ctx, raw)
+	if err != nil {
+		return nil, mapIdentityErrorToGRPC(err)
+	}
+	if user.ID != req.GetUserId() {
+		return nil, status.Error(codes.PermissionDenied, "self operation only")
+	}
+	token, err := s.uc.CreateRestrictedRoutingToken(ctx, user.ID, req.GetName(), req.GetRoutingGroupId(), req.GetModels(), req.GetExpireAt(), req.GetRemainQuota())
+	if err != nil {
+		return nil, mapIdentityErrorToGRPC(err)
+	}
+	return &identityv1.CreateAccessTokenResponse{Success: true, Message: "ok", Token: token.Key, TokenId: token.ID}, nil
+}
+
 func (s *IdentityService) ListUsers(ctx context.Context, req *identityv1.ListUsersRequest) (*identityv1.ListUsersResponse, error) {
 	ctx, err := s.managedIdentityContext(ctx)
 	if err != nil {

@@ -37,8 +37,8 @@
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
         "targets": [
           {
-            "expr": "rate(micro_one_api_http_requests_total{service=\"relay-gateway\",status=~\"5..\"}[5m]) / rate(micro_one_api_http_requests_total{service=\"relay-gateway\"}[5m]) * 100",
-            "legendFormat": "Error Rate"
+            "expr": "sum without (status) (rate(micro_one_api_http_requests_total{service=\"relay-gateway\",status=~\"5..\"}[5m])) / sum without (status) (rate(micro_one_api_http_requests_total{service=\"relay-gateway\"}[5m])) * 100",
+            "legendFormat": "{{method}} {{path}} - {{instance}}"
           }
         ]
       },

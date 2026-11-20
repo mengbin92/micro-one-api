@@ -44,6 +44,16 @@ interface Token {
   masked_key?: string;
   status: number;
   created_time: number;
+  expired_time?: number;
+  remain_quota?: number;
+  unlimited_quota?: boolean;
+  models?: string[];
+}
+
+interface ShortTermKeyForm {
+  expires: string;
+  quota: string;
+  models: string[];
 }
 
 interface TokenListData {
@@ -105,8 +115,21 @@ export function TokensPage() {
   const [selectedGroup, setSelectedGroup] = useState('inherit');
   const [orderedGroupIDs, setOrderedGroupIDs] = useState<number[]>([]);
   const [editingToken, setEditingToken] = useState<Token | null>(null);
+  const [shortTerm, setShortTerm] = useState<ShortTermKeyForm | null>(null);
+  const [createOpenedAt, setCreateOpenedAt] = useState(0);
   const available = useQuery({ queryKey: ['available-routing-groups'], queryFn: loadAvailableGroups, retry: false });
   const selected = available.data?.groups.find((g) => String(g.id) === selectedGroup);
+  const fixedGroupSelected = selectedGroup !== 'inherit' && selectedGroup !== 'ordered';
+  const selectedModels = selected?.models ?? [];
+  const restrictions = shortTerm && {
+    expire_at: Math.floor(new Date(shortTerm.expires).getTime() / 1000),
+    remain_quota: Number(shortTerm.quota),
+    models: shortTerm.models,
+  };
+  const validRestrictions = restrictions && selected && available.data?.creation_enabled
+    && restrictions.expire_at * 1000 > createOpenedAt
+    && Number.isSafeInteger(restrictions.remain_quota) && restrictions.remain_quota > 0
+    && restrictions.models.length > 0 && restrictions.models.every((model) => selectedModels.includes(model));
   const orderedSelection = orderedGroupIDs.map((id) => ({ id, group: available.data?.groups.find((g) => g.id === id) }));
   const orderedPrices = orderedSelection.flatMap(({ group }) => group ? [group.price_ratio] : []);
   const [createdToken, setCreatedToken] = useState<Token | null>(null);
@@ -162,14 +185,25 @@ export function TokensPage() {
       toast.error(t('Token 名称为必填项'));
       return;
     }
+    if (restrictions && !validRestrictions) {
+      toast.error(t('请设置未来的到期时间、正整数配额和至少一个模型。'));
+      return;
+    }
 
     setIsCreating(true);
     try {
       const routingPayload = routingModePayload();
-      const res = available.data
-        ? await apiClient.post('/v1/routing-tokens', { name, ...routingPayload })
-        : await apiClient.post('/token', { name });
+      const res = restrictions
+        ? await apiClient.post('/v1/routing-tokens/restricted', { name, ...routingPayload, restrictions })
+        : await apiClient.post(available.data ? '/v1/routing-tokens' : '/token', available.data ? { name, ...routingPayload } : { name });
       const token = unwrapApiData<Token>(res.data);
+      if (restrictions && (token.routing_mode !== 'fixed' || token.routing_group_id !== routingPayload.routing_group_id
+        || token.unlimited_quota !== false || token.remain_quota !== restrictions.remain_quota
+        || token.expired_time !== restrictions.expire_at || token.models?.length !== restrictions.models.length
+        || !restrictions.models.every((model) => token.models?.includes(model)))) {
+        await queryClient.invalidateQueries({ queryKey: ['tokens'] });
+        throw new Error(t('服务端返回的密钥限制与申请不符。'));
+      }
       setCreatedToken(token);
       queryClient.setQueryData<Token[]>(['tokens'], (current = []) => {
         const safeToken = tokenForList(token);
@@ -188,11 +222,14 @@ export function TokensPage() {
 
   const handleCreateOpenChange = (open: boolean) => {
     setIsCreateOpen(open);
-    if (!open) {
+    if (open) {
+      setCreateOpenedAt(Date.now());
+    } else {
       setCreatedToken(null);
       setNewTokenName('');
       setSelectedGroup('inherit');
       setOrderedGroupIDs([]);
+      setShortTerm(null);
     }
   };
 
@@ -217,11 +254,14 @@ export function TokensPage() {
   };
   const routingSelector = <div className="space-y-2">
     <Label htmlFor="token-routing-group">路由分组</Label>
-    <select id="token-routing-group" className="h-10 w-full rounded-md border bg-background px-3" value={selectedGroup} onChange={(e) => setSelectedGroup(e.target.value)}>
-      <option value="inherit">跟随默认分组{available.data && !available.data.default_available ? '（需要重新选择分组）' : ''}</option>
+    <select id="token-routing-group" className="h-10 w-full rounded-md border bg-background px-3" value={selectedGroup} onChange={(e) => {
+      setSelectedGroup(e.target.value);
+      if (shortTerm) setShortTerm({ ...shortTerm, models: [] });
+    }}>
+      <option value="inherit" disabled={shortTerm !== null}>跟随默认分组{available.data && !available.data.default_available ? '（需要重新选择分组）' : ''}</option>
       {selectedGroup !== 'inherit' && selectedGroup !== 'ordered' && !selected && <option value={selectedGroup}>固定分组 #{selectedGroup}（当前不可用）</option>}
       {available.data?.groups.filter(() => available.data.creation_enabled).map((g) => <option key={g.id} value={g.id}>{g.display_name || g.key} · {effectivePrice(g)}</option>)}
-      {available.data?.groups.some((g) => g.ordered_eligible) && <option value="ordered">有序候选组（自动跨组重试）</option>}
+      {available.data?.groups.some((g) => g.ordered_eligible) && <option value="ordered" disabled={shortTerm !== null}>有序候选组（自动跨组重试）</option>}
     </select>
     {selectedGroup === 'ordered' && <div className="space-y-2 rounded-md border p-3">
       <p className="text-sm text-muted-foreground">按顺序尝试候选组：仅在前置组无可用资源时切换到下一组，各组价格可能不同。</p>
@@ -287,6 +327,42 @@ export function TokensPage() {
                 )}
               </div>
               {!createdToken?.key && available.data && routingSelector}
+              {!createdToken?.key && fixedGroupSelected && (
+                <label className="flex items-center gap-2 font-medium">
+                  <input type="checkbox" checked={shortTerm !== null} disabled={!shortTerm && !selected}
+                    onChange={(e) => setShortTerm(e.target.checked ? { expires: '', quota: '', models: [] } : null)} />
+                  {t('短期 Key')}
+                </label>
+              )}
+              {!createdToken?.key && fixedGroupSelected && shortTerm && (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="token-expiry">{t('到期时间（本地时间）')}</Label>
+                    <Input id="token-expiry" type="datetime-local" required value={shortTerm.expires}
+                      onChange={(e) => setShortTerm({ ...shortTerm, expires: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="token-quota">{t('配额（Token）')}</Label>
+                    <Input id="token-quota" type="number" min="1" step="1" required value={shortTerm.quota}
+                      onChange={(e) => setShortTerm({ ...shortTerm, quota: e.target.value })} />
+                  </div>
+                  <fieldset>
+                    <legend className="mb-2 font-medium">{t('允许调用的模型')}</legend>
+                    <div className="max-h-36 space-y-2 overflow-y-auto rounded-lg border p-2">
+                      {selectedModels.map((model) => (
+                        <label key={model} className="flex items-start gap-2 break-all">
+                          <input type="checkbox" checked={shortTerm.models.includes(model)} onChange={(e) => {
+                            const models = e.target.checked ? [...shortTerm.models, model] : shortTerm.models.filter((item) => item !== model);
+                            setShortTerm({ ...shortTerm, models });
+                          }} />
+                          {model}
+                        </label>
+                      ))}
+                      {selectedModels.length === 0 && <p className="text-muted-foreground">{t('暂无可用模型')}</p>}
+                    </div>
+                  </fieldset>
+                </div>
+              )}
               {createdToken?.key && (
                 <div className="space-y-2">
                   <Label htmlFor="created-token-key">{t('API 密钥')}</Label>
@@ -300,6 +376,13 @@ export function TokensPage() {
               )}
               {createdToken?.key ? (
                 <div className="space-y-3">
+                  {createdToken.unlimited_quota === false && !!createdToken.expired_time && (
+                    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 break-all text-sm">
+                      <dt>{t('到期时间')}</dt><dd>{new Date(createdToken.expired_time * 1000).toLocaleString(locale())}</dd>
+                      <dt>{t('配额（Token）')}</dt><dd>{createdToken.remain_quota}</dd>
+                      <dt>{t('允许调用的模型')}</dt><dd>{createdToken.models?.join(', ')}</dd>
+                    </dl>
+                  )}
                   <Button
                     variant="outline"
                     className="w-full gap-2 border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300"
@@ -323,7 +406,8 @@ export function TokensPage() {
               ) : (
                 <Button
                   onClick={handleCreate}
-                  disabled={isCreating || !newTokenName.trim() || !!(available.data && selectedGroup === 'inherit' && !available.data.default_available) || (selectedGroup === 'ordered' && orderedGroupIDs.length === 0)}
+                  disabled={isCreating || !newTokenName.trim() || (shortTerm !== null && !validRestrictions)
+                    || !!(available.data && selectedGroup === 'inherit' && !available.data.default_available) || (selectedGroup === 'ordered' && orderedGroupIDs.length === 0)}
                   className="w-full"
                 >
                   {isCreating ? t('创建中...') : t('创建')}
