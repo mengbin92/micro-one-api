@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +13,17 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestStoredLedgerKeyFitsMySQLAndRetainsHistoricalKeys(t *testing.T) {
+	key := "subscription-commerce:1234567890123456789:" + strings.Repeat("r", 128)
+	require.LessOrEqual(t, len(storedLedgerKey("mysql", key)), 160)
+	require.NotEqual(t, storedLedgerKey("mysql", key), storedLedgerKey("mysql", key+"x"))
+	for _, driver := range []string{"sqlite", "postgres"} {
+		require.Equal(t, key, storedLedgerKey(driver, key))
+	}
+	short := strings.Repeat("额", 160)
+	require.Equal(t, short, storedLedgerKey("mysql", short))
+}
 
 func setupLedgerTestDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})

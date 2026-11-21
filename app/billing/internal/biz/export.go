@@ -31,14 +31,15 @@ func (uc *BillingUsecase) ExportCostReport(ctx context.Context, f UsageFilter, i
 	}
 	return uc.ledgerRepo.AggregateUsage(ctx, f)
 }
-func (uc *BillingUsecase) ExportRedeemCodes(ctx context.Context) ([]*RedeemCode, error) {
+func (uc *BillingUsecase) ExportRedeemCodes(ctx context.Context, options RedeemCodeListOptions) ([]*RedeemCode, error) {
 	ctx, err := prepareBilling(ctx, uc.authorization, "billing.redemption.export", "billing.redemption.export")
 	if err != nil {
 		return nil, err
 	}
 	out := []*RedeemCode{}
-	for page := int32(1); ; page++ {
-		rows, total, err := uc.redeemRepo.ListRedeemCodes(ctx, page, 100)
+	options.PageSize = 100
+	for options.Page = 1; ; options.Page++ {
+		rows, total, err := uc.redeemRepo.ListRedeemCodes(ctx, options)
 		if err != nil {
 			return nil, err
 		}

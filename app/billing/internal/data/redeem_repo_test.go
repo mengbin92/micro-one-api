@@ -142,65 +142,6 @@ func TestRedeemRepo_GetRedeemCode_NotFound(t *testing.T) {
 	assert.ErrorIs(t, err, biz.ErrRedeemCodeNotFound)
 }
 
-func TestRedeemRepo_UpdateRedeemCodeCount(t *testing.T) {
-	db := setupRedeemTestDB(t)
-	defer func() {
-		sqlDB, _ := db.DB()
-		sqlDB.Close()
-	}()
-
-	// 插入测试数据
-	now := time.Now()
-	err := db.Exec(`
-			INSERT INTO billing_redeem_codes (code, name, amount, count, status, created_by, created_at, updated_at)
-			VALUES ('CODE123', '测试兑换码', 1000, 10, 1, 'admin', ?, ?)
-		`, now, now).Error
-	require.NoError(t, err)
-
-	data := &Data{db: db}
-	repo := NewRedeemRepo(data)
-
-	ctx := context.Background()
-	err = repo.UpdateRedeemCodeCount(ctx, "CODE123", 3)
-	require.NoError(t, err)
-
-	// 验证计数已更新
-	var model redeemCodeModel
-	err = db.Where("code = ?", "CODE123").First(&model).Error
-	require.NoError(t, err)
-	assert.Equal(t, 7, model.Count) // 10 - 3 = 7
-}
-
-func TestRedeemRepo_UpdateRedeemCodeCount_Insufficient(t *testing.T) {
-	db := setupRedeemTestDB(t)
-	defer func() {
-		sqlDB, _ := db.DB()
-		sqlDB.Close()
-	}()
-
-	// 插入测试数据，只有 2 个可用
-	now := time.Now()
-	err := db.Exec(`
-			INSERT INTO billing_redeem_codes (code, name, amount, count, status, created_by, created_at, updated_at)
-			VALUES ('CODE123', '测试兑换码', 1000, 2, 1, 'admin', ?, ?)
-		`, now, now).Error
-	require.NoError(t, err)
-
-	data := &Data{db: db}
-	repo := NewRedeemRepo(data)
-
-	ctx := context.Background()
-	err = repo.UpdateRedeemCodeCount(ctx, "CODE123", 5) // 尝试减少 5 个
-	assert.Error(t, err)                                // 应该失败，因为只有 2 个可用
-	assert.ErrorIs(t, err, biz.ErrRedeemCodeUsedUp)
-
-	// 验证计数没有被修改
-	var model redeemCodeModel
-	err = db.Where("code = ?", "CODE123").First(&model).Error
-	require.NoError(t, err)
-	assert.Equal(t, 2, model.Count) // 应该保持不变
-}
-
 func TestRedeemRepo_CreateRedeemRecord(t *testing.T) {
 	db := setupRedeemTestDB(t)
 	defer func() {
@@ -220,7 +161,7 @@ func TestRedeemRepo_CreateRedeemRecord(t *testing.T) {
 		BalanceAfter:  1500,
 	}
 
-	err := repo.CreateRedeemRecord(ctx, record)
+	err := repo.CreateRedeemRecordInTx(ctx, &gormTx{db: db}, record)
 	require.NoError(t, err)
 
 	// 验证数据已插入
@@ -232,4 +173,34 @@ func TestRedeemRepo_CreateRedeemRecord(t *testing.T) {
 	assert.Equal(t, int64(1000), model.Amount)
 	assert.Equal(t, int64(500), model.BalanceBefore)
 	assert.Equal(t, int64(1500), model.BalanceAfter)
+}
+
+func TestRedeemCodeListFilterSortAndPage(t *testing.T) {
+	db := setupRedeemTestDB(t)
+	conn, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	repo := NewRedeemRepo(&Data{db: db})
+	require.NoError(t, db.Exec(`INSERT INTO billing_redeem_codes(code, name, amount, status, count) VALUES
+		('exact', 'promo%a', 100, 1, 0), ('other', 'promo%b', 20, 2, 1),
+		('a', 'promo%c', 300, 1, 1), ('b', 'promoXd', 500, 2, 0), ('c', 'promo%e', 90, 0, 1)`).Error)
+	used := biz.RedeemCodeStatusUsed
+	opts := biz.RedeemCodeListOptions{Page: 1, PageSize: 1, Keyword: "promo%", Status: &used, Sort: "amount", Order: "asc"}
+	for i, want := range []string{"other", "exact", ""} {
+		opts.Page = int32(i + 1)
+		rows, total, err := repo.ListRedeemCodes(context.Background(), opts)
+		require.NoError(t, err)
+		require.EqualValues(t, 2, total)
+		if want == "" {
+			require.Empty(t, rows)
+		} else {
+			require.Len(t, rows, 1)
+			require.Equal(t, want, rows[0].Code)
+			require.Equal(t, used, rows[0].Status)
+		}
+	}
+	rows, total, err := repo.ListRedeemCodes(context.Background(), biz.RedeemCodeListOptions{Page: 1, PageSize: 10, Keyword: "exact"})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Equal(t, "exact", rows[0].Code)
 }

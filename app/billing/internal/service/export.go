@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -68,8 +69,12 @@ func (s *BillingService) ExportCostReport(ctx context.Context, req *billingv1.Ex
 	}
 	return &billingv1.ExportArtifactReply{ContentType: "text/csv; charset=utf-8", FileName: "cost-report.csv", Body: buf.Bytes()}, nil
 }
-func (s *BillingService) ExportRedeemCodes(ctx context.Context, _ *billingv1.ExportRedeemCodesRequest) (*billingv1.ExportArtifactReply, error) {
-	rows, err := s.uc.ExportRedeemCodes(ctx)
+func (s *BillingService) ExportRedeemCodes(ctx context.Context, req *billingv1.ExportRedeemCodesRequest) (*billingv1.ExportArtifactReply, error) {
+	options, err := redeemCodeListOptions(req.GetFilter())
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.uc.ExportRedeemCodes(ctx, options)
 	if err != nil {
 		return nil, err
 	}
@@ -107,6 +112,9 @@ func (s *BillingService) RunReconciliation(ctx context.Context, req *billingv1.R
 
 func (s *BillingService) ResetAccountBalance(ctx context.Context, req *billingv1.ResetAccountBalanceRequest) (*billingv1.TopUpQuotaResponse, error) {
 	balance, err := s.uc.ResetBalance(ctx, req.GetUserId(), req.GetTargetBalance(), req.GetExpectedBalance(), req.GetReason(), req.GetRequestId())
+	if errors.Is(err, biz.ErrDuplicateRequest) {
+		return nil, status.Error(codes.AlreadyExists, err.Error())
+	}
 	if err != nil {
 		return nil, err
 	}

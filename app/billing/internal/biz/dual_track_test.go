@@ -13,24 +13,25 @@ import (
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 )
 
-// TestComputeAbsorbablePure_Unit exercises the pure absorber
-// calculation across the four interesting inputs: unlimited, capped
-// with quota remaining, capped fully consumed, and capped with a
-// multiplier that flips the answer.
-func TestComputeAbsorbablePure_Unit(t *testing.T) {
-	cap := func(v float64) *float64 { return &v }
-	multiplier := 1.0
-	t.Run("unlimited window absorbs the full request", func(t *testing.T) {
-		// We exercise ComputeAbsorbablePure via a thin wrapper
-		// that does not need the subscription package's type
-		// alias; the test asserts the function's contract on
-		// float64 inputs directly.
-		frozen := 0.0
-		// unlimited: limit is nil => +Inf remaining.
-		_ = frozen
-		_ = cap
-		_ = multiplier
-	})
+func TestCommitSplitWithoutConsumptionLedgers(t *testing.T) {
+	for _, tt := range []struct {
+		status string
+		cost   int64
+	}{
+		{ReservationStatusReleased, 0}, {ReservationStatusCommitted, 4},
+	} {
+		t.Run(tt.status, func(t *testing.T) {
+			repo := &mockReservationRepo{reservations: map[string]*Reservation{
+				"r": {ReservationID: "r", SubscriptionID: 1, Status: tt.status, ActualCost: tt.cost, Amount: 20, BalanceAmount: 10},
+			}}
+			uc := NewBillingUsecase(nil, repo, &mockLedgerRepo{}, nil, nil)
+			uc.SetTxRunner(&mockTxRunner{})
+			_, _, result, err := uc.CommitQuotaWithUsageAndSplit(context.Background(), "r", 0, true, LedgerUsage{})
+			require.NoError(t, err)
+			require.Equal(t, tt.cost, result.BalanceCost)
+			require.Zero(t, result.SubscriptionCost)
+		})
+	}
 }
 
 // TestReservationRepo_SumActiveFrozen_AcrossWindows is the unit

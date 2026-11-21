@@ -74,6 +74,10 @@ func ledgerView(ctx context.Context, ledger *Ledger) *Ledger {
 		return nil
 	}
 	copy := *ledger
+	// Historical redemption ledgers carried the redeemable code in all three fields.
+	if copy.Type == LedgerTypeRedeem {
+		copy.ReferenceID, copy.Remark, copy.LedgerDedupeKey = "", "", ""
+	}
 	facts, err := accountFacts(ledger.UserID)
 	copy.CostFieldsVisible = err == nil && authorization.Require(ctx, "billing.account.cost.read", facts) == nil
 	if !copy.CostFieldsVisible {

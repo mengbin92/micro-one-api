@@ -77,8 +77,17 @@ func TestChangeSubscription_ImmediateUpgrade(t *testing.T) {
 	if err := json.Unmarshal([]byte(got.Metadata), &meta); err != nil {
 		t.Fatalf("metadata not json: %v", err)
 	}
-	if _, ok := meta["last_change"]; !ok {
-		t.Fatal("last_change audit missing from metadata")
+	var change map[string]json.RawMessage
+	if err := json.Unmarshal(meta["last_change"], &change); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := change["from_plan_id"]; ok {
+		t.Fatal("no previous plan ID was supplied")
+	}
+	res, err = uc.ChangeSubscription(context.Background(), ChangeRequest{UserID: 1, FromSubscriptionID: sub.ID,
+		ToGroupID: group.ID, OldPriceQuota: 2000, NewPriceQuota: 1000, Policy: SubscriptionChangePolicyImmediate, Now: 7000})
+	if err != nil || res.ChargedQuota != 0 {
+		t.Fatalf("immediate downgrade charge = %+v, error = %v", res, err)
 	}
 }
 
@@ -529,7 +538,6 @@ func TestChangeSubscription_UsesTxRunnerWhenWired(t *testing.T) {
 
 	runner := &recordingTxRunner{}
 	uc := NewSubscriptionUsecase(repo, repo)
-	uc.SetTxRunner(runner)
 	uc.now = func() time.Time { return time.Unix(5000, 0) }
 
 	sub, _, err := uc.AssignOrExtend(context.Background(), &AssignSubscriptionRequest{
@@ -538,7 +546,7 @@ func TestChangeSubscription_UsesTxRunnerWhenWired(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assign: %v", err)
 	}
-	// Reset counters after AssignOrExtend (which doesn't use txRunner).
+	uc.SetTxRunner(runner)
 	repo.resetCounters()
 
 	// Upgrade to a different group.
@@ -595,7 +603,6 @@ func TestChangeSubscription_TxRunnerErrorSurfacesNoMutation(t *testing.T) {
 		},
 	}
 	uc := NewSubscriptionUsecase(repo, repo)
-	uc.SetTxRunner(runner)
 
 	sub, _, err := uc.AssignOrExtend(context.Background(), &AssignSubscriptionRequest{
 		UserID: 1, GroupID: group.ID, StartsAt: 1000, ExpiresAt: 99999,
@@ -604,6 +611,7 @@ func TestChangeSubscription_TxRunnerErrorSurfacesNoMutation(t *testing.T) {
 		t.Fatalf("assign: %v", err)
 	}
 
+	uc.SetTxRunner(runner)
 	_, err = uc.ChangeSubscription(context.Background(), ChangeRequest{
 		UserID:             1,
 		FromSubscriptionID: sub.ID,

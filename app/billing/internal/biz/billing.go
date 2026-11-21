@@ -2,8 +2,6 @@ package biz
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -782,8 +780,7 @@ func committedAmountFromReservation(r *Reservation) int64 {
 }
 
 func (uc *BillingUsecase) CommitQuota(ctx context.Context, reservationID string, actualTokens int64, success bool) (int64, int64, error) {
-	committed, refund, _, err := uc.CommitQuotaWithUsageAndSplit(ctx, reservationID, actualTokens, success, LedgerUsage{})
-	return committed, refund, err
+	return uc.CommitQuotaWithUsage(ctx, reservationID, actualTokens, success, LedgerUsage{})
 }
 
 // CommitResult is the cost-dimensioned outcome of a commit. The
@@ -801,52 +798,43 @@ type CommitResult struct {
 // subscription/balance split without breaking the legacy
 // (int64, int64, error) signature of the original entry point.
 func (uc *BillingUsecase) CommitQuotaWithUsageAndSplit(ctx context.Context, reservationID string, actualTokens int64, success bool, usage LedgerUsage) (int64, int64, CommitResult, error) {
-	// Delegate to the existing pipeline. The split is recovered
-	// from the reservation's stored amount on the dual-track path.
 	committed, refund, err := uc.CommitQuotaWithUsage(ctx, reservationID, actualTokens, success, usage)
 	if err != nil {
 		return 0, 0, CommitResult{}, err
 	}
-	// Best-effort split recovery: for the dual-track path the
-	// reservation is now committed, so the subscription cost is
-	// what the dual-track pipeline stored (committed via
-	// RecordUsageForSubscriptionInTx). We surface the full
-	// committed amount as the balance cost so the wire's
-	// subscription/balance cost split reports match the original
-	// values the relay would have seen if the new flow had
-	// returned them directly. The authoritative split is in the
-	// ledger; this helper is only for log/diagnostic use.
-	reservation, lookupErr := uc.reservationRepo.GetReservation(ctx, reservationID)
-	if lookupErr == nil && reservation != nil && reservation.HasSubscription() {
-		subCost, balCost := int64(0), int64(0)
-		if uc.ledgerRepo != nil {
-			if subLedger, err := uc.ledgerRepo.FindByDedupeKey(ctx, nil, fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeConsume, CostSourceSubscription)); err == nil && subLedger != nil {
-				subCost = subLedger.SubscriptionCost
-			}
-			if balLedger, err := uc.ledgerRepo.FindByDedupeKey(ctx, nil, fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeConsume, CostSourceBalance)); err == nil && balLedger != nil {
-				balCost = balLedger.BalanceCost
-			}
-		}
-		if subCost > 0 || balCost > 0 {
-			return committed, refund, CommitResult{
-				CommittedAmount:  committed,
-				RefundAmount:     refund,
-				SubscriptionCost: subCost,
-				BalanceCost:      balCost,
-			}, nil
-		}
-		return committed, refund, CommitResult{
-			CommittedAmount:  committed,
-			RefundAmount:     refund,
-			SubscriptionCost: committed - reservation.BalanceAmount,
-			BalanceCost:      reservation.BalanceAmount,
-		}, nil
+	result := CommitResult{CommittedAmount: committed, RefundAmount: refund, BalanceCost: committed}
+	if committed == 0 {
+		return committed, refund, result, nil
 	}
-	return committed, refund, CommitResult{
-		CommittedAmount: committed,
-		RefundAmount:    refund,
-		BalanceCost:     committed,
-	}, nil
+	reservation, err := uc.reservationRepo.GetReservation(ctx, reservationID)
+	if err != nil {
+		return 0, 0, CommitResult{}, err
+	}
+	if reservation.HasSubscription() {
+		// Historical reservations without split ledgers only retain the wallet estimate.
+		result.BalanceCost = min(committed, max(int64(0), reservation.BalanceAmount))
+		result.SubscriptionCost = committed - result.BalanceCost
+		if uc.ledgerRepo != nil {
+			sub, err := uc.ledgerRepo.FindByDedupeKey(ctx, nil, fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeConsume, CostSourceSubscription))
+			if err != nil {
+				return 0, 0, CommitResult{}, err
+			}
+			bal, err := uc.ledgerRepo.FindByDedupeKey(ctx, nil, fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeConsume, CostSourceBalance))
+			if err != nil {
+				return 0, 0, CommitResult{}, err
+			}
+			if sub != nil || bal != nil {
+				result.SubscriptionCost, result.BalanceCost = 0, 0
+				if sub != nil {
+					result.SubscriptionCost = sub.SubscriptionCost
+				}
+				if bal != nil {
+					result.BalanceCost = bal.BalanceCost
+				}
+			}
+		}
+	}
+	return committed, refund, result, nil
 }
 
 type LedgerUsage = billingdomain.LedgerUsage
@@ -1825,6 +1813,12 @@ func (uc *BillingUsecase) CreateRedeemCode(ctx context.Context, code, name strin
 	if q, ok := authorization.QueryScopeFromContext(ctx, "billing.redemption.create"); ok {
 		operatorID = strconv.FormatInt(q.ActorID, 10)
 	}
+	if strings.TrimSpace(code) == "" || count <= 0 {
+		return errors.New("a nonempty redeem code and positive count are required")
+	}
+	if amount <= 0 {
+		return errors.New("redeem amount must be positive")
+	}
 	redeemCode := &RedeemCode{
 		Code:      code,
 		Name:      name,
@@ -1839,33 +1833,28 @@ func (uc *BillingUsecase) CreateRedeemCode(ctx context.Context, code, name strin
 	return nil
 }
 
-func (uc *BillingUsecase) CreateRedeemCodesBatch(ctx context.Context, name string, amount int64, count, batchSize int32) ([]string, error) {
+func (uc *BillingUsecase) CreateRedeemCodesBatch(ctx context.Context, name string, amount int64, count int32, operatorID string) ([]string, error) {
 	var authErr error
 	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.redemption.write", "billing.redemption.batch_create")
 	if authErr != nil {
 		return nil, authErr
 	}
+	if amount <= 0 {
+		return nil, errors.New("redeem amount must be positive")
+	}
 	if count <= 0 || count > 100 {
 		return nil, fmt.Errorf("count must be between 1 and 100")
 	}
-	if batchSize <= 0 || batchSize > 100 {
-		batchSize = count
+	if q, ok := authorization.QueryScopeFromContext(ctx, "billing.redemption.batch_create"); ok {
+		operatorID = strconv.FormatInt(q.ActorID, 10)
 	}
-	codes := make([]string, 0, count)
-	now := time.Now()
-	for i := int32(0); i < count; i++ {
-		codes = append(codes, generateRedeemCode())
-	}
-	redeemCodes := make([]*RedeemCode, len(codes))
-	for i, code := range codes {
+	codes := make([]string, count)
+	redeemCodes := make([]*RedeemCode, count)
+	for i := range codes {
+		codes[i] = randomHex(16)
 		redeemCodes[i] = &RedeemCode{
-			Code:      code,
-			Name:      name,
-			Amount:    amount,
-			Count:     1,
-			Status:    RedeemCodeStatusEnabled,
-			CreatedAt: now,
-			UpdatedAt: now,
+			Code: codes[i], Name: name, Amount: amount,
+			Count: 1, Status: RedeemCodeStatusEnabled, CreatedBy: operatorID,
 		}
 	}
 	if err := uc.redeemRepo.CreateRedeemCodesBatch(ctx, redeemCodes); err != nil {
@@ -1883,19 +1872,19 @@ func (uc *BillingUsecase) GetRedeemCode(ctx context.Context, code string) (*Rede
 	return uc.redeemRepo.GetRedeemCode(ctx, code)
 }
 
-func (uc *BillingUsecase) ListRedeemCodes(ctx context.Context, page, pageSize int32) ([]*RedeemCode, int64, error) {
+func (uc *BillingUsecase) ListRedeemCodes(ctx context.Context, options RedeemCodeListOptions) ([]*RedeemCode, int64, error) {
 	var authErr error
 	ctx, authErr = prepareBilling(ctx, uc.authorization, "billing.redemption.list", "billing.redemption.list")
 	if authErr != nil {
 		return nil, 0, authErr
 	}
-	if page <= 0 {
-		page = 1
+	if options.Page <= 0 {
+		options.Page = 1
 	}
-	if pageSize <= 0 || pageSize > 100 {
-		pageSize = 20
+	if options.PageSize <= 0 || options.PageSize > 100 {
+		options.PageSize = 20
 	}
-	return uc.redeemRepo.ListRedeemCodes(ctx, page, pageSize)
+	return uc.redeemRepo.ListRedeemCodes(ctx, options)
 }
 
 func (uc *BillingUsecase) SearchRedeemCodes(ctx context.Context, keyword string) ([]*RedeemCode, error) {
@@ -1937,115 +1926,61 @@ func (uc *BillingUsecase) RedeemCode(ctx context.Context, userID, code string) (
 			return 0, 0, err
 		}
 	}
-	redeemCode, err := uc.redeemRepo.GetRedeemCode(ctx, code)
+	facts, err := accountFacts(userID)
 	if err != nil {
-		return 0, 0, fmt.Errorf("get redeem code: %w", err)
+		return 0, 0, err
 	}
-	if !redeemCode.IsAvailable() {
-		if !redeemCode.IsEnabled() {
-			return 0, 0, ErrRedeemCodeDisabled
-		}
-		return 0, 0, ErrRedeemCodeUsedUp
-	}
-	account, err := uc.accountRepo.GetAccountSnapshot(ctx, userID)
-	if err != nil {
-		return 0, 0, fmt.Errorf("get account snapshot: %w", err)
-	}
-	balanceBefore := account.Balance
-
-	// Code-review 2026-07-30 billing-H1: the count decrement, wallet credit,
-	// ledger entry and redeem record were independent non-transactional steps.
-	// Two concurrent RedeemCode calls on a count=1 code both passed the
-	// read-then-write availability check and both credited the user. If
-	// UpdateBalance failed after the count had already been decremented, the
-	// user lost a redemption without receiving the credit and the UI told them
-	// to retry a now-exhausted code. The fix is to run the whole redemption in
-	// a single transaction: the count decrement is a conditional atomic UPDATE
-	// (status=enabled AND count>=1), so exactly one concurrent caller wins;
-	// the wallet credit, ledger and record commit or roll back together.
+	userID = strconv.FormatInt(facts.OwnerUserID, 10)
 	runner := uc.resolveRunner()
 	if runner == nil {
-		// In-memory / test path with no shared DB: keep the legacy
-		// best-effort sequence so the mock-backed unit tests still
-		// exercise the usecase logic.
-		if err := uc.redeemRepo.UpdateRedeemCodeCount(ctx, code, 1); err != nil {
-			return 0, 0, fmt.Errorf("update redeem code count: %w", err)
-		}
-		newBalance, err := uc.accountRepo.UpdateBalance(ctx, userID, redeemCode.Amount, LedgerTypeRedeem)
-		if err != nil {
-			return 0, 0, fmt.Errorf("update balance: %w", err)
-		}
-		balanceAfter := newBalance
-		ledger := &Ledger{
-			UserID:       userID,
-			Amount:       redeemCode.Amount,
-			BalanceAfter: balanceAfter,
-			Type:         LedgerTypeRedeem,
-			ReferenceID:  code,
-			Remark:       fmt.Sprintf("redeem code=%s", code),
-		}
-		if err := uc.ledgerRepo.CreateLedger(ctx, ledger); err != nil {
-			return 0, 0, fmt.Errorf("create ledger: %w", err)
-		}
-		record := &RedeemRecord{
-			UserID:        userID,
-			Code:          code,
-			Amount:        redeemCode.Amount,
-			BalanceBefore: balanceBefore,
-			BalanceAfter:  balanceAfter,
-		}
-		if err := uc.redeemRepo.CreateRedeemRecord(ctx, record); err != nil {
-			return 0, 0, fmt.Errorf("create redeem record: %w", err)
-		}
-		return redeemCode.Amount, newBalance, nil
+		return 0, 0, errors.New("redeeming a code requires a transaction")
 	}
-
-	var newBalance int64
-	if err := runner.RunInTx(ctx, func(ctx context.Context, tx subscriptionbiz.Tx) error {
-		// Atomic conditional decrement: wins only when the code is still
-		// enabled and has inventory. Under concurrency exactly one caller's
-		// UPDATE affects a row, so a count=1 code can only be redeemed once.
-		if err := uc.redeemRepo.UpdateRedeemCodeCountInTx(ctx, tx, code, 1); err != nil {
-			// Map the race-lost / exhausted case to the typed sentinel so
-			// callers see the same error they got from the pre-check.
-			if errors.Is(err, ErrRedeemCodeUsedUp) {
-				return ErrRedeemCodeUsedUp
-			}
-			return fmt.Errorf("update redeem code count: %w", err)
+	var amount, balance int64
+	err = runner.RunInTx(ctx, func(ctx context.Context, tx subscriptionbiz.Tx) error {
+		coupon, err := uc.redeemRepo.GetRedeemCodeForUpdate(ctx, tx, code)
+		if err != nil {
+			return err
 		}
-		b, err := uc.accountRepo.UpdateBalanceInTx(ctx, tx, userID, redeemCode.Amount, LedgerTypeRedeem)
+		if coupon.Status == RedeemCodeStatusUsed || (coupon.IsEnabled() && coupon.Count <= 0) {
+			return ErrRedeemCodeUsedUp
+		}
+		if !coupon.IsEnabled() {
+			return ErrRedeemCodeDisabled
+		}
+		if coupon.Amount <= 0 {
+			return errors.New("redeem amount must be positive")
+		}
+		if err := uc.redeemRepo.ClaimRedemptionInTx(ctx, tx, userID, coupon); err != nil {
+			return err
+		}
+		amount = coupon.Amount
+		balance, err = uc.accountRepo.UpdateBalanceInTx(ctx, tx, userID, amount, LedgerTypeRedeem)
 		if err != nil {
 			return fmt.Errorf("update balance: %w", err)
 		}
-		newBalance = b
-		balanceAfter := newBalance
 		ledger := &Ledger{
 			UserID:          userID,
-			Amount:          redeemCode.Amount,
-			BalanceAfter:    balanceAfter,
+			Amount:          amount,
+			BalanceAfter:    balance,
 			Type:            LedgerTypeRedeem,
-			ReferenceID:     code,
-			Remark:          fmt.Sprintf("redeem code=%s", code),
-			LedgerDedupeKey: fmt.Sprintf("%s:%s", code, LedgerTypeRedeem),
+			ReferenceID:     strconv.FormatInt(coupon.ID, 10),
+			LedgerDedupeKey: fmt.Sprintf("redeem:%d:%s", coupon.ID, userID),
 		}
 		if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, ledger); err != nil {
 			return fmt.Errorf("create ledger: %w", err)
 		}
-		record := &RedeemRecord{
+		return uc.redeemRepo.CreateRedeemRecordInTx(ctx, tx, &RedeemRecord{
 			UserID:        userID,
-			Code:          code,
-			Amount:        redeemCode.Amount,
-			BalanceBefore: balanceBefore,
-			BalanceAfter:  balanceAfter,
-		}
-		if err := uc.redeemRepo.CreateRedeemRecordInTx(ctx, tx, record); err != nil {
-			return fmt.Errorf("create redeem record: %w", err)
-		}
-		return nil
-	}); err != nil {
+			Code:          coupon.Code,
+			Amount:        amount,
+			BalanceBefore: balance - amount,
+			BalanceAfter:  balance,
+		})
+	})
+	if err != nil {
 		return 0, 0, err
 	}
-	return redeemCode.Amount, newBalance, nil
+	return amount, balance, nil
 }
 
 func (uc *BillingUsecase) calculateCostWithUsage(ctx context.Context, group, model string, actualTokens int64, usage LedgerUsage) (int64, canonicalCostBreakdown, ledgerUsageAudit) {
@@ -3020,14 +2955,6 @@ func resolveSubscriptionAccountID(override int64, reservationValue string) int64
 		return override
 	}
 	return parseInt64Default(reservationValue, 0)
-}
-
-func generateRedeemCode() string {
-	bytes := make([]byte, 16)
-	if _, err := rand.Read(bytes); err != nil {
-		return fmt.Sprintf("rc_%d", time.Now().UnixNano())
-	}
-	return hex.EncodeToString(bytes)
 }
 
 // positiveOrZero returns max(v, 0). The helper is used by the

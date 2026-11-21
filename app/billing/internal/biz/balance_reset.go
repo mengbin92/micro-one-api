@@ -38,6 +38,14 @@ func (uc *BillingUsecase) ResetBalance(ctx context.Context, user string, target,
 		if err = authorization.Require(ctx, "billing.account.balance.reset", facts); err != nil {
 			return err
 		}
+		key := ledgerDedupeKeyFor("balance_reset", user, request)
+		prior, err := uc.ledgerRepo.FindByDedupeKey(ctx, tx, key)
+		if err != nil {
+			return err
+		}
+		if prior != nil {
+			return ErrDuplicateRequest
+		}
 		if account.Balance != expected {
 			return ErrRoutingContextConflict
 		}
@@ -52,7 +60,7 @@ func (uc *BillingUsecase) ResetBalance(ctx context.Context, user string, target,
 		if q, iam := authorization.QueryScopeFromContext(ctx, "billing.account.balance.reset"); iam {
 			actor = q.ActorID
 		}
-		ledger := &Ledger{UserID: user, Amount: delta, BalanceAfter: target, Type: LedgerTypeRecharge, Remark: fmt.Sprintf("balance reset actor=%d reason=%s", actor, reason), LedgerDedupeKey: ledgerDedupeKeyFor("balance_reset", user, request)}
+		ledger := &Ledger{UserID: user, Amount: delta, BalanceAfter: target, Type: LedgerTypeRecharge, Remark: fmt.Sprintf("balance reset actor=%d reason=%s", actor, reason), LedgerDedupeKey: key}
 		if err = uc.ledgerRepo.CreateLedgerInTx(ctx, tx, ledger); err != nil {
 			if isDuplicateKeyError(err) {
 				return ErrDuplicateRequest

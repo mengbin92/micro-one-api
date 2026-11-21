@@ -8,6 +8,13 @@ const (
 	RedeemCodeStatusUsed     = int32(2)
 )
 
+type RedeemCodeListOptions struct {
+	Page, PageSize int32
+	Keyword        string
+	Status         *int32
+	Sort, Order    string
+}
+
 type RedeemCode struct {
 	Revision  int64
 	ID        int64
@@ -23,10 +30,6 @@ type RedeemCode struct {
 
 func (r *RedeemCode) IsEnabled() bool {
 	return r.Status == RedeemCodeStatusEnabled
-}
-
-func (r *RedeemCode) IsAvailable() bool {
-	return r.IsEnabled() && r.Count > 0
 }
 
 type RedeemRecord struct {

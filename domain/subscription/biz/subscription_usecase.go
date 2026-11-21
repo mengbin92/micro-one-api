@@ -166,9 +166,12 @@ func (uc *SubscriptionUsecase) AssignOrExtend(ctx context.Context, req *AssignSu
 	if authErr != nil {
 		return nil, false, authErr
 	}
-	if uc.txRunner != nil && req != nil && (EntitlementsEnabled() || req.Contract != nil) {
-		if _, err := uc.prepareAssignment(ctx, nil, req); err != nil {
-			return nil, false, err
+	if uc.txRunner != nil && req != nil {
+		// Resolve new routing coverage before acquiring database locks.
+		if EntitlementsEnabled() && req.Contract == nil && !req.LegacyPurchase {
+			if _, err := uc.prepareAssignment(ctx, nil, req); err != nil {
+				return nil, false, err
+			}
 		}
 		var sub *UserSubscription
 		var extended bool

@@ -84,8 +84,16 @@ func (r *redeemRepo) CreateRedeemCodesBatch(ctx context.Context, codes []*biz.Re
 }
 
 func (r *redeemRepo) GetRedeemCode(ctx context.Context, code string) (*biz.RedeemCode, error) {
+	return getRedeemCode(ctx, r.data.db, code)
+}
+
+func (r *redeemRepo) GetRedeemCodeForUpdate(ctx context.Context, tx subscriptionbiz.Tx, code string) (*biz.RedeemCode, error) {
+	return getRedeemCode(ctx, txDB(tx).Clauses(clause.Locking{Strength: "UPDATE"}), code)
+}
+
+func getRedeemCode(ctx context.Context, db *gorm.DB, code string) (*biz.RedeemCode, error) {
 	var model redeemCodeModel
-	if err := r.data.db.WithContext(ctx).Where("code = ?", code).First(&model).Error; err != nil {
+	if err := db.WithContext(ctx).Where("code = ?", code).First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, biz.ErrRedeemCodeNotFound
 		}
@@ -102,15 +110,23 @@ func (r *redeemRepo) GetRedeemCode(ctx context.Context, code string) (*biz.Redee
 	return redeemCodeToBiz(&model)
 }
 
-func (r *redeemRepo) ListRedeemCodes(ctx context.Context, page, pageSize int32) ([]*biz.RedeemCode, int64, error) {
+const redeemStatusSQL = "(CASE WHEN status = 1 AND count <= 0 THEN 2 ELSE status END)"
+
+func (r *redeemRepo) ListRedeemCodes(ctx context.Context, options biz.RedeemCodeListOptions) ([]*biz.RedeemCode, int64, error) {
 	var models []redeemCodeModel
 	var total int64
 
-	offset := max(int64(page)-1, 0) * int64(pageSize)
+	offset := max(int64(options.Page)-1, 0) * int64(options.PageSize)
 
 	query, err := authzquery.ApplyContext(ctx, r.data.db.WithContext(ctx).Model(&redeemCodeModel{}), authzquery.Columns{Resource: "id"}, "billing.redemption.list", "billing.redemption.export")
 	if err != nil {
 		return nil, 0, err
+	}
+	if options.Keyword != "" {
+		query = redeemKeyword(query, options.Keyword)
+	}
+	if options.Status != nil {
+		query = query.Where(redeemStatusSQL+" = ?", *options.Status)
 	}
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -119,8 +135,19 @@ func (r *redeemRepo) ListRedeemCodes(ctx context.Context, page, pageSize int32) 
 		return nil, total, nil
 	}
 
-	if err := query.Order("created_at DESC, id DESC").
-		Limit(int(pageSize)).
+	column := "created_at"
+	switch options.Sort {
+	case "code", "name", "amount":
+		column = options.Sort
+	case "status":
+		column = redeemStatusSQL
+	}
+	direction := " DESC"
+	if options.Order == "asc" {
+		direction = " ASC"
+	}
+	if err := query.Order(column + direction + ", id" + direction).
+		Limit(int(options.PageSize)).
 		Offset(int(offset)).
 		Find(&models).Error; err != nil {
 		return nil, 0, err
@@ -145,7 +172,7 @@ func (r *redeemRepo) SearchRedeemCodes(ctx context.Context, keyword string) ([]*
 	if err != nil {
 		return nil, err
 	}
-	err = query.Where("code = ? OR name LIKE ? ESCAPE '!'", keyword, escapeLike(keyword)+"%").
+	err = redeemKeyword(query, keyword).
 		Order("created_at DESC").
 		Find(&models).Error
 
@@ -185,55 +212,17 @@ func (r *redeemRepo) UpdateRedeemCode(ctx context.Context, code *biz.RedeemCode)
 	})
 }
 
-// UpdateRedeemCodeCount atomically decrements a redeem code's remaining
-// count using a single conditional UPDATE. The WHERE clauses guard both
-// status (only enabled codes can be redeemed) and inventory (count >= delta),
-// so two concurrent RedeemCode calls on a count=1 code cannot both succeed —
-// exactly one UPDATE affects a row. Callers must check RowsAffected to detect
-// the disabled / exhausted case. This replaces the historical
-// SELECT-then-UPDATE read-modify-write which lost updates under concurrency
-// (two callers both read count=1, both wrote count=0, both credited the user).
-func (r *redeemRepo) UpdateRedeemCodeCount(ctx context.Context, code string, delta int) error {
-	if delta <= 0 {
-		return errors.New("invalid redeem code count delta")
+func (r *redeemRepo) ClaimRedemptionInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, code *biz.RedeemCode) error {
+	db := txDB(tx).WithContext(ctx)
+	// Records also cover redemptions made before ledger keys were scoped per user.
+	prior := db.Model(&redeemRecordModel{}).Select("1").Where("user_id = ? AND code = ?", userID, code.Code)
+	result := db.Model(&redeemCodeModel{}).Where("id = ? AND count > 0 AND NOT EXISTS (?)", code.ID, prior).
+		UpdateColumn("count", gorm.Expr("count - 1"))
+	if result.Error != nil {
+		return result.Error
 	}
-	res := r.data.db.WithContext(ctx).
-		Model(&redeemCodeModel{}).
-		Where("code = ?", code).
-		Where("status = ?", biz.RedeemCodeStatusEnabled).
-		Where("count >= ?", delta).
-		Update("count", gorm.Expr("count - ?", delta))
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		// Either the code does not exist, is disabled, or has been
-		// exhausted. The caller has already fetched the RedeemCode and
-		// classified the failure; this sentinel lets the usecase
-		// distinguish "lost the race" from a genuine DB error.
-		return biz.ErrRedeemCodeUsedUp
-	}
-	return nil
-}
-
-// UpdateRedeemCodeCountInTx performs the same atomic conditional decrement
-// as UpdateRedeemCodeCount but inside the caller's transaction.
-func (r *redeemRepo) UpdateRedeemCodeCountInTx(ctx context.Context, tx subscriptionbiz.Tx, code string, delta int) error {
-	db := txDB(tx)
-	if delta <= 0 {
-		return errors.New("invalid redeem code count delta")
-	}
-	res := db.WithContext(ctx).
-		Model(&redeemCodeModel{}).
-		Where("code = ?", code).
-		Where("status = ?", biz.RedeemCodeStatusEnabled).
-		Where("count >= ?", delta).
-		Update("count", gorm.Expr("count - ?", delta))
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return biz.ErrRedeemCodeUsedUp
+	if result.RowsAffected == 0 {
+		return biz.ErrDuplicateRequest
 	}
 	return nil
 }
@@ -242,16 +231,8 @@ func (r *redeemRepo) DeleteRedeemCode(ctx context.Context, code string) error {
 	return r.mutateRedeem(ctx, code, "billing.redemption.delete", func(tx *gorm.DB) error { return tx.Where("code = ?", code).Delete(&redeemCodeModel{}).Error })
 }
 
-func (r *redeemRepo) CreateRedeemRecord(ctx context.Context, record *biz.RedeemRecord) error {
-	return r.createRedeemRecord(ctx, r.data.db, record)
-}
-
 func (r *redeemRepo) CreateRedeemRecordInTx(ctx context.Context, tx subscriptionbiz.Tx, record *biz.RedeemRecord) error {
 	db := txDB(tx)
-	return r.createRedeemRecord(ctx, db, record)
-}
-
-func (r *redeemRepo) createRedeemRecord(ctx context.Context, db *gorm.DB, record *biz.RedeemRecord) error {
 	model := &redeemRecordModel{
 		UserID:        record.UserID,
 		Code:          record.Code,
@@ -290,6 +271,10 @@ func redeemCodeToBiz(model *redeemCodeModel) (*biz.RedeemCode, error) {
 	if err != nil {
 		return nil, err
 	}
+	status := int32(model.Status)
+	if status == biz.RedeemCodeStatusEnabled && count <= 0 {
+		status = biz.RedeemCodeStatusUsed
+	}
 	return &biz.RedeemCode{
 		ID:        id,
 		Revision:  model.Revision,
@@ -297,11 +282,15 @@ func redeemCodeToBiz(model *redeemCodeModel) (*biz.RedeemCode, error) {
 		Name:      stringFromPtr(model.Name),
 		Amount:    model.Amount,
 		Count:     count,
-		Status:    int32(model.Status),
+		Status:    status,
 		CreatedBy: stringFromPtr(model.CreatedBy),
 		CreatedAt: model.CreatedAt,
 		UpdatedAt: model.UpdatedAt,
 	}, nil
+}
+
+func redeemKeyword(query *gorm.DB, keyword string) *gorm.DB {
+	return query.Where("(code = ? OR name LIKE ? ESCAPE '!')", keyword, escapeLike(keyword)+"%")
 }
 
 func escapeLike(s string) string {
