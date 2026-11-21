@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"errors"
+	"math"
+	"micro-one-api/domain/authorization"
 	"testing"
 	"time"
 
@@ -12,6 +14,117 @@ import (
 	"github.com/stretchr/testify/require"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 )
+
+// A failed read after the ledger transaction must not turn a successful debit
+// into a business rejection on the synchronous RPC.
+type splitReadFailureLedger struct {
+	*mockLedgerRepo
+	unavailable bool
+}
+
+func (r splitReadFailureLedger) FindByDedupeKey(ctx context.Context, tx subscriptionbiz.Tx, key string) (*Ledger, error) {
+	if tx == nil || r.unavailable {
+		return nil, errors.New("read connection unavailable")
+	}
+	return r.mockLedgerRepo.FindByDedupeKey(ctx, tx, key)
+}
+
+func TestCommitReturnsSplitFromWalletTransaction(t *testing.T) {
+	uc, ledgers, reservations, _ := grossProfitFixture(t)
+	grossProfitSplitReservation(uc, reservations)
+	reader := &splitReadFailureLedger{mockLedgerRepo: ledgers}
+	uc.SetLedgerRepo(reader)
+	uc.SetTxRunner(&mockTxRunner{})
+	usage := LedgerUsage{PromptTokens: 100}
+	for range 2 {
+		_, _, split, err := uc.CommitQuotaWithUsageAndSplit(t.Context(), "r", 100, true, usage)
+		require.Equal(t, ReservationStatusCommitted, reservations.reservations["r"].Status)
+		require.Len(t, ledgers.ledgers, 2)
+		require.NoError(t, err)
+		require.Equal(t, ledgers.ledgers[0].SubscriptionCost, split.SubscriptionCost)
+		require.Equal(t, ledgers.ledgers[1].BalanceCost, split.BalanceCost)
+		require.Equal(t, split.SubscriptionCost+split.BalanceCost, split.CommittedAmount)
+	}
+	reader.unavailable = true
+	_, _, _, err := uc.CommitQuotaWithUsageAndSplit(t.Context(), "r", 100, true, usage)
+	require.ErrorIs(t, err, ErrSettlementReceiptUnavailable)
+	total, _, err := uc.CommitQuotaWithUsage(t.Context(), "r", 100, true, usage)
+	require.NoError(t, err, "total-only recovery does not depend on split evidence")
+	require.Equal(t, reservations.reservations["r"].ActualCost, total)
+	require.Len(t, ledgers.ledgers, 2)
+
+}
+
+type closedWalletReadRepo struct {
+	*mockReservationRepo
+	closed  bool
+	readErr error
+}
+
+func (r *closedWalletReadRepo) GetReservation(ctx context.Context, id string) (*Reservation, error) {
+	if r.closed {
+		return nil, r.readErr
+	}
+	return r.mockReservationRepo.GetReservation(ctx, id)
+}
+
+func TestCommitWalletReceiptWithoutPostCommitRead(t *testing.T) {
+	uc, _, reservations, _ := grossProfitFixture(t)
+	repo := &closedWalletReadRepo{mockReservationRepo: reservations, readErr: errors.New("read connection unavailable after commit")}
+	uc.reservationRepo = repo
+	uc.SetTxRunner(grossProfitCommitRunner{beforeCommit: func() { repo.closed = true }})
+	_, _, split, err := uc.CommitQuotaWithUsageAndSplit(t.Context(), "r", 100, true, LedgerUsage{PromptTokens: 100})
+	require.NoError(t, err)
+	require.True(t, repo.closed)
+	require.Positive(t, split.BalanceCost)
+	require.Equal(t, split.BalanceCost, split.CommittedAmount)
+	require.Zero(t, split.SubscriptionCost)
+	_, _, _, err = uc.CommitQuotaWithUsageAndSplit(t.Context(), "r", 100, true, LedgerUsage{PromptTokens: 100})
+	require.ErrorIs(t, err, ErrSettlementReceiptUnavailable)
+	for _, decision := range []error{ErrReservationNotFound, authorization.ErrDenied, ErrRequestSnapshotInvalid, ErrSettlementReservationClosed} {
+		repo.readErr = decision
+		_, _, _, err = uc.CommitQuotaWithUsageAndSplit(t.Context(), "r", 100, true, LedgerUsage{PromptTokens: 100})
+		require.ErrorIs(t, err, decision)
+		require.NotErrorIs(t, err, ErrSettlementReceiptUnavailable)
+	}
+}
+
+func TestReplayRequiresCompleteNonnegativeSplit(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		sub, wallet int64
+		valid       bool
+	}{
+		{"subscription only", 1000, 0, true},
+		{"wallet only", 0, 1000, true},
+		{"missing wallet leg", 500, 0, false},
+		{"missing subscription leg", 0, 500, false},
+		{"negative subscription", -1, 1001, false},
+		{"negative wallet", 1001, -1, false},
+		{"overflowing sum", 1000, math.MaxInt64, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			uc, ledger, reservations, _ := grossProfitFixture(t)
+			uc.SetTxRunner(&mockTxRunner{})
+			r := reservations.reservations["r"]
+			r.Status, r.SubscriptionID, r.ActualCost = ReservationStatusCommitted, 7, 1000
+			if tc.sub != 0 {
+				ledger.ledgers = append(ledger.ledgers, &Ledger{LedgerDedupeKey: "r:consume:subscription", SubscriptionCost: tc.sub})
+			}
+			if tc.wallet != 0 {
+				ledger.ledgers = append(ledger.ledgers, &Ledger{LedgerDedupeKey: "r:consume:balance", BalanceCost: tc.wallet})
+			}
+			_, _, split, err := uc.CommitQuotaWithUsageAndSplit(t.Context(), "r", 0, true, LedgerUsage{})
+			if tc.valid {
+				require.NoError(t, err)
+				require.Equal(t, CommitResult{CommittedAmount: 1000, SubscriptionCost: tc.sub, BalanceCost: tc.wallet}, split)
+			} else {
+				require.ErrorIs(t, err, ErrSettlementReceiptUnavailable)
+				require.Zero(t, split)
+			}
+		})
+	}
+}
 
 func TestCommitSplitWithoutConsumptionLedgers(t *testing.T) {
 	for _, tt := range []struct {

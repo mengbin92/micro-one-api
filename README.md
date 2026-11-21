@@ -8,7 +8,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.49.0 发布公告](./docs/releases/release-v0.49.0.md)（MINOR 兑换码筛选与导出、资金重放保护和 WebSocket 会话修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.49.0)
+> 📣 **最新发布**：[v0.49.1 发布公告](./docs/releases/release-v0.49.1.md)（PATCH 修复扣费已提交后仍返回失败回执的问题） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.49.1)
 
 ## 功能概览
 
@@ -186,6 +186,7 @@ make web-dist
 
 ## 发布与升级
 
+- [v0.49.1](./docs/releases/release-v0.49.1.md) Billing 从扣费事务取得实际分摊，修复提交后回读故障导致的失败回执。升级 Billing 服务，无新增数据库迁移。
 - [v0.49.0](./docs/releases/release-v0.49.0.md) 兑换码列表和导出共用筛选条件，修复并发续期、资金操作重放、跨服务凭据暴露和 WebSocket 重发。沿用现有数据库结构。
 - [v0.48.1](./docs/releases/release-v0.48.1.md) 修复公告发布时校验已过期的下架时间，以及留空发布时间的草稿发布。升级 Admin API 和 Web，无新增数据库迁移。
 - [v0.48.0](./docs/releases/release-v0.48.0.md) 新增 Realtime VAD、独立转写、流式 TTS、Kimi 设备码绑定和探针留证，补齐令牌页配额与白名单显示。无新增数据库迁移。

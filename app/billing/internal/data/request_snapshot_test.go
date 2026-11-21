@@ -276,8 +276,11 @@ func TestRequestSnapshotCommitRollback(t *testing.T) {
 					tx.AddError(fmt.Errorf("injected ledger failure"))
 				}
 			}))
-			_, _, err = uc.CommitQuotaWithUsage(ctx, r.ReservationID, 1000, true, biz.LedgerUsage{PromptTokens: 1000})
+			cost, refund, receipt, err := uc.CommitQuotaWithUsageAndSplit(ctx, r.ReservationID, 1000, true, biz.LedgerUsage{PromptTokens: 1000})
 			require.Error(t, err)
+			require.Zero(t, cost)
+			require.Zero(t, refund)
+			require.Zero(t, receipt)
 			require.NoError(t, db.Callback().Create().Remove("fail_snapshot_ledger"))
 			stored, err := d.reservationRepo.GetReservation(ctx, r.ReservationID)
 			require.NoError(t, err)
@@ -288,9 +291,10 @@ func TestRequestSnapshotCommitRollback(t *testing.T) {
 			var count int64
 			require.NoError(t, db.Table("subscription_window_charges").Count(&count).Error)
 			require.Zero(t, count)
-			cost, _, err := uc.CommitQuotaWithUsage(ctx, r.ReservationID, 1000, true, biz.LedgerUsage{PromptTokens: 1000})
+			cost, _, receipt, err = uc.CommitQuotaWithUsageAndSplit(ctx, r.ReservationID, 1000, true, biz.LedgerUsage{PromptTokens: 1000})
 			require.NoError(t, err)
 			require.EqualValues(t, 1000, cost)
+			require.Equal(t, biz.CommitResult{CommittedAmount: 1000, SubscriptionCost: 500, BalanceCost: 500}, receipt)
 			account, err := d.accountRepo.GetAccountSnapshot(ctx, "7001")
 			require.NoError(t, err)
 			require.EqualValues(t, 999500, account.Balance)
@@ -298,6 +302,66 @@ func TestRequestSnapshotCommitRollback(t *testing.T) {
 			current, err = repo.GetSubscriptionByID(ctx, sub.ID)
 			require.NoError(t, err)
 			require.InDelta(t, 0.1, current.DailyUsageUSD, 1e-12)
+		})
+	}
+}
+
+func TestConcurrentSettlementReturnsSameSplit(t *testing.T) {
+	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(driver, func(t *testing.T) {
+			t.Setenv("BILLING_REQUEST_SNAPSHOT_V2", "true")
+			db := testutil.RoutingContextDB(t, driver)
+			if driver == "sqlite" {
+				pool, err := db.DB()
+				require.NoError(t, err)
+				pool.SetMaxOpenConns(1)
+			}
+			uc, _, d, _, _ := snapshotBillingFixture(t, db, true, 1, 0.0625)
+			ctx := t.Context()
+			r, err := uc.ReserveQuota(ctx, "7001", "split-race", 1000, "m", "1", 0, requestContext())
+			require.NoError(t, err)
+			start := make(chan struct{})
+			type reply struct {
+				split biz.CommitResult
+				err   error
+			}
+			const clients = 8
+			replies := make(chan reply, clients)
+			for range clients {
+				go func() {
+					<-start
+					_, _, result, err := uc.CommitQuotaWithUsageAndSplit(ctx, r.ReservationID, 1000, true, biz.LedgerUsage{PromptTokens: 1000})
+					replies <- reply{result, err}
+				}()
+			}
+			close(start)
+			want := biz.CommitResult{CommittedAmount: 1000, SubscriptionCost: 625, BalanceCost: 375}
+			for range clients {
+				got := <-replies
+				require.NoError(t, got.err)
+				require.Equal(t, want, got.split)
+			}
+			var rows []ledgerModel
+			require.NoError(t, db.Where("reference_id = ? AND type = ?", r.ReservationID, biz.LedgerTypeConsume).Find(&rows).Error)
+			require.Len(t, rows, 2)
+			for _, row := range rows {
+				switch row.CostSource {
+				case biz.CostSourceSubscription:
+					require.Equal(t, want.SubscriptionCost, row.SubscriptionCost)
+					require.Equal(t, -want.SubscriptionCost, row.Amount)
+				case biz.CostSourceBalance:
+					require.Equal(t, want.BalanceCost, row.BalanceCost)
+					require.Equal(t, -want.BalanceCost, row.Amount)
+				default:
+					t.Fatalf("unexpected cost source %q", row.CostSource)
+				}
+			}
+			account, err := d.accountRepo.GetAccountSnapshot(ctx, "7001")
+			require.NoError(t, err)
+			require.EqualValues(t, 1000000-want.BalanceCost, account.Balance)
+			require.EqualValues(t, want.CommittedAmount, account.UsedAmount)
+			require.EqualValues(t, 1, account.RequestCount)
+			require.Zero(t, account.FrozenAmount)
 		})
 	}
 }

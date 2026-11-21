@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	kratoserrors "github.com/go-kratos/kratos/v3/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 
@@ -798,76 +799,86 @@ type CommitResult struct {
 // subscription/balance split without breaking the legacy
 // (int64, int64, error) signature of the original entry point.
 func (uc *BillingUsecase) CommitQuotaWithUsageAndSplit(ctx context.Context, reservationID string, actualTokens int64, success bool, usage LedgerUsage) (int64, int64, CommitResult, error) {
-	committed, refund, err := uc.CommitQuotaWithUsage(ctx, reservationID, actualTokens, success, usage)
-	if err != nil {
-		return 0, 0, CommitResult{}, err
-	}
-	result := CommitResult{CommittedAmount: committed, RefundAmount: refund, BalanceCost: committed}
-	if committed == 0 {
-		return committed, refund, result, nil
-	}
-	reservation, err := uc.reservationRepo.GetReservation(ctx, reservationID)
-	if err != nil {
-		return 0, 0, CommitResult{}, err
-	}
-	if reservation.HasSubscription() {
-		// Historical reservations without split ledgers only retain the wallet estimate.
-		result.BalanceCost = min(committed, max(int64(0), reservation.BalanceAmount))
-		result.SubscriptionCost = committed - result.BalanceCost
-		if uc.ledgerRepo != nil {
-			sub, err := uc.ledgerRepo.FindByDedupeKey(ctx, nil, fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeConsume, CostSourceSubscription))
-			if err != nil {
-				return 0, 0, CommitResult{}, err
-			}
-			bal, err := uc.ledgerRepo.FindByDedupeKey(ctx, nil, fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeConsume, CostSourceBalance))
-			if err != nil {
-				return 0, 0, CommitResult{}, err
-			}
-			if sub != nil || bal != nil {
-				result.SubscriptionCost, result.BalanceCost = 0, 0
-				if sub != nil {
-					result.SubscriptionCost = sub.SubscriptionCost
-				}
-				if bal != nil {
-					result.BalanceCost = bal.BalanceCost
-				}
-			}
-		}
-	}
-	return committed, refund, result, nil
+	result, err := uc.commitQuotaResult(ctx, reservationID, actualTokens, success, usage, true)
+	return result.CommittedAmount, result.RefundAmount, result, err
 }
 
 type LedgerUsage = billingdomain.LedgerUsage
 
 func (uc *BillingUsecase) CommitQuotaWithUsage(ctx context.Context, reservationID string, actualTokens int64, success bool, usage LedgerUsage) (int64, int64, error) {
-	if usage.UsageContractVersion != 2 {
-		r, err := uc.reservationRepo.GetReservation(ctx, reservationID)
+	result, err := uc.commitQuotaResult(ctx, reservationID, actualTokens, success, usage, false)
+	return result.CommittedAmount, result.RefundAmount, err
+}
+
+// A storage read cannot establish whether an earlier attempt already settled.
+// Preserve explicit domain decisions and make an unknown outcome retryable.
+func settlementReadError(err error) error {
+	typed := kratoserrors.FromError(err)
+	if errors.Is(err, ErrReservationNotFound) || errors.Is(err, authorization.ErrDenied) ||
+		typed.Code != kratoserrors.UnknownCode || typed.Reason != kratoserrors.UnknownReason {
+		return err
+	}
+	return errors.Join(ErrSettlementReceiptUnavailable, err)
+}
+
+// On a replay the original transaction already finished. Recover its split
+// from the immutable ledger only when the caller actually requested it.
+func (uc *BillingUsecase) committedResult(ctx context.Context, tx subscriptionbiz.Tx, r *Reservation, withSplit bool) (CommitResult, error) {
+	amount := committedAmountFromReservation(r)
+	result := CommitResult{CommittedAmount: amount, BalanceCost: amount}
+	if !withSplit || amount == 0 || !r.HasSubscription() {
+		return result, nil
+	}
+	if uc.ledgerRepo != nil {
+		sub, err := uc.ledgerRepo.FindByDedupeKey(ctx, tx, fmt.Sprintf("%s:%s:%s", r.ReservationID, LedgerTypeConsume, CostSourceSubscription))
 		if err != nil {
-			return 0, 0, err
+			return CommitResult{}, settlementReadError(err)
 		}
-		if success && r.RequestSnapshot != nil && r.RequestSnapshot.Execution != nil {
-			return 0, 0, ErrSettlementReceiptInvalid
+		bal, err := uc.ledgerRepo.FindByDedupeKey(ctx, tx, fmt.Sprintf("%s:%s:%s", r.ReservationID, LedgerTypeConsume, CostSourceBalance))
+		if err != nil {
+			return CommitResult{}, settlementReadError(err)
+		}
+		if sub != nil || bal != nil {
+			result.BalanceCost = 0
+			if sub != nil {
+				result.SubscriptionCost = sub.SubscriptionCost
+			}
+			if bal != nil {
+				result.BalanceCost = bal.BalanceCost
+			}
+			if result.SubscriptionCost < 0 || result.SubscriptionCost > amount || result.BalanceCost != amount-result.SubscriptionCost {
+				return CommitResult{}, ErrSettlementReceiptUnavailable
+			}
+			return result, nil
 		}
 	}
+	// Only historical reservations without split ledgers use the bounded estimate.
+	result.BalanceCost = min(amount, max(int64(0), r.BalanceAmount))
+	result.SubscriptionCost = amount - result.BalanceCost
+	return result, nil
+}
+
+func (uc *BillingUsecase) commitQuotaResult(ctx context.Context, reservationID string, actualTokens int64, success bool, usage LedgerUsage, withSplit bool) (CommitResult, error) {
+	r, err := uc.reservationRepo.GetReservation(ctx, reservationID)
+	if err != nil {
+		return CommitResult{}, settlementReadError(err)
+	}
 	if usage.UsageContractVersion == 2 {
-		r, err := uc.reservationRepo.GetReservation(ctx, reservationID)
-		if err != nil {
-			return 0, 0, err
-		}
 		if r.RequestSnapshot == nil || r.RequestSnapshot.Execution == nil || r.RequestSnapshot.Execution.Policy != execution.Policy || ValidateV2Envelope(usage.Envelope) != "" {
-			return 0, 0, ErrSettlementReceiptInvalid
+			return CommitResult{}, ErrSettlementReceiptInvalid
 		}
 		if r.Status == ReservationStatusReleased || r.Status == ReservationStatusExpired {
-			return 0, 0, ErrSettlementReservationClosed
+			return CommitResult{}, ErrSettlementReservationClosed
 		}
 		if r.Status == ReservationStatusCommitted {
-			// The evidence deadline limits new financial settlement. Recovery
-			// may still replay a committed task to finish idempotent side effects.
-			return committedAmountFromReservation(r), 0, nil
+			// Recovery can finish idempotent side effects after the evidence deadline.
+			return uc.committedResult(ctx, nil, r, withSplit)
 		}
 		if uc.Now().Unix() >= r.RequestSnapshot.Execution.EvidenceDeadline || usage.Envelope.ParseStatus != "verified" {
-			return 0, 0, uc.ReleaseQuota(ctx, reservationID, "frozen native v2 policy: unproven usage")
+			return CommitResult{}, uc.ReleaseQuota(ctx, reservationID, "frozen native v2 policy: unproven usage")
 		}
+	} else if success && r.RequestSnapshot != nil && r.RequestSnapshot.Execution != nil {
+		return CommitResult{}, ErrSettlementReceiptInvalid
 	}
 
 	// Code-review 2026-07-30 billing-C2: the legacy (non-subscription)
@@ -886,14 +897,15 @@ func (uc *BillingUsecase) CommitQuotaWithUsage(ctx context.Context, reservationI
 	// in-memory tests where reservationDB() == nil.
 	runner := uc.resolveRunner()
 	if runner == nil {
-		return uc.commitQuotaLegacy(ctx, reservationID, actualTokens, success, usage)
+		committed, refund, err := uc.commitQuotaLegacy(ctx, reservationID, actualTokens, success, usage)
+		return CommitResult{CommittedAmount: committed, RefundAmount: refund, BalanceCost: committed}, err
 	}
 	if !success {
 		// CAS release path: reserved -> releasing -> released in one
 		// transaction with the wallet refund + ledger + status flip.
-		return 0, 0, uc.releaseReservation(ctx, reservationID, "request failed", ReservationStatusReleased)
+		return CommitResult{}, uc.releaseReservation(ctx, reservationID, "request failed", ReservationStatusReleased)
 	}
-	return uc.commitQuotaDualTrack(ctx, reservationID, actualTokens, usage)
+	return uc.commitQuotaDualTrack(ctx, reservationID, actualTokens, usage, withSplit)
 }
 
 func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID string, actualTokens int64, success bool, usage LedgerUsage) (int64, int64, error) {
@@ -1056,17 +1068,16 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 // wallet settlement, ledger entries, optional receivable) inside a
 // single transaction; retries see the row state and short-circuit on
 // the same reservation. See design doc §5.3.
-func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationID string, actualTokens int64, usage LedgerUsage) (int64, int64, error) {
+func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationID string, actualTokens int64, usage LedgerUsage, withSplit bool) (CommitResult, error) {
 	runner := uc.resolveRunner()
 	if runner == nil {
-		return 0, 0, ErrCrossDBReservation
+		return CommitResult{}, ErrCrossDBReservation
 	}
 	// Read dynamic prices before acquiring SQLite's single connection. Both
 	// user and upstream costs use this per-settlement snapshot.
 	pricing := uc.pricingConfig(ctx)
 	now := uc.Now().Unix()
-	var resultActualCost int64
-	var resultRefundAmount int64
+	var result CommitResult
 	var settledModel string
 	var settledUpstreamCost int64
 	var newlySettled bool
@@ -1083,29 +1094,27 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 			// return a best-effort idempotent result.
 			reservation, err := uc.reservationRepo.GetReservationInTx(ctx, tx, reservationID)
 			if err != nil {
-				return err
+				return settlementReadError(err)
 			}
 			switch reservation.Status {
 			case ReservationStatusCommitted:
 				// Code-review 2026-07-30 billing-L1: return the persisted actual
 				// cost (fallback to Amount for legacy rows committed before the
 				// actual_cost column existed).
-				resultActualCost = committedAmountFromReservation(reservation)
-				resultRefundAmount = 0
-				return nil
+				result, err = uc.committedResult(ctx, tx, reservation, withSplit)
+				return err
 			case ReservationStatusReleased, ReservationStatusExpired:
 				if usage.UsageContractVersion == 2 || usage.ActualAudioUnits != 0 {
 					return ErrSettlementReservationClosed
 				}
-				resultActualCost = 0
-				resultRefundAmount = reservation.Amount
+				result = CommitResult{RefundAmount: reservation.Amount}
 				return nil
 			}
 			return errors.Join(ErrReservationCommitted, ErrReservationReleased)
 		}
 		reservation, err := uc.reservationRepo.GetReservationInTx(ctx, tx, reservationID)
 		if err != nil {
-			return fmt.Errorf("get reservation in tx: %w", err)
+			return settlementReadError(err)
 		}
 		if usage.UsageContractVersion == 2 && (reservation.RequestSnapshot == nil || reservation.RequestSnapshot.Execution == nil || uc.Now().Unix() >= reservation.RequestSnapshot.Execution.EvidenceDeadline) {
 			return ErrSettlementReservationClosed
@@ -1324,17 +1333,16 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		if err := uc.accountRepo.UpdateUsageInTx(ctx, tx, reservation.UserID, actualCost, 1); err != nil {
 			return fmt.Errorf("update usage: %w", err)
 		}
-		resultActualCost = actualCost
-		resultRefundAmount = 0
+		result = CommitResult{CommittedAmount: actualCost, SubscriptionCost: actualSubscriptionAmount, BalanceCost: actualBalanceAmount}
 		settledModel, settledUpstreamCost, newlySettled = reservation.Model, upstreamCost, true
 		return nil
 	}); err != nil {
-		return 0, 0, err
+		return CommitResult{}, err
 	}
 	if newlySettled {
-		uc.recordGrossProfit(settledModel, resultActualCost, settledUpstreamCost)
+		uc.recordGrossProfit(settledModel, result.CommittedAmount, settledUpstreamCost)
 	}
-	return resultActualCost, resultRefundAmount, nil
+	return result, nil
 }
 
 func (uc *BillingUsecase) commitSubscriptionAbsorbUSD(ctx context.Context, tx subscriptionbiz.Tx, reservation *Reservation, costUSD float64) float64 {

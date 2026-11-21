@@ -474,7 +474,7 @@ func (uc *AsyncBillingUsecase) settleSync(ctx context.Context, task *SettleTask)
 	return err
 }
 
-// runCommitPipeline runs the authoritative CommitQuotaWithUsageAndSplit
+// runCommitPipeline runs the authoritative CommitQuotaWithUsage
 // pipeline for a settle task. It is shared by the background worker and the
 // queue-full synchronous fallback so both paths produce identical state.
 // Errors are logged and counted via metrics; they cannot be returned to the
@@ -486,7 +486,7 @@ func (uc *AsyncBillingUsecase) settleSync(ctx context.Context, task *SettleTask)
 //	The relay returns a provisional success to the client BEFORE the worker
 //	runs this pipeline, so a worker crash or a retry (e.g. queue-full sync
 //	fallback racing with the worker draining the same task) could in
-//	principle call CommitQuotaWithUsageAndSplit twice for the same
+//	principle call CommitQuotaWithUsage twice for the same
 //	reservation id. The pipeline is safe under such re-entry because the
 //	reservation state machine transitions through Compare-And-Set calls
 //	(CASReservationStatus):
@@ -507,8 +507,7 @@ func (uc *AsyncBillingUsecase) runCommitPipeline(ctx context.Context, task *Sett
 	// v0.18 P2 C5: observe the async commit duration. The sync entry point
 	// (BillingService.CommitQuota, service layer) observes mode=sync after the
 	// async branch returns early. The Observe is deliberately NOT in
-	// BillingUsecase.CommitQuotaWithUsage: that function is delegated to by
-	// CommitQuotaWithUsageAndSplit, which this async pipeline also calls —
+	// the shared billing usecase because both sync and async modes call it —
 	// placing it there would double-count async commits into the sync label.
 	// The async worker runs the same commit pipeline but is labelled async so
 	// the baseline can separate the two paths.
@@ -518,7 +517,7 @@ func (uc *AsyncBillingUsecase) runCommitPipeline(ctx context.Context, task *Sett
 			metrics.BillingCommitDuration.WithLabelValues("async").Observe(time.Since(commitStart).Seconds())
 		}
 	}()
-	_, _, result, err := uc.syncUc.CommitQuotaWithUsageAndSplit(
+	committed, _, err := uc.syncUc.CommitQuotaWithUsage(
 		ctx,
 		task.ReservationID,
 		task.ActualTokens,
@@ -530,11 +529,11 @@ func (uc *AsyncBillingUsecase) runCommitPipeline(ctx context.Context, task *Sett
 		applogger.Log.Warn("async settlement error", zap.String("reservation_id", task.ReservationID), zap.Error(err))
 		return err
 	}
-	if task.Success && task.SubscriptionAccountID > 0 && result.CommittedAmount > 0 {
+	if task.Success && task.SubscriptionAccountID > 0 && committed > 0 {
 		if uc.reporter == nil {
 			return fmt.Errorf("subscription account quota reporter is unavailable")
 		}
-		if err := uc.reporter.RecordSubscriptionAccountQuotaUsage(ctx, task.SubscriptionAccountID, task.ReservationID, float64(result.CommittedAmount)/float64(AmountScale), task.Timestamp); err != nil {
+		if err := uc.reporter.RecordSubscriptionAccountQuotaUsage(ctx, task.SubscriptionAccountID, task.ReservationID, float64(committed)/float64(AmountScale), task.Timestamp); err != nil {
 			applogger.Log.Warn("async subscription account quota reporting failed", zap.String("reservation_id", task.ReservationID), zap.Error(err))
 			return err
 		}
