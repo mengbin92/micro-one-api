@@ -79,22 +79,26 @@ assert "build" not in args and "up" not in args
             scratch = Path(scratch)
             compose = scratch / "docker-compose"
             compose.write_text('''#!/usr/bin/env python3
-import json, os, subprocess, sys
+import json, subprocess, sys
 from pathlib import Path
 args = sys.argv[1:]
+assert "-p" in args and args[args.index("-p") + 1].startswith("micro-one-api-e2e-"), "compose operation outside test project"
 if "up" not in args:
     sys.exit(0)
 config = json.loads(subprocess.check_output(
-    [os.environ["TEST_DOCKER"], "compose", "--env-file", os.environ["TEST_COMPOSE_ENV"]]
+    ["docker", "compose"]
     + args[:args.index("up")] + ["config", "--format", "json"]))
 services = config["services"]
+assert all(mount["type"] != "bind" or mount.get("read_only") for mount in services["relay-gateway"]["volumes"]), "E2E relay may consume host outbox data"
+assert services["notify-worker"]["environment"].get("NOTIFY_WEBHOOK_URL") != "https://test.invalid/ambient"
+assert services["identity-service"]["environment"].get("REGISTRATION_DISABLED") != "true"
 relay = services["relay-gateway"]["environment"]["SERVICE_IDENTITY_TOKEN"]
 assert relay, "E2E relay has no dedicated identity; execution claims will be denied"
 assert relay != services["relay-gateway"]["environment"]["SERVICE_TOKEN"]
 for owner in ("channel-service", "identity-service", "billing-service", "log-service", "config-service"):
     callers = json.loads(services[owner]["environment"]["SERVICE_CALLER_TOKENS"])
     assert callers.get("relay") == relay, owner + " does not trust the E2E relay"
-Path(os.environ["TEST_RESULT"]).write_text("PASS")
+Path(__file__).with_name("result").write_text("PASS")
 sys.exit(1)  # Stop before any container or HTTP operation.
 ''')
             compose.chmod(0o700)
@@ -103,8 +107,7 @@ sys.exit(1)  # Stop before any container or HTTP operation.
             sleep.chmod(0o700)
             result_file = scratch / "result"
             env = dict(os.environ, PATH=str(scratch) + os.pathsep + os.environ["PATH"],
-                       TEST_DOCKER=shutil.which("docker"), TEST_RESULT=str(result_file),
-                       TEST_COMPOSE_ENV=str(ROOT / "deployments/docker-compose/.env.example"),
+                       NOTIFY_WEBHOOK_URL="https://test.invalid/ambient", REGISTRATION_DISABLED="true",
                        MYSQL_ROOT_PASSWORD="e2e-test-password", ADMIN_TOKEN="e2e-test-admin",
                        SERVICE_TOKEN="e2e-test-shared", TMPDIR=str(scratch))
             result = subprocess.run(["bash", str(ROOT / "scripts/test-e2e-flow.sh"), "--suite"],

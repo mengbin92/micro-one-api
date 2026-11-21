@@ -19,6 +19,9 @@ services:
   relay-gateway:
     environment:
       - PROVIDER_DISABLE_SSRF_CHECK=true
+    volumes:
+      - e2e_relay_outbox:/var/lib/relay-outbox
+      - e2e_relay_observation:/var/lib/relay-observation
 
   identity-service:
     ports:
@@ -34,3 +37,18 @@ services:
     ports:
       - "8002:8002"
       - "9002:9002"
+
+# The relay runs as uid 65534 and requires private writable spool directories.
+volumes:
+  e2e_relay_outbox:
+    driver_opts: &e2e_spool
+      type: tmpfs
+      device: tmpfs
+      o: uid=65534,gid=65534,mode=0700,size=512m
+  e2e_relay_observation:
+    driver_opts: *e2e_spool
+
+networks:
+  backend:
+    driver_opts:
+      com.docker.network.bridge.host_binding_ipv4: 127.0.0.1

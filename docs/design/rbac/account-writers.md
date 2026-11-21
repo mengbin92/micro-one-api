@@ -34,7 +34,7 @@
 | accountRepo.UpdateFrozenAmount | 额度预留/释放；frozen_amount | 原子 SQL；专属财务凭证或暂停排空方案 |
 | accountRepo.ReserveBalanceInTx / CommitBalanceInTx / ReleaseBalanceInTx | relay reserve/commit/release；balance/frozen_amount | 调用方 Tx、条件 SQL、幂等任务；停止旧写者时核对在途/恢复重放，不丢财务写 |
 | Repository.IncreaseUserBalance → increaseUserBalanceDB | identity 兼容财务 repo seam；balance | 当前生产 biz 无调用；保留为显式潜在 DB 通道清点项，不能遗漏 |
-| scripts/test-e2e-flow.sh | 测试直接 UPDATE users.quota | 仅隔离验收库，禁止当生产迁移或放权路径；SOURCE 摘要纳入检查 |
+| scripts/test-e2e-flow.sh | 测试通过 Admin 的 `POST /v1/topup` 为验收账号充值 | Billing 的 TopUpQuota 同事务更新 `users.balance` 并记录流水。SOURCE 摘要跟踪测试脚本变更 |
 
 `account_repo.go` 是生产 billing users 写者；`reconciliation_repo.go` 对 users 为读取。D0 支持列级权限时限定 billing 的财务列；SQLite/共享凭证无法隔离时暂停消费/结算写、排空并重放现有幂等任务。服务账号/DB 凭证和运行实例的真实部署核验在 D0/D1，首批不声称已隔离。
 
