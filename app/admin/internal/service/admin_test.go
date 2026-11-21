@@ -257,6 +257,10 @@ func TestListLedgerEntriesPreservesUsageAuditContract(t *testing.T) {
 	}}
 	svc := NewAdminService(client, nil, nil, nil)
 
+	page, err := svc.ListUserLedger(context.Background(), &adminv1.ListUserLedgerRequest{})
+	if err != nil || len(page.GetLedgers()) != 1 || page.Ledgers[0].Id != 42 {
+		t.Fatalf("user ledger ID lost: %v, %v", page, err)
+	}
 	entries, total, err := svc.ListLedgerEntries(context.Background(), &adminv1.ListLogsRequest{})
 	if err != nil {
 		t.Fatalf("ListLedgerEntries() error = %v", err)

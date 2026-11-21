@@ -7,7 +7,12 @@ describe('toCsv', () => {
       { key: 'name', label: 'Name' }, { key: 'loss', label: 'Loss' },
     ])).toContain('"\'=HYPERLINK(""evil"")","-12"');
   });
-  it('keeps headers in configured order', () => {
+  it('distinguishes a negative numeric string from an expression', () => {
+    expect(toCsv([{ value: '-1+2' }, { value: '-12.50' }], [{ key: 'value', label: 'Amount' }]))
+      .toBe('"Amount"\n"\'-1+2"\n"-12.50"');
+  });
+
+  it('writes the selected columns in order', () => {
     const csv = toCsv([{ name: 'Alice', id: 1 }], [
       { key: 'id', label: 'ID' },
       { key: 'name', label: 'Name' },

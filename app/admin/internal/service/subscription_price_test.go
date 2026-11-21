@@ -18,6 +18,7 @@ type priceBillingClient struct {
 	billingv1.BillingServiceClient
 	charged, refunded int64
 	changeMultiplier  func()
+	refundMessage     string
 }
 
 func TestLegacySubscriptionChangeRejectsInvalidPriceBeforeWallet(t *testing.T) {
@@ -46,7 +47,7 @@ func (c *priceBillingClient) PurchaseSubscription(_ context.Context, req *billin
 
 func (c *priceBillingClient) TopUpQuota(_ context.Context, req *billingv1.TopUpQuotaRequest, _ ...grpc.CallOption) (*billingv1.TopUpQuotaResponse, error) {
 	c.refunded = req.Amount
-	return &billingv1.TopUpQuotaResponse{Success: true}, nil
+	return &billingv1.TopUpQuotaResponse{Success: c.refundMessage == "", ErrorMessage: c.refundMessage}, nil
 }
 
 type priceFailingSubscriptionRepo struct{ fakeSubscriptionRepo }
@@ -70,30 +71,37 @@ func (r pricePlanRepo) GetPlanByID(context.Context, int64) (*subscriptionbiz.Sub
 
 func TestLegacySubscriptionPriceRollbackUsesActualDebit(t *testing.T) {
 	t.Setenv("SUBSCRIPTION_ENTITLEMENTS_V2", "false")
-	for _, kind := range []string{"group", "plan", "upgrade"} {
-		t.Run(kind, func(t *testing.T) {
-			t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", "10")
-			group := &subscriptionbiz.SubscriptionGroup{ID: 7, Name: "price-policy", Status: 1, PriceQuota: 100, DurationDays: 30}
-			groups := &fakeGroupRepo{group: group}
-			repo := &priceFailingSubscriptionRepo{}
-			billing := &priceBillingClient{changeMultiplier: func() { t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", "2") }}
-			svc := NewAdminService(billing, nil, nil, nil)
-			plan := &subscriptionbiz.SubscriptionPlan{ID: 8, GroupID: group.ID, Group: group, Name: "price-plan", PriceQuota: 100, ValidityDays: 30, ForSale: true}
-			svc.SetSubscriptionUsecases(subscriptionbiz.NewSubscriptionUsecase(repo, groups), subscriptionbiz.NewGroupUsecase(groups), subscriptionbiz.NewPlanUsecase(pricePlanRepo{plan: plan}, groups))
-			var err error
-			switch kind {
-			case "group":
-				_, err = svc.PurchaseSubscription(context.Background(), 42, group.ID, "price-rollback-group")
-			case "plan":
-				_, err = svc.PurchaseSubscriptionPlan(context.Background(), 42, plan.ID, "price-rollback-plan")
-			case "upgrade":
-				repo.active = &subscriptionbiz.UserSubscription{ID: 3, UserID: 42, GroupID: group.ID, Status: "active", StartsAt: time.Now().Unix(), ExpiresAt: time.Now().Add(time.Hour).Unix()}
-				_, err = svc.ChangeSubscription(context.Background(), subscriptionbiz.ChangeRequest{UserID: 42, FromSubscriptionID: 3, ToGroupID: group.ID, NewPriceQuota: 200, OldPriceQuota: 100}, "price-rollback-upgrade")
-			}
-			require.Error(t, err)
-			require.EqualValues(t, 10_000_000, billing.charged)
-			require.Equal(t, billing.charged, billing.refunded, "rollback must restore the debit, even when the configured rate changes")
-		})
+	for _, refundMessage := range []string{"", "refund declined"} {
+		for _, kind := range []string{"group", "plan", "upgrade"} {
+			t.Run(kind+"/"+refundMessage, func(t *testing.T) {
+				t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", "10")
+				group := &subscriptionbiz.SubscriptionGroup{ID: 7, Name: "price-policy", Status: 1, PriceQuota: 100, DurationDays: 30}
+				groups := &fakeGroupRepo{group: group}
+				repo := &priceFailingSubscriptionRepo{}
+				billing := &priceBillingClient{refundMessage: refundMessage, changeMultiplier: func() { t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", "2") }}
+				svc := NewAdminService(billing, nil, nil, nil)
+				plan := &subscriptionbiz.SubscriptionPlan{ID: 8, GroupID: group.ID, Group: group, Name: "price-plan", PriceQuota: 100, ValidityDays: 30, ForSale: true}
+				svc.SetSubscriptionUsecases(subscriptionbiz.NewSubscriptionUsecase(repo, groups), subscriptionbiz.NewGroupUsecase(groups), subscriptionbiz.NewPlanUsecase(pricePlanRepo{plan: plan}, groups))
+				var err error
+				switch kind {
+				case "group":
+					_, err = svc.PurchaseSubscription(context.Background(), 42, group.ID, "price-rollback-group")
+				case "plan":
+					_, err = svc.PurchaseSubscriptionPlan(context.Background(), 42, plan.ID, "price-rollback-plan")
+				case "upgrade":
+					repo.active = &subscriptionbiz.UserSubscription{ID: 3, UserID: 42, GroupID: group.ID, Status: "active", StartsAt: time.Now().Unix(), ExpiresAt: time.Now().Add(time.Hour).Unix()}
+					_, err = svc.ChangeSubscription(context.Background(), subscriptionbiz.ChangeRequest{UserID: 42, FromSubscriptionID: 3, ToGroupID: group.ID, NewPriceQuota: 200, OldPriceQuota: 100}, "price-rollback-upgrade")
+				}
+				require.Error(t, err)
+				if refundMessage != "" {
+					require.ErrorContains(t, err, refundMessage)
+				} else {
+					require.NotContains(t, err.Error(), "refund failed")
+				}
+				require.EqualValues(t, 10_000_000, billing.charged)
+				require.Equal(t, billing.charged, billing.refunded, "rollback must restore the debit, even when the configured rate changes")
+			})
+		}
 	}
 }
 

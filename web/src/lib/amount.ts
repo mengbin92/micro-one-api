@@ -1,4 +1,7 @@
 export const AMOUNT_SCALE = 10000;
+const ledgerDecimal = new Intl.NumberFormat('en-US', {
+  useGrouping: false, minimumFractionDigits: 4, maximumFractionDigits: 4,
+});
 
 export function quotaPerUnitFromOptions(options?: Record<string, string> | null) {
   void options;
@@ -14,7 +17,9 @@ export function amountUnitsToCurrencyUnits(value: number | string | undefined) {
 export function currencyUnitsToAmountUnits(value: number | string | undefined) {
   const parsed = Number(value ?? 0);
   if (!Number.isFinite(parsed)) return 0;
-  return Math.round(parsed * AMOUNT_SCALE);
+  // Round the decimal input before converting the four decimal places to ledger units.
+  const decimal = typeof value === 'string' && value.trim() ? value.trim() as `${number}` : parsed;
+  return Number(ledgerDecimal.format(decimal).replace('.', ''));
 }
 
 export function quotaToCurrencyUnits(value: number | string | undefined, quotaPerUnit = AMOUNT_SCALE) {

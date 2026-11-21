@@ -947,22 +947,6 @@ func writeCSV(w http.ResponseWriter, filename string, header []string, rows [][]
 	writer.Flush()
 }
 
-func safeCSVCell(value string) string {
-	trimmed := strings.TrimLeft(value, " \t\r\n")
-	if trimmed == "" {
-		return value
-	}
-	switch trimmed[0] {
-	case '=', '+', '@':
-		return "'" + value
-	case '-':
-		if len(trimmed) == 1 || (trimmed[1] != '.' && (trimmed[1] < '0' || trimmed[1] > '9')) {
-			return "'" + value
-		}
-	}
-	return value
-}
-
 func handleAdminAccess(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -2174,21 +2158,9 @@ func writeOneAPIServiceResponse(w http.ResponseWriter, resp any, err error) {
 	success := true
 	message := ""
 	switch v := resp.(type) {
-	case *adminv1.AdminCreateUserResponse:
+	case successMessage:
 		success, message = v.GetSuccess(), v.GetMessage()
-	case *adminv1.AdminUpdateUserResponse:
-		success, message = v.GetSuccess(), v.GetMessage()
-	case *adminv1.AdminDeleteUserResponse:
-		success, message = v.GetSuccess(), v.GetMessage()
-	case *adminv1.AdminCreateChannelResponse:
-		success, message = v.GetSuccess(), v.GetMessage()
-	case *adminv1.AdminUpdateChannelResponse:
-		success, message = v.GetSuccess(), v.GetMessage()
-	case *adminv1.AdminDeleteChannelResponse:
-		success, message = v.GetSuccess(), v.GetMessage()
-	case *adminv1.CreateRedeemCodeResponse:
-		success, message = v.GetSuccess(), v.GetErrorMessage()
-	case *adminv1.CreateRedeemCodesBatchResponse:
+	case successErrorMessage:
 		success, message = v.GetSuccess(), v.GetErrorMessage()
 	}
 	writeJSON(w, http.StatusOK, apiResponse(success, message, resp))
@@ -4178,11 +4150,6 @@ func handleGetAccount(w http.ResponseWriter, r *http.Request, svc *service.Admin
 func handleRedeemCodes(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	switch r.Method {
 	case http.MethodGet:
-		if r.URL.Query().Get("keyword") != "" {
-			resp, err := svc.SearchRedeemCodes(r.Context(), &adminv1.SearchRedeemCodesRequest{Keyword: r.URL.Query().Get("keyword")})
-			writeServiceResponse(w, resp, err)
-			return
-		}
 		handleListRedeemCodes(w, r, svc)
 	case http.MethodPost:
 		var req adminv1.CreateRedeemCodeRequest
@@ -4273,27 +4240,39 @@ func handleOneAPIRedemptionByCode(w http.ResponseWriter, r *http.Request, svc *s
 	}
 }
 
+func redeemCodeListRequest(r *http.Request) (*adminv1.ListRedeemCodesRequest, error) {
+	query := r.URL.Query()
+	req := &adminv1.ListRedeemCodesRequest{
+		Page: oneAPIPage(r), PageSize: oneAPIPageSize(r),
+		Keyword: query.Get("keyword"), Sort: query.Get("sort"), Order: query.Get("order"),
+	}
+	if value := query.Get("status"); value != "" {
+		n, err := strconv.ParseInt(value, 10, 32)
+		if err != nil || n < 0 || n > 2 {
+			return nil, fmt.Errorf("invalid redemption status")
+		}
+		status := int32(n)
+		req.Status = &status
+	}
+	return req, nil
+}
+
 func handleOneAPIRedemptions(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	switch r.Method {
 	case http.MethodGet:
-		if keyword := r.URL.Query().Get("keyword"); keyword != "" {
-			resp, err := svc.SearchRedeemCodes(r.Context(), &adminv1.SearchRedeemCodesRequest{Keyword: keyword})
-			if err != nil {
-				writeServiceResponse(w, nil, err)
-				return
-			}
-			writeJSON(w, http.StatusOK, apiResponse(true, "", resp.GetCodes()))
+		req, err := redeemCodeListRequest(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, apiResponse(false, err.Error(), nil))
 			return
 		}
-		resp, err := svc.ListRedeemCodes(r.Context(), &adminv1.ListRedeemCodesRequest{
-			Page:     oneAPIPage(r),
-			PageSize: oneAPIPageSize(r),
-		})
+		resp, err := svc.ListRedeemCodes(r.Context(), req)
 		if err != nil {
 			writeServiceResponse(w, nil, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, apiResponse(true, "", resp.GetCodes()))
+		result := apiResponse(true, "", resp.GetCodes())
+		result["total"] = resp.GetTotal()
+		writeJSON(w, http.StatusOK, result)
 	case http.MethodPost:
 		var req adminv1.CreateRedeemCodesBatchRequest
 		if !decodeBody(w, r, &req) {
@@ -4321,13 +4300,12 @@ func handleOneAPIExportRedemptions(w http.ResponseWriter, r *http.Request, svc *
 }
 
 func handleListRedeemCodes(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
-	page := getQueryInt32(r, "page", 1)
-	pageSize := getQueryInt32(r, "page_size", 20)
-
-	resp, err := svc.ListRedeemCodes(r.Context(), &adminv1.ListRedeemCodesRequest{
-		Page:     page,
-		PageSize: pageSize,
-	})
+	req, err := redeemCodeListRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, apiResponse(false, err.Error(), nil))
+		return
+	}
+	resp, err := svc.ListRedeemCodes(r.Context(), req)
 	if err != nil {
 		writeServiceResponse(w, nil, err)
 		return
@@ -4359,6 +4337,9 @@ func handleResetUserQuota(w http.ResponseWriter, r *http.Request, svc *service.A
 	var req adminv1.ResetUserQuotaRequest
 	if !decodeBody(w, r, &req) {
 		return
+	}
+	if key := idempotencyKeyFromRequest(r); key != "" {
+		req.RequestId = key
 	}
 	resp, err := svc.ResetUserQuota(r.Context(), &req)
 	writeServiceResponse(w, resp, err)

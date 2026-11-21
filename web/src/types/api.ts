@@ -7795,6 +7795,10 @@ export interface operations {
             query?: {
                 page?: number;
                 pageSize?: number;
+                keyword?: string;
+                status?: number;
+                sort?: string;
+                order?: string;
             };
             header?: never;
             path?: never;

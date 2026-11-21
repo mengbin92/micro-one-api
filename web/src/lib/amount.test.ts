@@ -12,10 +12,11 @@ describe('ledger amount display boundaries', () => {
   it.each([[0, 0], [1, 0.0001], ['-12345', -1.2345], [undefined, 0], ['invalid', 0], [Infinity, 0]] as const)('displays %s ledger units as %s', (input, output) => {
     expect(amountUnitsToCurrencyUnits(input)).toBe(output);
   });
-  it.each([[0, 0], ['0.0001', 1], [-1.2345, -12345], ['1.23456', 12346], [undefined, 0], ['invalid', 0], [Infinity, 0]] as const)('converts %s currency units to %s ledger units', (input, output) => {
+  it.each([[0, 0], ['0.0001', 1], ['0.00015', 2], [-0.00015, -2], ['1.5e-4', 2], [-1.2345, -12345], ['1.23456', 12346], [undefined, 0], ['invalid', 0], [Infinity, 0]] as const)('converts %s currency units to %s ledger units', (input, output) => {
     expect(currencyUnitsToAmountUnits(input)).toBe(output);
   });
   it('preserves zero, tiny amounts, and negative refunds in the displayed precision', () => {
+    expect(currencyUnitsToAmountUnits(' ')).toBe(0);
     expect(formatAmountUnits(0)).toBe('0.0000');
     expect(formatUSD(1)).toBe('$0.0001');
     expect(formatUSD(-1, 4)).toBe('$-0.0001');
