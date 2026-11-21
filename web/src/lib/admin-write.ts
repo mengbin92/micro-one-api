@@ -53,6 +53,7 @@ function ownerRows(value: unknown, key: unknown): Row[] {
   // Models and routing groups expose both a list and a detail response.
   const rows = key === 'admin-models' ? record?.models ?? value
     : key === 'admin-model-detail' ? [record?.model]
+    : key === 'admin-redemptions' ? record?.codes ?? value
     : key === 'admin-routing-groups' ? record?.groups
     : key === 'admin-routing-group' ? [record?.group]
     : value;

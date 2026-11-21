@@ -69,21 +69,25 @@ func (p Plan) Key(now time.Time) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d", p.ID, p.Hash(), slot))))
 }
 
-func Tick(ctx context.Context, repo TaskRepo, handler Handler, plans []Plan, kind string, dailyBudget int, now time.Time) error {
+func Tick(ctx context.Context, repo TaskRepo, handler Handler, plans []Plan, kind string, dailyBudget int, now func() time.Time) error {
 	if dailyBudget < 1 || dailyBudget > 48 || len(plans) > 100 {
 		return fmt.Errorf("bounded daily task budget required")
 	}
-	if err := repo.Expire(ctx, now); err != nil {
+	if err := repo.Expire(ctx, now()); err != nil {
 		return err
 	}
 	for _, p := range plans {
 		if !p.Enabled || p.Kind != kind {
 			continue
 		}
-		if err := p.Validate(now); err != nil {
+		started := now()
+		if p.ExpiresAt > 0 && p.ExpiresAt <= started.Unix() {
+			continue
+		}
+		if err := p.Validate(started); err != nil {
 			return err
 		}
-		claim, err := repo.Claim(ctx, p, now, dailyBudget)
+		claim, err := repo.Claim(ctx, p, started, dailyBudget)
 		if err != nil {
 			return err
 		}
@@ -99,7 +103,7 @@ func Tick(ctx context.Context, repo TaskRepo, handler Handler, plans []Plan, kin
 		if receipt.Status != "succeeded" && receipt.Status != "attention" && receipt.Status != "failed" {
 			receipt = Receipt{Status: "failed", Reason: "invalid_handler_receipt"}
 		}
-		if err := repo.Finish(ctx, *claim, receipt, time.Now().UTC()); err != nil {
+		if err := repo.Finish(ctx, *claim, receipt, now()); err != nil {
 			return err
 		}
 	}

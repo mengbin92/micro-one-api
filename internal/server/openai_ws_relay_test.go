@@ -29,6 +29,14 @@ func TestIsOpenAIWSTerminalEvent(t *testing.T) {
 	}
 }
 
+func TestResponsesWebSocketMinimumIdleTimeout(t *testing.T) {
+	_, exit := relayOpenAIWSFrames(t.Context(), newFakeFrameConn(1), newFakeFrameConn(1), nil,
+		openAIWSRelayOptions{idleTimeout: time.Nanosecond})
+	if exit == nil || exit.stage != "idle_timeout" {
+		t.Fatalf("unexpected relay exit: %+v", exit)
+	}
+}
+
 func TestShouldParseOpenAIWSUsage(t *testing.T) {
 	for _, evt := range []string{"response.completed", "response.done", "response.failed", "response.cancelled"} {
 		if !shouldParseOpenAIWSUsage(evt) {

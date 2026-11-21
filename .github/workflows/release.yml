@@ -23,20 +23,21 @@ jobs:
     steps:
       - name: Resolve release tag
         id: meta
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag="${{ inputs.tag }}"
-          else
-            tag="${{ github.ref_name }}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ || ${#TAG} -gt 128 ]]; then
+            echo "Expected a release tag such as v1.2.3 or v1.2.3-rc.1" >&2
+            exit 1
           fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
   e2e:
     name: Release E2E gate
     needs: release-context
     uses: ./.github/workflows/e2e.yml
     with:
-      ref: ${{ needs.release-context.outputs.tag }}
+      ref: refs/tags/${{ needs.release-context.outputs.tag }}
 
   services:
     name: Load service matrix
@@ -49,7 +50,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
-          ref: ${{ needs.release-context.outputs.tag }}
+          ref: refs/tags/${{ needs.release-context.outputs.tag }}
+      - name: Verify release notes exist
+        env:
+          TAG: ${{ needs.release-context.outputs.tag }}
+        run: test -f "docs/releases/release-$TAG.md"
       - name: Set service matrix
         id: set-matrix
         # Single source of truth for the service -> path/dockerfile mapping,
@@ -70,7 +75,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
-          ref: ${{ needs.release-context.outputs.tag }}
+          ref: refs/tags/${{ needs.release-context.outputs.tag }}
 
       - name: Record checked-out build revision
         id: build-revision
@@ -94,7 +99,7 @@ jobs:
           # v0.14.0-rc1 tag cannot clobber the stable 'latest' (code-review L4).
           tags: |
             type=raw,value=${{ needs.release-context.outputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(needs.release-context.outputs.tag, '-') }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-context.outputs.tag }},enable=${{ !contains(needs.release-context.outputs.tag, '-') }}
             type=raw,value=latest,enable=${{ !contains(needs.release-context.outputs.tag, '-') }}
 
       - name: Build and push Docker image
@@ -166,7 +171,7 @@ jobs:
           # v0.14.0-rc1 tag cannot clobber the stable 'latest' (code-review L4).
           tags: |
             type=raw,value=${{ needs.release-context.outputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(needs.release-context.outputs.tag, '-') }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-context.outputs.tag }},enable=${{ !contains(needs.release-context.outputs.tag, '-') }}
             type=raw,value=latest,enable=${{ !contains(needs.release-context.outputs.tag, '-') }}
 
       - name: Merge and verify platform manifests
@@ -201,10 +206,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
-          ref: ${{ needs.release-context.outputs.tag }}
-
-      - name: Verify release notes exist
-        run: test -f "docs/releases/release-${{ needs.release-context.outputs.tag }}.md"
+          ref: refs/tags/${{ needs.release-context.outputs.tag }}
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3

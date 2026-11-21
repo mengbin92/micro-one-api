@@ -24,9 +24,10 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_DIR="$PROJECT_ROOT/deployments/docker-compose"
 COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
 COMPOSE_TEST="$COMPOSE_DIR/docker-compose.test.yml"
-E2E_DIR="$PROJECT_ROOT/test/e2e"
-ENV_FILE="$COMPOSE_DIR/.env"
-identity_dir=""
+ENV_FILE="$COMPOSE_DIR/.env.example"
+project="micro-one-api-e2e-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-1}"
+identity_dir="$(mktemp -d "${TMPDIR:-/tmp}/e2e-identities.XXXXXX")"
+run_env="$identity_dir/compose.env"
 
 # Parse flags
 RUN_SUITE=false
@@ -51,88 +52,61 @@ fail() { echo -e "${RED}[FAIL]${NC} $*"; }
 # legacy one. Prefer the legacy binary when present, otherwise fall back to
 # the v2 plugin so the same script works in both environments.
 if command -v docker-compose >/dev/null 2>&1; then
-    COMPOSE_CMD="docker-compose"
+    compose=(docker-compose)
 else
-    COMPOSE_CMD="docker compose"
+    compose=(docker compose)
 fi
-log "Using compose command: $COMPOSE_CMD"
+# Pass Docker client settings only. Deployment variables inherited from the shell
+# would take precedence over the isolated test env file during interpolation.
+docker_env=(env -i "HOME=$HOME" "PATH=$PATH" "COMPOSE_PARALLEL_LIMIT=${COMPOSE_PARALLEL_LIMIT:-2}")
+for key in ${!DOCKER_@} ${!BUILDX_@} SSH_AUTH_SOCK XDG_RUNTIME_DIR TMPDIR; do
+    if [[ -n "${!key:-}" ]]; then docker_env+=("$key=${!key}"); fi
+done
+compose=("${docker_env[@]}" "${compose[@]}" -p "$project" --env-file "$run_env" -f "$COMPOSE_FILE" -f "$COMPOSE_TEST")
+log "Using test project: $project"
 
-# cleanup always tears the environment down. It is called explicitly at the
-# start of a run (Step 0) to clear leftovers from a previous run, and from the
-# EXIT trap via on_exit.
 cleanup() {
-    log "Tearing down..."
-    cd "$COMPOSE_DIR"
-    $COMPOSE_CMD -f "$COMPOSE_FILE" -f "$COMPOSE_TEST" down -v --remove-orphans 2>/dev/null || true
+    "${compose[@]}" down -v --remove-orphans
 }
 
-# on_exit decides whether to keep the stack alive on failure. Only the EXIT
-# trap path consults E2E_KEEP_ON_FAILURE — the explicit Step 0 cleanup must
-# ALWAYS tear down, or a previous failed run would leave containers behind and
-# the next `up` would fail on ports/volumes.
 on_exit() {
     local code=$?
-    if [ -n "$identity_dir" ]; then
-        rm -rf "$identity_dir"
-    fi
     if [ -n "${E2E_KEEP_ON_FAILURE:-}" ] && [ "$code" -ne 0 ]; then
-        # CI diagnostics mode (nightly workflow): keep the containers alive on
-        # failure so a later step can collect logs and container state.
-        warn "E2E_KEEP_ON_FAILURE set and suite failed (exit $code); keeping containers for CI diagnostics"
-        return
+        warn "Keeping $project for failure diagnostics"
+    elif [ -f "$run_env" ]; then
+        cleanup || code=1
     fi
-    cleanup
+    rm -rf "$identity_dir"
+    exit "$code"
 }
 trap on_exit EXIT
 
-load_env_var() {
-    local key="$1"
-    local value
-    value=$(grep -E "^${key}=" "$ENV_FILE" | tail -1 | cut -d= -f2- || true)
-    if [ -n "$value" ] && [ -z "${!key:-}" ]; then
-        export "$key=$value"
-    fi
-}
-
-if [ -f "$ENV_FILE" ]; then
-    load_env_var "MYSQL_ROOT_PASSWORD"
-    load_env_var "ADMIN_TOKEN"
-    load_env_var "SERVICE_TOKEN"
-    load_env_var "CHANNEL_ENCRYPTION_KEY"
-fi
-
-# The compose test override requires this key for channel credential
-# encryption, but it is intentionally not committed to the repository's
-# deployment .env. Keep the E2E flow self-contained by using a deterministic
-# test-only key when the caller did not provide one. This value must never be
-# copied into production configuration.
-if [ -z "${CHANNEL_ENCRYPTION_KEY:-}" ]; then
-    export CHANNEL_ENCRYPTION_KEY="0123456789abcdef0123456789abcdef"
-    warn "CHANNEL_ENCRYPTION_KEY not set; using a test-only fallback key"
-fi
-
-# Execution claims require independent callers, including in legacy IAM mode.
-identity_dir="$(mktemp -d "${TMPDIR:-/tmp}/e2e-identities.XXXXXX")"
-python3 "$SCRIPT_DIR/prepare-rbac-service-identities.py" --output "$identity_dir/identities.env"
+# Match the test services to the checked-in fixture, even when a local
+# deployment exports its own database URLs or credentials.
 while IFS='=' read -r key value; do
     case "$key" in
-        *_SERVICE_IDENTITY_TOKEN|*_SERVICE_CALLER_TOKENS) export "$key=$value" ;;
+        MYSQL_ROOT_PASSWORD|DATABASE_DSN|*_SQL_DSN|ADMIN_TOKEN|SERVICE_TOKEN|CHANNEL_ENCRYPTION_KEY)
+            export "$key=$value" ;;
     esac
-done < "$identity_dir/identities.env"
+done < "$ENV_FILE"
+
+# Execution claims require independent callers, including in legacy IAM mode.
+mkdir "$identity_dir/certs"
+python3 "$SCRIPT_DIR/prepare-rbac-service-identities.py" --output "$identity_dir/identities.env"
+cp "$ENV_FILE" "$run_env"
+printf '\nALIPAY_CERT_DIR="%s/certs"\nWECHAT_CERT_DIR="%s/certs"\n' "$identity_dir" "$identity_dir" >> "$run_env"
+cat "$identity_dir/identities.env" >> "$run_env"
 
 # ── Step 0: Start environment ──
 
-cleanup
-
 log "Starting docker-compose with test override..."
 cd "$COMPOSE_DIR"
-compose_log="$(mktemp)"
-compose_parallel_limit="${COMPOSE_PARALLEL_LIMIT:-2}"
-if ! COMPOSE_PARALLEL_LIMIT="$compose_parallel_limit" $COMPOSE_CMD -f "$COMPOSE_FILE" -f "$COMPOSE_TEST" up -d --build 2>&1 | tee "$compose_log"; then
+compose_log="$identity_dir/compose.log"
+if ! "${compose[@]}" up -d --build 2>&1 | tee "$compose_log"; then
 	tail -20 "$compose_log"
 	warn "docker-compose startup failed; retrying once after health checks settle..."
 	sleep 5
-	COMPOSE_PARALLEL_LIMIT="$compose_parallel_limit" $COMPOSE_CMD -f "$COMPOSE_FILE" -f "$COMPOSE_TEST" up -d --build 2>&1 | tee "$compose_log"
+	"${compose[@]}" up -d --build 2>&1 | tee "$compose_log"
 fi
 rm -f "$compose_log"
 
@@ -144,7 +118,7 @@ wait_healthy() {
     local max="${2:-30}"
     for i in $(seq 1 "$max"); do
         local status
-        status=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "missing")
+        status=$(docker inspect --format='{{.State.Health.Status}}' "$("${compose[@]}" ps -q "$container")" 2>/dev/null || echo "missing")
         if [ "$status" = "healthy" ]; then
             return 0
         fi
@@ -159,7 +133,7 @@ wait_running() {
     local max="${2:-30}"
     for i in $(seq 1 "$max"); do
         local state
-        state=$(docker inspect --format='{{.State.Status}}' "$container" 2>/dev/null || echo "missing")
+        state=$(docker inspect --format='{{.State.Status}}' "$("${compose[@]}" ps -q "$container")" 2>/dev/null || echo "missing")
         if [ "$state" = "running" ]; then
             return 0
         fi
@@ -199,11 +173,11 @@ if reply.get("success") is not True or int((reply.get("data") or {}).get("channe
 '
 
 # Verify test channel
-channel_status=$(docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
+channel_status=$("${compose[@]}" exec -T mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
     "SELECT status = 1 AND \`key\` <> 'sk-mock-key' FROM channels WHERE name='e2e-mock-openai' LIMIT 1;" 2>/dev/null)
-channel_url=$(docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
+channel_url=$("${compose[@]}" exec -T mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
     "SELECT base_url FROM channels WHERE name='e2e-mock-openai' LIMIT 1;" 2>/dev/null)
-mapping_count=$(docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
+mapping_count=$("${compose[@]}" exec -T mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
     "SELECT COUNT(*) FROM model_channel_mapping mcm JOIN channels c ON c.id=mcm.channel_id WHERE c.name='e2e-mock-openai' AND mcm.enabled=1;" 2>/dev/null)
 if [ "$channel_status" = "1" ] && [ "$channel_url" = "http://mock-upstream:9999" ] && [ "$mapping_count" -ge 2 ]; then
     log "Test channel ready: $channel_url"
@@ -219,6 +193,8 @@ if [ "$RUN_SUITE" = true ]; then
     log "Running Go test suite..."
     cd "$PROJECT_ROOT"
     env_args=(
+        "IDENTITY_GRPC_ENDPOINT=127.0.0.1:9001" "BILLING_GRPC_ENDPOINT=127.0.0.1:9004"
+        "RELAY_HTTP_BASE=http://127.0.0.1:8080" "ADMIN_HTTP_BASE=http://127.0.0.1:3000"
         "ADMIN_TOKEN=${ADMIN_TOKEN:-test-admin-token-for-dev}"
         "SERVICE_TOKEN=${SERVICE_TOKEN:-change-me-to-a-long-random-string}"
     )
@@ -235,34 +211,10 @@ else
     # Run standalone binary flow (original behavior)
     log "Building E2E test binary..."
     cd "$PROJECT_ROOT"
-    go build -o "$E2E_DIR/e2e-test" "$E2E_DIR/main.go"
+    go build -o "$identity_dir/e2e-test" "$PROJECT_ROOT/test/e2e/main.go"
 
-    # Run register+login only first to get user_id and token
     log "Registering test user..."
-    REGISTER_OUTPUT=$("$E2E_DIR/e2e-test" --step register 2>&1) || true
-    echo "$REGISTER_OUTPUT"
-
-    # Extract user_id from register output
-    E2E_USER_ID=$(echo "$REGISTER_OUTPUT" | sed -n 's/.*user_id=\([0-9]*\).*/\1/p' | head -1)
-    if [ -z "$E2E_USER_ID" ]; then
-        fail "Could not extract user_id from registration"
-        exit 1
-    fi
-    log "Registered user_id=$E2E_USER_ID"
-
-    # Set quota for the test user (registration doesn't set default quota)
-    log "Setting quota for test user..."
-    docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -e \
-        "UPDATE users SET quota=1000000 WHERE id=$E2E_USER_ID;" 2>/dev/null
-    log "Quota set to 1000000"
-
-    # Run full E2E test
+    "$identity_dir/e2e-test" --step register
     log "Running full E2E test..."
-    "$E2E_DIR/e2e-test" --step all
-    E2E_EXIT=$?
-
-    # Cleanup binary
-    rm -f "$E2E_DIR/e2e-test"
-
-    exit $E2E_EXIT
+    "$identity_dir/e2e-test" --step all
 fi

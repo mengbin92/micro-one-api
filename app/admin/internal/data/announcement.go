@@ -13,6 +13,7 @@ import (
 	"micro-one-api/app/admin/internal/biz"
 	"micro-one-api/domain/authorization"
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/platform/database/authzquery"
 )
 
 type announcementRepo struct{ data *Data }
@@ -89,7 +90,7 @@ func (r *announcementRepo) Save(ctx context.Context, a biz.Announcement, actor, 
 	a.Revision++
 	a.UpdatedAt = time.Now().Unix()
 	row := announcementModel{ID: a.ID, Revision: a.Revision, Title: a.Title, Body: a.Body, Audience: a.Audience, Targets: string(targets), Status: a.Status, PublishAt: a.PublishAt, ExpiresAt: a.ExpiresAt, UpdatedAt: a.UpdatedAt}
-	err = db.Transaction(func(tx *gorm.DB) error {
+	err = authzquery.RunInTx(ctx, db, 3, func(ctx context.Context, tx *gorm.DB) error {
 		if creating {
 			if err := tx.Create(&row).Error; err != nil {
 				return err

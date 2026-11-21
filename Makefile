@@ -7,7 +7,7 @@ VERSION := $(shell git describe --tags --always 2>/dev/null || git rev-parse --s
 # a dedicated PR instead (see `make tools-upgrade-check`).
 include scripts/tool-versions.env
 # Export the pinned versions into recipe environments so shell-level indirect
-# expansion (e.g. ${!var} in tools-upgrade-check) sees them.
+# lookups in tools-upgrade-check see them.
 export BUF_VERSION WIRE_VERSION GOSEC_VERSION GOSEC_X_TOOLS_VERSION GOVULNCHECK_VERSION GITLEAKS_VERSION SYFT_VERSION GO_LICENSES_VERSION
 
 .PHONY: init
@@ -35,7 +35,7 @@ tools-upgrade-check:
 	  "SYFT_VERSION=github.com/anchore/syft" \
 	  "GO_LICENSES_VERSION=github.com/google/go-licenses"; do \
 	  var=$${m%%=*}; mod=$${m#*=}; \
-	  pinned=$${!var}; \
+	  pinned=$$(printenv "$$var"); \
 	  latest=$$(go list -m -f '{{.Version}}' "$$mod@latest" 2>/dev/null || echo unknown); \
 	  if [ "$$pinned" = "$$latest" ]; then \
 	    printf '%-20s pinned %-12s = latest\n' "$$var" "$$pinned"; \

@@ -70,12 +70,13 @@ type openAIWSTurnResult struct {
 // openAIWSRelayResult is the aggregate result of a relay session across all
 // turns.
 type openAIWSRelayResult struct {
-	usage             openAIWSRelayUsage
-	lastRequestID     string
-	terminalEventType string
-	clientToUpstream  int64
-	upstreamToClient  int64
-	droppedDownstream int64
+	firstWriteAttempted bool
+	usage               openAIWSRelayUsage
+	lastRequestID       string
+	terminalEventType   string
+	clientToUpstream    int64
+	upstreamToClient    int64
+	droppedDownstream   int64
 }
 
 // openAIWSRelayExit describes why a relay session ended.
@@ -571,6 +572,9 @@ func relayOpenAIWSFrames(
 		}
 		// A fast reply can finish the turn before WriteFrame returns.
 		opts.timings.Sent(turnCtx, nil)
+		if first {
+			result.firstWriteAttempted = true
+		}
 		err := upstreamConn.WriteFrame(writeCtx, msgType, payload)
 		if err != nil {
 			opts.timings.Sent(turnCtx, err)
@@ -590,7 +594,7 @@ func relayOpenAIWSFrames(
 	// pumps (Codex Responses WS protocol expects the create event first).
 	if err := writeUpstream(coderws.MessageText, firstClientMessage, true); err != nil {
 		noteObservationFailure("transport_error")
-		return result, &openAIWSRelayExit{stage: "write_first_upstream", err: err, wroteDownstream: false}
+		return result, &openAIWSRelayExit{stage: "write_first_upstream", err: err}
 	}
 	clientToUpstream.Add(1)
 	markActivity()
@@ -626,7 +630,6 @@ func relayOpenAIWSFrames(
 	// upstream -> client pump
 	go func() {
 		defer pumps.Done()
-		wroteDownstream := false
 		recorder := evidence.RecorderFromContext(relayCtx)
 		durable := opts.durableRecord
 		emit := func(record evidence.Record, protocolComplete bool) error {
@@ -677,10 +680,9 @@ func relayOpenAIWSFrames(
 			if err != nil {
 				noteObservationFailure("truncated")
 				exitCh <- openAIWSRelayExit{
-					stage:           "read_upstream",
-					err:             err,
-					graceful:        isOpenAIWSDisconnectError(err),
-					wroteDownstream: wroteDownstream,
+					stage:    "read_upstream",
+					err:      err,
+					graceful: isOpenAIWSDisconnectError(err),
 				}
 				return
 			}
@@ -697,7 +699,7 @@ func relayOpenAIWSFrames(
 						// write must not make the exit defer emit it a second time.
 						shadow = evidence.NewTracker("responses")
 						if err := emit(record, protocolComplete); err != nil {
-							exitCh <- openAIWSRelayExit{stage: "durable_evidence", err: err, wroteDownstream: wroteDownstream}
+							exitCh <- openAIWSRelayExit{stage: "durable_evidence", err: err}
 							return
 						}
 						if o.ProviderRequestID != "" {
@@ -706,7 +708,7 @@ func relayOpenAIWSFrames(
 							shadowResponseOrder = append(shadowResponseOrder, o.ProviderRequestID)
 							if len(shadowResponseOrder) > evidence.MaxEvents {
 								if opts.durableHistoryLimit {
-									exitCh <- openAIWSRelayExit{stage: "durable_history_limit", err: errors.New("durable websocket history limit reached"), wroteDownstream: wroteDownstream}
+									exitCh <- openAIWSRelayExit{stage: "durable_history_limit", err: errors.New("durable websocket history limit reached")}
 									return
 								}
 								delete(seenShadowResponses, shadowResponseOrder[0])
@@ -720,9 +722,8 @@ func relayOpenAIWSFrames(
 			if opts.beforeWriteDown != nil {
 				if err := opts.beforeWriteDown(msgType, payload); err != nil {
 					exitCh <- openAIWSRelayExit{
-						stage:           "before_write_down",
-						err:             err,
-						wroteDownstream: wroteDownstream,
+						stage: "before_write_down",
+						err:   err,
 					}
 					return
 				}
@@ -753,14 +754,12 @@ func relayOpenAIWSFrames(
 			if err := writeClient(msgType, payload); err != nil {
 				opts.timings.Written(responseID, payload, terminal, err)
 				exitCh <- openAIWSRelayExit{
-					stage:           "write_client",
-					err:             err,
-					wroteDownstream: wroteDownstream,
+					stage: "write_client",
+					err:   err,
 				}
 				return
 			}
 			opts.timings.Written(responseID, payload, terminal, nil)
-			wroteDownstream = true
 			upstreamToClient.Add(1)
 			markActivity()
 		}
@@ -768,7 +767,7 @@ func relayOpenAIWSFrames(
 
 	// idle watchdog
 	go func() {
-		ticker := time.NewTicker(idleTimeout / 4)
+		ticker := time.NewTicker(max(idleTimeout/4, time.Nanosecond))
 		defer ticker.Stop()
 		for {
 			select {
@@ -799,6 +798,7 @@ func relayOpenAIWSFrames(
 	result.terminalEventType = terminal
 	result.clientToUpstream = clientToUpstream.Load()
 	result.upstreamToClient = upstreamToClient.Load()
+	exit.wroteDownstream = result.upstreamToClient > 0
 	return result, &exit
 }
 

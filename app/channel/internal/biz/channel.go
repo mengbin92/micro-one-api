@@ -165,6 +165,12 @@ type SubscriptionAccount struct {
 	QuotaSnapshotPaused             bool
 }
 
+// channelChanged carries only the routing invalidation, never channel credentials.
+type channelChanged struct {
+	ID     int64
+	Status int32
+}
+
 // SubscriptionAccountChanged identifies subscription-account mutations on
 // the shared channel.changed topic. A dedicated payload prevents channel
 // events with the same numeric ID from being mistaken for account events
@@ -1194,7 +1200,7 @@ func (uc *ChannelUsecase) CreateChannel(ctx context.Context, channel *Channel) e
 		return err
 	}
 	uc.invalidateModelsListCache()
-	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channel)
+	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channelChanged{ID: channel.ID, Status: channel.Status})
 	return nil
 }
 
@@ -1228,7 +1234,7 @@ func (uc *ChannelUsecase) UpdateChannel(ctx context.Context, channel *Channel) e
 		channel.AuthorizationRevision++
 	}
 	uc.invalidateModelsListCache()
-	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channel)
+	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channelChanged{ID: channel.ID, Status: channel.Status})
 	return nil
 }
 
@@ -1319,7 +1325,7 @@ func (uc *ChannelUsecase) DeleteChannel(ctx context.Context, channelID int64) er
 		return err
 	}
 	uc.invalidateModelsListCache()
-	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &Channel{ID: channelID})
+	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channelChanged{ID: channelID})
 	return nil
 }
 
@@ -1339,7 +1345,7 @@ func (uc *ChannelUsecase) ChangeChannelStatus(ctx context.Context, channelID int
 		return err
 	}
 	uc.invalidateModelsListCache()
-	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &Channel{ID: channelID, Status: status})
+	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channelChanged{ID: channelID, Status: status})
 	return nil
 }
 

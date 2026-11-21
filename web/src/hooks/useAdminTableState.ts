@@ -71,7 +71,7 @@ export function useAdminTableState({ defaultPageSize = 20, filters: filterKeys =
   const updateParams = (updates: Record<string, string | number | null>) => {
     const next = new URLSearchParams(latestParams.current);
     for (const [key, value] of Object.entries(updates)) {
-      if (value === null || value === '' || value === 1 || value === defaultPageSize) {
+      if (value === null || value === '' || (key === 'page' && value === 1) || (key === 'page_size' && value === defaultPageSize)) {
         next.delete(key);
       } else {
         next.set(key, String(value));

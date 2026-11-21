@@ -267,7 +267,7 @@ describe('owner write preconditions', () => {
   c.setQueryDefaults(['admin-upstream-costs'], { meta: { protected: true } }); c.setQueryData(['admin-upstream-costs'], { revision: '9', entries: [] });
   expect(prepareManagedWrite(config('/upstream-costs/migrate', 'post', { reason: 'migrate' }), snapshot, c).data.expected_revision).toBe('9');
   expect(prepareManagedWrite(config('/upstream-costs', 'put', { reason: 'edit' }), snapshot, c).data.expected_revision).toBe(9);
-  c.setQueryDefaults(['admin-redemptions'], { meta: { protected: true } }); c.setQueryData(['admin-redemptions'], [{ code: 'test code', revision: 2 }]);
+  c.setQueryDefaults(['admin-redemptions'], { meta: { protected: true } }); c.setQueryData(['admin-redemptions'], { codes: [{ code: 'test code', revision: 2 }], total: 1 });
   const result = prepareManagedWrite(config('/redemption/test%20code', 'delete'), snapshot, c, () => 'delete');
   expect(result.params.expected_revision).toBe(2); expect(result.data).toBeUndefined();
  });

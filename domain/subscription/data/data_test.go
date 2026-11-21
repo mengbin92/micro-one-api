@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"micro-one-api/domain/subscription/biz"
+	"micro-one-api/platform/database/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -537,4 +538,46 @@ func TestSubscriptionRepository_H10UniqueIndexDifferentUsers(t *testing.T) {
 		}
 		require.NoError(t, repo.CreateSubscription(ctx, s), "user %d should get an active subscription without conflict", uid)
 	}
+}
+
+type legacyRenewalReadRepo struct {
+	*Repository
+	afterRead func()
+}
+
+func (r legacyRenewalReadRepo) GetActiveSubscriptionByUser(ctx context.Context, userID int64) (*biz.UserSubscription, error) {
+	sub, err := r.Repository.GetActiveSubscriptionByUser(ctx, userID)
+	r.afterRead()
+	return sub, err
+}
+
+func TestLegacyRenewalsAccumulateBothPurchases(t *testing.T) {
+	t.Setenv("SUBSCRIPTION_ENTITLEMENTS_V2", "false")
+	ctx := t.Context()
+	repo := NewRepository(testutil.RoutingContextDB(t, "sqlite"), nil)
+	group := &biz.SubscriptionGroup{Name: "legacy", Status: biz.SubscriptionGroupStatusEnabled}
+	require.NoError(t, repo.CreateGroup(ctx, group))
+	now := time.Now().Unix()
+	sub := &biz.UserSubscription{UserID: 1, GroupID: group.ID, Status: biz.SubscriptionStatusActive, StartsAt: now, ExpiresAt: now + 1000}
+	require.NoError(t, repo.CreateSubscription(ctx, sub))
+	req := &biz.AssignSubscriptionRequest{UserID: sub.UserID, GroupID: group.ID, StartsAt: now, ExpiresAt: now + 100}
+	second := biz.NewSubscriptionUsecase(repo, repo)
+	second.SetTxRunner(NewTxRunner(repo))
+	renewed := false
+	renewSecond := func() {
+		if !renewed {
+			renewed = true
+			_, _, err := second.AssignOrExtend(ctx, req)
+			require.NoError(t, err)
+		}
+	}
+	// If the first read is unlocked, let the second purchase commit before its write.
+	first := biz.NewSubscriptionUsecase(legacyRenewalReadRepo{repo, renewSecond}, repo)
+	first.SetTxRunner(NewTxRunner(repo))
+	_, _, err := first.AssignOrExtend(ctx, req)
+	require.NoError(t, err)
+	renewSecond()
+	stored, err := repo.GetSubscriptionByID(ctx, sub.ID)
+	require.NoError(t, err)
+	require.Equal(t, now+1200, stored.ExpiresAt)
 }

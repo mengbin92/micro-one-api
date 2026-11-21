@@ -84,6 +84,11 @@ describe('parseSSEStream', () => {
     await expect(collect([`data: ${data}\n\ndata: ${data}\n\n`])).resolves.toHaveLength(2);
   });
 
+  it('accepts an event at the limit when its delimiter is split across chunks', async () => {
+    const data = 'x'.repeat(MAX_SSE_EVENT_BYTES - 'data: '.length);
+    await expect(collect([`data: ${data}\n`, '\n']).then(events => events[0].data.length)).resolves.toBe(data.length);
+  });
+
   it('cancels the reader when the consumer stops early', async () => {
     let cancelled = false;
     const encoder = new TextEncoder();

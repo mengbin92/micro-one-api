@@ -11,6 +11,8 @@ import (
 
 	"filippo.io/age"
 	"github.com/stretchr/testify/require"
+	"micro-one-api/domain/authorization"
+	authztest "micro-one-api/domain/authorization/testutil"
 	b "micro-one-api/domain/backup/biz"
 	dbtest "micro-one-api/platform/database/testutil"
 	"micro-one-api/platform/database/xdb"
@@ -218,4 +220,20 @@ func TestHostStateFencesConcurrentCleanup(t *testing.T) {
 	require.NoError(t, r.CleanInterruptedScratch())
 	_, err = os.Stat(filepath.Join(dir, "job-interrupted"))
 	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestBackupWritesRefreshDecision(t *testing.T) {
+	r := NewRepo(&Data{DB: dbtest.RoutingContextDB(t, "sqlite")})
+	op := "system.option.security.update"
+	resolver := &authztest.Resolver{ActorID: 1, Scopes: map[string]authorization.QueryScope{op: authztest.All()}}
+	ctx, err := authorization.Prepare(authztest.Context(), resolver, "admin.backups", op)
+	require.NoError(t, err)
+	delete(resolver.Scopes, op)
+	p, err := r.Policy(ctx)
+	require.NoError(t, err)
+	p.Enabled = true
+	_, err = r.UpdatePolicy(ctx, p, "1", "test reason")
+	require.ErrorIs(t, err, authorization.ErrDenied)
+	_, err = r.Enqueue(ctx, "manual-backup-test", "1", "test reason", time.Now())
+	require.ErrorIs(t, err, authorization.ErrDenied)
 }

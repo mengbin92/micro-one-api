@@ -6,6 +6,7 @@ import (
 	"micro-one-api/app/admin/internal/service"
 	"micro-one-api/platform/authz"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -38,13 +39,37 @@ func handleAuthorizedRedemptionExport(w http.ResponseWriter, r *http.Request, sv
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	out, err := svc.ExportRedeemCodes(r.Context())
+	filter, err := redeemCodeListRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, apiResponse(false, err.Error(), nil))
+		return
+	}
+	out, err := svc.ExportRedeemCodes(r.Context(), filter)
 	if err != nil {
 		authz.WriteHTTPError(w, err)
 		return
 	}
 	writeBillingExport(w, out)
 }
+
+var negativeCSVNumber = regexp.MustCompile(`^-(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$`)
+
+func safeCSVCell(value string) string {
+	trimmed := strings.TrimLeft(value, " \t\r\n")
+	if trimmed == "" {
+		return value
+	}
+	switch trimmed[0] {
+	case '=', '+', '@':
+		return "'" + value
+	case '-':
+		if !negativeCSVNumber.MatchString(trimmed) {
+			return "'" + value
+		}
+	}
+	return value
+}
+
 func writeBillingExport(w http.ResponseWriter, out *billingv1.ExportArtifactReply) {
 	w.Header().Set("Content-Type", out.ContentType)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+out.FileName+`"`)

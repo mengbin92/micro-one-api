@@ -535,6 +535,10 @@ message GetRedeemCodeResponse {
 message ListRedeemCodesRequest {
   int32 page = 1;
   int32 page_size = 2;
+  string keyword = 3;
+  optional int32 status = 4;
+  string sort = 5;
+  string order = 6;
 }
 
 message ListRedeemCodesResponse {
@@ -972,7 +976,9 @@ message SubscriptionCommerceRequest { int64 user_id = 1; string request_id = 2; 
 message SubscriptionCommerceReply { string result_json = 1; }
 
 message ExportCostReportRequest { AggregateUsageRequest query = 1; bool include_costs = 2; }
-message ExportRedeemCodesRequest {}
+message ExportRedeemCodesRequest {
+  ListRedeemCodesRequest filter = 1;
+}
 message ExportArtifactReply { string content_type = 1; string file_name = 2; bytes body = 3; }
 message RunReconciliationRequest { string reason = 1; }
 

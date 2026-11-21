@@ -173,13 +173,13 @@ func (uc *SubscriptionUsecase) changeSubscription(ctx context.Context, tx Tx, re
 		if req.NewPlanName != "" {
 			sub.SubscriptionName = req.NewPlanName
 		}
+		charged := max(int64(0), req.NewPriceQuota-req.OldPriceQuota)
 		sub.Metadata = mergeChangeMetadata(sub.Metadata, changeAudit{
-			FromPlanID:  req.OldPriceQuota, // reuse as from-plan ref when caller lacks id
 			ToPlanID:    req.ToPlanID,
 			FromGroupID: fromGroupID,
 			ToGroupID:   req.ToGroupID,
 			Policy:      policy,
-			Charged:     req.NewPriceQuota - req.OldPriceQuota,
+			Charged:     charged,
 			Operator:    req.Operator,
 			At:          now,
 		})
@@ -230,7 +230,7 @@ func (uc *SubscriptionUsecase) changeSubscription(ctx context.Context, tx Tx, re
 		return &ChangeResult{
 			SubscriptionID:      sub.ID,
 			Applied:             true,
-			ChargedQuota:        req.NewPriceQuota - req.OldPriceQuota,
+			ChargedQuota:        charged,
 			NewGroupID:          sub.GroupID,
 			NewSubscriptionName: sub.SubscriptionName,
 			Policy:              policy,
@@ -273,7 +273,6 @@ func (uc *SubscriptionUsecase) changeSubscription(ctx context.Context, tx Tx, re
 
 type changeAudit struct {
 	Contract    *SubscriptionContract `json:"contract,omitempty"`
-	FromPlanID  int64                 `json:"from_plan_id,omitempty"`
 	ToPlanID    int64                 `json:"to_plan_id,omitempty"`
 	FromGroupID int64                 `json:"from_group_id,omitempty"`
 	ToGroupID   int64                 `json:"to_group_id,omitempty"`

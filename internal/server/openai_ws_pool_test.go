@@ -2,19 +2,23 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	coderws "github.com/coder/websocket"
+	"github.com/redis/go-redis/v9"
 	relaybiz "micro-one-api/internal/biz"
 )
 
 // dialCountingDialer is an openAIWSUpstreamDialer that counts how many times
-// Dial was called. It returns an in-memory fake connection pair so the pool
-// can reuse / close them without a real network round-trip.
+// Dial was called. It returns an in-memory connection so the pool
+// can reuse or close it without a network round trip.
 type dialCountingDialer struct {
 	calls   atomic.Int64
 	failNth int64 // if >0, the Nth (1-indexed) dial returns an error
@@ -23,74 +27,13 @@ type dialCountingDialer struct {
 func (d *dialCountingDialer) Dial(ctx context.Context, wsURL string, headers http.Header) (openAIWSFrameConn, int, http.Header, error) {
 	n := d.calls.Add(1)
 	if d.failNth > 0 && n == d.failNth {
-		return nil, 500, nil, errDialFailed
+		return nil, 500, nil, errors.New("simulated dial failure")
 	}
-	// Return a fake conn whose reads block until closed (simulating a live
-	// upstream that never sends unsolicited frames).
-	clientSide, upstreamSide := newPoolFakeFrameConnPair()
-	// Close the upstream-side read channel so a ReadFrame returns immediately
-	// with "read closed" once the pool drains it — but keep a drain goroutine
-	// so writes don't block.
-	go func() {
-		for range upstreamSide.out {
-		}
-	}()
-	close(upstreamSide.in)
-	return clientSide, 0, nil, nil
+	return newFakeFrameConn(4), 0, nil, nil
 }
-
-var errDialFailed = &dialErr{msg: "simulated dial failure"}
-
-type dialErr struct{ msg string }
-
-func (e *dialErr) Error() string { return e.msg }
-
-func newPoolFakeFrameConnPair() (*poolFakeFrameConn, *poolFakeFrameConn) {
-	a2b := make(chan fakeFrame, 4)
-	b2a := make(chan fakeFrame, 4)
-	return &poolFakeFrameConn{in: a2b, out: b2a}, &poolFakeFrameConn{in: b2a, out: a2b}
-}
-
-// fakeFrameConn for the pool tests (independent in/out channels, no loopback
-// send-on-closed races).
-type poolFakeFrameConn struct {
-	in     chan fakeFrame
-	out    chan fakeFrame
-	closed atomic.Bool
-}
-
-func (c *poolFakeFrameConn) ReadFrame(ctx context.Context) (coderws.MessageType, []byte, error) {
-	select {
-	case f, ok := <-c.in:
-		if !ok {
-			return coderws.MessageText, nil, &fakeClosedErr{}
-		}
-		return f.msgType, f.payload, f.err
-	case <-ctx.Done():
-		return coderws.MessageText, nil, ctx.Err()
-	}
-}
-
-func (c *poolFakeFrameConn) WriteFrame(ctx context.Context, msgType coderws.MessageType, payload []byte) error {
-	select {
-	case c.out <- fakeFrame{msgType: msgType, payload: payload}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func (c *poolFakeFrameConn) Close() error {
-	c.closed.Store(true)
-	return nil
-}
-
-type fakeClosedErr struct{}
-
-func (e *fakeClosedErr) Error() string { return "read closed" }
 
 func TestConnPoolReusesIdleConnection(t *testing.T) {
-	pool := newOpenAIWSConnPool(2 * time.Second)
+	pool := newOpenAIWSConnPool(2*time.Second, nil)
 	pool.dialer = &dialCountingDialer{}
 	defer pool.Close()
 
@@ -118,7 +61,7 @@ func TestConnPoolReusesIdleConnection(t *testing.T) {
 }
 
 func TestConnPoolDialsNewWhenAllLeased(t *testing.T) {
-	pool := newOpenAIWSConnPool(2 * time.Second)
+	pool := newOpenAIWSConnPool(2*time.Second, nil)
 	pool.dialer = &dialCountingDialer{}
 	defer pool.Close()
 
@@ -138,8 +81,111 @@ func TestConnPoolDialsNewWhenAllLeased(t *testing.T) {
 	pool.Release(pc2, false)
 }
 
+func TestConnPoolLeasedConnectionStaysOutOfIdlePool(t *testing.T) {
+	pool := newOpenAIWSConnPool(time.Second, nil)
+	pool.dialer = &dialCountingDialer{}
+	pool.maxConnsPerChannel = 1
+	defer pool.Close()
+	const target = "wss://upstream.example"
+	for range 3 {
+		pc, err := pool.AcquireOrDial(t.Context(), "channel:1", target, nil)
+		if err != nil || pc.conn.(*fakeFrameConn).closed.Load() {
+			t.Fatal("leased a closed connection", err)
+		}
+		pool.Release(pc, false)
+	}
+	pc, err := pool.AcquireOrDial(t.Context(), "channel:1", target, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool.Close()
+	if pc.conn.(*fakeFrameConn).closed.Load() {
+		t.Fatal("pool closed a leased connection")
+	}
+	pool.Release(pc, false)
+	if !pc.conn.(*fakeFrameConn).closed.Load() {
+		t.Fatal("shutdown leaked a released connection")
+	}
+	if _, err := pool.AcquireOrDial(t.Context(), "channel:1", target, nil); err != errOpenAIWSPoolClosed {
+		t.Fatal("acquired after shutdown", err)
+	}
+}
+
+func TestConnPoolReusesUntouchedUpstreamAfterLocalRejection(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := coderws.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.CloseNow()
+		kind, data, err := conn.Read(r.Context())
+		if err == nil {
+			_ = conn.Write(r.Context(), kind, data)
+		}
+	}))
+	defer srv.Close()
+	pool := newOpenAIWSConnPool(time.Second, nil)
+	defer pool.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	get := func() *openAIWSPooledConn {
+		pc, err := pool.AcquireOrDial(ctx, "channel:1", wsURL(srv.URL), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pc
+	}
+	first := get()
+	result, exit := relayOpenAIWSFrames(ctx, newFakeFrameConn(1), first.conn, nil, openAIWSRelayOptions{
+		beforeWriteUp: func(context.Context, coderws.MessageType, []byte) ([]byte, error) { return nil, errWSRoutingAdmission },
+	})
+	if exit == nil || exit.err != errWSRoutingAdmission || result.firstWriteAttempted {
+		t.Fatal("expected a local rejection before forwarding")
+	}
+	pool.Release(first, result.firstWriteAttempted)
+	second := get()
+	defer pool.Release(second, true)
+	if first != second {
+		t.Fatal("dialed a second connection for an unused, healthy upstream")
+	}
+	if err := second.conn.WriteFrame(ctx, coderws.MessageText, []byte("test frame")); err != nil {
+		t.Fatal(err)
+	}
+	if _, data, err := second.conn.ReadFrame(ctx); err != nil || string(data) != "test frame" {
+		t.Fatalf("missing reply from reused connection: %v", err)
+	}
+}
+
+func TestConnPoolExpiresIdleSocketWithoutAnotherAcquire(t *testing.T) {
+	pool := newOpenAIWSConnPool(time.Second, nil)
+	pool.dialer = &dialCountingDialer{}
+	pool.maxIdle = 5 * time.Millisecond
+	defer pool.Close()
+	pc, err := pool.AcquireOrDial(t.Context(), "channel:1", "wss://upstream.example", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool.Release(pc, false)
+	waitFor(t, time.Second, pc.conn.(*fakeFrameConn).closed.Load)
+}
+
+func TestConnPoolUsesConfiguredIdleCapacity(t *testing.T) {
+	s := &HTTPServer{}
+	s.SetOpenAIWSPoolConfig(3, 0, 0)
+	s.SetOpenAIWSConnPool()
+	defer s.wsPool.Close()
+	if s.wsPool.maxConnsPerChannel != 3 {
+		t.Fatal("initial pool capacity was ignored")
+	}
+	s.SetOpenAIWSPoolConfig(1, 0, 0)
+	if s.wsPool.maxConnsPerChannel != 1 {
+		t.Fatal("configured pool capacity was ignored")
+	}
+}
+
 func TestConnPoolBrokenConnNotReused(t *testing.T) {
-	pool := newOpenAIWSConnPool(2 * time.Second)
+	pool := newOpenAIWSConnPool(2*time.Second, nil)
 	pool.dialer = &dialCountingDialer{}
 	defer pool.Close()
 
@@ -162,7 +208,7 @@ func TestConnPoolFailoverOnDialError(t *testing.T) {
 	// This tests the pool's dial-failure path (not the full HTTPServer
 	// failover, which is covered by the e2e test). A dialer that always fails
 	// should return an error, not panic.
-	pool := newOpenAIWSConnPool(2 * time.Second)
+	pool := newOpenAIWSConnPool(2*time.Second, nil)
 	pool.dialer = &dialCountingDialer{failNth: 1}
 	defer pool.Close()
 
@@ -182,7 +228,7 @@ func TestConnPoolFailoverOnDialError(t *testing.T) {
 // reuse bug: channel #5 and subscription account #5 (independent ID
 // namespaces) must never share a pooled connection.
 func TestConnPoolIsolatesNamespaces(t *testing.T) {
-	pool := newOpenAIWSConnPool(2 * time.Second)
+	pool := newOpenAIWSConnPool(2*time.Second, nil)
 	pool.dialer = &dialCountingDialer{}
 	defer pool.Close()
 
@@ -213,7 +259,7 @@ func TestConnPoolIsolatesNamespaces(t *testing.T) {
 // TestConnPoolRejectsRotatedCredential verifies a conn dialed with an old
 // credential is never reused after the source's key/URL changes.
 func TestConnPoolRejectsRotatedCredential(t *testing.T) {
-	pool := newOpenAIWSConnPool(2 * time.Second)
+	pool := newOpenAIWSConnPool(2*time.Second, nil)
 	pool.dialer = &dialCountingDialer{}
 	defer pool.Close()
 
@@ -260,6 +306,62 @@ func TestStickyStoreInMemoryOnly(t *testing.T) {
 	// Unknown response id.
 	if got := store.LookupResponseChannel(ctx, "default", "resp_unknown"); got != 0 {
 		t.Errorf("expected 0 for unknown, got %d", got)
+	}
+}
+
+func TestStickyStoreReplicaHonorsRemoteExpiry(t *testing.T) {
+	srv := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: srv.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	writer, reader := newOpenAIWSStickyStore(client), newOpenAIWSStickyStore(client)
+	for _, tc := range []struct {
+		name   string
+		bind   func(context.Context, string, string, int64, time.Duration)
+		lookup func(context.Context, string, string) int64
+	}{
+		{"response", writer.BindResponseChannel, reader.LookupResponseChannel},
+		{"session", writer.BindSessionChannel, reader.LookupSessionChannel},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.bind(t.Context(), "default", "shared", 7, 100*time.Millisecond)
+			if id := tc.lookup(t.Context(), "default", "shared"); id != 7 {
+				t.Fatalf("replica read %d before expiry", id)
+			}
+			srv.FastForward(100 * time.Millisecond)
+			if id := tc.lookup(t.Context(), "default", "shared"); id != 0 {
+				t.Fatalf("replica retained %d after Redis expiry", id)
+			}
+		})
+	}
+}
+
+func TestStickyStoreUsesSharedSessionAfterFailover(t *testing.T) {
+	srv := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: srv.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	a, b := newOpenAIWSStickyStore(client), newOpenAIWSStickyStore(client)
+	ctx := t.Context()
+	a.BindSessionChannel(ctx, "default", "session", 3, time.Hour)
+	b.BindSessionChannel(ctx, "default", "session", 7, time.Hour)
+	if got := a.LookupSessionChannel(ctx, "default", "session"); got != 7 {
+		t.Fatalf("former writer read %d after failover, want 7", got)
+	}
+	if !a.RefreshSessionTTL(ctx, "default", "session", 100*time.Millisecond) {
+		t.Fatal("shared binding should be refreshed")
+	}
+	srv.FastForward(100 * time.Millisecond)
+	if got := b.LookupSessionChannel(ctx, "default", "session"); got != 0 {
+		t.Fatalf("writer kept expired binding %d", got)
+	}
+	a.BindSessionChannel(ctx, "default", "session", 3, time.Hour)
+	b.DeleteSession(ctx, "default", "session")
+	if a.RefreshSessionTTL(ctx, "default", "session", time.Hour) || a.LookupSessionChannel(ctx, "default", "session") != 0 {
+		t.Fatal("remote delete must invalidate the original writer")
+	}
+	a.BindSessionChannel(ctx, "default", "session", 3, time.Hour)
+	_ = client.Close()
+	if a.LookupSessionChannel(ctx, "default", "session") != 0 {
+		t.Fatal("unavailable Redis must yield a miss")
 	}
 }
 

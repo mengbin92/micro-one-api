@@ -348,7 +348,9 @@ type adminHTTPBillingClient struct {
 	aggregateMu        sync.Mutex
 	topupUserID        string
 	topupAmount        int64
+	resetReq           *billingv1.ResetAccountBalanceRequest
 	batchCreated       bool
+	redemptionListReq  *billingv1.ListRedeemCodesRequest
 	deletedRedeemCode  string
 	reconRuns          []*billingv1.ReconciliationRun
 	reconRunsByID      map[int64]*billingv1.ReconciliationRun
@@ -404,6 +406,7 @@ func (c *adminHTTPBillingClient) CreateRedeemCodesBatch(ctx context.Context, req
 }
 
 func (c *adminHTTPBillingClient) ListRedeemCodes(ctx context.Context, req *billingv1.ListRedeemCodesRequest, opts ...grpc.CallOption) (*billingv1.ListRedeemCodesResponse, error) {
+	c.redemptionListReq = req
 	return &billingv1.ListRedeemCodesResponse{
 		Codes: []*commonv1.RedeemCode{
 			{Code: "code-a", Name: "alpha", Amount: 100, Count: 1, Status: 1, CreatedBy: "root", CreatedAt: timestamppb.Now()},
@@ -2902,8 +2905,9 @@ func TestAdminHTTPRedemptionRequiresAuth(t *testing.T) {
 
 func TestAdminHTTPRedemptionListRoute(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-token")
-	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
-	req := httptest.NewRequest(http.MethodGet, "/api/redemption/", nil)
+	client := &adminHTTPBillingClient{}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, client)
+	req := httptest.NewRequest(http.MethodGet, "/api/redemption/?keyword=alpha&status=0&sort=amount&order=asc&page=2&page_size=20", nil)
 	req.Header.Set("Authorization", "Bearer admin-token")
 	rec := httptest.NewRecorder()
 
@@ -2912,14 +2916,19 @@ func TestAdminHTTPRedemptionListRoute(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `"code":"code-a"`) {
+	q := client.redemptionListReq
+	if q == nil || q.Page != 2 || q.PageSize != 20 || q.Keyword != "alpha" || q.Status == nil || *q.Status != 0 || q.Sort != "amount" || q.Order != "asc" {
+		t.Fatalf("redemption list filter = %v", q)
+	}
+	if !strings.Contains(rec.Body.String(), `"code":"code-a"`) || !strings.Contains(rec.Body.String(), `"total":1`) {
 		t.Fatalf("redemption list response mismatch: %s", rec.Body.String())
 	}
 }
 
 func TestAdminHTTPRedemptionSearchRoute(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-token")
-	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
+	client := &adminHTTPBillingClient{}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, client)
 	req := httptest.NewRequest(http.MethodGet, "/api/redemption/search?keyword=alpha", nil)
 	req.Header.Set("Authorization", "Bearer admin-token")
 	rec := httptest.NewRecorder()
@@ -2929,7 +2938,7 @@ func TestAdminHTTPRedemptionSearchRoute(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `"code":"alpha-code"`) {
+	if client.redemptionListReq.GetKeyword() != "alpha" || !strings.Contains(rec.Body.String(), `"code":"code-a"`) || !strings.Contains(rec.Body.String(), `"total":1`) {
 		t.Fatalf("redemption search response mismatch: %s", rec.Body.String())
 	}
 }
@@ -3370,12 +3379,70 @@ func TestAdminHTTPUpdateChannelBalancePersistentErrorTriggersAutoDisable(t *test
 	}
 }
 
-func TestAdminHTTPResetUserQuotaUsesDelta(t *testing.T) {
+func (c *adminHTTPBillingClient) ResetAccountBalance(_ context.Context, req *billingv1.ResetAccountBalanceRequest, _ ...grpc.CallOption) (*billingv1.TopUpQuotaResponse, error) {
+	c.resetReq = req
+	return &billingv1.TopUpQuotaResponse{Success: true, NewBalance: req.TargetBalance}, nil
+}
+
+// Billing returns business failures in its normal RPC response.
+type rejectedBillingRPC struct{ grpc.ClientConnInterface }
+
+func (rejectedBillingRPC) Invoke(_ context.Context, _ string, _ any, reply any, _ ...grpc.CallOption) error {
+	switch r := reply.(type) {
+	case *billingv1.TopUpQuotaResponse:
+		r.ErrorMessage = "billing rejected"
+	case *billingv1.CreateRedeemCodeResponse:
+		r.ErrorMessage = "billing rejected"
+	case *billingv1.CreateRedeemCodesBatchResponse:
+		r.ErrorMessage = "billing rejected"
+	case *billingv1.UpdateRedeemCodeResponse:
+		r.ErrorMessage = "billing rejected"
+	case *billingv1.DeleteRedeemCodeResponse:
+		r.ErrorMessage = "billing rejected"
+	case *billingv1.GetRedeemCodeResponse:
+		r.ErrorMessage = "billing rejected"
+	default:
+		return status.Error(codes.Unavailable, "billing unavailable")
+	}
+	return nil
+}
+
+func TestAdminHTTPBillingFailures(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, billingv1.NewBillingServiceClient(rejectedBillingRPC{}))
+	for _, tc := range []struct {
+		method, path string
+		code         int
+		want         string
+	}{
+		{"POST", "/v1/topup", 200, "billing rejected"},
+		{"POST", "/v1/redeem-codes", 200, "billing rejected"},
+		{"POST", "/api/redemption", 200, "billing rejected"},
+		{"PUT", "/api/redemption", 200, `"success":false`},
+		{"DELETE", "/v1/redeem-codes/missing", 200, "billing rejected"},
+		{"GET", "/v1/redeem-codes/missing", 200, "billing rejected"},
+		{"GET", "/v1/redeem-codes", 503, `"success":false`},
+		{"GET", "/api/redemption/search?keyword=x", 503, `"success":false`},
+	} {
+		t.Run(tc.method+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader("{}"))
+			req.Header.Set("Authorization", "Bearer admin-token")
+			rec := httptest.NewRecorder()
+			srv.ServeHTTP(rec, req)
+			if rec.Code != tc.code || !strings.Contains(rec.Body.String(), tc.want) || strings.Contains(rec.Body.String(), `"success":true`) {
+				t.Errorf("unexpected response %d %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestAdminHTTPResetUserQuotaUsesExpectedBalance(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	billingClient := &adminHTTPBillingClient{}
 	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, billingClient)
 	req := httptest.NewRequest(http.MethodPost, "/v1/users/reset-quota", strings.NewReader(`{"user_id":42,"new_balance":800,"operator_id":"root","remark":"reset"}`))
 	req.Header.Set("Authorization", "Bearer admin-token")
+	req.Header.Set("Idempotency-Key", "reset-once")
 	rec := httptest.NewRecorder()
 
 	srv.ServeHTTP(rec, req)
@@ -3383,8 +3450,8 @@ func TestAdminHTTPResetUserQuotaUsesDelta(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
 	}
-	if billingClient.topupAmount != 300 {
-		t.Fatalf("topup delta = %d, want 300", billingClient.topupAmount)
+	if req := billingClient.resetReq; req.GetExpectedBalance() != 500 || req.GetTargetBalance() != 800 || req.GetReason() != "reset" || req.GetRequestId() != "reset-once" {
+		t.Fatalf("unexpected reset request %v", req)
 	}
 }
 

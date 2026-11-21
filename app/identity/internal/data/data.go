@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,6 +40,7 @@ type Repository struct {
 	systemOptions       map[string]string
 	identityLock        sync.RWMutex
 	publicRequests      map[string]publicRequestCount
+	quotaReceipts       map[int64]map[string]int64
 }
 
 type userModel struct {
@@ -339,7 +341,7 @@ func (r *Repository) CreateUser(ctx context.Context, user *biz.User) error {
 	}
 	user.ID = r.nextUserID
 	r.nextUserID++
-	r.usersByID[user.ID] = user
+	r.usersByID[user.ID] = new(*user)
 	return nil
 }
 
@@ -359,7 +361,7 @@ func (r *Repository) UpdateUser(ctx context.Context, user *biz.User) error {
 			}
 		}
 	}
-	r.usersByID[user.ID] = user
+	r.usersByID[user.ID] = new(*user)
 	return nil
 }
 
@@ -474,7 +476,9 @@ func (r *Repository) CreateToken(ctx context.Context, token *biz.Token) error {
 	if token.KeyHash == "" {
 		token.KeyHash = biz.HashTokenKey(token.Key)
 	}
-	r.tokensByHash[token.KeyHash] = token
+	stored := cloneMemoryToken(token)
+	stored.Key = biz.TokenDisplayPrefix(token.Key)
+	r.tokensByHash[token.KeyHash] = stored
 	return nil
 }
 
@@ -486,9 +490,7 @@ func (r *Repository) FindTokenByID(ctx context.Context, userID, tokenID int64) (
 	defer r.identityLock.RUnlock()
 	for _, token := range r.tokensByHash {
 		if token.ID == tokenID && token.UserID == userID {
-			cloned := *token
-			cloned.Models = append([]string(nil), token.Models...)
-			return &cloned, nil
+			return cloneMemoryToken(token), nil
 		}
 	}
 	return nil, biz.ErrTokenNotFound
@@ -515,9 +517,7 @@ func (r *Repository) ListTokens(ctx context.Context, userID int64, page, pageSiz
 		if keyword != "" && !strings.Contains(token.Name, keyword) {
 			continue
 		}
-		cloned := *token
-		cloned.Models = append([]string(nil), token.Models...)
-		tokens = append(tokens, &cloned)
+		tokens = append(tokens, cloneMemoryToken(token))
 	}
 	total := int64(len(tokens))
 	start := (int64(page) - 1) * int64(pageSize)
@@ -564,49 +564,72 @@ func (r *Repository) UpdateToken(ctx context.Context, token *biz.Token, opts biz
 	return biz.ErrTokenNotFound
 }
 
-// ConsumeTokenQuota atomically decrements RemainQuota and increments
-// UsedQuota for the given token. On the DB path this is a single UPDATE
-// ... SET remain_quota = GREATEST(remain_quota - ?, 0), used_quota =
-// used_quota + ? that returns the new remain_quota. On the in-memory path
-// it runs under the write lock. The amount is clamped so remain_quota never
-// goes negative.
+// ConsumeTokenQuota settles usage without a reservation ID for legacy callers.
 func (r *Repository) ConsumeTokenQuota(ctx context.Context, userID, tokenID, amount int64) (int64, error) {
 	if r.db != nil {
 		return r.consumeTokenQuotaDB(ctx, userID, tokenID, amount)
 	}
+	remaining, _, err := r.consumeTokenQuotaMemory(userID, tokenID, amount, "")
+	return remaining, err
+}
+
+func (r *Repository) consumeTokenQuotaMemory(userID, tokenID, amount int64, reservationID string) (int64, bool, error) {
 	r.identityLock.Lock()
 	defer r.identityLock.Unlock()
 	for _, token := range r.tokensByHash {
-		if token.ID == tokenID && token.UserID == userID {
+		if token.ID != tokenID || token.UserID != userID {
+			continue
+		}
+		if remaining, ok := r.quotaReceipts[tokenID][reservationID]; ok {
+			return remaining, false, nil
+		}
+		remaining := int64(-1)
+		if !token.UnlimitedQuota {
 			consumed := min(amount, token.RemainQuota)
 			token.RemainQuota -= consumed
 			token.UsedQuota += consumed
 			if token.RemainQuota == 0 {
 				token.Status = biz.TokenStatusExhausted
 			}
-			return token.RemainQuota, nil
+			remaining = token.RemainQuota
 		}
+		if reservationID != "" {
+			if r.quotaReceipts == nil {
+				r.quotaReceipts = make(map[int64]map[string]int64)
+			}
+			if r.quotaReceipts[tokenID] == nil {
+				r.quotaReceipts[tokenID] = make(map[string]int64)
+			}
+			r.quotaReceipts[tokenID][reservationID] = remaining
+		}
+		return remaining, true, nil
 	}
-	return 0, biz.ErrTokenNotFound
+	return 0, false, biz.ErrTokenNotFound
 }
 
 // ConsumeTokenQuotaWithDedupe applies a quota decrement once per billing
 // reservation. The claim and token update share one transaction so a lost RPC
 // response can be retried without charging the key twice.
 func (r *Repository) ConsumeTokenQuotaWithDedupe(ctx context.Context, userID, tokenID, amount int64, reservationID string) (int64, bool, error) {
-	if r.db == nil || strings.TrimSpace(reservationID) == "" {
+	if strings.TrimSpace(reservationID) == "" {
 		remaining, err := r.ConsumeTokenQuota(ctx, userID, tokenID, amount)
 		return remaining, err == nil, err
+	}
+	if r.db == nil {
+		return r.consumeTokenQuotaMemory(userID, tokenID, amount, reservationID)
 	}
 	var remaining int64
 	applied := false
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// Read-then-insert: the previous OnConflict-DoNothing + RowsAffected
-		// probe was dialect-dependent — on MySQL a duplicate can report
-		// RowsAffected != 0 (ON DUPLICATE KEY UPDATE / clientFoundRows), which
-		// sent replays down the deduction branch and crashed on a keyless
-		// claim UPDATE (ErrMissingWhereClause). Replay must return the
-		// recorded result, never re-deduct.
+		// Serialize all settlements and quota-mode edits on this token before
+		// checking the reservation, including its first unlimited settlement.
+		var token tokenModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND user_id = ?", tokenID, userID).First(&token).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return biz.ErrTokenNotFound
+			}
+			return err
+		}
 		var existing tokenQuotaDedupeModel
 		findErr := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("reservation_id = ? AND user_id = ? AND token_id = ?", reservationID, userID, tokenID).
@@ -618,31 +641,25 @@ func (r *Repository) ConsumeTokenQuotaWithDedupe(ctx context.Context, userID, to
 		if !errors.Is(findErr, gorm.ErrRecordNotFound) {
 			return findErr
 		}
-		claim := &tokenQuotaDedupeModel{ReservationID: reservationID, UserID: userID, TokenID: tokenID, Amount: amount, CreatedAt: time.Now().Unix()}
-		// A concurrent first-time claim hits the unique key and rolls back —
-		// safe: the caller retries and lands on the replay branch above.
-		if err := tx.Create(claim).Error; err != nil {
-			return err
+		remaining = -1
+		if token.UnlimitedQuota == 0 {
+			consumed := min(amount, token.RemainQuota)
+			remaining = token.RemainQuota - consumed
+			if err := tx.Model(&token).Updates(map[string]any{"remain_quota": remaining, "used_quota": gorm.Expr("used_quota + ?", consumed), "status": gorm.Expr("CASE WHEN ? = 0 THEN ? ELSE status END", remaining, biz.TokenStatusExhausted)}).Error; err != nil {
+				return err
+			}
 		}
-		var token tokenModel
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND user_id = ?", tokenID, userID).First(&token).Error; err != nil {
-			return err
-		}
-		consumed := amount
-		if consumed > token.RemainQuota {
-			consumed = token.RemainQuota
-		}
-		remaining = token.RemainQuota - consumed
-		if err := tx.Model(&tokenModel{}).Where("id = ? AND user_id = ?", tokenID, userID).Updates(map[string]any{"remain_quota": remaining, "used_quota": gorm.Expr("used_quota + ?", consumed), "status": gorm.Expr("CASE WHEN ? = 0 THEN ? ELSE status END", remaining, biz.TokenStatusExhausted)}).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(claim).Update("remaining", remaining).Error; err != nil {
+		claim := tokenQuotaDedupeModel{ReservationID: reservationID, UserID: userID, TokenID: tokenID, Amount: amount, Remaining: remaining, CreatedAt: time.Now().Unix()}
+		if err := tx.Create(&claim).Error; err != nil {
 			return err
 		}
 		applied = true
 		return nil
 	})
-	return remaining, applied, err
+	if err != nil {
+		return 0, false, err
+	}
+	return remaining, applied, nil
 }
 
 func (r *Repository) DeleteToken(ctx context.Context, userID, tokenID int64) error {
@@ -654,6 +671,7 @@ func (r *Repository) DeleteToken(ctx context.Context, userID, tokenID int64) err
 	for key, token := range r.tokensByHash {
 		if token.ID == tokenID && token.UserID == userID {
 			delete(r.tokensByHash, key)
+			delete(r.quotaReceipts, tokenID)
 			return nil
 		}
 	}
@@ -971,11 +989,7 @@ func (r *Repository) deleteTokenDB(ctx context.Context, userID, tokenID int64) e
 	return nil
 }
 
-// consumeTokenQuotaDB atomically decrements remain_quota and increments
-// used_quota inside a transaction, clamping remain_quota at 0. It reads
-// the current value under the transaction, computes the new values in Go
-// (driver-agnostic — no GREATEST() needed), and writes them back. This
-// works across MySQL, Postgres, and SQLite.
+// consumeTokenQuotaDB uses a single conditional update on all three dialects.
 func (r *Repository) consumeTokenQuotaDB(ctx context.Context, userID, tokenID, amount int64) (int64, error) {
 	// Keep used_quota first and remain_quota last. MySQL evaluates UPDATE
 	// assignments left-to-right, while PostgreSQL and SQLite use the original
@@ -995,13 +1009,16 @@ func (r *Repository) consumeTokenQuotaDB(ctx context.Context, userID, tokenID, a
 
 	var model tokenModel
 	if err := r.db.WithContext(ctx).
-		Select("remain_quota").
+		Select("remain_quota", "unlimited_quota").
 		Where("id = ? AND user_id = ?", tokenID, userID).
 		First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return 0, biz.ErrTokenNotFound
 		}
 		return 0, err
+	}
+	if model.UnlimitedQuota != 0 {
+		return -1, nil
 	}
 	return model.RemainQuota, nil
 }
@@ -1153,6 +1170,13 @@ func escapeLike(s string) string {
 	return s
 }
 
+func cloneMemoryToken(token *biz.Token) *biz.Token {
+	copy := *token
+	copy.Models = slices.Clone(token.Models)
+	copy.RoutingGroupIDs = slices.Clone(token.RoutingGroupIDs)
+	return &copy
+}
+
 func (r *Repository) findTokenByKeyMemory(_ context.Context, key string) (*biz.Token, error) {
 	r.identityLock.RLock()
 	defer r.identityLock.RUnlock()
@@ -1160,9 +1184,7 @@ func (r *Repository) findTokenByKeyMemory(_ context.Context, key string) (*biz.T
 	if !ok {
 		return nil, biz.ErrTokenNotFound
 	}
-	cloned := *token
-	cloned.Models = append([]string(nil), token.Models...)
-	return &cloned, nil
+	return cloneMemoryToken(token), nil
 }
 
 func (r *Repository) findUserByIDMemory(_ context.Context, userID int64) (*biz.User, error) {

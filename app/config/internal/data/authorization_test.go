@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-func TestIAMB4ConfigDeleteRejectsWrappedRevision(t *testing.T) {
+func TestIAMB4ConfigWritesRejectWrappedRevision(t *testing.T) {
 	for _, driver := range []string{"sqlite", "memory"} {
 		t.Run(driver, func(t *testing.T) {
 			r := newMemoryRepository()
@@ -27,6 +27,12 @@ func TestIAMB4ConfigDeleteRejectsWrappedRevision(t *testing.T) {
 			}
 			ctx := authorization.WithQueryScope(authorization.WithWriteReason(context.Background(), "reject corrupted revision"), "system.content.notice.update", authztest.All())
 			ctx = authorization.WithExpectedResourceRevision(ctx, math.MaxUint64)
+			bad := &biz.ConfigEntry{Namespace: "system", Key: "notice", Value: "overwrite"}
+			if driver == "memory" {
+				require.ErrorIs(t, r.setMemory(ctx, bad), biz.ErrConfigRevisionConflict)
+			} else {
+				require.ErrorIs(t, r.Set(ctx, bad), biz.ErrConfigRevisionConflict)
+			}
 			var err error
 			if driver == "memory" {
 				err = r.deleteMemory(ctx, "system", "notice")

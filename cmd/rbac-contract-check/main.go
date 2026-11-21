@@ -60,7 +60,7 @@ func inventory(root string) ([][]string, error) {
 			if err != nil {
 				return err
 			}
-			rows = append(rows, []string{"SOURCE", "identity", rel, rel, "test-only SQL writer", fmt.Sprintf("%x", sha256.Sum256(data))})
+			rows = append(rows, []string{"SOURCE", "billing", rel, rel, "billing top-up test fixture", fmt.Sprintf("%x", sha256.Sum256(data))})
 			return nil
 		}
 		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") || strings.HasSuffix(rel, ".pb.go") || strings.HasSuffix(rel, "wire_gen.go") {

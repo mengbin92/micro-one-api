@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 )
@@ -55,11 +56,13 @@ func (b *MemoryEventBus) Publish(ctx context.Context, topic string, payload any)
 		Payload:   payload,
 		Timestamp: time.Now(),
 	}
+	var deliveryErr error
 	for _, h := range handlers {
-		// fire-and-forget; callers can handle errors via their own logging
-		_ = h(ctx, event)
+		if err := invokeHandler(ctx, h, event); err != nil {
+			deliveryErr = errors.Join(deliveryErr, err)
+		}
 	}
-	return nil
+	return deliveryErr
 }
 
 func (b *MemoryEventBus) Subscribe(topic string, handler Handler) {

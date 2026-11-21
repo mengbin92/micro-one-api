@@ -8,7 +8,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.48.1 发布公告](./docs/releases/release-v0.48.1.md)（PATCH 公告发布与到期提示修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.48.1)
+> 📣 **最新发布**：[v0.49.0 发布公告](./docs/releases/release-v0.49.0.md)（MINOR 兑换码筛选与导出、资金重放保护和 WebSocket 会话修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.49.0)
 
 ## 功能概览
 
@@ -186,6 +186,7 @@ make web-dist
 
 ## 发布与升级
 
+- [v0.49.0](./docs/releases/release-v0.49.0.md) 兑换码列表和导出共用筛选条件，修复并发续期、资金操作重放、跨服务凭据暴露和 WebSocket 重发。沿用现有数据库结构。
 - [v0.48.1](./docs/releases/release-v0.48.1.md) 修复公告发布时校验已过期的下架时间，以及留空发布时间的草稿发布。升级 Admin API 和 Web，无新增数据库迁移。
 - [v0.48.0](./docs/releases/release-v0.48.0.md) 新增 Realtime VAD、独立转写、流式 TTS、Kimi 设备码绑定和探针留证，补齐令牌页配额与白名单显示。无新增数据库迁移。
 - [v0.47.0](./docs/releases/release-v0.47.0.md) 新增短期固定组 API Key，修复 MySQL 冻结扣费对账、上游 usage 留证、Relay 5xx 告警与长邮件投递。无新增数据库迁移。

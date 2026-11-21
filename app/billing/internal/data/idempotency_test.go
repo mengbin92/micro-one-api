@@ -214,3 +214,48 @@ func TestPurchaseSubscription_ConflictRollsBackBalanceChange(t *testing.T) {
 	// must be 5000 - 1000 = 4000, NOT 3000.
 	require.Equal(t, int64(4000), userBalance(t, db, 1))
 }
+
+func TestRedeemCodeCreditsDistinctUsersAndPreservesReplays(t *testing.T) {
+	db := setupIdempotencyTestDB(t)
+	ctx := context.Background()
+	uc := newIdempotencyUsecase(db)
+	insertUserForIdempotency(t, db, 1, 15)
+	insertUserForIdempotency(t, db, 2, 20)
+	// First redemption predates per-user ledger keys.
+	require.NoError(t, db.Exec("INSERT INTO billing_redeem_codes (code, amount, count, status) VALUES ('SHARED', 5, 1, 1)").Error)
+	require.NoError(t, db.Exec("INSERT INTO billing_redeem_records (user_id, code, amount, balance_before, balance_after) VALUES ('1', 'SHARED', 5, 10, 15)").Error)
+	require.NoError(t, NewLedgerRepo(&Data{db: db}).CreateLedger(ctx, &biz.Ledger{
+		UserID: "1", Amount: 5, BalanceAfter: 15, Type: biz.LedgerTypeRedeem,
+		ReferenceID: "SHARED", Remark: "redeem code=SHARED", LedgerDedupeKey: "SHARED:redeem",
+	}))
+
+	_, _, err := uc.RedeemCode(ctx, "001", "SHARED")
+	require.Error(t, err)
+	amount, balance, err := uc.RedeemCode(ctx, "2", "SHARED")
+	require.NoError(t, err)
+	require.EqualValues(t, 5, amount)
+	require.EqualValues(t, 25, balance)
+	_, _, err = uc.RedeemCode(ctx, "2", "SHARED")
+	require.Error(t, err)
+	rows, err := uc.ExportLedgerEntries(ctx, biz.LedgerListOptions{Type: biz.LedgerTypeRedeem})
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	for _, entry := range rows {
+		require.NotContains(t, entry.ReferenceID, "SHARED")
+		require.NotContains(t, entry.Remark, "SHARED")
+		require.NotContains(t, entry.LedgerDedupeKey, "SHARED")
+	}
+	require.EqualValues(t, 15, userBalance(t, db, 1))
+	require.EqualValues(t, 25, userBalance(t, db, 2))
+}
+
+func TestRedeemCodeRejectsNegativeFaceValue(t *testing.T) {
+	db := setupIdempotencyTestDB(t)
+	uc := newIdempotencyUsecase(db)
+	ctx := context.Background()
+	insertUserForIdempotency(t, db, 1, 50)
+	require.NoError(t, db.Exec("INSERT INTO billing_redeem_codes (code, amount, count, status) VALUES ('INVALID', -5, 1, 1)").Error)
+	_, _, err := uc.RedeemCode(ctx, "1", "INVALID")
+	require.Error(t, err)
+	require.EqualValues(t, 50, userBalance(t, db, 1))
+}

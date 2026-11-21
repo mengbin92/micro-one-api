@@ -166,18 +166,12 @@ type RedeemRepo interface {
 	CreateRedeemCode(ctx context.Context, code *RedeemCode) error
 	CreateRedeemCodesBatch(ctx context.Context, codes []*RedeemCode) error
 	GetRedeemCode(ctx context.Context, code string) (*RedeemCode, error)
-	ListRedeemCodes(ctx context.Context, page, pageSize int32) ([]*RedeemCode, int64, error)
+	ListRedeemCodes(ctx context.Context, options RedeemCodeListOptions) ([]*RedeemCode, int64, error)
 	SearchRedeemCodes(ctx context.Context, keyword string) ([]*RedeemCode, error)
 	UpdateRedeemCode(ctx context.Context, code *RedeemCode) error
-	UpdateRedeemCodeCount(ctx context.Context, code string, delta int) error
-	// UpdateRedeemCodeCountInTx is the transactional variant of
-	// UpdateRedeemCodeCount. It performs the same atomic conditional
-	// decrement but inside the caller's transaction so the count
-	// decrement, wallet credit, ledger and record commit or roll back
-	// together (billing code-review 2026-07-30 H1).
-	UpdateRedeemCodeCountInTx(ctx context.Context, tx subscriptionbiz.Tx, code string, delta int) error
+	GetRedeemCodeForUpdate(ctx context.Context, tx subscriptionbiz.Tx, code string) (*RedeemCode, error)
+	ClaimRedemptionInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, code *RedeemCode) error
 	DeleteRedeemCode(ctx context.Context, code string) error
-	CreateRedeemRecord(ctx context.Context, record *RedeemRecord) error
 	CreateRedeemRecordInTx(ctx context.Context, tx subscriptionbiz.Tx, record *RedeemRecord) error
 }
 

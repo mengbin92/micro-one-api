@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	adminv1 "micro-one-api/api/admin/v1"
 	billingv1 "micro-one-api/api/billing/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 )
@@ -50,54 +52,47 @@ func fail(name, reason string) {
 }
 
 func main() {
-	step := "all"
-	for i, arg := range os.Args[1:] {
-		if arg == "--step" && i+1 < len(os.Args)-1 {
-			step = os.Args[i+2]
-		}
-	}
+	step := flag.String("step", "all", "register a fixture user or run all authenticated checks")
+	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	switch step {
+	switch *step {
 	case "register":
-		// Only register (used by shell script to get user_id)
 		logf("Step 1: Register user")
 		stepRegister(ctx)
 	case "all":
 		// Full flow: login -> models -> chat -> billing
 		logf("Step 2: Login")
-		token := stepLogin(ctx)
-		if token == "" {
-			summary()
-			os.Exit(1)
+		session, userID := stepLogin(ctx)
+		if session == "" {
+			break
 		}
-
-		logf("Step 3: Verify initial account")
-		// Get user_id from token (query admin-api)
-		userID := getUserIDFromToken(ctx, token)
-
-		initialQuota := stepVerifyAccount(ctx, userID)
+		logf("Step 3: Fund test account")
+		initialBalance := stepTopUp(ctx, userID)
+		if initialBalance <= 0 {
+			break
+		}
 
 		logf("Step 4: Create API token")
-		apiToken := stepCreateAPIToken(ctx, userID)
+		apiToken := stepCreateAPIToken(ctx, session)
 		if apiToken == "" {
-			summary()
-			os.Exit(1)
+			break
 		}
-
 		logf("Step 5: List models")
-		stepListModels(apiToken)
+		stepListModels(ctx, apiToken)
 
 		logf("Step 6: Chat completion")
-		stepChatCompletion(apiToken)
+		stepChatCompletion(ctx, apiToken)
 
 		logf("Step 7: Verify billing")
-		stepVerifyBilling(ctx, userID, initialQuota)
+		stepVerifyBilling(ctx, userID, initialBalance)
 
 		logf("Step 8: Verify admin logs")
-		stepVerifyLogs(userID)
+		stepVerifyLogs(ctx, userID)
+	default:
+		fail("step", "expected register or all")
 	}
 
 	summary()
@@ -120,29 +115,9 @@ func summary() {
 	fmt.Println("=========================================")
 }
 
-func getUserIDFromToken(ctx context.Context, token string) int64 {
-	conn := grpcDial(identityGRPCEndpoint)
-	defer conn.Close()
-	client := identityv1.NewIdentityServiceClient(conn)
-
-	resp, err := client.ValidateToken(ctx, &identityv1.ValidateTokenRequest{Token: token})
-	if err != nil || !resp.Valid {
-		// Fallback: query DB isn't available, try login again to get user_id
-		loginResp, err := client.Login(ctx, &identityv1.LoginRequest{
-			Username: testUsername,
-			Password: testPassword,
-		})
-		if err == nil && loginResp.Success {
-			return loginResp.UserId
-		}
-		return 0
-	}
-	return resp.UserId
-}
-
 // ── Step implementations ──
 
-func stepRegister(ctx context.Context) int64 {
+func stepRegister(ctx context.Context) {
 	conn := grpcDial(identityGRPCEndpoint)
 	defer conn.Close()
 	client := identityv1.NewIdentityServiceClient(conn)
@@ -155,21 +130,20 @@ func stepRegister(ctx context.Context) int64 {
 	})
 	if err != nil {
 		fail("register", err.Error())
-		return 0
+		return
 	}
 	if !resp.Success {
 		fail("register", resp.Message)
-		return 0
+		return
 	}
 	if resp.UserId == 0 {
 		fail("register", "returned user_id=0")
-		return 0
+		return
 	}
 	pass(fmt.Sprintf("register (user_id=%d)", resp.UserId))
-	return resp.UserId
 }
 
-func stepLogin(ctx context.Context) string {
+func stepLogin(ctx context.Context) (string, int64) {
 	conn := grpcDial(identityGRPCEndpoint)
 	defer conn.Close()
 	client := identityv1.NewIdentityServiceClient(conn)
@@ -180,81 +154,63 @@ func stepLogin(ctx context.Context) string {
 	})
 	if err != nil {
 		fail("login", err.Error())
-		return ""
+		return "", 0
 	}
 	if !resp.Success {
 		fail("login", resp.Message)
-		return ""
+		return "", 0
 	}
-	if resp.Token == "" {
-		fail("login", "returned empty token")
-		return ""
+	if resp.Token == "" || resp.UserId <= 0 {
+		fail("login", "missing session or user ID")
+		return "", 0
 	}
-	pass(fmt.Sprintf("login (token=%s...)", resp.Token[:8]))
-	return resp.Token
+	pass("login")
+	return resp.Token, resp.UserId
 }
 
-func stepVerifyAccount(_ context.Context, userID int64) int64 {
-	url := fmt.Sprintf("%s/v1/account?user_id=%d", adminHTTPBase, userID)
-	body := httpGetWithAuth(url, adminToken())
-
-	var result struct {
-		Account struct {
-			UserID string `json:"user_id"`
-			Quota  int64  `json:"quota"`
-			Group  string `json:"group"`
-		} `json:"account"`
-	}
-	if err := jsonx.Unmarshal(body, &result); err != nil {
-		fail("verify-account", fmt.Sprintf("decode response: %v", err))
+func stepTopUp(ctx context.Context, userID int64) int64 {
+	payload := &adminv1.TopUpQuotaRequest{UserId: fmt.Sprint(userID), Amount: 1000000, Remark: "standalone E2E funding"}
+	var out adminv1.TopUpQuotaResponse
+	if err := requestJSON(ctx, adminHTTPBase+"/v1/topup", adminToken(), payload, &out); err != nil {
+		fail("topup", err.Error())
 		return 0
 	}
-
-	if result.Account.Quota <= 0 {
-		fail("verify-account", fmt.Sprintf("expected quota > 0, got %d", result.Account.Quota))
+	if !out.Success || out.NewBalance < payload.Amount {
+		fail("topup", "funding was not confirmed")
 		return 0
 	}
-	pass(fmt.Sprintf("verify-account (quota=%d, group=%s)", result.Account.Quota, result.Account.Group))
-	return result.Account.Quota
+	pass(fmt.Sprintf("topup (balance=%d)", out.NewBalance))
+	return out.NewBalance
 }
 
-func stepCreateAPIToken(ctx context.Context, userID int64) string {
-	conn := grpcDial(identityGRPCEndpoint)
-	defer conn.Close()
-	client := identityv1.NewIdentityServiceClient(conn)
-
-	resp, err := client.CreateAccessToken(ctx, &identityv1.CreateAccessTokenRequest{
-		UserId: userID,
-		Name:   "e2e-api-token",
-		Models: []string{testModel},
-	})
-	if err != nil {
+func stepCreateAPIToken(ctx context.Context, session string) string {
+	payload := map[string]any{"name": "e2e-api-token", "models": []string{testModel}, "unlimited_quota": true}
+	var out struct {
+		Success bool
+		Data    struct{ Key string }
+	}
+	if err := requestJSON(ctx, adminHTTPBase+"/api/token", session, payload, &out); err != nil {
 		fail("create-api-token", err.Error())
 		return ""
 	}
-	if !resp.Success {
-		fail("create-api-token", resp.Message)
+	if !out.Success || out.Data.Key == "" {
+		fail("create-api-token", "credential was not issued")
 		return ""
 	}
-	if resp.Token == "" {
-		fail("create-api-token", "returned empty token")
-		return ""
-	}
-	pass(fmt.Sprintf("create-api-token (token=%s...)", resp.Token[:8]))
-	return resp.Token
+	pass("create-api-token")
+	return out.Data.Key
 }
 
-func stepListModels(token string) {
+func stepListModels(ctx context.Context, token string) {
 	url := fmt.Sprintf("%s/v1/models", relayHTTPBase)
-	body := httpGetWithAuth(url, token)
 
 	var result struct {
 		Data []struct {
 			ID string `json:"id"`
 		} `json:"data"`
 	}
-	if err := jsonx.Unmarshal(body, &result); err != nil {
-		fail("list-models", fmt.Sprintf("invalid JSON: %v", err))
+	if err := requestJSON(ctx, url, token, nil, &result); err != nil {
+		fail("list-models", err.Error())
 		return
 	}
 
@@ -272,29 +228,9 @@ func stepListModels(token string) {
 	pass(fmt.Sprintf("list-models (%d models, includes %s)", len(result.Data), testModel))
 }
 
-func stepChatCompletion(token string) {
-	url := fmt.Sprintf("%s/v1/chat/completions", relayHTTPBase)
-	reqBody, _ := jsonx.Marshal(map[string]any{
-		"model":    testModel,
-		"messages": []map[string]string{{"role": "user", "content": "Hello, how are you?"}},
-	})
-
-	httpReq, _ := http.NewRequest("POST", url, bytes.NewReader(reqBody))
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := http.DefaultClient.Do(httpReq)
-	if err != nil {
-		fail("chat-completion", err.Error())
-		return
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != 200 {
-		fail("chat-completion", fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body)))
-		return
-	}
+func stepChatCompletion(ctx context.Context, token string) {
+	url := relayHTTPBase + "/v1/chat/completions"
+	payload := map[string]any{"model": testModel, "messages": []map[string]string{{"role": "user", "content": "Hello, how are you?"}}}
 
 	var result struct {
 		Choices []struct {
@@ -306,8 +242,8 @@ func stepChatCompletion(token string) {
 			TotalTokens int `json:"total_tokens"`
 		} `json:"usage"`
 	}
-	if err := jsonx.Unmarshal(body, &result); err != nil {
-		fail("chat-completion", fmt.Sprintf("invalid JSON: %v", err))
+	if err := requestJSON(ctx, url, token, payload, &result); err != nil {
+		fail("chat-completion", err.Error())
 		return
 	}
 	if len(result.Choices) == 0 || result.Choices[0].Message.Content == "" {
@@ -317,26 +253,15 @@ func stepChatCompletion(token string) {
 	pass(fmt.Sprintf("chat-completion (tokens=%d, content=%q...)", result.Usage.TotalTokens, truncate(result.Choices[0].Message.Content, 40)))
 }
 
-func stepVerifyBilling(ctx context.Context, userID int64, initialQuota int64) {
-	// Check quota decreased
+func stepVerifyBilling(ctx context.Context, userID int64, initialBalance int64) {
 	url := fmt.Sprintf("%s/v1/account?user_id=%d", adminHTTPBase, userID)
-	body := httpGetWithAuth(url, adminToken())
-
-	var result struct {
-		Account struct {
-			Quota int64 `json:"quota"`
-		} `json:"account"`
-	}
-	if err := jsonx.Unmarshal(body, &result); err != nil {
-		fail("billing-quota-deducted", fmt.Sprintf("decode response: %v", err))
-		return
-	}
-
-	if result.Account.Quota >= initialQuota {
-		fail("billing-quota-deducted", fmt.Sprintf("quota not decreased: initial=%d, now=%d", initialQuota, result.Account.Quota))
+	var result adminv1.AdminAccountSnapshotResponse
+	if err := requestJSON(ctx, url, adminToken(), nil, &result); err != nil {
+		fail("billing-balance", err.Error())
+	} else if result.Account == nil || result.Account.UserId != fmt.Sprint(userID) || result.Account.Balance >= initialBalance {
+		fail("billing-balance", "account does not show the expected debit")
 	} else {
-		deducted := initialQuota - result.Account.Quota
-		pass(fmt.Sprintf("billing-quota-deducted (deducted=%d)", deducted))
+		pass(fmt.Sprintf("billing-balance (deducted=%d)", initialBalance-result.Account.Balance))
 	}
 
 	// Check ledger entries via billing-service gRPC
@@ -369,18 +294,16 @@ func stepVerifyBilling(ctx context.Context, userID int64, initialQuota int64) {
 	}
 }
 
-func stepVerifyLogs(userID int64) {
+func stepVerifyLogs(ctx context.Context, userID int64) {
 	url := fmt.Sprintf("%s/v1/logs?user_id=%d&page_size=10", adminHTTPBase, userID)
-	body := httpGetWithAuth(url, adminToken())
-
-	var result map[string]any
-	if err := jsonx.Unmarshal(body, &result); err != nil {
-		fail("admin-logs", fmt.Sprintf("decode response: %v", err))
-		return
+	var result struct{ Success bool }
+	if err := requestJSON(ctx, url, adminToken(), nil, &result); err != nil {
+		fail("admin-logs", err.Error())
+	} else if !result.Success {
+		fail("admin-logs", "log request was rejected")
+	} else {
+		pass("admin-logs")
 	}
-
-	// Logs may be empty if log-service hasn't indexed yet, so just check the endpoint works
-	pass(fmt.Sprintf("admin-logs (response OK, keys=%d)", len(result)))
 }
 
 // ── Helpers ──
@@ -397,16 +320,34 @@ func grpcDial(endpoint string) *grpc.ClientConn {
 	return conn
 }
 
-func httpGetWithAuth(url, token string) []byte {
-	req, _ := http.NewRequest("GET", url, nil)
+func requestJSON(ctx context.Context, url, token string, payload, out any) error {
+	method := http.MethodGet
+	var body io.Reader
+	if payload != nil {
+		raw, err := jsonx.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		body = bytes.NewReader(raw)
+		method = http.MethodPost
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	if err != nil {
+		return err
+	}
 	req.Header.Set("Authorization", "Bearer "+token)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return []byte("{}")
+		return err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	return body
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("%s returned HTTP %d", req.URL.Path, resp.StatusCode)
+	}
+	return jsonx.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(out)
 }
 
 func truncate(s string, n int) string {

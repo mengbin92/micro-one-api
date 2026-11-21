@@ -4,6 +4,7 @@ import (
 	"context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	adminv1 "micro-one-api/api/admin/v1"
 	billingv1 "micro-one-api/api/billing/v1"
 )
 
@@ -13,11 +14,11 @@ func (s *AdminService) ExportCostReport(ctx context.Context, req *billingv1.Expo
 	}
 	return s.billingClient.ExportCostReport(operatorRPCContext(ctx), req)
 }
-func (s *AdminService) ExportRedeemCodes(ctx context.Context) (*billingv1.ExportArtifactReply, error) {
+func (s *AdminService) ExportRedeemCodes(ctx context.Context, filter *adminv1.ListRedeemCodesRequest) (*billingv1.ExportArtifactReply, error) {
 	if s.billingClient == nil {
 		return nil, status.Error(codes.Unavailable, "billing service unavailable")
 	}
-	return s.billingClient.ExportRedeemCodes(operatorRPCContext(ctx), &billingv1.ExportRedeemCodesRequest{})
+	return s.billingClient.ExportRedeemCodes(operatorRPCContext(ctx), &billingv1.ExportRedeemCodesRequest{Filter: billingRedeemCodeListRequest(filter)})
 }
 func (s *AdminService) RunReconciliation(ctx context.Context, reason string) (*billingv1.GetReconciliationRunResponse, error) {
 	if s.billingClient == nil {

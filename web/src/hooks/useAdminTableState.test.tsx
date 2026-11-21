@@ -11,6 +11,15 @@ function wrapper(initialPath: string) {
 }
 
 describe('useAdminTableState', () => {
+  it('keeps page and filter values even when they equal another parameter default', () => {
+    const { result } = renderHook(() => useAdminTableState({ storageKey: 'users', filters: ['status'] }), {
+      wrapper: wrapper('/admin/users'),
+    });
+    act(() => result.current.setFilter('status', 1));
+    act(() => result.current.setPage(20));
+    expect(result.current.filters.status).toBe('1');
+    expect(result.current.page).toBe(20);
+  });
   it('initializes from URL params', () => {
     const { result } = renderHook(() => useAdminTableState({ storageKey: 'users' }), {
       wrapper: wrapper('/admin/users?page=3&page_size=50&search=alice'),

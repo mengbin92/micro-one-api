@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math"
@@ -224,20 +225,7 @@ func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID
 
 	sub, err := s.assignOrExtendGroupSubscription(ctx, userID, group, int64(group.DurationDays), "", "", group.PriceQuota)
 	if err != nil {
-		if authz.IsAuthorizationError(err) {
-			return nil, err
-		}
-		// Compensate: give the quota back so the user is not charged for a
-		// subscription that was never created.
-		if _, refundErr := s.billingClient.TopUpQuota(operatorRPCContext(ctx), &billingv1.TopUpQuotaRequest{
-			UserId:     userIDStr,
-			Amount:     priceAmount,
-			OperatorId: "system",
-			Remark:     fmt.Sprintf("refund: subscription purchase rollback group=%d", group.ID),
-		}); refundErr != nil {
-			return nil, fmt.Errorf("assign subscription failed (%w) and quota refund failed: %v", err, refundErr)
-		}
-		return nil, err
+		return nil, s.refundSubscriptionDebit(ctx, userIDStr, priceAmount, requestID, fmt.Sprintf("refund: subscription purchase rollback group=%d", group.ID), err)
 	}
 	return sub, nil
 }
@@ -298,20 +286,26 @@ func (s *AdminService) PurchaseSubscriptionPlan(ctx context.Context, userID, pla
 	}
 	sub, err := s.assignOrExtendPlanSubscription(ctx, userID, plan, "")
 	if err != nil {
-		if authz.IsAuthorizationError(err) {
-			return nil, err
-		}
-		if _, refundErr := s.billingClient.TopUpQuota(operatorRPCContext(ctx), &billingv1.TopUpQuotaRequest{
-			UserId:     userIDStr,
-			Amount:     priceAmount,
-			OperatorId: "system",
-			Remark:     fmt.Sprintf("refund: subscription purchase rollback plan=%d", plan.ID),
-		}); refundErr != nil {
-			return nil, fmt.Errorf("assign subscription failed (%w) and quota refund failed: %v", err, refundErr)
-		}
-		return nil, err
+		return nil, s.refundSubscriptionDebit(ctx, userIDStr, priceAmount, requestID, fmt.Sprintf("refund: subscription purchase rollback plan=%d", plan.ID), err)
 	}
 	return sub, nil
+}
+
+// A committed debit needs a bounded refund attempt even if the client disconnected.
+func (s *AdminService) refundSubscriptionDebit(ctx context.Context, user string, amount int64, requestID, remark string, cause error) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	out, err := s.billingClient.TopUpQuota(operatorRPCContext(ctx), &billingv1.TopUpQuotaRequest{
+		UserId: user, Amount: amount, OperatorId: "system", Remark: remark,
+		RequestId: fmt.Sprintf("sub-refund:%x", sha256.Sum256([]byte(requestID))),
+	})
+	if err == nil && !out.GetSuccess() {
+		err = fmt.Errorf("billing rejected refund: %s", out.GetErrorMessage())
+	}
+	if err != nil {
+		return fmt.Errorf("subscription failed (%w) and quota refund failed: %v", cause, err)
+	}
+	return cause
 }
 
 func (s *AdminService) ensureSubscriptionCanUseGroup(ctx context.Context, userID, groupID int64) error {
@@ -523,19 +517,7 @@ func (s *AdminService) ChangeSubscription(ctx context.Context, req subscriptionb
 	}
 	res, err := s.subscriptionUc.ChangeSubscription(ctx, req)
 	if err != nil && charged > 0 {
-		// Compensate: the wallet was charged but the subscription mutation
-		// failed, so refund the difference so no charge lingers without a
-		// service change. Mirrors the PurchaseSubscription saga.
-		userIDStr := strconv.FormatInt(req.UserID, 10)
-		if _, refundErr := s.billingClient.TopUpQuota(operatorRPCContext(ctx), &billingv1.TopUpQuotaRequest{
-			UserId:     userIDStr,
-			Amount:     charged,
-			OperatorId: "system",
-			Remark:     fmt.Sprintf("refund: subscription change rollback group=%d", req.ToGroupID),
-		}); refundErr != nil {
-			return nil, fmt.Errorf("change subscription failed (%w) and quota refund failed: %v", err, refundErr)
-		}
-		return nil, err
+		return nil, s.refundSubscriptionDebit(ctx, strconv.FormatInt(req.UserID, 10), charged, requestID, fmt.Sprintf("refund: subscription change rollback group=%d", req.ToGroupID), err)
 	}
 	if res != nil && policy == subscriptionbiz.SubscriptionChangePolicyImmediate {
 		// Reflect the real charge in the result (the usecase's ChargedQuota is

@@ -171,17 +171,17 @@ func (r *paymentRepo) ListOrders(ctx context.Context, req biz.ListPaymentOrdersR
 		query = query.Where("created_at <= ?", time.Unix(req.EndTime, 0))
 	}
 
-	var total int64
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("failed to count payment orders: %w", err)
-	}
-
 	orderBy := "id DESC"
 	if req.Reconcile {
 		query = query.Where("channel IN ?", []string{biz.PaymentChannelAlipay, biz.PaymentChannelWechat})
 		query = query.Where("id > ?", req.AfterID)
 		orderBy = "id ASC"
 	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count payment orders: %w", err)
+	}
+
 	var rows []PaymentOrder
 	offset := (int64(page) - 1) * int64(pageSize)
 	if offset >= total {

@@ -49,7 +49,7 @@ func (uc *ChannelUsecase) BatchDeleteChannels(ctx context.Context, ids []int64, 
 	}
 	uc.invalidateModelsListCache()
 	for _, id := range ids {
-		_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &Channel{ID: id})
+		_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channelChanged{ID: id})
 	}
 	return nil
 }

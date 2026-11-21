@@ -285,7 +285,7 @@ func (m *mockRedeemRepo) CreateRedeemCodesBatch(ctx context.Context, codes []*Re
 	return nil
 }
 
-func (m *mockRedeemRepo) ListRedeemCodes(ctx context.Context, page, pageSize int32) ([]*RedeemCode, int64, error) {
+func (m *mockRedeemRepo) ListRedeemCodes(ctx context.Context, options RedeemCodeListOptions) ([]*RedeemCode, int64, error) {
 	var result []*RedeemCode
 	for _, code := range m.codes {
 		result = append(result, code)
@@ -339,32 +339,23 @@ func (m *mockRedeemRepo) GetRedeemCode(ctx context.Context, code string) (*Redee
 	return c, nil
 }
 
-func (m *mockRedeemRepo) UpdateRedeemCodeCount(ctx context.Context, code string, delta int) error {
-	c, ok := m.codes[code]
-	if !ok {
-		return ErrRedeemCodeNotFound
-	}
-	if c.Status != RedeemCodeStatusEnabled {
-		return ErrRedeemCodeDisabled
-	}
-	if c.Count < int32(delta) {
-		return ErrRedeemCodeUsedUp
-	}
-	c.Count -= int32(delta)
-	return nil
+func (m *mockRedeemRepo) GetRedeemCodeForUpdate(ctx context.Context, tx subscriptionbiz.Tx, code string) (*RedeemCode, error) {
+	return m.GetRedeemCode(ctx, code)
 }
 
-func (m *mockRedeemRepo) UpdateRedeemCodeCountInTx(ctx context.Context, tx subscriptionbiz.Tx, code string, delta int) error {
-	return m.UpdateRedeemCodeCount(ctx, code, delta)
-}
-
-func (m *mockRedeemRepo) CreateRedeemRecord(ctx context.Context, record *RedeemRecord) error {
-	m.records = append(m.records, record)
+func (m *mockRedeemRepo) ClaimRedemptionInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, code *RedeemCode) error {
+	for _, record := range m.records {
+		if record.UserID == userID && record.Code == code.Code {
+			return ErrDuplicateRequest
+		}
+	}
+	code.Count--
 	return nil
 }
 
 func (m *mockRedeemRepo) CreateRedeemRecordInTx(ctx context.Context, tx subscriptionbiz.Tx, record *RedeemRecord) error {
-	return m.CreateRedeemRecord(ctx, record)
+	m.records = append(m.records, record)
+	return nil
 }
 
 // 正确的预扣测试 - 从 1000 开始，预扣 100，最终应该是 900
@@ -682,7 +673,7 @@ func TestCreateRedeemCode_Success(t *testing.T) {
 // 测试使用兑换码
 func TestRedeemCode_Success(t *testing.T) {
 	account := &Account{
-		UserID:       "user1",
+		UserID:       "1",
 		Balance:      1000,
 		FrozenAmount: 0,
 		Group:        "default",
@@ -705,8 +696,9 @@ func TestRedeemCode_Success(t *testing.T) {
 	}
 
 	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
+	uc.SetTxRunner(&mockTxRunner{})
 
-	amount, newQuota, err := uc.RedeemCode(context.Background(), "user1", "CODE123")
+	amount, newQuota, err := uc.RedeemCode(context.Background(), "1", "CODE123")
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(500), amount)
@@ -726,8 +718,9 @@ func TestRedeemCode_NotFound(t *testing.T) {
 	redeemRepo := &mockRedeemRepo{codes: make(map[string]*RedeemCode)}
 
 	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
+	uc.SetTxRunner(&mockTxRunner{})
 
-	_, _, err := uc.RedeemCode(context.Background(), "user1", "NONEXISTENT")
+	_, _, err := uc.RedeemCode(context.Background(), "1", "NONEXISTENT")
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrRedeemCodeNotFound)
@@ -736,7 +729,7 @@ func TestRedeemCode_NotFound(t *testing.T) {
 // 测试使用已用完的兑换码
 func TestRedeemCode_UsedUp(t *testing.T) {
 	account := &Account{
-		UserID:       "user1",
+		UserID:       "1",
 		Balance:      1000,
 		FrozenAmount: 0,
 		Group:        "default",
@@ -756,8 +749,9 @@ func TestRedeemCode_UsedUp(t *testing.T) {
 	redeemRepo := &mockRedeemRepo{codes: map[string]*RedeemCode{"CODE123": redeemCode}}
 
 	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
+	uc.SetTxRunner(&mockTxRunner{})
 
-	_, _, err := uc.RedeemCode(context.Background(), "user1", "CODE123")
+	_, _, err := uc.RedeemCode(context.Background(), "1", "CODE123")
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrRedeemCodeUsedUp)
@@ -766,7 +760,7 @@ func TestRedeemCode_UsedUp(t *testing.T) {
 // 测试使用已禁用的兑换码
 func TestRedeemCode_Disabled(t *testing.T) {
 	account := &Account{
-		UserID:       "user1",
+		UserID:       "1",
 		Balance:      1000,
 		FrozenAmount: 0,
 		Group:        "default",
@@ -786,8 +780,9 @@ func TestRedeemCode_Disabled(t *testing.T) {
 	redeemRepo := &mockRedeemRepo{codes: map[string]*RedeemCode{"CODE123": redeemCode}}
 
 	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
+	uc.SetTxRunner(&mockTxRunner{})
 
-	_, _, err := uc.RedeemCode(context.Background(), "user1", "CODE123")
+	_, _, err := uc.RedeemCode(context.Background(), "1", "CODE123")
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrRedeemCodeDisabled)

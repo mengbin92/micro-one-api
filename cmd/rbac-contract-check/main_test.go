@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/csv"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -173,7 +175,9 @@ func TestInventoryAllowsSymlinksWithinRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 1 || rows[0][3] != "scripts/test-e2e-flow.sh" {
+	rel := "scripts/test-e2e-flow.sh"
+	want := []string{"SOURCE", "billing", rel, rel, "billing top-up test fixture", fmt.Sprintf("%x", sha256.Sum256([]byte("#!/bin/sh\n")))}
+	if len(rows) != 1 || !slices.Equal(rows[0], want) {
 		t.Fatalf("unexpected inventory: %v", rows)
 	}
 }

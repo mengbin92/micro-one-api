@@ -134,6 +134,11 @@ func TestPaymentRepo_ListOrdersFiltersAndPaginates(t *testing.T) {
 	require.Len(t, list, 1)
 	require.Equal(t, "PAY-1", list[0].TradeNo)
 	require.Equal(t, "ALI-1", list[0].ProviderTradeNo)
+
+	list, total, err = repo.ListOrders(context.Background(), biz.ListPaymentOrdersRequest{Reconcile: true, AfterID: list[0].ID})
+	require.NoError(t, err)
+	require.Empty(t, list)
+	require.Zero(t, total)
 }
 
 func TestPaymentRepo_MarkOrderAssetIssuedCAS(t *testing.T) {

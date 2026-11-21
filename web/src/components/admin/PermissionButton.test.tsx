@@ -14,7 +14,7 @@ const actions = [
   'channel.channel.update', 'identity.user.disable', 'channel.model.create',
   'channel.account.update', 'channel.routing_group.create',
   'subscription.quota_policy.update', 'subscription.plan.create',
-  'subscription.user_subscription.extend', 'billing.redemption.create',
+  'subscription.user_subscription.extend', 'billing.redemption.batch_create',
   'system.option.security.update', 'billing.pricing.update',
   'billing.upstream_cost.create', 'log.request.delete',
 ];

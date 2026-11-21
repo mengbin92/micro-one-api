@@ -6,7 +6,7 @@ export interface CsvColumn<T extends object> {
 export function toCsv<T extends object>(rows: T[], columns: Array<CsvColumn<T>>) {
   const escapeCell = (value: unknown) => {
     let text = String(value ?? '');
-    if (typeof value === 'string' && /^[\s]*(?:[=+@]|-(?![\d.]))/.test(value)) text = `'${text}`;
+    if (typeof value === 'string' && /^\s*[=+@-]/.test(value) && !/^-(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value.trim())) text = `'${text}`;
     return `"${text.replaceAll('"', '""')}"`;
   };
 

@@ -38,7 +38,12 @@ func txDB(tx biz.Tx) *gorm.DB {
 type runner struct{ db *gorm.DB }
 
 // NewTxRunner builds a biz.TxRunner backed by the repository's database.
-func NewTxRunner(r *Repository) biz.TxRunner { return &runner{db: r.db} }
+func NewTxRunner(r *Repository) biz.TxRunner {
+	if r == nil || r.db == nil {
+		return nil
+	}
+	return &runner{db: r.db}
+}
 
 // RunInTx runs fn inside a database transaction. gorm commits when fn
 // returns nil and rolls back on any non-nil error, so the biz callback only

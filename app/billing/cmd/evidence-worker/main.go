@@ -336,7 +336,7 @@ func run() error {
 		if err = decode(raw, &plans); err != nil {
 			return err
 		}
-		if err = ops.Tick(ctx, repo, w, plans, *kind, *budget, time.Now().UTC()); err != nil {
+		if err = ops.Tick(ctx, repo, w, plans, *kind, *budget, time.Now); err != nil {
 			return err
 		}
 		reader := repo.(interface {

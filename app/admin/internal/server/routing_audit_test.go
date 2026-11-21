@@ -65,4 +65,5 @@ func TestSafeCSVCellNeutralizesFormulaText(t *testing.T) {
 	require.Equal(t, "'=SUM(A1:A2)", safeCSVCell("=SUM(A1:A2)"))
 	require.Equal(t, "'-cmd", safeCSVCell("-cmd"))
 	require.Equal(t, "-12.5", safeCSVCell("-12.5"))
+	require.Equal(t, "'-1+2", safeCSVCell("-1+2"))
 }

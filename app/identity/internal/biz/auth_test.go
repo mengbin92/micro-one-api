@@ -461,6 +461,7 @@ func TestIdentityUsecase_ValidateToken_TokenExpired(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo, nil)
+	uc.now = func() time.Time { return time.Unix(expiredTime, 0) }
 	_, err := uc.ValidateToken(context.Background(), "expired-token", "")
 	if !errors.Is(err, ErrTokenExpired) {
 		t.Fatalf("expected ErrTokenExpired, got: %v", err)

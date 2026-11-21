@@ -86,13 +86,16 @@ func (r *repo) UpdatePolicy(ctx context.Context, p b.Policy, who, reason string)
 	if err != nil {
 		return b.Policy{}, err
 	}
-	err = r.d.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = authzquery.RunInTx(ctx, r.d.DB, 3, func(ctx context.Context, tx *gorm.DB) error {
 		result := tx.Model(&policyRow{}).Where("id = 1 AND revision = ?", old).Updates(map[string]any{"revision": p.Revision, "document": string(raw)})
 		if result.Error != nil {
 			return result.Error
 		}
 		if result.RowsAffected != 1 {
 			return b.ErrConflict
+		}
+		if err := authorization.Require(ctx, "system.option.security.update", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
+			return err
 		}
 		if err := authzquery.AppendWriteAudit(ctx, tx, "system.option.security.update", 0); err != nil {
 			return err
@@ -104,10 +107,13 @@ func (r *repo) UpdatePolicy(ctx context.Context, p b.Policy, who, reason string)
 func (r *repo) Enqueue(ctx context.Context, id, who, reason string, now time.Time) (b.Job, error) {
 	var out b.Job
 	who = actor(ctx, who)
-	err := r.d.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := authzquery.RunInTx(ctx, r.d.DB, 3, func(ctx context.Context, tx *gorm.DB) error {
 		// Serialize manual queue admission with policy updates and scheduler claims.
 		var p policyRow
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&p, 1).Error; err != nil {
+			return err
+		}
+		if err := authorization.Require(ctx, "system.option.security.update", authorization.ObjectFacts{Context: authorization.Platform()}); err != nil {
 			return err
 		}
 		var row jobRow

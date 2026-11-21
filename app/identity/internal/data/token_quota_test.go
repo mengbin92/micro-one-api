@@ -132,3 +132,37 @@ func TestConsumeTokenQuotaWithDedupeChargesReservationOnce(t *testing.T) {
 		t.Fatalf("replay consume = remaining:%d applied:%v err:%v", remaining, applied, err)
 	}
 }
+
+func TestTokenQuotaReplayAfterLimitChange(t *testing.T) {
+	for _, storage := range []string{"sqlite", "memory"} {
+		t.Run(storage, func(t *testing.T) {
+			ctx := context.Background()
+			r := NewMemoryRepositoryForTest()
+			if storage == "sqlite" {
+				r = newTokenHashTestRepo(t)
+				require.NoError(t, r.db.AutoMigrate(&tokenQuotaDedupeModel{}))
+			}
+			token := &biz.Token{UserID: 7, Name: "test", Key: "test", KeyHash: biz.HashTokenKey("test"), UnlimitedQuota: true, RemainQuota: 100, Status: biz.TokenStatusEnabled}
+			require.NoError(t, r.CreateToken(ctx, token))
+			uc := biz.NewIdentityUsecase(r, nil)
+			consume := func(id string, want int64) {
+				t.Helper()
+				remaining, err := uc.ConsumeTokenQuotaWithDedupe(ctx, 7, token.ID, 10, id)
+				require.NoError(t, err)
+				require.Equal(t, want, remaining)
+			}
+			consume("while-unlimited", -1)
+			_, err := uc.UpdateAccessTokenWithOptions(ctx, 7, token.ID, biz.UpdateAccessTokenOptions{RemainQuota: -1, UnlimitedQuota: new(false)})
+			require.NoError(t, err)
+			consume("while-unlimited", -1)
+			consume("while-limited", 90)
+			consume("while-limited", 90)
+			_, err = uc.UpdateAccessTokenWithOptions(ctx, 7, token.ID, biz.UpdateAccessTokenOptions{RemainQuota: -1, UnlimitedQuota: new(true)})
+			require.NoError(t, err)
+			consume("while-limited", 90)
+			stored, err := r.FindTokenByID(ctx, 7, token.ID)
+			require.NoError(t, err)
+			require.EqualValues(t, 10, stored.UsedQuota)
+		})
+	}
+}

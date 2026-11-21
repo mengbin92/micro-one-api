@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"micro-one-api/domain/authorization"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"micro-one-api/app/billing/internal/biz"
 	"micro-one-api/platform/metrics"
@@ -62,6 +64,7 @@ func (r *ledgerRepo) CreateLedgerInTx(ctx context.Context, tx subscriptionbiz.Tx
 	if dedupeKey == "" {
 		dedupeKey = legacyLedgerDedupeKey(ledger)
 	}
+	dedupeKey = storedLedgerKey(dialectorName(db), dedupeKey)
 	if dedupeKey != "" {
 		claim := &ledgerDedupeClaimModel{LedgerDedupeKey: dedupeKey}
 		if err := db.WithContext(ctx).Create(claim).Error; err != nil {
@@ -148,6 +151,15 @@ func (r *ledgerRepo) CreateLedgerInTx(ctx context.Context, tx subscriptionbiz.Tx
 	}
 	db = db.Omit(omitted...)
 	return db.Create(model).Error
+}
+
+// MySQL bounds both ledger and claim keys at VARCHAR(160). TEXT-backed
+// databases retain their existing keys so historical requests still deduplicate.
+func storedLedgerKey(driver, key string) string {
+	if driver == "mysql" && utf8.RuneCountInString(key) > 160 {
+		return fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(key)))
+	}
+	return key
 }
 
 func legacyLedgerDedupeKey(ledger *biz.Ledger) string {
@@ -752,7 +764,7 @@ func (r *ledgerRepo) FindByDedupeKey(ctx context.Context, tx subscriptionbiz.Tx,
 		db = r.data.db
 	}
 	var model ledgerModel
-	if err := db.WithContext(ctx).Where("ledger_dedupe_key = ?", key).First(&model).Error; err != nil {
+	if err := db.WithContext(ctx).Where("ledger_dedupe_key = ?", storedLedgerKey(dialectorName(db), key)).First(&model).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}

@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
-	"maps"
-	"strings"
+	"io"
+	"net/http"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,40 +14,20 @@ import (
 	"micro-one-api/domain/requesttrace"
 	relayprovider "micro-one-api/domain/upstream/provider"
 
-	coderws "github.com/coder/websocket"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// openAIWSConnPool is a per-source upstream WebSocket connection pool. It
-// caches idle upstream connections keyed by a namespace-safe source key
-// ("channel:<id>" / "subscription:<id>") so that follow-up turns (or separate
-// client sessions on the same source) reuse an established connection instead
-// of dialing the upstream again. This mirrors sub2api's openAIWSConnPool but
-// is simplified to a per-source model (no account-level concurrency limits or
-// prewarming) which fits micro-one-api's channel routing.
-//
-// The key MUST be namespaced: channel IDs and subscription account IDs are
-// allocated independently, so a bare int64 would let channel #5 and
-// subscription account #5 share one bucket — a conn dialed with one source's
-// URL+credential would then be reused for the other (wrong upstream, wrong
-// credential, wrong billing attribution). Reuse additionally requires the
-// connection fingerprint (wsURL + Authorization header) to match, so a
-// credential rotation never resurrects a stale-credential conn.
-//
-// Connections are kept idle in the pool after a relay session ends. The next
-// Acquire for the same source returns the cached conn if it's still alive
-// (checked via a non-blocking ping); otherwise a fresh dial occurs. A
-// background sweeper evicts connections that have been idle past maxIdle.
+// openAIWSConnPool keeps only unused upstream connections. Once a client
+// frame has been sent the session owns the upstream until both pumps exit.
 type openAIWSConnPool struct {
 	dialer             openAIWSUpstreamDialer
 	dialTimeout        time.Duration
 	maxIdle            time.Duration
 	maxConnsPerChannel int
 
-	mu       sync.Mutex
-	channels map[string]*openAIWSChannelPool
-	closed   atomic.Bool
+	mu   sync.Mutex
+	idle map[string][]*openAIWSPooledConn
 
 	acquireTotal  atomic.Int64
 	acquireReuse  atomic.Int64
@@ -53,19 +35,11 @@ type openAIWSConnPool struct {
 	acquireFail   atomic.Int64
 }
 
-// openAIWSChannelPool holds the idle conns for a single routing source.
-type openAIWSChannelPool struct {
-	mu    sync.Mutex
-	conns []*openAIWSPooledConn
-}
-
-// openAIWSPooledConn wraps a leased upstream connection with last-used tracking.
 type openAIWSPooledConn struct {
 	conn        openAIWSFrameConn
 	poolKey     string
-	fingerprint string
-	lastUsedAt  time.Time
-	inUse       atomic.Bool
+	fingerprint [sha256.Size]byte
+	idleTimer   *time.Timer
 }
 
 const (
@@ -73,55 +47,54 @@ const (
 	openAIWSPoolDefaultMaxIdle            = 5 * time.Minute
 )
 
-func newOpenAIWSConnPool(dialTimeout time.Duration) *openAIWSConnPool {
-	p := &openAIWSConnPool{
-		dialer:             newCoderWSUpstreamDialer(),
+func newOpenAIWSConnPool(dialTimeout time.Duration, client *http.Client) *openAIWSConnPool {
+	return &openAIWSConnPool{
+		dialer:             newCoderWSUpstreamDialer(client),
 		dialTimeout:        dialTimeout,
 		maxIdle:            openAIWSPoolDefaultMaxIdle,
 		maxConnsPerChannel: openAIWSPoolDefaultMaxConnsPerChannel,
-		channels:           make(map[string]*openAIWSChannelPool),
+		idle:               make(map[string][]*openAIWSPooledConn),
 	}
-	return p
 }
 
-func (p *openAIWSConnPool) getChannelPool(poolKey string) *openAIWSChannelPool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	cp, ok := p.channels[poolKey]
-	if !ok {
-		cp = &openAIWSChannelPool{}
-		p.channels[poolKey] = cp
-	}
-	return cp
-}
-
-// openAIWSConnFingerprint identifies the upstream target a connection was
-// dialed for: the wsURL plus the Authorization credential. A pooled conn is
-// only reused when the fingerprint matches, so editing a channel's key or
-// base URL can never resurrect a stale-credential connection.
-func openAIWSConnFingerprint(wsURL string, headers map[string][]string) string {
-	var auth string
-	for k, v := range headers {
-		if strings.EqualFold(k, "Authorization") {
-			auth = strings.Join(v, "\x00")
-			break
-		}
-	}
-	return wsURL + "\x00" + auth
+// Include every handshake header without retaining the credential in the pool.
+func openAIWSConnFingerprint(wsURL string, headers http.Header) [sha256.Size]byte {
+	hash := sha256.New()
+	_, _ = io.WriteString(hash, wsURL+"\x00")
+	_ = headers.Write(hash)
+	return [sha256.Size]byte(hash.Sum(nil))
 }
 
 // AcquireOrDial returns a usable upstream connection for the given source.
 // It first checks the pool for a reusable idle connection; if none is
 // available it dials a new one. The caller MUST call Release when done (which
 // returns the connection to the pool, or closes it if the pool is full/closed).
-func (p *openAIWSConnPool) AcquireOrDial(ctx context.Context, poolKey string, wsURL string, headers map[string][]string) (*openAIWSPooledConn, error) {
-	if p == nil {
-		// Pool disabled: dial directly each time.
-		return p.dialNew(ctx, poolKey, wsURL, headers)
-	}
+func (p *openAIWSConnPool) AcquireOrDial(ctx context.Context, poolKey string, wsURL string, headers http.Header) (*openAIWSPooledConn, error) {
 	p.acquireTotal.Add(1)
 	fingerprint := openAIWSConnFingerprint(wsURL, headers)
-	if reused := p.tryReuse(poolKey, fingerprint); reused != nil {
+	p.mu.Lock()
+	if p.idle == nil {
+		p.mu.Unlock()
+		return nil, errOpenAIWSPoolClosed
+	}
+	var reused *openAIWSPooledConn
+	var stale []*openAIWSPooledConn
+	for len(p.idle[poolKey]) > 0 {
+		conns := p.idle[poolKey]
+		pc := conns[len(conns)-1]
+		pc.idleTimer.Stop()
+		p.removeIdle(pc)
+		if pc.fingerprint == fingerprint {
+			reused = pc
+			break
+		}
+		stale = append(stale, pc)
+	}
+	p.mu.Unlock()
+	for _, pc := range stale {
+		_ = pc.conn.Close()
+	}
+	if reused != nil {
 		p.acquireReuse.Add(1)
 		// Reuse is charged to the acquiring turn: mark it on the enclosing
 		// ws.pool.acquire phase span and skip any dial phase.
@@ -129,89 +102,20 @@ func (p *openAIWSConnPool) AcquireOrDial(ctx context.Context, poolKey string, ws
 		return reused, nil
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("ws.pool.reused", false))
-	conn, err := p.dialNew(ctx, poolKey, wsURL, headers)
+	conn, err := dialOpenAIWSUpstream(ctx, p.dialer, p.dialTimeout, wsURL, headers)
 	if err != nil {
 		p.acquireFail.Add(1)
 		return nil, err
 	}
 	p.acquireCreate.Add(1)
-	return conn, nil
+	return &openAIWSPooledConn{conn: conn, poolKey: poolKey, fingerprint: fingerprint}, nil
 }
 
-// tryReuse returns a healthy idle connection from the source pool whose
-// fingerprint matches the requested target, or nil. Conns with a stale
-// fingerprint (credential/URL changed since dial) are closed and evicted.
-func (p *openAIWSConnPool) tryReuse(poolKey, fingerprint string) *openAIWSPooledConn {
-	if p.closed.Load() {
-		return nil
-	}
-	cp := p.getChannelPool(poolKey)
-	cp.mu.Lock()
-	defer cp.mu.Unlock()
-	now := time.Now()
-	for i, pc := range cp.conns {
-		if pc == nil {
-			continue
-		}
-		if pc.inUse.Load() {
-			continue
-		}
-		// Evict if idle too long.
-		if now.Sub(pc.lastUsedAt) > p.maxIdle {
-			_ = pc.conn.Close()
-			cp.conns[i] = nil
-			continue
-		}
-		// Evict if the conn was dialed for a different target (credential or
-		// URL rotated since it was pooled).
-		if pc.fingerprint != fingerprint {
-			_ = pc.conn.Close()
-			cp.conns[i] = nil
-			continue
-		}
-		// Health-check: a quick ping. coder/websocket Ping blocks until pong;
-		// use a short timeout so a dead conn doesn't stall the pool. We reach
-		// the concrete *coderws.Conn because the pool only ever stores
-		// *coderWSFrameConn instances (built by the production dialer).
-		rawConn := openAIWSConnFromFrameConn(pc.conn)
-		if rawConn != nil {
-			// Health-check: a quick ping. coder/websocket Ping blocks until
-			// pong; use a short timeout so a dead conn doesn't stall the pool.
-			pingCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			err := rawConn.Ping(pingCtx)
-			cancel()
-			if err != nil {
-				_ = pc.conn.Close()
-				cp.conns[i] = nil
-				continue
-			}
-		}
-		// If the conn doesn't expose a *coderws.Conn (e.g. a test fake), skip
-		// the ping and optimistically reuse — the relay will detect a dead conn
-		// via its first read/write error and mark it broken on release.
-		pc.inUse.Store(true)
-		pc.lastUsedAt = now
-		return pc
-	}
-	// Compact nils.
-	cp.compact()
-	return nil
-}
-
-// dialNew dials a fresh upstream connection and wraps it as a pooled conn. The
-// dial is only reached on a pool miss, so recording it as a per-turn phase can
-// never double-count a reuse.
-func (p *openAIWSConnPool) dialNew(ctx context.Context, poolKey string, wsURL string, headers map[string][]string) (*openAIWSPooledConn, error) {
-	dialer := p.dialer
-	if dialer == nil {
-		dialer = newCoderWSUpstreamDialer()
-	}
+func dialOpenAIWSUpstream(ctx context.Context, dialer openAIWSUpstreamDialer, timeout time.Duration, wsURL string, headers http.Header) (openAIWSFrameConn, error) {
 	dialPhaseCtx, endDial := requesttrace.Phase(ctx, "ws.upstream.dial")
-	dialCtx, cancel := context.WithTimeout(dialPhaseCtx, p.dialTimeout)
+	dialCtx, cancel := context.WithTimeout(dialPhaseCtx, timeout)
 	defer cancel()
-	hdr := make(map[string][]string, len(headers))
-	maps.Copy(hdr, headers)
-	conn, statusCode, _, err := dialer.Dial(dialCtx, wsURL, hdr)
+	conn, statusCode, _, err := dialer.Dial(dialCtx, wsURL, headers)
 	endDial(err)
 	if err != nil {
 		if statusCode > 0 {
@@ -219,91 +123,69 @@ func (p *openAIWSConnPool) dialNew(ctx context.Context, poolKey string, wsURL st
 		}
 		return nil, err
 	}
-	pc := &openAIWSPooledConn{
-		conn:        conn,
-		poolKey:     poolKey,
-		fingerprint: openAIWSConnFingerprint(wsURL, headers),
-		lastUsedAt:  time.Now(),
-	}
-	pc.inUse.Store(true)
-	return pc, nil
+	return conn, nil
 }
 
 // Release returns a connection to the pool for reuse, or closes it if the
 // pool is full, closed, or the connection is marked broken (broken=true).
 func (p *openAIWSConnPool) Release(pc *openAIWSPooledConn, broken bool) {
-	if p == nil || pc == nil {
+	if pc == nil {
 		return
 	}
-	pc.inUse.Store(false)
-	if broken || p.closed.Load() {
+	p.mu.Lock()
+	if broken || p.idle == nil || len(p.idle[pc.poolKey]) >= p.maxConnsPerChannel {
+		p.mu.Unlock()
 		_ = pc.conn.Close()
 		return
 	}
-	pc.lastUsedAt = time.Now()
-	cp := p.getChannelPool(pc.poolKey)
-	cp.mu.Lock()
-	if len(cp.conns) >= p.maxConnsPerChannel {
-		cp.mu.Unlock()
-		_ = pc.conn.Close()
-		return
+	p.idle[pc.poolKey] = append(p.idle[pc.poolKey], pc)
+	// Stop may race an expiry callback that already started. Only the timer
+	// for this particular release may retire the connection.
+	var timer *time.Timer
+	timer = time.AfterFunc(p.maxIdle, func() {
+		p.mu.Lock()
+		expired := pc.idleTimer == timer && p.removeIdle(pc)
+		p.mu.Unlock()
+		if expired {
+			_ = pc.conn.Close()
+		}
+	})
+	pc.idleTimer = timer
+	p.mu.Unlock()
+}
+
+// removeIdle is called under mu. Leased connections never appear in idle.
+func (p *openAIWSConnPool) removeIdle(pc *openAIWSPooledConn) bool {
+	conns := p.idle[pc.poolKey]
+	i := slices.Index(conns, pc)
+	if i < 0 {
+		return false
 	}
-	cp.conns = append(cp.conns, pc)
-	cp.mu.Unlock()
+	conns = slices.Delete(conns, i, i+1)
+	if len(conns) == 0 {
+		delete(p.idle, pc.poolKey)
+	} else {
+		p.idle[pc.poolKey] = conns
+	}
+	return true
 }
 
-// ConnID returns a stable identifier for logging.
-func (pc *openAIWSPooledConn) ConnID() string {
-	return pc.conn.(interface{ String() string }).String()
-}
-
-// FrameConn returns the underlying frame connection for relay use.
 func (pc *openAIWSPooledConn) FrameConn() openAIWSFrameConn { return pc.conn }
 
-// Close shuts down the pool and closes all idle connections.
 func (p *openAIWSConnPool) Close() {
 	if p == nil {
 		return
 	}
-	p.closed.Store(true)
 	p.mu.Lock()
-	channels := p.channels
-	p.channels = make(map[string]*openAIWSChannelPool)
+	idle := p.idle
+	p.idle = nil
 	p.mu.Unlock()
-	for _, cp := range channels {
-		cp.mu.Lock()
-		for _, pc := range cp.conns {
-			if pc != nil {
-				_ = pc.conn.Close()
-			}
+	for _, conns := range idle {
+		for _, pc := range conns {
+			pc.idleTimer.Stop()
+			_ = pc.conn.Close()
 		}
-		cp.conns = nil
-		cp.mu.Unlock()
 	}
 }
 
-func (cp *openAIWSChannelPool) compact() {
-	written := 0
-	for _, pc := range cp.conns {
-		if pc != nil {
-			cp.conns[written] = pc
-			written++
-		}
-	}
-	for i := written; i < len(cp.conns); i++ {
-		cp.conns[i] = nil
-	}
-	cp.conns = cp.conns[:written]
-}
-
-// errOpenAIWSPoolClosed is returned by operations on a closed pool.
 var errOpenAIWSPoolClosed = errors.New("openai ws pool closed")
-
-// openAIWSConnFromFrameConn extracts the underlying *coderws.Conn from a
-// *coderWSFrameConn, returning nil for any other FrameConn implementation.
-func openAIWSConnFromFrameConn(conn openAIWSFrameConn) *coderws.Conn {
-	if c, ok := conn.(*coderWSFrameConn); ok && c != nil {
-		return c.conn
-	}
-	return nil
-}

@@ -300,6 +300,11 @@ test('admin redemptions shows generated code values after creation', async ({ pa
   });
 
   await seedAdminSession(page);
+  await page.route('**/api/user/authorization?**', route => route.fulfill({ json: {
+    authorization_mode: 'iam', session: { activation_state: 'active' },
+    permitted_operations: ['admin.console.enter', 'billing.redemption.list', 'billing.redemption.batch_create'],
+  } }));
+  page.on('dialog', dialog => dialog.accept('Campaign'));
   await page.goto('/admin/redemptions');
   await page.getByRole('button', { name: /^(创建兑换码|Create Redemption Code)$/i }).click();
   const dialog = page.getByRole('dialog', { name: /^(创建兑换码|Create Redemption Code)$/i });

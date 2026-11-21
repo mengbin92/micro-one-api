@@ -113,6 +113,8 @@ jobs:
     if: inputs.run_compose
     name: Compose E2E suite
     runs-on: ubuntu-24.04
+    env:
+      COMPOSE_PROJECT_NAME: micro-one-api-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -137,17 +139,6 @@ jobs:
       - name: Generate API stubs
         run: make api config
 
-      # .env is git-ignored (deployments/docker-compose/.env) and absent in a
-      # clean checkout, but docker-compose.yml hard-requires
-      # ${MYSQL_ROOT_PASSWORD:?} and ${ADMIN_TOKEN:?}. Seed it from the example
-      # so the compose stack and the e2e script agree.
-      - name: Prepare compose environment
-        run: |
-          if [ ! -f deployments/docker-compose/.env ]; then
-            cp deployments/docker-compose/.env.example deployments/docker-compose/.env
-            echo "Seeded .env from .env.example"
-          fi
-
       - name: Verify Compose E2E service identities
         run: python3 scripts/test-e2e-flow-identities.py
 
@@ -169,12 +160,8 @@ jobs:
         if: failure()
         run: |
           cd deployments/docker-compose
-          docker compose -f docker-compose.yml -f docker-compose.test.yml ps -a > /tmp/compose-ps.txt 2>&1 || true
-          docker compose -f docker-compose.yml -f docker-compose.test.yml logs --no-color --tail 500 > /tmp/compose-logs.log 2>&1 || true
-          for c in mysql redis mock-upstream identity-service channel-service billing-service relay-gateway; do
-            echo "===== $c ====="
-            docker logs --tail 200 "$c" 2>&1 || true
-          done
+          docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.test.yml ps -a > /tmp/compose-ps.txt 2>&1 || true
+          docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.test.yml logs --no-color --tail 500 > /tmp/compose-logs.log 2>&1 || true
         shell: bash
 
       - name: Upload failure diagnostics
@@ -191,7 +178,7 @@ jobs:
         if: always()
         run: |
           cd deployments/docker-compose
-          docker compose -f docker-compose.yml -f docker-compose.test.yml down -v --remove-orphans || true
+          docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.test.yml down -v --remove-orphans || true
 
   frontend-smoke:
     if: inputs.run_frontend

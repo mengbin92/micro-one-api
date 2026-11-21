@@ -509,7 +509,7 @@ func (s *BillingService) CreateRedeemCodesBatch(ctx context.Context, req *billin
 	if req.Reason != "" {
 		ctx = authorization.WithWriteReason(ctx, req.Reason)
 	}
-	codes, err := s.uc.CreateRedeemCodesBatch(ctx, req.Name, req.Amount, req.Count, req.BatchSize)
+	codes, err := s.uc.CreateRedeemCodesBatch(ctx, req.Name, req.Amount, req.Count, req.OperatorId)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -551,8 +551,34 @@ func (s *BillingService) GetRedeemCode(ctx context.Context, req *billingv1.GetRe
 	}, nil
 }
 
+func redeemCodeListOptions(req *billingv1.ListRedeemCodesRequest) (biz.RedeemCodeListOptions, error) {
+	if req == nil {
+		return biz.RedeemCodeListOptions{}, nil
+	}
+	options := biz.RedeemCodeListOptions{
+		Page: req.Page, PageSize: req.PageSize, Keyword: req.Keyword, Status: req.Status,
+		Sort: req.Sort, Order: strings.ToLower(req.Order),
+	}
+	if options.Status != nil && (*options.Status < biz.RedeemCodeStatusDisabled || *options.Status > biz.RedeemCodeStatusUsed) {
+		return biz.RedeemCodeListOptions{}, status.Error(codes.InvalidArgument, "invalid redeem code status")
+	}
+	switch options.Sort {
+	case "", "code", "name", "amount", "status", "created_at":
+	default:
+		return biz.RedeemCodeListOptions{}, status.Error(codes.InvalidArgument, "invalid redeem code sort field")
+	}
+	if options.Order != "" && options.Order != "asc" && options.Order != "desc" {
+		return biz.RedeemCodeListOptions{}, status.Error(codes.InvalidArgument, "invalid redeem code sort direction")
+	}
+	return options, nil
+}
+
 func (s *BillingService) ListRedeemCodes(ctx context.Context, req *billingv1.ListRedeemCodesRequest) (*billingv1.ListRedeemCodesResponse, error) {
-	codes, total, err := s.uc.ListRedeemCodes(ctx, req.Page, req.PageSize)
+	options, err := redeemCodeListOptions(req)
+	if err != nil {
+		return nil, err
+	}
+	codes, total, err := s.uc.ListRedeemCodes(ctx, options)
 	if err != nil {
 		return nil, err
 	}

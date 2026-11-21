@@ -208,6 +208,10 @@ message RedeemCodeInfo {
 message ListRedeemCodesRequest {
   int32 page = 1;
   int32 page_size = 2;
+  string keyword = 3;
+  optional int32 status = 4;
+  string sort = 5;
+  string order = 6;
 }
 
 message ListRedeemCodesResponse {
@@ -341,6 +345,7 @@ message ResetUserQuotaRequest {
   int64 new_balance = 2;
   string operator_id = 3;
   string remark = 4;
+  string request_id = 5;
 }
 
 message ResetUserQuotaResponse {

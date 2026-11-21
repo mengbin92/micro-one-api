@@ -87,6 +87,14 @@ func (p *alipayPaymentProvider) CreateOrder(ctx context.Context, order *PaymentO
 	if p.config.FormURL == "" || p.config.AppID == "" || privateKey == "" || p.config.NotifyURL == "" {
 		return nil, errors.New("alipay payment is not configured")
 	}
+	total := fmt.Sprintf("%d.%02d", order.MoneyCents/100, order.MoneyCents%100)
+	content, err := jsonx.Marshal(map[string]string{
+		"out_trade_no": order.TradeNo, "product_code": "FAST_INSTANT_TRADE_PAY",
+		"total_amount": total, "subject": "充值 " + total,
+	})
+	if err != nil {
+		return nil, err
+	}
 	params := map[string]string{
 		"app_id":      p.config.AppID,
 		"method":      "alipay.trade.page.pay",
@@ -97,7 +105,7 @@ func (p *alipayPaymentProvider) CreateOrder(ctx context.Context, order *PaymentO
 		"version":     "1.0",
 		"notify_url":  p.config.NotifyURL,
 		"return_url":  p.config.ReturnURL,
-		"biz_content": fmt.Sprintf(`{"out_trade_no":"%s","product_code":"FAST_INSTANT_TRADE_PAY","total_amount":"%.2f","subject":"充值 %.2f"}`, order.TradeNo, float64(order.MoneyCents)/100, float64(order.MoneyCents)/100),
+		"biz_content": string(content),
 	}
 	if err := p.addCertParams(params); err != nil {
 		return nil, err
@@ -119,9 +127,6 @@ func (p *alipayPaymentProvider) VerifyNotify(ctx context.Context, params map[str
 	publicKey, err := p.publicKey()
 	if err != nil {
 		return nil, err
-	}
-	if publicKey == "" {
-		return nil, errors.New("alipay public key is required")
 	}
 	signature := params["sign"]
 	if signature == "" {
@@ -202,6 +207,10 @@ func (p *alipayPaymentProvider) QueryOrder(ctx context.Context, order *PaymentOr
 	if p.config.FormURL == "" || p.config.AppID == "" || privateKey == "" {
 		return nil, errors.New("alipay payment is not configured")
 	}
+	content, err := jsonx.Marshal(map[string]string{"out_trade_no": order.TradeNo})
+	if err != nil {
+		return nil, err
+	}
 	params := map[string]string{
 		"app_id":      p.config.AppID,
 		"method":      "alipay.trade.query",
@@ -210,7 +219,7 @@ func (p *alipayPaymentProvider) QueryOrder(ctx context.Context, order *PaymentOr
 		"sign_type":   "RSA2",
 		"timestamp":   time.Now().Format("2006-01-02 15:04:05"),
 		"version":     "1.0",
-		"biz_content": fmt.Sprintf(`{"out_trade_no":"%s"}`, order.TradeNo),
+		"biz_content": string(content),
 	}
 	if err := p.addCertParams(params); err != nil {
 		return nil, err
@@ -248,7 +257,16 @@ func (p *alipayPaymentProvider) privateKey() (string, error) {
 }
 
 func (p *alipayPaymentProvider) publicKey() (string, error) {
-	return firstNonEmptyStringOrFile(p.config.PublicKey, p.config.PublicKeyPath)
+	inline, path := p.config.PublicKey, p.config.PublicKeyPath
+	// Certificate mode pins the platform certificate even when Compose supplies a default bare-key path.
+	if p.config.AlipayPublicCertPath != "" {
+		inline, path = "", p.config.AlipayPublicCertPath
+	}
+	key, err := firstNonEmptyStringOrFile(inline, path)
+	if err == nil && key == "" {
+		return "", errors.New("alipay public key is required")
+	}
+	return key, err
 }
 
 func firstNonEmptyStringOrFile(value, path string) (string, error) {
@@ -278,16 +296,12 @@ func (p *alipayPaymentProvider) parseTradeQueryResponse(body []byte) (*PaymentPr
 	if err != nil {
 		return nil, err
 	}
-	if publicKey != "" {
-		var signature string
-		if signRaw, ok := envelope["sign"]; ok {
-			_ = jsonx.Unmarshal(signRaw, &signature)
-		}
-		if signature != "" {
-			if err := verifyRSA2(string(raw), signature, publicKey); err != nil {
-				return nil, err
-			}
-		}
+	var signature string
+	if err := jsonx.Unmarshal(envelope["sign"], &signature); err != nil || signature == "" {
+		return nil, errors.New("alipay trade query signature is required")
+	}
+	if err := verifyRSA2(string(raw), signature, publicKey); err != nil {
+		return nil, err
 	}
 	var response struct {
 		Code        string `json:"code"`

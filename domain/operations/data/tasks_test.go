@@ -68,3 +68,32 @@ func TestImmutablePlanAndConcurrentWorkersHaveOneClaim(t *testing.T) {
 	_, err = NewTaskRepo(a).Claim(context.Background(), p, now, 2)
 	require.ErrorContains(t, err, "immutable")
 }
+
+type recordTaskHandler struct {
+	ran []string
+	now time.Time
+}
+
+func (h *recordTaskHandler) Run(_ context.Context, p biz.Plan, _ biz.Claim) (biz.Receipt, error) {
+	h.ran = append(h.ran, p.ID)
+	h.now = h.now.Add(time.Minute)
+	return biz.Receipt{Status: "succeeded"}, nil
+}
+
+func TestTickSkipsExpiredPlansAndContinues(t *testing.T) {
+	now := time.Now().UTC()
+	d, err := NewData(filepath.Join(t.TempDir(), "tasks.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = d.Close() })
+	valid := taskPlan(now)
+	expired := valid
+	expired.ID = "expired"
+	expired.ExpiresAt = now.Unix()
+	expiring := valid
+	expiring.ID = "expires-while-first-runs"
+	expiring.ExpiresAt = now.Add(time.Second).Unix()
+	h := &recordTaskHandler{now: now}
+	err = biz.Tick(context.Background(), NewTaskRepo(d), h, []biz.Plan{expired, valid, expiring}, valid.Kind, 3, func() time.Time { return h.now })
+	require.NoError(t, err)
+	require.Equal(t, []string{valid.ID}, h.ran)
+}

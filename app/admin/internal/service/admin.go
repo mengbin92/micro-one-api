@@ -170,8 +170,7 @@ func (s *AdminService) TopUpQuota(ctx context.Context, req *adminv1.TopUpQuotaRe
 	}
 
 	return &adminv1.TopUpQuotaResponse{
-		Success:    true,
-		NewBalance: resp.NewBalance,
+		Success: resp.Success, ErrorMessage: resp.ErrorMessage, NewBalance: resp.NewBalance,
 	}, nil
 }
 
@@ -186,7 +185,7 @@ func (s *AdminService) CreateRedeemCode(ctx context.Context, req *adminv1.Create
 		OperatorId: req.OperatorId,
 	}
 
-	_, err := s.billingClient.CreateRedeemCode(operatorRPCContext(ctx), billingReq)
+	resp, err := s.billingClient.CreateRedeemCode(operatorRPCContext(ctx), billingReq)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -204,9 +203,7 @@ func (s *AdminService) CreateRedeemCode(ctx context.Context, req *adminv1.Create
 		}, nil
 	}
 
-	return &adminv1.CreateRedeemCodeResponse{
-		Success: true,
-	}, nil
+	return &adminv1.CreateRedeemCodeResponse{Success: resp.Success, ErrorMessage: resp.ErrorMessage}, nil
 }
 
 // CreateRedeemCodesBatch 批量创建兑换码
@@ -239,8 +236,9 @@ func (s *AdminService) CreateRedeemCodesBatch(ctx context.Context, req *adminv1.
 	}
 
 	return &adminv1.CreateRedeemCodesBatchResponse{
-		Success: resp.Success,
-		Codes:   resp.Codes,
+		Success:      resp.Success,
+		ErrorMessage: resp.ErrorMessage,
+		Codes:        resp.Codes,
 	}, nil
 }
 
@@ -267,6 +265,12 @@ func (s *AdminService) GetRedeemCode(ctx context.Context, req *adminv1.GetRedeem
 		return nil, err
 	}
 
+	if resp.GetErrorMessage() != "" {
+		return &adminv1.RedeemCodeResponse{ErrorMessage: resp.ErrorMessage}, nil
+	}
+	if resp.GetRedeemCode() == nil {
+		return nil, status.Error(codes.Internal, "missing billing redeem code")
+	}
 	redeemCodeInfo := &adminv1.RedeemCodeInfo{
 		Code:      resp.RedeemCode.Code,
 		Name:      resp.RedeemCode.Name,
@@ -283,22 +287,21 @@ func (s *AdminService) GetRedeemCode(ctx context.Context, req *adminv1.GetRedeem
 	}, nil
 }
 
-// ListRedeemCodes 获取兑换码列表
-func (s *AdminService) ListRedeemCodes(ctx context.Context, req *adminv1.ListRedeemCodesRequest) (*adminv1.ListRedeemCodesResponse, error) {
-	billingReq := &billingv1.ListRedeemCodesRequest{
+func billingRedeemCodeListRequest(req *adminv1.ListRedeemCodesRequest) *billingv1.ListRedeemCodesRequest {
+	return &billingv1.ListRedeemCodesRequest{
 		Page:     req.Page,
 		PageSize: req.PageSize,
+		Keyword:  req.Keyword,
+		Status:   req.Status,
+		Sort:     req.Sort,
+		Order:    req.Order,
 	}
+}
 
-	resp, err := s.billingClient.ListRedeemCodes(operatorRPCContext(ctx), billingReq)
+func (s *AdminService) ListRedeemCodes(ctx context.Context, req *adminv1.ListRedeemCodesRequest) (*adminv1.ListRedeemCodesResponse, error) {
+	resp, err := s.billingClient.ListRedeemCodes(operatorRPCContext(ctx), billingRedeemCodeListRequest(req))
 	if err != nil {
-		if authz.IsAuthorizationError(err) {
-			return nil, err
-		}
-		return &adminv1.ListRedeemCodesResponse{
-			Codes: []*adminv1.RedeemCodeInfo{},
-			Total: 0,
-		}, nil
+		return nil, err
 	}
 
 	codes := make([]*adminv1.RedeemCodeInfo, len(resp.Codes))
@@ -329,12 +332,7 @@ func (s *AdminService) SearchRedeemCodes(ctx context.Context, req *adminv1.Searc
 
 	resp, err := s.billingClient.SearchRedeemCodes(operatorRPCContext(ctx), billingReq)
 	if err != nil {
-		if authz.IsAuthorizationError(err) {
-			return nil, err
-		}
-		return &adminv1.RedeemCodesSearchResponse{
-			Codes: []*adminv1.RedeemCodeInfo{},
-		}, nil
+		return nil, err
 	}
 
 	codes := make([]*adminv1.RedeemCodeInfo, len(resp.Codes))
@@ -367,7 +365,7 @@ func (s *AdminService) UpdateRedeemCode(ctx context.Context, req *adminv1.Update
 		Status:           req.Status,
 	}
 
-	_, err := s.billingClient.UpdateRedeemCode(operatorRPCContext(ctx), billingReq)
+	resp, err := s.billingClient.UpdateRedeemCode(operatorRPCContext(ctx), billingReq)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -385,9 +383,7 @@ func (s *AdminService) UpdateRedeemCode(ctx context.Context, req *adminv1.Update
 		}, nil
 	}
 
-	return &adminv1.UpdateRedeemCodeResponse{
-		Success: true,
-	}, nil
+	return &adminv1.UpdateRedeemCodeResponse{Success: resp.Success, ErrorMessage: resp.ErrorMessage}, nil
 }
 
 // DeleteRedeemCode 删除兑换码
@@ -398,7 +394,7 @@ func (s *AdminService) DeleteRedeemCode(ctx context.Context, req *adminv1.Delete
 		Code:             req.Code,
 	}
 
-	_, err := s.billingClient.DeleteRedeemCode(operatorRPCContext(ctx), billingReq)
+	resp, err := s.billingClient.DeleteRedeemCode(operatorRPCContext(ctx), billingReq)
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
@@ -416,9 +412,7 @@ func (s *AdminService) DeleteRedeemCode(ctx context.Context, req *adminv1.Delete
 		}, nil
 	}
 
-	return &adminv1.DeleteRedeemCodeResponse{
-		Success: true,
-	}, nil
+	return &adminv1.DeleteRedeemCodeResponse{Success: resp.Success, ErrorMessage: resp.ErrorMessage}, nil
 }
 
 // ListUserLedger 查询用户流水
@@ -449,8 +443,12 @@ func (s *AdminService) ListUserLedger(ctx context.Context, req *adminv1.ListUser
 
 	ledgers := make([]*commonv1.LedgerInfo, len(resp.Entries))
 	for i, ledger := range resp.Entries {
+		id, err := strconv.ParseUint(ledger.GetId(), 10, 64)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "invalid billing ledger ID")
+		}
 		ledgers[i] = &commonv1.LedgerInfo{
-			Id:           0,
+			Id:           id,
 			UserId:       ledger.UserId,
 			Amount:       ledger.Amount,
 			BalanceAfter: ledger.BalanceAfter,
@@ -895,34 +893,34 @@ func (s *AdminService) ValidateToken(ctx context.Context, token string) (bool, e
 }
 
 func (s *AdminService) ResetUserQuota(ctx context.Context, req *adminv1.ResetUserQuotaRequest) (*adminv1.ResetUserQuotaResponse, error) {
-	snapshot, err := s.billingClient.GetAccountSnapshot(operatorRPCContext(ctx), &billingv1.GetAccountSnapshotRequest{
-		UserId: fmt.Sprintf("%d", req.UserId),
-	})
+	key, err := normalizeRequestID(req.GetRequestId())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	user := strconv.FormatInt(req.UserId, 10)
+	snapshot, err := s.billingClient.GetAccountSnapshot(operatorRPCContext(ctx), &billingv1.GetAccountSnapshotRequest{UserId: user})
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
 			return nil, err
 		}
 		return &adminv1.ResetUserQuotaResponse{Success: false, Message: err.Error()}, nil
 	}
-	currentQuota := int64(0)
-	if snapshot != nil && snapshot.Snapshot != nil {
-		currentQuota = snapshot.Snapshot.Balance
+	if snapshot.GetSnapshot() == nil {
+		return nil, status.Error(codes.Internal, "missing billing account snapshot")
 	}
-	delta := req.NewBalance - currentQuota
-	if delta == 0 {
-		return &adminv1.ResetUserQuotaResponse{Success: true, Message: "ok"}, nil
+	reason := requestWriteReason(ctx, req.Remark)
+	if strings.TrimSpace(reason) == "" {
+		reason = "legacy quota reset"
 	}
-	_, err = s.billingClient.TopUpQuota(operatorRPCContext(ctx), &billingv1.TopUpQuotaRequest{
-		UserId:     fmt.Sprintf("%d", req.UserId),
-		Amount:     delta,
-		OperatorId: req.OperatorId,
-		Remark:     req.Remark,
+	out, err := s.ResetAccountBalance(ctx, &billingv1.ResetAccountBalanceRequest{
+		UserId: user, TargetBalance: req.NewBalance,
+		ExpectedBalance: snapshot.Snapshot.Balance, Reason: reason, RequestId: key,
 	})
 	if err != nil {
-		if authz.IsAuthorizationError(err) {
-			return nil, err
-		}
-		return &adminv1.ResetUserQuotaResponse{Success: false, Message: err.Error()}, nil
+		return nil, err
+	}
+	if !out.GetSuccess() {
+		return &adminv1.ResetUserQuotaResponse{Message: out.GetErrorMessage()}, nil
 	}
 	return &adminv1.ResetUserQuotaResponse{Success: true, Message: "ok"}, nil
 }

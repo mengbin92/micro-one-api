@@ -156,7 +156,7 @@ func stepLogin(t *testing.T, ctx context.Context, state *e2eState) {
 	if state.userID == 0 {
 		state.userID = resp.UserId
 	}
-	t.Logf("login token=%s...", resp.Token[:min(8, len(resp.Token))])
+	t.Log("session token issued")
 }
 
 func stepCreateAPIToken(t *testing.T, state *e2eState) {
@@ -193,7 +193,7 @@ func stepCreateAPIToken(t *testing.T, state *e2eState) {
 		t.Fatalf("create API token not successful: %s", body)
 	}
 	state.apiToken = result.Data.Key
-	t.Logf("created API token=%s...", state.apiToken[:min(8, len(state.apiToken))])
+	t.Log("created API token")
 }
 
 func stepValidateToken(t *testing.T, ctx context.Context, state *e2eState) {
