@@ -7,12 +7,17 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestPaymentConfigUnmarshalAmountPerUnit(t *testing.T) {
@@ -77,7 +82,12 @@ func TestReadPaymentSecretFileRejectsDirectory(t *testing.T) {
 }
 
 func TestAlipayProviderQueryOrderPaid(t *testing.T) {
-	privateKeyPEM, _ := testAlipayKeyPairPEM(t)
+	privateKeyPEM, publicKeyPEM := testAlipayKeyPairPEM(t)
+	const raw = `{"code":"10000","msg":"Success","out_trade_no":"PAY-1","trade_no":"ALI-1","trade_status":"TRADE_SUCCESS","total_amount":"1.23"}`
+	signature, err := signRSA2(raw, privateKeyPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query().Get("method"); got != "alipay.trade.query" {
 			t.Fatalf("method = %q", got)
@@ -86,7 +96,7 @@ func TestAlipayProviderQueryOrderPaid(t *testing.T) {
 			t.Fatalf("app_id = %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"alipay_trade_query_response":{"code":"10000","msg":"Success","out_trade_no":"PAY-1","trade_no":"ALI-1","trade_status":"TRADE_SUCCESS","total_amount":"1.23"}}`))
+		fmt.Fprintf(w, `{"alipay_trade_query_response":%s,"sign":%q}`, raw, signature)
 	}))
 	defer server.Close()
 
@@ -94,7 +104,7 @@ func TestAlipayProviderQueryOrderPaid(t *testing.T) {
 		Enabled:    true,
 		FormURL:    server.URL,
 		AppID:      "app-1",
-		PrivateKey: privateKeyPEM,
+		PrivateKey: privateKeyPEM, PublicKey: publicKeyPEM,
 	})
 	status, err := provider.QueryOrder(context.Background(), &PaymentOrder{TradeNo: "PAY-1"})
 	if err != nil {
@@ -108,6 +118,76 @@ func TestAlipayProviderQueryOrderPaid(t *testing.T) {
 	}
 	if status.ProviderTradeNo != "ALI-1" {
 		t.Fatalf("provider_trade_no = %q", status.ProviderTradeNo)
+	}
+}
+
+func TestAlipayQueryRequiresAuthenticatedResponse(t *testing.T) {
+	privateKey, publicKey := testAlipayKeyPairPEM(t)
+	const raw = `{"code":"10000"}`
+	signature, err := signRSA2(raw, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ name, key, signature string }{
+		{"missing signature", publicKey, ""},
+		{"missing verification key", "", signature},
+		{"invalid signature", publicKey, "invalid"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			provider := NewAlipayPaymentProvider(AlipayConfig{PublicKey: tc.key})
+			body := fmt.Sprintf(`{"alipay_trade_query_response":%s,"sign":%q}`, raw, tc.signature)
+			if _, err := provider.parseTradeQueryResponse([]byte(body)); err == nil {
+				t.Fatal("expected response verification error")
+			}
+		})
+	}
+}
+
+func TestAlipayPlatformCertificateOverridesDefaultPublicKeyPath(t *testing.T) {
+	dir := t.TempDir()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	template := &x509.Certificate{SerialNumber: big.NewInt(1)}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	require.NoError(t, err)
+	path := filepath.Join(dir, "platform.crt")
+	require.NoError(t, os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0600))
+	provider := NewAlipayPaymentProvider(AlipayConfig{AlipayPublicCertPath: path, PublicKeyPath: filepath.Join(dir, "alipay_public_key.pem")})
+	payload := `{"code":"10000","trade_status":"TRADE_SUCCESS","total_amount":"1.00"}`
+	signature, err := signRSA2(payload, string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})))
+	require.NoError(t, err)
+	body := []byte(fmt.Sprintf(`{"alipay_trade_query_response":%s,"sign":%q}`, payload, signature))
+	order, err := provider.parseTradeQueryResponse(body)
+	require.NoError(t, err)
+	require.True(t, order.Paid)
+	// An explicitly selected but unreadable certificate must not fall back to a bare key.
+	publicDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	require.NoError(t, err)
+	provider.config.PublicKey = string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: publicDER}))
+	provider.config.AlipayPublicCertPath = filepath.Join(dir, "missing.crt")
+	_, err = provider.parseTradeQueryResponse(body)
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestAlipayOrderPreservesCentAmount(t *testing.T) {
+	privateKey, _ := testAlipayKeyPairPEM(t)
+	provider := NewAlipayPaymentProvider(AlipayConfig{Enabled: true, FormURL: "https://example.test", AppID: "test", PrivateKey: privateKey, NotifyURL: "https://example.test/notify"})
+	order, err := provider.CreateOrder(context.Background(), &PaymentOrder{TradeNo: "PAY-1", MoneyCents: 9007199254740993})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(order.PayURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var content struct {
+		TotalAmount string `json:"total_amount"`
+	}
+	if err := json.Unmarshal([]byte(u.Query().Get("biz_content")), &content); err != nil {
+		t.Fatal(err)
+	}
+	if content.TotalAmount != "90071992547409.93" {
+		t.Fatalf("total amount = %s", content.TotalAmount)
 	}
 }
 
