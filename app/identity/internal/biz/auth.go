@@ -307,7 +307,7 @@ func (uc *IdentityUsecase) ValidateToken(ctx context.Context, key, clientIP stri
 	if token.Status != TokenStatusEnabled {
 		return nil, ErrTokenDisabled
 	}
-	if token.ExpiredAt > 0 && token.ExpiredAt < uc.now().Unix() {
+	if token.ExpiredAt > 0 && token.ExpiredAt <= uc.now().Unix() {
 		return nil, ErrTokenExpired
 	}
 	if !tokenSubnetAllows(token.Subnet, clientIP) {
@@ -1018,13 +1018,6 @@ func (uc *IdentityUsecase) ConsumeTokenQuota(ctx context.Context, userID, tokenI
 func (uc *IdentityUsecase) ConsumeTokenQuotaWithDedupe(ctx context.Context, userID, tokenID, amount int64, reservationID string) (int64, error) {
 	if amount <= 0 {
 		return 0, nil
-	}
-	token, err := uc.repo.FindTokenByID(ctx, userID, tokenID)
-	if err != nil {
-		return 0, err
-	}
-	if token.UnlimitedQuota {
-		return -1, nil
 	}
 	if dedupe, ok := uc.repo.(TokenQuotaDedupeRepo); ok && strings.TrimSpace(reservationID) != "" {
 		remaining, _, err := dedupe.ConsumeTokenQuotaWithDedupe(ctx, userID, tokenID, amount, reservationID)

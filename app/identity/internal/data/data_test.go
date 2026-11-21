@@ -480,3 +480,27 @@ func TestMemoryUserIDsNeverReusedAfterDelete(t *testing.T) {
 		t.Fatalf("IDs reused: %d then %d", first.ID, second.ID)
 	}
 }
+
+func TestMemoryIdentityWritesKeepIndependentRecords(t *testing.T) {
+	repo := newMemoryRepository()
+	ctx := context.Background()
+	user := &biz.User{Username: "alice"}
+	require.NoError(t, repo.CreateUser(ctx, user))
+	user.Username = "renamed without saving"
+	saved, err := repo.FindUserByID(ctx, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, "alice", saved.Username)
+
+	key := "example-fixture-token-key"
+	token := &biz.Token{UserID: user.ID, Key: key, Name: "work", Models: []string{"model"}, RoutingGroupIDs: []int64{1}}
+	require.NoError(t, repo.CreateToken(ctx, token))
+	token.Models[0] = "changed"
+	stored, err := repo.FindTokenByKey(ctx, key)
+	require.NoError(t, err)
+	require.Equal(t, biz.TokenDisplayPrefix(key), stored.Key)
+	require.Equal(t, []string{"model"}, stored.Models)
+	stored.RoutingGroupIDs[0] = 2
+	again, err := repo.FindTokenByID(ctx, user.ID, token.ID)
+	require.NoError(t, err)
+	require.Equal(t, []int64{1}, again.RoutingGroupIDs)
+}
