@@ -102,6 +102,7 @@ func newMemoryRepository() *Repository {
 		mem: map[configKey]*biz.ConfigEntry{
 			{namespace: "default", key: "theme"}: {
 				ID:        1,
+				Revision:  1,
 				Namespace: "default",
 				Key:       "theme",
 				Value:     "dark",
@@ -263,7 +264,7 @@ func (r *Repository) setDB(ctx context.Context, entry *biz.ConfigEntry) error {
 			if existing.Deleted != 0 {
 				logicalRevision = 0
 			}
-			if !ok || expected != uint64(logicalRevision) {
+			if !ok || existing.Revision <= 0 || expected != uint64(logicalRevision) {
 				return biz.ErrConfigRevisionConflict
 			}
 		}
@@ -358,6 +359,9 @@ func (r *Repository) setMemory(ctx context.Context, entry *biz.ConfigEntry) erro
 		revision := int64(0)
 		if old := r.mem[k]; old != nil {
 			revision = old.Revision
+			if revision <= 0 {
+				return biz.ErrConfigRevisionConflict
+			}
 		}
 		if !ok || expected != uint64(revision) {
 			return biz.ErrConfigRevisionConflict

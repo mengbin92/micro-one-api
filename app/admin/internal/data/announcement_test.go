@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"micro-one-api/app/admin/internal/biz"
+	"micro-one-api/domain/authorization"
+	authztest "micro-one-api/domain/authorization/testutil"
 	dbtest "micro-one-api/platform/database/testutil"
 )
 
@@ -130,4 +132,18 @@ func TestAnnouncementsFilterBeforePaginationDialects(t *testing.T) {
 			require.Empty(t, rows)
 		})
 	}
+}
+
+func TestAnnouncementWriteRefreshesDecision(t *testing.T) {
+	repo := NewAnnouncementRepo(&Data{DB: dbtest.RoutingContextDB(t, "sqlite")})
+	op := "system.content.notice.update"
+	policy := &authztest.Resolver{ActorID: 1, Scopes: map[string]authorization.QueryScope{op: authztest.All()}}
+	ctx, err := authorization.Prepare(authztest.Context(), policy, "admin.content", op)
+	require.NoError(t, err)
+	delete(policy.Scopes, op)
+	_, err = repo.Save(ctx, biz.Announcement{Title: "test", Body: "body", Audience: "all", Status: "draft"}, "1", "test reason")
+	require.ErrorIs(t, err, authorization.ErrDenied)
+	_, total, err := repo.List(ctx, nil, time.Now().Unix(), 1, 10)
+	require.NoError(t, err)
+	require.Zero(t, total)
 }
