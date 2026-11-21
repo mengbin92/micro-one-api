@@ -311,7 +311,7 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 
 	// Async path: enqueue the settlement task and return a provisional
 	// success response immediately. The background worker runs the full
-	// CommitQuotaWithUsageAndSplit pipeline (reservation state machine,
+	// commit pipeline (reservation state machine,
 	// wallet settlement, ledger, subscription usage). A nil asyncUc falls
 	// back to the synchronous path below. When the caller reports a failed
 	// request (Success=false) we never enqueue: a release must be
@@ -321,7 +321,7 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 		// Code-review 2026-07-30 billing-L2: a missing reservation_id on the
 		// success path is a client contract violation that previously let the
 		// request through with a provisional success while the worker's
-		// CommitQuotaWithUsageAndSplit silently failed to find a reservation
+		// settlement silently failed to find a reservation
 		// (the usage was free). We now reject synchronously so the caller is
 		// forced to retry with the reservation id it obtained at reserve time;
 		// the missing-id counter still fires for monitoring.
@@ -352,6 +352,10 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 	committedAmount, refundAmount, result, err := s.uc.CommitQuotaWithUsageAndSplit(ctx, req.ReservationId, req.ActualTokens, req.Success, usage)
 	if metrics.BillingCommitDuration != nil {
 		metrics.BillingCommitDuration.WithLabelValues("sync").Observe(time.Since(commitStart).Seconds())
+	}
+	if errors.Is(err, biz.ErrSettlementReceiptUnavailable) {
+		// Receipt or reservation storage could not confirm the outcome.
+		return nil, biz.ErrSettlementReceiptUnavailable
 	}
 	if err != nil {
 		if authz.IsAuthorizationError(err) {
