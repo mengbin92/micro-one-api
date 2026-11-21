@@ -552,9 +552,8 @@ func (s *HTTPServer) openAIWSStickyTTL() time.Duration {
 // (excluding the failed one's priority) up to maxSwitches times. It owns the
 // turn-committed usage logging / quota commit and the pool release semantics.
 //
-// Retry is only attempted before the relay has written any data downstream
-// (wroteDownstream == false); once bytes have flowed to the client, switching
-// channels mid-stream would corrupt the client's view of the response.
+// Once the first write is attempted, the upstream may have accepted the turn
+// even if no reply reached the client.
 func (s *HTTPServer) runResponsesWSRelayWithFailover(
 	ctx context.Context,
 	wsConn *coderws.Conn,
@@ -876,10 +875,8 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		shadowCtx := s.observeNativeUsage(ctx, currentChannel, requestID, resolvedModel)
 		relayResult, relayExit := relayOpenAIWSFrames(shadowCtx, clientFrameConn, pooledConn.FrameConn(), rewrittenFirstMessage, relayOptions)
 
-		// Release the pooled connection. Mark broken if the relay errored so the
-		// pool doesn't hand a dead conn to the next request.
-		broken := relayExit != nil && relayExit.err != nil && !relayExit.graceful
-		s.releaseOpenAIWSUpstreamConn(pooledConn, broken)
+		// Only local pre-write rejections leave an untouched upstream socket.
+		s.releaseOpenAIWSUpstreamConn(pooledConn, relayResult.firstWriteAttempted)
 		releaseChannel()
 		releaseAccount()
 		localAdmissionRejected := relayExit != nil && errors.Is(relayExit.err, errWSRoutingAdmission)
@@ -895,14 +892,10 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			}
 		}
 
-		// Failover decision: only retry if nothing was written downstream yet
-		// and we haven't exhausted switches. A relay that wrote bytes must
-		// terminate; retrying would double-send to the client.
 		canFailover := relayExit != nil &&
 			relayExit.err != nil &&
 			!errors.Is(relayExit.err, errWSRoutingAdmission) &&
-			!relayExit.wroteDownstream &&
-			turnCommits == 0 &&
+			!relayResult.firstWriteAttempted &&
 			attempt < maxSwitches
 
 		if canFailover {
@@ -1062,22 +1055,11 @@ func (s *HTTPServer) acquireOpenAIWSUpstreamConn(ctx context.Context, ch *relayb
 	if s.wsPool != nil {
 		return s.wsPool.AcquireOrDial(ctx, poolKey, wsURL, headers)
 	}
-	// Pool disabled: dial directly.
-	dialer := newCoderWSUpstreamDialer()
-	dialPhaseCtx, endDial := requesttrace.Phase(ctx, "ws.upstream.dial")
-	dialCtx, cancel := context.WithTimeout(dialPhaseCtx, s.openAIWSDialTimeout())
-	defer cancel()
-	conn, statusCode, _, err := dialer.Dial(dialCtx, wsURL, headers)
-	endDial(err)
+	conn, err := dialOpenAIWSUpstream(ctx, newCoderWSUpstreamDialer(s.apiKeyHTTPClient), s.openAIWSDialTimeout(), wsURL, headers)
 	if err != nil {
-		if statusCode > 0 {
-			return nil, errors.Join(&relayprovider.UpstreamHTTPError{StatusCode: statusCode}, err)
-		}
 		return nil, err
 	}
-	pc := &openAIWSPooledConn{conn: conn, poolKey: poolKey, fingerprint: openAIWSConnFingerprint(wsURL, headers), lastUsedAt: time.Now()}
-	pc.inUse.Store(true)
-	return pc, nil
+	return &openAIWSPooledConn{conn: conn}, nil
 }
 
 // releaseOpenAIWSUpstreamConn returns a connection to the pool, or closes it

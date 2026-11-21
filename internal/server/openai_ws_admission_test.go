@@ -91,6 +91,8 @@ func newWSAdmissionGateway(t *testing.T, upstreamURL string) (*HTTPServer, *wsAd
 	s.wsScheduler = NewOpenAIWSRoutingScheduler(s)
 	s.wsScheduler.planner = &schedulerPlannerStub{plan: plan}
 	s.SetOpenAIWSTimeouts(time.Second, time.Second, time.Second, time.Second)
+	s.SetOpenAIWSConnPool()
+	t.Cleanup(s.wsPool.Close)
 	done := make(chan struct{})
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer close(done)
@@ -250,6 +252,31 @@ func TestSubscriptionWebSocketBusyAccountFailsOver(t *testing.T) {
 	defer channels.mu.Unlock()
 	require.Empty(t, channels.unhealthy)
 	require.Empty(t, channels.slots, "busy account must not acquire a slot")
+}
+
+func TestResponsesWebSocketDoesNotReplayAfterUpstreamReceivedFirstTurn(t *testing.T) {
+	var received atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := coderws.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.CloseNow()
+		if _, _, err := conn.Read(r.Context()); err == nil {
+			received.Add(1)
+		}
+	}))
+	defer upstream.Close()
+	s, channels, billing, conn, done := newWSAdmissionGateway(t, upstream.URL)
+	channels.fallback = &relaybiz.Channel{ID: 11, Type: relayprovider.ChannelTypeOpenAI, BaseURL: upstream.URL, Key: "channel-secret"}
+	writeWSAdmissionTurn(t, conn)
+	_, _, err := conn.Read(t.Context())
+	require.Error(t, err)
+	awaitWSAdmissionDone(t, done)
+	require.EqualValues(t, 1, received.Load())
+	require.Len(t, billing.reserveRequests, 1)
+	require.Empty(t, s.wsPool.idle, "a closed session socket cannot return to the pool")
 }
 
 func TestSubscriptionWebSocketLaterTurnsRespectAccountLimits(t *testing.T) {

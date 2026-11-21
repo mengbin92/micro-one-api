@@ -476,7 +476,12 @@ func (s *HTTPServer) SetOpenAIWSConnPool() {
 	if s == nil {
 		return
 	}
-	s.wsPool = newOpenAIWSConnPool(s.openAIWSDialTimeout())
+	if s.wsPool == nil {
+		s.wsPool = newOpenAIWSConnPool(s.openAIWSDialTimeout(), s.apiKeyHTTPClient)
+		if s.wsPoolCfg.maxConnsPerChannel > 0 {
+			s.wsPool.maxConnsPerChannel = s.wsPoolCfg.maxConnsPerChannel
+		}
+	}
 	if s.wsConnTracker == nil {
 		s.wsConnTracker = appws.NewConnectionTracker(s.drainConfig())
 	}
@@ -554,6 +559,7 @@ func (s *HTTPServer) DrainWSConnections(ctx context.Context) error {
 		zap.Int("active", s.wsConnTracker.ActiveCount()),
 	)
 	err := s.wsConnTracker.Drain(ctx)
+	s.wsPool.Close()
 	if err != nil {
 		applogger.Log.Warn("openai ws drain finished with error",
 			zap.Int("active_remaining", s.wsConnTracker.ActiveCount()),
@@ -581,6 +587,14 @@ func (s *HTTPServer) SetOpenAIWSPoolConfig(maxConnsPerChannel, failoverMaxSwitch
 		maxConnsPerChannel:  maxConnsPerChannel,
 		failoverMaxSwitches: failoverMaxSwitches,
 		stickyTTL:           stickyTTL,
+	}
+	if s.wsPool != nil {
+		if maxConnsPerChannel <= 0 {
+			maxConnsPerChannel = openAIWSPoolDefaultMaxConnsPerChannel
+		}
+		s.wsPool.mu.Lock()
+		s.wsPool.maxConnsPerChannel = maxConnsPerChannel
+		s.wsPool.mu.Unlock()
 	}
 }
 

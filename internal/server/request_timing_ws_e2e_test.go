@@ -56,7 +56,7 @@ func (d timingSessionDialer) Dial(ctx context.Context, url string, headers http.
 	case d.sessions <- wsTimings(ctx):
 	default:
 	}
-	return newCoderWSUpstreamDialer().Dial(ctx, url, headers)
+	return newCoderWSUpstreamDialer(nil).Dial(ctx, url, headers)
 }
 
 func TestWSEvidenceHistoryLimitRequiresDurableDelivery(t *testing.T) {

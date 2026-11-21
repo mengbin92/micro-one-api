@@ -1,9 +1,35 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"testing"
+
+	relaybiz "micro-one-api/internal/biz"
 )
+
+func TestResponsesWebSocketHonorsUpstreamHTTPClient(t *testing.T) {
+	// Both clients are test transports, so no request leaves the process.
+	previous := http.DefaultClient
+	http.DefaultClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("unexpected default transport")
+	})}
+	t.Cleanup(func() { http.DefaultClient = previous })
+	denied := errors.New("egress denied")
+	s := &HTTPServer{apiKeyHTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, denied
+	})}}
+	for _, pooled := range []bool{false, true} {
+		if pooled {
+			s.SetOpenAIWSConnPool()
+			defer s.wsPool.Close()
+		}
+		_, err := s.acquireOpenAIWSUpstreamConn(t.Context(), &relaybiz.Channel{ID: 1}, "wss://upstream.example", nil)
+		if !errors.Is(err, denied) {
+			t.Errorf("pooled=%v: handshake ignored the configured upstream policy", pooled)
+		}
+	}
+}
 
 func TestIsOpenAIWSUpgradeRequest(t *testing.T) {
 	tests := []struct {

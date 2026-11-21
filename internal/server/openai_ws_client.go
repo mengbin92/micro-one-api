@@ -8,6 +8,7 @@ import (
 	"time"
 
 	coderws "github.com/coder/websocket"
+	relayprovider "micro-one-api/domain/upstream/provider"
 )
 
 // openAI WS upstream client constants. These mirror the Codex Responses
@@ -77,10 +78,15 @@ type openAIWSUpstreamDialer interface {
 	Dial(ctx context.Context, wsURL string, headers http.Header) (openAIWSFrameConn, int, http.Header, error)
 }
 
-type coderWSUpstreamDialer struct{}
+type coderWSUpstreamDialer struct {
+	client *http.Client
+}
 
-func newCoderWSUpstreamDialer() openAIWSUpstreamDialer {
-	return &coderWSUpstreamDialer{}
+func newCoderWSUpstreamDialer(client *http.Client) openAIWSUpstreamDialer {
+	if client == nil {
+		client = relayprovider.NewHTTPClient(0)
+	}
+	return &coderWSUpstreamDialer{client: client}
 }
 
 // Dial connects to an upstream Responses WebSocket endpoint. It returns the
@@ -94,6 +100,7 @@ func (d *coderWSUpstreamDialer) Dial(ctx context.Context, wsURL string, headers 
 		return nil, 0, nil, errors.New("openai ws url is empty")
 	}
 	opts := &coderws.DialOptions{
+		HTTPClient:      d.client,
 		HTTPHeader:      cloneHeader(headers),
 		CompressionMode: coderws.CompressionContextTakeover,
 	}

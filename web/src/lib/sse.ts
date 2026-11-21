@@ -68,7 +68,8 @@ export async function* parseSSEStream(stream: ReadableStream<Uint8Array>): Async
       if (event) events.push(event);
       boundary = buffer.indexOf('\n\n');
     }
-    if (bufferBytes > MAX_SSE_EVENT_BYTES) {
+    // A trailing LF may be the first half of the event delimiter.
+    if (bufferBytes > MAX_SSE_EVENT_BYTES + Number(buffer.endsWith('\n'))) {
       throw new SSEProtocolError(t("SSE 单个事件超过 2 MiB 限制"));
     }
     return events;
