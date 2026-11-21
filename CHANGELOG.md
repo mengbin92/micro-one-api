@@ -7,6 +7,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.48.1] - 2026-11-21
+
+PATCH 修复公告保存成功却因已过期而不可见的问题。无新增数据库迁移。详见 [发布记录](docs/releases/release-v0.48.1.md)。
+
+### Fixed
+
+- Admin 拒绝发布已过期的公告，管理页保留表单并提示延后或清空下架时间。
+- 修复留空发布时间的旧草稿无法保存发布，以及浏览器时钟偏差误拦有效发布的问题。
+
 ## [0.48.0] - 2026-11-20
 
 MINOR 新增实时语音扩展、Kimi 设备码绑定和运营探针 usage 留证，并补齐令牌页的限制展示。无新增数据库迁移。详见 [发布记录](docs/releases/release-v0.48.0.md)。

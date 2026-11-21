@@ -8,7 +8,7 @@ export interface Announcement {
   audience: 'all' | 'groups' | 'users';
   targets?: string[];
   status: 'draft' | 'published' | 'archived';
-  publish_at: number;
+  publish_at?: number;
   expires_at?: number;
 }
 export interface UserAnnouncement { id: string; revision: number; title: string; body: string; publish_at: number; expires_at?: number; read?: boolean }
@@ -22,9 +22,9 @@ export function fromBeijingInput(value: string) { return value ? Math.floor(Date
 export function announcementState(a: Announcement, now = Date.now() / 1000) {
   if (a.status === 'draft') return t('草稿');
   if (a.status === 'archived' || (a.expires_at && a.expires_at <= now)) return t('已下架');
-  return a.publish_at > now ? t('待发布') : t('已发布');
+  return (a.publish_at ?? 0) > now ? t('待发布') : t('已发布');
 }
 
-export function validAnnouncementSchedule(a: Pick<Announcement, 'publish_at' | 'expires_at' | 'status'>, now = Date.now() / 1000) {
-  return !a.expires_at || a.expires_at > (a.publish_at || (a.status === 'published' ? now : 0));
+export function validAnnouncementSchedule({ publish_at = 0, expires_at = 0 }: Pick<Announcement, 'publish_at' | 'expires_at'>) {
+  return expires_at === 0 || expires_at > publish_at;
 }

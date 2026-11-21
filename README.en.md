@@ -14,15 +14,13 @@ multi-channel API distribution and [sub2api](https://github.com/Wei-Shaw/sub2api
 for subscription windows, account pools, rate limits and usage management.
 You provide your own authorized upstream accounts and API keys.
 
-> Latest release: [v0.48.0](./docs/releases/release-v0.48.0.md) — MINOR release
-> with metered realtime speech, Kimi device authorization, and upstream probe
-> evidence. The API key list now shows saved expiration, quota, and model limits.
-> Previous release: [v0.47.0](./docs/releases/release-v0.47.0.md).
-> [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.48.0)
+> [v0.48.1](./docs/releases/release-v0.48.1.md) fixes announcement publication and
+> expiry feedback. Previous release [v0.48.0](./docs/releases/release-v0.48.0.md).
+> [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.48.1)
 
 ## Features
 
-- User operations visibility (unreleased): personal model availability and aggregate routing status, plus announcements targeted to everyone, current default routing groups or selected users, with scheduled publication, expiry, versioned read receipts and a management page. Apply Admin migration 148 and runtime grants before deployment; see the [B4 contract](./docs/design/b4-user-operations-contract-2026-11-02.md) and [acceptance record](./docs/runbooks/b4-user-operations-acceptance-2026-11-02.md).
+- Users can view personal model availability, aggregate routing status and announcements. Administrators can target notices to everyone, current default routing groups or selected users, with scheduled publication, expiry and versioned read receipts. Apply Admin migration 148 and runtime grants in new environments. [B4 contract](./docs/design/b4-user-operations-contract-2026-11-02.md) · [Acceptance record](./docs/runbooks/b4-user-operations-acceptance-2026-11-02.md)
 - Native Gemini `v1beta` text/function generation over JSON or SSE, using Gemini API-key channels and canonical usage settlement. Media and unsupported features are rejected explicitly; see the [B2 contract](./docs/design/b2-native-gemini-contract-2026-10-30.md) and [deployment acceptance](./docs/runbooks/b2-native-gemini-acceptance-2026-10-30.md). Real supplier/SDK/paid validation remains pending.
 
 - OpenAI-compatible `/v1/chat/completions`, `/v1/models`, `/v1/responses` and raw

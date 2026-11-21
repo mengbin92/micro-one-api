@@ -24,4 +24,5 @@ enum AuthorizationErrorReason {
 enum AnnouncementErrorReason {
   ANNOUNCEMENT_ERROR_REASON_UNSPECIFIED = 0;
   ANNOUNCEMENT_NOT_FOUND = 1;
+  ANNOUNCEMENT_EXPIRED = 2;
 }

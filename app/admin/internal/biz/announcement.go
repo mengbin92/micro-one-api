@@ -14,6 +14,7 @@ import (
 
 var (
 	ErrAnnouncementInvalid     = errors.BadRequest(v.AuthorizationErrorReason_AUTHORIZATION_BUSINESS_RULE_VIOLATION.String(), "invalid announcement")
+	ErrAnnouncementExpired     = errors.BadRequest(v.AnnouncementErrorReason_ANNOUNCEMENT_EXPIRED.String(), "announcement expiration must be in the future")
 	ErrAnnouncementNotFound    = errors.NotFound(v.AnnouncementErrorReason_ANNOUNCEMENT_NOT_FOUND.String(), "announcement not found")
 	ErrAnnouncementConflict    = errors.Conflict(v.AuthorizationErrorReason_AUTHORIZATION_REVISION_CONFLICT.String(), "announcement changed; reload before saving")
 	ErrAnnouncementUnavailable = errors.ServiceUnavailable(v.AuthorizationErrorReason_AUTHORIZATION_DEPENDENCY_UNAVAILABLE.String(), "announcements unavailable")
@@ -104,8 +105,14 @@ func (u *AnnouncementUsecase) Save(ctx context.Context, a Announcement, reason, 
 	if err != nil {
 		return Announcement{}, err
 	}
-	if a.Status == "published" && a.PublishAt == 0 {
-		a.PublishAt = time.Now().Unix()
+	if a.Status == "published" {
+		now := time.Now().Unix()
+		if a.ExpiresAt > 0 && a.ExpiresAt <= now {
+			return Announcement{}, ErrAnnouncementExpired
+		}
+		if a.PublishAt == 0 {
+			a.PublishAt = now
+		}
 	}
 	if a.Validate() != nil || utf8.RuneCountInString(strings.TrimSpace(reason)) < 3 || utf8.RuneCountInString(reason) > 240 || actor == "" {
 		return Announcement{}, ErrAnnouncementInvalid
