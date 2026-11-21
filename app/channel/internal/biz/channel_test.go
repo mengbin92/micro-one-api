@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
+	"micro-one-api/platform/events"
 )
 
 type mockChannelRepo struct {
@@ -16,6 +19,34 @@ type mockChannelRepo struct {
 	candidates   map[string][]RoutingCandidate
 	accAbilities map[string][]SubscriptionRoutingCandidate
 	resetRuns    map[string]bool
+}
+
+func TestChannelMutationsPublishOnlyInvalidationFields(t *testing.T) {
+	bus := events.NewMemoryEventBus()
+	uc := NewChannelUsecase(&mockChannelRepo{channels: map[int64]*Channel{}}, bus)
+	var delivered int
+	bus.Subscribe(events.TopicChannelChanged, func(_ context.Context, e events.Event) error {
+		delivered++
+		raw, err := jsonx.Marshal(e.Payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var fields map[string]int64
+		if err := jsonx.Unmarshal(raw, &fields); err != nil || len(fields) != 2 || fields["ID"] != 1 || fields["Status"] != 1 {
+			t.Error("channel event must carry only its ID and status")
+		}
+		return nil
+	})
+	channel := &Channel{Key: "synthetic", Status: 1}
+	if err := uc.CreateChannel(t.Context(), channel); err != nil {
+		t.Fatal(err)
+	}
+	if err := uc.UpdateChannel(t.Context(), channel); err != nil {
+		t.Fatal(err)
+	}
+	if delivered != 2 {
+		t.Fatalf("received %d mutation events, want 2", delivered)
+	}
 }
 
 type recordedNotification struct {
