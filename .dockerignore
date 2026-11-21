@@ -17,6 +17,18 @@ docs
 **/.env.*
 **/*.env
 !scripts/tool-versions.env
+**/cert
+**/certs
+**/keys
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/subscription-account.*.payload.json
+deployments/docker-compose/data
+artifacts
+.codex
+.worktrees
 
 bin
 logs
@@ -24,11 +36,10 @@ coverage
 coverage.out
 *.test
 
-web/node_modules
+**/node_modules
 web/dist
 web/test-results
-web/iam-test-results
-web/a1-test-results
+web/*-test-results
 web/playwright-report
 
 test/e2e/e2e-test
