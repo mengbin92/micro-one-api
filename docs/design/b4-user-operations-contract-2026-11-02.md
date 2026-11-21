@@ -7,7 +7,7 @@
 - 用户分组使用 Identity 的当前默认路由组 ID，不使用浏览器声明、IAM 角色或 Token 分组。每次读取重新查询；分组变化立即影响可见性。
 - 前置：已有 Identity 路由 v2 迁移、用户默认组和专用 Admin 服务身份。状态表示路由配置可用性快照，复用 Channel 最长 15 秒缓存，不代表实时健康、并发余量或账户余额；不保证每次请求成功，不探测真实付费来源。依赖失败返回错误，不能显示为正常或空结果。
 - Admin 为公告 owner，复用 `admin.content` / `system.content.notice.update` 权限；管理读取也要求该权限。HTTP 与 gRPC 都在 usecase 授权，legacy 模式也验证管理员。
-- 公告正文为纯文本；draft/published/archived，发布时间包含、到期时间不包含。“立即发布”由 owner 冻结实际发布时间；没有后台定时任务，读时按 owner 时间判断。下架保留记录。
+- 公告正文为纯文本；draft/published/archived，发布时间包含、到期时间不包含。“立即发布”由 owner 冻结实际发布时间；没有后台定时任务，读时按 owner 时间判断。下架保留记录。保存为发布状态时，下架时间必须晚于发布时间和服务端当前时间，或留空。尝试发布已到期公告时，服务端返回 `400 ANNOUNCEMENT_EXPIRED`。
 - 保存使用 revision 条件更新；创建 revision=0，修改携带当前 revision 和至少三个字符的操作原因。保存与审计同事务。任何编辑增加 revision，旧已读不覆盖新版本。
 - 用户读取不返回定向对象、管理状态及审计。已读按公告/用户/版本唯一，先在同一事务确认当前版本和可见性；越权、未发布、到期统一不存在。
 - 三库迁移 148 归 Admin；上线先迁移并按 [148 运行账号权限模板](../../migrations/manual/148_announcement_runtime_grants.example.sql)授权，再更新 Channel/Admin，Web 单独发布。保留旧公共 Notice，无隐式转为定向公告。

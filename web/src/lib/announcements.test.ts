@@ -15,12 +15,13 @@ describe('announcement schedule', () => {
     expect(announcementState(a, 20)).toBe('已下架');
   });
 
-  it('rejects expiration at or before effective publication', () => {
-    expect(validAnnouncementSchedule({ status: 'published', publish_at: 20, expires_at: 20 }, 10)).toBe(false);
-    expect(validAnnouncementSchedule({ status: 'published', publish_at: 0, expires_at: 10 }, 10)).toBe(false);
-    expect(validAnnouncementSchedule({ status: 'published', publish_at: 0, expires_at: 11 }, 10)).toBe(true);
-    expect(validAnnouncementSchedule({ status: 'published', publish_at: 20, expires_at: 0 }, 10)).toBe(true);
-    expect(validAnnouncementSchedule({ status: 'draft', publish_at: 0, expires_at: 9 }, 10)).toBe(true);
+  it('checks configured ordering and accepts omitted times', () => {
+    expect(validAnnouncementSchedule({ publish_at: 20, expires_at: 19 })).toBe(false);
+    expect(validAnnouncementSchedule({ publish_at: 20, expires_at: 20 })).toBe(false);
+    expect(validAnnouncementSchedule({ publish_at: 20, expires_at: 21 })).toBe(true);
+    expect(validAnnouncementSchedule({ publish_at: 20, expires_at: 0 })).toBe(true);
+    expect(validAnnouncementSchedule({ expires_at: 10 })).toBe(true);
+    expect(validAnnouncementSchedule({})).toBe(true);
   });
   it('translates shared timestamp and reason labels in English', () => {
     localStorage.setItem('web:language', JSON.stringify('en-US'));

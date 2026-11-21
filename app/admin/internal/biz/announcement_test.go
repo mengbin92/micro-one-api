@@ -78,5 +78,24 @@ func TestAnnouncementImmediatePublicationFreezesActualTime(t *testing.T) {
 	require.LessOrEqual(t, saved.PublishAt, time.Now().Unix())
 	a.ExpiresAt = before - 1
 	_, err = uc.Save(context.Background(), a, "invalid expiration", "1")
-	require.ErrorIs(t, err, ErrAnnouncementInvalid)
+	require.ErrorIs(t, err, ErrAnnouncementExpired)
+}
+
+func TestAnnouncementRejectsPublishingWithAnExpiredSchedule(t *testing.T) {
+	repo := &announcementFakeRepo{}
+	uc := NewAnnouncementUsecase(repo, nil)
+	now := time.Now().Unix()
+	a := Announcement{ID: "00000000-0000-4000-8000-000000000001", Revision: 1, Title: "notice", Body: "body", Audience: "all", Status: "published", PublishAt: now - 120, ExpiresAt: now - 60}
+	_, err := uc.Save(context.Background(), a, "republish notice", "1")
+	require.ErrorIs(t, err, ErrAnnouncementExpired)
+	require.Zero(t, repo.calls)
+
+	a.Status = "archived"
+	_, err = uc.Save(context.Background(), a, "archive notice", "1")
+	require.NoError(t, err)
+
+	a.Status, a.ExpiresAt = "published", 0
+	saved, err := uc.Save(context.Background(), a, "republish notice", "1")
+	require.NoError(t, err)
+	require.True(t, saved.Visible(AnnouncementSubject{UserID: 7}, now))
 }

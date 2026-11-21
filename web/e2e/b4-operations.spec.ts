@@ -155,3 +155,61 @@ test('admin cancel keeps saved content and all-user drafts have no targets', asy
   await page.getByRole('button', { name: '保存公告', exact: true }).click();
   await expect(page.getByRole('heading', { name: '全体草稿' })).toBeVisible();
 });
+
+test('admin can publish a draft with an omitted publication time', async ({ page }) => {
+  await session(page);
+  await page.clock.setFixedTime(new Date('2040-01-01T00:00:00Z'));
+  const draft = { id: 'draft', revision: 1, title: '全体草稿', body: '草稿内容', audience: 'all', status: 'draft', expires_at: 1893542400 };
+  let row: typeof draft & { publish_at?: number } = draft;
+  await page.route('**/api/admin/announcements**', async route => {
+    if (route.request().method() === 'PUT') {
+      const { announcement } = route.request().postDataJSON();
+      expect(announcement.status).toBe('published');
+      expect(announcement.publish_at).toBeUndefined();
+      expect(announcement.expires_at).toBe(draft.expires_at);
+      row = { ...draft, revision: 2, status: 'published', publish_at: 1893456000 };
+      return route.fulfill({ json: row });
+    }
+    return route.fulfill({ json: { items: [row], total: 1 } });
+  });
+  await page.goto('/admin/announcements');
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
+  await page.getByLabel('发布状态', { exact: true }).selectOption('published');
+  await page.getByLabel('操作原因', { exact: true }).fill('发布已有草稿');
+  const save = page.getByRole('button', { name: '保存公告', exact: true });
+  expect(await save.isEnabled()).toBe(true);
+  await save.click();
+  await expect(page.getByText('公告已保存', { exact: true })).toBeVisible();
+});
+
+test('admin can correct an expiration rejected by the server', async ({ page }) => {
+  await session(page);
+  await page.clock.setFixedTime(new Date('2020-01-01T06:00:00Z'));
+  let row = {
+    id: 'expired-notice', revision: 1, title: '维护公告', body: '维护已完成。', audience: 'all',
+    status: 'published', publish_at: 1577808000, expires_at: 1577894400,
+  };
+  await page.route('**/api/admin/announcements**', async route => {
+    if (route.request().method() === 'PUT') {
+      const { announcement } = route.request().postDataJSON() as { announcement: typeof row };
+      if (announcement.expires_at) return route.fulfill({ status: 400, json: { reason: 'ANNOUNCEMENT_EXPIRED' } });
+      row = { ...announcement, revision: 2 };
+      return route.fulfill({ json: row });
+    }
+    return route.fulfill({ json: { items: [row], total: 1 } });
+  });
+  await page.goto('/admin/announcements');
+  await expect(page.getByText(/已发布 · 全体用户/)).toBeVisible();
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
+  await page.getByLabel('操作原因', { exact: true }).fill('重新发布公告');
+  const save = page.getByRole('button', { name: '保存公告', exact: true });
+  await save.click();
+  await expect(page.getByRole('alert')).toContainText('下架时间已过');
+  await expect(page.getByLabel('操作原因', { exact: true })).toHaveValue('重新发布公告');
+
+  await page.getByLabel('下架时间（北京时间，留空不限）').clear();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await save.click();
+  await expect(page.getByText('公告已保存', { exact: true })).toBeVisible();
+  await expect(page.getByText(/已发布 · 全体用户/)).toBeVisible();
+});

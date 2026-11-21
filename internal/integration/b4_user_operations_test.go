@@ -141,6 +141,9 @@ func TestB4UserOperationsHTTPAndRPC(t *testing.T) {
 					}
 				}
 				require.True(t, found)
+				w = call("PUT", "/api/admin/announcements", `{"announcement":{"title":"expired","body":"notice","audience":"all","status":"published","publish_at":1,"expires_at":2},"reason":"expired schedule test"}`, root)
+				require.Equal(t, 400, w.Code, w.Body.String())
+				require.Contains(t, w.Body.String(), `"reason":"ANNOUNCEMENT_EXPIRED"`)
 				// HTTP save uses exactly the same CAS as RPC.
 				payload, err := jsonx.Marshal(map[string]any{"announcement": a, "reason": "更新运营公告"})
 				require.NoError(t, err)
