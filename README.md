@@ -8,11 +8,11 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.48.0 发布公告](./docs/releases/release-v0.48.0.md)（MINOR 实时语音、Kimi 设备码绑定与探针留证） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.48.0)
+> 📣 **最新发布**：[v0.48.1 发布公告](./docs/releases/release-v0.48.1.md)（PATCH 公告发布与到期提示修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.48.1)
 
 ## 功能概览
 
-- 用户运营可见性（未发布）：用户“模型与公告”页仅展示本人可用模型及聚合路由状态；管理员可向全体、用户默认路由组或指定用户发布公告，支持定时、下架及版本化已读。部署前需应用 Admin 148 并授权运行账号，详见 [B4 契约](docs/design/b4-user-operations-contract-2026-11-02.md)和[验收记录](docs/runbooks/b4-user-operations-acceptance-2026-11-02.md)。
+- 用户运营可见性。用户在“模型与公告”页查看本人可用模型、聚合路由状态及当前账号可见的公告。管理员可向全体、用户默认路由组或指定用户发布公告，支持定时、下架及版本化已读。新环境需应用 Admin 148 并授权运行账号。 [B4 契约](docs/design/b4-user-operations-contract-2026-11-02.md) · [验收记录](docs/runbooks/b4-user-operations-acceptance-2026-11-02.md)
 - OpenAI 兼容 API 网关：支持 `/v1/chat/completions`、`/v1/models`、`/v1/responses` 以及 embeddings、audio、image、moderations 等 raw relay 路由。
 - 多渠道模型分发：支持渠道优先级、同优先级负载均衡、禁用渠道过滤和模型映射。**v0.43.0 起** `model_channel_mapping` / `model_subscription_mapping` 是唯一路由候选来源，legacy `abilities` 表与 `restrict_models` catch-all 开关已退役，未注册模型返回无可用渠道而不再兜底；升级前必须应用迁移 151，详见[发布公告](./docs/releases/release-v0.43.0.md)。
 - 多供应商适配：支持 OpenAI-compatible 渠道，并包含 Anthropic、Gemini、Azure、VoyageAI 等 provider 适配器；DeepSeek、Moonshot、Groq、Tongyi、OpenRouter、SiliconFlow、Ollama、Doubao 等按 OpenAI-compatible 方式转发。
@@ -186,6 +186,7 @@ make web-dist
 
 ## 发布与升级
 
+- [v0.48.1](./docs/releases/release-v0.48.1.md) 修复公告发布时校验已过期的下架时间，以及留空发布时间的草稿发布。升级 Admin API 和 Web，无新增数据库迁移。
 - [v0.48.0](./docs/releases/release-v0.48.0.md) 新增 Realtime VAD、独立转写、流式 TTS、Kimi 设备码绑定和探针留证，补齐令牌页配额与白名单显示。无新增数据库迁移。
 - [v0.47.0](./docs/releases/release-v0.47.0.md) 新增短期固定组 API Key，修复 MySQL 冻结扣费对账、上游 usage 留证、Relay 5xx 告警与长邮件投递。无新增数据库迁移。
 - [v0.46.3](./docs/releases/release-v0.46.3.md) 修复订阅结算、语音流与连接停机、管理台写入重试和后台任务。无新增数据库迁移。
