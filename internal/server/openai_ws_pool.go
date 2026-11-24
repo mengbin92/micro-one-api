@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"errors"
 	"io"
@@ -25,6 +27,7 @@ type openAIWSConnPool struct {
 	dialTimeout        time.Duration
 	maxIdle            time.Duration
 	maxConnsPerChannel int
+	fingerprintKey     [sha256.Size]byte
 
 	mu   sync.Mutex
 	idle map[string][]*openAIWSPooledConn
@@ -48,21 +51,24 @@ const (
 )
 
 func newOpenAIWSConnPool(dialTimeout time.Duration, client *http.Client) *openAIWSConnPool {
+	var fingerprintKey [sha256.Size]byte
+	rand.Read(fingerprintKey[:])
 	return &openAIWSConnPool{
 		dialer:             newCoderWSUpstreamDialer(client),
 		dialTimeout:        dialTimeout,
 		maxIdle:            openAIWSPoolDefaultMaxIdle,
 		maxConnsPerChannel: openAIWSPoolDefaultMaxConnsPerChannel,
+		fingerprintKey:     fingerprintKey,
 		idle:               make(map[string][]*openAIWSPooledConn),
 	}
 }
 
-// Include every handshake header without retaining the credential in the pool.
-func openAIWSConnFingerprint(wsURL string, headers http.Header) [sha256.Size]byte {
-	hash := sha256.New()
-	_, _ = io.WriteString(hash, wsURL+"\x00")
-	_ = headers.Write(hash)
-	return [sha256.Size]byte(hash.Sum(nil))
+// Key the handshake fingerprint so it can only be recomputed with this pool's key.
+func (p *openAIWSConnPool) handshakeFingerprint(wsURL string, headers http.Header) [sha256.Size]byte {
+	mac := hmac.New(sha256.New, p.fingerprintKey[:])
+	_, _ = io.WriteString(mac, wsURL+"\x00")
+	_ = headers.Write(mac)
+	return [sha256.Size]byte(mac.Sum(nil))
 }
 
 // AcquireOrDial returns a usable upstream connection for the given source.
@@ -71,7 +77,7 @@ func openAIWSConnFingerprint(wsURL string, headers http.Header) [sha256.Size]byt
 // returns the connection to the pool, or closes it if the pool is full/closed).
 func (p *openAIWSConnPool) AcquireOrDial(ctx context.Context, poolKey string, wsURL string, headers http.Header) (*openAIWSPooledConn, error) {
 	p.acquireTotal.Add(1)
-	fingerprint := openAIWSConnFingerprint(wsURL, headers)
+	fingerprint := p.handshakeFingerprint(wsURL, headers)
 	p.mu.Lock()
 	if p.idle == nil {
 		p.mu.Unlock()
@@ -84,7 +90,7 @@ func (p *openAIWSConnPool) AcquireOrDial(ctx context.Context, poolKey string, ws
 		pc := conns[len(conns)-1]
 		pc.idleTimer.Stop()
 		p.removeIdle(pc)
-		if pc.fingerprint == fingerprint {
+		if hmac.Equal(pc.fingerprint[:], fingerprint[:]) {
 			reused = pc
 			break
 		}
