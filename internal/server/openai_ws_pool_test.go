@@ -60,6 +60,25 @@ func TestConnPoolReusesIdleConnection(t *testing.T) {
 	pool.Release(pc2, false)
 }
 
+func TestConnPoolFingerprintsAreScopedToPool(t *testing.T) {
+	headers := http.Header{"Authorization": {"Bearer test-credential"}}
+	var conns [2]*openAIWSPooledConn
+	for i := range conns {
+		pool := newOpenAIWSConnPool(time.Second, nil)
+		pool.dialer = &dialCountingDialer{}
+		defer pool.Close()
+		pc, err := pool.AcquireOrDial(t.Context(), "channel:1", "wss://upstream.example", headers)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pool.Release(pc, false)
+		conns[i] = pc
+	}
+	if conns[0].fingerprint == conns[1].fingerprint {
+		t.Fatal("independent pools generated the same handshake fingerprint")
+	}
+}
+
 func TestConnPoolDialsNewWhenAllLeased(t *testing.T) {
 	pool := newOpenAIWSConnPool(2*time.Second, nil)
 	pool.dialer = &dialCountingDialer{}
